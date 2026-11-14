@@ -262,25 +262,27 @@ private fun Timeline(
             ),
         )
     }
+    val keep = chat.kelo.app.ui.components.rememberKeepAtTop(list)
     // a notification asked for one section: its place is where its row sits in the one list the screen draws
     LaunchedEffect(jumpTo, rows, tasks.data != null, permsLoaded, schedulesLoaded, watchersLoaded) {
         val key = jumpTo ?: return@LaunchedEffect
         if (!SectionJump.ready(key, tasks.data != null, permsLoaded, schedulesLoaded, watchersLoaded)) return@LaunchedEffect
         val i = rows.indexOfFirst { it.key == key }
-        if (i >= 0) list.animateScrollToItem(i)
+        if (i >= 0) { keep.release(); list.animateScrollToItem(i) }
         onJumped()
     }
 
     WorkRowsList(
-        rows, list,
+        rows, list, keep,
         PaddingValues(start = 12.dp, end = 16.dp, top = headerHeight() + 8.dp, bottom = LocalWorkHooks.current.bottomInset + 32.dp),
     )
 }
 
 /** Draws the rows, exactly as [buildWorkRows] lists them. */
 @Composable
-internal fun WorkRowsList(rows: List<WorkRow>, list: androidx.compose.foundation.lazy.LazyListState, contentPadding: PaddingValues) {
-    chat.kelo.app.ui.components.KeepAtTopUntilScrolled(list, rows.map { it.key })
+internal fun WorkRowsList(rows: List<WorkRow>, list: androidx.compose.foundation.lazy.LazyListState,
+                          keep: chat.kelo.app.ui.components.KeepAtTop, contentPadding: PaddingValues) {
+    chat.kelo.app.ui.components.KeepAtTopUntilScrolled(list, rows.map { it.key }, keep)
     LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = contentPadding) {
         items(rows, key = { it.key }, contentType = { it.contentType }) { row -> row.content() }
     }

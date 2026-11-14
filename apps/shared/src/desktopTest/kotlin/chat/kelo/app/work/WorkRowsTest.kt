@@ -69,9 +69,10 @@ class WorkRowsTest {
         setContent {
             state = rememberLazyListState()
             val scope = rememberCoroutineScope()
-            WorkRowsList(rows, state, PaddingValues())
-            // a plain jump (not the animated one): an animation the test clock drives can keep a CI runner waiting for idle forever
-            androidx.compose.runtime.LaunchedEffect(Unit) { scope.launch { state.scrollToItem(index) } }
+            val keep = chat.kelo.app.ui.components.rememberKeepAtTop(state)
+            WorkRowsList(rows, state, keep, PaddingValues())
+            // the screen's jump: it releases the hold first (WorkScreen's section jump does the same)
+            androidx.compose.runtime.LaunchedEffect(Unit) { scope.launch { keep.release(); state.scrollToItem(index) } }
         }
         waitUntil(timeoutMillis = 5_000) { state.layoutInfo.visibleItemsInfo.any { it.key == SECTION_WATCH } }
         // what the list composes while it is scrolled through is the rows' keys, in their order
