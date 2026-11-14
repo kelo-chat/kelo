@@ -57,11 +57,17 @@ LM Studio, Ollama 같은 OpenAI 호환 서버로 내 장비에서 직접 돌릴 
 
 ## 앱
 
+<p>
+  <a href="https://apps.microsoft.com/detail/9P54HX2TX361?hl=ko-kr&gl=KR"><img src="https://kelo.chat/assets/badge-microsoft-ko.svg" height="40" alt="Microsoft Store에서 받기"></a>
+  <a href="https://apps.apple.com/kr/app/kelo-ai/id6832422201"><img src="https://kelo.chat/assets/badge-appstore-ko.svg" height="40" alt="App Store에서 다운로드"></a>
+  <a href="https://kelo.chat/tester"><img src="https://kelo.chat/assets/badge-android-beta-ko.svg" height="40" alt="Android 베타 테스트 – 신청하기"></a>
+</p>
+
 | 플랫폼 | 상태 |
 |---|---|
-| Android | 네이티브 앱 (Kotlin + Jetpack Compose). 지금은 APK 직접 설치, Google Play 준비 중 |
-| Windows / macOS 데스크톱 | 네이티브 앱 (Compose Multiplatform): 채팅, 허락, 실시간 브라우저, 트레이, 알림 |
-| iOS | 네이티브 앱 (SwiftUI), 만드는 중 |
+| Android | 네이티브 앱 (Kotlin + Jetpack Compose). 베타 테스트 중: [kelo.chat/tester](https://kelo.chat/tester)에서 신청하거나 APK를 직접 설치하세요: [kelo.chat/download/android](https://kelo.chat/download/android). Google Play는 베타 뒤에 올라와요 |
+| Windows / macOS 데스크톱 | 네이티브 앱 (Compose Multiplatform): 채팅, 허락, 실시간 브라우저, 트레이, 알림. Windows: [Microsoft Store](https://apps.microsoft.com/detail/9P54HX2TX361?hl=ko-kr&gl=KR) 또는 [설치 파일 (.exe)](https://kelo.chat/download/windows) / [MSI](https://kelo.chat/download/windows-msi), macOS (Apple 실리콘): [디스크 이미지 (.dmg)](https://kelo.chat/download/mac) |
+| iOS | 네이티브 앱 (SwiftUI), [App Store](https://apps.apple.com/kr/app/kelo-ai/id6832422201)에서 받을 수 있어요 (iOS 17 이상) |
 
 <p align="center">
   <img src="docs/media/ko-chat.webp" alt="채팅" width="200">

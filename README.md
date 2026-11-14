@@ -59,11 +59,17 @@ browser to you instead of trying to get around it.
 
 ## Apps
 
+<p>
+  <a href="https://apps.microsoft.com/detail/9P54HX2TX361?hl=en-us&gl=US"><img src="https://kelo.chat/assets/badge-microsoft-en.svg" height="40" alt="Get it from Microsoft"></a>
+  <a href="https://apps.apple.com/us/app/kelo-ai/id6832422201"><img src="https://kelo.chat/assets/badge-appstore-en.svg" height="40" alt="Download on the App Store"></a>
+  <a href="https://kelo.chat/tester"><img src="https://kelo.chat/assets/badge-android-beta-en.svg" height="40" alt="Android beta testing – sign up"></a>
+</p>
+
 | Platform | Status |
 |---|---|
-| Android | Native app (Kotlin + Jetpack Compose). Sideload APK now; Google Play coming. |
-| Windows / macOS desktop | Native app (Compose Multiplatform): chat, approvals, live browser, tray, notifications. |
-| iOS | Native app (SwiftUI), in progress. |
+| Android | Native app (Kotlin + Jetpack Compose). Beta testing: sign up at [kelo.chat/tester](https://kelo.chat/tester), or install the APK: [kelo.chat/download/android](https://kelo.chat/download/android). Google Play after the beta. |
+| Windows / macOS desktop | Native app (Compose Multiplatform): chat, approvals, live browser, tray, notifications. Windows: [Microsoft Store](https://apps.microsoft.com/detail/9P54HX2TX361?hl=en-us&gl=US), or the [installer (.exe)](https://kelo.chat/download/windows) / [MSI](https://kelo.chat/download/windows-msi); macOS (Apple silicon): [disk image (.dmg)](https://kelo.chat/download/mac). |
+| iOS | Native app (SwiftUI), on the [App Store](https://apps.apple.com/us/app/kelo-ai/id6832422201) (iOS 17 or later). |
 
 <p align="center">
   <img src="docs/media/en-chat.webp" alt="Chat" width="200">
