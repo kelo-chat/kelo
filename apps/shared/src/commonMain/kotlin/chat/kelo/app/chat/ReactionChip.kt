@@ -15,8 +15,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -106,7 +106,8 @@ fun ReactionChip(emoji: String, modifier: Modifier = Modifier) {
         modifier = modifier.clearAndSetSemantics { contentDescription = spoken; liveRegion = LiveRegionMode.Polite },
     ) { shown ->
         Box(
-            Modifier.padding(2.dp).defaultMinSize(minWidth = 22.dp, minHeight = 20.dp).shadow(1.5.dp, ChipShape).clip(ChipShape).background(c.bubble)
+            // a fixed size, not a minimum: emoji fonts differ by platform (Windows' is wider) and the chip keeps its place on the bubble
+            Modifier.padding(2.dp).size(width = 22.dp, height = 20.dp).shadow(1.5.dp, ChipShape).clip(ChipShape).background(c.bubble)
                 .border(1.25.dp, c.bg, ChipShape).padding(horizontal = 4.dp, vertical = 2.dp),
             contentAlignment = Alignment.Center,
         ) {

@@ -108,9 +108,10 @@ class ModelPageTest {
         ui.shot("parity-model-chooser-sections-dark")
     }
 
-    /** Where the "자세한 설정" row (below the list) sits right now: it moves with the list as the list grows or shrinks. */
+    /** Where the thinking-level row (right below the list) sits now: it moves with the list as the list grows or shrinks. Not the
+     *  "자세한 설정" row under it: with Windows' taller Korean font that one is already past the bottom of the dialog, not composed. */
     private fun moreTop(): Float =
-        compose.onAllNodesWithText(ko.get(Res.string.chooser_more)).onLast().fetchSemanticsNode().boundsInRoot.top
+        compose.onAllNodesWithText(ko.get(Res.string.chat_effort)).onLast().fetchSemanticsNode().boundsInRoot.top
 
     /** [n] frames of the test clock, one at a time (a single long jump would start an animation and skip what it does). */
     private fun frames(n: Int) = repeat(n) { compose.mainClock.advanceTimeBy(16) }
