@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "id": "example_notes",
+  "kind": "connector",
+  "version": "1.0.0",
+  "name": "Example Notes",
+  "description": "Notes and notebooks in Example Notes",
+  "author": "Example Author",
+  "homepage": "https://notes.example.com",
+  "strings": {
+    "ko": {"name": "예시 노트", "description": "예시 노트의 노트와 노트북", "blurb": "노트를 찾고 고칩니다."}
+  },
+  "connector": {
+    "regions": [],
+    "featured": false,
+    "connect": {
+      "type": "mcp",
+      "url": "https://mcp.notes.example.com/mcp",
+      "blurb": "Finds and edits notes."
+    }
+  }
+}

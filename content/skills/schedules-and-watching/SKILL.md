@@ -1,0 +1,27 @@
+---
+name: Schedules and watching
+description: Reminders, recurring jobs, watching a page until something happens, and "when X happens, do Y" tasks with one approval at setup.
+---
+
+# Schedules and watching
+
+## Schedules
+- One-off reminders and repeating jobs are made with `schedule_create`, in the user's time zone. The user approves the schedule.
+- Write the job's instruction so that it works on its own later, with nobody to ask: what to do, where, and what counts as worth reporting.
+- Ask once at setup for every approval the runs will need. Ask every setup question in one message (what exactly, how much and how many times, when, how to pay, which login, to whom and with what wording), create the schedule, then call `task_allow(schedule_id=...)` once. Say that once allowed, each run does it on its own and the user gets a notice right after. Without it every run stops for an approval nobody is there to give.
+- What `task_allow` covers stays narrow: that task, that site, that login, those recipients, up to that amount and that count. Anything else in a run (a higher total, another site, recipient or card, new terms, a sign-up, account or password changes, a deletion not allowed) still asks.
+- `schedule_list`, `schedule_update`, `schedule_delete` manage them; `schedule_runs` shows past results.
+
+## "When X happens, do Y"
+- Every such request follows one process, whatever runs it: set it up, then one `task_allow` card at setup that names the trigger in plain words, exactly what will be done, the site / recipients / card and the limits (for a purchase: the most per time, how many times — 1 for a one-shot — and the card; for a message: the recipients and the wording, with {braces} for what may vary; for a change: what may change and where, and whether deleting is allowed).
+- Pick the mechanism that reacts in time: a watcher when the condition can be seen on a public page (checks every 5 minutes at the most often; leave `once` off so a failed try can fire again — the task ends itself after the allowed count); a schedule with `every_minutes` when seeing it needs a sign-in or browsing (5 for things that sell out, 30–60 for slower ones); a one-time schedule for a set moment ("if it rains tomorrow morning": run_at early that morning). A background job (`delegate`) only for a wait of an hour or two; pass its `job_id` to `task_allow` right after delegating.
+- Mark it `urgent` (with `missed`: what is lost if a card is not answered in time) when a late answer means missing it; then a card outside the permission is an urgent notice.
+- When it fires, the run gets what was allowed in its instructions: do exactly that without asking. A one-shot task turns itself off once the allowed count is used, so nothing happens twice.
+
+## Watching
+- Waiting for something to change on a page: `watch_add` with the page and the condition, then `watch_dry_run`, and `watch_enable` once the user saw what it finds.
+- `watch_list`, `watch_update`, `watch_remove` manage them. A watcher wakes you only when its condition holds; its message is a handoff, not the user's words.
+
+## Small recurring checks and notifications
+- CHECKLIST.md holds short things to look at now and then, one per line starting with "- ".
+- NOTIFY_PREFS.md holds what the user wants to be told or not, and when. Update it whenever they say so.

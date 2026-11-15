@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_usage_jobs.xml (generated from values/strings_usage_jobs.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="model_background_title">Modell für Hintergrundarbeit</string>
+    <string name="model_background_help">Nur für Arbeit, die Kelo von sich aus erledigt: der nächtliche Rückblick, die Gedächtnispflege, das Tagebuch, die Auswahl, was du erfahren sollst, und Zusammenfassungen langer Chats. Alles, was den Browser nutzt, bezahlt oder etwas sendet, bleibt beim Hauptmodell.</string>
+    <string name="model_background_same">Wie das Hauptmodell</string>
+    <string name="model_background_fell_back">Am %1$s ist das Hintergrundmodell ausgefallen, daher hat das Hauptmodell die Aufgabe übernommen.</string>
+    <string name="usage_jobs_title">Wofür Tokens verbraucht wurden</string>
+    <string name="usage_jobs_month">Diesen Monat</string>
+    <string name="usage_jobs_empty">Noch nichts gezählt.</string>
+    <string name="usage_jobs_tokens">%1$s Tokens</string>
+    <string name="usage_jobs_cache">%1$d%% aus dem Cache wiederverwendet</string>
+    <string name="usage_jobs_note">Für jede KI-Anfrage auf dem Server gezählt. Der Cache ist der Teil der Eingabe, den der KI-Dienst wiederverwendet hat; das kostet meist weniger.</string>
+    <string name="usage_kind_chat">Deine Chats</string>
+    <string name="usage_kind_schedule">Zeitpläne</string>
+    <string name="usage_kind_checklist">Wiederkehrende Prüfungen</string>
+    <string name="usage_kind_task">Übergebene Aufgaben</string>
+    <string name="usage_kind_worker">Delegierte Jobs</string>
+    <string name="usage_kind_reflection">Nächtlicher Rückblick</string>
+    <string name="usage_kind_memory">Gedächtnispflege</string>
+    <string name="usage_kind_journal">Tagebuch</string>
+    <string name="usage_kind_proactive">Hinweise</string>
+    <string name="usage_kind_compaction">Chat-Zusammen­fassungen</string>
+    <string name="usage_kind_followup">Nachfragen</string>
+    <string name="usage_kind_probe">Verbindungsprüfungen</string>
+    <string name="usage_kind_other">Sonstiges</string>
+</resources>

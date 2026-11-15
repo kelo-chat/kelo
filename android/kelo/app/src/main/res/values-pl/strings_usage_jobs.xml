@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_usage_jobs.xml (generated from values/strings_usage_jobs.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="model_background_title">Model do pracy w tle</string>
+    <string name="model_background_help">Używany tylko do pracy, którą Kelo wykonuje sam: nocnego podsumowania, porządkowania pamięci, dziennika, wybierania, o czym cię powiadomić, i streszczeń długich rozmów. Wszystko, co korzysta z przeglądarki, płaci lub coś wysyła, zostaje przy modelu głównym.</string>
+    <string name="model_background_same">Taki sam jak model główny</string>
+    <string name="model_background_fell_back">%1$s model do pracy w tle zawiódł, więc zadanie wykonał model główny.</string>
+    <string name="usage_jobs_title">Na co poszły tokeny</string>
+    <string name="usage_jobs_month">Ten miesiąc</string>
+    <string name="usage_jobs_empty">Jeszcze nic nie policzono.</string>
+    <string name="usage_jobs_tokens">Tokeny: %1$s</string>
+    <string name="usage_jobs_cache">%1$d%% z pamięci podręcznej</string>
+    <string name="usage_jobs_note">Liczone na serwerze przy każdym zapytaniu do AI. Pamięć podręczna to część danych wejściowych, którą usługa AI użyła ponownie; zwykle kosztuje mniej.</string>
+    <string name="usage_kind_chat">Twoje rozmowy</string>
+    <string name="usage_kind_schedule">Harmonogramy</string>
+    <string name="usage_kind_checklist">Cykliczne sprawdzenia</string>
+    <string name="usage_kind_task">Przekazane zadania</string>
+    <string name="usage_kind_worker">Zlecone prace</string>
+    <string name="usage_kind_reflection">Nocne podsumowanie</string>
+    <string name="usage_kind_memory">Porządkowanie pamięci</string>
+    <string name="usage_kind_journal">Dziennik</string>
+    <string name="usage_kind_proactive">Powiadomienia</string>
+    <string name="usage_kind_compaction">Streszczenia rozmów</string>
+    <string name="usage_kind_followup">Przypomnienia</string>
+    <string name="usage_kind_probe">Sprawdzanie połączenia</string>
+    <string name="usage_kind_other">Inne</string>
+</resources>

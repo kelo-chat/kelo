@@ -1,0 +1,62 @@
+{
+  "NSMicrophoneUsageDescription": {
+    "en": "Kelo uses the microphone only while voice input is on, to turn what you say into text.",
+    "ko": "음성 입력을 켠 동안에만 마이크로 말한 내용을 글자로 바꿔요."
+  },
+  "NSSpeechRecognitionUsageDescription": {
+    "en": "Your iPhone's speech recognition turns what you say into text for the chat.",
+    "ko": "iPhone의 음성 인식으로 말한 내용을 채팅 글자로 바꿔요."
+  },
+  "NSFaceIDUsageDescription": {
+    "en": "Face ID unlocks your Keychain and payment cards in Kelo.",
+    "ko": "Kelo의 키체인과 결제 카드를 열 때 Face ID를 써요."
+  },
+  "NSPhotoLibraryAddUsageDescription": {
+    "en": "Kelo saves pictures and files you choose to keep to your photo library.",
+    "ko": "보관하기로 고른 사진과 파일을 사진 보관함에 저장해요."
+  },
+  "NSCameraUsageDescription": {
+    "en": "Kelo uses the camera to scan a pairing QR code or a payment card, and to take photos you choose to send in the chat. Scans are read on this iPhone and not saved.",
+    "ko": "연결용 QR 코드나 결제 카드를 스캔하고, 채팅에 보낼 사진을 찍을 때 카메라를 써요. 스캔은 이 iPhone 안에서만 읽고 저장하지 않아요.",
+    "ja": "接続用QRコードや支払いカードの読み取り、チャットで送る写真の撮影にカメラを使います。読み取りはこのiPhone内だけで行い、保存しません。",
+    "zh-Hans": "Kelo 使用相机扫描连接二维码或支付卡，并拍摄你要在聊天中发送的照片。扫描只在这台 iPhone 上读取，不会保存。",
+    "zh-Hant": "Kelo 使用相機掃描連線 QR 碼或付款卡，並拍攝你要在聊天中傳送的照片。掃描只在這支 iPhone 上讀取，不會儲存。",
+    "es": "Kelo usa la cámara para escanear un código QR de conexión o una tarjeta de pago, y para tomar las fotos que envías en el chat. Los escaneos se leen solo en este iPhone y no se guardan.",
+    "fr": "Kelo utilise l’appareil photo pour scanner un QR code de connexion ou une carte de paiement, et pour prendre les photos que vous envoyez dans le chat. Les scans sont lus sur cet iPhone uniquement et ne sont pas enregistrés.",
+    "de": "Kelo nutzt die Kamera, um einen QR-Code zum Verbinden oder eine Zahlungskarte zu scannen und Fotos aufzunehmen, die du im Chat sendest. Scans werden nur auf diesem iPhone gelesen und nicht gespeichert.",
+    "pt-BR": "O Kelo usa a câmera para escanear um QR code de conexão ou um cartão de pagamento e para tirar fotos que você envia no chat. As leituras são feitas só neste iPhone e não são salvas.",
+    "it": "Kelo usa la fotocamera per scansionare un codice QR di collegamento o una carta di pagamento e per scattare le foto che invii in chat. Le scansioni vengono lette solo su questo iPhone e non vengono salvate.",
+    "ru": "Kelo использует камеру, чтобы сканировать QR-код для подключения или платёжную карту и снимать фото, которые вы отправляете в чат. Сканы читаются только на этом iPhone и не сохраняются.",
+    "id": "Kelo memakai kamera untuk memindai kode QR penyambungan atau kartu pembayaran, dan untuk memotret foto yang kamu kirim di chat. Hasil pindaian hanya dibaca di iPhone ini dan tidak disimpan.",
+    "vi": "Kelo dùng camera để quét mã QR kết nối hoặc thẻ thanh toán, và để chụp ảnh bạn gửi trong trò chuyện. Nội dung quét chỉ được đọc trên iPhone này và không được lưu.",
+    "th": "Kelo ใช้กล้องเพื่อสแกนคิวอาร์โค้ดสำหรับเชื่อมต่อหรือบัตรชำระเงิน และเพื่อถ่ายรูปที่คุณส่งในแชท การสแกนอ่านบน iPhone เครื่องนี้เท่านั้นและไม่ถูกบันทึก",
+    "tr": "Kelo, bağlanma QR kodunu veya bir ödeme kartını taramak ve sohbette gönderdiğin fotoğrafları çekmek için kamerayı kullanır. Taramalar yalnızca bu iPhone’da okunur ve kaydedilmez.",
+    "ar": "يستخدم Kelo الكاميرا لمسح رمز QR للاتصال أو بطاقة دفع، ولالتقاط الصور التي ترسلها في الدردشة. تتم قراءة المسح على هذا الـ iPhone فقط ولا يُحفظ.",
+    "hi": "Kelo कनेक्ट करने का QR कोड या भुगतान कार्ड स्कैन करने और चैट में भेजी जाने वाली फ़ोटो लेने के लिए कैमरा इस्तेमाल करता है। स्कैन सिर्फ़ इसी iPhone पर पढ़े जाते हैं और सहेजे नहीं जाते।",
+    "pl": "Kelo używa aparatu, aby zeskanować kod QR do połączenia lub kartę płatniczą i robić zdjęcia, które wysyłasz na czacie. Skany są odczytywane tylko na tym iPhonie i nie są zapisywane.",
+    "nl": "Kelo gebruikt de camera om een QR-code om te koppelen of een betaalkaart te scannen en om foto’s te maken die je in de chat stuurt. Scans worden alleen op deze iPhone gelezen en niet bewaard.",
+    "uk": "Kelo використовує камеру, щоб сканувати QR-код для підключення або платіжну картку та робити фото, які ви надсилаєте в чат. Скани зчитуються лише на цьому iPhone і не зберігаються."
+  },
+  "NSLocationWhenInUseUsageDescription": {
+    "en": "Kelo uses your location for the briefing's weather and for questions about places near you. It is sent only when you open the app, and only to your own Kelo server.",
+    "ko": "브리핑 날씨와 ‘근처’ 질문에 위치를 써요. 위치는 앱을 열 때만, 내 Kelo 서버에만 보내요.",
+    "ja": "ブリーフィングの天気と「近くの〜」という質問に位置情報を使います。位置情報はアプリを開いたときだけ、あなたの Kelo サーバーにだけ送ります。",
+    "zh-Hans": "位置信息用于简报中的天气和与“附近”有关的问题。只在打开应用时发送，且只发送到你自己的 Kelo 服务器。",
+    "zh-Hant": "位置資訊用於簡報中的天氣和與「附近」有關的問題。只在開啟 App 時傳送，而且只傳到你自己的 Kelo 伺服器。",
+    "de": "Kelo nutzt deinen Standort für das Wetter in der Übersicht und für Fragen zu Orten in deiner Nähe. Er wird nur beim Öffnen der App gesendet, und nur an deinen eigenen Kelo-Server.",
+    "es": "Kelo usa tu ubicación para el tiempo del resumen y para preguntas sobre lugares cercanos. Solo se envía al abrir la app, y solo a tu propio servidor Kelo.",
+    "fr": "Kelo utilise votre position pour la météo du récapitulatif et pour les questions sur les lieux proches. Elle n’est envoyée qu’à l’ouverture de l’app, et uniquement à votre propre serveur Kelo.",
+    "hi": "Kelo आपकी लोकेशन ब्रीफ़िंग के मौसम और आस-पास की जगहों से जुड़े सवालों के लिए इस्तेमाल करता है। यह सिर्फ़ ऐप खोलने पर, और सिर्फ़ आपके अपने Kelo सर्वर पर भेजी जाती है।",
+    "id": "Kelo memakai lokasi Anda untuk cuaca di ringkasan dan untuk pertanyaan tentang tempat di sekitar Anda. Lokasi hanya dikirim saat aplikasi dibuka, dan hanya ke server Kelo milik Anda.",
+    "it": "Kelo usa la tua posizione per il meteo del riepilogo e per le domande sui luoghi vicini. Viene inviata solo quando apri l’app, e solo al tuo server Kelo.",
+    "nl": "Kelo gebruikt je locatie voor het weer in het overzicht en voor vragen over plekken in de buurt. Hij wordt alleen verstuurd als je de app opent, en alleen naar je eigen Kelo-server.",
+    "pl": "Kelo używa lokalizacji do pogody w podsumowaniu i do pytań o miejsca w pobliżu. Jest wysyłana tylko przy otwarciu aplikacji i tylko na twój własny serwer Kelo.",
+    "pt-BR": "O Kelo usa sua localização para o tempo do resumo e para perguntas sobre lugares por perto. Ela só é enviada quando você abre o app, e só para o seu próprio servidor Kelo.",
+    "ru": "Kelo использует местоположение для погоды в сводке и для вопросов о местах поблизости. Оно отправляется только при открытии приложения и только на ваш собственный сервер Kelo.",
+    "th": "Kelo ใช้ตำแหน่งของคุณสำหรับสภาพอากาศในสรุปยามเช้าและคำถามเกี่ยวกับสถานที่ใกล้คุณ ตำแหน่งจะส่งเฉพาะตอนเปิดแอป และส่งไปที่เซิร์ฟเวอร์ Kelo ของคุณเท่านั้น",
+    "tr": "Kelo konumunuzu sabah özetindeki hava durumu ve yakındaki yerlerle ilgili sorular için kullanır. Konum yalnızca uygulamayı açtığınızda ve yalnızca kendi Kelo sunucunuza gönderilir.",
+    "uk": "Kelo використовує місцезнаходження для погоди у зведенні та для запитань про місця поблизу. Воно надсилається лише під час відкриття застосунку і лише на ваш власний сервер Kelo.",
+    "vi": "Kelo dùng vị trí của bạn cho thời tiết trong bản tin và cho các câu hỏi về nơi ở gần bạn. Vị trí chỉ được gửi khi bạn mở ứng dụng, và chỉ đến máy chủ Kelo của riêng bạn.",
+    "ar": "يستخدم Kelo موقعك لطقس الملخّص وللأسئلة عن الأماكن القريبة منك. يُرسل فقط عند فتح التطبيق، وفقط إلى خادم Kelo الخاص بك."
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "id": "example_parcels",
+  "kind": "connector",
+  "version": "1.0.0",
+  "name": "Example Parcels",
+  "description": "Track your parcels from any carrier in a Parcels tab",
+  "author": "Example Author",
+  "homepage": "https://parcels.example.com",
+  "strings": {"ko": {"name": "예시 택배 조회", "description": "여러 택배사의 배송을 택배 탭에서 한눈에 확인합니다", "blurb": "등록한 송장의 배송 상태를 확인합니다."}},
+  "permissions": {
+    "hosts": ["api.parcels.example.com", "parcels.example.com"],
+    "image_hosts": ["img.parcels.example.com"],
+    "ui": ["tab"],
+    "actions": ["connector", "open_url", "agent"]
+  },
+  "connector": {
+    "connect": {
+      "type": "key",
+      "hosts": ["api.parcels.example.com"],
+      "placement": {"type": "custom_header", "header": "X-Api-Key"},
+      "base_url": "https://api.parcels.example.com/v1",
+      "verify": "https://api.parcels.example.com/v1/me",
+      "docs": "https://parcels.example.com/docs",
+      "api": "GET /trackings lists tracked parcels; POST /trackings {number, carrier} adds one; DELETE /trackings/<id> removes one.",
+      "help": ["Sign in at parcels.example.com and open Settings → API.", "Make a key and paste it here."],
+      "key_label": "API key",
+      "blurb": "Checks where the parcels you track are."
+    }
+  },
+  "ui": {
+    "schema": 1,
+    "surfaces": [
+      {"id": "parcels", "place": "tab", "title": {"en": "Parcels", "ko": "택배"}, "icon": "truck", "screen": "main"}
+    ],
+    "data": {
+      "trackings": {"source": "connector", "path": "/trackings", "query": {"limit": "30"}, "select": "data.items", "refresh": 300, "limit": 30}
+    },
+    "actions": {
+      "add": {"type": "connector", "method": "POST", "path": "/trackings", "body": {"number": "{{form.number}}", "carrier": "{{form.carrier}}"},
+              "label": {"en": "Track", "ko": "조회 추가"}, "confirm": {"en": "Add this parcel to Example Parcels?", "ko": "이 송장을 예시 택배 조회에 추가할까요?"},
+              "done": {"en": "Added. It shows up in a moment.", "ko": "추가했어요. 곧 목록에 나타나요."}},
+      "stop": {"type": "connector", "method": "DELETE", "path": "/trackings/{{item.id}}", "label": {"en": "Stop tracking", "ko": "조회 중지"},
+               "confirm": {"en": "Stop tracking this parcel?", "ko": "이 택배 조회를 멈출까요?"}},
+      "site": {"type": "open_url", "url": "https://parcels.example.com/app", "label": {"en": "Open the website", "ko": "웹사이트 열기"}},
+      "ask": {"type": "agent", "label": {"en": "When does it arrive?", "ko": "언제 도착해?"},
+              "prompt": {"en": "Check my tracked parcels with Example Parcels and tell me which ones arrive today or are late.",
+                         "ko": "예시 택배 조회로 내 택배를 확인해서 오늘 도착하는 것과 늦어지는 것을 알려줘."}}
+    },
+    "screens": {
+      "main": {
+        "title": {"en": "Parcels", "ko": "택배"},
+        "components": [
+          {"type": "list", "data": "trackings", "max": 30,
+           "item": {"title": "{{item.title}}", "subtitle": "{{item.carrier}} · {{item.status}}", "trailing": "{{item.eta}}", "image": "{{item.carrier_logo}}", "action": "stop"},
+           "empty": {"text": {"en": "No parcels yet. Add a tracking number below.", "ko": "아직 택배가 없어요. 아래에서 송장 번호를 추가하세요."}, "icon": "box"}},
+          {"type": "card", "title": {"en": "Track a parcel", "ko": "택배 추가"}, "children": [
+            {"type": "form", "fields": [
+                {"id": "number", "type": "text", "label": {"en": "Tracking number", "ko": "송장 번호"}, "required": true, "max_length": 40},
+                {"id": "carrier", "type": "select", "label": {"en": "Carrier", "ko": "택배사"}, "required": true, "options": [
+                  {"value": "auto", "label": {"en": "Detect automatically", "ko": "자동 감지"}},
+                  {"value": "post", "label": {"en": "Postal service", "ko": "우체국"}}]}],
+             "submit": {"label": {"en": "Track", "ko": "조회 추가"}, "action": "add"}}]},
+          {"type": "button", "label": {"en": "When does it arrive?", "ko": "언제 도착해?"}, "action": "ask", "style": "secondary"},
+          {"type": "button", "label": {"en": "Open the website", "ko": "웹사이트 열기"}, "action": "site", "style": "secondary"}
+        ]
+      }
+    }
+  }
+}

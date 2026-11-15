@@ -1,0 +1,147 @@
+# Kelo tests on every push and pull request: the server (pytest), the Android unit tests with the string check, and the desktop
+# tests on Linux. A failed run mails the person who pushed (GitHub's default "Actions" notification; the owner gets it for the
+# pushes they make, and for pull requests through the checks on the PR).
+#
+# Not here, on purpose:
+#   - iOS: macOS runners cost about ten times a Linux one, so the iOS build and tests run on the Mac (tools/build/ios.sh sim) and
+#     on GitHub only before a release.
+#   - Windows desktop: desktop-windows.yml (tests plus the installers).
+#   - Release images: release-images.yml (on version tags).
+
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# a newer push to the same branch (or PR) stops the run that is still going for the older one
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server:
+    name: server tests (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true                 # the uv download cache, keyed on uv.lock
+          cache-dependency-glob: uv.lock
+
+      - name: Python and the locked dependencies
+        run: |
+          uv python install 3.12
+          uv sync --locked --dev
+
+      # the browser tools are tested against real Chromium pages (tests/fixtures); the browser is cached between runs
+      - name: Playwright's Chromium (cached)
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+      - name: Install Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: uv run playwright install --with-deps chromium
+      - name: Chromium's system libraries
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: uv run playwright install-deps chromium
+
+      - name: Tests
+        env:
+          TZ: Asia/Seoul
+        run: uv run pytest -q -p no:cacheprovider
+
+  android:
+    name: Android unit tests and strings
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: android/kelo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # caches ~/.gradle (wrapper, dependencies, build cache); only the main branch writes it, other branches read it
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: String resources in every language
+        working-directory: .
+        run: python3 android/tools/strings_check.py
+
+      - name: Unit tests (full debug)
+        run: ./gradlew --no-daemon --console=plain :app:testFullDebugUnitTest
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-unit-test-report
+          path: |
+            android/kelo/app/build/reports/tests
+            android/kelo/app/build/test-results
+          if-no-files-found: ignore
+
+  desktop:
+    name: desktop tests (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Text in step with the Android strings
+        run: |
+          python3 tools/sync_strings.py
+          git diff --exit-code -- src/main/resources/i18n src/generated || (echo "run: python3 desktop/tools/sync_strings.py and commit" && exit 1)
+
+      # the tests draw with Skia off screen (java.awt.headless); fonts so Korean and other scripts measure like on a desktop
+      - name: Fonts
+        run: sudo apt-get update -q && sudo apt-get install -y -q fonts-noto-cjk fonts-noto-core
+
+      - name: Tests
+        run: ./gradlew --no-daemon --console=plain test
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: desktop-linux-test-report
+          path: |
+            desktop/build/reports/tests/test
+            desktop/build/test-results/test
+            desktop/build/parity
+            desktop/build/mock-server
+          if-no-files-found: ignore

@@ -1,0 +1,175 @@
+/* Kelo website v2, design A ("Daylight"): a light page whose ground drifts through soft tints of the mascot's colours as the
+   reader moves down (sky, paper, mint, butter), a bento grid of features, and a thin thread at the left edge that fills with the
+   scroll. Dark mode keeps the same drift on near-black grounds. Loaded after base.css. */
+
+:root {
+  --bg: #f7f7f5; --ink: #15171a; --muted: #5b5e64; --line: rgba(21, 23, 26, .11); --line-2: rgba(21, 23, 26, .2);
+  --card: #ffffff; --raised: #eeefec; --accent: #0272b0; --on-accent: #ffffff; --btn: #15171a; --on-btn: #ffffff;
+  --shot-line: rgba(21, 23, 26, .1); --shadow: 0 1px 2px rgba(20, 24, 28, .05), 0 18px 40px -18px rgba(20, 24, 28, .28);
+  --sky: #29b6f6; --leaf: #66bb6a; --sun: #ffb300;
+  --tone-0: #f7f7f5;   /* hero: plain daylight */
+  --tone-1: #edf4f9;   /* a request, step by step: sky */
+  --tone-2: #f4f2ec;   /* features: paper */
+  --tone-3: #edf4ee;   /* connectors, people: mint */
+  --tone-4: #eef1f8;   /* reaching the server: lilac grey */
+  --tone-5: #f6f0e3;   /* privacy: butter */
+  --tone-6: #eff1f3;   /* install, run it free: cool grey */
+  --tone-7: #f5f3ef;   /* get the app, questions: warm white */
+  --tone-8: #e6f1f8;   /* closing: sky again */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101113; --ink: #f1f2f3; --muted: #a5a8ae; --line: rgba(241, 242, 243, .12); --line-2: rgba(241, 242, 243, .22);
+    --card: #1a1c1f; --raised: #212428; --accent: #6cc9f5; --on-accent: #08202e; --btn: #f1f2f3; --on-btn: #101113;
+    --shot-line: rgba(241, 242, 243, .14); --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 22px 48px -20px rgba(0, 0, 0, .8);
+    --tone-0: #101113; --tone-1: #0d1519; --tone-2: #151410; --tone-3: #0f1612; --tone-4: #11131b; --tone-5: #17140e;
+    --tone-6: #121417; --tone-7: #151311; --tone-8: #0b161c;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------ the thread (left edge) */
+.thread { display: none; }
+@media (min-width: 1024px) {
+  .thread { display: block; position: fixed; left: max(12px, calc(50vw - var(--wrap) / 2 - var(--gut) - 28px)); top: calc(var(--nav-h) + 24px);
+            bottom: 24px; width: 2px; z-index: 5; border-radius: 2px; background: var(--line); pointer-events: none; }
+  .thread__fill { position: absolute; inset: 0; border-radius: inherit; transform-origin: top;
+                  background: linear-gradient(var(--sky), var(--leaf) 55%, var(--sun)); transform: scaleY(0); }
+  @supports (animation-timeline: scroll()) {
+    .thread__fill { animation: thread-fill linear both; animation-timeline: scroll(root); }
+    @keyframes thread-fill { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  }
+  @supports not (animation-timeline: scroll()) { .thread { display: none; } }
+}
+@media (prefers-reduced-motion: reduce) { .thread { display: none; } }
+
+/* ------------------------------------------------------------------------------------------------ hero */
+main > .hero { padding-top: clamp(40px, 7vw, 96px); }
+.hero__grid { display: grid; gap: 48px; align-items: center; }
+.pill { display: inline-flex; align-items: center; gap: 10px; padding: 6px 14px 6px 10px; border-radius: 999px; border: 1px solid var(--line-2);
+        background: color-mix(in srgb, var(--card) 70%, transparent); font-size: 14px; font-weight: 500; margin-bottom: 24px; max-width: 100%; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--leaf); flex: none; box-shadow: 0 0 0 0 color-mix(in srgb, var(--leaf) 60%, transparent);
+       animation: dot-pulse 2.4s var(--ease) infinite; }
+@keyframes dot-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--leaf) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 8px transparent; } }
+.hero h1 { font-size: clamp(42px, 6.2vw, 80px); letter-spacing: -0.035em; line-height: 1.02; max-width: 13ch; }
+:lang(ko) .hero h1 { line-height: 1.16; letter-spacing: -0.02em; max-width: 14ch; }
+.hero__lead { margin-top: 24px; font-size: clamp(18px, 1.8vw, 21px); color: var(--muted); max-width: 34em; }
+.hero .btn-row { margin-top: 32px; }
+.hero__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 44px; padding-top: 24px; border-top: 1px solid var(--line);
+               max-width: 560px; }
+.hero__facts dt { font-size: clamp(22px, 2.4vw, 28px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+.hero__facts dd { font-size: 14px; color: var(--muted); margin-top: 4px; }
+.hero__stage { position: relative; display: grid; grid-template-columns: .82fr 1fr .82fr; align-items: center; justify-items: center;
+               max-width: 660px; width: 100%; margin: 0 auto; padding: 12px 0 24px; }
+.hero__stage .phone { width: 100%; border-radius: clamp(16px, 2.4vw, 28px); }
+.phone--l, .phone--r { position: relative; z-index: 1; transform: translateY(28px) scale(.92); opacity: .96; }
+.phone--l { transform-origin: right center; margin-right: -22%; transform: translateY(28px) rotate(-5deg) scale(.92); }
+.phone--r { transform-origin: left center; margin-left: -22%; transform: translateY(28px) rotate(5deg) scale(.92); }
+.phone--c { position: relative; z-index: 2; }
+.hero__stage::before { content: ""; position: absolute; inset: 12% 6% 8%; z-index: 0; border-radius: 50%;
+                       background: radial-gradient(closest-side, color-mix(in srgb, var(--sky) 26%, transparent), transparent); filter: blur(20px); }
+@media (min-width: 1024px) {
+  .hero__grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+}
+@media (max-width: 639px) {
+  .hero__facts { gap: 10px; }
+  .hero__facts dt { font-size: 20px; }
+  .hero__facts dd { font-size: 13px; }
+  .hero .btn-row .btn { flex: 1 1 auto; }
+}
+.strip { margin-top: clamp(48px, 7vw, 88px); display: grid; gap: 14px; justify-items: center; text-align: center; }
+.strip > p { font-size: 14px; color: var(--muted); }
+.logos--strip { justify-content: center; margin: 0; }
+.logos--strip li { background: transparent; }
+
+/* ------------------------------------------------------------------------------------------------ features: the bento */
+.bento { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+.tile { position: relative; display: grid; align-content: start; gap: 20px; overflow: hidden; border-radius: var(--r-xl); background: var(--card);
+        border: 1px solid var(--line); padding: clamp(22px, 2.6vw, 34px); min-width: 0;
+        transition: translate 300ms var(--ease), box-shadow 300ms var(--ease), border-color 300ms; }
+.tile:hover { translate: 0 -3px; box-shadow: var(--shadow); border-color: var(--line-2); }
+.tile .kicker { margin-bottom: 10px; }
+.tile h3 { font-size: clamp(23px, 2.2vw, 30px); margin-bottom: 10px; }
+.tile__copy > p { color: var(--muted); max-width: 46ch; }
+.tile__media { min-width: 0; }
+.tile__media--shot { display: flex; justify-content: center; align-items: flex-end; margin: 0 calc(-1 * clamp(22px, 2.6vw, 34px)) calc(-1 * clamp(22px, 2.6vw, 34px));
+                     padding: 24px clamp(22px, 2.6vw, 34px) 0; background: linear-gradient(transparent, color-mix(in srgb, var(--sky) 10%, transparent)); }
+.tile__media--shot .shotcard { width: min(380px, 100%); border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; }
+.tile__media--shot .shotcard--wide { width: min(460px, 100%); }
+.tile--away .tile__media--shot { background: linear-gradient(transparent, color-mix(in srgb, var(--leaf) 12%, transparent)); }
+.tile__media--photo { margin: 0 calc(-1 * clamp(22px, 2.6vw, 34px)) calc(-1 * clamp(22px, 2.6vw, 34px)); aspect-ratio: 16 / 10; overflow: hidden; }
+.tile__media--photo .photo { transition: transform 900ms var(--ease); }
+.tile:hover .tile__media--photo .photo { transform: scale(1.03); }
+.tile__media--crop { position: relative; height: 260px; margin-bottom: calc(-1 * clamp(22px, 2.6vw, 34px)); display: flex; justify-content: center; }
+.phone--crop { width: min(240px, 78%); align-self: flex-start; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; height: 100%; }
+.phone--crop img { height: auto; }
+.tile__media--mix { position: relative; margin: 0 calc(-1 * clamp(22px, 2.6vw, 34px)) calc(-1 * clamp(22px, 2.6vw, 34px)); aspect-ratio: 16 / 10; overflow: hidden; }
+.phone--mini { position: absolute; right: 8%; bottom: -28%; width: min(180px, 38%); border-radius: 18px; transform: rotate(4deg); }
+.tile__big { font-size: clamp(72px, 9vw, 128px); font-weight: 600; letter-spacing: -0.05em; line-height: .9; color: var(--accent); align-self: end; }
+.tile__big span { font-size: .55em; vertical-align: super; letter-spacing: 0; }
+.tile--models, .tile--languages { align-content: space-between; }
+.tile--models { background: color-mix(in srgb, var(--sky) 9%, var(--card)); }
+.tile--languages { background: color-mix(in srgb, var(--sun) 10%, var(--card)); }
+.tile--languages .tile__big { color: color-mix(in srgb, var(--sun) 70%, var(--ink)); }
+@media (prefers-color-scheme: dark) { .tile--languages .tile__big { color: var(--sun); } }
+@media (min-width: 720px) {
+  .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile--workroom, .tile--away, .tile--goals { grid-column: 1 / -1; }
+}
+@media (min-width: 1024px) {
+  .bento { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; }
+  .tile--workroom { grid-column: span 7; }
+  .tile--away { grid-column: span 5; }
+  .tile--schedule, .tile--keychain, .tile--wallet { grid-column: span 4; }
+  .tile--goals { grid-column: span 6; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: 1fr; align-content: stretch; }
+  .tile--goals .tile__media--mix { margin: calc(-1 * clamp(22px, 2.6vw, 34px)) calc(-1 * clamp(22px, 2.6vw, 34px)) calc(-1 * clamp(22px, 2.6vw, 34px)) 0;
+                                   aspect-ratio: auto; min-height: 320px; height: calc(100% + 2 * clamp(22px, 2.6vw, 34px)); }
+  .tile--goals .phone--mini { bottom: -18%; width: 56%; right: 12%; }
+  .tile--models, .tile--languages { grid-column: span 3; }
+  .tile--workroom, .tile--away { grid-template-rows: auto 1fr; }
+  .tile--workroom .tile__media--shot, .tile--away .tile__media--shot { align-self: end; }
+}
+
+/* ------------------------------------------------------------------------------------------------ connectors, people, reach */
+.connect .logos li { box-shadow: 0 1px 0 var(--line); }
+.people__grid { display: grid; gap: 40px; }
+.people .dg { margin-top: 8px; }
+.people .dg__machine { box-shadow: var(--shadow); }
+@media (min-width: 960px) {
+  .people__grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 72px; align-items: start; }
+  .people__list { padding-top: 6px; }
+}
+.reach .table-wrap { box-shadow: var(--shadow); border-radius: var(--r-xl); }
+.compare thead tr { background: color-mix(in srgb, var(--accent) 6%, var(--card)); }
+
+/* ------------------------------------------------------------------------------------------------ privacy */
+.pv { display: grid; gap: 40px; }
+.pv__lead h2 { font-size: clamp(34px, 4.8vw, 58px); margin-bottom: 22px; max-width: 14ch; }
+.pv__big { font-size: clamp(20px, 2vw, 24px); line-height: 1.5; margin-bottom: 18px; max-width: 32em; }
+.pv__lead > p:not(.pv__big):not(.kicker):not(.links) { color: var(--muted); margin-bottom: 20px; max-width: 38em; }
+.pv__card { border-radius: var(--r-xl); background: var(--card); border: 1px solid var(--line); padding: clamp(22px, 3vw, 36px); box-shadow: var(--shadow); }
+.pv__card h3 { font-size: 20px; margin-bottom: 12px; }
+.pv__row:first-child { border-top: 0; }
+@media (min-width: 960px) { .pv { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 72px; align-items: center; } }
+
+/* ------------------------------------------------------------------------------------------------ install, free, app, faq */
+.install .photo-frame { aspect-ratio: 4 / 3; }
+.free .tip { box-shadow: var(--shadow); }
+.dl-card { box-shadow: 0 1px 0 var(--line); }
+.dl-body { min-width: 0; }
+.getapp .dl-grid { margin-bottom: 18px; }
+.qa summary { font-size: 19px; }
+
+/* ------------------------------------------------------------------------------------------------ closing band */
+.closing__in { border-radius: var(--r-xl); padding: clamp(32px, 5vw, 64px); background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); }
+
+/* ------------------------------------------------------------------------------------------------ text pages */
+.doc .doc-hero { border-bottom: 1px solid var(--line); }
+.prose .summary { box-shadow: var(--shadow); }
+
+/* scroll-linked motion: the bento's tiles and the privacy card drift up as they come in (transform only: nothing is ever faded or hidden) */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .tile, .pv__card { animation: a-drift linear both; animation-timeline: view(); animation-range: entry 0% entry 60%; }
+    @keyframes a-drift { from { transform: translateY(24px); } to { transform: none; } }
+  }
+}

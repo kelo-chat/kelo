@@ -1,0 +1,591 @@
+[
+ {
+  "name": "alibaba-coding-plan",
+  "display_name": "Alibaba Cloud (Coding Plan)",
+  "aliases": [
+   "alibaba_coding",
+   "alibaba-coding",
+   "dashscope-coding"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://coding-intl.dashscope.aliyuncs.com/v1",
+  "api_key_envs": [
+   "ALIBABA_CODING_PLAN_API_KEY",
+   "DASHSCOPE_API_KEY"
+  ],
+  "base_url_envs": [
+   "ALIBABA_CODING_PLAN_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://help.aliyun.com/zh/model-studio/"
+ },
+ {
+  "name": "alibaba",
+  "display_name": "alibaba",
+  "aliases": [
+   "dashscope",
+   "alibaba-cloud",
+   "qwen-dashscope",
+   "aliyun"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  "api_key_envs": [
+   "DASHSCOPE_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "alibaba-token-plan",
+  "display_name": "Alibaba Cloud (Token Plan)",
+  "aliases": [
+   "dashscope-token-plan"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+  "api_key_envs": [
+   "ALIBABA_TOKEN_PLAN_API_KEY"
+  ],
+  "base_url_envs": [
+   "ALIBABA_TOKEN_PLAN_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://help.aliyun.com/zh/model-studio/"
+ },
+ {
+  "name": "anthropic",
+  "display_name": "anthropic",
+  "aliases": [
+   "claude",
+   "claude-oauth",
+   "claude-code"
+  ],
+  "transport": "anthropic_messages",
+  "auth_type": "api_key",
+  "base_url": "https://api.anthropic.com",
+  "api_key_envs": [
+   "ANTHROPIC_API_KEY",
+   "ANTHROPIC_TOKEN",
+   "CLAUDE_CODE_OAUTH_TOKEN"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "azure-foundry",
+  "display_name": "Azure Foundry",
+  "aliases": [
+   "azure",
+   "azure-ai-foundry",
+   "azure-ai"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "",
+  "api_key_envs": [
+   "AZURE_FOUNDRY_API_KEY"
+  ],
+  "base_url_envs": [
+   "AZURE_FOUNDRY_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://ai.azure.com/"
+ },
+ {
+  "name": "bedrock",
+  "display_name": "bedrock",
+  "aliases": [
+   "aws",
+   "aws-bedrock",
+   "amazon-bedrock",
+   "amazon"
+  ],
+  "transport": "bedrock_converse",
+  "auth_type": "aws_sdk",
+  "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com",
+  "api_key_envs": [],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "custom",
+  "display_name": "custom",
+  "aliases": [
+   "ollama",
+   "local",
+   "vllm",
+   "llamacpp",
+   "llama.cpp",
+   "llama-cpp"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "",
+  "api_key_envs": [],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "deepinfra",
+  "display_name": "DeepInfra",
+  "aliases": [
+   "deep-infra",
+   "deepinfra-ai"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.deepinfra.com/v1/openai",
+  "api_key_envs": [
+   "DEEPINFRA_API_KEY"
+  ],
+  "base_url_envs": [
+   "DEEPINFRA_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://deepinfra.com/dash/api_keys"
+ },
+ {
+  "name": "deepseek",
+  "display_name": "DeepSeek",
+  "aliases": [
+   "deepseek-chat",
+   "deep-seek"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.deepseek.com/v1",
+  "api_key_envs": [
+   "DEEPSEEK_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://platform.deepseek.com/"
+ },
+ {
+  "name": "fireworks",
+  "display_name": "Fireworks AI",
+  "aliases": [
+   "fireworks-ai",
+   "fw"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.fireworks.ai/inference/v1",
+  "api_key_envs": [
+   "FIREWORKS_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://app.fireworks.ai/settings/users/api-keys"
+ },
+ {
+  "name": "gemini",
+  "display_name": "gemini",
+  "aliases": [
+   "google",
+   "google-gemini",
+   "google-ai-studio"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://generativelanguage.googleapis.com/v1beta",
+  "api_key_envs": [
+   "GOOGLE_API_KEY",
+   "GEMINI_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "huggingface",
+  "display_name": "HuggingFace",
+  "aliases": [
+   "hf",
+   "hugging-face",
+   "huggingface-hub"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://router.huggingface.co/v1",
+  "api_key_envs": [
+   "HF_TOKEN"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://huggingface.co/settings/tokens"
+ },
+ {
+  "name": "lmstudio",
+  "display_name": "LM Studio",
+  "aliases": [],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "",
+  "api_key_envs": [
+   "LM_API_KEY"
+  ],
+  "base_url_envs": [
+   "LM_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "minimax",
+  "display_name": "minimax",
+  "aliases": [
+   "mini-max"
+  ],
+  "transport": "anthropic_messages",
+  "auth_type": "api_key",
+  "base_url": "https://api.minimax.io/anthropic",
+  "api_key_envs": [
+   "MINIMAX_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "minimax-oauth",
+  "display_name": "MiniMax (OAuth)",
+  "aliases": [
+   "minimax_oauth",
+   "minimax-portal",
+   "minimax-global",
+   "minimax-oauth-io"
+  ],
+  "transport": "anthropic_messages",
+  "auth_type": "oauth_external",
+  "base_url": "https://api.minimax.io/anthropic",
+  "api_key_envs": [],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://api.minimax.io/"
+ },
+ {
+  "name": "nebius-token-factory",
+  "display_name": "Nebius Token Factory",
+  "aliases": [
+   "nebius",
+   "nebius-tokenfactory",
+   "nebius-tf",
+   "token-factory",
+   "tokenfactory"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.tokenfactory.nebius.com/v1",
+  "api_key_envs": [
+   "NEBIUS_API_KEY",
+   "NEBIUS_TOKEN_FACTORY_API_KEY"
+  ],
+  "base_url_envs": [
+   "NEBIUS_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://tokenfactory.nebius.com/"
+ },
+ {
+  "name": "novita",
+  "display_name": "NovitaAI",
+  "aliases": [
+   "novita-ai",
+   "novitaai"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.novita.ai/openai/v1",
+  "api_key_envs": [
+   "NOVITA_API_KEY"
+  ],
+  "base_url_envs": [
+   "NOVITA_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://novita.ai/settings/key-management"
+ },
+ {
+  "name": "nvidia",
+  "display_name": "NVIDIA NIM",
+  "aliases": [
+   "nvidia-nim",
+   "nim",
+   "build-nvidia",
+   "nemotron"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://integrate.api.nvidia.com/v1",
+  "api_key_envs": [
+   "NVIDIA_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": 16384,
+  "signup_url": "https://build.nvidia.com/"
+ },
+ {
+  "name": "ollama-cloud",
+  "display_name": "ollama-cloud",
+  "aliases": [
+   "ollama_cloud"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://ollama.com/v1",
+  "api_key_envs": [
+   "OLLAMA_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "openai-codex",
+  "display_name": "openai-codex",
+  "aliases": [
+   "codex",
+   "openai_codex"
+  ],
+  "transport": "codex_responses",
+  "auth_type": "oauth_external",
+  "base_url": "https://chatgpt.com/backend-api/codex",
+  "api_key_envs": [],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "openrouter",
+  "display_name": "OpenRouter",
+  "aliases": [
+   "or"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://openrouter.ai/api/v1",
+  "api_key_envs": [
+   "OPENROUTER_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": 16384,
+  "signup_url": "https://openrouter.ai/keys"
+ },
+ {
+  "name": "qwen-oauth",
+  "display_name": "qwen-oauth",
+  "aliases": [
+   "qwen",
+   "qwen-portal",
+   "qwen-cli"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "oauth_external",
+  "base_url": "https://portal.qwen.ai/v1",
+  "api_key_envs": [
+   "QWEN_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": 65536,
+  "signup_url": ""
+ },
+ {
+  "name": "upstage",
+  "display_name": "Upstage Solar",
+  "aliases": [
+   "solar"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.upstage.ai/v1",
+  "api_key_envs": [
+   "UPSTAGE_API_KEY"
+  ],
+  "base_url_envs": [
+   "UPSTAGE_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://console.upstage.ai/api-keys"
+ },
+ {
+  "name": "vertex",
+  "display_name": "vertex",
+  "aliases": [
+   "google-vertex",
+   "vertex-ai",
+   "gcp-vertex",
+   "vertexai"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "vertex",
+  "base_url": "https://aiplatform.googleapis.com",
+  "api_key_envs": [],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "xai",
+  "display_name": "xai",
+  "aliases": [
+   "grok",
+   "x-ai",
+   "x.ai"
+  ],
+  "transport": "codex_responses",
+  "auth_type": "api_key",
+  "base_url": "https://api.x.ai/v1",
+  "api_key_envs": [
+   "XAI_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": ""
+ },
+ {
+  "name": "zai",
+  "display_name": "Z.AI (GLM)",
+  "aliases": [
+   "glm",
+   "z-ai",
+   "z.ai",
+   "zhipu"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.z.ai/api/paas/v4",
+  "api_key_envs": [
+   "GLM_API_KEY",
+   "ZAI_API_KEY",
+   "Z_AI_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://z.ai/"
+ },
+ {
+  "name": "mistral",
+  "display_name": "Mistral AI",
+  "aliases": [
+   "mistral-ai",
+   "mistralai",
+   "la-plateforme"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.mistral.ai/v1",
+  "api_key_envs": [
+   "MISTRAL_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://console.mistral.ai/api-keys"
+ },
+ {
+  "name": "groq",
+  "display_name": "Groq",
+  "aliases": [
+   "groqcloud"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.groq.com/openai/v1",
+  "api_key_envs": [
+   "GROQ_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://console.groq.com/keys"
+ },
+ {
+  "name": "cerebras",
+  "display_name": "Cerebras",
+  "aliases": [
+   "cerebras-ai"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.cerebras.ai/v1",
+  "api_key_envs": [
+   "CEREBRAS_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://cloud.cerebras.ai/"
+ },
+ {
+  "name": "together",
+  "display_name": "Together AI",
+  "aliases": [
+   "together-ai",
+   "togetherai"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://api.together.ai/v1",
+  "api_key_envs": [
+   "TOGETHER_API_KEY"
+  ],
+  "base_url_envs": [],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://api.together.ai/settings/api-keys"
+ },
+ {
+  "name": "opengateway",
+  "display_name": "OpenGateway",
+  "aliases": [
+   "open-gateway"
+  ],
+  "transport": "chat_completions",
+  "auth_type": "api_key",
+  "base_url": "https://apis.opengateway.ai/v1",
+  "api_key_envs": [
+   "OPENGATEWAY_API_KEY"
+  ],
+  "base_url_envs": [
+   "OPENGATEWAY_BASE_URL"
+  ],
+  "default_headers": {},
+  "default_max_tokens": null,
+  "signup_url": "https://opengateway.ai/"
+ }
+]

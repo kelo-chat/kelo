@@ -1,0 +1,257 @@
+{
+  "_about": [
+    "Context windows (tokens) and largest output (tokens) for common model families, used when the provider's own model list does not say.",
+    "Rules are tried in order; `match` is a regular expression searched in the lower-cased model id (OpenRouter-style 'vendor/model' ids match too).",
+    "Numbers are the vendors' published limits as known on 2026-11-07 (Anthropic, Google AI, OpenAI, DeepSeek, Mistral, xAI model pages; Groq/Cerebras/Together model lists for open models). Where a family's members differ, the smaller value is used.",
+    "A request that still fails with a context-length error lowers the limit for that model (source 'learned', kept in the database)."
+  ],
+  "default": {
+    "context": 150000,
+    "max_output": null,
+    "why": "Unknown model: the owner's choice (2026-11-07). OpenRouter /models measured by the owner that day: 460 models with context_length; median 400k, 25th percentile ~171k, 10th percentile ~128k; models from less-famous vendors (not openai/anthropic/google/x-ai/meta-llama/mistralai/deepseek/qwen, n=191) median 262,144. A context-length error lowers it for that model (learned)."
+  },
+  "rules": [
+    {
+      "match": "^(opus|sonnet|haiku)$",
+      "context": 200000,
+      "max_output": 32000,
+      "note": "Claude CLI aliases"
+    },
+    {
+      "match": "claude-haiku-4[.-]5",
+      "context": 200000,
+      "max_output": 64000
+    },
+    {
+      "match": "claude-(fable|mythos)-5|claude-(opus|sonnet|haiku)-5|claude-opus-4[.-][678]|claude-sonnet-4[.-]6",
+      "context": 1000000,
+      "max_output": 128000
+    },
+    {
+      "match": "claude-3-(haiku|opus|sonnet)|claude-3-(haiku|opus|sonnet)-",
+      "context": 200000,
+      "max_output": 4096
+    },
+    {
+      "match": "claude-3[.-]5",
+      "context": 200000,
+      "max_output": 8192
+    },
+    {
+      "match": "claude-3[.-]7",
+      "context": 200000,
+      "max_output": 64000
+    },
+    {
+      "match": "claude-(opus-)?4([.-][01])?(-|$)|claude-opus-4",
+      "context": 200000,
+      "max_output": 32000
+    },
+    {
+      "match": "claude",
+      "context": 200000,
+      "max_output": 64000
+    },
+    {
+      "match": "gemini-1[.]5-pro",
+      "context": 2097152,
+      "max_output": 8192
+    },
+    {
+      "match": "gemini-1[.]5|gemini-2[.]0",
+      "context": 1048576,
+      "max_output": 8192
+    },
+    {
+      "match": "gemini",
+      "context": 1048576,
+      "max_output": 65536,
+      "note": "Gemini 2.5 / 3.x, also the agy model names"
+    },
+    {
+      "match": "gemma-?2",
+      "context": 8192,
+      "max_output": 8192
+    },
+    {
+      "match": "gemma",
+      "context": 131072,
+      "max_output": 8192
+    },
+    {
+      "match": "gpt-5",
+      "context": 400000,
+      "max_output": 128000
+    },
+    {
+      "match": "gpt-4[.]1",
+      "context": 1047576,
+      "max_output": 32768
+    },
+    {
+      "match": "gpt-4o",
+      "context": 128000,
+      "max_output": 16384
+    },
+    {
+      "match": "gpt-4-32k",
+      "context": 32768,
+      "max_output": 4096
+    },
+    {
+      "match": "gpt-4-turbo|gpt-4-(1106|0125)",
+      "context": 128000,
+      "max_output": 4096
+    },
+    {
+      "match": "gpt-4(-0613|-0314)?$",
+      "context": 8192,
+      "max_output": 4096
+    },
+    {
+      "match": "gpt-3[.]5-turbo",
+      "context": 16385,
+      "max_output": 4096
+    },
+    {
+      "match": "gpt-oss",
+      "context": 131072,
+      "max_output": 32768
+    },
+    {
+      "match": "(^|/)o1-mini",
+      "context": 128000,
+      "max_output": 65536
+    },
+    {
+      "match": "(^|/)o[134](-|$)|codex-mini",
+      "context": 200000,
+      "max_output": 100000
+    },
+    {
+      "match": "deepseek-reasoner",
+      "context": 128000,
+      "max_output": 64000
+    },
+    {
+      "match": "deepseek-r1",
+      "context": 128000,
+      "max_output": 32768
+    },
+    {
+      "match": "deepseek",
+      "context": 128000,
+      "max_output": 8192
+    },
+    {
+      "match": "codestral",
+      "context": 256000,
+      "max_output": 8192
+    },
+    {
+      "match": "magistral",
+      "context": 40000,
+      "max_output": 8192
+    },
+    {
+      "match": "mixtral-8x22b",
+      "context": 65536,
+      "max_output": 8192
+    },
+    {
+      "match": "open-mistral-7b|mistral-7b|mixtral-8x7b",
+      "context": 32768,
+      "max_output": 8192
+    },
+    {
+      "match": "mistral-(large|medium|small)|ministral|pixtral|devstral",
+      "context": 128000,
+      "max_output": 8192
+    },
+    {
+      "match": "mistral",
+      "context": 32768,
+      "max_output": 8192
+    },
+    {
+      "match": "llama-?4",
+      "context": 131072,
+      "max_output": 8192
+    },
+    {
+      "match": "llama-?3[.][123]",
+      "context": 131072,
+      "max_output": 8192
+    },
+    {
+      "match": "llama-?3",
+      "context": 8192,
+      "max_output": 8192
+    },
+    {
+      "match": "llama-?2",
+      "context": 4096,
+      "max_output": 4096
+    },
+    {
+      "match": "qwen3-coder",
+      "context": 262144,
+      "max_output": 65536
+    },
+    {
+      "match": "qwen-?2[.]5",
+      "context": 32768,
+      "max_output": 8192
+    },
+    {
+      "match": "qwen|qwq",
+      "context": 131072,
+      "max_output": 16384
+    },
+    {
+      "match": "glm-4[.]6",
+      "context": 200000,
+      "max_output": 128000
+    },
+    {
+      "match": "glm",
+      "context": 128000,
+      "max_output": 16384
+    },
+    {
+      "match": "kimi-k2-(0905|thinking)",
+      "context": 262144,
+      "max_output": 16384
+    },
+    {
+      "match": "kimi|moonshot",
+      "context": 131072,
+      "max_output": 16384
+    },
+    {
+      "match": "grok-4-fast",
+      "context": 2000000,
+      "max_output": 30000
+    },
+    {
+      "match": "grok-4|grok-code",
+      "context": 256000,
+      "max_output": 32768
+    },
+    {
+      "match": "grok",
+      "context": 131072,
+      "max_output": 16384
+    },
+    {
+      "match": "command-a",
+      "context": 256000,
+      "max_output": 8000
+    },
+    {
+      "match": "command-r",
+      "context": 128000,
+      "max_output": 4000
+    }
+  ]
+}

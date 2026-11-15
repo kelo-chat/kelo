@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%">
+  <style>
+    .dead-twitch {
+      animation: twitch 2.8s infinite;
+      transform-origin: 94px 74px;
+    }
+    .ghost-soul {
+      animation: soul-float 2.6s ease-in-out infinite;
+    }
+    .floor-shadow {
+      animation: shadow-still 2.8s infinite;
+    }
+    .flop-wing {
+      animation: wing-droop 2.8s infinite;
+      transform-origin: 62px 76px;
+    }
+    @keyframes twitch {
+      0%, 84%, 92%, 100% { transform: rotate(0deg); }
+      88% { transform: rotate(-10deg) translateY(-1px); }
+      96% { transform: rotate(8deg) translateY(1px); }
+    }
+    @keyframes wing-droop {
+      0%, 84%, 100% { transform: rotate(0deg); }
+      88% { transform: rotate(-5deg); }
+    }
+    @keyframes shadow-still {
+      0%, 100% { opacity: 0.18; }
+    }
+    @keyframes soul-float {
+      0% { opacity: 0; transform: translate(0px, 6px) scale(0.8); }
+      35% { opacity: 0.95; }
+      100% { opacity: 0; transform: translate(-4px, -16px) scale(1.15); }
+    }
+  </style>
+
+  <!-- shadow on the floor -->
+  <ellipse class="floor-shadow" cx="62" cy="96" rx="44" ry="6" fill="#000000" />
+
+  <!-- white sticker outline (readable on light and dark) -->
+  <g stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="#FFFFFF">
+    <path d="M26 68 C14 64, 8 74, 16 80 C21 83, 25 74, 26 68 Z" />
+    <path d="M26 68 C26 44, 46 38, 70 40 C86 41, 94 54, 94 70 C94 86, 86 94, 70 94 C46 95, 26 88, 26 68 Z" />
+    <path d="M94 60 L105 57 M105 52 L105 62" />
+    <path d="M94 78 L105 81 M105 76 L105 86" />
+    <path d="M56 76 C60 92, 74 92, 72 78" />
+  </g>
+
+  <!-- the soul floating away -->
+  <g class="ghost-soul">
+    <path d="M44 38 C36 38, 34 26, 42 22 C48 19, 54 24, 52 32 C51 36, 49 42, 53 45 C47 45, 46 38, 44 38 Z" fill="#FFFFFF" stroke="#90A4AE" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="41" cy="28" r="1.5" fill="#90A4AE" />
+    <circle cx="47" cy="28" r="1.5" fill="#90A4AE" />
+  </g>
+
+  <!-- twitching legs -->
+  <g class="dead-twitch" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round">
+    <path d="M92 60 L105 57 M105 52 L105 62" />
+    <path d="M92 78 L105 81 M105 76 L105 86" />
+  </g>
+
+  <!-- wilted leaf on the floor -->
+  <path d="M26 68 C14 64, 8 74, 16 80 C21 83, 25 74, 26 68 Z" fill="#9CCC65" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+
+  <!-- body lying on its side -->
+  <path d="M26 68 C26 44, 46 38, 70 40 C86 41, 94 54, 94 70 C94 86, 86 94, 70 94 C46 95, 26 88, 26 68 Z" fill="#4FC3F7" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+
+  <!-- belly -->
+  <path d="M62 68 C62 54, 76 48, 90 51 C93 56, 94 63, 94 70 C94 77, 93 84, 90 89 C76 92, 62 84, 62 68 Z" fill="#E1F5FE" />
+
+  <!-- body outline again -->
+  <path d="M26 68 C26 44, 46 38, 70 40 C86 41, 94 54, 94 70 C94 86, 86 94, 70 94 C46 95, 26 88, 26 68 Z" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+
+  <!-- X X eyes -->
+  <g stroke="#1A1A1A" stroke-width="3.8" stroke-linecap="round">
+    <line x1="42" y1="50" x2="50" y2="58" />
+    <line x1="50" y1="50" x2="42" y2="58" />
+    <line x1="42" y1="76" x2="50" y2="84" />
+    <line x1="50" y1="76" x2="42" y2="84" />
+  </g>
+
+  <!-- open beak and tongue -->
+  <path d="M52 70 C52 78, 60 78, 60 70 Z" fill="#FF8A80" stroke="#1A1A1A" stroke-width="3" stroke-linejoin="round" />
+  <ellipse cx="52" cy="67" rx="3.5" ry="5.5" fill="#FFB300" stroke="#1A1A1A" stroke-width="3.5" />
+
+  <!-- floppy wing -->
+  <g class="flop-wing">
+    <path d="M54 74 C58 92, 74 92, 72 76" fill="#0288D1" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+</svg>

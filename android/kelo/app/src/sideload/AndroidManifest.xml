@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only in the APK handed out as a file (and in "full", src/full/AndroidManifest.xml): the app update check hands a downloaded,
+     checksum-verified new version to Android's own installer, where the user confirms it (update/AppUpdater.kt). Google Play
+     updates its build itself, so the Play bundle never asks for this (src/play/AndroidManifest.xml removes it to be sure). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+</manifest>

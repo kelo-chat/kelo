@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The launch screen: the app icon on the page colour (kelo_bg, light or dark by the system setting). MainActivity keeps it until
+      the first screen is known (at most about a second), then switches to Theme.Kelo.
+    -->
+    <style name="Theme.Kelo.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/kelo_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.Kelo</item>
+    </style>
+</resources>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only in the "full" build (not the sideload APK handed out as a file, not the Google Play bundle): text messages, the call log
+     and reading notifications, each asked only when the user turns on its row under 이 기기에서. Google Play restricts SMS and call
+     log permissions to default SMS/phone/assistant apps or approved exceptions, and Play Protect blocks apps installed from a file
+     that ask for SMS permissions or notification access. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 메시지: read the inbox and sent texts of the last days; send one text after the user approves it on a card -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- 통화 기록: recent calls (number, name, type, time, length) -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <!-- the app update check (as in the sideload APK): a verified new version goes to Android's installer, the user confirms -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <!-- 알림: notifications the user lets Kelo read (system settings → notification access); forwarded to the user's own server -->
+        <service
+            android:name="chat.kelo.app.device.KeloNotificationListener"
+            android:exported="false"
+            android:label="@string/device_notif_service_label"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

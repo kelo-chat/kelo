@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_usage_jobs.xml (generated from values/strings_usage_jobs.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="model_background_title">نموذج العمل في الخلفية</string>
+    <string name="model_background_help">يُستخدم فقط للعمل الذي يقوم به Kelo بنفسه: مراجعة كل ليلة، والعناية بالذاكرة، واليوميات، واختيار ما يُخبرك به، وملخصات المحادثات الطويلة. كل ما يستخدم المتصفح أو يدفع أو يرسل شيئًا يبقى على النموذج الرئيسي.</string>
+    <string name="model_background_same">مثل النموذج الرئيسي</string>
+    <string name="model_background_fell_back">في %1$s تعطّل نموذج الخلفية، فأنجز النموذج الرئيسي المهمة.</string>
+    <string name="usage_jobs_title">أين ذهبت الرموز</string>
+    <string name="usage_jobs_month">هذا الشهر</string>
+    <string name="usage_jobs_empty">لم يُحسب شيء بعد.</string>
+    <string name="usage_jobs_tokens">%1$s رمز</string>
+    <string name="usage_jobs_cache">‏%1$d%% أُعيد استخدامه من ذاكرة التخزين المؤقت</string>
+    <string name="usage_jobs_note">يُحسب على الخادم لكل طلب إلى الذكاء الاصطناعي. ذاكرة التخزين المؤقت هي الجزء من المُدخلات الذي أعادت خدمة الذكاء الاصطناعي استخدامه، وعادةً ما يكلّف أقل.</string>
+    <string name="usage_kind_chat">محادثاتك</string>
+    <string name="usage_kind_schedule">الجدولات</string>
+    <string name="usage_kind_checklist">فحوصات دورية</string>
+    <string name="usage_kind_task">مهام مُسلَّمة</string>
+    <string name="usage_kind_worker">أعمال مُفوَّضة</string>
+    <string name="usage_kind_reflection">مراجعة الليل</string>
+    <string name="usage_kind_memory">العناية بالذاكرة</string>
+    <string name="usage_kind_journal">اليوميات</string>
+    <string name="usage_kind_proactive">التنبيهات</string>
+    <string name="usage_kind_compaction">ملخصات المحادثة</string>
+    <string name="usage_kind_followup">المتابعات</string>
+    <string name="usage_kind_probe">فحوصات الاتصال</string>
+    <string name="usage_kind_other">أخرى</string>
+</resources>

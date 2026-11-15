@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "example_weather",
+  "kind": "connector",
+  "version": "1.0.0",
+  "name": "Example Weather",
+  "description": "Forecasts and current conditions for any city",
+  "author": "Example Author",
+  "connector": {
+    "regions": ["KR", "JP"],
+    "connect": {
+      "type": "key",
+      "hosts": ["api.weather.example.com"],
+      "placement": {"type": "query_param", "param": "appid"},
+      "base_url": "https://api.weather.example.com/v1",
+      "verify": "https://api.weather.example.com/v1/ping",
+      "docs": "https://weather.example.com/docs",
+      "api": "GET /forecast?q=<city> returns a 5-day forecast; GET /now?q=<city> the current conditions.",
+      "help": ["Sign in at weather.example.com and open Account → API keys.", "Make a key and paste it here."],
+      "key_label": "API key",
+      "blurb": "Looks up forecasts for the places you ask about."
+    }
+  }
+}

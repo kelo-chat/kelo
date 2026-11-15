@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- fr text for strings_usage_jobs.xml (generated from values/strings_usage_jobs.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="model_background_title">Modèle pour le travail en arrière-plan</string>
+    <string name="model_background_help">Utilisé uniquement pour le travail que Kelo fait de lui-même : le bilan de chaque nuit, l’entretien de la mémoire, le journal, le choix de ce qu’il faut vous signaler et les résumés des longues conversations. Tout ce qui utilise le navigateur, paie ou envoie quelque chose reste sur le modèle principal.</string>
+    <string name="model_background_same">Identique au modèle principal</string>
+    <string name="model_background_fell_back">Le %1$s, le modèle d’arrière-plan a échoué : le modèle principal a fait le travail.</string>
+    <string name="usage_jobs_title">Où sont passés les jetons</string>
+    <string name="usage_jobs_month">Ce mois-ci</string>
+    <string name="usage_jobs_empty">Rien de compté pour l’instant.</string>
+    <string name="usage_jobs_tokens">%1$s jetons</string>
+    <string name="usage_jobs_cache">%1$d%% réutilisés depuis le cache</string>
+    <string name="usage_jobs_note">Compté sur le serveur pour chaque requête à l’IA. Le cache est la partie de l’entrée que le service d’IA a réutilisée, ce qui coûte généralement moins cher.</string>
+    <string name="usage_kind_chat">Vos conversations</string>
+    <string name="usage_kind_schedule">Automatisations</string>
+    <string name="usage_kind_checklist">Vérifications récurrentes</string>
+    <string name="usage_kind_task">Tâches confiées</string>
+    <string name="usage_kind_worker">Travaux délégués</string>
+    <string name="usage_kind_reflection">Bilan de la nuit</string>
+    <string name="usage_kind_memory">Entretien de la mémoire</string>
+    <string name="usage_kind_journal">Journal</string>
+    <string name="usage_kind_proactive">Signalements</string>
+    <string name="usage_kind_compaction">Résumés de conversation</string>
+    <string name="usage_kind_followup">Relances</string>
+    <string name="usage_kind_probe">Vérifications de connexion</string>
+    <string name="usage_kind_other">Autre</string>
+</resources>

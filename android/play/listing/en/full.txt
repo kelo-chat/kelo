@@ -1,0 +1,47 @@
+Please read first: this app does not work on its own.
+Kelo is the phone app for a Kelo server that you install yourself on a computer you keep running (Docker on Mac, Linux or Windows). Setup instructions are at https://kelo.chat. The AI model runs through the AI company you pick on your server, and you pay that company directly.
+
+What Kelo is
+A phone app for handing work to an AI assistant that runs on your own Kelo server. Chats, memory, files and keys are stored on that server; the phone works as the remote. The app is available in 20 languages.
+
+Connecting
+• Scan the QR code your Kelo server shows, or paste a connect link.
+• Server addresses must use https. You can pair several phones with one server.
+
+Chat
+• Ask in text or by voice. Voice input is turned into text by your phone's speech recognition.
+• Attach photos, PDF, Word and Excel files, or send things from other apps with the share option "Send to Kelo".
+• Pick from the AI models set up on your server and choose how long it thinks.
+
+Work
+• Long tasks keep going in the background, with each step shown.
+• Set up schedules that run at set times, and watchers that tell you when a page shows certain words or a number crosses your limit.
+• Watch the agent's browser live, take over when you need to, and hand it back.
+
+It asks first
+• Looking things up runs on its own. Anything that commits something for you, such as paying, ordering, booking, sending mail or messages, deleting, or changing events, waits for your OK on the phone.
+• For routine steps you can choose "don't ask on this site", and review past approvals.
+
+Goals and records
+• Write down goals and keep track of progress and due dates.
+• Each night it looks back over the day's chats and suggests short rules about how you like things done. Only the ones you accept are kept.
+
+Connectors
+• Connect mail, calendar, task and document services to your server so the agent can use them. Each connection is made on that service's own sign-in page.
+• Phone features are off until you turn them on: the agent can read your phone's calendar and contacts, and adding or changing events or opening the dialer each wait for your OK.
+
+Keychain and cards
+• Passwords and API keys go in through a form, never the chat, and are stored encrypted on your server. The agent never sees the values.
+• For each card you decide whether it may pay on its own. Cards without auto-pay are locked with a key only this phone holds, so even your server can't read them, and each payment needs your fingerprint or screen lock. Cards with auto-pay are used only within your limits and on sites you approved before.
+
+Notifications
+• Get told when a task finishes or needs your OK. A push carries only the kind of notification and an id; the app fetches the details from your own server.
+• A reply you were following keeps arriving for a few minutes after you leave the app.
+
+Privacy
+• The app has no ads.
+• To write a reply, your conversation is sent to the AI company you chose. What goes where is listed in the app under My → "Where your data lives" and in the privacy policy (https://kelo.chat/privacy).
+
+Who it is for
+• People with a computer they can leave on at home or work, and who can install and run a server with Docker
+• People who want to check and approve their assistant's work from their phone

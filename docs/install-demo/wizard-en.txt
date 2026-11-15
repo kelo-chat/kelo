@@ -1,0 +1,109 @@
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                  │
+│       ▄▀▀                                                                                        │
+│    ▄▄▀▀▀▀▀▀▄▄     Kelo  setup                                                                    │
+│   ▀▀▀▀▀▀▀▀▀▀▀▀    Your personal assistant, on a server you run.                                  │
+│  ▄▀▀▀▀▀▀▀▀▀▀▀▀▄                                                                                  │
+│  ▀▀▀▀▀▀▀▀▀▀▀▀▀▀   Press Enter to accept the suggestion in [brackets]. Ctrl+C stops at any time.  │
+│   ▀▀▀▀▀▀▀▀▀▀▀▀                                                                                   │
+│     ▄▀   ▄▀                                                                                      │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+1/4  Check the Kelo server ─────────────────────────────────────────────────────────────────────────
+  ✓ Docker 28.4.0
+  ✓ Docker Compose 2.39.2
+  ✓ The computer the server runs on, as Docker sees it: 8 CPUs, 7.7 GB of RAM, 182 GB of free disk
+  ✓ Created the access token and the encryption key in .env (kept private, never shown).
+
+2/4  Size ──────────────────────────────────────────────────────────────────────────────────────────
+How much may the Kelo server use?
+    1) Minimum  one person, light use
+         needs: RAM 2 GB · 2 CPU · disk 10 GB
+         capped at: RAM 1 GB · 1.5 CPU · disk 0.5 GB
+  › 2) Recommended  several phones, heavy web pages, big documents
+         needs: RAM 4 GB · 4 CPU · disk 20 GB
+         capped at: RAM 2.5 GB · 3 CPU · disk 5 GB
+    3) No limit  nothing capped: all of the computer the server runs on
+         capped at: RAM 7.7 GB · 8 CPU · disk 182 GB
+  Choose [2]: 
+  ✓ Saved: Recommended. Change it any time with `kelo limits --choose`.
+
+3/4  Start Kelo ────────────────────────────────────────────────────────────────────────────────────
+  … Building and starting Kelo (the first time takes a few minutes)
+    │ #12 [workroom 3/6] RUN apt-get install -y libreoffice-writer
+    │ #15 exporting to image
+    │ #15 naming to docker.io/library/kelo:latest done
+    │  Network assistant-server_agent  Created
+    │  Container assistant-server-browser-1  Started
+    │  Container assistant-server-server-1  Started
+  ✓ Building and starting Kelo (the first time takes a few minutes)  [0:00]
+  ✓ Kelo is running at http://127.0.0.1:8080
+
+4/4  Phone ─────────────────────────────────────────────────────────────────────────────────────────
+Where should your phone reach Kelo?
+  › 1) Default address
+    2) Later: Tailscale or my own domain
+    3) Not now
+  Choose [1]: 1
+  Name for your address (3-30 letters, digits or '-') [mina]: mina
+  ✓ Kelo is open at https://mina.kelo.chat
+    Traffic to this address passes through Cloudflare. For end-to-end encryption use Tailscale or   
+    your own domain.                                                                                
+  Sign a phone in now? [Y/n]: 
+
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                            https://mina.kelo.chat/pair#k7Qe2xVb9tLmR4sP                            
+    Scan with the phone's camera, or open the link on the phone. It works once and expires in 10    
+    minutes.                                                                                        
+    More phones any time: kelo phone add
+
+╭─────────────────────────────────────────────────────────────────────╮
+│                                                                     │
+│  ✓ All set   https://mina.kelo.chat                                 │
+│                                                                     │
+│  → Choose the AI model in the Kelo app after connecting the phone.  │
+│                                                                     │
+│  Useful later                                                       │
+│  kelo status           status of every copy                         │
+│  kelo phone add        sign another phone in                        │
+│  kelo limits --choose  change how much it may use                   │
+│  kelo setup            change these answers                         │
+│                                                                     │
+╰─────────────────────────────────────────────────────────────────────╯

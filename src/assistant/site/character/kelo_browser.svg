@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%">
+  <style>
+    .pose-front { opacity: 0; animation: toggle-front 4.5s infinite; transform-origin: 50px 65px; }
+    .pose-back { opacity: 1; animation: toggle-back 4.5s infinite; transform-origin: 50px 65px; }
+    .typing-wing { animation: type-keys 0.22s ease-in-out infinite alternate; transform-origin: 62px 70px; }
+    .screen-glow { animation: monitor-pulse 0.8s ease-in-out infinite alternate; }
+    .click-spark { animation: spark-pop 0.6s ease-out infinite; transform-origin: 96px 40px; }
+    @keyframes toggle-front { 0%, 20% { opacity: 1; transform: scaleX(1); } 24%, 92% { opacity: 0; transform: scaleX(0.15); } 96%, 100% { opacity: 1; transform: scaleX(1); } }
+    @keyframes toggle-back { 0%, 21% { opacity: 0; transform: scaleX(0.15); } 25%, 91% { opacity: 1; transform: scaleX(1); } 95%, 100% { opacity: 0; transform: scaleX(0.15); } }
+    @keyframes type-keys { 0% { transform: rotate(-6deg) translateY(0px); } 100% { transform: rotate(8deg) translateY(3px); } }
+    @keyframes monitor-pulse { 0% { fill: #E1F5FE; } 100% { fill: #B3E5FC; } }
+    @keyframes spark-pop { 0%, 100% { opacity: 0.2; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }
+  </style>
+  <g class="pose-front" opacity="0">
+    <g stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="#FFFFFF">
+      <path d="M52 28 C42 14, 50 8, 56 16 C60 21, 55 26, 52 28 Z" />
+      <path d="M52 28 C30 28, 20 48, 22 72 C23 88, 35 96, 52 96 C69 96, 81 88, 82 72 C84 48, 74 28, 52 28 Z" />
+      <path d="M41 96 L41 104 M63 96 L63 104" />
+    </g>
+    <g stroke="#1A1A1A" stroke-width="4" stroke-linecap="round">
+      <path d="M41 94 L41 104 M36 104 L46 104" />
+      <path d="M63 94 L63 104 M58 104 L68 104" />
+    </g>
+    <path d="M52 29 C40 15, 49 7, 57 15 C61 20, 56 27, 52 29 Z" fill="#66BB6A" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+    <path d="M52 28 C30 28, 20 48, 22 72 C23 88, 35 96, 52 96 C69 96, 81 88, 82 72 C84 48, 74 28, 52 28 Z" fill="#29B6F6" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+    <path d="M52 64 C38 64, 32 78, 35 92 C40 95, 46 96, 52 96 C58 96, 64 95, 69 92 C72 78, 66 64, 52 64 Z" fill="#B3E5FC" />
+    <path d="M52 28 C30 28, 20 48, 22 72 C23 88, 35 96, 52 96 C69 96, 81 88, 82 72 C84 48, 74 28, 52 28 Z" fill="none" stroke="#1A1A1A" stroke-width="4" />
+    <circle cx="39" cy="57" r="4" fill="#1A1A1A" />
+    <circle cx="65" cy="57" r="4" fill="#1A1A1A" />
+    <ellipse cx="52" cy="60" rx="5.5" ry="3.2" fill="#FFB300" stroke="#1A1A1A" stroke-width="3.5" />
+  </g>
+  <g class="pose-back">
+    <g stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="#FFFFFF">
+      <rect x="70" y="38" width="38" height="28" rx="4" />
+      <polygon points="62,76 108,68 114,80 70,90" />
+      <rect x="76" y="86" width="6" height="16" />
+      <rect x="100" y="80" width="6" height="16" />
+      <path d="M44 28 C34 14, 42 8, 48 16 C52 21, 47 26, 44 28 Z" />
+      <path d="M44 28 C22 28, 14 48, 16 72 C17 88, 29 96, 46 96 C63 96, 74 88, 75 72 C76 48, 66 28, 44 28 Z" />
+      <path d="M16 80 L8 75 L12 86 Z" />
+      <path d="M36 96 L36 104 M56 96 L56 104" />
+    </g>
+    <g stroke="#1A1A1A" stroke-width="3.5" stroke-linejoin="round">
+      <rect x="76" y="85" width="6" height="17" fill="#A1887F" />
+      <rect x="100" y="79" width="6" height="17" fill="#A1887F" />
+      <polygon points="62,76 108,68 114,80 70,90" fill="#D7CCC8" />
+      <rect x="85" y="64" width="8" height="8" fill="#90A4AE" />
+      <ellipse cx="89" cy="72" rx="8" ry="2.5" fill="#78909C" />
+      <rect x="70" y="38" width="38" height="28" rx="4" fill="#546E7A" />
+      <rect class="screen-glow" x="74" y="42" width="30" height="20" rx="2" fill="#E1F5FE" stroke-width="2.5" />
+      <rect x="77" y="46" width="10" height="7" fill="#4FC3F7" stroke="none" />
+      <rect x="89" y="46" width="12" height="3" fill="#0288D1" stroke="none" />
+      <rect x="89" y="51" width="10" height="3" fill="#81D4FA" stroke="none" />
+      <rect x="77" y="55" width="24" height="4" fill="#FFFFFF" stroke="none" />
+      <polygon points="72,77 94,73 98,79 76,84" fill="#CFD8DC" stroke-width="2.8" />
+    </g>
+    <g stroke="#1A1A1A" stroke-width="4" stroke-linecap="round">
+      <path d="M36 94 L36 104 M32 104 L41 104" />
+      <path d="M56 94 L56 104 M52 104 L61 104" />
+    </g>
+    <path d="M44 29 C32 15, 41 7, 49 15 C53 20, 48 27, 44 29 Z" fill="#66BB6A" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+    <polygon points="72,56 80,59 72,63" fill="#FFB300" stroke="#1A1A1A" stroke-width="3.2" stroke-linejoin="round" />
+    <path d="M44 28 C22 28, 14 48, 16 72 C17 88, 29 96, 46 96 C63 96, 74 88, 75 72 C76 48, 66 28, 44 28 Z" fill="#29B6F6" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+    <path d="M18 78 C8 73, 7 84, 19 86" fill="#039BE5" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="65" cy="54" r="3.8" fill="#1A1A1A" />
+    <circle cx="66" cy="52.8" r="1.2" fill="#FFFFFF" />
+    <path d="M28 42 C31 36, 38 34, 42 34" fill="none" stroke="#81D4FA" stroke-width="4" stroke-linecap="round" />
+    <g class="typing-wing">
+      <path d="M60 66 C74 64, 84 70, 80 78 C75 82, 64 80, 58 75" fill="#039BE5" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    </g>
+    <g class="click-spark" stroke="#29B6F6" stroke-width="3" stroke-linecap="round">
+      <line x1="106" y1="30" x2="111" y2="26" />
+      <line x1="112" y1="36" x2="117" y2="35" />
+      <line x1="98" y1="28" x2="99" y2="22" />
+    </g>
+  </g>
+</svg>

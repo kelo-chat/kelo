@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "id": "example_mail",
+  "kind": "connector",
+  "version": "1.0.0",
+  "name": "Example Mail",
+  "description": "Mail and calendar in Example Mail",
+  "author": "Example Author",
+  "homepage": "https://mail.example.com",
+  "strings": {
+    "ko": {"name": "예시 메일", "description": "예시 메일의 메일과 캘린더", "blurb": "메일과 일정을 읽고 정리합니다."}
+  },
+  "connector": {
+    "regions": [],
+    "featured": false,
+    "connect": {
+      "type": "mcp",
+      "url": "https://mcp.mail.example.com/mcp",
+      "blurb": "Reads and organizes mail and events."
+    }
+  },
+  "provides": {
+    "mail": {
+      "list": {"tool": "search_messages", "arguments": {"unread_only": "{{unread}}", "max": "{{limit}}", "q": "{{query}}", "folder": "{{folder}}"},
+               "select": "messages",
+               "fields": {"uid": "id", "subject": "subject", "from": "from", "date": "received", "unread": "unread", "bulk": "promotion"}},
+      "read": {"tool": "get_message", "arguments": {"id": "{{uid}}"}, "fields": {"text": "body", "subject": "subject", "from": "from", "date": "received"}},
+      "mark_read": {"tool": "set_read", "arguments": {"id": "{{uid}}", "read": true}},
+      "mark_unread": {"tool": "set_read", "arguments": {"id": "{{uid}}", "read": false}},
+      "archive": {"tool": "move_message", "arguments": {"id": "{{uid}}", "to": "archive"}},
+      "trash": {"tool": "move_message", "arguments": {"id": "{{uid}}", "to": "trash"}}
+    },
+    "calendar": {
+      "events": {"tool": "list_events", "arguments": {"from": "{{start}}", "to": "{{end}}"}, "select": "events",
+                 "fields": {"id": "id", "title": "title", "start": "start", "end": "end", "where": "location", "all_day": "all_day"}}
+    }
+  },
+  "permissions": {
+    "hosts": ["mcp.mail.example.com"],
+    "reads": ["mail", "calendar"],
+    "mcp_tools": ["get_message", "list_events", "move_message", "search_messages", "set_read"]
+  }
+}

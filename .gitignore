@@ -1,0 +1,61 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+!/tools/build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Web app
+web/node_modules/
+web/dist/
+
+# one folder per extra user: holds their tokens and keys
+instances/
+
+# Android app: signing keys, build output, local SDK path
+android/keystore
+android/kelo/build
+android/kelo/app/build
+android/kelo/.gradle
+android/kelo/.kotlin
+android/kelo/local.properties
+android/dist
+
+# Play Store: built bundles and the Play API service account key never go into git
+android/play/*.aab
+android/play/*.json
+
+# secrets and per-machine connection settings: never in git
+.env
+.env.*
+!.env.example
+connect/cloudflared/*.json
+connect/cloudflared/config.yml
+connect/kelo/
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+
+# large build outputs and scratch renders
+android/design/promo-src/out/
+android/design/promo-src/peek/
+android/design/promo-src/chk/
+docs/site-preview/
+docs/site-screens/
+
+# more key and credential files that must never reach git (App Store Connect API keys, provisioning, Firebase iOS config)
+*.p8
+*.mobileprovision
+GoogleService-Info.plist
+google-services.json
+# ... except the Android app's Firebase client config: it is public (it is inside every APK) and the same source must build the same
+# APK as the one in the store, so it is part of the source (docs/verify-builds.md). Service-account keys are never this file.
+!/android/kelo/app/google-services.json
+.DS_Store

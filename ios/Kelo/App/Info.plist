@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>chat.kelo.app.refresh</string>
+	</array>
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>Kelo</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ko</string>
+		<string>ja</string>
+		<string>zh-Hans</string>
+		<string>zh-Hant</string>
+		<string>es</string>
+		<string>fr</string>
+		<string>de</string>
+		<string>pt-BR</string>
+		<string>it</string>
+		<string>ru</string>
+		<string>id</string>
+		<string>vi</string>
+		<string>th</string>
+		<string>tr</string>
+		<string>ar</string>
+		<string>hi</string>
+		<string>pl</string>
+		<string>nl</string>
+		<string>uk</string>
+	</array>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Reads your events to answer. If you allow it, adds events too, after you approve.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Reads your events to answer. If you allow it, adds events too, after you approve.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Kelo uses the camera to scan a pairing QR code or a payment card, and to take photos you choose to send in the chat. Scans are read on this iPhone and not saved.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Finds numbers and emails by name. Read only.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID unlocks your Keychain and payment cards in Kelo.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Kelo uses your location for the briefing's weather and for questions about places near you. It is sent only when you open the app, and only to your own Kelo server.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Kelo uses the microphone only while voice input is on, to turn what you say into text.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Kelo saves pictures and files you choose to keep to your photo library.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Your iPhone's speech recognition turns what you say into text for the chat.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+</dict>
+</plist>

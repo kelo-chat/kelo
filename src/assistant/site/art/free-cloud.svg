@@ -1,0 +1,21 @@
+<svg class="art art--free-cloud" viewBox="0 0 480 300" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <ellipse cx="240" cy="276" rx="190" ry="12" fill="#1A1A1A" opacity=".08"/>
+  <!-- the cloud -->
+  <path d="M96 236h236c34 0 58-24 58-54 0-30-24-54-56-54-6-40-40-66-80-66-34 0-62 20-74 50-8-4-16-6-26-6-30 0-54 24-54 54v4c-24 6-40 26-40 50 0 12 4 22 10 30z" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round"/>
+  <!-- a small server inside it -->
+  <g stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round">
+    <rect x="168" y="128" width="120" height="84" rx="14" fill="#E1F5FE"/>
+    <path d="M180 170h96" stroke-width="3"/>
+  </g>
+  <circle class="art-led" cx="188" cy="150" r="5.5" fill="#66BB6A"/>
+  <circle cx="188" cy="191" r="5.5" fill="#66BB6A"/>
+  <g stroke="#1A1A1A" stroke-width="3" stroke-linecap="round" opacity=".55"><path d="M222 150h50M222 191h50"/></g>
+  <!-- the price tag: zero -->
+  <g transform="rotate(14 352 92)">
+    <path d="M318 60h62a10 10 0 0 1 10 10v44a10 10 0 0 1-10 10h-62l-24-32z" fill="#FFB300" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="312" cy="92" r="5" fill="#FFFFFF" stroke="#1A1A1A" stroke-width="3"/>
+    <ellipse cx="352" cy="92" rx="13" ry="18" fill="none" stroke="#1A1A1A" stroke-width="6"/>
+  </g>
+  <path d="M296 72c-10-18-22-26-36-28" fill="none" stroke="#1A1A1A" stroke-width="3" stroke-linecap="round"/>
+  {{mascot:thinking:26:142:118}}
+</svg>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- behind Kelo's character: a soft warm cream (#FFF8E1 at the top to #FFE8B0 at the bottom), so the blue character and its white outline stand out -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="270" android:startColor="#FFF8E1" android:endColor="#FFE8B0" />
+</shape>

@@ -1,0 +1,18 @@
+# Local machine and build output
+local.properties
+.gradle/
+.kotlin/
+build/
+app/build/
+baselineprofile/build/
+*.iml
+.idea/
+
+# Signing: never commit keys (release signing reads android/keystore, kept out of git by the repository's own .gitignore)
+*.jks
+*.keystore
+keystore.properties
+
+# Firebase: app/google-services.json is tracked on purpose (the Firebase CLIENT config is public, it is inside every APK, and the
+# published source must build the same APK as the store's). Build with your own Firebase project by replacing that file;
+# app/google-services.json.example shows its shape. Never put a service-account key here.

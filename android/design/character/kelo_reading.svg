@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%">
+  <style>
+    .scan-eyes { animation: read-scan 1.4s ease-in-out infinite alternate; }
+    .book-bob { animation: book-move 1.4s ease-in-out infinite alternate; transform-origin: 60px 82px; }
+    @keyframes read-scan { 0% { transform: translateX(-2.5px); } 100% { transform: translateX(2.5px); } }
+    @keyframes book-move { 0% { transform: translateY(0); } 100% { transform: translateY(-1.5px); } }
+  </style>
+  <g stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="#FFFFFF">
+    <path d="M60 28 C50 14, 58 8, 64 16 C68 21, 63 26, 60 28 Z" />
+    <path d="M60 28 C36 28, 26 48, 28 72 C29 88, 42 96, 60 96 C78 96, 91 88, 92 72 C94 48, 84 28, 60 28 Z" />
+    <polygon points="28,70 60,75 92,70 92,94 60,99 28,94" />
+    <path d="M48 96 L48 104 M43 104 L53 104 M72 96 L72 104 M67 104 L77 104" />
+  </g>
+  <g stroke="#1A1A1A" stroke-width="4" stroke-linecap="round">
+    <path d="M48 94 L48 104 M43 104 L53 104" />
+    <path d="M72 94 L72 104 M67 104 L77 104" />
+  </g>
+  <path d="M60 29 C48 15, 57 7, 65 15 C69 20, 64 27, 60 29 Z" fill="#66BB6A" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+  <path d="M60 28 C36 28, 26 48, 28 72 C29 88, 42 96, 60 96 C78 96, 91 88, 92 72 C94 48, 84 28, 60 28 Z" fill="#29B6F6" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+  <g class="scan-eyes">
+    <circle cx="46" cy="56" r="4.2" fill="#1A1A1A" />
+    <circle cx="74" cy="56" r="4.2" fill="#1A1A1A" />
+    <circle cx="45" cy="57" r="1.3" fill="#FFFFFF" />
+    <circle cx="73" cy="57" r="1.3" fill="#FFFFFF" />
+  </g>
+  <ellipse cx="60" cy="60" rx="5.5" ry="3.2" fill="#FFB300" stroke="#1A1A1A" stroke-width="3.5" />
+  <g class="book-bob">
+    <polygon points="28,70 60,75 92,70 92,94 60,99 28,94" fill="#FFF8E1" stroke="#1A1A1A" stroke-width="3.8" stroke-linejoin="round" />
+    <polygon points="28,74 60,79 92,74 92,94 60,99 28,94" fill="#FFCA28" stroke="#1A1A1A" stroke-width="3.8" stroke-linejoin="round" />
+    <line x1="60" y1="75" x2="60" y2="99" stroke="#1A1A1A" stroke-width="3.8" />
+    <path d="M24 80 C32 76, 38 82, 30 88 C24 90, 20 84, 24 80 Z" fill="#039BE5" stroke="#1A1A1A" stroke-width="3.8" />
+    <path d="M96 80 C88 76, 82 82, 90 88 C96 90, 100 84, 96 80 Z" fill="#039BE5" stroke="#1A1A1A" stroke-width="3.8" />
+  </g>
+</svg>

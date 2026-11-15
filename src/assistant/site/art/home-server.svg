@@ -1,0 +1,40 @@
+<svg class="art art--home-server" viewBox="0 0 520 390" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <ellipse cx="260" cy="338" rx="210" ry="16" fill="#1A1A1A" opacity=".08"/>
+  <!-- the phone -->
+  <g stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round">
+    <rect x="58" y="112" width="116" height="214" rx="22" fill="#FFFFFF"/>
+    <rect x="70" y="138" width="92" height="160" rx="8" fill="#E1F5FE" stroke-width="3"/>
+  </g>
+  <rect x="98" y="122" width="36" height="6" rx="3" fill="#1A1A1A"/>
+  <rect x="80" y="152" width="52" height="18" rx="9" fill="#FFFFFF"/>
+  <rect x="100" y="178" width="52" height="18" rx="9" fill="#81D4FA"/>
+  <rect x="80" y="204" width="62" height="30" rx="10" fill="#FFFFFF"/>
+  <rect x="88" y="214" width="34" height="5" rx="2.5" fill="#B3E5FC"/>
+  <rect x="88" y="223" width="22" height="5" rx="2.5" fill="#B3E5FC"/>
+  <rect x="112" y="244" width="40" height="18" rx="9" fill="#81D4FA"/>
+  <rect x="80" y="272" width="72" height="16" rx="8" fill="#FFFFFF"/>
+  <!-- the connection -->
+  <path d="M184 214 C 222 170, 248 268, 286 222" fill="none" stroke="#039BE5" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 12"/>
+  <circle class="art-pulse" cx="236" cy="218" r="7" fill="#29B6F6" stroke="#1A1A1A" stroke-width="3"/>
+  <!-- the home server -->
+  <g stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round">
+    <rect x="296" y="168" width="172" height="150" rx="20" fill="#FFFFFF"/>
+    <rect x="312" y="186" width="140" height="36" rx="10" fill="#B3E5FC" stroke-width="3"/>
+    <rect x="312" y="232" width="140" height="36" rx="10" fill="#E1F5FE" stroke-width="3"/>
+  </g>
+  <circle class="art-led" cx="330" cy="204" r="6" fill="#66BB6A"/>
+  <circle cx="350" cy="204" r="6" fill="#FFB300"/>
+  <circle cx="330" cy="250" r="6" fill="#66BB6A"/>
+  <g stroke="#1A1A1A" stroke-width="3" stroke-linecap="round" opacity=".55">
+    <path d="M392 204h44M392 250h44M330 292h104"/>
+  </g>
+  <rect x="318" y="316" width="22" height="12" rx="4" fill="#1A1A1A"/>
+  <rect x="424" y="316" width="22" height="12" rx="4" fill="#1A1A1A"/>
+  <!-- a plant beside it -->
+  <g stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round">
+    <path d="M478 326h-30l4-38h22z" fill="#FFB300"/>
+    <path d="M463 288c-2-22 6-36 22-40-2 18-10 30-22 40z" fill="#66BB6A"/>
+    <path d="M463 288c-12-12-22-14-30-10 6 10 16 14 30 10z" fill="#9CCC65"/>
+  </g>
+  {{mascot:working:318:58:122}}
+</svg>

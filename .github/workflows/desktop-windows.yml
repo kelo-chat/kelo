@@ -5,8 +5,7 @@
 #   KELO_MSIX_IDENTITY_NAME         e.g. 12345YourName.Kelo
 #   KELO_MSIX_PUBLISHER             e.g. CN=1A2B3C4D-5E6F-7A8B-9C0D-112233445566
 #   KELO_MSIX_PUBLISHER_DISPLAY_NAME
-#   KELO_MSIX_DISPLAY_NAME          the product name reserved in Partner Center (Package/Properties/DisplayName)
-# Without them the MSIX uses the Microsoft Store product's identity (Partner Center: Kelo AI, kelo-chat.KeloAI), so the Store accepts it.
+# Without them the MSIX is still built, with placeholder identity (fine for checking the build, not for the Store).
 # Optional secrets to sign the MSIX for installing it outside the Store: KELO_MSIX_PFX_BASE64, KELO_MSIX_PFX_PASSWORD.
 #
 # release-build.yml (version tags of the public repository) calls this workflow with attest: true, which gives every installer a
@@ -20,22 +19,17 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Package number, three numbers (1.0.8); empty = apps/desktop/version.properties. The MSIX gets a fourth .0"
+        description: "Package number, three numbers (1.0.8); empty = desktop/version.properties. The MSIX gets a fourth .0"
         required: false
         default: ""
       tests:
         description: "Only these tests (Gradle --tests patterns, space separated, e.g. *ReactionShotsTest); empty runs them all"
         required: false
         default: ""
-      attest:
-        description: "Attach a build provenance attestation to the installers (the public repository's runs)"
-        type: boolean
-        required: false
-        default: false
   workflow_call:
     inputs:
       version:
-        description: "Package number, three numbers (1.0.8); empty = apps/desktop/version.properties"
+        description: "Package number, three numbers (1.0.8); empty = desktop/version.properties"
         type: string
         required: false
         default: ""
@@ -44,26 +38,29 @@ on:
         type: boolean
         required: false
         default: false
-  # no push trigger (owner, 2026-11-11): a Windows run takes ~25 min and counts double against the private repo's Actions minutes;
-  # run it by hand (gh workflow run desktop-windows.yml) or from release-build.yml. The desktop tests also run on Linux in ci.yml.
+  push:
+    paths:
+      - "desktop/**"
+      - "android/kelo/app/src/main/java/**"
+      - "android/kelo/app/src/main/res/values*/strings*.xml"
+      - ".github/workflows/desktop-windows.yml"
 
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 120   # a normal run takes ~25 min; a hung test must not hold the runner for hours
     permissions:
       contents: read
       id-token: write         # the attestation is signed with this run's OIDC identity (only used when attest is true)
       attestations: write
     defaults:
       run:
-        working-directory: apps/desktop
+        working-directory: desktop
     env:
       VERSION_INPUT: ${{ inputs.version || github.event.inputs.version || '' }}
     steps:
       - uses: actions/checkout@v4
 
-      # the installers' package number lives in one tracked place, apps/desktop/version.properties (docs/versioning.md); a version given
+      # the installers' package number lives in one tracked place, desktop/version.properties (docs/versioning.md); a version given
       # to the run overrides it for that run only. The release people see (0.9.0) comes from version.json through the Gradle build.
       - name: Package number
         shell: bash
@@ -72,7 +69,7 @@ jobs:
           [ -n "$v" ] || v="$(sed -n 's/^packageVersion=\([0-9][0-9.]*\)[[:space:]]*$/\1/p' version.properties | head -1)"
           case "$v" in [1-9]*.*[0-9].*[0-9]) ;; *) echo "bad package number '$v' (MAJOR.MINOR.BUILD, MAJOR >= 1)"; exit 1 ;; esac
           echo "VERSION=$v" >> "$GITHUB_ENV"
-          echo "package number $v; $(grep -o '"version": *"[^"]*"' ../../version.json) (version.json)"
+          echo "package number $v; $(grep -o '"version": *"[^"]*"' ../version.json) (version.json)"
 
       - uses: actions/setup-java@v4
         with:
@@ -83,6 +80,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Text in step with the Android strings
+        shell: bash
+        run: |
+          python tools/sync_strings.py
+          git diff --exit-code -- src/main/resources/i18n src/generated || (echo "run: python3 desktop/tools/sync_strings.py and commit" && exit 1)
 
       - name: Fetch Gradle and the build tools (retried; falls back to the Gradle installed on the runner)
         shell: bash
@@ -111,23 +114,21 @@ jobs:
         with:
           name: kelo-windows-test-report
           path: |
-            apps/desktop/build/reports/tests/test
-            apps/desktop/build/test-results/test
-            apps/desktop/build/parity
-            apps/desktop/build/mock-server
+            desktop/build/reports/tests/test
+            desktop/build/test-results/test
+            desktop/build/parity
+            desktop/build/mock-server
           if-no-files-found: ignore
 
       - name: MSI and EXE
-        # -PkeloCommit: the commit this run built, shown in My as a link to its source on GitHub (a checkout is clean, so not modified)
-        run: '& $env:GRADLE_CMD --no-daemon packageMsi packageExe createDistributable "-PkeloVersion=${{ env.VERSION }}" "-PkeloCommit=${{ github.sha }}" "-PkeloDirty=false"'
+        run: '& $env:GRADLE_CMD --no-daemon packageMsi packageExe createDistributable "-PkeloVersion=${{ env.VERSION }}"'
 
       - name: MSIX
         shell: pwsh
         env:
-          IDENTITY_NAME: ${{ vars.KELO_MSIX_IDENTITY_NAME || 'kelo-chat.KeloAI' }}
-          PUBLISHER: ${{ vars.KELO_MSIX_PUBLISHER || 'CN=B768A023-5EDD-4EA2-9CC8-14670F96502D' }}
-          PUBLISHER_DISPLAY_NAME: ${{ vars.KELO_MSIX_PUBLISHER_DISPLAY_NAME || 'kelo-chat' }}
-          DISPLAY_NAME: ${{ vars.KELO_MSIX_DISPLAY_NAME || 'Kelo AI' }}
+          IDENTITY_NAME: ${{ vars.KELO_MSIX_IDENTITY_NAME }}
+          PUBLISHER: ${{ vars.KELO_MSIX_PUBLISHER }}
+          PUBLISHER_DISPLAY_NAME: ${{ vars.KELO_MSIX_PUBLISHER_DISPLAY_NAME }}
           PFX_BASE64: ${{ secrets.KELO_MSIX_PFX_BASE64 }}
           PFX_PASSWORD: ${{ secrets.KELO_MSIX_PFX_PASSWORD }}
         run: |
@@ -139,7 +140,6 @@ jobs:
           if ($env:IDENTITY_NAME) { $p.IdentityName = $env:IDENTITY_NAME }
           if ($env:PUBLISHER) { $p.Publisher = $env:PUBLISHER }
           if ($env:PUBLISHER_DISPLAY_NAME) { $p.PublisherDisplayName = $env:PUBLISHER_DISPLAY_NAME }
-          if ($env:DISPLAY_NAME) { $p.DisplayName = $env:DISPLAY_NAME }
           if ($env:PFX_BASE64) {
             $pfx = Join-Path $env:RUNNER_TEMP "kelo.pfx"
             [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
@@ -153,15 +153,15 @@ jobs:
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
-            apps/desktop/build/compose/binaries/main/msi/*.msi
-            apps/desktop/build/compose/binaries/main/exe/*.exe
-            apps/desktop/build/msix/*.msix
+            desktop/build/compose/binaries/main/msi/*.msi
+            desktop/build/compose/binaries/main/exe/*.exe
+            desktop/build/msix/*.msix
 
       - uses: actions/upload-artifact@v4
         with:
           name: kelo-windows-${{ env.VERSION }}
           path: |
-            apps/desktop/build/compose/binaries/main/msi/*.msi
-            apps/desktop/build/compose/binaries/main/exe/*.exe
-            apps/desktop/build/msix/*.msix
+            desktop/build/compose/binaries/main/msi/*.msi
+            desktop/build/compose/binaries/main/exe/*.exe
+            desktop/build/msix/*.msix
           if-no-files-found: error

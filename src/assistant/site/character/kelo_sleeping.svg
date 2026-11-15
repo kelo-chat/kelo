@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%">
+  <style>
+    .sleep-breathe { animation: sleep-bob 3.2s ease-in-out infinite; transform-origin: 56px 96px; }
+    .zzz1 { animation: float-z 2.6s ease-out infinite 0s; }
+    .zzz2 { animation: float-z 2.6s ease-out infinite 0.9s; }
+    @keyframes sleep-bob { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.03, 0.97) translateY(1px); } }
+    @keyframes float-z { 0% { opacity: 0; transform: translate(0, 6px) scale(0.8); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(8px, -10px) scale(1.1); } }
+  </style>
+  <g class="sleep-breathe">
+    <g stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="#FFFFFF">
+      <path d="M56 32 C46 18, 54 12, 60 20 C64 25, 59 30, 56 32 Z" />
+      <path d="M26 68 C16 74, 16 84, 24 82" />
+      <path d="M86 68 C96 74, 96 84, 88 82" />
+      <path d="M56 32 C32 32, 22 52, 24 75 C25 90, 38 98, 56 98 C74 98, 87 90, 88 75 C90 52, 80 32, 56 32 Z" />
+      <path d="M44 98 L44 104 M39 104 L49 104 M68 98 L68 104 M63 104 L73 104" />
+    </g>
+    <g stroke="#1A1A1A" stroke-width="4" stroke-linecap="round">
+      <path d="M44 96 L44 104 M39 104 L49 104" />
+      <path d="M68 96 L68 104 M63 104 L73 104" />
+    </g>
+    <path d="M56 33 C44 19, 53 11, 61 19 C65 24, 60 31, 56 33 Z" fill="#66BB6A" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+    <path d="M56 32 C32 32, 22 52, 24 75 C25 90, 38 98, 56 98 C74 98, 87 90, 88 75 C90 52, 80 32, 56 32 Z" fill="#29B6F6" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+    <path d="M56 66 C40 66, 34 80, 37 94 C42 97, 49 98, 56 98 C63 98, 70 97, 75 94 C78 80, 72 66, 56 66 Z" fill="#B3E5FC" />
+    <path d="M56 32 C32 32, 22 52, 24 75 C25 90, 38 98, 56 98 C74 98, 87 90, 88 75 C90 52, 80 32, 56 32 Z" fill="none" stroke="#1A1A1A" stroke-width="4" />
+    <path d="M25 64 C15 72, 15 86, 25 83" fill="#039BE5" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M87 64 C97 72, 97 86, 87 83" fill="#039BE5" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M37 58 Q42 64 47 58" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" />
+    <path d="M65 58 Q70 64 75 58" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" />
+    <ellipse cx="56" cy="63" rx="5.5" ry="3.2" fill="#FFB300" stroke="#1A1A1A" stroke-width="3.5" />
+  </g>
+  <g class="zzz1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M82 32 L94 32 L82 44 L94 44" fill="none" stroke="#FFFFFF" stroke-width="9" />
+    <path d="M82 32 L94 32 L82 44 L94 44" fill="none" stroke="#5C6BC0" stroke-width="4" />
+  </g>
+  <g class="zzz2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M94 16 L104 16 L94 26 L104 26" fill="none" stroke="#FFFFFF" stroke-width="8" />
+    <path d="M94 16 L104 16 L94 26 L104 26" fill="none" stroke="#5C6BC0" stroke-width="3.5" />
+  </g>
+</svg>

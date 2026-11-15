@@ -1,0 +1,108 @@
+# Kelo app builds for a release, made in public so anyone can check that what is in the stores is what the source says:
+#
+#   android  the Play bundle (.aab) and the APKs, built by tools/build/android-reproducible.sh in the pinned Docker environment
+#            (android/reproducible/Dockerfile). Anyone can build the same tag the same way and get the same files; the signature
+#            is the only difference. Compare with tools/verify/android-verify.sh (docs/verify-builds.md).
+#   windows  the MSI, EXE and MSIX from desktop-windows.yml (called here, so there is one definition of the Windows build). They are
+#            not byte-for-byte reproducible; the attestation below is their proof.
+#
+# Every file gets a build provenance attestation (GitHub's Sigstore-backed record of which workflow, repository and commit made it):
+#   gh attestation verify kelo-0.1.404613-play-release-unsigned.aab -R kelo-chat/kelo
+# The files are attached to the run (Actions -> this run -> Artifacts). Nothing is published to a store or to kelo.chat from here:
+# the owner signs the Android files with the upload key (tools/build/android-reproducible.sh --sign, only the signature is added)
+# and uploads them.
+#
+# Not here: the iPhone app (Apple's FairPlay encryption makes a byte-for-byte check impossible; docs/verify-builds.md says what can
+# be checked instead), the macOS DMG (needs the owner's Developer ID certificate), the server images (release-images.yml).
+#
+# Runs on a version tag (the same tags as release-images.yml) or by hand. The attestation needs the public repository: in a private
+# one it is refused by GitHub, so by hand in a fork the builds still run and the attest steps are skipped.
+
+name: release-build
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-*"]
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: "Also build the Windows installers"
+        type: boolean
+        required: false
+        default: true
+      desktop_version:
+        description: "Windows package number, three numbers (1.0.8); empty = desktop/version.properties"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write            # the attestation is signed with this run's OIDC identity
+      attestations: write
+    env:
+      KELO_MIN_FREE_GB: "4"      # the hosted runner has less free disk than the Mac the script was written on
+    steps:
+      - uses: actions/checkout@v4
+
+      # the Gradle download cache only saves time: every file is checked against gradle/verification-metadata.xml
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/kelo-repro/gradle
+          key: kelo-repro-gradle-${{ hashFiles('android/kelo/gradle/verification-metadata.xml', 'android/kelo/gradle/libs.versions.toml') }}
+
+      - name: Build in the pinned environment
+        run: tools/build/android-reproducible.sh --targets play-aab,sideload-apk --out "$RUNNER_TEMP/android"
+
+      - name: What was built
+        run: |
+          cat "$RUNNER_TEMP/android/build-info.txt"
+          {
+            echo '### Android build'
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/android/SHA256SUMS"
+            echo '```'
+            echo
+            echo "Check one with \`gh attestation verify <file> -R kelo-chat/kelo\`, or build the same tag yourself (docs/verify-builds.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build provenance for the Android files
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/android/kelo-*.aab
+            ${{ runner.temp }}/android/kelo-*.apk
+            ${{ runner.temp }}/android/SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kelo-android
+          path: |
+            ${{ runner.temp }}/android/kelo-*.aab
+            ${{ runner.temp }}/android/kelo-*.apk
+            ${{ runner.temp }}/android/SHA256SUMS
+            ${{ runner.temp }}/android/build-info.txt
+          if-no-files-found: error
+
+  windows:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.windows }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/desktop-windows.yml
+    with:
+      version: ${{ inputs.desktop_version }}
+      attest: ${{ !github.event.repository.private }}

@@ -1,0 +1,64 @@
+{
+  "my_ios_vault_reason": {
+    "en": "Confirm it's you to open the Keychain.",
+    "ko": "보관함을 열려면 본인인지 확인해 주세요."
+  },
+  "my_ios_wallet_reason": {
+    "en": "Confirm it's you to open your payment cards.",
+    "ko": "결제 카드를 열려면 본인인지 확인해 주세요."
+  },
+  "my_ios_card_seal_reason": {
+    "en": "Confirm it's you to lock this card with this iPhone's key.",
+    "ko": "이 아이폰의 키로 카드를 잠그려면 본인인지 확인해 주세요."
+  },
+  "my_ios_card_open_reason": {
+    "en": "Confirm it's you to use this card for the payment you allowed.",
+    "ko": "허락한 결제에 이 카드를 쓰려면 본인인지 확인해 주세요."
+  },
+  "my_ios_wallet_lock_body": {
+    "en": "Confirm it's you with Face ID, Touch ID or your passcode to open them again.",
+    "ko": "Face ID, Touch ID 또는 암호로 본인인지 확인하면 다시 열려요."
+  },
+  "my_ios_wallet_no_lock_body": {
+    "en": "This iPhone has no passcode, so your payment cards can't be opened. Turn on a passcode in Settings and come back.",
+    "ko": "이 아이폰에 암호가 없어서 결제 카드를 열 수 없어요. 설정에서 암호를 켠 뒤 다시 와 주세요."
+  },
+  "my_ios_wallet_save_no_lock": {
+    "en": "Turn on a passcode (with Face ID or Touch ID if you like) to add a card.",
+    "ko": "카드를 추가하려면 암호를 켜 주세요. Face ID나 Touch ID도 함께 쓸 수 있어요."
+  },
+  "my_ios_open_settings": {
+    "en": "Open Settings",
+    "ko": "설정 열기"
+  },
+  "my_ios_notify_background_note": {
+    "en": "Notifications are off. Turn them on and Kelo can tell you even when it is closed.",
+    "ko": "알림이 꺼져 있어요. 켜면 Kelo를 닫아 두어도 알려 드려요."
+  },
+  "my_ios_docs_from_photos": {
+    "en": "Choose from Photos",
+    "ko": "사진에서 고르기"
+  },
+  "keyguard_no_lock_ios": {
+    "en": "Set a device passcode first.",
+    "ko": "기기 암호를 먼저 설정하세요.",
+    "ja": "先にデバイスのパスコードを設定してください。",
+    "zh-Hans": "请先设置设备密码。",
+    "zh-Hant": "請先設定裝置密碼。",
+    "es": "Primero configura un código en el dispositivo.",
+    "fr": "Définissez d’abord un code sur l’appareil.",
+    "de": "Lege zuerst einen Gerätecode fest.",
+    "pt-BR": "Primeiro defina um código no dispositivo.",
+    "it": "Imposta prima un codice sul dispositivo.",
+    "ru": "Сначала задайте код-пароль на устройстве.",
+    "id": "Atur kode sandi perangkat terlebih dahulu.",
+    "vi": "Hãy đặt mật mã thiết bị trước.",
+    "th": "ตั้งรหัสอุปกรณ์ก่อน",
+    "tr": "Önce bir aygıt parolası ayarlayın.",
+    "ar": "عيّن رمز دخول للجهاز أولاً.",
+    "hi": "पहले डिवाइस पासकोड सेट करें।",
+    "pl": "Najpierw ustaw kod urządzenia.",
+    "nl": "Stel eerst een toegangscode in op het apparaat.",
+    "uk": "Спершу встановіть код-пароль пристрою."
+  }
+}

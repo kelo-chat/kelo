@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in Kelo does not work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Kelo is a solo project worked on alongside a full-time job, so a reply may take a while.
+        **Security problems go to support@kelo.chat, not here** (see SECURITY.md).
+        Please do not paste access keys, tokens, passwords, pairing links, `.env` contents, or other people's personal
+        data. Blur them in screenshots.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - Server
+        - Android app
+        - iOS app
+        - Desktop app (Windows)
+        - Desktop app (macOS)
+        - Web app
+        - Installer (install.sh / install.ps1)
+        - Website
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Server version (My → About, or `kelo version`) and app version.
+      placeholder: "server 0.1.402380, Android 1.0.3"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Setup
+      description: Host OS and CPU, Docker version, how the phone connects (default address, Tailscale, own domain), model provider.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines only, with secrets removed.
+      render: text

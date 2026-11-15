@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "id": "example_market",
+  "kind": "connector",
+  "version": "1.0.0",
+  "name": "Example Market",
+  "description": "An online shop with no API: Kelo shops there in its own browser",
+  "author": "Example Author",
+  "permissions": {"hosts": ["www.market.example.com"]},
+  "connector": {
+    "regions": ["KR"],
+    "connect": {"type": "browser", "url": "https://www.market.example.com", "blurb": "Finds products and checks your orders.", "blocks_bots": false}
+  }
+}

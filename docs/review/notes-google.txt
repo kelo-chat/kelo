@@ -1,0 +1,37 @@
+ABOUT KELO
+Kelo is the app for a personal AI assistant that its owner runs on their own server (self-hosted). The app itself holds no
+assistant: it connects to the owner's server, and everything happens there. For this review we run a demo server just for
+{store} reviewers, with an AI model already set up, so you can use the app right away.
+
+HOW TO CONNECT (about 1 minute)
+1. Open Kelo. The first screen is "Get started".
+2. Tap "Connect with access key".
+3. Server address:  {address}
+   Access key:      {code}
+   (The code is not case-sensitive; the dashes are optional.)
+4. Tap "Connect". The chat opens.
+
+Another way: tap "Paste link" and enter this link exactly:
+   {link}
+
+The code works until {expires} and for up to {uses} devices. Every device that connects with it joins the same demo
+assistant, so reviewers on different devices see the same chat.
+
+WHAT TO TRY
+- Chat: ask anything, for example "What can you do?", "Plan a 3-day trip to Seoul" or "Summarize the news about electric cars".
+  Replies come from a real AI model, so they take a few seconds.
+- Connectors (the Connectors tab): the services Kelo can work with (calendars, mail, GitHub, Notion and more). Connecting one is
+  optional and uses your own account on that service; nothing is needed for the review.
+- Schedules: ask "Every morning at 8, tell me the weather in Seoul" or "Remind me in 5 minutes to stretch". The result arrives
+  in the chat and as a notification at that time.
+- My tab: the model in use, devices, and the app's settings.
+
+PURCHASES
+Kelo can prepare an order on a website, but it always shows an Allow / Deny card with the item and the total before anything that
+costs money, and it never pays without that approval. No payment card is saved on this demo server.
+
+REPORTING A REPLY
+Long-press any reply from Kelo and choose "Report", pick the reason and send it. Reports go to the Kelo developer.
+
+CONTACT
+If anything does not work, please write to us through the contact details in this listing and we will reply quickly.

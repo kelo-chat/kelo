@@ -1,0 +1,19 @@
+# The front door for a fixed address of your own (a DuckDNS name or your own domain) pointed at this computer.
+# Caddy gets and renews the https certificate by itself (Let's Encrypt). The router must forward TCP 443 (and 80) to this computer.
+# The address comes from DIRECT_HOST in .env; `docker compose --profile direct up -d` starts it.
+{
+	admin off
+}
+
+{$DIRECT_HOST} {
+	encode zstd gzip
+	reverse_proxy server:8080 {
+		flush_interval -1          # replies are streamed and followed live: pass bytes on at once
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+}

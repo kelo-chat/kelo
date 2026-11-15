@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "example_tasks",
+  "kind": "connector",
+  "version": "1.0.0",
+  "name": "Example Tasks",
+  "description": "Your to-do lists in Example Tasks, with sign-in on its own page",
+  "author": "Example Author",
+  "homepage": "https://tasks.example.com",
+  "permissions": {
+    "hosts": ["api.tasks.example.com", "auth.tasks.example.com"],
+    "scopes": ["tasks.read", "tasks.write", "offline_access"]
+  },
+  "connector": {
+    "connect": {
+      "type": "oauth",
+      "authorize_url": "https://auth.tasks.example.com/oauth/authorize",
+      "token_url": "https://auth.tasks.example.com/oauth/token",
+      "scopes": ["tasks.read", "tasks.write", "offline_access"],
+      "hosts": ["api.tasks.example.com"],
+      "base_url": "https://api.tasks.example.com/v2",
+      "client": "owner",
+      "docs": "https://tasks.example.com/developers",
+      "api": "GET /lists returns the lists; GET /lists/<id>/tasks the tasks; POST /lists/<id>/tasks {title, due} adds one.",
+      "help": ["Make an app at tasks.example.com/developers with your server's return address.", "Copy its client id into the package's settings, then sign in."],
+      "blurb": "Reads and adds your to-dos."
+    }
+  }
+}

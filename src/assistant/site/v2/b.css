@@ -1,0 +1,184 @@
+/* Kelo website v2, design B ("Night edition"): an editorial page that starts on warm evening paper and falls into night as the
+   reader moves down. Full-bleed photographs stay pinned while the next sheet of the page slides up over them; the features are
+   two large spreads and a numbered index. From the privacy section on, the ground is night and the ink turns light (site.js sets
+   html[data-tone]; without it the page stays on paper). Dark mode is night all the way down. Loaded after base.css. */
+
+:root {
+  /* paper */
+  --bg: #f1ece2; --ink: #1c1d1a; --muted: #5e5a51; --line: rgba(28, 29, 26, .13); --line-2: rgba(28, 29, 26, .24);
+  --card: #faf7f1; --raised: #e7e1d4; --accent: #1f6a55; --on-accent: #ffffff; --btn: #1c1d1a; --on-btn: #f6f2ea;
+  --shot-line: rgba(28, 29, 26, .12); --shadow: 0 1px 2px rgba(40, 32, 20, .06), 0 24px 48px -24px rgba(40, 32, 20, .35);
+  --moon: #f4d58d;
+  --tone-0: #f1ece2;   /* hero, first photograph */
+  --tone-1: #eee7da;   /* a request, step by step */
+  --tone-2: #f2ede4;   /* features */
+  --tone-3: #e9e8de;   /* connectors, people: sage paper */
+  --tone-4: #e2e1da;   /* reaching the server: dusk */
+  --tone-5: #1b201e;   /* the server rack, privacy: night falls */
+  --tone-6: #151918;   /* install, run it free */
+  --tone-7: #111413;   /* get the app, questions */
+  --tone-8: #0d0f0e;   /* closing: deep night */
+  --serif-k: .14em;
+}
+/* night ink: the dark scheme everywhere, and the light scheme once the page has fallen into night (tones 5 to 8) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0f0e; --tone-0: #0f1211; --tone-1: #101413; --tone-2: #0f1312; --tone-3: #111614; --tone-4: #121615;
+    --tone-5: #0f1312; --tone-6: #0d1110; --tone-7: #0c0f0e; --tone-8: #0a0c0b;
+  }
+  :root, html[data-tone] {
+    --ink: #eeebe3; --muted: #a9a59b; --line: rgba(238, 235, 227, .12); --line-2: rgba(238, 235, 227, .24); --card: #171c1a; --raised: #1f2522;
+    --accent: #8fd3b6; --on-accent: #0b1a14; --btn: #eeebe3; --on-btn: #0d0f0e; --shot-line: rgba(238, 235, 227, .14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 28px 56px -28px rgba(0, 0, 0, .9);
+  }
+}
+html[data-tone="5"], html[data-tone="6"], html[data-tone="7"], html[data-tone="8"] {
+  --ink: #eeebe3; --muted: #a9a59b; --line: rgba(238, 235, 227, .12); --line-2: rgba(238, 235, 227, .24); --card: #1d2321; --raised: #252b28;
+  --accent: #8fd3b6; --on-accent: #0b1a14; --btn: #eeebe3; --on-btn: #0d0f0e; --shot-line: rgba(238, 235, 227, .14);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 28px 56px -28px rgba(0, 0, 0, .9);
+}
+body { transition: background-color 900ms var(--ease), color 700ms var(--ease); }
+html[data-tone="5"] .ic-ink, html[data-tone="6"] .ic-ink, html[data-tone="7"] .ic-ink, html[data-tone="8"] .ic-ink { filter: invert(1); }
+
+/* editorial type: mono kickers, tight display headings */
+.kicker { font: 500 12.5px/1.4 var(--mono); letter-spacing: var(--serif-k); text-transform: uppercase; color: var(--accent); }
+:lang(ko) .kicker { letter-spacing: .06em; font-size: 13px; }
+h1, h2 { font-weight: 500; letter-spacing: -0.035em; }
+:lang(ko) :is(h1, h2) { font-weight: 600; letter-spacing: -0.02em; }
+.sec-head h2 { font-size: clamp(34px, 5.2vw, 66px); line-height: 1.02; }
+:lang(ko) .sec-head h2 { line-height: 1.18; }
+.sec-head--wide { max-width: 980px; }
+.big { font-size: clamp(19px, 1.8vw, 22px); line-height: 1.55; }
+.nav__status { font-family: var(--mono); font-size: 12px; letter-spacing: .04em; }
+
+/* ------------------------------------------------------------------------------------------------ hero */
+main > .hero { padding-top: clamp(40px, 8vw, 112px); padding-bottom: clamp(40px, 6vw, 72px); }
+.pill { display: inline-flex; align-items: center; gap: 10px; font: 500 12.5px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+        color: var(--muted); margin-bottom: 28px; max-width: 100%; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; animation: b-blink 2.8s ease-in-out infinite; }
+@keyframes b-blink { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+.hero__h1 { font-size: clamp(46px, 9.4vw, 136px); line-height: .96; letter-spacing: -0.045em; max-width: 16ch; }
+:lang(ko) .hero__h1 { font-size: clamp(40px, 7.6vw, 108px); line-height: 1.12; letter-spacing: -0.03em; max-width: 12ch; }
+.hero__row { display: grid; gap: 32px; margin-top: clamp(32px, 4vw, 56px); padding-top: 28px; border-top: 1px solid var(--line-2); }
+.hero__lead { font-size: clamp(18px, 1.7vw, 21px); color: var(--muted); max-width: 36em; }
+.hero__act { display: grid; gap: 28px; align-content: start; }
+.hero__facts { display: flex; flex-wrap: wrap; gap: 14px 36px; }
+.hero__facts dt { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+.hero__facts dd { font: 400 12.5px/1.5 var(--mono); color: var(--muted); letter-spacing: .02em; }
+@media (min-width: 960px) { .hero__row { grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: 64px; } }
+@media (max-width: 639px) { .hero .btn-row .btn { flex: 1 1 auto; } .hero__facts { gap: 12px 24px; } .hero__facts dt { font-size: 19px; } }
+
+/* ------------------------------------------------------------------------------------------------ interludes: a photograph pinned
+   to the screen while the next sheet slides up over it */
+.interlude { position: relative; height: 128vh; height: 128svh; }
+.interlude__media { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; display: grid; place-items: center; }
+.interlude__img { position: absolute; inset: 0; }
+.interlude__media::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+                           background: linear-gradient(to bottom, color-mix(in srgb, var(--ground) 55%, transparent), transparent 22%, transparent 62%, rgba(0, 0, 0, .45)); }
+.phone--float { position: relative; z-index: 1; width: min(300px, 62vw); border-radius: 30px; box-shadow: 0 40px 80px -30px rgba(0, 0, 0, .7);
+                transform: rotate(-2deg); }
+.interlude--rack { height: 110vh; height: 110svh; }
+/* the night interlude is a drawing, not a photograph: Kelo asleep on the home server under the moon */
+.interlude__media--art { background: linear-gradient(to bottom, color-mix(in srgb, var(--ground) 40%, #0e1626), #141c2b 45%, #1b2230 80%, var(--tone-5)); }
+.interlude__media--art .art { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - 26vh); height: calc(100% - 26svh); }   /* above the sheet that slides in */
+@media (max-width: 639px) { .interlude__media--art .art { height: calc(100% - 14vh); height: calc(100% - 14svh); } }
+.interlude__media--art::after { background: none; }
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .interlude__img { animation: b-zoom linear both; animation-timeline: view(); animation-range: cover 0% cover 100%; }
+    @keyframes b-zoom { from { transform: scale(1.12); } to { transform: scale(1); } }
+    .phone--float { animation: b-float linear both; animation-timeline: view(); animation-range: cover 10% cover 90%; }
+    @keyframes b-float { from { transform: translateY(12vh) rotate(-4deg); } to { transform: translateY(-6vh) rotate(1deg); } }
+  }
+}
+.sheet { position: relative; z-index: 2; margin-top: -28vh; margin-top: -28svh; background-color: var(--ground); border-radius: clamp(22px, 3vw, 40px) clamp(22px, 3vw, 40px) 0 0;
+         padding-bottom: 1px; transition: background-color 900ms var(--ease); box-shadow: 0 -30px 60px -40px rgba(0, 0, 0, .5); }
+.interlude + .sheet > section:first-child { padding-top: clamp(56px, 7vw, 96px); }
+@media (max-width: 639px) {
+  .interlude { height: 100vh; height: 100svh; }
+  .interlude--rack { height: 80vh; height: 80svh; }
+  .interlude--rack .interlude__media { height: 80vh; height: 80svh; }
+  .sheet { margin-top: -16vh; margin-top: -16svh; }
+}
+
+/* ------------------------------------------------------------------------------------------------ features: two spreads, then an index */
+.spread { display: grid; gap: 32px; align-items: center; padding: clamp(28px, 4vw, 56px) 0; border-top: 1px solid var(--line-2); }
+.spread + .spread { margin-top: clamp(24px, 4vw, 48px); }
+.spread__n { display: block; font: 400 clamp(56px, 7vw, 96px)/.9 var(--font); letter-spacing: -0.05em; color: var(--accent); margin-bottom: 20px; }
+.spread__copy h3 { font-size: clamp(26px, 3vw, 40px); font-weight: 500; letter-spacing: -0.03em; margin-bottom: 14px; }
+.spread__copy > p { color: var(--muted); max-width: 46ch; }
+.spread__media { position: relative; min-width: 0; }
+.spread__media--photo { border-radius: var(--r-xl); overflow: hidden; aspect-ratio: 4 / 3.4; display: grid; place-items: end center; padding: 32px 24px 0; }
+.spread__media--photo > .photo { position: absolute; inset: 0; }
+.spread__media--photo::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(transparent 30%, rgba(0, 0, 0, .35)); }
+.spread__media .shotcard { position: relative; z-index: 2; width: min(340px, 82%); border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0;
+                           max-height: 86%; }
+.spread__media .shotcard--wide { width: min(440px, 92%); }
+@media (min-width: 960px) {
+  .spread { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 72px; }
+  .spread--flip .spread__copy { order: 2; }
+}
+.ix { margin-top: clamp(40px, 6vw, 80px); border-bottom: 1px solid var(--line-2); }
+.ix__row { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px 20px; padding: 28px 0; border-top: 1px solid var(--line-2); align-items: start;
+           transition: background-color 300ms; }
+.ix__n { font: 500 13px/1 var(--mono); color: var(--muted); padding-top: 6px; align-self: start; }
+.ix__copy .kicker { margin-bottom: 8px; }
+.ix__copy h3 { font-size: clamp(22px, 2.3vw, 30px); font-weight: 500; letter-spacing: -0.025em; margin-bottom: 8px; }
+.ix__copy > p { color: var(--muted); max-width: 52ch; }
+.ix__thumb { grid-column: 2; margin: 14px 0 0; width: min(220px, 70%); }
+.ix__thumb--photo { aspect-ratio: 4 / 3; border-radius: var(--r-md); overflow: hidden; }
+.phone--crop { height: 200px; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; border-radius: 18px 18px 0 0; }
+.phone--crop img { height: auto; }
+.ix__thumb--num { font-size: clamp(56px, 6vw, 84px); font-weight: 500; letter-spacing: -0.05em; line-height: 1; color: var(--accent); }
+@media (min-width: 900px) {
+  .ix__row { grid-template-columns: 80px minmax(0, 1fr) 240px; gap: 40px; align-items: center; }
+  .ix__thumb { grid-column: auto; margin: 0; width: 100%; justify-self: end; }
+  .phone--crop { width: 180px; justify-self: end; }
+  .ix__thumb--num { text-align: right; }
+  .ix__row:hover { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+}
+
+/* ------------------------------------------------------------------------------------------------ connectors, people, reach */
+.connect .logos li { background: var(--card); }
+.people .dg { max-width: 760px; margin: 0 auto clamp(32px, 5vw, 56px); }
+.people__list { gap: 0 48px; }
+@media (min-width: 900px) { .people__list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.reach .table-wrap { border-radius: var(--r-lg); border-color: var(--line-2); background: var(--card); }
+.compare thead th { font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+:lang(ko) .compare thead th { letter-spacing: .02em; font-size: 14px; }
+
+/* ------------------------------------------------------------------------------------------------ privacy (the first night section) */
+.pv__h { font-size: clamp(38px, 6.4vw, 92px); line-height: 1; letter-spacing: -0.045em; max-width: 14ch; margin-bottom: clamp(32px, 5vw, 64px); }
+:lang(ko) .pv__h { line-height: 1.14; letter-spacing: -0.03em; }
+.pv { display: grid; gap: 40px; }
+.pv__big { font-size: clamp(21px, 2.2vw, 28px); line-height: 1.45; letter-spacing: -0.01em; }
+.pv__card { border-radius: var(--r-xl); background: var(--card); border: 1px solid var(--line); padding: clamp(22px, 3vw, 36px); display: grid; gap: 14px; }
+.pv__card h3 { font-size: 20px; }
+.pv__card > p:not(.links) { color: var(--muted); }
+.pv__row:first-child { border-top: 0; }
+@media (min-width: 960px) { .pv { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 72px; align-items: start; } }
+
+/* ------------------------------------------------------------------------------------------------ install, free, app, faq */
+.steps-row li::before { border-color: var(--accent); color: var(--accent); }
+.dl-list .dl-card { background: var(--card); }
+.dl-body { min-width: 0; }
+.getapp .photo-frame { margin-top: 8px; }
+.install__side .art-frame, .free .art-frame { border-color: var(--line-2); }
+.qa summary { font-size: 19px; font-weight: 500; }
+
+/* ------------------------------------------------------------------------------------------------ closing band: the moon is up */
+.closing { position: relative; overflow: hidden; }
+.closing::before { content: ""; position: absolute; right: max(-120px, calc(50vw - 760px)); top: 8%; width: 360px; height: 360px; border-radius: 50%; pointer-events: none;
+                   background: radial-gradient(circle, color-mix(in srgb, var(--moon) 14%, transparent), transparent 66%); }
+.closing h2 { font-weight: 500; letter-spacing: -0.04em; max-width: 13ch; }
+.closing__in { position: relative; }
+
+/* ------------------------------------------------------------------------------------------------ text pages: no data-tone there, so they
+   stay on paper in light mode */
+.doc-hero h1 { font-weight: 500; letter-spacing: -0.04em; }
+.kicker .num { text-transform: none; letter-spacing: 0; }
+
+/* drawings in the night sections sit on a night panel too (the light scheme's paper panels would glare there) */
+html:is([data-tone="5"], [data-tone="6"], [data-tone="7"], [data-tone="8"]) .art-frame { background: radial-gradient(120% 90% at 50% 100%, #2a2f3a, #1b1f27 70%); }
+html:is([data-tone="5"], [data-tone="6"], [data-tone="7"], [data-tone="8"]) .art-frame--cloud { background: radial-gradient(120% 100% at 50% 100%, #1f2c38, #161d25 70%); }
+.art-frame { transition: background 700ms var(--ease); }

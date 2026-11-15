@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Play bundle leaves Health Connect out for now (BuildConfig.HEALTH = false): no health permissions, no query for the Health
+     Connect app and no rationale screens, so the first release needs no health-data declaration. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.health.READ_STEPS" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" tools:node="remove" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" tools:node="remove" />
+    <!-- Play updates the app itself: no app update check, so never the permission to hand an APK to the installer -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" tools:node="remove" />
+    </queries>
+
+    <application>
+        <activity android:name=".device.HealthRationaleActivity" tools:node="remove" />
+        <activity-alias android:name="ViewPermissionUsageActivity" tools:node="remove" />
+        <!-- added by the Health Connect library -->
+        <service android:name="androidx.health.platform.client.impl.sdkservice.HealthDataSdkService" tools:node="remove" />
+    </application>
+</manifest>

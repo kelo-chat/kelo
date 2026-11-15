@@ -1,0 +1,371 @@
+{
+  "version": 1,
+  "revision": 2,
+  "spec": "docs/security/e2e-and-phone-key.md section 1",
+  "suite": {
+    "mode": 0,
+    "kem_id": 32,
+    "kdf_id": 1,
+    "aead_id": 3,
+    "name": "DHKEM(X25519, HKDF-SHA256) / HKDF-SHA256 / ChaCha20-Poly1305"
+  },
+  "labels": {
+    "info_prefix": "kelo-e2e v1 ",
+    "aad_request": "kelo-e2e v1 req",
+    "response": "kelo-e2e v1 res",
+    "ws_c2s": "kelo-e2e v1 ws c2s",
+    "ws_s2c": "kelo-e2e v1 ws s2c",
+    "aad_ws": "kelo-e2e v1 ws",
+    "envelope_version": 1,
+    "envelope_version_stream": 2,
+    "req_body": "kelo-e2e v1 req body",
+    "flag_more": 0,
+    "flag_last": 1,
+    "ts_window": 300,
+    "replay_window": 600,
+    "max_frame_plaintext": 65536
+  },
+  "server": {
+    "ikm": "9b4a243dee31e5b1f567380607d01ad14a0a20afcdf281579f449ea27c0d4392",
+    "sk": "0f7d9b96e4fb128bd937be0e35e475832773ec5332da7deae82fce601c3c1c6c",
+    "pk": "385279d827acecf1415db735d3b885759b4490f62dddb0eb3b514cdccb30d359",
+    "pk_b64url": "OFJ52Ces7PFBXbc107iFdZtEkPYt3bDrO1FM3Msw01k",
+    "kid": "63682d9925e9da86",
+    "info": "6b656c6f2d6532652076312036333638326439393235653964613836",
+    "info_text": "kelo-e2e v1 63682d9925e9da86",
+    "fingerprint": "MNUC-3GJF-5HNI-MPYR-YGRR-VPKK",
+    "e2e_info": {
+      "v": 1,
+      "kid": "63682d9925e9da86",
+      "pk": "OFJ52Ces7PFBXbc107iFdZtEkPYt3bDrO1FM3Msw01k",
+      "fingerprint": "MNUC-3GJF-5HNI-MPYR-YGRR-VPKK"
+    },
+    "pair_code": "Kq7ZpX2mVb9TfLw4",
+    "pair_link": "https://example.kelo.chat/#pair=Kq7ZpX2mVb9TfLw4&k=OFJ52Ces7PFBXbc107iFdZtEkPYt3bDrO1FM3Msw01k"
+  },
+  "requests": [
+    {
+      "name": "talk",
+      "ikm_e": "e39e57b6cf40ffc875ba90d7a6ccbc86dc8fde87825b3f4a739640853eb63e34",
+      "sk_e": "6cf2bf8b401e18c6439072b58751fa68bdd1a99553ec95be4b6764c5bfa6ea1d",
+      "enc": "6054ad51627f4676156dab0f2691dcc5f39c5426913654192fd9a843a5e92d02",
+      "shared_secret": "535828b5282d20a3cbf3981c3bd3ab4c46410048448e976c4987dc08c1473488",
+      "key": "18c851164a313ad11919bf5fc52b35d47de6a70a95315531a26d3f644e4ac826",
+      "base_nonce": "91f7fd45999fb6af332f94a8",
+      "exporter_secret": "e73c86aeee8704a9be96dd66176959fe3413f28e4f7714c1db4ed25272890126",
+      "head_json": "{\"m\":\"POST\",\"p\":\"/api/talk?x=1\",\"h\":{\"authorization\":\"Bearer test-token-0001\",\"content-type\":\"application/json\"},\"ts\":1731200000,\"n\":\"AAECAwQFBgcICQoLDA0ODw\"}",
+      "body_text": "{\"text\":\"안녕, Kelo\"}",
+      "inner": "0000009e7b226d223a22504f5354222c2270223a222f6170692f74616c6b3f783d31222c2268223a7b22617574686f72697a6174696f6e223a2242656172657220746573742d746f6b656e2d30303031222c22636f6e74656e742d74797065223a226170706c69636174696f6e2f6a736f6e227d2c227473223a313733313230303030302c226e223a2241414543417751464267634943516f4c4441304f4477227d7b2274657874223a22ec9588eb85952c204b656c6f227d",
+      "aad": "6b656c6f2d65326520763120726571",
+      "ct": "3c8cd8057f7369689dfb96ca48503224b2b7bc57d15fac6577a7fce4d112a2098145683e069614d95e969e5a402e737661eb0b5fafd1dddc4d55cc8968b8e475273088cf778161a25883e641d406258bf0d97b81255d6103e85ed800e0f2d482317af2526b76fc26b1b068e3cb9ffec786ada9fbe72336a7e74abafd778b7a3e389e97da209963ff4d8ed5d86923849547e1ead21a65e89521ad39b9a6107ccc86e7fe158134e5345075b8e7f2c94223271abe69bea9754c0b21de10b8a4491dbec3af209f4e3e4de0",
+      "envelope": "0163682d9925e9da866054ad51627f4676156dab0f2691dcc5f39c5426913654192fd9a843a5e92d023c8cd8057f7369689dfb96ca48503224b2b7bc57d15fac6577a7fce4d112a2098145683e069614d95e969e5a402e737661eb0b5fafd1dddc4d55cc8968b8e475273088cf778161a25883e641d406258bf0d97b81255d6103e85ed800e0f2d482317af2526b76fc26b1b068e3cb9ffec786ada9fbe72336a7e74abafd778b7a3e389e97da209963ff4d8ed5d86923849547e1ead21a65e89521ad39b9a6107ccc86e7fe158134e5345075b8e7f2c94223271abe69bea9754c0b21de10b8a4491dbec3af209f4e3e4de0",
+      "server_now": 1731200010,
+      "response_key": "fbc1ddb811271d89179bbfa397bdb243488d91aeacfc281a1eecaefa0d107cb9",
+      "ws_c2s_key": "f14e6ad4bb50b50bdddec9816ba59065090e5d68a1fae478e188018e6bf94ec0",
+      "ws_s2c_key": "f0717631123bdae8df4ff1291d205db857263cdbf30de9bd12404cbcf13686b3"
+    },
+    {
+      "name": "get_events",
+      "ikm_e": "e73859552dcd279074b1878aea129f1fee240cf1f135802183e0cad77f05d20b",
+      "sk_e": "0cefa3a7223d2819da272f6b49ecc41f0602f1f51f4a51716d6c1f9f0b8e0e69",
+      "enc": "4391f727fbc6d049beeaa0bc6d2650801c579ae69e749d86e37cbc38b74e8759",
+      "shared_secret": "9d2a7d350793bd5c33faf9b7ade7e74688ca053722a44b7747bc3d2064a4bcbf",
+      "key": "d02abf7559fee13f9b97bc791f571036cf954ff8a8bd56bfab8c927b87afae57",
+      "base_nonce": "150200ac95f32324d94c842e",
+      "exporter_secret": "fe0cd2aaf3ba4cc666ea849bb6377b961f0e0444e4f5fb69bcf77bb3fe35535e",
+      "head_json": "{\"m\":\"GET\",\"p\":\"/api/turns/42/events?after=0\",\"h\":{\"authorization\":\"Bearer test-token-0001\",\"accept\":\"text/event-stream\",\"x-kelo-device\":\"phone-1\"},\"ts\":1731200000,\"n\":\"EBESExQVFhcYGRobHB0eHw\"}",
+      "body_text": "",
+      "inner": "000000c17b226d223a22474554222c2270223a222f6170692f7475726e732f34322f6576656e74733f61667465723d30222c2268223a7b22617574686f72697a6174696f6e223a2242656172657220746573742d746f6b656e2d30303031222c22616363657074223a22746578742f6576656e742d73747265616d222c22782d6b656c6f2d646576696365223a2270686f6e652d31227d2c227473223a313733313230303030302c226e223a2245424553457851564668635947526f62484230654877227d",
+      "aad": "6b656c6f2d65326520763120726571",
+      "ct": "b9bdfccdca19d6a0fdcdca09f2e7c9169cff200df23927514142ffcf4cd970b415cf47b86f8a1020b123858bc297ae96b3c28e72c119df62336cf1495c45e41c5f4f039ab649687bb278e39658db8994ad54557c9a228b9c51481ea69af4ae442005788a39ac2386f3a785de12576487e51efcd9279a950b280bc8aa0f554c701382755117d125b4a88c0db9348ee1e2114fb0cf48bcf6cd2afa6d7b4eec5812650036b8cbb2f5bda2d017ef3f64f1f61a918dac10557cb5954fa3438555cc34bc1a97c87298a228429798a140da884141042f8704",
+      "envelope": "0163682d9925e9da864391f727fbc6d049beeaa0bc6d2650801c579ae69e749d86e37cbc38b74e8759b9bdfccdca19d6a0fdcdca09f2e7c9169cff200df23927514142ffcf4cd970b415cf47b86f8a1020b123858bc297ae96b3c28e72c119df62336cf1495c45e41c5f4f039ab649687bb278e39658db8994ad54557c9a228b9c51481ea69af4ae442005788a39ac2386f3a785de12576487e51efcd9279a950b280bc8aa0f554c701382755117d125b4a88c0db9348ee1e2114fb0cf48bcf6cd2afa6d7b4eec5812650036b8cbb2f5bda2d017ef3f64f1f61a918dac10557cb5954fa3438555cc34bc1a97c87298a228429798a140da884141042f8704",
+      "server_now": 1731200010,
+      "response_key": "ee0fd6fd1272dabf4d89a2b35f56898c41729213974e8c22f88b4ae107d9224a",
+      "ws_c2s_key": "ca39218744e43039edba387bb05d2635ca9f7463a5ba28f2294796e482f2ab1c",
+      "ws_s2c_key": "22ec48ea1292a8b9c0b1bb348f56707ea92bf30f70ad06010331f5f0d9e2dba4"
+    }
+  ],
+  "stream_requests": [
+    {
+      "name": "upload_stream",
+      "version": 2,
+      "ikm_e": "bb8f2742486d4a2658375c081529f57b65afc8c511abbc2c79bf93b7f151e7da",
+      "sk_e": "199b68418ff6dd4b9188f48553eb9c9aaa8668190b35d13af4dbad70bd6ff928",
+      "enc": "7f422740fb77d46fc5f6db6d76892a802cf349ed8b0817c699a7afe9da852a5d",
+      "head_json": "{\"m\":\"PUT\",\"p\":\"/api/uploads/photo.jpg\",\"h\":{\"authorization\":\"Bearer test-token-0001\",\"content-type\":\"image/jpeg\"},\"ts\":1731200000,\"n\":\"QEFCQ0RFRkdISUpLTE1OTw\"}",
+      "inner": "000000a07b226d223a22505554222c2270223a222f6170692f75706c6f6164732f70686f746f2e6a7067222c2268223a7b22617574686f72697a6174696f6e223a2242656172657220746573742d746f6b656e2d30303031222c22636f6e74656e742d74797065223a22696d6167652f6a706567227d2c227473223a313733313230303030302c226e223a225145464351305246526b64495355704c5445314f5477227d",
+      "ct": "964563dc55571bd4a21bb0a3c64e5196a956263c58fef0c2de57a04ff0ea584f943af62fad9dc0bc41eca0a32f47efef75fef9db491eb355303926a36f2ae1c22639a17977c6ef57fdaa3aae355b01aaaa202aa0f408f6cef006f6180fbf12aba671bf7104b4a6fdde83a911615980b0f00d4389d92bc1359503d0215d0c3d988f20e368ce6a3fa9bbfb8721cdb35db304fb719d1fb7060554e3404280dc9d812732de69d3e5976677bc5f69f6af78eccb96f8f6",
+      "head": "0263682d9925e9da867f422740fb77d46fc5f6db6d76892a802cf349ed8b0817c699a7afe9da852a5d000000b4964563dc55571bd4a21bb0a3c64e5196a956263c58fef0c2de57a04ff0ea584f943af62fad9dc0bc41eca0a32f47efef75fef9db491eb355303926a36f2ae1c22639a17977c6ef57fdaa3aae355b01aaaa202aa0f408f6cef006f6180fbf12aba671bf7104b4a6fdde83a911615980b0f00d4389d92bc1359503d0215d0c3d988f20e368ce6a3fa9bbfb8721cdb35db304fb719d1fb7060554e3404280dc9d812732de69d3e5976677bc5f69f6af78eccb96f8f6",
+      "server_now": 1731200010,
+      "body_key": "8c8a3e3542dee45cdad94d04eff35cf0eaa9c46934602f081943e80c68dfc455",
+      "body_aad_prefix": "6b656c6f2d65326520763120726571",
+      "body_text": "사진 한 장: 0123456789abcdef0123456789",
+      "body_frames": [
+        {
+          "counter": 0,
+          "flag": 0,
+          "frame": "00000020045cf90da672314f8b5cb2a9ff61b4b1732f10237e6ac10b5cc4a19b84d10128",
+          "pt": "ec82aceca78420ed959c20ec9ea53a20"
+        },
+        {
+          "counter": 1,
+          "flag": 0,
+          "frame": "000000202ac0981a0ab63031b2a8de7abc0417541d129a82d6ac896265481b2627a9f2c2",
+          "pt": "30313233343536373839616263646566"
+        },
+        {
+          "counter": 2,
+          "flag": 1,
+          "frame": "0000001a40694a94d04b65dcbec5cbe3a6e4a28d5d28fff8f3116576bae0",
+          "pt": "30313233343536373839"
+        }
+      ],
+      "envelope": "0263682d9925e9da867f422740fb77d46fc5f6db6d76892a802cf349ed8b0817c699a7afe9da852a5d000000b4964563dc55571bd4a21bb0a3c64e5196a956263c58fef0c2de57a04ff0ea584f943af62fad9dc0bc41eca0a32f47efef75fef9db491eb355303926a36f2ae1c22639a17977c6ef57fdaa3aae355b01aaaa202aa0f408f6cef006f6180fbf12aba671bf7104b4a6fdde83a911615980b0f00d4389d92bc1359503d0215d0c3d988f20e368ce6a3fa9bbfb8721cdb35db304fb719d1fb7060554e3404280dc9d812732de69d3e5976677bc5f69f6af78eccb96f8f600000020045cf90da672314f8b5cb2a9ff61b4b1732f10237e6ac10b5cc4a19b84d10128000000202ac0981a0ab63031b2a8de7abc0417541d129a82d6ac896265481b2627a9f2c20000001a40694a94d04b65dcbec5cbe3a6e4a28d5d28fff8f3116576bae0",
+      "response_key": "d4502849960e450b8e59af812f9197aa4b6f8a39aafc0e94948f6b7d15386161",
+      "note": "body frames cut at 16 bytes here to show several; real clients use up to 64 KiB"
+    }
+  ],
+  "responses": [
+    {
+      "name": "head_only",
+      "request": "talk",
+      "key": "fbc1ddb811271d89179bbfa397bdb243488d91aeacfc281a1eecaefa0d107cb9",
+      "frames": [
+        {
+          "counter": 0,
+          "flag": 1,
+          "pt_text": "{\"s\":204,\"h\":{}}",
+          "pt": "7b2273223a3230342c2268223a7b7d7d",
+          "nonce": "000000000000000000000000",
+          "aad": "6b656c6f2d6532652076312072657301",
+          "frame": "0000002067f8f63b51c6f8ca7054e807d30a188f7fe56b8ef3e9817b39ad995a6d8410e4"
+        }
+      ],
+      "stream": "0000002067f8f63b51c6f8ca7054e807d30a188f7fe56b8ef3e9817b39ad995a6d8410e4",
+      "note": "frame 0 is also the last frame (no body)"
+    },
+    {
+      "name": "simple",
+      "request": "talk",
+      "key": "fbc1ddb811271d89179bbfa397bdb243488d91aeacfc281a1eecaefa0d107cb9",
+      "frames": [
+        {
+          "counter": 0,
+          "flag": 0,
+          "pt_text": "{\"s\":200,\"h\":{\"content-type\":\"application/json\",\"etag\":\"\\\"v1\\\"\"}}",
+          "pt": "7b2273223a3230302c2268223a7b22636f6e74656e742d74797065223a226170706c69636174696f6e2f6a736f6e222c2265746167223a225c2276315c22227d7d",
+          "nonce": "000000000000000000000000",
+          "aad": "6b656c6f2d6532652076312072657300",
+          "frame": "0000005167f8f63b51c6f8ce7054e807d30a4791aa8eb04567cdb7f0a58ba6510626fb0aa58a9ed8210b8133a5d2597f7b24cd9ed31f87194fa84c60d69db18fd7ca1dfe47ea769e6d2f2e96c6361b4106bbf03aec"
+        },
+        {
+          "counter": 1,
+          "flag": 1,
+          "pt_text": "{\"ok\":true,\"reply\":\"네\"}",
+          "pt": "7b226f6b223a747275652c227265706c79223a22eb84a4227d",
+          "nonce": "000000000000000000000001",
+          "aad": "6b656c6f2d6532652076312072657301",
+          "frame": "00000029c0405b885e0e0b2fd60f3d8d7edbe7ad4e5c02eb7010cf13f0d3b4de750e59181e56ea0add580526a2"
+        }
+      ],
+      "stream": "0000005167f8f63b51c6f8ce7054e807d30a4791aa8eb04567cdb7f0a58ba6510626fb0aa58a9ed8210b8133a5d2597f7b24cd9ed31f87194fa84c60d69db18fd7ca1dfe47ea769e6d2f2e96c6361b4106bbf03aec00000029c0405b885e0e0b2fd60f3d8d7edbe7ad4e5c02eb7010cf13f0d3b4de750e59181e56ea0add580526a2"
+    },
+    {
+      "name": "stream3",
+      "request": "get_events",
+      "key": "ee0fd6fd1272dabf4d89a2b35f56898c41729213974e8c22f88b4ae107d9224a",
+      "frames": [
+        {
+          "counter": 0,
+          "flag": 0,
+          "pt_text": "{\"s\":200,\"h\":{\"content-type\":\"text/event-stream\"}}",
+          "pt": "7b2273223a3230302c2268223a7b22636f6e74656e742d74797065223a22746578742f6576656e742d73747265616d227d7d",
+          "nonce": "000000000000000000000000",
+          "aad": "6b656c6f2d6532652076312072657300",
+          "frame": "0000004294cb6cfcbca7ef2b04e1dd31ab465398e3cf75f8a5478e9239e8c8c174ca8a56c3e531f6c00299a5163a8ddebc9de8ed5c045d296cd1d2cde6c9fa9c08bbd9f6efe8"
+        },
+        {
+          "counter": 1,
+          "flag": 0,
+          "pt_text": "event: text\ndata: {\"t\":\"Hel\"}\n\n",
+          "pt": "6576656e743a20746578740a646174613a207b2274223a2248656c227d0a0a",
+          "nonce": "000000000000000000000001",
+          "aad": "6b656c6f2d6532652076312072657300",
+          "frame": "0000002f7a9d7a2fa948ac07f62cce07cad055f9449b7f4cbbb838721d5a7fb6f7c0b829d9b00b8e1cef104545de201735a520"
+        },
+        {
+          "counter": 2,
+          "flag": 1,
+          "pt_text": "event: done\ndata: {}\n\n",
+          "pt": "6576656e743a20646f6e650a646174613a207b7d0a0a",
+          "nonce": "000000000000000000000002",
+          "aad": "6b656c6f2d6532652076312072657301",
+          "frame": "00000026d90424efe13e68e25f884fd0abc93832424fc5cd86a390e56cb7149555de4b50e6708ea369bc"
+        }
+      ],
+      "stream": "0000004294cb6cfcbca7ef2b04e1dd31ab465398e3cf75f8a5478e9239e8c8c174ca8a56c3e531f6c00299a5163a8ddebc9de8ed5c045d296cd1d2cde6c9fa9c08bbd9f6efe80000002f7a9d7a2fa948ac07f62cce07cad055f9449b7f4cbbb838721d5a7fb6f7c0b829d9b00b8e1cef104545de201735a52000000026d90424efe13e68e25f884fd0abc93832424fc5cd86a390e56cb7149555de4b50e6708ea369bc",
+      "note": "server-sent events: one frame per event"
+    }
+  ],
+  "websocket": {
+    "request": "get_events",
+    "aad": "6b656c6f2d653265207631207773",
+    "types": {
+      "text": 1,
+      "binary": 2
+    },
+    "close_codes": {
+      "bad_envelope": 4400,
+      "unauthorized": 4401,
+      "key_changed": 4409
+    },
+    "c2s_first": {
+      "counter": 0,
+      "nonce": "000000000000000000000000",
+      "type": 1,
+      "payload_text": "{\"type\":\"click\",\"x\":10,\"y\":20}",
+      "pt": "017b2274797065223a22636c69636b222c2278223a31302c2279223a32307d",
+      "message": "418c4d1c4dea3efe85a4b7f0167c27a1a36b0fe11dde5c6a257073413cc68fc04f37a17065fbc3d039da1dbdf609dd"
+    },
+    "s2c_first": {
+      "counter": 0,
+      "nonce": "000000000000000000000000",
+      "type": 1,
+      "payload_text": "{\"type\":\"frame\",\"seq\":0,\"w\":2,\"h\":2}",
+      "pt": "017b2274797065223a226672616d65222c22736571223a302c2277223a322c2268223a327d",
+      "message": "0ee37f5642bc4c22f3a0f801975f90a44c6132f88638fe35132d0fbb91b155b77559d537c1376942ce4e3760bac5b0ddced1072256"
+    },
+    "s2c_second": {
+      "counter": 1,
+      "nonce": "000000000000000000000001",
+      "type": 2,
+      "payload": "ffd8ffe000104a464946",
+      "pt": "02ffd8ffe000104a464946",
+      "message": "03df735db45bf279214157f4573275b1476e2fb470e806d2ceb9cc"
+    }
+  },
+  "negative": [
+    {
+      "name": "tampered_frame",
+      "kind": "response",
+      "key": "ee0fd6fd1272dabf4d89a2b35f56898c41729213974e8c22f88b4ae107d9224a",
+      "stream": "0000004294cb6cfcbca7ef2b04e1dd31ab465398e3cf75f8a5478e9239e8c8c174ca8a56c3e531f6c00299a5163a8ddebc9de8ed5c045d296cd1d2cde6c9fa9c08bbd9f6efe80000002f7a9d7a2fa948ac07f62cce07cad055f9449b7f4cbbb838721d5a7fb6f7c0b829d9b00b8e1cef104545de201735a52100000026d90424efe13e68e25f884fd0abc93832424fc5cd86a390e56cb7149555de4b50e6708ea369bc",
+      "expect": "bad_frame",
+      "note": "last byte of frame 1's tag flipped: frame 0 opens, frame 1 must fail"
+    },
+    {
+      "name": "truncated_stream",
+      "kind": "response",
+      "key": "ee0fd6fd1272dabf4d89a2b35f56898c41729213974e8c22f88b4ae107d9224a",
+      "stream": "0000004294cb6cfcbca7ef2b04e1dd31ab465398e3cf75f8a5478e9239e8c8c174ca8a56c3e531f6c00299a5163a8ddebc9de8ed5c045d296cd1d2cde6c9fa9c08bbd9f6efe80000002f7a9d7a2fa948ac07f62cce07cad055f9449b7f4cbbb838721d5a7fb6f7c0b829d9b00b8e1cef104545de201735a520",
+      "expect": "truncated",
+      "note": "the stream of 3 without its last frame: every frame opens, close() must fail"
+    },
+    {
+      "name": "partial_frame",
+      "kind": "response",
+      "key": "ee0fd6fd1272dabf4d89a2b35f56898c41729213974e8c22f88b4ae107d9224a",
+      "stream": "0000004294cb6cfcbca7ef2b04e1dd31ab465398e3cf75f8a5478e9239e8c8c174ca8a56c3e531f6c00299a5163a8ddebc9de8ed5c045d296cd1d2cde6c9fa9c08bbd9f6efe80000002f7a9d7a2fa948ac07f62cce07cad055f9449b7f4cbbb838721d5a7fb6f7c0b829d9b00b8e1cef104545de201735a52000000026d90424efe13e68e25f884fd0abc93832424fc5cd86a390e56cb7149555de4b50e6",
+      "expect": "truncated",
+      "note": "the stream ends inside the last frame"
+    },
+    {
+      "name": "counter_gap",
+      "kind": "response",
+      "key": "ee0fd6fd1272dabf4d89a2b35f56898c41729213974e8c22f88b4ae107d9224a",
+      "stream": "0000004294cb6cfcbca7ef2b04e1dd31ab465398e3cf75f8a5478e9239e8c8c174ca8a56c3e531f6c00299a5163a8ddebc9de8ed5c045d296cd1d2cde6c9fa9c08bbd9f6efe800000026d90424efe13e68e25f884fd0abc93832424fc5cd86a390e56cb7149555de4b50e6708ea369bc",
+      "expect": "bad_frame",
+      "note": "frame 1 missing: frame 2 does not open with counter 1"
+    },
+    {
+      "name": "data_after_last",
+      "kind": "response",
+      "key": "fbc1ddb811271d89179bbfa397bdb243488d91aeacfc281a1eecaefa0d107cb9",
+      "stream": "0000005167f8f63b51c6f8ce7054e807d30a4791aa8eb04567cdb7f0a58ba6510626fb0aa58a9ed8210b8133a5d2597f7b24cd9ed31f87194fa84c60d69db18fd7ca1dfe47ea769e6d2f2e96c6361b4106bbf03aec00000029c0405b885e0e0b2fd60f3d8d7edbe7ad4e5c02eb7010cf13f0d3b4de750e59181e56ea0add580526a20000002f7a9d7a2fa948ac07f62cce07cad055f9449b7f4cbbb838721d5a7fb6f7c0b829d9b00b8e1cef104545de201735a520",
+      "expect": "bad_frame",
+      "note": "bytes after the last frame"
+    },
+    {
+      "name": "wrong_kid",
+      "kind": "request",
+      "envelope": "01000000000000000085159df5af0b0d78844331ce6202303660f5caae8cba895e8ce13516475ea47e2f70e34f5cd3c8e3be5c9bf25583f8daed17b3d7a6784b6be5d40536006afa8f0c057670e185c3bbbfa06773680a927f2826507350fe048596f201b36ff5f67b28905496cd49fd7253cbe0d8912d1524cdb34dbf7bd7b0f4ae1c21f210fe11e05a15c413b6a9ac2416ed59fba42d6ba47b1bedc73aae432959547a3a231f91d5b87790db1eac971920",
+      "server_now": 1731200010,
+      "expect": "unknown_kid",
+      "http_status": 409,
+      "http_body": {
+        "code": "e2e_key_changed"
+      },
+      "note": "kid bytes are zero: the server answers plaintext 409 before trying to open"
+    },
+    {
+      "name": "replayed_nonce",
+      "kind": "request",
+      "envelope": "0163682d9925e9da866054ad51627f4676156dab0f2691dcc5f39c5426913654192fd9a843a5e92d023c8cd8057f7369689dfb96ca48503224b2b7bc57d15fac6577a7fce4d112a2098145683e069614d95e969e5a402e737661eb0b5fafd1dddc4d55cc8968b8e475273088cf778161a25883e641d406258bf0d97b81255d6103e85ed800e0f2d482317af2526b76fc26b1b068e3cb9ffec786ada9fbe72336a7e74abafd778b7a3e389e97da209963ff4d8ed5d86923849547e1ead21a65e89521ad39b9a6107ccc86e7fe158134e5345075b8e7f2c94223271abe69bea9754c0b21de10b8a4491dbec3af209f4e3e4de0",
+      "server_now": 1731200010,
+      "repeat": 2,
+      "expect": "replayed",
+      "note": "the talk envelope sent twice: the first opens, the second is refused"
+    },
+    {
+      "name": "old_timestamp",
+      "kind": "request",
+      "envelope": "0163682d9925e9da869b235c96b276319f9e32125c51244145804a435f3f2eba717805189a70ea693d794ba73db997ac6d0bdfbc8126d986f6da1cca3600b33c6721800a5e65eb4f753b17ef88f6661c2a1e3f305c7cf9dbd47316618396ec281c65bc6ca18423c57180644367bcbf78aa3ec44738e7c33204cc097f4772faced1729444aa7f6df6c6fc1b892ce7d81c0e5ffda9f4581cebbc80eab55747e46d1991e6c6038aa8df4f988e1955609c0b9b43",
+      "server_now": 1731200010,
+      "ts": 1731199709,
+      "expect": "stale_timestamp",
+      "note": "ts 301 s before server_now (window is ±300 s)"
+    },
+    {
+      "name": "tampered_envelope",
+      "kind": "request",
+      "envelope": "0163682d9925e9da866054ad51627f4676156dab0f2691dcc5f39c5426913654192fd9a843a5e92d023c8cd8057f7369689dfb96ca48503224b2b7bc57d15fac6577a7fce4d112a2098145683e069614d95e969e5a402e737661eb0b5fafd1dddc4d55cc8968b8e475273088cf778161a25883e641d406258bf0d97b81255d6103e85ed800e0f2d482317af2526b76fc26b1b068e3cb9ffec786ada9fbe72336a7e74abafd778b7a3e389e97da209963ff4d8ed5d86923849547e1ead21a65e89521ad39b9a6107ccc86e7fe158134e5345075b8e7f2c94223271abe69bea9754c0b21de10b8a4491dbec3af209f4e3e4de1",
+      "server_now": 1731200010,
+      "expect": "bad_envelope",
+      "http_status": 400,
+      "note": "last byte of the talk envelope flipped"
+    },
+    {
+      "name": "bad_version",
+      "kind": "request",
+      "envelope": "0263682d9925e9da866054ad51627f4676156dab0f2691dcc5f39c5426913654192fd9a843a5e92d023c8cd8057f7369689dfb96ca48503224b2b7bc57d15fac6577a7fce4d112a2098145683e069614d95e969e5a402e737661eb0b5fafd1dddc4d55cc8968b8e475273088cf778161a25883e641d406258bf0d97b81255d6103e85ed800e0f2d482317af2526b76fc26b1b068e3cb9ffec786ada9fbe72336a7e74abafd778b7a3e389e97da209963ff4d8ed5d86923849547e1ead21a65e89521ad39b9a6107ccc86e7fe158134e5345075b8e7f2c94223271abe69bea9754c0b21de10b8a4491dbec3af209f4e3e4de0",
+      "server_now": 1731200010,
+      "expect": "bad_envelope",
+      "http_status": 400,
+      "note": "first byte 0x02"
+    },
+    {
+      "name": "ws_tampered",
+      "kind": "ws_c2s",
+      "key": "ca39218744e43039edba387bb05d2635ca9f7463a5ba28f2294796e482f2ab1c",
+      "message": "418c4d1c4dea3efe85a4b7f0167c27a1a36b0fe11dde5c6a257073413cc68fc04f37a17065fbc3d039da1dbdf609dc",
+      "expect": "bad_frame",
+      "note": "the first c2s message with its last byte flipped"
+    },
+    {
+      "name": "ws_unknown_type",
+      "kind": "ws_c2s",
+      "key": "ca39218744e43039edba387bb05d2635ca9f7463a5ba28f2294796e482f2ab1c",
+      "message": "439f060ba60c608bcf69ffee1583119a5e769f",
+      "expect": "bad_frame",
+      "note": "opens, but the type byte is 0x03"
+    },
+    {
+      "name": "stream_body_truncated",
+      "kind": "request",
+      "server_now": 1731200010,
+      "envelope": "0263682d9925e9da867f422740fb77d46fc5f6db6d76892a802cf349ed8b0817c699a7afe9da852a5d000000b4964563dc55571bd4a21bb0a3c64e5196a956263c58fef0c2de57a04ff0ea584f943af62fad9dc0bc41eca0a32f47efef75fef9db491eb355303926a36f2ae1c22639a17977c6ef57fdaa3aae355b01aaaa202aa0f408f6cef006f6180fbf12aba671bf7104b4a6fdde83a911615980b0f00d4389d92bc1359503d0215d0c3d988f20e368ce6a3fa9bbfb8721cdb35db304fb719d1fb7060554e3404280dc9d812732de69d3e5976677bc5f69f6af78eccb96f8f600000020045cf90da672314f8b5cb2a9ff61b4b1732f10237e6ac10b5cc4a19b84d10128000000202ac0981a0ab63031b2a8de7abc0417541d129a82d6ac896265481b2627a9f2c2",
+      "expect": "bad_envelope",
+      "http_status": 400,
+      "note": "the upload without its last body frame"
+    },
+    {
+      "name": "stream_body_tampered",
+      "kind": "request",
+      "server_now": 1731200010,
+      "envelope": "0263682d9925e9da867f422740fb77d46fc5f6db6d76892a802cf349ed8b0817c699a7afe9da852a5d000000b4964563dc55571bd4a21bb0a3c64e5196a956263c58fef0c2de57a04ff0ea584f943af62fad9dc0bc41eca0a32f47efef75fef9db491eb355303926a36f2ae1c22639a17977c6ef57fdaa3aae355b01aaaa202aa0f408f6cef006f6180fbf12aba671bf7104b4a6fdde83a911615980b0f00d4389d92bc1359503d0215d0c3d988f20e368ce6a3fa9bbfb8721cdb35db304fb719d1fb7060554e3404280dc9d812732de69d3e5976677bc5f69f6af78eccb96f8f600000020045cf90da672314f8b5cb2a9ff61b4b1732f10237e6ac10b5cc4a19b84d10129000000202ac0981a0ab63031b2a8de7abc0417541d129a82d6ac896265481b2627a9f2c20000001a40694a94d04b65dcbec5cbe3a6e4a28d5d28fff8f3116576bae0",
+      "expect": "bad_envelope",
+      "http_status": 400,
+      "note": "the upload with body frame 0's last byte flipped"
+    }
+  ]
+}

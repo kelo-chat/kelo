@@ -1,0 +1,72 @@
+{
+  "format": 1,
+  "id": "habit-tracker",
+  "kind": "skill",
+  "version": "1.0.0",
+  "name": "Habit tracker",
+  "description": "Log habits you want to keep and see your streaks in a tab of their own",
+  "author": "Example Author",
+  "license": "MIT",
+  "strings": {"ko": {"name": "습관 기록", "description": "지키고 싶은 습관을 기록하고 전용 탭에서 꾸준함을 확인합니다"}},
+  "permissions": {
+    "ui": ["tab", "home_card"],
+    "actions": ["store", "agent"],
+    "store": true
+  },
+  "store": {
+    "collections": {
+      "checkins": {
+        "fields": {
+          "habit": {"type": "text", "max": 60, "required": true},
+          "note": {"type": "text", "max": 200},
+          "day": {"type": "date", "required": true}
+        },
+        "max_records": 1000
+      }
+    }
+  },
+  "ui": {
+    "schema": 1,
+    "surfaces": [
+      {"id": "habits", "place": "tab", "title": {"en": "Habits", "ko": "습관"}, "icon": "check_circle", "screen": "main"},
+      {"id": "today", "place": "home_card", "title": {"en": "Habits today", "ko": "오늘의 습관"}, "icon": "check", "screen": "card"}
+    ],
+    "data": {
+      "checkins": {"source": "store", "collection": "checkins", "limit": 60, "order": "newest"}
+    },
+    "actions": {
+      "check_in": {"type": "store_add", "collection": "checkins", "label": {"en": "Check in", "ko": "기록"},
+                   "values": {"habit": "{{form.habit}}", "note": "{{form.note}}", "day": "{{today}}"},
+                   "done": {"en": "Logged. Keep it up!", "ko": "기록했어요. 계속 이어가요!"}},
+      "remove": {"type": "store_delete", "collection": "checkins", "label": {"en": "Remove", "ko": "삭제"}},
+      "weekly": {"type": "agent", "label": {"en": "Weekly review", "ko": "주간 돌아보기"},
+                 "prompt": {"en": "Look at my habit check-ins of the last 7 days (package_entries, package habit-tracker, collection checkins) and tell me in a few lines how I did, which habit slipped, and one small idea for next week.",
+                            "ko": "지난 7일 동안의 습관 기록(package_entries, 패키지 habit-tracker, 컬렉션 checkins)을 보고, 잘한 점과 놓친 습관, 다음 주를 위한 작은 제안 하나를 몇 줄로 알려줘."}}
+    },
+    "screens": {
+      "main": {
+        "title": {"en": "Habits", "ko": "습관"},
+        "components": [
+          {"type": "header", "text": {"en": "Keep the streak going", "ko": "꾸준히 이어가요"}, "subtitle": {"en": "{{count.checkins}} check-ins so far", "ko": "지금까지 {{count.checkins}}번 기록"}},
+          {"type": "form", "fields": [
+              {"id": "habit", "type": "select", "label": {"en": "Habit", "ko": "습관"}, "required": true, "options": [
+                {"value": "Walk", "label": {"en": "Walk 30 minutes", "ko": "30분 걷기"}},
+                {"value": "Read", "label": {"en": "Read 20 pages", "ko": "20쪽 읽기"}},
+                {"value": "Water", "label": {"en": "Drink 2 liters of water", "ko": "물 2리터 마시기"}}]},
+              {"id": "note", "type": "text", "label": {"en": "Note", "ko": "메모"}, "max_length": 200}],
+           "submit": {"label": {"en": "Check in", "ko": "기록"}, "action": "check_in"}},
+          {"type": "list", "data": "checkins", "max": 30,
+           "item": {"title": "{{item.habit}}", "subtitle": "{{item.note}}", "trailing": "{{item.day}}", "icon": "check", "action": "remove"},
+           "empty": {"text": {"en": "No check-ins yet. Log your first one above.", "ko": "아직 기록이 없어요. 위에서 첫 기록을 남겨 보세요."}, "icon": "sparkle"}},
+          {"type": "button", "label": {"en": "Ask Kelo for a weekly review", "ko": "Kelo에게 주간 돌아보기 요청"}, "action": "weekly", "style": "secondary"}
+        ]
+      },
+      "card": {
+        "components": [
+          {"type": "stat", "label": {"en": "Check-ins", "ko": "기록"}, "value": "{{count.checkins}}", "icon": "trophy",
+           "caption": {"en": "Last: {{data.checkins.0.habit}} on {{data.checkins.0.day}}", "ko": "최근: {{data.checkins.0.day}} {{data.checkins.0.habit}}"}}
+        ]
+      }
+    }
+  }
+}

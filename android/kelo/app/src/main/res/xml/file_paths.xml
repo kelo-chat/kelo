@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the FileProvider may hand out: photos the camera app takes for an attachment, and (sideload builds) the checked update
+     APK handed to Android's installer. -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+    <cache-path name="updates" path="updates/" />
+</paths>

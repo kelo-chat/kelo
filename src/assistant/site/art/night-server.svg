@@ -1,0 +1,38 @@
+<svg class="art art--night" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <!-- stars -->
+  <g fill="#F4D58D">
+    <circle class="art-star" cx="120" cy="120" r="3"/><circle cx="260" cy="210" r="2"/><circle class="art-star art-star--2" cx="380" cy="90" r="2.5"/>
+    <circle cx="470" cy="260" r="1.8"/><circle class="art-star" cx="640" cy="70" r="2.2"/><circle cx="760" cy="180" r="2"/>
+    <circle class="art-star art-star--2" cx="1040" cy="140" r="3"/><circle cx="1120" cy="300" r="2"/><circle cx="940" cy="260" r="1.8"/>
+    <circle cx="200" cy="330" r="1.6"/><circle class="art-star" cx="560" cy="170" r="1.6"/><circle cx="1000" cy="60" r="1.8"/>
+  </g>
+  <!-- the moon -->
+  <path d="M872 112a62 62 0 1 0 64 82 50 50 0 1 1-64-82z" fill="#F4D58D"/>
+  <!-- a window frame, a desk -->
+  <rect x="330" y="150" width="540" height="420" rx="26" fill="none" stroke="#F4D58D" stroke-opacity=".16" stroke-width="4"/>
+  <path d="M600 150v420M330 360h540" stroke="#F4D58D" stroke-opacity=".1" stroke-width="4"/>
+  <rect x="140" y="600" width="920" height="26" rx="13" fill="#2A3242" stroke="#0B0E14" stroke-width="4"/>
+  <ellipse cx="600" cy="598" rx="250" ry="20" fill="#29B6F6" opacity=".14"/>
+  <!-- the home server, humming -->
+  <g stroke="#0B0E14" stroke-width="5" stroke-linejoin="round">
+    <rect x="492" y="438" width="216" height="162" rx="24" fill="#E8EEF4"/>
+    <rect x="512" y="460" width="176" height="42" rx="12" fill="#81D4FA" stroke-width="4"/>
+    <rect x="512" y="514" width="176" height="42" rx="12" fill="#B3E5FC" stroke-width="4"/>
+  </g>
+  <circle class="art-led" cx="534" cy="481" r="7" fill="#66BB6A"/>
+  <circle class="art-led art-led--2" cx="534" cy="535" r="7" fill="#66BB6A"/>
+  <circle cx="558" cy="481" r="7" fill="#FFB300"/>
+  <g stroke="#0B0E14" stroke-width="4" stroke-linecap="round" opacity=".5"><path d="M590 481h80M590 535h80M530 578h140"/></g>
+  <!-- the phone, face down for the night, still connected -->
+  <g stroke="#0B0E14" stroke-width="5" stroke-linejoin="round">
+    <rect x="262" y="566" width="150" height="30" rx="12" fill="#E8EEF4"/>
+  </g>
+  <path d="M414 572 C 444 520, 470 600, 486 540" fill="none" stroke="#29B6F6" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 12"/>
+  <!-- a lamp, off -->
+  <g stroke="#0B0E14" stroke-width="5" stroke-linejoin="round">
+    <path d="M840 600v-120" fill="none" stroke="#3A4456"/>
+    <path d="M800 480h80l-18-56h-44z" fill="#FFB300"/>
+    <rect x="808" y="590" width="64" height="12" rx="6" fill="#3A4456"/>
+  </g>
+  {{mascot:sleeping:524:290:152}}
+</svg>

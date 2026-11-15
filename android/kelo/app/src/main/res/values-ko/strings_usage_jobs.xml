@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_usage_jobs.xml (generated from values/strings_usage_jobs.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="model_background_title">백그라운드 작업 모델</string>
+    <string name="model_background_help">Kelo가 스스로 하는 일에만 써요: 밤마다 돌아보기, 기억 정리, 일지, 먼저 알려줄 소식 고르기, 긴 대화 요약. 브라우저를 쓰거나 결제하거나 무언가를 보내는 일은 기본 모델이 해요.</string>
+    <string name="model_background_same">기본 모델과 같음</string>
+    <string name="model_background_fell_back">%1$s에 백그라운드 모델이 실패해서 기본 모델이 대신 했어요.</string>
+    <string name="usage_jobs_title">토큰을 쓴 곳</string>
+    <string name="usage_jobs_month">이번 달</string>
+    <string name="usage_jobs_empty">아직 센 사용량이 없어요.</string>
+    <string name="usage_jobs_tokens">%1$s 토큰</string>
+    <string name="usage_jobs_cache">%1$d%%는 캐시에서 다시 씀</string>
+    <string name="usage_jobs_note">AI 요청마다 서버에서 센 값이에요. 캐시는 AI 서비스가 다시 쓴 입력 부분으로, 보통 더 저렴해요.</string>
+    <string name="usage_kind_chat">내 대화</string>
+    <string name="usage_kind_schedule">예약</string>
+    <string name="usage_kind_checklist">반복 확인</string>
+    <string name="usage_kind_task">맡긴 작업</string>
+    <string name="usage_kind_worker">위임한 작업</string>
+    <string name="usage_kind_reflection">밤마다 돌아보기</string>
+    <string name="usage_kind_memory">기억 정리</string>
+    <string name="usage_kind_journal">일지</string>
+    <string name="usage_kind_proactive">먼저 알려주기</string>
+    <string name="usage_kind_compaction">대화 요약</string>
+    <string name="usage_kind_followup">후속 메시지</string>
+    <string name="usage_kind_probe">연결 확인</string>
+    <string name="usage_kind_other">기타</string>
+</resources>

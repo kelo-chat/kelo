@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="100%" height="100%">
+  <style>
+    .ear-lean { animation: lean 1.2s ease-in-out infinite alternate; transform-origin: 54px 95px; }
+    .wave1 { animation: wave-pulse 1.2s infinite 0s; }
+    .wave2 { animation: wave-pulse 1.2s infinite 0.35s; }
+    @keyframes lean { 0% { transform: rotate(0deg); } 100% { transform: rotate(4deg); } }
+    @keyframes wave-pulse { 0%, 100% { opacity: 0.25; transform: translateX(0); } 50% { opacity: 1; transform: translateX(2px); } }
+  </style>
+  <g class="ear-lean">
+    <g stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" fill="#FFFFFF">
+      <path d="M54 28 C44 14, 52 8, 58 16 C62 21, 57 26, 54 28 Z" />
+      <path d="M24 66 C14 72, 14 82, 22 80" />
+      <path d="M82 56 C96 42, 98 62, 82 68" />
+      <path d="M54 28 C30 28, 20 48, 22 72 C23 88, 36 96, 54 96 C72 96, 85 88, 86 72 C88 48, 78 28, 54 28 Z" />
+      <path d="M42 96 L42 104 M37 104 L47 104 M66 96 L66 104 M61 104 L71 104" />
+    </g>
+    <g stroke="#1A1A1A" stroke-width="4" stroke-linecap="round">
+      <path d="M42 94 L42 104 M37 104 L47 104" />
+      <path d="M66 94 L66 104 M61 104 L71 104" />
+    </g>
+    <path d="M54 29 C42 15, 51 7, 59 15 C63 20, 58 27, 54 29 Z" fill="#66BB6A" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+    <path d="M54 28 C30 28, 20 48, 22 72 C23 88, 36 96, 54 96 C72 96, 85 88, 86 72 C88 48, 78 28, 54 28 Z" fill="#29B6F6" stroke="#1A1A1A" stroke-width="4" stroke-linejoin="round" />
+    <path d="M54 64 C38 64, 32 78, 35 92 C40 95, 47 96, 54 96 C61 96, 68 95, 73 92 C76 78, 70 64, 54 64 Z" fill="#B3E5FC" />
+    <path d="M54 28 C30 28, 20 48, 22 72 C23 88, 36 96, 54 96 C72 96, 85 88, 86 72 C88 48, 78 28, 54 28 Z" fill="none" stroke="#1A1A1A" stroke-width="4" />
+    <path d="M23 60 C13 68, 13 82, 23 79" fill="#039BE5" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M82 58 C96 42, 98 62, 82 68" fill="#039BE5" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="40" cy="56" r="4.2" fill="#1A1A1A" />
+    <circle cx="68" cy="56" r="4.2" fill="#1A1A1A" />
+    <circle cx="41.2" cy="54.5" r="1.4" fill="#FFFFFF" />
+    <circle cx="69.2" cy="54.5" r="1.4" fill="#FFFFFF" />
+    <ellipse cx="54" cy="60" rx="5.8" ry="3.4" fill="#FFB300" stroke="#1A1A1A" stroke-width="3.5" />
+  </g>
+  <g class="wave1" fill="none" stroke-linecap="round">
+    <path d="M98 42 Q105 52 98 62" stroke="#FFFFFF" stroke-width="9" />
+    <path d="M98 42 Q105 52 98 62" stroke="#00ACC1" stroke-width="4" />
+  </g>
+  <g class="wave2" fill="none" stroke-linecap="round">
+    <path d="M107 35 Q116 52 107 69" stroke="#FFFFFF" stroke-width="9" />
+    <path d="M107 35 Q116 52 107 69" stroke="#00ACC1" stroke-width="4" />
+  </g>
+</svg>

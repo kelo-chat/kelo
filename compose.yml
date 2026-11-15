@@ -1,0 +1,285 @@
+# docker compose up -d --build        (run `assistant setup` first to create .env)
+# Subscription CLIs run in their own sidecars; setup stores your choice in COMPOSE_PROFILES (claude, agy).
+#   sign in from the phone app (My → Model → Sign in), or in a terminal: docker compose exec -it claude-cli claude (then /login) | docker compose exec -it agy-cli agy
+#   `assistant enable oauth` turns both profiles on and starts them
+#   update:  assistant update [name]   (backs up, rebuilds, restarts, checks health; rolls back by itself on failure; logins are kept)
+#   KELO_*_IMAGE below are unset normally; `assistant rollback` (or a failed update) sets them in a copy's env file to hold it at the
+#   previous images (assistant:rollback-<name>-<time>) until the next `assistant update`.
+# More people on this machine: `assistant instance create <name>` runs one more copy of this stack per person
+# (own port, own token, own data, own API keys), see `assistant instance --help`.
+# From your phone anywhere: `assistant connect kelo|tailscale|funnel|domain|cloudflare` per copy (docs/connect.md).
+# Updates from the app (optional, main copy only): `assistant updater setup` turns on the `updater` profile below; the owner then presses
+#   Update in the app (My → Server update), or lets it update at night. It pulls the signed release images, backs up, restarts and
+#   checks each copy, and rolls back by itself on failure (the same steps as `assistant update`).
+x-kelo-compose-level: 1   # raised when a release needs a newer compose.yml (the updater then asks to run the installer again)
+
+x-build: &build
+  context: .
+  args:
+    BROWSER: ${BROWSER:-chromium}     # chromium | chrome
+
+x-hardening: &hardening
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging:                              # container logs (access log included): newest 3 x 10 MB, older lines are deleted
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  server:
+    build: *build
+    image: ${KELO_IMAGE:-assistant:local}
+    <<: *hardening
+    restart: unless-stopped
+    mem_limit: ${SERVER_MEMORY:-0}       # RAM and compute this container may use; 0 = no limit (`assistant limits` sets them)
+    memswap_limit: ${SERVER_MEMORY:-0}   # no swap, so the RAM limit means RAM
+    cpus: ${SERVER_CPUS:-0}
+    user: "1001:1001"
+    group_add: ["1050"]                # the work room's socket folder only (workroom-io)
+    environment:
+      ROLE: server
+      WORKROOM_SOCKET_DIR: /run/workroom   # the work room's agent.sock; the server's install proxy listens there too
+      BROWSER_CDP_HOST: ${BROWSER_CDP_HOST-browser}   # an extra user's instance without a browser sets it empty
+      ASSISTANT_CLI_CLAUDE_URL: http://claude-cli:9300   # used only when the `claude` profile is up
+      ASSISTANT_CLI_AGY_URL: http://agy-cli:9300         # used only when the `agy` profile is up
+      BROWSER_DOWNLOADS_DIR: /browser-downloads          # what pages downloaded (read-only here; copied to the library on request)
+      BROWSER_LANG: ${BROWSER_LANG:-ko-KR}               # the browser's language, also used for the tabs' date/number formats
+      ASSISTANT_UPDATER_URL: http://updater:9400         # updates from the app; used only with UPDATER_TOKEN (the main copy)
+    env_file: ${ENV_FILE:-.env}        # API keys + token live ONLY in this container (instances use their own file)
+    read_only: true
+    tmpfs: ["/tmp"]
+    volumes: ["server-state:/state", "workroom-io:/run/workroom", "browser-downloads:/browser-downloads:ro"]
+    ports: ["${SERVER_BIND:-127.0.0.1}:${SERVER_PORT:-8080}:8080"]   # this machine only by default; SERVER_BIND=0.0.0.0 lets a proxy elsewhere in the house reach it
+    depends_on: [browser]
+    networks: [agent, cli-net, browser-net]   # browser-net: the browser's DevTools (the server reaches it directly, not via the proxy)
+    # (the main copy's server is also attached to updater-net, by the updater itself while it runs: see the updater below)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  browser:
+    build: *build
+    image: ${KELO_IMAGE:-assistant:local}
+    <<: *hardening
+    restart: unless-stopped
+    mem_limit: ${BROWSER_MEMORY:-0}
+    memswap_limit: ${BROWSER_MEMORY:-0}
+    cpus: ${BROWSER_CPUS:-0}
+    user: "1000:1000"
+    environment:
+      ROLE: browser                    # no env_file: this container never sees keys or the token
+      BROWSER_CACHE_MB: ${BROWSER_CACHE_MB:-0}   # caps the browser's page cache on disk; 0 = browser default
+      BROWSER_PROXY: http://egress:3128          # its only way out (see `egress` below)
+      BROWSER_LANG: ${BROWSER_LANG:-ko-KR}       # Accept-Language / navigator.languages (the user's language)
+      TZ: ${BROWSER_TZ:-Asia/Seoul}              # the browser's own clock zone; each tab also gets the profile's time zone over DevTools
+    shm_size: 1gb
+    volumes: ["browser-data:/data", "browser-downloads:/downloads"]   # profile + downloads only; nothing from the host
+    depends_on: [egress]
+    # browser-net is `internal`: no route to the internet, the LAN, the host or cloud metadata. Pages get out only through the egress
+    # proxy, which refuses private addresses. DevTools :9223 is reachable on this network only; never published. (No `ports:` here:
+    # an internal network cannot publish them; the viewer is published by `egress`.)
+    networks: [browser-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:9223/json/version"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---- the browser's way out (assistant/egress.py): an HTTP proxy that forwards to public addresses only (no LAN, host, CGNAT,
+  # link-local or metadata; names are resolved here and the checked address is the one connected to). Also publishes the viewer.
+  egress:
+    build: *build
+    image: ${KELO_IMAGE:-assistant:local}
+    <<: *hardening
+    restart: unless-stopped
+    user: "1004:1004"
+    environment:
+      ROLE: egress                     # no env_file: no keys, no token
+      EGRESS_RELAY: 6080=browser:6080  # the human viewer (noVNC) of the browser, published below
+    read_only: true
+    tmpfs: ["/tmp"]
+    mem_limit: ${EGRESS_MEMORY:-256m}
+    memswap_limit: ${EGRESS_MEMORY:-256m}
+    ports: ["127.0.0.1:${VIEWER_PORT:-6080}:6080"]     # human viewer (noVNC), this machine only
+    networks: [browser-net, egress-out]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 3128), 3).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---- the work room: where the agent runs code and makes documents, charts and media (Dockerfile.workroom, workroom.py).
+  # No network at all, no env_file (no keys, no ASSISTANT_TOKEN, no database), read-only root, unprivileged. The server talks to it
+  # through a Unix socket in `workroom-io`, the only volume the two share; installs reach the package registries through the
+  # server's proxy socket there, only while an install the user approved runs. Capped by default (`assistant limits --workroom-*`).
+  workroom:
+    build:
+      context: .
+      dockerfile: Dockerfile.workroom
+      args:
+        WORKROOM_APT_PACKAGES: ${WORKROOM_APT_PACKAGES:-}   # extra Debian packages baked into the image (rebuild to apply)
+    image: ${KELO_WORKROOM_IMAGE:-assistant-workroom:local}
+    <<: *hardening
+    restart: unless-stopped
+    mem_limit: ${WORKROOM_MEMORY:-2g}
+    memswap_limit: ${WORKROOM_MEMORY:-2g}
+    cpus: ${WORKROOM_CPUS:-0}
+    pids_limit: 512
+    user: "1003:1050"
+    environment:
+      WORKROOM_DISK: ${WORKROOM_DISK:-}   # bytes one job may write (and installed packages may take); empty = 2 GB, 0 = no cap
+    network_mode: none
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    volumes: ["workroom-io:/run/workroom", "workroom-scratch:/work", "workroom-tools:/tools"]
+
+  # ---- subscription CLI sidecars (opt-in via profiles). Not on the `agent` network the browser shares:
+  # a compromised web page must not be able to reach a logged-in CLI. No env_file: no keys, no ASSISTANT_TOKEN.
+  claude-cli:
+    profiles: [claude]
+    build: {context: ., dockerfile: Dockerfile.cli, target: claude}
+    image: ${KELO_CLI_CLAUDE_IMAGE:-assistant-cli-claude:local}
+    <<: *hardening
+    restart: unless-stopped
+    mem_limit: ${CLI_MEMORY:-0}
+    memswap_limit: ${CLI_MEMORY:-0}
+    cpus: ${CLI_CPUS:-0}
+    user: "1002:1002"
+    environment:
+      CLI_RUNNER_TOKEN: ${CLI_RUNNER_TOKEN:-}
+    read_only: true
+    tmpfs: ["/tmp"]
+    volumes: ["claude-home:/home/cli"]  # the claude login lives here
+    networks: [cli-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9300/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  agy-cli:
+    profiles: [agy]
+    build: {context: ., dockerfile: Dockerfile.cli, target: agy}
+    image: ${KELO_CLI_AGY_IMAGE:-assistant-cli-agy:local}
+    <<: *hardening
+    restart: unless-stopped
+    mem_limit: ${CLI_MEMORY:-0}
+    memswap_limit: ${CLI_MEMORY:-0}
+    cpus: ${CLI_CPUS:-0}
+    user: "1002:1002"
+    environment:
+      CLI_RUNNER_TOKEN: ${CLI_RUNNER_TOKEN:-}
+    read_only: true
+    tmpfs: ["/tmp"]
+    volumes: ["agy-home:/home/cli"]     # the agy login lives here
+    networks: [cli-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9300/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---- the updater (updater_service.py, Dockerfile.updater): opt-in profile `updater`, the main copy only (`assistant updater setup`
+  # writes the settings below into .env). The ONLY container with the Docker socket: it can pull images and restart this computer's
+  # copies, and nothing else of ours can. No AI, no model keys, no web or mail content, no published port. It answers only on
+  # updater-net (internal; the main copy's server is its only neighbour: the updater attaches it there itself, so no other copy gets
+  # this network, nor uses up one more of Docker's address pools) and only to UPDATER_TOKEN; its commands are fixed (status,
+  # check, update to the latest release, rollback). It reaches the internet through updater-out for the release list and the
+  # signature checks; Docker itself pulls the images. The Kelo folder is mounted at the same path as on the host, so the compose
+  # files and env files it uses are exactly the ones the terminal uses.
+  updater:
+    profiles: [updater]
+    build: {context: ., dockerfile: Dockerfile.updater}
+    image: ${KELO_UPDATER_IMAGE:-assistant-updater:local}
+    <<: *hardening
+    restart: unless-stopped
+    user: "${KELO_UID:-0}:${KELO_GID:-0}"      # the owner of the Kelo folder, so the files it writes stay theirs
+    group_add: ["${DOCKER_GID:-0}"]            # the Docker socket's group
+    mem_limit: 256m
+    memswap_limit: 256m
+    environment:
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
+      KELO_ROOT: ${KELO_ROOT:-}
+      KELO_ROOT_HOST: ${KELO_ROOT_HOST:-}
+      KELO_REGISTRY: ${KELO_REGISTRY:-ghcr.io/kelo-chat}
+      KELO_RELEASES_URL: ${KELO_RELEASES_URL:-https://kelo.chat/download/latest.json}
+      KELO_DOCKER_SOCKET: ${KELO_DOCKER_SOCKET:-/var/run/docker.sock}
+      KELO_COSIGN_KEY: ${KELO_COSIGN_KEY:-}    # a public key file for a registry of your own; empty = the official release signature
+    read_only: true
+    tmpfs: ["/tmp"]
+    volumes:
+      - "${KELO_DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock"
+      - "${KELO_ROOT_HOST:-${KELO_ROOT:-./instances/.updater-not-set-up}}:${KELO_ROOT:-/kelo-not-set-up}"   # _HOST: Windows only
+    working_dir: ${KELO_ROOT:-/}
+    networks: [updater-net, updater-out]
+    healthcheck:
+      test: ["CMD", "python", "-m", "assistant.updater_service", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---- reach this assistant from your phone anywhere through YOUR Cloudflare domain (opt-in: `assistant connect cloudflare`).
+  # One tunnel per copy, started with the profile `cloudflare`; the tunnel credentials stay on this machine.
+  cloudflared:
+    profiles: [cloudflare]
+    image: cloudflare/cloudflared:latest
+    <<: *hardening
+    restart: unless-stopped
+    user: "${CLOUDFLARED_USER:-65532:65532}"
+    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
+    read_only: true
+    tmpfs: ["/tmp"]
+    volumes: ["${CLOUDFLARED_DIR:-./connect/cloudflared}:/etc/cloudflared:ro"]
+    networks: [agent]                   # reaches the server by its name; nothing else
+
+  # ---- a free Kelo address https://<name>.kelo.chat (opt-in: `assistant connect kelo --name <name>`). The operator's broker made
+  # the tunnel and its address; this container only runs it with the token in the copy's own kelo/tunnel.env (the server never sees it).
+  # Traffic passes through Cloudflare (https ends there). `assistant connect off` gives the name back.
+  kelo-tunnel:
+    profiles: [kelo]
+    image: cloudflare/cloudflared:latest
+    <<: *hardening
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - path: ${KELO_ENV_FILE:-./connect/kelo/tunnel.env}   # TUNNEL_TOKEN=...
+        required: false
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [agent]                   # reaches the server by its name; nothing else
+
+  caddy:                                # a fixed address of your own (DuckDNS or a domain) straight to this computer, with https
+                                        # (`assistant connect domain --host <address> --direct`; refuses when 80/443 are already in use)
+    profiles: [direct]
+    image: caddy:2.8.4-alpine
+    <<: *hardening
+    cap_add: [NET_BIND_SERVICE]         # ports 80 and 443 only
+    restart: unless-stopped
+    environment:
+      DIRECT_HOST: ${DIRECT_HOST:-}     # set by `assistant connect domain --direct` (empty would break other copies' compose files)
+    ports: ["443:443", "80:80"]         # the router forwards these to this computer
+    volumes: ["./connect/caddy/Caddyfile:/etc/caddy/Caddyfile:ro", "caddy-data:/data", "caddy-config:/config"]
+    depends_on: [server]
+    networks: [agent]                   # reaches the server by its name; nothing else
+
+networks:
+  agent: {}
+  cli-net: {}  # server <-> CLI sidecars only (needs outbound internet for the CLIs themselves)
+  browser-net: {internal: true}   # browser <-> server (DevTools) and browser -> egress; no gateway, so no route anywhere else
+  egress-out: {}                  # the egress proxy's own way to the internet
+  updater-net: {internal: true}   # the main copy's server <-> the updater, nothing else (made only where the updater runs)
+  updater-out: {}                 # the updater's own way to the release list and the signature checks
+
+volumes:
+  server-state: {}
+  browser-data: {}
+  browser-downloads: {}   # files pages downloaded (written by the browser, read-only for the server); kept for a day
+  claude-home: {}
+  agy-home: {}
+  workroom-io: {}       # the two sockets between the server and the work room, nothing else
+  workroom-scratch: {}  # /work: emptied before and after every job
+  workroom-tools: {}    # /tools: packages the user approved (pip / npm), kept across updates
+  caddy-data: {}     # the https certificate and its key
+  caddy-config: {}

@@ -1,0 +1,28 @@
+# The updater (src/assistant/updater_service.py): updates this computer's Kelo copies to the newest signed release when the owner
+# presses Update in the app. The ONLY Kelo container with the Docker socket. No AI, no model keys, no web or mail content; it listens
+# only on the internal network updater-net (compose.yml, profile `updater`) and answers only the main copy's server (UPDATER_TOKEN).
+#
+# What is inside: Python's standard library and five files of this project (no third-party Python packages), the Docker CLI with the
+# Compose plugin (to pull, tag and restart, exactly as `assistant update` does from a terminal), cosign (to check the signatures of
+# release images), and compose.yml (the setup file of the release it came with). Multi-arch: linux/amd64, linux/arm64.
+ARG DOCKER_CLI=docker:27.5.1-cli
+ARG COSIGN=ghcr.io/sigstore/cosign/cosign:v2.4.1
+
+FROM ${DOCKER_CLI} AS dockercli
+FROM ${COSIGN} AS cosign
+
+FROM python:3.12-slim-bookworm
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/opt/kelo HOME=/tmp DOCKER_CONFIG=/tmp/.docker
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tini && rm -rf /var/lib/apt/lists/*
+# static Go binaries: they run on this Debian base as they are
+COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
+COPY src/assistant/__init__.py src/assistant/cli.py src/assistant/instances.py src/assistant/updates.py src/assistant/release.py \
+     src/assistant/updater_service.py /opt/kelo/assistant/
+COPY compose.yml /opt/kelo/compose.yml
+RUN python -c "import assistant.updater_service" && docker --version && docker compose version && cosign version >/dev/null
+# runs as the user that owns the Kelo folder (KELO_UID/KELO_GID, with the socket's group): compose.yml sets it
+EXPOSE 9400
+ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "assistant.updater_service"]
+CMD ["serve"]

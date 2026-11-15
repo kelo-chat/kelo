@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "id": "trip-packing-list",
+  "kind": "skill",
+  "version": "1.0.0",
+  "name": "Trip packing list",
+  "description": "Build a packing list for a trip from the destination, dates, weather and plans",
+  "author": "Example Author",
+  "license": "MIT",
+  "strings": {
+    "ko": {"name": "여행 짐 목록", "description": "목적지, 날짜, 날씨, 일정에 맞춰 여행 짐 목록을 만듭니다"}
+  }
+}

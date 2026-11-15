@@ -1,0 +1,144 @@
+"""Token use per model call, by the job that made it, and the optional background model.
+
+Every model call of the app goes through one stream function (server.create_app wraps the one it is given): each `Usage` event a
+transport reports is kept as one record (store.add_usage_event) with the time, the kind of job, the task it belongs to (when it has
+one), the provider and model that ran it, and its input / output / cache-read / cache-write tokens. The daily totals (store `usage`)
+grow with every record, so GET /api/usage keeps its `today` / `total` numbers.
+
+Kinds (KINDS): the user's own replies (chat), schedule runs, the recurring check, tasks handed over to run unattended, delegated jobs
+and their reports (worker), and the jobs nobody asks for: the nightly look-back (reflection), memory upkeep (memory), the journal,
+proactive notices (proactive), conversation summaries (compaction), follow-up messages (followup), the reachability check (probe).
+
+The background model (profile background_provider / background_model, empty = the main model) runs only BACKGROUND_KINDS: jobs that
+read and write the app's own notes and never act for the user (no browser, no payment, nothing sent to anyone). When it fails before
+answering, the job runs on the model it would have used, and why is kept (store meta LAST_FALLBACK, shown in GET /api/usage).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
+from typing import Any
+
+from .providers.types import ChatRequest, Usage
+
+log = logging.getLogger(__name__)
+
+KINDS = ("chat", "schedule", "checklist", "task", "worker", "reflection", "memory", "journal", "proactive", "compaction", "followup",
+         "probe", "other")
+# may run on the background model: they only read the conversation and write the app's own notes
+BACKGROUND_KINDS = frozenset({"reflection", "memory", "journal", "proactive", "compaction"})
+LAST_FALLBACK = "background_model_fallback"   # store meta: the last time the background model failed and the main model ran instead
+
+StreamFn = Callable[..., AsyncIterator[Any]]
+
+
+def kind_of_source(source: str | None) -> str:
+    """The kind of a turn by its source (server.start_turn)."""
+    s = source or ""
+    if s in ("chat", "api"):
+        return "chat"
+    if s.startswith("schedule:"):
+        return "schedule"
+    if s == "checklist":
+        return "checklist"
+    if s in ("worker", "handoff"):
+        return "worker"
+    if s == "background":
+        return "task"
+    return "other"
+
+
+def share(part: int, whole: int) -> float | None:
+    """part / whole rounded to three places; None when there is nothing to divide."""
+    return round(part / whole, 3) if whole > 0 else None
+
+
+def metered(stream_fn: StreamFn, record: Callable[[dict[str, Any]], None], turn: Callable[[], dict[str, Any] | None],
+            guard: Any = None) -> Callable[..., StreamFn]:
+    """counted(kind=None, note="") -> a stream function that passes every event on and records each Usage event.
+
+    kind None: the kind of the turn running (turn() -> {"source", "task_id"}), else "other".
+    `guard` (model_limits.QuotaGuard): asked before every call (a provider whose usage is used up is not called for anything but
+    chat), told of every limit error (it becomes QuotaExhausted with the reset time) and of every call that answered."""
+    def counted(kind: str | None = None, note: str = "") -> StreamFn:
+        async def run(provider: Any, request: ChatRequest, **kw: Any) -> AsyncIterator[Any]:
+            if guard is None:
+                async for ev in plain(provider, request, **kw):
+                    yield ev
+                return
+            name = provider if isinstance(provider, str) else getattr(provider, "name", str(provider))
+            k = kind or kind_of_source((turn() or {}).get("source"))
+            await guard.before(name, request.model, k)
+            try:
+                async for ev in plain(provider, request, **kw):
+                    yield ev
+            except Exception as e:  # noqa: BLE001 - only a used-up limit is turned into QuotaExhausted; the rest goes on as it was
+                hit = await guard.classify(name, request.model, e)
+                if hit is None or hit is e:
+                    raise
+                raise hit from e
+            guard.clear(name)
+
+        async def plain(provider: Any, request: ChatRequest, **kw: Any) -> AsyncIterator[Any]:
+            async for ev in stream_fn(provider, request, **kw):
+                if isinstance(ev, Usage):
+                    t = turn() or {}
+                    try:
+                        record({"kind": kind or kind_of_source(t.get("source")), "task_id": t.get("task_id"),
+                                "provider": provider if isinstance(provider, str) else getattr(provider, "name", str(provider)),
+                                "model": request.model, "input_tokens": ev.input_tokens, "output_tokens": ev.output_tokens,
+                                "cache_read_tokens": getattr(ev, "cache_read_tokens", 0) or 0,
+                                "cache_write_tokens": getattr(ev, "cache_write_tokens", 0) or 0, "note": note})
+                    except Exception:  # noqa: BLE001 - counting never breaks a reply
+                        log.exception("usage record failed")
+                yield ev
+        return run
+    return counted
+
+
+def background_stream(counted: Callable[..., StreamFn], kind: str, chosen: Callable[[], tuple[str, str] | None],
+                      key_args: Callable[[str], dict[str, Any]], on_fallback: Callable[[str, str], None]) -> StreamFn:
+    """The stream function of a background job of `kind`: on the background model when one is chosen (chosen() -> (provider, model)),
+    else on the model the job asked for. A background model that fails before its first event hands the request back to that model,
+    and on_fallback(kind, reason) is told why. A job outside BACKGROUND_KINDS always runs on the model it asked for."""
+    plain = counted(kind)
+
+    async def run(provider: Any, request: ChatRequest, **kw: Any) -> AsyncIterator[Any]:
+        bg = chosen() if kind in BACKGROUND_KINDS else None
+        if bg is None or (bg[0] == provider and bg[1] == request.model):
+            async for ev in plain(provider, request, **kw):
+                yield ev
+            return
+        started = False
+        reason = ""
+        try:
+            async for ev in counted(kind)(bg[0], replace(request, model=bg[1]), **key_args(bg[0])):
+                started = True
+                yield ev
+            return
+        except Exception as e:  # noqa: BLE001 - any failure of the background model: the main model does the job
+            if started:
+                raise
+            reason = f"{type(e).__name__}: {str(e)[:200]}"
+        log.warning("background model %s/%s failed for %s, the main model runs it: %s", bg[0], bg[1], kind, reason)
+        on_fallback(kind, reason)
+        async for ev in counted(kind, note=f"background model failed: {reason}")(provider, request, **kw):
+            yield ev
+    return run
+
+
+def fallback_record(store: Any, kind: str, reason: str, provider: str, model: str) -> None:
+    store.set_meta(LAST_FALLBACK, json.dumps({"at": time.time(), "kind": kind, "reason": reason[:300], "provider": provider,
+                                              "model": model}))
+
+
+def last_fallback(store: Any) -> dict[str, Any] | None:
+    try:
+        v = json.loads(store.meta(LAST_FALLBACK) or "null")
+    except ValueError:
+        return None
+    return v if isinstance(v, dict) else None

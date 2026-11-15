@@ -1,0 +1,161 @@
+# Kelo server release images: on a version tag (v0.5.0) in the public source repository kelo-chat/kelo, build every image for
+# linux/amd64 and linux/arm64, push it to ghcr.io/kelo-chat/<name>:<version> (and move the channel tag `stable` for a release that
+# is not a pre-release), sign it with cosign keyless (this workflow's GitHub OIDC identity; no key exists anywhere), and write
+# release.json (tools/release_manifest.py), the manifest every Kelo server's updater checks (src/assistant/release.py).
+#
+# Nothing here publishes the release to Kelo servers: release.json is attached to the run. The operator puts it on kelo.chat with
+#   assistant publish-server release.json        (then https://kelo.chat/download/latest.json carries it under "server")
+# Servers verify each image against exactly this workflow file on a v* tag of kelo-chat/kelo (release.CERT_IDENTITY), so
+# renaming this file or the repository needs a matching change there.
+#
+# Images: server (one image for the server, browser and egress roles; Chromium only: a Google Chrome build is never published),
+# workroom, updater. NOT the Claude / agy CLI sidecars (Dockerfile.cli): they contain proprietary programs (@anthropic-ai/claude-code,
+# Google's agy) that may not be redistributed, so every user builds them on their own machine; servers refuse a manifest naming them. Each carries the labels org.opencontainers.image.version=<version> and
+# chat.kelo.release=<version>; a server checks the first against the manifest, and a copy without the second was built from source.
+#
+# Repository variables (optional): KELO_MIN_APP_ANDROID (versionCode), KELO_MIN_APP_IOS (build number), KELO_MIN_APP_DESKTOP (1.0.3).
+# Release notes (optional): docs/release-notes/<version>/<lang>.md (en.md, ko.md, ...); else the tag's message becomes the English note.
+# The packages on ghcr.io must be public for servers to pull them without signing in.
+
+name: release-images
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/kelo-chat
+
+jobs:
+  images:
+    if: github.repository == 'kelo-chat/kelo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write      # push to ghcr.io/kelo-chat
+      id-token: write      # cosign keyless: the OIDC token that becomes the signing certificate
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - {name: server, file: Dockerfile, target: ""}
+          - {name: workroom, file: Dockerfile.workroom, target: ""}
+          - {name: updater, file: Dockerfile.updater, target: ""}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version from the tag
+        id: v
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "not a version tag: $GITHUB_REF_NAME"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$VERSION" == *-* ]]; then echo "channel=beta" >> "$GITHUB_OUTPUT"; else echo "channel=stable" >> "$GITHUB_OUTPUT"; fi
+          # the release commit carries the version (version.json, set by tools/release/bump.py); the tag must name it
+          python3 tools/release/bump.py --check-tag "$GITHUB_REF_NAME"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Build and push (linux/amd64 + linux/arm64)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            BROWSER=chromium
+          tags: |
+            ${{ env.REGISTRY }}/${{ matrix.name }}:${{ steps.v.outputs.version }}
+            ${{ env.REGISTRY }}/${{ matrix.name }}:${{ steps.v.outputs.channel }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=kelo-${{ matrix.name }}
+            chat.kelo.release=${{ steps.v.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      - name: Sign (cosign keyless, GitHub OIDC)
+        shell: bash
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "$REGISTRY/${{ matrix.name }}@$DIGEST"
+          cosign verify "$REGISTRY/${{ matrix.name }}@$DIGEST" \
+            --certificate-identity-regexp '^https://github\.com/kelo-chat/kelo/\.github/workflows/release-images\.yml@refs/tags/v' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+          mkdir -p digests && printf '%s\n' "$DIGEST" > "digests/${{ matrix.name }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}
+          path: digests/${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 7
+
+  manifest:
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # the tag's message, for the notes
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: release.json
+        shell: bash
+        env:
+          MIN_ANDROID: ${{ vars.KELO_MIN_APP_ANDROID }}
+          MIN_IOS: ${{ vars.KELO_MIN_APP_IOS }}
+          MIN_DESKTOP: ${{ vars.KELO_MIN_APP_DESKTOP }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          CHANNEL=stable; [[ "$VERSION" == *-* ]] && CHANNEL=beta
+          git for-each-ref --format='%(contents)' "refs/tags/$GITHUB_REF_NAME" | sed '/-----BEGIN PGP SIGNATURE-----/,$d' > tag-notes.txt
+          args=(--version "$VERSION" --channel "$CHANNEL" --registry "$REGISTRY" --digests-dir digests --out release.json)
+          [ -n "$MIN_ANDROID" ] && args+=(--min-app "android=$MIN_ANDROID")
+          [ -n "$MIN_IOS" ] && args+=(--min-app "ios=$MIN_IOS")
+          [ -n "$MIN_DESKTOP" ] && args+=(--min-app "desktop=$MIN_DESKTOP")
+          if [ -d "docs/release-notes/$VERSION" ]; then args+=(--notes-dir "docs/release-notes/$VERSION"); else args+=(--notes-file "en=tag-notes.txt"); fi
+          python3 tools/release_manifest.py "${args[@]}"
+          cat release.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}
+          path: release.json
+          if-no-files-found: error

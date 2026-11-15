@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hans text for strings_usage_jobs.xml (generated from values/strings_usage_jobs.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="model_background_title">后台工作模型</string>
+    <string name="model_background_help">仅用于 Kelo 自行完成的工作：每晚回顾、记忆整理、日志、挑选要告诉你的消息，以及长对话的摘要。使用浏览器、付款或发送内容的工作仍由主模型完成。</string>
+    <string name="model_background_same">与主模型相同</string>
+    <string name="model_background_fell_back">%1$s 后台模型出错，已由主模型代为完成。</string>
+    <string name="usage_jobs_title">令牌用在哪里</string>
+    <string name="usage_jobs_month">本月</string>
+    <string name="usage_jobs_empty">还没有统计到用量。</string>
+    <string name="usage_jobs_tokens">%1$s 令牌</string>
+    <string name="usage_jobs_cache">%1$d%% 来自缓存复用</string>
+    <string name="usage_jobs_note">每次 AI 请求都在服务器上统计。缓存是 AI 服务复用的输入部分，通常更便宜。</string>
+    <string name="usage_kind_chat">你的对话</string>
+    <string name="usage_kind_schedule">自动任务</string>
+    <string name="usage_kind_checklist">定期检查</string>
+    <string name="usage_kind_task">交办的任务</string>
+    <string name="usage_kind_worker">委派的工作</string>
+    <string name="usage_kind_reflection">每晚回顾</string>
+    <string name="usage_kind_memory">记忆整理</string>
+    <string name="usage_kind_journal">日志</string>
+    <string name="usage_kind_proactive">主动提醒</string>
+    <string name="usage_kind_compaction">对话摘要</string>
+    <string name="usage_kind_followup">跟进消息</string>
+    <string name="usage_kind_probe">连接检查</string>
+    <string name="usage_kind_other">其他</string>
+</resources>

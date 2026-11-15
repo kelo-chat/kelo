@@ -1,0 +1,6 @@
+{
+  "about": "How shops in a country ask for an address when that differs from the postal format in address_data.json (Google's metadata). Applied the same way for every country listed: 'form' is the field order of the form (tokens as in fmt; %A gives two lines), 'require' the required tokens (N = name), 'labels' a label per token (A1 / A2 for the two street lines), the *_name_type keys replace the metadata's, and 'fmt' (when given) is the postal format with the fields the local form adds. A country that is not listed uses its metadata as it is.",
+  "KR": {"form": "%N%n%Z%n%A", "require": "NZA", "labels": {"A1": "street_main", "A2": "street_detail"}},
+  "JP": {"form": "%N%n%Z%n%S%n%C%n%A", "require": "NZSCA", "labels": {"Z": "postal_jp", "C": "municipality", "A1": "banchi", "A2": "building"}, "fmt": "〒%Z%n%S%C%n%A%n%O%n%N"},
+  "GB": {"form": "%N%n%A%n%C%n%S%n%Z", "require": "NACZ", "state_name_type": "county", "zip_name_type": "postcode", "fmt": "%N%n%O%n%A%n%C%n%S%n%Z"}
+}

@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "id": "daily-countdown",
+  "kind": "extension",
+  "version": "1.0.0",
+  "name": "Countdown",
+  "description": "Count down to the days that matter, on Home and My page",
+  "author": "Example Author",
+  "permissions": {"ui": ["home_card", "my_section"], "actions": ["store"], "store": true, "reads": ["calendar"]},
+  "store": {
+    "collections": {
+      "days": {"fields": {"title": {"type": "text", "max": 60, "required": true}, "date": {"type": "date", "required": true}}, "max_records": 50}
+    }
+  },
+  "ui": {
+    "schema": 1,
+    "surfaces": [
+      {"id": "next", "place": "home_card", "title": "Countdown", "icon": "calendar", "screen": "card"},
+      {"id": "all", "place": "my_section", "title": "Countdown", "icon": "calendar", "screen": "list"}
+    ],
+    "data": {
+      "days": {"source": "store", "collection": "days", "limit": 20, "order": "oldest"},
+      "upcoming": {"source": "kelo", "feed": "calendar.upcoming", "limit": 5}
+    },
+    "actions": {
+      "add": {"type": "store_add", "collection": "days", "values": {"title": "{{form.title}}", "date": "{{form.date}}"}, "label": "Add"},
+      "remove": {"type": "store_delete", "collection": "days", "label": "Remove"}
+    },
+    "screens": {
+      "card": {"components": [
+        {"type": "stat", "label": "{{data.days.0.title}}", "value": "{{data.days.0.date}}", "icon": "calendar"}
+      ]},
+      "list": {"components": [
+        {"type": "list", "data": "days", "item": {"title": "{{item.title}}", "trailing": "{{item.date}}", "action": "remove"},
+         "empty": {"text": "No days yet."}},
+        {"type": "form", "fields": [
+          {"id": "title", "type": "text", "label": "What", "required": true, "max_length": 60},
+          {"id": "date", "type": "date", "label": "When", "required": true}],
+         "submit": {"label": "Add", "action": "add"}},
+        {"type": "header", "text": "From your calendar"},
+        {"type": "list", "data": "upcoming", "max": 5, "item": {"title": "{{item.title}}", "subtitle": "{{item.where}}", "trailing": "{{item.start}}"}}
+      ]}
+    }
+  }
+}
