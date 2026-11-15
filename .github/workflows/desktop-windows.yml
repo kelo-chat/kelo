@@ -5,7 +5,7 @@
 #   KELO_MSIX_IDENTITY_NAME         e.g. 12345YourName.Kelo
 #   KELO_MSIX_PUBLISHER             e.g. CN=1A2B3C4D-5E6F-7A8B-9C0D-112233445566
 #   KELO_MSIX_PUBLISHER_DISPLAY_NAME
-# Without them the MSIX is still built, with placeholder identity (fine for checking the build, not for the Store).
+# Without them the MSIX uses the Microsoft Store product's identity (Partner Center: Kelo AI, kelo-chat.KeloAI), so the Store accepts it.
 # Optional secrets to sign the MSIX for installing it outside the Store: KELO_MSIX_PFX_BASE64, KELO_MSIX_PFX_PASSWORD.
 #
 # release-build.yml (version tags of the public repository) calls this workflow with attest: true, which gives every installer a
@@ -126,9 +126,9 @@ jobs:
       - name: MSIX
         shell: pwsh
         env:
-          IDENTITY_NAME: ${{ vars.KELO_MSIX_IDENTITY_NAME }}
-          PUBLISHER: ${{ vars.KELO_MSIX_PUBLISHER }}
-          PUBLISHER_DISPLAY_NAME: ${{ vars.KELO_MSIX_PUBLISHER_DISPLAY_NAME }}
+          IDENTITY_NAME: ${{ vars.KELO_MSIX_IDENTITY_NAME || 'kelo-chat.KeloAI' }}
+          PUBLISHER: ${{ vars.KELO_MSIX_PUBLISHER || 'CN=B768A023-5EDD-4EA2-9CC8-14670F96502D' }}
+          PUBLISHER_DISPLAY_NAME: ${{ vars.KELO_MSIX_PUBLISHER_DISPLAY_NAME || 'kelo-chat' }}
           PFX_BASE64: ${{ secrets.KELO_MSIX_PFX_BASE64 }}
           PFX_PASSWORD: ${{ secrets.KELO_MSIX_PFX_PASSWORD }}
         run: |

@@ -214,3 +214,20 @@ def test_design_b_draws_the_servers_and_credits_only_the_photos_it_shows():
                 assert website.CREDITS[stem][5] in credits, (design, lang, shown)   # every photo shown is credited
     live = website.render("privacy", "en").split('id="credits"', 1)[1]   # the live site is design B now: no server photos, no credits
     assert website.LIVE_DESIGN == "b" and "Einsteinathome_Server" not in live and "Minisforum" not in live
+
+
+async def test_the_support_page_answers_in_both_languages_and_every_footer_links_to_it():
+    async with Running(create_app(settings(), tools=[], stream_fn=scripted())) as srv, httpx.AsyncClient(base_url=srv.url) as c:
+        ko = (await c.get("/support", headers={"Accept-Language": "ko"})).text
+        en = (await c.get("/support", headers={"Accept-Language": "en"})).text
+        assert '<html lang="ko">' in ko and '<html lang="en">' in en
+        assert "support@kelo.chat" in ko and "support@kelo.chat" in en
+        assert "앱과 내 서버 사이의 대화는 종단간 암호화돼요. 오가는 길에서는 내 폰과 내 서버 말고는 아무도 읽을 수 없어요. 답을 만들 때는 내가 고른 AI 회사로 대화가 가요." in ko
+        assert "내 컴퓨터" not in ko and "my computer" not in en.lower() and "subscription" not in en.lower() and "구독" not in ko
+        assert 'href="/privacy?lang=ko"' in ko and 'href="/privacy?lang=en"' in en and "assistant phone add" in en
+        for lang in ("ko", "en"):
+            for page in ("/", "/install", "/privacy", "/support"):
+                html = (await c.get(f"{page}?lang={lang}")).text
+                assert f'href="/support?lang={lang}"' in html, (page, lang)
+            for design in website.DESIGNS:
+                assert f'href="/support?lang={lang}"' in website.render("index", lang, design=design), (design, lang)

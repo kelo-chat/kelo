@@ -1,0 +1,55 @@
+<div class="doc">
+  <header class="doc-hero">
+    <div class="wrap doc-hero-in">
+      <div class="doc-hero-copy">
+        <p class="kicker"><span class="num">/support</span>Support</p>
+        <h1>Kelo support</h1>
+        <p class="lead">Stuck, or just curious? Start here, or write to us.</p>
+      </div>
+      <div class="doc-hero-art" aria-hidden="true">{{svg:reading}}</div>
+    </div>
+  </header>
+
+  <div class="wrap doc-grid">
+    <nav class="toc" aria-label="On this page">
+      <p class="toc-k">On this page</p>
+      <ol>
+        <li><a href="#contact">Contact</a></li>
+        <li><a href="#start">Getting started</a></li>
+        <li><a href="#faq">Questions</a></li>
+        <li><a href="#privacy">Privacy policy</a></li>
+      </ol>
+    </nav>
+
+    <article class="prose">
+      <h2 id="contact">Contact</h2>
+      <p>Email <a href="mailto:support@kelo.chat">support@kelo.chat</a>. We usually answer within a few days. Tell us what you were doing and what you saw, and which server version you run if you know it.</p>
+
+      <h2 id="start">Getting started</h2>
+      <p>Kelo is an app for your own AI assistant server. You install the server (with Docker) on your server machine, then pair the app with it by scanning the QR code or pasting the link. The <a href="{{href:install}}">install guide</a> walks through each step.</p>
+
+      <h2 id="faq">Questions</h2>
+
+      <h3>The app can't connect.</h3>
+      <p>Check that the server is running and that its address can be reached from your phone (try opening it in the phone's browser). Then update the server: the app needs server 0.9.0 or newer.</p>
+
+      <h3>How do I add another phone or computer?</h3>
+      <p>On the server machine, run <code>assistant phone add</code>. It shows a QR code and a link; scan or paste it on the new device.</p>
+
+      <h3>What is Keyguard?</h3>
+      <p>Keyguard keeps the key for your saved passwords, keys and cards on your phone. After the server restarts, you unlock it from your phone. Keep the recovery code somewhere safe: it is how you get back in if you lose the phone.</p>
+
+      <h3>Where are my chats stored?</h3>
+      <p>On your own server. The AI service you choose in Model receives the messages it needs to answer.</p>
+
+      <h3>Is the connection encrypted?</h3>
+      <p>Conversations between the app and your server are end-to-end encrypted. On the way, nobody but your phone and your server can read them. When a reply is being made, the conversation goes to the AI company you chose.</p>
+
+      <h3>How do I stop using Kelo or delete my data?</h3>
+      <p>Disconnect the device in My → My devices. Delete the chat history in My. To remove everything, remove the server.</p>
+
+      <h2 id="privacy">Privacy policy</h2>
+      <p>What the app and the server keep, and where: <a href="{{href:privacy}}">read the privacy policy</a>.</p>
+    </article>
+  </div>
+</div>

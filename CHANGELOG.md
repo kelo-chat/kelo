@@ -8,6 +8,11 @@ one plain line each, saying which part: app, server, site, desktop, iOS). When a
 build's version and date, and copy the app lines into the Play release notes (en-US and ko-KR).
 
 ## Unreleased
+
+## 0.9.0 (build 10, 2026-11-10)
+- Server (changed): there is no "owner phone" any more: every device signed in to a server has the same full rights (Keyguard, updates, settings). On a review server the reviewers' devices still cannot reach Keyguard or the operator settings.
+- Server (fixed): Kelo no longer declines a purchase or sign-up over what it assumes a site or the law requires; it opens the site and tries.
+- Site (added): kelo.chat/support, a help page with contact and common questions (Korean, English).
 - Server (changed): no more owner devices. Every device signed in to a server has the same full rights (Keyguard, operator settings, auto-pay, server update, cleanup), so an extra copy's own person can turn on Keyguard. The `owner` field stays in device lists and /api/operator/status (true for every device) for older apps; `owner` / `first_owner` in POST /api/devices/pair are ignored; `assistant phone owner` only prints a note. A review copy is the exception: reviewers' devices (access code) still cannot reach Keyguard, operator or other server-wide settings (the wallet works as usual; auto-pay needs Keyguard, so it stays off there).
 
 ## 0.9.0 (build 9, 2026-11-10)

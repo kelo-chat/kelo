@@ -41,6 +41,10 @@ def router(ctx: AppContext) -> APIRouter:
     async def site_privacy(request: Request) -> Response:
         return site_page("privacy", request)
 
+    @router.get("/support", include_in_schema=False)
+    async def site_support(request: Request) -> Response:
+        return site_page("support", request)
+
     # ---- app downloads (downloads.py): only files the publisher's manifest names; no listing; read only
     dl_headers = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}
 

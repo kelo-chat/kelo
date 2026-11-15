@@ -9022,6 +9022,22 @@
    "headers": [],
    "kind": "APIRoute",
    "methods": [
+    "GET"
+   ],
+   "name": "site_support",
+   "path": "/support",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": false,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
     "GET",
     "HEAD"
    ],
@@ -18102,6 +18118,22 @@
    ],
    "name": "site_privacy",
    "path": "/privacy",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": false,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "site_support",
+   "path": "/support",
    "path_params": [],
    "query": [],
    "response_class": "JSONResponse",

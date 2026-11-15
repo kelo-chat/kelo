@@ -39,12 +39,12 @@ SITE = Path(__file__).with_name("site")
 LANGS = ("ko", "en")
 PRIMARY = "en"
 CANONICAL = "https://kelo.chat"
-PAGES = ("index", "install", "privacy")
+PAGES = ("index", "install", "privacy", "support")
 # the two v2 designs (site/v2/<design>.css, site/pages/index-<design>.<lang>.html). Both are previews until one is chosen:
 # set LIVE_DESIGN to "a" or "b" and "/", "/install" and "/privacy" all use that design. None keeps the current pages.
 DESIGNS = ("a", "b")
 LIVE_DESIGN: str | None = "b"
-PATHS = {"index": "/", "install": "/install", "privacy": "/privacy"}
+PATHS = {"index": "/", "install": "/install", "privacy": "/privacy", "support": "/support"}
 CHARACTERS = ("idle", "working", "browser", "approval", "done", "sleeping", "reading", "thinking", "listening")
 # the one-line installers (scripts/install.sh, install.ps1). Not served yet: the pages mark them "opens soon".
 GITHUB = "https://github.com/kelo-chat/kelo"   # the project on GitHub (header and footer)
@@ -213,7 +213,7 @@ def version(name: str) -> str:
 TEXT = {
     "ko": {
         "skip": "본문으로 건너뛰기", "nav_label": "사이트 메뉴", "features": "기능", "install": "설치", "privacy": "개인정보",
-        "menu": "메뉴", "primary": "서버 설치하기", "get_app": "앱 받기", "contact_mail": "메일 보내기",
+        "support": "고객 지원", "menu": "메뉴", "primary": "서버 설치하기", "get_app": "앱 받기", "contact_mail": "메일 보내기",
         "close_h": "내 서버에서 일하는 AI 비서를 시작하세요", "close_line": "무료 오픈 소스(AGPL-3.0)예요. Docker가 돌아가는 컴퓨터면 설치할 수 있어요.",
         "col_kelo": "Kelo", "col_project": "프로젝트", "licence": "AGPL-3.0 오픈 소스",
         "credits": "사진: Wikimedia Commons", "credits_by": "{by}, {licence}", "adapted": "잘라서 크기 조정",
@@ -225,16 +225,17 @@ TEXT = {
                "mac": "macOS용 내려받기 (.dmg)"},
         "dl_meta": "버전 {version} · {size}", "dl_off": "아직 올라오지 않았어요. 곧 이곳에서 받을 수 있어요.",
         "copyright": "Kelo",
-        "titles": {"index": "Kelo · 직접 설치한 서버에서 돌아가는 AI 비서", "install": "서버 설치하기 · Kelo", "privacy": "개인정보 처리방침 · Kelo"},
+        "titles": {"index": "Kelo · 직접 설치한 서버에서 돌아가는 AI 비서", "install": "서버 설치하기 · Kelo", "privacy": "개인정보 처리방침 · Kelo", "support": "고객 지원 · Kelo"},
         "desc": {
             "index": "Kelo는 직접 설치한 Kelo 서버에서 돌아가는 AI 비서예요. 휴대폰 앱으로 대화하고, 맡긴 일은 비서가 브라우저와 연결한 서비스로 처리해요. 데이터는 Kelo 서버에 남아요.",
             "install": "Kelo 서버를 설치하고 휴대폰을 연결하는 방법.",
             "privacy": "Kelo 앱과 서버가 어떤 정보를 어디에 두는지 설명하는 개인정보 처리방침.",
+            "support": "Kelo 문의처, 시작하는 방법, 자주 묻는 질문.",
         },
     },
     "en": {
         "skip": "Skip to content", "nav_label": "Site menu", "features": "Features", "install": "Install", "privacy": "Privacy",
-        "menu": "Menu", "primary": "Install the server", "get_app": "Get the app", "contact_mail": "Email us",
+        "support": "Support", "menu": "Menu", "primary": "Install the server", "get_app": "Get the app", "contact_mail": "Email us",
         "close_h": "Run your own AI agent", "close_line": "Free and open source under AGPL-3.0. Any computer that runs Docker will do.",
         "col_kelo": "Kelo", "col_project": "Project", "licence": "Open source under AGPL-3.0",
         "credits": "Photographs via Wikimedia Commons", "credits_by": "{by}, {licence}", "adapted": "cropped and resized",
@@ -247,11 +248,12 @@ TEXT = {
         "dl_meta": "Version {version} · {size}", "dl_off": "Not published yet. It will be here soon.",
         "copyright": "Kelo",
         "titles": {"index": "Kelo · an AI assistant on a server you run", "install": "Install the server · Kelo",
-                   "privacy": "Privacy policy · Kelo"},
+                   "privacy": "Privacy policy · Kelo", "support": "Support · Kelo"},
         "desc": {
             "index": "Kelo is an AI assistant that runs on a Kelo server you set up. Talk to it from the phone app; it gets things done in its own browser and the services you connect. Your data stays with you.",
             "install": "How to install the Kelo server and connect your phone.",
             "privacy": "Privacy policy: what the Kelo app and server keep, and where.",
+            "support": "Kelo support: how to reach us, getting started and common questions.",
         },
     },
 }
@@ -419,6 +421,7 @@ def _frame(page: str, lang: str) -> str:
         f'<div class="footer__col span-3"><h3>{escape(t["col_project"])}</h3><ul>'
         f'<li><a href="{GITHUB}" rel="noopener">GitHub</a></li>'
         f'<li><a href="{href("privacy", lang)}">{escape(t["privacy"])}</a></li>'
+        f'<li><a href="{href("support", lang)}">{escape(t["support"])}</a></li>'
         f'<li><a href="mailto:{escape(t["contact_value"])}">{escape(t["contact_mail"])}</a></li></ul></div>'
         f'</div>'
         f'<div class="footer__legal"><span>© 2026 {escape(t["copyright"])} · {escape(t["licence"])}</span>'
@@ -443,7 +446,7 @@ V2 = {
                           ("index", "#people", "여러 사람이 쓰는 방법"), ("index", "#get-app", "앱 받기"))),
                  ("시작하기", (("install", "", "설치 안내"), ("install", "#requirements", "서버 사양"), ("index", "#run-free", "무료로 운영하기"),
                              ("index", "#reach", "밖에서 연결하는 방법"), ("latest", "", "빌드 정보 (latest.json)"))),
-                 ("프로젝트", (("github", "", "GitHub"), ("privacy", "", "개인정보 처리방침"), ("privacy", "#credits", "사진 출처"),
+                 ("프로젝트", (("github", "", "GitHub"), ("privacy", "", "개인정보 처리방침"), ("support", "", "고객 지원"), ("privacy", "#credits", "사진 출처"),
                              ("mail", "", "메일 보내기")))),
         "close_h": "내 서버에서 일하는 AI 비서를 시작하세요",
         "close_line": "무료 오픈 소스(AGPL-3.0)예요. Docker가 돌아가는 컴퓨터면 설치할 수 있어요.",
@@ -458,7 +461,7 @@ V2 = {
                              ("index", "#people", "Many phones, many people"), ("index", "#get-app", "Get the app"))),
                  ("Get started", (("install", "", "Install guide"), ("install", "#requirements", "Server size"), ("index", "#run-free", "Run it for free"),
                                  ("index", "#reach", "Reaching your server"), ("latest", "", "Build info (latest.json)"))),
-                 ("Project", (("github", "", "GitHub"), ("privacy", "", "Privacy policy"), ("privacy", "#credits", "Photo credits"),
+                 ("Project", (("github", "", "GitHub"), ("privacy", "", "Privacy policy"), ("support", "", "Support"), ("privacy", "#credits", "Photo credits"),
                              ("mail", "", "Email us")))),
         "close_h": "Start your own AI assistant",
         "close_line": "Free and open source under AGPL-3.0. Any machine that runs Docker will do.",
