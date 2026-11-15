@@ -26,6 +26,7 @@ from typing import Any
 from .providers.types import ChatRequest, Usage
 
 log = logging.getLogger(__name__)
+timing = logging.getLogger("uvicorn.error")   # the server's visible log (uvicorn sets it up)
 
 KINDS = ("chat", "schedule", "checklist", "task", "worker", "reflection", "memory", "journal", "proactive", "compaction", "followup",
          "probe", "other")
@@ -57,6 +58,15 @@ def share(part: int, whole: int) -> float | None:
     return round(part / whole, 3) if whole > 0 else None
 
 
+def _timing_note(clock: dict[str, float | None] | None) -> str:
+    """"first 2.1s, done 6.8s": when the call's first event came and when its usage arrived (the end), kept with the usage record."""
+    if not clock or clock.get("began") is None:
+        return ""
+    first = clock.get("first")
+    done = time.monotonic() - float(clock["began"] or 0)
+    return (f"first {first:.1f}s, " if first is not None else "") + f"done {done:.1f}s"
+
+
 def metered(stream_fn: StreamFn, record: Callable[[dict[str, Any]], None], turn: Callable[[], dict[str, Any] | None],
             guard: Any = None) -> Callable[..., StreamFn]:
     """counted(kind=None, note="") -> a stream function that passes every event on and records each Usage event.
@@ -84,7 +94,30 @@ def metered(stream_fn: StreamFn, record: Callable[[dict[str, Any]], None], turn:
             guard.clear(name)
 
         async def plain(provider: Any, request: ChatRequest, **kw: Any) -> AsyncIterator[Any]:
-            async for ev in stream_fn(provider, request, **kw):
+            if not request.purpose:   # the agy session pool tells chat from one-off jobs by it
+                request = replace(request, purpose=kind or kind_of_source((turn() or {}).get("source")))
+            # one timing line per model call (2026-11-12, agy felt slow): when the first event came and how long the call took, so the
+            # owner's logs show where a slow reply spends its time; never the text, only sizes and times
+            began, first, tokens = time.monotonic(), None, [0, 0]
+            clock: dict[str, float | None] = {"began": began, "first": None}   # also written with the usage record (it outlives the log)
+            try:
+                async for ev in _counted(stream_fn(provider, request, **kw), provider, request, clock):
+                    if first is None and not isinstance(ev, Usage):
+                        first = time.monotonic() - began
+                        clock["first"] = first
+                    if isinstance(ev, Usage):
+                        tokens[0] += ev.input_tokens or 0
+                        tokens[1] += ev.output_tokens or 0
+                    yield ev
+            finally:
+                timing.info("model call %s %s (%s): first %s, total %.1fs, in %d, out %d tokens, %d messages",
+                            provider if isinstance(provider, str) else getattr(provider, "name", str(provider)), request.model,
+                            request.purpose or "-", f"{first:.1f}s" if first is not None else "-", time.monotonic() - began,
+                            tokens[0], tokens[1], len(request.messages))
+
+        async def _counted(events: AsyncIterator[Any], provider: Any, request: ChatRequest,
+                           clock: dict[str, float | None] | None = None) -> AsyncIterator[Any]:
+            async for ev in events:
                 if isinstance(ev, Usage):
                     t = turn() or {}
                     try:
@@ -92,7 +125,9 @@ def metered(stream_fn: StreamFn, record: Callable[[dict[str, Any]], None], turn:
                                 "provider": provider if isinstance(provider, str) else getattr(provider, "name", str(provider)),
                                 "model": request.model, "input_tokens": ev.input_tokens, "output_tokens": ev.output_tokens,
                                 "cache_read_tokens": getattr(ev, "cache_read_tokens", 0) or 0,
-                                "cache_write_tokens": getattr(ev, "cache_write_tokens", 0) or 0, "note": note})
+                                "cache_write_tokens": getattr(ev, "cache_write_tokens", 0) or 0,
+                                "note": "; ".join(x for x in (note, f"agy session {ev.session}, {_timing_note(clock)}"
+                                                               if getattr(ev, "session", "") else "") if x)})
                     except Exception:  # noqa: BLE001 - counting never breaks a reply
                         log.exception("usage record failed")
                 yield ev

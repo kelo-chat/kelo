@@ -18,14 +18,6 @@ public enum ShareInbox {
         base?.appendingPathComponent(folderName, isDirectory: true)
     }
 
-    /// Text first, the subject in front when the body does not start with it (Android ShareParse), at most `maxText` characters.
-    public static func text(body: String?, subject: String?) -> String {
-        let b = (body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let h = (subject ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let t = !h.isEmpty && !b.hasPrefix(h) ? (b.isEmpty ? h : h + "\n" + b) : b
-        return String(t.prefix(maxText))
-    }
-
     /// Takes what is waiting (and removes it): the file is moved to a temporary place the upload deletes afterwards.
     public static func take(base: URL? = nil) -> Item? {
         guard let dir = base.map({ $0.appendingPathComponent(folderName, isDirectory: true) }) ?? folder() else { return nil }
@@ -42,19 +34,5 @@ public enum ShareInbox {
         }
         if text.isEmpty && moved == nil { return nil }
         return Item(text: text, file: moved)
-    }
-
-    /// What the extension does (also used by tests): one waiting share replaces an older one.
-    public static func put(text: String, file: URL?, base: URL? = nil) throws {
-        guard let dir = base.map({ $0.appendingPathComponent(folderName, isDirectory: true) }) ?? folder() else { return }
-        try? FileManager.default.removeItem(at: dir)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        var o: [String: Any] = ["text": String(text.prefix(maxText)), "at": Date().timeIntervalSince1970]
-        if let file {
-            let name = file.lastPathComponent
-            try FileManager.default.copyItem(at: file, to: dir.appendingPathComponent(name))
-            o["file"] = name
-        }
-        try JSONSerialization.data(withJSONObject: o).write(to: dir.appendingPathComponent("inbox.json"), options: .atomic)
     }
 }

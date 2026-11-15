@@ -855,14 +855,11 @@ class Weather:
             except WeatherError as e:
                 return f"Error: {e}"
             return describe(fc, self.clock(), days)
-        return Tool("weather", "The weather forecast for a place (or, without one, where the user is: the city their phone was last "
-                    f"in): today's and the next days' highs and lows, rain or snow and when, wind and air quality, up to "
-                    f"{MAX_DAYS[OPEN_METEO]} days ahead. With date: that day's forecast, or for a date outside the forecast the values "
-                    f"recorded around that date in each of the last {TYPICAL_YEARS} years (and the day itself when it is past). Use this for "
-                    "weather questions instead of searching the web or opening a browser.",
+        return Tool("weather", "Weather for a place (default: where the user is): highs, lows, rain or snow, wind, air quality, "
+                    f"up to {MAX_DAYS[OPEN_METEO]} days. With date: that day's forecast, or outside the forecast the values around that "
+                    f"date in the last {TYPICAL_YEARS} years. Use it instead of web search or a browser.",
                     {"type": "object", "properties": {
-                        "place": {"type": "string", "description": "a city or region name, any language (full names work best); omit for "
-                                                                   "where the user is"},
+                        "place": {"type": "string", "description": "a city or region, any language"},
                         "days": {"type": "integer", "description": f"how many days, 1 to {MAX_DAYS[OPEN_METEO]} (default 2)"},
                         "date": {"type": "string", "description": "YYYY-MM-DD, a day the question is about (any distance ahead or back)"}}},
                     weather, read_only=True)

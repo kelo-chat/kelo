@@ -245,13 +245,15 @@ Fetcher = Callable[[str, int], Awaitable[bytes]]
 
 class Nest:
     def __init__(self, registry: Registry, store: Any, *, data_dir: Path | None = None, fetcher: Fetcher | None = None,
-                 http: Http | None = None, index_url: str = INDEX_URL, keys: str = "", clock: Callable[[], float] = time.time):
+                 http: Http | None = None, index_url: str = INDEX_URL, keys: str = "", clock: Callable[[], float] = time.time,
+                 keyring: Any = None):
         """`fetcher`: downloads the index and package archives ((url, most bytes) -> bytes); `http`: requests to packages' services
         and pictures (netguard.fetch's signature); `keys`: extra trusted index keys (ASSISTANT_NEST_KEYS)."""
         self.registry, self.store = registry, store
         self.packages_store = PackageStore(data_dir, clock)
         self.fetcher = fetcher or netguard_fetcher
         self.http = http or netguard.fetch
+        self.keyring = keyring
         self.index_url = index_url
         self.keys = trusted_keys(keys)
         self.clock = clock
@@ -809,7 +811,8 @@ class Nest:
             if body is not None:
                 content = json.dumps(body, ensure_ascii=False).encode()
                 headers["Content-Type"] = "application/json"
-            r = await self.http(method, full, allowed_hosts=allowed, headers=headers, content=content, max_body=MAX_ANSWER)
+            from .cred_keyring import via
+            r = await via(cred, self.http, self.keyring)(method, full, allowed_hosts=allowed, headers=headers, content=content, max_body=MAX_ANSWER)
         except netguard.NetGuardError as e:
             raise NestError(t(UNREACHABLE, name=p.text("name"), error=str(e)[:160]), 502) from None
         from .vault import record_http
@@ -822,7 +825,7 @@ class Nest:
         host = (urlsplit(cred.get("endpoint") or "").hostname or "").lower()
         self._check(p, "hosts", host)
         try:
-            result = await mcp_session_call(self.http, cred, "tools/call", {"name": tool, "arguments": arguments})
+            result = await mcp_session_call(self.http, cred, "tools/call", {"name": tool, "arguments": arguments}, keyring=self.keyring)
         except (netguard.NetGuardError, McpError) as e:
             raise NestError(t(UNREACHABLE, name=p.text("name"), error=str(e)[:160]), 502) from None
         if result.get("structuredContent") is not None:

@@ -25,7 +25,9 @@ def language_line(lang: str | None = None) -> str:
     covers the short messages between tool steps: tool results, pages and Kelo's own notes are mostly English, and a model mirrors
     them mid-turn (seen 2026-11-10: English updates to a Korean user before any note was involved)."""
     code = lang or i18n.current()
-    return f"App language (every message, also between steps, unless the user writes in another): {LANGUAGE_NAMES.get(code, code)}"
+    name = LANGUAGE_NAMES.get(code, code)
+    return (f"The user's language: {name}. Write every message in it, also between steps and when pages, mails or tools use "
+            "another; switch only if the user writes in or asks for another.")
 
 
 # How Kelo talks to the user (profile "tone"): the owner picks it in the app, or asks in the chat (the set_tone tool).
@@ -110,7 +112,7 @@ def schedules_line(rows: list[dict[str, Any]] | None, tz_name: str | None, now: 
 
 def turn_lines(*, tz_name: str | None, now: datetime | None = None, agent_name: str = "", user_name: str = "",
                goals: list[dict[str, Any]] | None = None, provider: str = "", model: str = "",
-               schedules: list[dict[str, Any]] | None = None, tone: str = "") -> list[str]:
+               schedules: list[dict[str, Any]] | None = None, tone: str = "", limits: str = "") -> list[str]:
     """What changes every turn, as lines: the time, the calendar, the model, names, how to talk to the user, the next scheduled jobs
     and the goals being tracked."""
     out = [now_line(tz_name, now),
@@ -123,6 +125,8 @@ def turn_lines(*, tz_name: str | None, now: datetime | None = None, agent_name: 
     if user_name:
         out.append(f"The user's name: {user_name}")
     out.append(tone_line(tone))
+    if limits:   # what the owner limited per connector in the app (permissions.py): only when something is off or set to ask
+        out.append(limits)
     if line := schedules_line(schedules, tz_name, now):
         out.append(line)
     if block := goals_block(goals):
@@ -182,6 +186,7 @@ class PromptBuilder:
     def __init__(self, base: str, home: Home | None, skills: Skills | None):
         self.base, self.home, self.skills = base, home, skills
         self.learned: Callable[[], str] = lambda: ""   # the learned preferences section (reflection.py), set by the server
+        self.marker: Callable[[], str] = lambda: ""    # the private marker line (injection_watch.LeakMarker.line), set by the server
 
     @classmethod
     def load(cls, content_dir: str | Path, home: Home | None, skills: Skills | None, prompt_file: str | None = None) -> PromptBuilder | None:
@@ -193,16 +198,18 @@ class PromptBuilder:
 
     def build(self, *, agent_name: str = "", user_name: str = "", provider: str = "", model: str = "",
               goals: list[dict[str, Any]] | None = None, tz_name: str | None = None, now: datetime | None = None,
-              connected: set[str] | None = None, schedules: list[dict[str, Any]] | None = None, tone: str = "") -> str:
+              connected: set[str] | None = None, schedules: list[dict[str, Any]] | None = None, tone: str = "",
+              limits: str = "") -> str:
         """The whole prompt in one text: the stable part, then this turn's lines (see build_parts)."""
         stable, turn = self.build_parts(agent_name=agent_name, user_name=user_name, provider=provider, model=model, goals=goals,
-                                        tz_name=tz_name, now=now, connected=connected, schedules=schedules, tone=tone)
+                                        tz_name=tz_name, now=now, connected=connected, schedules=schedules, tone=tone,
+                                        limits=limits)
         return f"{stable}\n\n{turn}"
 
     def build_parts(self, *, agent_name: str = "", user_name: str = "", provider: str = "", model: str = "",
                     goals: list[dict[str, Any]] | None = None, tz_name: str | None = None, now: datetime | None = None,
                     connected: set[str] | None = None, schedules: list[dict[str, Any]] | None = None,
-                    tone: str = "") -> tuple[str, str]:
+                    tone: str = "", limits: str = "") -> tuple[str, str]:
         """(stable, turn). Stable, from what changes least to most: rules, skills, learned preferences (at most nightly), the user's
         files (when written). It is byte-for-byte the same from turn to turn until one of those changes, so a provider that caches
         the start of the request reuses it. Turn: "## This Turn" (the clock to the minute, calendar, model, names, how to talk to
@@ -213,8 +220,11 @@ class PromptBuilder:
         if learned := self.learned():
             parts.append(learned)
         if self.home:
-            parts.append(self.home.context_block())
+            files = self.home.context_block()
+            if marker := self.marker():   # in the private part with the owner's files: the model is told never to write it anywhere
+                files = f"{files}\n\n{marker}"
+            parts.append(files)
         turn = "## This Turn\n" + "\n".join(turn_lines(tz_name=tz_name, now=now, agent_name=agent_name, user_name=user_name,
                                                          goals=goals, provider=provider, model=model, schedules=schedules,
-                                                         tone=tone))
+                                                         tone=tone, limits=limits))
         return "\n\n".join(parts), turn

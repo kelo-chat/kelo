@@ -6,7 +6,7 @@ import KeloCore
 
 /// "30,000원", "25.00 USD": digits and separators in the app's language (the wallet's own wording).
 @MainActor public func keloMoney(_ amount: Double, _ currency: String) -> String {
-    let n = Money.number(amount, currency, locale: Strings.shared.locale)
+    let n = Money.number(amount, currency, locale: appLocale())
     return currency.uppercased() == "KRW" ? L(R.string.wallet_money_krw, n) : L(R.string.wallet_money, n, currency.uppercased())
 }
 
@@ -51,7 +51,7 @@ public struct ScheduleGrantRows: View {
                     line(L(R.string.task_grant_row_card, card + (g.cardLast4.map { " ••\($0)" } ?? "")))
                 }
                 if !g.isLogin, let n = g.left {
-                    line(L(R.string.task_grant_row_left, n, g.maxCount) + (g.once ? " · " + L(R.string.task_grant_row_once) : ""))
+                    line(L(R.string.task_grant_row_left, n, g.isApply ? g.totalCount : g.maxCount) + (g.once ? " · " + L(R.string.task_grant_row_once) : ""))
                 }
                 if g.isPurchase && g.spentThisMonth > 0 { line(L(R.string.grant_spent, keloMoney(g.spentThisMonth, g.currency))) }
                 if showSchedule && !g.ownerName.isBlank { line(L(R.string.grant_for_schedule, g.ownerName), muted: false) }
@@ -69,6 +69,7 @@ public struct ScheduleGrantRows: View {
         if g.isPurchase { return L(R.string.grant_purchase_title, g.what) }
         if g.isSend { return L(R.string.task_grant_row_send, g.placesText) }
         if g.isChange { return L(R.string.task_grant_row_change, g.what) }
+        if g.isApply { return L(R.string.task_grant_row_apply, g.what) }
         return L(R.string.grant_login_title, g.loginName)
     }
 
@@ -76,6 +77,7 @@ public struct ScheduleGrantRows: View {
         if g.isPurchase { return L(R.string.grant_purchase_cap, g.site, g.maxAmountText, g.monthlyCapText) }
         if g.isChange { return g.placesText + (g.allowDelete ? " · " + L(R.string.task_grant_delete_yes) : "") }
         if g.isSend { return g.template }
+        if g.isApply { return [g.site, L(R.string.task_grant_apply_per_run, g.maxCount)].filter { !$0.isBlank }.joined(separator: " · ") }
         return L(R.string.grant_login_site, g.site)
     }
 

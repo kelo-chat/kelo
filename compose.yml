@@ -11,7 +11,7 @@
 # Updates from the app (optional, main copy only): `assistant updater setup` turns on the `updater` profile below; the owner then presses
 #   Update in the app (My → Server update), or lets it update at night. It pulls the signed release images, backs up, restarts and
 #   checks each copy, and rolls back by itself on failure (the same steps as `assistant update`).
-x-kelo-compose-level: 1   # raised when a release needs a newer compose.yml (the updater then asks to run the installer again)
+x-kelo-compose-level: 2   # raised when a release needs a newer compose.yml (the updater then asks to run the installer again)
 
 x-build: &build
   context: .
@@ -42,16 +42,25 @@ services:
       BROWSER_CDP_HOST: ${BROWSER_CDP_HOST-browser}   # an extra user's instance without a browser sets it empty
       ASSISTANT_CLI_CLAUDE_URL: http://claude-cli:9300   # used only when the `claude` profile is up
       ASSISTANT_CLI_AGY_URL: http://agy-cli:9300         # used only when the `agy` profile is up
+      KELO_ROUTE_DIR: /run/kelo-route                    # the VPN connector: route file for egress, files for the vpn container (vpn.py)
+      KELO_VPN_DIR: /run/kelo-vpn
       BROWSER_DOWNLOADS_DIR: /browser-downloads          # what pages downloaded (read-only here; copied to the library on request)
       BROWSER_LANG: ${BROWSER_LANG:-ko-KR}               # the browser's language, also used for the tabs' date/number formats
       ASSISTANT_UPDATER_URL: http://updater:9400         # updates from the app; used only with UPDATER_TOKEN (the main copy)
+      KEYRING_URL: http://keyring:9500                   # the key container (docs/keyring.md)
+      KEYRING_TOKEN: ${KEYRING_TOKEN:-}
     env_file: ${ENV_FILE:-.env}        # API keys + token live ONLY in this container (instances use their own file)
     read_only: true
     tmpfs: ["/tmp"]
-    volumes: ["server-state:/state", "workroom-io:/run/workroom", "browser-downloads:/browser-downloads:ro"]
+    volumes: ["server-state:/state", "workroom-io:/run/workroom", "browser-downloads:/browser-downloads:ro",
+              "kelo-route:/run/kelo-route", "kelo-vpn:/run/kelo-vpn"]   # the VPN connector: the route file (public) and the VPN's files (keys)
     ports: ["${SERVER_BIND:-127.0.0.1}:${SERVER_PORT:-8080}:8080"]   # this machine only by default; SERVER_BIND=0.0.0.0 lets a proxy elsewhere in the house reach it
     depends_on: [browser]
-    networks: [agent, cli-net, browser-net]   # browser-net: the browser's DevTools (the server reaches it directly, not via the proxy)
+    # host.docker.internal = this computer, for an app the owner runs next to Kelo (Connectors → Self-hosted); Docker Desktop has it already,
+    # Linux needs this line. Only the owner's own connection form can use it; loopback and link-local stay refused (netguard.fetch_local).
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [agent, cli-net, browser-net, vpn-net, keyring-net]   # browser-net: the browser's DevTools (the server reaches it directly, not via the proxy);
+                                                       # vpn-net: web_fetch / web_search go through the VPN connector's sidecar when it is on
     # (the main copy's server is also attached to updater-net, by the updater itself while it runs: see the updater below)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
@@ -103,9 +112,55 @@ services:
     mem_limit: ${EGRESS_MEMORY:-256m}
     memswap_limit: ${EGRESS_MEMORY:-256m}
     ports: ["127.0.0.1:${VIEWER_PORT:-6080}:6080"]     # human viewer (noVNC), this machine only
-    networks: [browser-net, egress-out]
+    volumes: ["kelo-route:/run/kelo-route:ro"]         # where the server says "direct" or "through the VPN sidecar" (no keys in it)
+    networks: [browser-net, egress-out, vpn-net]
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 3128), 3).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---- the VPN connector's sidecar (assistant/vpn_sidecar.py): the owner's WireGuard VPN (wireproxy, in user space: no NET_ADMIN, no
+  # /dev/net/tun) or a forwarder to the owner's SOCKS5/HTTP proxy, offered as SOCKS5 on vpn:1080 to egress (the browser) and the server
+  # (web_fetch) only. Idle until the owner connects "VPN (WireGuard)" or "Proxy" in Connectors; the server writes its files into
+  # kelo-vpn (read-only here: keys and proxy passwords never reach egress, which has only the route file). No env_file, no state.
+  # (Same user id as the server so the 0600 files the server wrote can be read; a different container and a read-only volume.)
+  vpn:
+    build: *build
+    image: ${KELO_IMAGE:-assistant:local}
+    <<: *hardening
+    restart: unless-stopped
+    user: "1001:1001"
+    environment:
+      ROLE: vpn
+    read_only: true
+    tmpfs: ["/tmp"]
+    mem_limit: ${VPN_MEMORY:-64m}
+    memswap_limit: ${VPN_MEMORY:-64m}
+    volumes: ["kelo-vpn:/run/kelo-vpn:ro"]
+    networks: [egress-out, vpn-net]
+
+  # ---- the key container (assistant/keyring_service.py, docs/keyring.md): keeps the AI providers' keys the owner entered, so the server
+  # never holds them. The server sends model calls here without a key; this adds it only for that key's own provider host. Locked
+  # until the server hands it the ring key (under Keyguard: after a phone unlocks Kelo). No env_file: only KEYRING_TOKEN.
+  keyring:
+    build: *build
+    image: ${KELO_IMAGE:-assistant:local}
+    <<: *hardening
+    restart: unless-stopped
+    user: "1005:1005"
+    environment:
+      ROLE: keyring
+      KEYRING_TOKEN: ${KEYRING_TOKEN:-}
+      KEYRING_STATE: /keyring-state
+    read_only: true
+    tmpfs: ["/tmp"]
+    mem_limit: ${KEYRING_MEMORY:-128m}
+    memswap_limit: ${KEYRING_MEMORY:-128m}
+    volumes: ["keyring-state:/keyring-state"]
+    networks: [keyring-net, keyring-out]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:9500/healthz', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -268,16 +323,22 @@ networks:
   agent: {}
   cli-net: {}  # server <-> CLI sidecars only (needs outbound internet for the CLIs themselves)
   browser-net: {internal: true}   # browser <-> server (DevTools) and browser -> egress; no gateway, so no route anywhere else
-  egress-out: {}                  # the egress proxy's own way to the internet
+  egress-out: {}                  # the egress proxy's own way to the internet (and the VPN sidecar's, to reach the VPN provider)
+  vpn-net: {internal: true}       # the VPN sidecar <-> egress and the server, nothing else (the browser is not on it)
+  keyring-net: {internal: true}   # the server <-> the key container, nothing else
+  keyring-out: {}                 # the key container's own way to the providers (and the LAN, for a custom endpoint)
   updater-net: {internal: true}   # the main copy's server <-> the updater, nothing else (made only where the updater runs)
   updater-out: {}                 # the updater's own way to the release list and the signature checks
 
 volumes:
   server-state: {}
+  keyring-state: {}     # keyring.db: the AI providers' keys, sealed under the ring key (only the key container mounts it)
   browser-data: {}
   browser-downloads: {}   # files pages downloaded (written by the browser, read-only for the server); kept for a day
   claude-home: {}
   agy-home: {}
+  kelo-route: {}        # route.json: direct, or through the VPN sidecar (server writes, egress reads; no secrets)
+  kelo-vpn: {}          # wg.conf / upstream.json with the VPN's keys or the proxy's password (server writes, the vpn sidecar reads)
   workroom-io: {}       # the two sockets between the server and the work room, nothing else
   workroom-scratch: {}  # /work: emptied before and after every job
   workroom-tools: {}    # /tools: packages the user approved (pip / npm), kept across updates

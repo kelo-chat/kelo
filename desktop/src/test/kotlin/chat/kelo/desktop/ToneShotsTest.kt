@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -11,10 +12,6 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.MyPane
-import chat.kelo.desktop.pages.MyView
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -58,28 +55,28 @@ class ToneShotsTest {
     private fun flow(lang: String) {
         val server = MockServer("--lang", lang).also { mock = it }
         val app = server.app(tmp.newFolder(), lang = lang, theme = "light")
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             Box(Modifier.size(480.dp, 900.dp)) {
-                KeloFrame(app) { MyPane(app, topInset = 0.dp, start = start.value, onStartUsed = { start.value = null }, onSignedOut = {}) }
+                KeloFrame(app) { MyPaneAt(app, start) }
             }
         }
-        val friendly = words.get(R.string.my_agent_tone_friendly)
-        val polite = words.get(R.string.my_agent_tone_polite)
-        fun open() { start.value = MyView.AGENT; ui.settle(); ui.waitText(words.get(R.string.my_agent_tone)) }
+        val friendly = words.get(Res.string.my_agent_tone_friendly)
+        val polite = words.get(Res.string.my_agent_tone_polite)
+        fun open() { start.value = MyView.AGENT; ui.settle(); ui.waitText(words.get(Res.string.my_agent_tone)) }
         fun waitChosen(label: String) = ui.waitUntil("$label chosen") { compose.onAllNodes(chosen(label)).fetchSemanticsNodes().isNotEmpty() }
         try {
             open()
-            ui.waitText(words.get(R.string.my_agent_tone_friendly_example))
-            ui.waitText(words.get(R.string.my_agent_tone_polite_example))
+            ui.waitText(words.get(Res.string.my_agent_tone_friendly_example))
+            ui.waitText(words.get(Res.string.my_agent_tone_polite_example))
             waitChosen(polite)
             ui.shot("tone-$lang-narrow-polite")
             // the agent switched it in the chat (set_tone saves the same profile field): the page shows it when opened again
             call("PUT", "/api/profile", """{"tone":"friendly"}""")
-            compose.onAllNodesWithContentDescription(words.get(R.string.back))[0].performClick()
-            ui.waitText(words.get(R.string.my_section_account))
+            compose.onAllNodesWithContentDescription(words.get(Res.string.back))[0].performClick()
+            ui.waitText(words.get(Res.string.my_section_account))
             open()
             waitChosen(friendly)
             ui.shot("tone-$lang-narrow-friendly")

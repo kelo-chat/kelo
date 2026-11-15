@@ -180,6 +180,9 @@ def main(argv=None):
                     print(f"{time.strftime('%H:%M:%S')} build {a.version}: {state}", flush=True)
                     last = state
                 if state == "VALID":
+                    # Processed is not released: TestFlight and review do not count. The operator records it when it is live.
+                    print(f"When this build is live in the App Store (Ready for Distribution), record it with\n"
+                          f"  assistant release-record ios <version> {a.version} appstore")
                     return 0
                 if state in ("FAILED", "INVALID"):
                     return 2

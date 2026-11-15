@@ -48,5 +48,5 @@ RUN mkdir -p "$HOME" && chmod 1777 "$HOME"
 COPY build-in-container.sh /usr/local/bin/kelo-build
 RUN chmod 0755 /usr/local/bin/kelo-build
 
-WORKDIR /build/kelo
+WORKDIR /build/android/kelo
 ENTRYPOINT ["/usr/local/bin/kelo-build"]

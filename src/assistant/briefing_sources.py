@@ -23,7 +23,8 @@ POST /api/briefing/sources/check  reads every account once now (what the briefin
 The agent's tool `briefing_sources` flips the same switches from the chat; it needs no approval card (it only narrows or restores
 what Kelo reads). The agent's tool `calendar_events` reads the same chosen calendars for the chat (all-day events included).
 Cost per account is bounded instead of the number of accounts: each calendar and mailbox is read at the same time within its own time
-limit (calendars.ACCOUNT_TIMEOUT, proactive.MAIL_ACCOUNT_TIMEOUT; the newest proactive.UNREAD_PER_ACCOUNT unread per mailbox); one
+limit (calendars.ACCOUNT_TIMEOUT, proactive.MAIL_ACCOUNT_TIMEOUT; the proactive pass reads every unread mail since its last look in
+each mailbox, with proactive.ARRIVALS_TIMEOUT); one
 that runs over is skipped this time and shown as "slow".
 """
 
@@ -46,7 +47,7 @@ from .calendars import Calendars, classify
 from .i18n import N_, t
 from .google_calendar import parse_when, when_text
 from .mail import PROVIDERS as MAIL
-from .proactive import MAIL_ACCOUNT_TIMEOUT
+from .proactive import ARRIVALS_TIMEOUT, MAIL_ACCOUNT_TIMEOUT
 
 log = logging.getLogger("uvicorn.error")
 
@@ -97,6 +98,9 @@ def _default() -> dict[str, Any]:
 class Sources:
     def __init__(self, store: Any, calendars: Calendars, mail: Any, clock: Callable[[], float] = time.time):
         self.store, self.calendars, self.mail, self.clock = store, calendars, mail, clock
+        # the owner's per-connector limits (permissions.py): False = the chat's calendar_events may not read this calendar. The briefing and
+        # the heads-ups keep to the switches above.
+        self.owner_allows: Callable[[Acct], bool] | None = None
 
     # ------------------------------------------------------------------ the accounts
     def accounts(self, kind: str) -> list[Acct]:
@@ -255,13 +259,16 @@ class Sources:
         accts = self.accounts("calendar")
         failed: list[str] = []
 
+        def on(a: Any) -> bool:
+            return self._on(group, a.id) and (self.owner_allows is None or self.owner_allows(a))
+
         def note(a: Any, code: str, detail: str) -> None:
             self.report(a.id, code, detail)
             if code != "ok":
                 failed.append(a.id)
-        evs = await self.calendars.read(start, end, all_day=True, wanted=lambda a: self._on(group, a.id), report=note, tool="calendar_events",
+        evs = await self.calendars.read(start, end, all_day=True, wanted=on, report=note, tool="calendar_events",
                                         **({"pages": pages} if pages > 1 else {}))
-        read = [a for a in accts if self._on(group, a.id)]
+        read = [a for a in accts if on(a)]
         names = {a.id: self.label(a, read) for a in read}
         terms = search_terms(query)
         seen: set[tuple[str, int]] = set()
@@ -275,7 +282,7 @@ class Sources:
                 continue   # the same event from two calendars (a Google calendar synced into the phone)
             seen.add(key)
             out.append({**e, "source": names.get(e["source_id"], "")})
-        return out, [a for a in read if a.id not in failed], [a for a in accts if not self._on(group, a.id)], [a for a in read if a.id in failed]
+        return out, [a for a in read if a.id not in failed], [a for a in accts if not on(a)], [a for a in read if a.id in failed]
 
     def calendar_tool(self, timezone_name: Callable[[], str | None]) -> Tool:
         async def calendar_events(args: dict[str, Any]) -> str:
@@ -439,6 +446,21 @@ class SelectedMail:
             log.info("mail %s failed (%s)", account, str(e)[:120])
             self.sources.report(f"mail:{account}", classify(e), str(e))
             return []
+        self.sources.report(f"mail:{account}", "ok")
+        return got
+
+    async def arrivals(self, account: str, cursor: dict[str, Any] | None, kind: str = "inbox") -> dict[str, Any] | None:
+        """What came in after `cursor` (mailboxes.Mailboxes.arrivals). Unlike list(), a mailbox that fails or is slow raises after being
+        recorded: the caller must not move its cursor on as if nothing had arrived."""
+        try:
+            got = await asyncio.wait_for(self.sources.mail.arrivals(account, cursor, kind), ARRIVALS_TIMEOUT)
+        except asyncio.TimeoutError:
+            self.sources.report(f"mail:{account}", "slow", f"no answer within {int(ARRIVALS_TIMEOUT)} seconds")
+            raise
+        except Exception as e:  # noqa: BLE001 - recorded, then the caller keeps its old cursor
+            log.info("mail %s failed (%s)", account, str(e)[:120])
+            self.sources.report(f"mail:{account}", classify(e), str(e))
+            raise
         self.sources.report(f"mail:{account}", "ok")
         return got
 

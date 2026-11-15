@@ -5,7 +5,6 @@ import chat.kelo.app.agent.PendingApproval
 import chat.kelo.app.chat.ChatItem
 import chat.kelo.app.chat.ChatReducer
 import chat.kelo.app.chat.TurnEvent
-import chat.kelo.desktop.chat.CheckPlace
 import chat.kelo.desktop.chat.Handover
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -42,44 +41,13 @@ class HandoverTest {
         assertEquals(TurnEvent.HumanCheck("h1", "solved", "s.example", "owner"), ev)
     }
 
-    @Test fun aChatCardKnowsItsSiteAndTabAndFoldsToHowItEnded() {
+    @Test fun aHumanCheckCardIsRecognised() {
         val ask = TurnEvent.parse(Json.parseToJsonElement(
             """{"type":"approval_request","kind":"human_check","approval_id":"h1","name":"browser_check","ask":"x","tab":"task:ab12"}""",
         ))
-        val waiting = TurnEvent.HumanCheck("h1", "waiting", "shop.example.com", "task:ab12")
-        var places = Handover.places(emptyMap(), ask)
-        assertEquals(CheckPlace("", "task:ab12"), places["h1"])
-        places = Handover.places(places, waiting)
-        assertEquals(CheckPlace("shop.example.com", "task:ab12"), places["h1"])
-        assertEquals(places, Handover.places(places, TurnEvent.Text("hi")))
-
         val items = ChatReducer.apply(emptyList(), ask) { "k" }
         val card = items.single() as ChatItem.Approval
         assertTrue(Handover.isCheck(card)); assertTrue(card.open)
-        assertEquals(items, Handover.settle(items, waiting))
-        assertEquals(true, (Handover.settle(items, waiting.copy(state = "solved")).single() as ChatItem.Approval).answer)
-        assertEquals(false, (Handover.settle(items, waiting.copy(state = "skipped")).single() as ChatItem.Approval).answer)
-        val gone = Handover.settle(items, waiting.copy(state = "expired")).single() as ChatItem.Approval
-        assertTrue(gone.expired); assertFalse(gone.open)
-        // answered already here: the server's later word changes nothing
-        val skipped = ChatReducer.answer(items, "h1", false)
-        assertEquals(skipped, Handover.settle(skipped, waiting.copy(state = "solved")))
-    }
-
-    @Test fun aSignInVerificationKeepsItsKindAndStepForTheChatCard() {
-        val ask = TurnEvent.parse(Json.parseToJsonElement(
-            """{"type":"approval_request","kind":"human_check","approval_id":"v1","name":"browser_check","tab":"owner",
-               "check":{"vendor":"kakao","name":"휴대폰에서 로그인을 승인해 주세요","kind":"verification"}}""")) as TurnEvent.ApprovalRequest
-        var places = Handover.places(emptyMap(), ask)
-        assertTrue(places["v1"]!!.check!!.isVerification)
-        // the stream's human_check without a check object keeps the one already known
-        places = Handover.places(places, TurnEvent.HumanCheck("v1", "waiting", "accounts.kakao.com", "owner"))
-        assertEquals("휴대폰에서 로그인을 승인해 주세요", places["v1"]!!.check!!.name)
-        assertEquals("accounts.kakao.com", places["v1"]!!.site)
-        // an older server: no check, a person check as before
-        val old = TurnEvent.parse(Json.parseToJsonElement(
-            """{"type":"approval_request","kind":"human_check","approval_id":"h9","name":"browser_check"}""")) as TurnEvent.ApprovalRequest
-        assertNull(Handover.places(emptyMap(), old)["h9"]!!.check)
     }
 
     @Test fun theLiveViewTakesTheTabOverOnceWhenAskedTo() {

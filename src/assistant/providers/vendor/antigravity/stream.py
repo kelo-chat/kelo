@@ -1056,8 +1056,10 @@ class AntigravityStream(Iterator[Any]):
 
             yield self._make_chunk(finish_reason=finish_reason)
 
+            # agy reports input WITHOUT the cache reads (cache_read can exceed input); every other transport's prompt_tokens is the whole
+            # prompt, cache included (OpenAI's convention, anthropic_messages.py): add them so "new = input - cache_read" holds for every model
             usage = SimpleNamespace(
-                prompt_tokens=input_tokens,
+                prompt_tokens=input_tokens + cached_tokens,
                 completion_tokens=output_tokens,
                 total_tokens=total_tokens,
                 completion_tokens_details=(

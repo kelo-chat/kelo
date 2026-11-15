@@ -17,14 +17,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
-import chat.kelo.app.chat.ChatViewModel
 import chat.kelo.app.core.ShareParse
 import chat.kelo.app.core.ShareRequest
 import chat.kelo.app.core.Shared
 import chat.kelo.app.start.AppRoot
 import chat.kelo.app.ui.InsetsWatchdog
 import chat.kelo.app.ui.theme.KeloTheme
-import chat.kelo.app.ui.theme.LocalReduceMotion
+import chat.kelo.app.ui.AndroidConsentMemory
+import chat.kelo.app.ui.ProvideAndroidPlatform
+import chat.kelo.app.chat.LocalConsentMemory
+import chat.kelo.app.ui.systemReducesMotion
 import chat.kelo.app.ui.theme.Motion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -56,7 +58,9 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val container = appContainer
-        reduceMotion = Motion.systemReducesMotion(this)
+        container.activityHost.current = this
+        val consent = AndroidConsentMemory(this)
+        reduceMotion = systemReducesMotion(this)
         container.updater.attach(this)   // checks when the app comes back; the Play build's update screens start from here
         if (savedInstanceState == null) {
             val shownAt = SystemClock.uptimeMillis()
@@ -66,8 +70,10 @@ class MainActivity : FragmentActivity() {
             receive(intent)
         }
         setContent {
-            CompositionLocalProvider(LocalAppContainer provides container, LocalReduceMotion provides reduceMotion) {
-                KeloTheme { AppRoot(onSettled = ::onFirstScreen) }
+            CompositionLocalProvider(LocalAppContainer provides container, LocalAppServices provides container, LocalConsentMemory provides consent) {
+                ProvideAndroidPlatform(reduceMotion) {
+                    KeloTheme { AppRoot(onSettled = ::onFirstScreen) }
+                }
             }
         }
         // Compose's insets can get stuck on an animation the system never starts (see InsetsWatchdog): the header then sat a status
@@ -87,9 +93,16 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (appContainer.activityHost.current === this) appContainer.activityHost.current = null
+        super.onDestroy()
+    }
+
     override fun onResume() {
         super.onResume()
-        reduceMotion = Motion.systemReducesMotion(this)   // the setting may have changed while away
+        reduceMotion = systemReducesMotion(this)   // the setting may have changed while away
+        // the owner is looking at the app now: the notifications that only told something have done their job (owner 2026-11-12)
+        runCatching { chat.kelo.app.notify.Notifier(this).clearNews() }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -149,34 +162,24 @@ class MainActivity : FragmentActivity() {
         val name = ShareParse.uploadName(display, type)
         when {
             name == null -> Shared.Unsupported(display ?: uri.lastPathSegment.orEmpty())
-            size > ChatViewModel.MAX_UPLOAD -> Shared.Failed(tooLarge = true)
+            // no size limit of the server's here: the upload plan decides when it goes up (with this route's limits). The only limit
+            // is the phone's own: the copy must fit in the free space of the app's cache.
+            size > 0 && size > cacheDir.usableSpace -> Shared.Failed
             else -> {
                 val dir = File(cacheDir, "shared").apply { mkdirs() }
                 dir.listFiles()?.forEach { it.delete() }   // only the newest share is kept
                 val out = File(dir, "share-" + System.currentTimeMillis())
-                var total = 0L
-                val ok = contentResolver.openInputStream(uri)?.use { input ->
-                    out.outputStream().use { o ->
-                        val buf = ByteArray(64 * 1024)
-                        while (true) {
-                            val n = input.read(buf)
-                            if (n < 0) break
-                            total += n
-                            if (total > ChatViewModel.MAX_UPLOAD) return@use false
-                            o.write(buf, 0, n)
-                        }
-                        true
-                    }
-                }
-                when (ok) {
-                    true -> Shared.File(out.path, name, type)
-                    false -> { out.delete(); Shared.Failed(tooLarge = true) }
-                    null -> Shared.Failed(tooLarge = false)
+                try {
+                    val copied = contentResolver.openInputStream(uri)?.use { input -> out.outputStream().use { o -> input.copyTo(o, 64 * 1024); true } }
+                    if (copied == true) Shared.File(out.path, name, type) else { out.delete(); Shared.Failed }
+                } catch (e: Exception) {
+                    out.delete()   // e.g. the cache ran out of room half way
+                    Shared.Failed
                 }
             }
         }
     } catch (e: Exception) {
-        Shared.Failed(tooLarge = false)
+        Shared.Failed
     }
 }
 

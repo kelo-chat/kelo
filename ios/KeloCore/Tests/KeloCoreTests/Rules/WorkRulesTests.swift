@@ -40,9 +40,19 @@ import Testing
         #expect(now.jobs.map(\.worker.id) == ["w9"])
         #expect(now.count == 2)
         var doneJob = job
-        doneJob.status = Worker.statusDone
+        doneJob.status = "done"
         let calm = Timeline.nest([parent, plain], [doneJob])
         #expect(Timeline.now(calm).empty)
+    }
+
+    @Test func aDoneTaskWithARunningJobIsInBackground() {
+        let runningNode = TaskNode(task: parent, jobs: [JobNode(worker: job)])
+        #expect(runningNode.inBackground)
+
+        var doneJob = job
+        doneJob.status = "done"
+        let doneNode = TaskNode(task: parent, jobs: [JobNode(worker: doneJob)])
+        #expect(!doneNode.inBackground)
     }
 
     @Test func pastGroupsByDayAndFilters() {
@@ -82,7 +92,7 @@ import Testing
 
     @Test func followupsOnHoldComeLastWithoutRepeatingWhatIsListed() throws {
         func hold(_ id: String, _ at: Double, _ acts: FollowupAction...) -> Followup {
-            Followup(id: id, kind: "reply", title: "t\(id)", stage: Followup.onHoldStage, nextAt: nil, createdAt: at, actions: acts)
+            Followup(id: id, kind: "reply", title: "t\(id)", stage: Followup.onHoldStage, createdAt: at, actions: acts)
         }
         let asks = Timeline.asks(
             pending: [try pending("a", needsCard: false, askedAt: 5.0)],
@@ -91,7 +101,7 @@ import Testing
                 hold("f2", 9.0), hold("f1", 2.0),
                 hold("f3", 1.0, FollowupAction(kind: "resume", workerId: "w2")),
                 hold("f4", 1.0, FollowupAction(kind: "approve", approvalId: "a")),
-                Followup(id: "f5", kind: "reply", title: "", stage: Followup.first, nextAt: nil, createdAt: 0.0, actions: []),
+                Followup(id: "f5", kind: "reply", title: "", stage: "first", createdAt: 0.0, actions: []),
             ])
         #expect(asks.map(\.key) == ["ask:a", "askjob:w2", "askhold:f1", "askhold:f2"])
     }
@@ -101,6 +111,9 @@ import Testing
         #expect(Timeline.tabFor(run2, tabs: tabs) == "task:x")
         #expect(Timeline.tabFor(plain, tabs: tabs) == nil)                      // its tab has ended
         #expect(Timeline.tabFor(run1, tabs: [], workers: [job]) == "task:w1")
+        var stoppedJob = job
+        stoppedJob.status = Worker.statusStopped
+        #expect(Timeline.tabFor(stoppedJob) == nil)
         #expect(Timeline.tabFor(job) == "task:w1")
         #expect(Timeline.tabFor(orphan) == nil)                                 // research with no picture: no browser
         let p = try #require(Timeline.progress(job))
@@ -162,7 +175,7 @@ import Testing
 
     @Test func waitingEntriesAreRowsInAsksAfterTheApprovals() throws {
         let token = SecretRequest(id: "sr1", kind: "key", name: "telegram", label: "텔레그램 봇 토큰", createdAt: 4)
-        let draft = SecretRequest(id: "sr2", kind: "login", name: "x", source: SecretRequest.sourceDraft, createdAt: 2)
+        let draft = SecretRequest(id: "sr2", kind: "login", name: "x", source: "draft", createdAt: 2)
         let done = SecretRequest(id: "sr3", kind: "key", state: SecretRequest.stateSaved, createdAt: 1)
         let asks = Timeline.asks(pending: [try pending("a", needsCard: false, askedAt: 5)],
                                  workers: [Worker(id: "w2", status: Worker.statusNeedsInput, updatedAt: 3)], entries: [token, draft, done])
@@ -177,7 +190,5 @@ import Testing
             Watcher(id: 4, name: "d", enabled: true, state: "watching", lastFiredAt: 50.0),
         ]
         #expect(Watching.order(list).map(\.id) == [3, 4, 2, 1])
-        #expect(Watching.switchable(Watcher(id: 5, canEnable: true)))
-        #expect(!Watching.switchable(Watcher(id: 6)))
     }
 }

@@ -143,11 +143,6 @@ class JournalDaysTest {
         assertEquals(listOf("2026-11-06", "2026-11-05", "2026-11-03"), days.map { it.date })
         assertEquals(2, days[1].entries.size)
         assertEquals("failed", days[2].gap?.status)
-        // header positions: before=4, then 06 (header + gap) = 2 items, 05 (header + 2) = 3 items
-        assertEquals(mapOf("2026-11-06" to 4, "2026-11-05" to 6, "2026-11-03" to 9), JournalDays.positions(days, 4))
-        assertEquals("2026-11-05", JournalDays.nearest(days, "2026-11-05"))
-        assertEquals("2026-11-03", JournalDays.nearest(days, "2026-11-04"))
-        assertEquals("2026-11-03", JournalDays.nearest(days, "2026-11-01"))
     }
 }
 
@@ -229,7 +224,7 @@ class PlanRulesTest {
         val once = PlanRules.fromSchedule(Schedule(5, kind = "once", runAt = "2026-11-09T07:30:00+09:00"), today)!!
         assertEquals(SchedulePlan(LocalDate.of(2026, 11, 9), 7, 30), once)
         // a window schedule shows as its plain time (the spread is never offered)
-        assertEquals(Freq.DAILY, PlanRules.fromSchedule(Schedule(6, kind = "window", cron = "0 9 * * *", windowMinutes = 15), today)!!.freq)
+        assertEquals(Freq.DAILY, PlanRules.fromSchedule(Schedule(6, kind = "window", cron = "0 9 * * *"), today)!!.freq)
         // what the form cannot show
         assertNull(PlanRules.fromSchedule(Schedule(7, kind = "interval", everyMinutes = 90), today))
         assertNull(PlanRules.fromSchedule(Schedule(8, cron = "0 */3 * * *"), today))

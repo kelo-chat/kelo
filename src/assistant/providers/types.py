@@ -32,6 +32,7 @@ class Usage:
     cache_read_tokens: int = 0    # input tokens read from the provider's prompt cache (where the transport reports them)
     cache_write_tokens: int = 0   # input tokens written to it
     reasoning_tokens: int = 0     # of output_tokens: spent on reasoning (where the transport reports them)
+    session: str = ""              # agy: how the call used the session pool ("turn", "round", "new: <why>"); kept in usage_events.note
 
 
 @dataclass(slots=True)
@@ -111,6 +112,8 @@ class ChatRequest:
     # how many leading tools stay the same from request to request (the core set, tools on demand): a transport with explicit
     # prompt caching puts a breakpoint after them as well as after the last tool. 0 = not known.
     stable_tools: int = 0
+    # what the call is for (the job kind: "chat", "worker", "memory" ...; "" = unknown). Only the agy session pool reads it; no wire sends it.
+    purpose: str = ""
 
 
 # A system/developer message after the conversation has started (the agent loop's "steps are running out" / "answer now" notes, the

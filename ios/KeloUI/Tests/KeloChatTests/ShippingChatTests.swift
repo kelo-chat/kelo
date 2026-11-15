@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 @testable import KeloChat
 

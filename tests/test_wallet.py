@@ -228,6 +228,9 @@ def test_auto_pay_decision():
     e2e = e2e_card(wallet)
     host = "pay.shop.example.com"
     assert wallet.decide(card, host, 10_000, "KRW").reason == "first_site"        # never paid here: the phone asks
+    assert wallet.decide(card, host, 10_000, "KRW", asked_here=True).auto         # ...unless the owner asked to buy there
+    assert wallet.decide(card, host, 999_999, "KRW", asked_here=True).reason == "over_per_payment"   # the limits still decide
+    assert not wallet.decide(e2e, host, 10_000, "KRW", asked_here=True).auto       # and a card without auto-pay still asks
     wallet.mark_site("shop.example.com")
     d = wallet.decide(card, host, 10_000, "KRW")
     assert d.auto and d.reason == "auto"                                          # a subdomain of a known site is the same site
@@ -847,7 +850,7 @@ def test_the_prompt_tells_how_to_pay_with_a_card_without_naming_any_site():
     import re as _re
     text = (Path(__file__).resolve().parents[1] / "content" / "prompts" / "system.md").read_text(encoding="utf-8")
     section = text.split("**Buying, ordering, booking.**", 1)[1].split("\n\n**", 1)[0]
-    for word in ("wallet_cards", "browser_fill_card", "card=", "extra verification", "phone"):
+    for word in ("wallet_cards", "browser_fill_card", "card=", "Extra verification", "phone"):
         assert word in section, word
     assert "card numbers never go through chat" in text.split("**Logins and keys", 1)[1].split("\n\n**", 1)[0]
     assert not _re.search(r"https?://|www\.|\.co\.kr|\.com\b", section)

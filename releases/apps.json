@@ -1,0 +1,10 @@
+{
+  "android": [
+    {"version": "0.1.404019", "build": 404019, "channel": "download", "date": "2026-11-09"}
+  ],
+  "ios": [],
+  "desktop": [
+    {"version": "1.0.3", "build": 100000003, "channel": "download", "date": "2026-11-08"},
+    {"version": "1.0.6", "build": 100000006, "channel": "download", "date": "2026-11-09"}
+  ]
+}

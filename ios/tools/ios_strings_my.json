@@ -7,14 +7,6 @@
     "en": "Confirm it's you to open your payment cards.",
     "ko": "결제 카드를 열려면 본인인지 확인해 주세요."
   },
-  "my_ios_card_seal_reason": {
-    "en": "Confirm it's you to lock this card with this iPhone's key.",
-    "ko": "이 아이폰의 키로 카드를 잠그려면 본인인지 확인해 주세요."
-  },
-  "my_ios_card_open_reason": {
-    "en": "Confirm it's you to use this card for the payment you allowed.",
-    "ko": "허락한 결제에 이 카드를 쓰려면 본인인지 확인해 주세요."
-  },
   "my_ios_wallet_lock_body": {
     "en": "Confirm it's you with Face ID, Touch ID or your passcode to open them again.",
     "ko": "Face ID, Touch ID 또는 암호로 본인인지 확인하면 다시 열려요."

@@ -134,7 +134,7 @@ async def test_api_upload_then_extract_end_to_end(tmp_path, monkeypatch):
         r = await c.put("/api/uploads/r.docx", content=src.read_bytes())
         assert r.json() == {"path": "uploads/r.docx", "ok": True}
         assert (await c.put("/api/uploads/evil.exe", content=b"MZ")).status_code == 422
-        assert (await c.put("/api/uploads/big.pdf", content=b"x" * 1_000_100)).status_code == 413
+        assert (await c.put("/api/uploads/big.pdf", content=b"x" * 1_000_100, headers={"cf-ray": "x"})).status_code == 413   # the limit applies through Cloudflare only
         assert [u["path"] for u in (await c.get("/api/uploads")).json()] == ["uploads/r.docx"]
         assert (await c.get("/api/files/uploads/r.docx")).status_code == 404                        # binaries are not served as text
 

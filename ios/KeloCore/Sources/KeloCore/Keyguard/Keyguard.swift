@@ -21,8 +21,6 @@ import LocalAuthentication
 // P-256 key, so everything above the key can be tested.
 
 public enum KeyguardBlob {
-    /// Android: AES-256-GCM in AndroidKeyStore.
-    public static let androidFormat: UInt8 = 0x01
     /// iPhone: Secure Enclave P-256 + HPKE (ECIES).
     public static let iPhoneFormat: UInt8 = 0x02
     /// Format byte (1) + ephemeral public key (65) + tag (16) on top of the secret.

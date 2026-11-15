@@ -91,18 +91,17 @@ import Testing
 
 @Suite struct KeloApiTests {
     @Test func sendsBearerAndDecodes() async throws {
-        let t = FakeTransport(.ok(200, #"[{"id":1,"title":"운동","extra":true}]"#))
-        let goals = try await KeloApi(baseUrl: "https://k.example/", token: "tok", transport: t).goals()
-        #expect(goals.map(\.title) == ["운동"])
-        #expect(goals[0].status == Goal.statusTracking)
-        #expect(goals[0].schedulesOn == 0)   // an older server says nothing: no schedule question on delete
+        let t = FakeTransport(.ok(200, #"{"devices":[{"id":1,"name":"폰","extra":true}]}"#))
+        let list = try await KeloApi(baseUrl: "https://k.example/", token: "tok", transport: t).devices()
+        #expect(list.devices.map(\.name) == ["폰"])
+        #expect(list.current == nil)   // an older server says nothing
         #expect(t.last.value(forHTTPHeaderField: "Authorization") == "Bearer tok")
-        #expect(t.last.url?.absoluteString == "https://k.example/api/goals")
+        #expect(t.last.url?.absoluteString == "https://k.example/api/devices")
     }
 
     @Test func postsJson() async throws {
-        let t = FakeTransport(.ok(200, #"{"id":2,"title":"t"}"#))
-        let g: Goal = try await KeloApi(baseUrl: "https://k.example", token: "tok", transport: t).post("/api/goals", body: ["title": "t"])
+        let t = FakeTransport(.ok(200, #"{"id":2,"name":"t"}"#))
+        let g: Device = try await KeloApi(baseUrl: "https://k.example", token: "tok", transport: t).post("/api/goals", body: ["title": "t"])
         #expect(g.id == 2)
         #expect(t.last.httpMethod == "POST")
         #expect(t.last.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("application/json") == true)
@@ -147,7 +146,7 @@ import Testing
         let api = KeloApi(baseUrl: "https://k", token: "t", transport: t)
         do { _ = try await api.profile(); Issue.record("no error") } catch let e as ApiError { #expect(e.isNetwork) } catch { Issue.record("\(error)") }
         // a list where an object was expected
-        do { _ = try await api.goals(); Issue.record("no error") } catch let e as ApiError { #expect(e.isNetwork) } catch { Issue.record("\(error)") }
+        do { _ = try await api.connectors(); Issue.record("no error") } catch let e as ApiError { #expect(e.isNetwork) } catch { Issue.record("\(error)") }
     }
 
     @Test func unreachableIsANetworkError() async {
@@ -158,7 +157,7 @@ import Testing
 
     @Test func uploadsRawBytes() async throws {
         let t = FakeTransport(.ok(200, #"{"path":"uploads/a b.pdf"}"#))
-        let path = try await KeloApi(baseUrl: "https://k", token: "t", transport: t).upload(name: "a b.pdf", data: Data([1, 2, 3]), contentType: "application/pdf")
+        let path = try await KeloApi(baseUrl: "https://k", token: "t", transport: t).upload(name: "a b.pdf", body: .data(Data([1, 2, 3])), contentType: "application/pdf")
         #expect(path == "uploads/a b.pdf")
         #expect(t.last.httpMethod == "PUT")
         #expect(t.last.url?.absoluteString == "https://k/api/uploads/a%20b.pdf")
@@ -196,14 +195,6 @@ import Testing
         #expect(page.items.map(\.id) == [1, 3])
         #expect(page.items[0].running && page.items[0].seen)
         #expect(page.unseen == 2 && page.nextBefore == nil)
-    }
-
-    @Test func modelsRoundTrip() throws {
-        let s = Schedule(id: 4, name: "아침 브리핑", kind: "window", cron: "0 9 * * *", windowMinutes: 15, lastRun: LastRun(taskId: 9, status: "done", at: 1.5))
-        let back = try JSON.decode(Schedule.self, from: try JSON.encode(s))
-        #expect(back == s)
-        let enc = try JSON.encode(s)
-        #expect(enc["window_minutes"] == 15 && enc["last_run"]?["task_id"] == 9 && enc["run_at"] == nil)
     }
 
     @Test func agentStatusDefaultsAndRunning() throws {

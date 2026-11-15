@@ -124,7 +124,9 @@ if [ "$TYPE" = release ]; then
   fi
 fi
 
-GRADLE=(./gradlew --no-daemon --console=plain -PkeloBuild="$BUILD_NO" -Pkotlin.compiler.execution.strategy=in-process
+source_commit android/kelo shared version.json   # the version line in My links to this commit (app/build.gradle.kts: SOURCE_COMMIT)
+note "source: ${SOURCE_COMMIT:-unknown}$([ "$SOURCE_DIRTY" = true ] && echo ' (modified: files differ from this commit)')"
+GRADLE=(./gradlew --no-daemon --console=plain -PkeloBuild="$BUILD_NO" -PkeloCommit="$SOURCE_COMMIT" -PkeloDirty="$SOURCE_DIRTY" -Pkotlin.compiler.execution.strategy=in-process
         ${TASKS[@]+"${TASKS[@]}"})
 if [ "$DRY_RUN" = 1 ]; then
   note "[dry-run] (cd android/kelo && JAVA_HOME=/opt/homebrew/opt/openjdk@17 $(printf '%q ' "${GRADLE[@]}"))"

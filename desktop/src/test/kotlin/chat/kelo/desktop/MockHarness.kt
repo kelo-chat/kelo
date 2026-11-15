@@ -1,6 +1,7 @@
 package chat.kelo.desktop
 
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
@@ -180,6 +181,17 @@ class UiSteps(private val compose: ComposeContentTestRule, private val shots: Fi
         waitUntil("\"$text\"", timeout) { compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
 
     fun has(text: String): Boolean = compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
+
+    /**
+     * performScrollTo on [node] with the test clock running by itself for the call. performScrollTo repeats its scroll until the node is
+     * on screen and relies on a frame being drawn between two tries; with `mainClock.autoAdvance = false` no frame comes and it never returns.
+     */
+    fun scrollTo(node: androidx.compose.ui.test.SemanticsNodeInteraction) {
+        val before = compose.mainClock.autoAdvance
+        compose.mainClock.autoAdvance = true
+        try { node.performScrollTo() } finally { compose.mainClock.autoAdvance = before }
+        settle()
+    }
 
     fun settle(frames: Int = 8) = repeat(frames) { compose.mainClock.advanceTimeBy(64); Thread.sleep(10) }
 

@@ -6,19 +6,19 @@ import KeloShared
 /// signed-in API, its caption under it; a tap shows it whole over the chat.
 struct ChatPicture: View {
     let image: ChatImage
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
-    @State private var picture: PlatformImage?
+    @State private var model = RemotePictureModel()
+    @Environment(\.keloApi) private var api
     @State private var open = false
 
     var body: some View {
         let ratio = image.width > 0 && image.height > 0 ? CGFloat(image.width) / CGFloat(image.height) : 16.0 / 10.0
         let described = image.caption.isEmpty ? L(R.string.chat_screenshot) : image.caption
         VStack(alignment: .leading, spacing: 4) {
-            Button { if picture != nil { open = true } } label: {
+            Button { if model.picture != nil { open = true } } label: {
                 ZStack {
                     RoundedRectangle(cornerRadius: 14).fill(c.card)
-                    if let picture {
+                    if let picture = model.picture {
                         Image(platformImage: picture).resizable().scaledToFit()
                     }
                 }
@@ -40,13 +40,12 @@ struct ChatPicture: View {
         }
         .frame(maxWidth: 420, alignment: .leading)
         .task(id: image.id) {
-            guard picture == nil, let api = app.api, let bytes = try? await api.download(image.url) else { return }
-            picture = PlatformImage(data: bytes)
+            await model.load(image.url, api: api)
         }
         .keloFullScreen(isPresented: $open) {
             ZStack {
                 Color.black.opacity(0.92).ignoresSafeArea()
-                if let picture {
+                if let picture = model.picture {
                     Image(platformImage: picture).resizable().scaledToFit()
                         .accessibilityLabel(described)
                 }

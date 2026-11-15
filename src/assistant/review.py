@@ -28,7 +28,8 @@ from pathlib import Path
 from typing import Any
 
 ENV_KEY = "ASSISTANT_REVIEW_MODE"
-STORES = {"apple": "App Store (iPhone)", "google": "Google Play (Android)", "ms": "Microsoft Store (Windows)"}
+STORES = {"apple": "App Store (iPhone)", "google": "Google Play (Android)", "ms": "Microsoft Store (Windows)",
+          "testflight": "TestFlight beta (iPhone)"}
 
 UNOFFICIAL_OFF = ("Subscription sign-in models are turned off on this demo server. Choose a model that uses an API key in My → Model.")
 

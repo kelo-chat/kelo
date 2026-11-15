@@ -1,12 +1,11 @@
 import Foundation
 import KeloCore
 
-/// A model list as GET /api/models?provider= gives it, in whichever form a screen reads it (the chat's `ChatModelList`, 마이's
+/// A model list as GET /api/models?provider= gives it, in whichever form a screen reads it (the chat's `ModelList`, 마이's
 /// `ModelList`): what `ModelCatalog` needs to tell a good list from a failed one and to show the last good one instead.
 public protocol CatalogModelList: Equatable {
     var provider: String { get }
     var models: [String] { get }
-    var labels: [String: String] { get }
     var error: String? { get }
     var stale: Bool { get set }
     /// A list of `models` alone (no labels, no error)
@@ -52,12 +51,6 @@ public enum ModelCatalog {
         if let kept, fresh == nil { return kept }
         if var kept, let fresh, fresh.error != nil { kept.stale = true; return kept }
         return fresh
-    }
-
-    /// One model's name: the fresh list's label, else the kept list's, else the shared rule.
-    public static func name<L: CatalogModelList>(_ id: String, fresh: L?, kept: L?) -> String {
-        let f = fresh?.labels[id].flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
-        return ModelNames.display(id, label: f ?? kept?.labels[id])
     }
 
     /// While nothing is known yet for `provider`: the chosen model alone, so a field shows its name (never the raw id, never empty).
@@ -129,5 +122,19 @@ public enum ModelCatalog {
         let raw = try await api.request("GET", "/api/providers")
         keepProviders(cache, raw)
         return raw
+    }
+}
+
+extension ModelCatalog {
+    /// The provider rows from the kept GET /api/providers answer, else from where the chat kept them before (the old slot); empty when
+    /// nothing is kept.
+    public static func keptModelProviders(_ cache: ScreenCache) -> [ModelProvider] {
+        if let raw = keptProviders(cache) { return ModelProvider.list(raw) }
+        return cache.get(legacyChatProvidersSlot, as: [ModelProvider].self) ?? []
+    }
+
+    /// GET /api/providers as provider rows (and keeps the answer). Throws what the call throws.
+    public static func fetchModelProviders(_ api: KeloApi, _ cache: ScreenCache) async throws -> [ModelProvider] {
+        ModelProvider.list(try await fetchProviders(api, cache))
     }
 }

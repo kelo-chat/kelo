@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,10 +16,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.notify.OpenTarget
 import chat.kelo.desktop.core.AppContainer
-import chat.kelo.desktop.i18n.Strings
 import chat.kelo.desktop.pages.ConnectorsPane
 import chat.kelo.desktop.pages.GoalsPane
 import chat.kelo.desktop.ui.KeloFrame
@@ -39,7 +38,7 @@ class GoalsConnectorsTest {
     @get:Rule val compose = createComposeRule()
     @get:Rule val tmp = TemporaryFolder()
     private var mock: MockServer? = null
-    private val ko = Strings.of("ko")
+    private val ko = Words.of("ko")
     private val ui by lazy { UiSteps(compose, parityShots()) }
 
     @After fun stop() { mock?.stop() }
@@ -68,13 +67,13 @@ class GoalsConnectorsTest {
         val app = start()
         compose.setContent { KeloFrame(app) { Box(Modifier.fillMaxSize().background(Kelo.colors.bg)) { GoalsPane(app, topInset = 0.dp) } } }
         ui.waitText("매일 30분 걷기")
-        ui.waitText(ko.get(R.string.goals_suggest_title))
+        ui.waitText(ko.get(Res.string.goals_suggest_title))
         both(app, "goals")
         compose.onAllNodesWithText("매일 30분 걷기").onFirst().performClick()
-        ui.waitText(ko.get(R.string.goal_numbers))
+        ui.waitText(ko.get(Res.string.goal_numbers))
         ui.waitText("산책 코스 정리")   // a document
-        ui.waitText(ko.get(R.string.goal_fact_skipped))
-        assertTrue(ui.has(ko.get(R.string.goal_documents)))
+        ui.waitText(ko.get(Res.string.goal_fact_skipped))
+        assertTrue(ui.has(ko.get(Res.string.goal_documents)))
         both(app, "goal-detail")
         // the schedule row is below the fold: scroll to it (with the clock running, as nothing on this page moves forever)
         compose.mainClock.autoAdvance = true
@@ -82,8 +81,8 @@ class GoalsConnectorsTest {
         compose.mainClock.autoAdvance = false
         ui.waitUntil("the schedule asked for") { app.openRequests.value != null }
         assertEquals(OpenTarget.Schedule(2), app.openRequests.value)
-        compose.onAllNodesWithText(ko.get(R.string.goals_add)).onFirst().performClick()
-        ui.waitText(ko.get(R.string.goals_due_pick))
+        compose.onAllNodesWithText(ko.get(Res.string.goals_add), useUnmergedTree = true).onFirst().performClick()   // the button's text is not in the merged tree
+        ui.waitText(ko.get(Res.string.goals_due_pick))
         both(app, "goal-add")
     }
 
@@ -91,31 +90,30 @@ class GoalsConnectorsTest {
         val app = start()
         compose.setContent { KeloFrame(app) { Box(Modifier.fillMaxSize().background(Kelo.colors.bg)) { ConnectorsPane(app, topInset = 0.dp) } } }
         ui.waitText("Gmail")
-        ui.waitText(ko.get(R.string.connectors_pinned))   // Notion is connected: pinned on top
+        ui.waitText(ko.get(Res.string.connectors_pinned))   // Notion is connected: pinned on top
         both(app, "connectors")
 
         // Gmail: Google sign-in waits for the review: the note, the beta request, and the app password offering only Gmail
         compose.onAllNodesWithText("Gmail").onFirst().performClick()
-        ui.waitText(ko.get(R.string.google_review_title))
-        ui.waitText(ko.get(R.string.beta_request))
-        compose.onAllNodesWithText(ko.get(R.string.beta_request)).onLast().performClick()
-        ui.waitText(ko.get(R.string.beta_sheet_note))
+        ui.waitText(ko.get(Res.string.google_review_title))
+        ui.waitText(ko.get(Res.string.beta_request))
+        compose.onAllNodesWithText(ko.get(Res.string.beta_request)).onLast().performClick()
+        ui.waitText(ko.get(Res.string.beta_sheet_note))
         compose.onAllNodes(hasSetTextAction()).onLast().performTextInput("me@gmail.com")
         both(app, "gmail-beta")
-        compose.onNodeWithText(ko.get(R.string.beta_send)).performClick()
-        ui.waitText(ko.get(R.string.beta_requested))
-        compose.onNodeWithText(ko.get(R.string.mail_by_password)).performClick()
-        ui.waitText(ko.get(R.string.mail_password))
+        compose.onNodeWithText(ko.get(Res.string.beta_send)).performClick()
+        ui.waitText(ko.get(Res.string.beta_requested))
+        compose.onNodeWithText(ko.get(Res.string.mail_by_password)).performClick()
+        ui.waitText(ko.get(Res.string.mail_password))
         assertFalse("Gmail offers no other mail service", ui.has("iCloud Mail"))
-        assertTrue("no choice of service", compose.onAllNodesWithText(ko.get(R.string.mail_provider)).fetchSemanticsNodes().isEmpty())
+        assertTrue("no choice of service", compose.onAllNodesWithText(ko.get(Res.string.mail_provider)).fetchSemanticsNodes().isEmpty())
         both(app, "gmail-password")
 
-        // IMAP: a choice of the server's services, Gmail first, in the server's order
-        ui.retry("the IMAP page", action = { compose.onAllNodesWithText("메일 (IMAP)").onFirst().performClick() }) { ui.has(ko.get(R.string.mail_provider)) }
-        // the field shows its first choice (Gmail) once the server's services are in; only then is the last "Gmail" the field and
-        // not the list's own Gmail row
-        ui.waitUntil("the service field") { compose.onAllNodesWithText("Gmail").fetchSemanticsNodes().size >= 2 }
-        compose.onAllNodesWithText("Gmail").onLast().performClick()   // the field opens its list
+        // IMAP: a choice of the server's services, in the server's order
+        ui.retry("the IMAP page", action = { compose.onAllNodesWithText("메일 (IMAP)").onFirst().performClick() }) { ui.has(ko.get(Res.string.mail_provider)) }
+        // the field shows the phone's default choice (네이버 메일) once the server's services are in
+        ui.waitUntil("the service field") { compose.onAllNodesWithText("네이버 메일", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodesWithText("네이버 메일", substring = true).onLast().performClick()   // the field opens its list
         ui.waitText("다음 메일")
         val order = listOf("iCloud Mail", "Yahoo Mail", "네이버 메일", "다음 메일").map { name ->
             compose.onAllNodesWithText(name).onLast().fetchSemanticsNode().boundsInRoot.top
@@ -128,11 +126,11 @@ class GoalsConnectorsTest {
 
         // GitHub: a code to type on its page
         compose.onAllNodesWithText("GitHub").onFirst().performClick()
-        val connect = ko.get(R.string.device_connect, "GitHub")
+        val connect = ko.get(Res.string.device_connect, "GitHub")
         ui.waitText(connect)
         ui.settle()
         // not connected: no "permissions granted" (the connect panel has its own choice)
-        assertFalse("no granted permission before connecting", ui.has(ko.get(R.string.connector_permissions)))
+        assertFalse("no granted permission before connecting", ui.has(ko.get(Res.string.connector_permissions)))
         compose.onNodeWithText(connect).performClick()
         ui.waitText("WDJB-MJHT")
         both(app, "github-code")

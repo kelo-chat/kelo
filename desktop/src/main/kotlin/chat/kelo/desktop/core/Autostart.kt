@@ -21,35 +21,35 @@ object Autostart {
 
     val mode: Mode
         get() = when {
-            Platform.isMsix -> Mode.SYSTEM
-            Platform.launcher == null -> Mode.UNAVAILABLE
+            DesktopPlatform.isMsix -> Mode.SYSTEM
+            DesktopPlatform.launcher == null -> Mode.UNAVAILABLE
             else -> Mode.SWITCH
         }
 
     fun isOn(): Boolean = runCatching {
-        when (Platform.os) {
-            Platform.Os.WINDOWS -> run("reg", "query", RUN_KEY, "/v", VALUE).first == 0
-            Platform.Os.MAC -> macAgent().isFile
-            Platform.Os.LINUX -> linuxEntry().isFile
+        when (DesktopPlatform.os) {
+            DesktopPlatform.Os.WINDOWS -> run("reg", "query", RUN_KEY, "/v", VALUE).first == 0
+            DesktopPlatform.Os.MAC -> macAgent().isFile
+            DesktopPlatform.Os.LINUX -> linuxEntry().isFile
         }
     }.getOrDefault(false)
 
     /** Returns whether it is on afterwards. */
     fun set(on: Boolean): Boolean {
-        val launcher = Platform.launcher ?: return false
+        val launcher = DesktopPlatform.launcher ?: return false
         runCatching {
-            when (Platform.os) {
-                Platform.Os.WINDOWS ->
+            when (DesktopPlatform.os) {
+                DesktopPlatform.Os.WINDOWS ->
                     if (on) run("reg", "add", RUN_KEY, "/v", VALUE, "/t", "REG_SZ", "/d", "\"${launcher.absolutePath}\" $TRAY_ARG", "/f")
                     else run("reg", "delete", RUN_KEY, "/v", VALUE, "/f")
-                Platform.Os.MAC -> {
+                DesktopPlatform.Os.MAC -> {
                     val f = macAgent()
                     if (on) {
                         f.parentFile.mkdirs()
                         f.writeText(macPlist(File(launcher, "Contents/MacOS/Kelo").absolutePath))
                     } else f.delete()
                 }
-                Platform.Os.LINUX -> {
+                DesktopPlatform.Os.LINUX -> {
                     val f = linuxEntry()
                     if (on) {
                         f.parentFile.mkdirs()

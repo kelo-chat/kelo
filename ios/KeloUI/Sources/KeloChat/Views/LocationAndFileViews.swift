@@ -12,6 +12,7 @@ struct LocationAskCard: View {
     @Environment(\.kelo) private var c
     @Environment(\.scenePhase) private var scenePhase
     @State private var settingsOpened = false
+    @State private var checked = 0
     @State private var unavailable = false
 
     var body: some View {
@@ -40,23 +41,31 @@ struct LocationAskCard: View {
                         Text(L(R.string.location_ask_reading)).font(KeloFont.small).foregroundStyle(c.muted)
                     }
                 } else {
-                    let step = LocationAskRules.onShare(granted: PhonePlace.granted, settings: item.settings, blocked: PhonePlace.refused)
-                    if step == .openSettings {
-                        Text(L(R.string.location_ask_settings_hint)).font(KeloFont.small).foregroundStyle(c.muted)
+                    let _ = checked
+                    let step = LocationAskRules.onShare(granted: PhonePlace.granted, settings: item.settings, blocked: PhonePlace.refused, servicesOn: PhonePlace.servicesOn)
+                    if step == .servicesOff {
+                        Text(L(R.string.ios_location_services_off)).font(KeloFont.small).foregroundStyle(c.muted)
                             .fixedSize(horizontal: false, vertical: true)
-                    }
-                    // one under the other, so long words in any language fit at 320 points
-                    PrimaryButton(L(step == .openSettings ? R.string.location_ask_settings : R.string.location_ask_share)) {
-                        Haptics.tick()
-                        switch step {
-                        case .send: send()
-                        case .askSystem:
-                            Task {
-                                if await PhonePlace.ask() { send() } else { model.answerLocation(item.approvalId, place: nil) }
+                    } else {
+                        if step == .openSettings {
+                            Text(L(R.string.location_ask_settings_hint)).font(KeloFont.small).foregroundStyle(c.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        // one under the other, so long words in any language fit at 320 points
+                        PrimaryButton(L(step == .openSettings ? R.string.location_ask_settings : R.string.location_ask_share)) {
+                            Haptics.tick()
+                            switch step {
+                            case .send: send()
+                            case .askSystem:
+                                Task {
+                                    if await PhonePlace.ask() { send() } else { model.answerLocation(item.approvalId, place: nil) }
+                                }
+                            case .openSettings:
+                                settingsOpened = true
+                                DeviceInfo.openAppSettings()
+                            case .servicesOff:
+                                break
                             }
-                        case .openSettings:
-                            settingsOpened = true
-                            DeviceInfo.openAppSettings()
                         }
                     }
                     SecondaryButton(L(R.string.location_ask_not_now), fill: true) { model.answerLocation(item.approvalId, place: nil) }
@@ -66,6 +75,7 @@ struct LocationAskCard: View {
         .accessibilityIdentifier("kelo.locationAsk")
         // back from Settings: allowed there -> send at once
         .onChange(of: scenePhase) { _, p in
+            if p == .active { checked += 1 }
             guard p == .active, settingsOpened, item.state == ChatItem.LocationAsk.waiting else { return }
             settingsOpened = false
             if PhonePlace.granted { send() }
@@ -109,22 +119,22 @@ struct UserFiles: View {
 private struct FileThumb: View {
     let file: MessageFile
     let side: CGFloat
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
-    @State private var picture: PlatformImage?
-    @State private var full: PlatformImage?
+    @State private var thumb = RemotePictureModel()
+    @State private var big = RemotePictureModel()
+    @Environment(\.keloApi) private var api
     @State private var open = false
 
     var body: some View {
         Button { if file.kind == "image" { open = true } } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 14).fill(c.card)
-                if let picture {
+                if let picture = thumb.picture {
                     Image(platformImage: picture).resizable().scaledToFill()
                 } else {
                     KeloIconView(file.kind == "video" ? .video : .image, size: 22, tint: c.muted)
                 }
-                if file.kind == "video", picture != nil {
+                if file.kind == "video", thumb.picture != nil {
                     KeloIconView(.play, size: 22, tint: .white).shadow(radius: 2)
                 }
             }
@@ -138,21 +148,19 @@ private struct FileThumb: View {
         .accessibilityAddTraits(.isImage)
         // the server makes the thumbnail once the message is stored (the user_message event brings it)
         .task(id: file.thumb ?? "") {
-            guard picture == nil, let url = file.thumb, let api = app.api, let bytes = try? await api.download(url) else { return }
-            picture = PlatformImage(data: bytes)
+            await thumb.load(file.thumb ?? "", api: api)
         }
         .keloFullScreen(isPresented: $open) {
             ZStack {
                 Color.black.opacity(0.92).ignoresSafeArea()
-                if let shown = full ?? picture { Image(platformImage: shown).resizable().scaledToFit() }
+                if let shown = big.picture ?? thumb.picture { Image(platformImage: shown).resizable().scaledToFit() }
             }
             .contentShape(Rectangle())
             .onTapGesture { open = false }
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(file.name)
             .task {
-                guard full == nil, !file.url.isEmpty, let api = app.api, let bytes = try? await api.download(file.url) else { return }
-                full = PlatformImage(data: bytes)
+                await big.load(file.url, api: api)
             }
         }
     }

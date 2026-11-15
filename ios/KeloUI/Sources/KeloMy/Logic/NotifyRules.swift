@@ -40,7 +40,24 @@ public enum NoteChannel: String, Sendable {
 /// When and how a local notification is posted (Android NotifyRules). Nothing while the app is on screen, nothing the server already
 /// counts as seen, nothing twice.
 public enum NotifyRules {
-    public static func shouldPost(foreground: Bool, seen: Bool, alreadyPosted: Bool) -> Bool { !foreground && !seen && !alreadyPosted }
+    /// Every Kelo notification is in one group (Android NotifyRules.GROUP): the phone stacks them, a tap on the stack shows them all.
+    public static let thread = "kelo"
+
+    /// The userInfo key that keeps a local notification's channel, so opening the app knows which ones were only news.
+    public static let channelKey = "channel"
+
+    /// Notifications that only tell something (a reply, a finished job, a schedule's result, payment news): opening the app takes them
+    /// down. Ones that wait for an answer (an approval, an urgent card) stay until answered (Android NotifyRules.isNews).
+    public static func isNews(_ channel: NoteChannel) -> Bool { channel == .replies || channel == .schedules || channel == .payments }
+
+    /// The identifiers of delivered notifications that were only news, from their userInfo (pure, so it is tested). Notifications
+    /// without a channel (a dial request, a push banner) are left alone.
+    public static func newsToTakeDown(_ delivered: [(id: String, userInfo: [AnyHashable: Any])]) -> [String] {
+        delivered.compactMap { d in
+            guard let raw = d.userInfo[channelKey] as? String, let ch = NoteChannel(rawValue: raw), isNews(ch) else { return nil }
+            return d.id
+        }
+    }
 
     public static func channel(_ type: String, scheduleId: Int64?) -> NoteChannel {
         switch type {

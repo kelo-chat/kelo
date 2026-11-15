@@ -50,13 +50,13 @@ import KeloCore
     }
 
     @Test func approvalQuestionWording() {
-        #expect(WorkText.askWord("Opening a site", language: "en") == "opening a site")
-        #expect(WorkText.askWord("GitHub sign-in", language: "en") == "GitHub sign-in")
-        #expect(WorkText.askWord("Opening", language: "ko") == "Opening")
-        #expect(WorkText.objectParticle("사이트 열기") == "를")
-        #expect(WorkText.objectParticle("로그인 정보 입력") == "을")
-        #expect(WorkText.objectParticle("GitHub") == "을")
-        #expect(WorkText.objectParticle("Google Drive") == "를")
+        #expect(AskWords.askWord("Opening a site", language: "en") == "opening a site")
+        #expect(AskWords.askWord("GitHub sign-in", language: "en") == "GitHub sign-in")
+        #expect(AskWords.askWord("Opening", language: "ko") == "Opening")
+        #expect(AskWords.objectParticle("사이트 열기") == "를")
+        #expect(AskWords.objectParticle("로그인 정보 입력") == "을")
+        #expect(AskWords.objectParticle("GitHub") == "을")
+        #expect(AskWords.objectParticle("Google Drive") == "를")
     }
 
     @Test func scheduleListKeepsFirstAndLastDays() throws {

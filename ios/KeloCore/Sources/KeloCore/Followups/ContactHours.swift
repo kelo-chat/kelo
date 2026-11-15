@@ -9,21 +9,19 @@ public struct HoursSuggestion: Decodable, Equatable, Sendable {
     public var wakeStart = "", wakeEnd = ""
     public var currentStart = "", currentEnd = ""
     public var activeDays = 0
-    public var createdAt: Double?
     /// weekday | weekend (weekends and public holidays); an older server sends none: weekday.
     public var dayType = ContactHoursRules.weekday
 
     public init(id: String = "", wakeStart: String = "", wakeEnd: String = "", currentStart: String = "", currentEnd: String = "",
-                activeDays: Int = 0, createdAt: Double? = nil, dayType: String = ContactHoursRules.weekday) {
+                activeDays: Int = 0, dayType: String = ContactHoursRules.weekday) {
         self.id = id; self.wakeStart = wakeStart; self.wakeEnd = wakeEnd; self.currentStart = currentStart; self.currentEnd = currentEnd
-        self.activeDays = activeDays; self.createdAt = createdAt; self.dayType = dayType
+        self.activeDays = activeDays; self.dayType = dayType
     }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         id = j.str("id"); wakeStart = j.str("wake_start"); wakeEnd = j.str("wake_end")
         currentStart = j.str("current_start"); currentEnd = j.str("current_end"); activeDays = j.int("active_days")
-        createdAt = j.optDouble("created_at")
         dayType = j.str("day_type", ContactHoursRules.weekday)
     }
 }
@@ -32,10 +30,6 @@ public struct HoursSuggestion: Decodable, Equatable, Sendable {
 public struct LearnedWindow: Decodable, Equatable, Sendable {
     public var wakeStart = "", wakeEnd = ""
     public var activeDays = 0
-
-    public init(wakeStart: String = "", wakeEnd: String = "", activeDays: Int = 0) {
-        self.wakeStart = wakeStart; self.wakeEnd = wakeEnd; self.activeDays = activeDays
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -78,9 +72,6 @@ public struct ContactHours: Decodable, Equatable, Sendable {
         dayType = j.str("day_type", ContactHoursRules.weekday)
         holidayCountry = j.optStr("holiday_country")
     }
-
-    /// The server knows weekend hours: the notifications page shows a row per day type.
-    public var hasWeekend: Bool { holidayCountry != nil || !weekendStart.isEmpty || weekendSuggestion != nil || learned[ContactHoursRules.weekend] != nil }
 }
 
 /// Small rules of the message hours, apart from the UI (Android ContactHoursRules).

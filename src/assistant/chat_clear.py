@@ -2,7 +2,7 @@
 
 Deleted: the messages and their rolling summary, the task log (the Work page), background jobs and their step transcripts, the
 approval history, notifications, follow-ups, the nightly day summaries, scheduled runs' history (their results are answers of the
-agent), the tap-to-answer buttons and "Continue" offers that hung on messages, goal suggestions still waiting for an answer.
+agent), the tap-to-answer buttons and "Continue" offers that hung on messages, goal suggestions still waiting for an answer, the reply log (every reply's events, turn_log.py).
 Emptied (the row stays, the words go): the proactive ledger's message text (the row keeps a reminder from coming twice), the
 evidence of goal suggestions that were set aside (the row keeps them from being suggested again), and schedules' link to their last
 task (which is gone).
@@ -35,7 +35,10 @@ DELETES: tuple[tuple[str, str], ...] = (
     ("schedule_runs", "DELETE FROM schedule_runs"),
     ("resume_offers", "DELETE FROM resume_offers"),
     ("message_replies", "DELETE FROM message_replies"),
+    ("message_comparisons", "DELETE FROM message_comparisons"),
     ("goal_suggestions", "DELETE FROM goal_suggestions WHERE status = 'proposed'"),
+    ("turn_events", "DELETE FROM turn_events"),   # the reply log (turn_log.py): a cleared reply is not read again, not even after a restart
+    ("turn_log", "DELETE FROM turn_log"),
 )
 BLANKS: tuple[tuple[str, str], ...] = (
     ("proactive_log", "UPDATE proactive_log SET message = '', reason = '', task_id = NULL WHERE message != '' OR reason != '' OR task_id IS NOT NULL"),

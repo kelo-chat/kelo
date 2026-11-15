@@ -4,12 +4,12 @@ import Foundation
 // chat/TurnEvents.kt reads them (PaymentStep, PinNeed, PinAsk, PaymentStepRules), and the task setup card's rules (Android
 // agent/TaskGrantModels.kt TaskGrantRules).
 
-/// A payment step that needs the user: approve in another app (`kindApp`, with a `code`, a `qr` picture and a countdown to
+/// A payment step that needs the user: approve in another app (kind "app", with a `code`, a `qr` picture and a countdown to
 /// `expiresAt`), a one-time code (`kindOtp`), a passkey (`kindPasskey`), or the page's PIN keypad shown in the card (`kindPinPad`,
 /// tapped there). `state`: waiting | expired | renewing | checking | finishing, then approved | done | cancelled | timeout | closed.
 /// The same event comes again with each change (same `stepId`).
 public struct PaymentStep: Equatable, Sendable, Identifiable {
-    public static let kindApp = "app", kindOtp = "otp", kindPasskey = "passkey", kindPinPad = "pin_pad"
+    public static let kindOtp = "otp", kindPasskey = "passkey", kindPinPad = "pin_pad"
     public static let openStates: Set<String> = ["waiting", "expired", "renewing", "checking", "finishing"]
 
     public var stepId: String
@@ -84,14 +84,12 @@ public struct PaymentStep: Equatable, Sendable, Identifiable {
 /// A payment's PIN waits for this phone to release it (Face ID) until `expiresAt`. `urgent`: nobody asked on a card.
 public struct PinNeed: Equatable, Sendable, Identifiable {
     public var slotId: String, pinId: String, pinLabel: String, site: String, amountText: String
-    public var digits: Int
     public var expiresAt: Int64
-    public var urgent: Bool
 
-    public init(slotId: String, pinId: String, pinLabel: String = "", site: String = "", amountText: String = "", digits: Int = 0,
-                expiresAt: Int64 = 0, urgent: Bool = false) {
+    public init(slotId: String, pinId: String, pinLabel: String = "", site: String = "", amountText: String = "",
+                expiresAt: Int64 = 0) {
         self.slotId = slotId; self.pinId = pinId; self.pinLabel = pinLabel; self.site = site; self.amountText = amountText
-        self.digits = digits; self.expiresAt = expiresAt; self.urgent = urgent
+        self.expiresAt = expiresAt
     }
 
     public var id: String { slotId }
@@ -104,23 +102,19 @@ public struct PinNeed: Equatable, Sendable, Identifiable {
         if slot.isEmpty { slot = o.str("approval_id") }
         if slot.isEmpty { return nil }
         return PinNeed(slotId: slot, pinId: pin.str("id"), pinLabel: pin.str("label"), site: o.str("site"), amountText: o.str("amount_text"),
-                       digits: pin.int("digits"), expiresAt: o.int64("expires_at"), urgent: o.optBool("urgent") == true)
+                       expiresAt: o.int64("expires_at"))
     }
 }
 
 /// approval_request.pin: Allow also releases the site's payment PIN from this phone (after the owner's check).
 public struct PinAsk: Equatable, Sendable {
-    public var id: String, label: String, site: String
-    public var digits: Int
-
-    public init(id: String, label: String = "", site: String = "", digits: Int = 0) {
-        self.id = id; self.label = label; self.site = site; self.digits = digits
+    public init() {
     }
 
     public static func parse(_ e: JSON?) -> PinAsk? {
         let o = Lenient(e)
         guard o.optBool("needs_pin") == true, !o.str("id").isEmpty else { return nil }
-        return PinAsk(id: o.str("id"), label: o.str("label"), site: o.str("site"), digits: o.int("digits"))
+        return PinAsk()
     }
 }
 
@@ -242,15 +236,21 @@ public enum TaskGrantRules {
 }
 
 extension ScheduleGrant {
-    public static let kindSend = "send", kindChange = "change"
+    public static let kindSend = "send", kindChange = "change", kindApply = "apply"
     public var isSend: Bool { kind == Self.kindSend }
     public var isChange: Bool { kind == Self.kindChange }
+    public var isApply: Bool { kind == Self.kindApply }
     /// The task's name for the wallet and login pages (a watcher's or job's grant has no schedule name).
     public var ownerName: String { taskName.trimmingCharacters(in: .whitespaces).isEmpty ? scheduleName : taskName }
     /// Where a send / change grant applies, without the server's prefixes.
     public var placesText: String { targets.map(TaskGrantRules.stripPrefix).joined(separator: ", ") }
-    /// How many of the allowed times are left (nil without a count).
-    public var left: Int? { maxCount > 0 ? Swift.max(0, maxCount - used) : nil }
+    /// How many of the allowed times are left (nil without a count); an apply permission counts over all runs (totalCount).
+    public var left: Int? {
+        if isApply {
+            return totalCount > 0 ? Swift.max(0, totalCount - used) : nil
+        }
+        return maxCount > 0 ? Swift.max(0, maxCount - used) : nil
+    }
     /// Where a grant is revoked: under its own task.
     public var revokePath: String {
         switch scope {

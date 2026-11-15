@@ -41,7 +41,8 @@ REFUSED_NOTE = N_("This server does not accept a thinking level")
 
 def refused_for(provider_name: str, base_url: str, model: str | None) -> bool:
     """This address and model turned the thinking level away before (providers/refused.py)."""
-    return bool(model) and provider_name in _LEVELS and refused.refused(refused.EFFORT_FIELD, base_url, model or "")
+    is_custom = provider_name == "custom" or provider_name.startswith("custom-")
+    return bool(model) and (provider_name in _LEVELS or is_custom) and refused.refused(refused.EFFORT_FIELD, base_url, model or "")
 
 
 def refused_note() -> str:
@@ -116,6 +117,8 @@ def levels(provider_name: str, model: str | None = None) -> tuple[str, ...]:
         hit = rows.get(model, rows.get(model.removeprefix("models/")))
         if hit is not None:
             return hit
+    if provider_name == "custom" or provider_name.startswith("custom-"):
+        return ("low", "medium", "high", "max")
     return _LEVELS.get(provider_name, ())
 
 

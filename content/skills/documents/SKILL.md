@@ -1,6 +1,6 @@
 ---
 name: Documents
-description: Read, summarize, compare or convert the user's PDF, Word and Excel files, and write new documents.
+description: Read, summarize, compare or convert PDF, Word and Excel files, and write new documents.
 ---
 
 # Documents

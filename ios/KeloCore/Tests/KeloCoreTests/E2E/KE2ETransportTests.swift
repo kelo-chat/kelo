@@ -116,28 +116,11 @@ final class FakeE2EServer: HTTPTransport, @unchecked Sendable {
         #expect(seen.value.first?.status == 426 && seen.value.first?.code == "app_too_old" && seen.value.first?.detail == "Update Kelo")
     }
 
-    @Test func aStreamComesFrameByFrame() async throws {
-        let s = FakeE2EServer()
-        s.route = { _ in (200, ["content-type": "text/event-stream"],
-                          [Data("data: {\"type\": \"text\", \"text\": \"안녕\"}\n\n".utf8), Data("data: {\"type\": \"done\"}\n\n".utf8)]) }
-        let api = s.api(pin: KE2EPin(key: s.key, verified: true))
-        var events: [TurnEvent] = []
-        for try await e in api.sseEvents(path: "/api/talk", body: ["text": "비밀 질문"]) { events.append(e) }
-        #expect(events.count == 2)
-        if case .text(let t) = events.first { #expect(t == "안녕") } else { Issue.record("no text event") }
-        #expect(s.inner.first?.head.headers["accept"] == "text/event-stream")
-        let sentBody = try JSON.parse(s.inner.first?.body ?? Data())
-        #expect(sentBody["text"]?.stringValue == "비밀 질문")
-        #expect(s.wire.allSatisfy { $0.url?.path == "/e2e" })
-    }
-
-    @Test func aCutOffStreamIsAnError() async throws {
+    @Test func aCutOffAnswerIsAnError() async throws {
         let s = FakeE2EServer()
         s.cutLastFrame = true
-        s.route = { _ in (200, ["content-type": "text/event-stream"], [Data("data: {\"type\": \"text\", \"text\": \"a\"}\n\n".utf8), Data("data: {}\n\n".utf8)]) }
+        s.route = { _ in (200, ["content-type": "application/json"], [Data("{}".utf8)]) }
         let api = s.api(pin: KE2EPin(key: s.key, verified: true))
-        await #expect(throws: ApiError.self) { for try await _ in api.sseEvents(path: "/api/talk", body: [:]) {} }
-        // a whole answer cut off too
         await #expect(throws: ApiError.self) { _ = try await api.request("GET", "/api/profile") }
     }
 

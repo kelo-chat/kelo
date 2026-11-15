@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,21 +27,28 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
-import chat.kelo.app.R
 import chat.kelo.desktop.core.AppContainer
 import chat.kelo.desktop.core.Autostart
 import chat.kelo.desktop.core.DesktopNote
 import chat.kelo.desktop.core.Log
 import chat.kelo.desktop.core.NotePoller
-import chat.kelo.desktop.core.Platform
+import chat.kelo.desktop.core.DesktopPlatform
 import chat.kelo.desktop.core.SingleInstance
-import chat.kelo.desktop.i18n.Strings
+import chat.kelo.app.ui.text.loadString
+import chat.kelo.desktop.i18n.DesktopLocale
 import chat.kelo.desktop.ui.KeloApp
 import chat.kelo.desktop.ui.Page
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.awt.Dimension
 import java.awt.Frame
+
+/** The lines of the tray menu and its balloon, in the language the app is shown in. */
+private class TrayWords(val open: String, val work: String, val quit: String, val stillRunning: String, private val stopFormat: String) {
+    /** "Stop: <step>" */
+    fun stop(step: String): String = chat.kelo.app.ui.text.TextFormat.format(java.util.Locale.getDefault(), stopFormat, arrayOf(step))
+}
 
 /**
  * Kelo for the desktop.
@@ -53,6 +61,7 @@ import java.awt.Frame
  * agent's notifications. Ctrl+1…5 (⌘ on a Mac) switch pages.
  */
 fun main(args: Array<String>) {
+    DesktopLocale.system   // the system's language, taken before the app sets its own as the default
     System.setProperty("apple.awt.application.name", "Kelo")
     val snapshotAt = args.indexOf("--snapshot")
     if (snapshotAt >= 0) {
@@ -75,7 +84,13 @@ fun main(args: Array<String>) {
         val icon = remember { loadIcon("/icons/tray.png") }
         val windowIcon = remember { loadIcon("/icons/kelo-256.png") }
         val lang by app.settings.language.collectAsState()
-        val strings = remember(lang) { Strings.of(app.settings.shownLanguage()) }
+        // the language the app is shown in: Compose resources read the default locale (KeloFrame sets it too for the window's content)
+        val locale = remember(lang) { DesktopLocale.of(app.settings.shownLanguage()).also { DesktopLocale.apply(it) } }
+        // the tray menu and its balloon are AWT, outside composition: their lines are read once per language with the one
+        // runBlocking of this file
+        val trayWords = remember(locale) {
+            runBlocking { TrayWords(loadString(Res.string.desktop_tray_open), loadString(Res.string.tab_work), loadString(Res.string.desktop_tray_quit), loadString(Res.string.desktop_still_running), loadString(Res.string.desktop_tray_stop)) }
+        }
         val keepInTray by app.settings.keepInTray.collectAsState()
         var toldAboutTray by remember { mutableStateOf(false) }
         showRequest = { visible = true; app.windowShown.value = true }
@@ -89,21 +104,26 @@ fun main(args: Array<String>) {
             launch(Dispatchers.IO) {
                 NotePoller(app.settings, shown = { app.windowShown.value }) { n ->
                     // in the app's own words, as the phone's notifications; a click opens where the phone's would (NotifyRules.target)
-                    val (title, body) = NoteText.of(n) { id -> strings.get(id) }
+                    val (title, body) = NoteText.of(n)
                     app.notify(DesktopNote(title, body, if (NotePoller.isWarning(n)) DesktopNote.Kind.WARNING else DesktopNote.Kind.INFO, target = NotifyRules.target(n)))
                 }.loop { app.sessions.api.value }
             }
         }
 
+        val liveStep by app.liveStep.collectAsState()
         if (icon != null) Tray(
-            icon = icon, state = trayState, tooltip = "Kelo",
+            icon = icon, state = trayState, tooltip = liveStep?.let { "Kelo · $it" } ?: "Kelo",
             // a click on the tray icon, or on a notification's balloon: up comes the window, on what the newest notification was about
             onAction = { showRequest(); app.openLastNote() },
             menu = {
-                Item(strings.get(R.string.desktop_tray_open), onClick = { visible = true; app.windowShown.value = true })
-                Item(strings.get(R.string.tab_work), onClick = { visible = true; app.openPage.value = Page.WORK.name })
+                liveStep?.let { step ->
+                    Item(trayWords.stop(step), onClick = { app.stopReply.value?.invoke() })
+                    Separator()
+                }
+                Item(trayWords.open, onClick = { visible = true; app.windowShown.value = true })
+                Item(trayWords.work, onClick = { visible = true; app.openPage.value = Page.WORK.name })
                 Separator()
-                Item(strings.get(R.string.desktop_tray_quit), onClick = { single.release(); exitApplication() })
+                Item(trayWords.quit, onClick = { single.release(); exitApplication() })
             },
         )
 
@@ -115,7 +135,7 @@ fun main(args: Array<String>) {
                     app.windowShown.value = false
                     if (!toldAboutTray) {
                         toldAboutTray = true
-                        trayState.sendNotification(Notification("Kelo", strings.get(R.string.desktop_still_running)))
+                        trayState.sendNotification(Notification("Kelo", trayWords.stillRunning))
                     }
                 } else {
                     single.release()
@@ -127,7 +147,7 @@ fun main(args: Array<String>) {
             icon = windowIcon,
             state = state,
             onPreviewKeyEvent = { e ->
-                val mod = if (Platform.os == Platform.Os.MAC) e.isMetaPressed else e.isCtrlPressed
+                val mod = if (DesktopPlatform.os == DesktopPlatform.Os.MAC) e.isMetaPressed else e.isCtrlPressed
                 if (e.type == KeyEventType.KeyDown && mod) {
                     val page = when (e.key) {
                         Key.One -> Page.CHAT; Key.Two -> Page.GOALS; Key.Three -> Page.WORK; Key.Four -> Page.CONNECTORS; Key.Five -> Page.MY

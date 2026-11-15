@@ -335,17 +335,17 @@ def test_the_least_recently_used_session_is_closed_when_the_pool_is_full():
 def test_an_idle_session_is_closed_but_the_newest_stays():
     now = [0.0]
     pool = agy_pool.AgyPool(FakeClient, max_clients=3, idle_close=60, clock=lambda: now[0])
-    a = pool.lease([{"role": "system", "content": "a"}], [])
+    a = pool.lease([{"role": "system", "content": "a"}], [], purpose="chat")
     a.release(True)
     now[0] = 10
-    b = pool.lease([{"role": "system", "content": "b"}], [])
+    b = pool.lease([{"role": "system", "content": "b"}], [], purpose="chat")
     b.release(True)
     now[0] = 500
-    c = pool.lease([{"role": "system", "content": "b"}], [])
+    c = pool.lease([{"role": "system", "content": "b"}], [], purpose="chat")
     assert c.client is b.client and a.client not in pool.clients
     c.release(True)
     now[0] = 5000
-    d = pool.lease([{"role": "system", "content": "b"}], [])
+    d = pool.lease([{"role": "system", "content": "b"}], [], purpose="chat")
     assert d.client is b.client                     # the newest one is kept however long it waited
 
 
@@ -391,3 +391,346 @@ def test_pool_size_fits_the_containers_memory(monkeypatch):
     assert agy_pool.max_sessions(4096 * mb) == 3            # never more than the default
     monkeypatch.setenv("ASSISTANT_AGY_SESSIONS", "2")
     assert agy_pool.max_sessions(204 * mb) == 2             # the owner's own number wins
+
+
+# ---------------------------------------------------------------- purpose: one-off calls stay off the conversation's sessions
+
+def chat_prompt(name):
+    return [{"role": "system", "content": name}, {"role": "user", "content": "x"}]
+
+
+def test_a_one_off_call_never_evicts_the_chats_session_when_the_pool_is_full():
+    pool = agy_pool.AgyPool(FakeClient, max_clients=1)
+    chat = pool.lease(chat_prompt("chat"), [], purpose="chat")
+    chat.release(True)
+    memo = pool.lease(chat_prompt("memory"), [], purpose="memory")
+    assert memo.transient and memo.client is not chat.client and pool.clients == [chat.client]
+    assert memo.reason.startswith("pool full, one-off kept off the chat session")
+    again = pool.lease(chat_prompt("chat"), [], purpose="chat")
+    assert again.client is chat.client and not chat.client.closed
+
+
+def test_a_one_off_session_is_evicted_before_a_conversation_one():
+    now = [0.0]
+    pool = agy_pool.AgyPool(FakeClient, max_clients=2, clock=lambda: now[0])
+    chat = pool.lease(chat_prompt("chat"), [], purpose="chat")
+    chat.release(True)
+    now[0] = 1
+    memo = pool.lease(chat_prompt("memory"), [], purpose="memory")
+    memo.release(True)
+    now[0] = 2
+    worker = pool.lease(chat_prompt("worker"), [], purpose="worker")   # chat is the older one, the one-off still goes first
+    assert worker.client not in (chat.client, memo.client) and chat.client in pool.clients and memo.client not in pool.clients
+    worker.release(True)
+    now[0] = 3
+    task = pool.lease(chat_prompt("task"), [], purpose="task")        # no one-off left: the oldest conversation session goes
+    assert chat.client not in pool.clients and worker.client in pool.clients and task.client in pool.clients
+
+
+def test_one_off_sessions_close_after_two_minutes_and_the_chat_stays():
+    now = [0.0]
+    pool = agy_pool.AgyPool(FakeClient, max_clients=3, clock=lambda: now[0])
+    chat = pool.lease(chat_prompt("chat"), [], purpose="chat")
+    chat.release(True)
+    memo = pool.lease(chat_prompt("memory"), [], purpose="memory")
+    memo.release(True)
+    now[0] = agy_pool.ONE_OFF_IDLE_SECONDS - 1
+    pool.lease(chat_prompt("briefing"), [], purpose="briefing").release(True)
+    assert memo.client in pool.clients
+    now[0] = agy_pool.ONE_OFF_IDLE_SECONDS + 5
+    pool.lease(chat_prompt("chat"), [], purpose="chat").release(True)
+    assert memo.client not in pool.clients and chat.client in pool.clients
+    now[0] = 10 * agy_pool.ONE_OFF_IDLE_SECONDS          # still far below the conversation idle limit
+    assert pool.lease(chat_prompt("chat"), [], purpose="chat").client is chat.client
+
+
+def test_every_lease_logs_its_purpose_mode_and_reason(caplog):
+    caplog.set_level("INFO", logger=agy_pool.log.name)
+    pool = agy_pool.AgyPool(FakeClient, max_clients=1)
+    a = pool.lease(chat_prompt("chat"), [], purpose="chat")
+    pool.lease(chat_prompt("memory"), [], purpose="memory")
+    pool.lease(chat_prompt("chat"), [])
+    lines = [r.getMessage() for r in caplog.records]
+    assert lines[0] == "agy session chat: new (no session for this prompt)"
+    assert lines[1] == "agy session memory: new (pool full, one-off kept off the chat session (transient))"
+    assert lines[2] == "agy session unknown: new (all sessions busy (one-off process))"
+    a.release(True)
+    pool.lease(chat_prompt("chat"), [], purpose="chat")
+    assert caplog.records[-1].getMessage() == "agy session chat: new (conversation changed)"
+    assert not any("content" in x or "chat'" in x for x in lines)   # never the messages themselves
+
+
+def test_a_dead_worker_is_named_as_the_reason(caplog):
+    caplog.set_level("INFO", logger=agy_pool.log.name)
+    pool = agy_pool.AgyPool(FakeClient, max_clients=1)
+    pool.lease(chat_prompt("chat"), [], purpose="chat").release(True)
+    pool.clients[0].kelo_alive = lambda m, e: False
+    pool.lease(chat_prompt("chat"), [], purpose="chat")
+    assert caplog.records[-1].getMessage() == "agy session chat: new (worker not alive)"
+
+
+# ---------------------------------------------------------------- purpose flows from the job kind to the pool
+
+async def test_metered_fills_the_purpose_from_the_kind():
+    from assistant import usage as usage_meter
+    seen = []
+
+    async def fake(provider, request, **kw):
+        seen.append(request.purpose)
+        return
+        yield
+
+    counted = usage_meter.metered(fake, lambda r: None, lambda: {"source": "schedule:4", "task_id": 1})
+    for kind, req in ((None, ChatRequest(model="m", messages=[])), ("memory", ChatRequest(model="m", messages=[])),
+                      ("memory", ChatRequest(model="m", messages=[], purpose="worker"))):
+        async for _ in counted(kind)("p", req):
+            pass
+    assert seen == ["schedule", "memory", "worker"]
+
+
+def test_purpose_round_trips_to_the_sidecar():
+    from assistant.providers import cli_remote
+    req = ChatRequest(model="m", messages=[], purpose="chat")
+    assert cli_remote.request_from_json(cli_remote.request_to_json(req)).purpose == "chat"
+    assert cli_remote.request_from_json({"model": "m"}).purpose == ""
+
+
+async def test_cli_agents_hands_the_purpose_to_the_lease(monkeypatch):
+    got = []
+
+    class Boom(Exception):
+        pass
+
+    class Pool:
+        def lease(self, messages, tools, model, effort, purpose=""):
+            got.append(purpose)
+            raise Boom
+
+    monkeypatch.setattr(cli_agents, "_clients", {cli_agents.AGY: Pool()})
+    with pytest.raises(Exception):
+        async for _ in cli_agents.stream(cli_agents.AGY, ChatRequest(model="m", messages=[{"role": "user", "content": "x"}], purpose="memory")):
+            pass
+    assert got == ["memory"]
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "openrouter", "openai"])
+async def test_the_purpose_never_reaches_a_providers_http_body(provider):
+    import httpx
+    from assistant.providers import stream_chat
+    bodies = []
+
+    def handler(request):
+        bodies.append(request.content)
+        return httpx.Response(200, content=b"data: [DONE]\n\n")
+
+    async def body_for(purpose):
+        bodies.clear()
+        req = ChatRequest(model="m", messages=[{"role": "system", "content": "s"}, {"role": "user", "content": "hi"}], purpose=purpose)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            try:
+                _ = [e async for e in stream_chat(provider, req, api_key="k", client=c)]
+            except Exception:  # noqa: BLE001 - only the request body matters here
+                pass
+        return bodies[0]
+
+    assert await body_for("chat") == await body_for("")
+
+
+# ---------------------------------------------------------------- warming the chat's session (no model request)
+
+async def test_warming_spawns_once_sends_no_model_request_and_the_next_chat_call_uses_it(agy):
+    system = [SYSTEM]
+    req = ChatRequest(model="gemini-test-low", messages=system, purpose="chat")
+    assert await cli_agents.warm(cli_agents.AGY, req) is True
+    assert agy.wait_spawns(1)
+    assert await cli_agents.warm(cli_agents.AGY, req) is True       # again: the same worker, nothing new
+    time.sleep(0.3)
+    assert len(agy.events("spawn")) == 1 and agy.events("msg") == []
+    (client,) = agy.pool.clients
+    assert client.kelo_req is None and not client.kelo_busy
+    text, _ = await run(turn([], "clock 10:00", "hello"))
+    assert text.startswith("done after 0 results")
+    assert len(agy.events("spawn")) == 1 and len(agy.events("msg")) == 1 and agy.pool.clients == [client]
+
+
+# ---------------------------------------------------------------- warming when the app is opened
+
+@pytest.fixture
+def opened(monkeypatch, tmp_path):
+    """Runs a server whose main model is `provider`; returns (calls of the warm, open(path) that makes one signed-in request)."""
+    import contextlib
+    import asyncio
+    import httpx
+    from assistant.server import Settings
+    from assistant.providers import cli_manage, cli_remote
+    from assistant.server import create_app
+    from test_server import AUTH, TOKEN, Running
+
+    @contextlib.asynccontextmanager
+    async def go(provider):
+        now = [1e12]
+        calls = []
+
+        async def fake_warm(name, req, **kw):
+            calls.append((name, req.purpose))
+            return True
+
+        monkeypatch.setattr(cli_remote, "warm", fake_warm)
+        app = create_app(Settings(token=TOKEN, provider=provider, model="gemini-x", cdp_host=None), tools=[])
+        async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+            await asyncio.sleep(0.2)
+            monkeypatch.setattr("assistant.server.warm_clock", lambda: now[0])   # opens made while starting are not counted
+            calls.clear()   # the start-up warm is not what is tested here
+
+            async def hit(path="/api/profile"):
+                await c.get(path)
+                for _ in range(100):   # the warm runs as a background task of the server
+                    await asyncio.sleep(0.05)
+                    if calls:
+                        break
+                await asyncio.sleep(0.3)
+            yield calls, hit, now
+    return go
+
+
+async def test_a_foreground_request_warms_once_a_minute(opened):
+    from assistant.providers import cli_manage
+    async with opened(cli_manage.AGY) as (calls, hit, now):
+        await hit()
+        assert calls == [(cli_manage.AGY, "chat")]
+        now[0] += 30
+        await hit()
+        assert len(calls) == 1
+        now[0] += 31
+        await hit()
+        assert len(calls) == 2
+
+
+async def test_a_notifications_poll_does_not_warm(opened):
+    from assistant.providers import cli_manage
+    async with opened(cli_manage.AGY) as (calls, hit, now):
+        await hit("/api/notifications")
+        assert calls == []
+
+
+async def test_a_model_that_is_not_agy_does_not_warm(opened):
+    async with opened("p") as (calls, hit, now):
+        await hit()
+        assert calls == []
+
+
+async def test_a_malformed_tool_call_from_gemini_is_asked_again_before_any_output(monkeypatch):
+    """2026-11-11: agy gave up with "improperly formatted function call … Retries remaining: 3" and a 471-item job failed twice."""
+    from assistant.providers import client as pclient
+    from assistant.providers.types import ProviderError, TextDelta, Usage
+    calls = []
+
+    async def flaky(name, request):
+        calls.append(name)
+        if len(calls) < 3:
+            yield Usage(input_tokens=1, output_tokens=0)
+            raise ProviderError("antigravity-oauth: Antigravity model error: Your previous response contained an improperly formatted "
+                                "function call\nPlease retry with a properly formatted function call\nRetries remaining: 3")
+        yield TextDelta("ok")
+
+    monkeypatch.setattr(pclient.cli_remote, "remote_url", lambda name: None)
+    monkeypatch.setattr(pclient.cli_agents, "stream", flaky)
+    got = [ev async for ev in pclient.stream_chat("antigravity-oauth", ChatRequest(model="m", messages=[{"role": "user", "content": "x"}]))]
+    assert len(calls) == 3 and any(isinstance(e, TextDelta) for e in got)
+
+    calls.clear()
+
+    async def after_text(name, request):
+        calls.append(name)
+        yield TextDelta("half")
+        raise ProviderError("improperly formatted function call")
+    monkeypatch.setattr(pclient.cli_agents, "stream", after_text)
+    with pytest.raises(ProviderError):                       # something was already said: not asked again
+        async for _ in pclient.stream_chat("antigravity-oauth", ChatRequest(model="m", messages=[{"role": "user", "content": "x"}])):
+            pass
+    assert len(calls) == 1
+
+    calls.clear()
+
+    async def other(name, request):
+        calls.append(name)
+        raise ProviderError("antigravity-oauth: quota reached")
+        yield  # noqa
+    monkeypatch.setattr(pclient.cli_agents, "stream", other)
+    with pytest.raises(ProviderError):                       # any other error goes on as before
+        async for _ in pclient.stream_chat("antigravity-oauth", ChatRequest(model="m", messages=[{"role": "user", "content": "x"}])):
+            pass
+    assert len(calls) == 1
+
+
+def test_an_emptied_sign_in_token_is_put_back_from_the_kept_copy(tmp_path, monkeypatch):
+    """2026-11-11 22:30: two agy starts 0.3 s apart left the token file empty and every reply failed with "not authenticated"."""
+    from assistant.providers import agy_pool
+    monkeypatch.setenv("ANTIGRAVITY_CONFIG_DIR", str(tmp_path))
+    token = tmp_path / "antigravity-oauth-token"
+    token.write_text("x" * 64)
+    assert agy_pool.guard_token() == "kept"
+    keep = tmp_path / ("antigravity-oauth-token" + agy_pool.BACKUP_SUFFIX)
+    assert keep.read_text() == "x" * 64 and oct(keep.stat().st_mode & 0o777) == "0o600"
+    assert agy_pool.guard_token() == ""                        # nothing changed: nothing to do
+    token.write_text("")                                       # truncated by two starts at once
+    assert agy_pool.guard_token() == "restored" and token.read_text() == "x" * 64
+    token.write_text("y" * 64)                                 # a refreshed token is the new copy
+    assert agy_pool.guard_token() == "kept" and keep.read_text() == "y" * 64
+
+
+def test_agy_starts_are_one_at_a_time(monkeypatch):
+    import threading as th
+    import time as tm
+    from assistant.providers import agy_pool
+    monkeypatch.setattr(agy_pool, "SPAWN_GAP_SECONDS", 0.2)
+    monkeypatch.setattr(agy_pool, "guard_token", lambda: "")
+    starts, active, peak = [], [0], [0]
+
+    def fake_start():
+        with agy_pool._spawn_lock:
+            active[0] += 1
+            peak[0] = max(peak[0], active[0])
+            starts.append(tm.monotonic())
+            tm.sleep(agy_pool.SPAWN_GAP_SECONDS)
+            active[0] -= 1
+    ts = [th.Thread(target=fake_start) for _ in range(3)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert peak[0] == 1 and max(starts) - min(starts) >= 0.39
+
+
+async def test_a_busy_gemini_is_waited_out_a_few_times(monkeypatch):
+    """2026-11-11 23:20: "high traffic … No capacity available (UNAVAILABLE 503)" ended a 123-step job."""
+    from assistant.providers import client as pclient
+    from assistant.providers.types import ProviderError, TextDelta
+    waits, calls = [], []
+
+    async def no_sleep(s):
+        waits.append(s)
+    monkeypatch.setattr(pclient.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(pclient.cli_remote, "remote_url", lambda name: None)
+
+    async def busy_twice(name, request):
+        calls.append(1)
+        if len(calls) <= 2:
+            raise ProviderError("antigravity-oauth: Antigravity model error: Our servers are experiencing high traffic right now, please "
+                                "try again in a minute. (UNAVAILABLE (code 503): No capacity available for model g")
+        yield TextDelta("ok")
+    monkeypatch.setattr(pclient.cli_agents, "stream", busy_twice)
+    got = [e async for e in pclient.stream_chat("antigravity-oauth", ChatRequest(model="m", messages=[{"role": "user", "content": "x"}]))]
+    assert any(isinstance(e, TextDelta) for e in got) and waits == list(pclient.BUSY_WAITS[:2])
+
+    calls.clear(); waits.clear()
+
+    async def always_busy(name, request):
+        calls.append(1)
+        raise ProviderError("UNAVAILABLE (code 503): No capacity available")
+        yield  # noqa
+    monkeypatch.setattr(pclient.cli_agents, "stream", always_busy)
+    with pytest.raises(ProviderError):
+        async for _ in pclient.stream_chat("antigravity-oauth", ChatRequest(model="m", messages=[{"role": "user", "content": "x"}])):
+            pass
+    assert len(calls) == len(pclient.BUSY_WAITS) + 1

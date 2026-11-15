@@ -64,5 +64,27 @@
     "pl": "Otwórz w Łącznikach",
     "nl": "Openen in Connectoren",
     "uk": "Відкрити в «Конекторах»"
+  },
+  "ios_location_services_off": {
+    "en": "Location Services are off on this iPhone. Turn them on in Settings → Privacy & Security → Location Services, then come back here.",
+    "ko": "iPhone의 위치 서비스가 꺼져 있어요. 설정 → 개인정보 보호 및 보안 → 위치 서비스에서 켠 뒤 이 화면으로 돌아와 주세요.",
+    "ja": "この iPhone の位置情報サービスがオフです。設定 → プライバシーとセキュリティ → 位置情報サービス でオンにしてから戻ってきてください。",
+    "zh-Hans": "此 iPhone 的定位服务已关闭。请在设置 → 隐私与安全性 → 定位服务中打开，然后回到这里。",
+    "zh-Hant": "此 iPhone 的定位服務已關閉。請在設定 → 隱私權與安全性 → 定位服務中開啟，然後回到這裡。",
+    "es": "La Localización está desactivada en este iPhone. Actívala en Ajustes → Privacidad y seguridad → Localización y vuelve aquí.",
+    "fr": "Le service de localisation est désactivé sur cet iPhone. Activez-le dans Réglages → Confidentialité et sécurité → Service de localisation, puis revenez ici.",
+    "de": "Die Ortungsdienste sind auf diesem iPhone aus. Schalte sie unter Einstellungen → Datenschutz & Sicherheit → Ortungsdienste ein und komm dann hierher zurück.",
+    "pt-BR": "Os Serviços de Localização estão desativados neste iPhone. Ative em Ajustes → Privacidade e Segurança → Serviços de Localização e volte aqui.",
+    "it": "I servizi di localizzazione sono disattivati su questo iPhone. Attivali in Impostazioni → Privacy e sicurezza → Localizzazione, poi torna qui.",
+    "ru": "Службы геолокации на этом iPhone выключены. Включите их в меню Настройки → Конфиденциальность и безопасность → Службы геолокации и вернитесь сюда.",
+    "id": "Layanan Lokasi di iPhone ini nonaktif. Aktifkan di Pengaturan → Privasi & Keamanan → Layanan Lokasi, lalu kembali ke sini.",
+    "vi": "Dịch vụ định vị trên iPhone này đang tắt. Hãy bật trong Cài đặt → Quyền riêng tư & Bảo mật → Dịch vụ định vị rồi quay lại đây.",
+    "th": "บริการหาตำแหน่งที่ตั้งบน iPhone นี้ปิดอยู่ เปิดในการตั้งค่า → ความเป็นส่วนตัวและความปลอดภัย → บริการหาตำแหน่งที่ตั้ง แล้วกลับมาที่นี่",
+    "tr": "Bu iPhone'da Konum Servisleri kapalı. Ayarlar → Gizlilik ve Güvenlik → Konum Servisleri bölümünden açın, sonra buraya dönün.",
+    "ar": "خدمات الموقع متوقفة في هذا الـ iPhone. شغّلها من الإعدادات → الخصوصية والأمن → خدمات الموقع ثم ارجع إلى هنا.",
+    "hi": "इस iPhone पर स्थान सेवाएँ बंद हैं। सेटिंग्स → गोपनीयता और सुरक्षा → स्थान सेवाएँ में चालू करें, फिर यहाँ लौटें।",
+    "pl": "Usługi lokalizacji są wyłączone na tym iPhonie. Włącz je w Ustawienia → Prywatność i ochrona → Usługi lokalizacji i wróć tutaj.",
+    "nl": "Locatievoorzieningen staan uit op deze iPhone. Schakel ze in via Instellingen → Privacy en beveiliging → Locatievoorzieningen en kom dan hier terug.",
+    "uk": "Служби локації на цьому iPhone вимкнено. Увімкніть їх у меню Параметри → Приватність і безпека → Служби локації й поверніться сюди."
   }
 }

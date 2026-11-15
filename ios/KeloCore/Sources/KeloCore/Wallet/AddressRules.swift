@@ -246,19 +246,8 @@ public enum ShippingFormRules {
 
 /// The order card's lines (confirm_purchase).
 public enum OrderRules {
-    /// "Pay with": the card's nickname and its last four ("생활비 카드 ••4242"); the brand when it has no nickname.
-    public static func payWith(_ card: CardBrief) -> String {
-        let d = CardMask.last4(card.last4)
-        let b = CardBrand.of(card.brand)
-        let name = card.label.trimmingCharacters(in: .whitespaces).isEmpty ? (b.displayName ?? b.shortName) : card.label
-        return d.isEmpty ? name : "\(name) \(CardMask.dots)\(d)"
-    }
-
     /// "Ship to" first line: nickname · name · phone, the parts that are known.
     public static func shipHead(_ s: OrderShipping) -> String {
         [s.label, s.name, s.phone].map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
-
-    /// "× 2" only for more than one.
-    public static func quantity(_ item: OrderItem) -> String? { item.quantity > 1 ? "× \(item.quantity)" : nil }
 }

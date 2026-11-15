@@ -47,7 +47,7 @@ def card_request_tools() -> list[Tool]:
     return [Tool("request_card",
                  "Ask the user to add a payment card when a payment needs one and the wallet has none that can pay (see wallet_cards). "
                  "A secure card entry appears in the chat right below your message; the card goes straight to the user's wallet and "
-                 "you never see its number. Before the call, say in one short sentence that the entry is coming below. Never ask for "
+                 "you never see its number. Never ask for "
                  "card numbers in chat.",
                  {"type": "object", "properties": {
                      "reason": {"type": "string", "description": "one short line: what the card is for (the order or payment)"},

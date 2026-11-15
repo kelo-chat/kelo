@@ -87,9 +87,6 @@ import Testing
     @Test func qualityFollowsTheNetwork() {
         #expect(LiveQuality.pick(metered: false) == LiveQuality(maxWidth: 720, quality: 55, fps: 10))
         #expect(LiveQuality.pick(metered: true) == LiveQuality(maxWidth: 540, quality: 45, fps: 5))
-        let m = LiveQuality.metered.message()
-        #expect(m["type"]?.stringValue == "quality")
-        #expect(m["max_width"]?.intValue == 540)
         #expect(LiveQuality.wifi.query() == "max_width=720&quality=55&fps=10")
     }
 
@@ -97,7 +94,6 @@ import Testing
         let f = LiveMessages.parse(#"{"type":"frame","seq":7,"w":720,"h":1280,"ts":1.5,"url":"https://a.b/c","title":"T","bytes":900,"css_w":390,"css_h":693}"#)
         guard case .frame(let header) = f else { Issue.record("not a frame: \(f)"); return }
         #expect(header.seq == 7)
-        #expect(header.cssW == 390)
         let s = LiveMessages.parse(
             #"{"type":"status","id":"owner","controller":"user","controlled_by":"5","you_control":false,"label":"직접 조작 중","# +
                 #""agent":{"busy":true,"status":"사이트 보는 중","task_id":3,"title":"x","waiting_approval":false},"viewers":2}"#)
@@ -141,14 +137,6 @@ import Testing
         #expect(parts.map(\.count) == [2000, 2000, 500])
     }
 
-    @Test func theControlAnswerUpdatesWhoHoldsTheTab() {
-        let before = LiveStatus()
-        let o: JSON = ["id": "owner", "controller": "user", "controlled_by": "4", "you_control": true]
-        let after = LiveMessages.controlAnswer(o, before: before)
-        #expect(after.youControl)
-        #expect(after.controller == "user")
-        #expect(LiveMessages.controlAnswer(nil, before: before) == before)
-    }
 }
 
 @Suite struct LiveMachineTests {

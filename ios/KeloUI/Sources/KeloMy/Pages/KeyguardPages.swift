@@ -6,12 +6,6 @@ import KeloShared
 // shown once, and the "Auto-pay needs Keyguard" question. The phone's key is KeloCore's `KeyguardKey` (Secure Enclave P-256 + HPKE,
 // blob 0x02; the software key on the simulator).
 
-/// This phone's Keyguard key for the signed-in server (nil when signed out or the phone cannot hold one).
-@MainActor func keyguardKey(_ app: AppModel) -> KeyguardKey? {
-    guard let url = app.session?.serverUrl else { return nil }
-    return KeyguardKeys.platform(serverUrl: url)
-}
-
 /// What to say when an unlock or enrol did not happen (nil: the owner backed out, nothing to say).
 @MainActor func keyguardProblemText(_ p: KeyguardFlow.Problem) -> String? {
     switch p {
@@ -28,33 +22,21 @@ import KeloShared
     }
 }
 
-/// Unlocks Kelo with this phone's copy; nil when unlocked, else what to say (`.cancelled`: nothing).
-@MainActor func keyguardUnlock(_ app: AppModel) async -> KeyguardFlow.Problem? {
-    guard let api = app.api, let key = keyguardKey(app) else { return .keyLost }
-    do {
-        try await KeyguardFlow.unlock(calls: KeyguardCalls(api: api), key: key, reason: L(R.string.keyguard_prompt_title))
-        app.setLocked(false)
-        Haptics.success()
-        return nil
-    } catch let p as KeyguardFlow.Problem {
-        return p
-    } catch {
-        return .server(ApiError(status: 0, detail: ""))
-    }
-}
-
 /// "Kelo is locked" under the header while the server holds no key (423 answers, /api/agent/status "locked", the keyguard_locked
 /// notification): Unlock with this phone's copy, or, on a phone without one, the recovery code in 마이 → 보안 → Keyguard.
 public struct LockedBanner: View {
     let onRecover: () -> Void
     @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
-    @State private var busy = false
-    @State private var problem: KeyguardFlow.Problem?
+    @State private var model: KeyguardModel
 
-    public init(onRecover: @escaping () -> Void) { self.onRecover = onRecover }
+    public init(app: AppModel, onRecover: @escaping () -> Void) {
+        self.onRecover = onRecover
+        _model = State(initialValue: KeyguardModel(host: app))
+    }
 
     public var body: some View {
+        let problem = model.problem, busy = model.busy
         let other = problem == .notHere
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
@@ -66,7 +48,7 @@ public struct LockedBanner: View {
             MutedText(L(other ? R.string.keyguard_locked_other : R.string.keyguard_locked_body), small: true)
             if let p = problem, !other, let text = keyguardProblemText(p) { ErrorText(text, small: true) }
             if !other {
-                PrimaryButton(L(busy ? R.string.keyguard_unlocking : R.string.keyguard_unlock), enabled: !busy) { go() }
+                PrimaryButton(L(busy ? R.string.keyguard_unlocking : R.string.keyguard_unlock), enabled: !busy) { model.unlockFromBanner() }
                     .accessibilityIdentifier("kelo.keyguard.unlock")
             }
             SecondaryButton(L(R.string.keyguard_use_code), fill: true, action: onRecover)
@@ -78,18 +60,7 @@ public struct LockedBanner: View {
         .accessibilityIdentifier("kelo.keyguard.locked")
         // opened from the keyguard_locked notification: the check starts by itself, once
         .task(id: app.router.unlockRequested) {
-            if app.router.unlockRequested { app.router.unlockRequested = false; go() }
-        }
-    }
-
-    private func go() {
-        guard !busy else { return }
-        busy = true
-        problem = nil
-        Task {
-            let p = await keyguardUnlock(app)
-            busy = false
-            problem = p == .cancelled ? nil : p
+            if app.router.unlockRequested { app.router.unlockRequested = false; model.unlockFromBanner() }
         }
     }
 }
@@ -101,21 +72,19 @@ struct KeyguardPage: View {
     var enableNow = false
     var onEnabled: () -> Void = {}
     var onClose: (() -> Void)? = nil
-    @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
-    @State private var view: KeyguardView?
-    @State private var me: Int64?
-    @State private var notOwner = false
-    @State private var busy = false
-    @State private var error = ""
-    @State private var note = ""
-    @State private var recovery: String?   // shown once, then forgotten
+    @State private var model: KeyguardModel
     @State private var wroteDown = false
     @State private var codeOpen = false
     @State private var code = ""
     @State private var confirm: Confirm?
     @State private var started = false
+
+    init(app: AppModel, startWithCode: Bool = false, enableNow: Bool = false, onEnabled: @escaping () -> Void = {}, onClose: (() -> Void)? = nil) {
+        self.startWithCode = startWithCode; self.enableNow = enableNow; self.onEnabled = onEnabled; self.onClose = onClose
+        _model = State(initialValue: KeyguardModel(host: app))
+    }
 
     enum Confirm: Identifiable { case on, remove, off; var id: Self { self } }
 
@@ -123,17 +92,18 @@ struct KeyguardPage: View {
 
     var body: some View {
         Group {
-            if let rc = recovery { recoveryView(rc) } else { page }
+            if let rc = model.recovery { recoveryView(rc) } else { page }
         }
         .task {
             if !started { started = true; codeOpen = startWithCode; if enableNow { confirm = .on } }
-            await load()
+            await model.load()
         }
+        .onChange(of: model.enabledTick) { _, _ in onEnabled() }
         .alert(confirmText, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
             switch confirm {
-            case .on: Button(L(R.string.keyguard_turn_on)) { confirm = nil; enroll() }
-            case .remove: Button(L(R.string.keyguard_remove_this_phone), role: .destructive) { confirm = nil; removeThisPhone() }
-            case .off: Button(L(R.string.keyguard_turn_off), role: .destructive) { confirm = nil; turnOff() }
+            case .on: Button(L(R.string.keyguard_turn_on)) { confirm = nil; wroteDown = false; model.enroll() }
+            case .remove: Button(L(R.string.keyguard_remove_this_phone), role: .destructive) { confirm = nil; model.removeThisPhone() }
+            case .off: Button(L(R.string.keyguard_turn_off), role: .destructive) { confirm = nil; model.turnOff() }
             case nil: EmptyView()
             }
             Button(L(R.string.cancel), role: .cancel) { if confirm == .on && enableNow { back() }; confirm = nil }
@@ -150,17 +120,18 @@ struct KeyguardPage: View {
     }
 
     private var page: some View {
-        SubPage(L(R.string.keyguard_title), onBack: back) {
+        let busy = model.busy, me = model.me, key = model.key
+        return SubPage(L(R.string.keyguard_title), onBack: back) {
             MyCard {
                 MutedText(L(R.string.keyguard_intro), small: false)
                 MutedText(L(R.string.keyguard_restart_note), small: true)
             }
-            if notOwner {
+            if model.notOwner {
                 MyCard { MutedText(L(R.string.keyguard_not_owner), small: true) }
-            } else if let v = view {
+            } else if let v = model.view {
                 if !v.on {
                     MyCard {
-                        PrimaryButton(L(busy ? R.string.keyguard_turning_on : R.string.keyguard_turn_on), enabled: !busy && keyguardKey(app) != nil) {
+                        PrimaryButton(L(busy ? R.string.keyguard_turning_on : R.string.keyguard_turn_on), enabled: !busy && key != nil) {
                             confirm = .on
                         }
                         .accessibilityIdentifier("kelo.keyguard.turnOn")
@@ -169,8 +140,8 @@ struct KeyguardPage: View {
                     if v.locked {
                         MyCard {
                             Text(L(R.string.keyguard_locked_title)).font(KeloFont.titleSmall).foregroundStyle(c.ink)
-                            if v.holds(me) && keyguardKey(app) != nil {
-                                PrimaryButton(L(busy ? R.string.keyguard_unlocking : R.string.keyguard_unlock), enabled: !busy) { unlock() }
+                            if v.holds(me) && key != nil {
+                                PrimaryButton(L(busy ? R.string.keyguard_unlocking : R.string.keyguard_unlock), enabled: !busy) { model.unlock() }
                             } else {
                                 MutedText(L(R.string.keyguard_locked_other), small: true)
                             }
@@ -183,7 +154,7 @@ struct KeyguardPage: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         if !v.locked && !v.holds(me) {
-                            SecondaryButton(L(R.string.keyguard_add_this_phone), enabled: !busy && keyguardKey(app) != nil, fill: true) { enroll() }
+                            SecondaryButton(L(R.string.keyguard_add_this_phone), enabled: !busy && key != nil, fill: true) { wroteDown = false; model.enroll() }
                         }
                         if v.holds(me) {
                             SecondaryButton(L(R.string.keyguard_remove_this_phone), enabled: !busy, fill: true) { confirm = .remove }
@@ -194,7 +165,7 @@ struct KeyguardPage: View {
                     }
                 }
             }
-            if view?.on == true || codeOpen {
+            if model.view?.on == true || codeOpen {
                 MyCard {
                     if !codeOpen {
                         SecondaryButton(L(R.string.keyguard_use_code), fill: true) { codeOpen = true }
@@ -209,12 +180,12 @@ struct KeyguardPage: View {
                                 if shown != v { code = shown }
                             }
                             .accessibilityIdentifier("kelo.keyguard.code")
-                        PrimaryButton(L(R.string.keyguard_unlock), enabled: !busy && KeyguardRules.codeReady(code)) { recover() }
+                        PrimaryButton(L(R.string.keyguard_unlock), enabled: !busy && KeyguardRules.codeReady(code)) { model.recover(code: code) { code = ""; codeOpen = false } }
                     }
                 }
             }
-            if !note.isEmpty { MutedText(note, small: true) }
-            if !error.isEmpty { ErrorText(error, small: true) }
+            if !model.note.isEmpty { MutedText(model.note, small: true) }
+            if !model.error.isEmpty { ErrorText(model.error, small: true) }
         }
     }
 
@@ -243,95 +214,10 @@ struct KeyguardPage: View {
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(wroteDown ? .isSelected : [])
                 .accessibilityIdentifier("kelo.keyguard.wroteDown")
-                PrimaryButton(L(R.string.keyguard_done), enabled: wroteDown) {
-                    recovery = nil
-                    onEnabled()
-                }
+                PrimaryButton(L(R.string.keyguard_done), enabled: wroteDown) { model.recoveryWritten() }
             }
         }
         .keloSwipeBackBlocked()   // the code is shown once: the edge swipe must not leave before "I wrote it down"
-    }
-
-    // ---- calls ---------------------------------------------------------------------------------------------------------------
-
-    private func load() async {
-        guard let api = app.api else { return }
-        do {
-            let v = try await KeyguardCalls(api: api).view()
-            view = v
-            app.setLocked(v.locked)
-            me = (try? await api.devices())?.current
-            _ = await app.refreshKeyguard()
-        } catch let e as ApiError {
-            if e.status == 403 { notOwner = true } else { error = keyguardProblemText(.server(e)) ?? "" }
-        } catch {}
-    }
-
-    private func fail(_ p: KeyguardFlow.Problem) {
-        if let t = keyguardProblemText(p) { error = t; Haptics.warning() }
-    }
-
-    /// Enrols this phone: a key from the server, wrapped here, the blob back; the recovery code once (when this turns it on).
-    private func enroll() {
-        guard let api = app.api, let key = keyguardKey(app) else { return }
-        busy = true; error = ""; note = ""
-        Task {
-            defer { busy = false }
-            do {
-                let (v, code) = try await KeyguardFlow.enroll(calls: KeyguardCalls(api: api), key: key)
-                view = v
-                _ = await app.refreshKeyguard()
-                if let code { wroteDown = false; recovery = code } else if v.on { onEnabled() }
-                me = (try? await api.devices())?.current ?? me
-            } catch let p as KeyguardFlow.Problem { fail(p) } catch {}
-        }
-    }
-
-    private func unlock() {
-        busy = true; error = ""
-        Task {
-            let p = await keyguardUnlock(app)
-            busy = false
-            if let p { fail(p) } else { note = L(R.string.keyguard_unlocked); await load() }
-        }
-    }
-
-    private func recover() {
-        guard let api = app.api else { return }
-        busy = true; error = ""
-        Task {
-            defer { busy = false }
-            do {
-                try await KeyguardCalls(api: api).recover(code: code)
-                code = ""; codeOpen = false
-                app.setLocked(false)
-                note = L(R.string.keyguard_unlocked)
-                await load()
-            } catch let e as ApiError {
-                if e.status == 422 || e.status == 400 { error = L(R.string.keyguard_code_wrong) } else { fail(.server(e)) }
-            } catch {}
-        }
-    }
-
-    private func removeThisPhone() {
-        guard let api = app.api, let id = me else { return }
-        Task {
-            do {
-                view = try await KeyguardCalls(api: api).removePhone(deviceId: id)
-                try? keyguardKey(app)?.delete()
-            } catch let e as ApiError { fail(.server(e)) } catch {}
-        }
-    }
-
-    private func turnOff() {
-        guard let api = app.api else { return }
-        Task {
-            do {
-                view = try await KeyguardCalls(api: api).disable()
-                try? keyguardKey(app)?.delete()
-                _ = await app.refreshKeyguard()
-            } catch let e as ApiError { fail(.server(e)) } catch {}
-        }
     }
 }
 
@@ -340,6 +226,7 @@ struct KeyguardPage: View {
 struct KeyguardNeeded: ViewModifier {
     @Binding var isPresented: Bool
     let onEnabled: () -> Void
+    @Environment(AppModel.self) private var app
     @State private var enabling = false
 
     func body(content: Content) -> some View {
@@ -351,7 +238,7 @@ struct KeyguardNeeded: ViewModifier {
                 Text(L(R.string.wallet_keyguard_needed_body))
             }
             .keloFullScreen(isPresented: $enabling) {
-                KeyguardPage(enableNow: true, onEnabled: { enabling = false; onEnabled() }, onClose: { enabling = false })
+                KeyguardPage(app: app, enableNow: true, onEnabled: { enabling = false; onEnabled() }, onClose: { enabling = false })
                     .keloTheme()
             }
     }

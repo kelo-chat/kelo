@@ -75,45 +75,6 @@ public struct Profile: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// GET /api/goals items. status is tracking | done.
-public struct Goal: Codable, Equatable, Hashable, Sendable {
-    public var id: Int64
-    public var title: String
-    public var category: String
-    public var note: String
-    public var status: String
-    public var schedulesOn: Int
-
-    public init(id: Int64, title: String = "", category: String = "", note: String = "", status: String = "tracking", schedulesOn: Int = 0) {
-        self.id = id
-        self.title = title
-        self.category = category
-        self.note = note
-        self.status = status
-        self.schedulesOn = schedulesOn
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        id = try j.require("id", j.optInt64("id"))
-        title = j.str("title", "")
-        category = j.str("category", "")
-        note = j.str("note", "")
-        status = j.str("status", "tracking")
-        schedulesOn = j.int("schedules_on", 0)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(id, forKey: AnyKey("id"))
-        try c.encode(title, forKey: AnyKey("title"))
-        try c.encode(category, forKey: AnyKey("category"))
-        try c.encode(note, forKey: AnyKey("note"))
-        try c.encode(status, forKey: AnyKey("status"))
-        try c.encode(schedulesOn, forKey: AnyKey("schedules_on"))
-    }
-}
-
 /// GET /api/devices items.
 public struct Device: Codable, Equatable, Hashable, Sendable {
     public var id: Int64
@@ -121,14 +82,6 @@ public struct Device: Codable, Equatable, Hashable, Sendable {
     public var createdAt: Double
     public var lastSeen: Double?
     public var owner: Bool
-
-    public init(id: Int64, name: String = "", createdAt: Double = 0, lastSeen: Double? = nil, owner: Bool = false) {
-        self.id = id
-        self.name = name
-        self.createdAt = createdAt
-        self.lastSeen = lastSeen
-        self.owner = owner
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -154,11 +107,6 @@ public struct DeviceList: Codable, Equatable, Hashable, Sendable {
     public var devices: [Device]
     public var current: Int64?
 
-    public init(devices: [Device] = [], current: Int64? = nil) {
-        self.devices = devices
-        self.current = current
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         devices = j.list("devices", of: Device.self)
@@ -177,12 +125,6 @@ public struct PairStart: Codable, Equatable, Hashable, Sendable {
     public var code: String
     public var expiresIn: Int
     public var link: String?
-
-    public init(code: String = "", expiresIn: Int = 0, link: String? = nil) {
-        self.code = code
-        self.expiresIn = expiresIn
-        self.link = link
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -204,11 +146,6 @@ public struct About: Codable, Equatable, Hashable, Sendable {
     public var version: String
     public var build: String
 
-    public init(version: String = "", build: String = "") {
-        self.version = version
-        self.build = build
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         version = j.str("version", "")
@@ -222,36 +159,11 @@ public struct About: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// Any {"ok": bool} answer.
-public struct OkAnswer: Codable, Equatable, Hashable, Sendable {
-    public var ok: Bool
-
-    public init(ok: Bool = false) {
-        self.ok = ok
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        ok = j.bool("ok", false)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(ok, forKey: AnyKey("ok"))
-    }
-}
-
 /// POST /api/tasks/seen, /api/notifications/seen.
 public struct SeenAnswer: Codable, Equatable, Hashable, Sendable {
     public var ok: Bool
     public var marked: Int
     public var unseen: Int
-
-    public init(ok: Bool = false, marked: Int = 0, unseen: Int = 0) {
-        self.ok = ok
-        self.marked = marked
-        self.unseen = unseen
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -275,14 +187,6 @@ public struct StoredMessage: Codable, Equatable, Hashable, Sendable {
     public var content: String
     public var createdAt: Double
     public var images: [ChatImage]
-
-    public init(id: Int64, role: String = "", content: String = "", createdAt: Double = 0, images: [ChatImage] = []) {
-        self.id = id
-        self.role = role
-        self.content = content
-        self.createdAt = createdAt
-        self.images = images
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -381,25 +285,6 @@ public struct MessageFile: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// POST /api/turns.
-public struct TurnStarted: Codable, Equatable, Hashable, Sendable {
-    public var id: String
-
-    public init(id: String = "") {
-        self.id = id
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        id = j.str("id", "")
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(id, forKey: AnyKey("id"))
-    }
-}
-
 /// A provider's consent as stored.
 public struct ProviderConsentRecord: Codable, Equatable, Hashable, Sendable {
     public var acceptedAt: Double?
@@ -420,61 +305,6 @@ public struct ProviderConsentRecord: Codable, Equatable, Hashable, Sendable {
         var c = encoder.container(keyedBy: AnyKey.self)
         try c.encodeIfPresent(acceptedAt, forKey: AnyKey("accepted_at"))
         try c.encode(version, forKey: AnyKey("version"))
-    }
-}
-
-/// GET /api/providers items, as the model picker reads them.
-public struct ProviderInfo: Codable, Equatable, Hashable, Sendable {
-    public var name: String
-    public var displayName: String
-    public var configured: Bool?
-    public var effortLevels: [String]
-    public var effortNote: String?
-    public var unofficial: Bool
-    public var vendor: String
-    public var consent: ProviderConsentRecord?
-    public var consentVersion: Int
-    public var company: String?
-
-    public init(name: String, displayName: String = "", configured: Bool? = nil, effortLevels: [String] = [], effortNote: String? = nil, unofficial: Bool = false, vendor: String = "", consent: ProviderConsentRecord? = nil, consentVersion: Int = 0, company: String? = nil) {
-        self.name = name
-        self.displayName = displayName
-        self.configured = configured
-        self.effortLevels = effortLevels
-        self.effortNote = effortNote
-        self.unofficial = unofficial
-        self.vendor = vendor
-        self.consent = consent
-        self.consentVersion = consentVersion
-        self.company = company
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        name = try j.require("name", j.optStr("name"))
-        displayName = j.str("display_name", "")
-        configured = j.optBool("configured")
-        effortLevels = j.strings("effort_levels")
-        effortNote = j.optStr("effort_note")
-        unofficial = j.bool("unofficial", false)
-        vendor = j.str("vendor", "")
-        consent = j.decode("consent", as: ProviderConsentRecord.self)
-        consentVersion = j.int("consent_version", 0)
-        company = j.optStr("company")
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(name, forKey: AnyKey("name"))
-        try c.encode(displayName, forKey: AnyKey("display_name"))
-        try c.encodeIfPresent(configured, forKey: AnyKey("configured"))
-        try c.encode(effortLevels, forKey: AnyKey("effort_levels"))
-        try c.encodeIfPresent(effortNote, forKey: AnyKey("effort_note"))
-        try c.encode(unofficial, forKey: AnyKey("unofficial"))
-        try c.encode(vendor, forKey: AnyKey("vendor"))
-        try c.encodeIfPresent(consent, forKey: AnyKey("consent"))
-        try c.encode(consentVersion, forKey: AnyKey("consent_version"))
-        try c.encodeIfPresent(company, forKey: AnyKey("company"))
     }
 }
 
@@ -521,101 +351,34 @@ public struct ModelList: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// GET /api/models info entry, its thinking level: effortLevels nil = the list does not say (the provider's levels apply), empty = none; effortNote with empty levels: why (a custom server that turned the level away).
+/// GET /api/models info entry: can the model be shown pictures (images), its context window when known, and its thinking level: effortLevels nil = the list does not say (the provider's levels apply), empty = none; effortNote with empty levels: why (a custom server that turned the level away).
 public struct ModelEffort: Codable, Equatable, Hashable, Sendable {
+    public var images: Bool
+    public var context: Int64?
     public var effortLevels: [String]?
     public var effortNote: String?
 
-    public init(effortLevels: [String]? = nil, effortNote: String? = nil) {
+    public init(images: Bool = false, context: Int64? = nil, effortLevels: [String]? = nil, effortNote: String? = nil) {
+        self.images = images
+        self.context = context
         self.effortLevels = effortLevels
         self.effortNote = effortNote
     }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
+        images = j.bool("images", false)
+        context = j.optInt64("context")
         effortLevels = j.has("effort_levels") ? j.strings("effort_levels") : nil
         effortNote = j.optStr("effort_note")
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(images, forKey: AnyKey("images"))
+        try c.encodeIfPresent(context, forKey: AnyKey("context"))
         try c.encodeIfPresent(effortLevels, forKey: AnyKey("effort_levels"))
         try c.encodeIfPresent(effortNote, forKey: AnyKey("effort_note"))
-    }
-}
-
-/// GET /api/conversation/summary (CONVERSATION COMPACTION in server.py).
-public struct ConversationSummary: Codable, Equatable, Hashable, Sendable {
-    public var summary: String
-    public var upToMessageId: Int64?
-    public var updatedAt: Double?
-    public var messagesFolded: Int
-    public var compactions: Int
-    public var memoryFlushes: Int
-    public var lastMemoryFlushAt: Double?
-    public var provider: String?
-    public var model: String?
-    public var contextWindow: Int?
-    public var maxOutput: Int?
-    public var source: String?
-    public var threshold: Double?
-    public var lastRequestTokens: Int?
-    public var lastError: String?
-
-    public init(summary: String = "", upToMessageId: Int64? = nil, updatedAt: Double? = nil, messagesFolded: Int = 0, compactions: Int = 0, memoryFlushes: Int = 0, lastMemoryFlushAt: Double? = nil, provider: String? = nil, model: String? = nil, contextWindow: Int? = nil, maxOutput: Int? = nil, source: String? = nil, threshold: Double? = nil, lastRequestTokens: Int? = nil, lastError: String? = nil) {
-        self.summary = summary
-        self.upToMessageId = upToMessageId
-        self.updatedAt = updatedAt
-        self.messagesFolded = messagesFolded
-        self.compactions = compactions
-        self.memoryFlushes = memoryFlushes
-        self.lastMemoryFlushAt = lastMemoryFlushAt
-        self.provider = provider
-        self.model = model
-        self.contextWindow = contextWindow
-        self.maxOutput = maxOutput
-        self.source = source
-        self.threshold = threshold
-        self.lastRequestTokens = lastRequestTokens
-        self.lastError = lastError
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        summary = j.str("summary", "")
-        upToMessageId = j.optInt64("up_to_message_id")
-        updatedAt = j.optDouble("updated_at")
-        messagesFolded = j.int("messages_folded", 0)
-        compactions = j.int("compactions", 0)
-        memoryFlushes = j.int("memory_flushes", 0)
-        lastMemoryFlushAt = j.optDouble("last_memory_flush_at")
-        provider = j.optStr("provider")
-        model = j.optStr("model")
-        contextWindow = j.optInt("context_window")
-        maxOutput = j.optInt("max_output")
-        source = j.optStr("source")
-        threshold = j.optDouble("threshold")
-        lastRequestTokens = j.optInt("last_request_tokens")
-        lastError = j.optStr("last_error")
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(summary, forKey: AnyKey("summary"))
-        try c.encodeIfPresent(upToMessageId, forKey: AnyKey("up_to_message_id"))
-        try c.encodeIfPresent(updatedAt, forKey: AnyKey("updated_at"))
-        try c.encode(messagesFolded, forKey: AnyKey("messages_folded"))
-        try c.encode(compactions, forKey: AnyKey("compactions"))
-        try c.encode(memoryFlushes, forKey: AnyKey("memory_flushes"))
-        try c.encodeIfPresent(lastMemoryFlushAt, forKey: AnyKey("last_memory_flush_at"))
-        try c.encodeIfPresent(provider, forKey: AnyKey("provider"))
-        try c.encodeIfPresent(model, forKey: AnyKey("model"))
-        try c.encodeIfPresent(contextWindow, forKey: AnyKey("context_window"))
-        try c.encodeIfPresent(maxOutput, forKey: AnyKey("max_output"))
-        try c.encodeIfPresent(source, forKey: AnyKey("source"))
-        try c.encodeIfPresent(threshold, forKey: AnyKey("threshold"))
-        try c.encodeIfPresent(lastRequestTokens, forKey: AnyKey("last_request_tokens"))
-        try c.encodeIfPresent(lastError, forKey: AnyKey("last_error"))
     }
 }
 
@@ -629,17 +392,6 @@ public struct RunningRun: Codable, Equatable, Hashable, Sendable {
     public var waitingApproval: Bool
     public var tab: String?
     public var controller: String?
-
-    public init(taskId: Int64? = nil, turnId: String? = nil, title: String = "", status: String = "", source: String = "", waitingApproval: Bool = false, tab: String? = nil, controller: String? = nil) {
-        self.taskId = taskId
-        self.turnId = turnId
-        self.title = title
-        self.status = status
-        self.source = source
-        self.waitingApproval = waitingApproval
-        self.tab = tab
-        self.controller = controller
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -792,10 +544,6 @@ public struct TaskBrief: Codable, Equatable, Hashable, Sendable {
 public struct TasksBrief: Codable, Equatable, Hashable, Sendable {
     public var items: [TaskBrief]
 
-    public init(items: [TaskBrief] = []) {
-        self.items = items
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: TaskBrief.self)
@@ -837,10 +585,6 @@ public struct WorkerBrief: Codable, Equatable, Hashable, Sendable {
 /// GET /api/workers?status=needs_input.
 public struct WorkersBrief: Codable, Equatable, Hashable, Sendable {
     public var items: [WorkerBrief]
-
-    public init(items: [WorkerBrief] = []) {
-        self.items = items
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -887,10 +631,6 @@ public struct BrowserTabBrief: Codable, Equatable, Hashable, Sendable {
 /// GET /api/browser/sessions?thumbnails=false.
 public struct BrowserTabsBrief: Codable, Equatable, Hashable, Sendable {
     public var items: [BrowserTabBrief]
-
-    public init(items: [BrowserTabBrief] = []) {
-        self.items = items
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -1020,21 +760,6 @@ public struct ApprovalRecord: Codable, Equatable, Hashable, Sendable {
     public var unattended: Bool
     public var canRemember: Bool
 
-    public init(id: String, taskId: Int64? = nil, tool: String = "", label: String = "", site: String = "", detail: String = "", decision: String = "", askedAt: Double = 0, answeredAt: Double? = nil, ruleId: Int64? = nil, unattended: Bool = false, canRemember: Bool = false) {
-        self.id = id
-        self.taskId = taskId
-        self.tool = tool
-        self.label = label
-        self.site = site
-        self.detail = detail
-        self.decision = decision
-        self.askedAt = askedAt
-        self.answeredAt = answeredAt
-        self.ruleId = ruleId
-        self.unattended = unattended
-        self.canRemember = canRemember
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         id = try j.require("id", j.optStr("id"))
@@ -1087,25 +812,6 @@ public struct TaskDetail: Codable, Equatable, Hashable, Sendable {
     public var parentId: Int64?
     public var workerId: String?
 
-    public init(id: Int64, turnId: String = "", title: String = "", status: String = "", result: String = "", source: String = "", startedAt: Double = 0, finishedAt: Double? = nil, liveStatus: String? = nil, answer: String = "", error: String = "", inputTokens: Int64 = 0, outputTokens: Int64 = 0, approvals: [ApprovalRecord] = [], parentId: Int64? = nil, workerId: String? = nil) {
-        self.id = id
-        self.turnId = turnId
-        self.title = title
-        self.status = status
-        self.result = result
-        self.source = source
-        self.startedAt = startedAt
-        self.finishedAt = finishedAt
-        self.liveStatus = liveStatus
-        self.answer = answer
-        self.error = error
-        self.inputTokens = inputTokens
-        self.outputTokens = outputTokens
-        self.approvals = approvals
-        self.parentId = parentId
-        self.workerId = workerId
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         id = try j.require("id", j.optInt64("id"))
@@ -1152,11 +858,6 @@ public struct ApprovalHistory: Codable, Equatable, Hashable, Sendable {
     public var items: [ApprovalRecord]
     public var nextBefore: Double?
 
-    public init(items: [ApprovalRecord] = [], nextBefore: Double? = nil) {
-        self.items = items
-        self.nextBefore = nextBefore
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: ApprovalRecord.self)
@@ -1179,16 +880,6 @@ public struct ApprovalRule: Codable, Equatable, Hashable, Sendable {
     public var createdAt: Double
     public var uses: Int
     public var lastUsed: Double?
-
-    public init(id: Int64, kind: String = "", kindLabel: String = "", site: String = "", createdAt: Double = 0, uses: Int = 0, lastUsed: Double? = nil) {
-        self.id = id
-        self.kind = kind
-        self.kindLabel = kindLabel
-        self.site = site
-        self.createdAt = createdAt
-        self.uses = uses
-        self.lastUsed = lastUsed
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -1217,10 +908,6 @@ public struct ApprovalRule: Codable, Equatable, Hashable, Sendable {
 public struct RuleList: Codable, Equatable, Hashable, Sendable {
     public var items: [ApprovalRule]
 
-    public init(items: [ApprovalRule] = []) {
-        self.items = items
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: ApprovalRule.self)
@@ -1237,12 +924,6 @@ public struct ApprovalAnswer: Codable, Equatable, Hashable, Sendable {
     public var ok: Bool
     public var decision: String
     public var remembered: Bool
-
-    public init(ok: Bool = false, decision: String = "", remembered: Bool = false) {
-        self.ok = ok
-        self.decision = decision
-        self.remembered = remembered
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -1443,17 +1124,6 @@ public struct ScheduleRun: Codable, Equatable, Hashable, Sendable {
     public var taskId: Int64?
     public var error: String?
 
-    public init(id: Int64 = 0, scheduleId: Int64? = nil, startedAt: Double = 0, finishedAt: Double? = nil, status: String = "", result: String = "", taskId: Int64? = nil, error: String? = nil) {
-        self.id = id
-        self.scheduleId = scheduleId
-        self.startedAt = startedAt
-        self.finishedAt = finishedAt
-        self.status = status
-        self.result = result
-        self.taskId = taskId
-        self.error = error
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         id = j.int64("id", 0)
@@ -1482,10 +1152,6 @@ public struct ScheduleRun: Codable, Equatable, Hashable, Sendable {
 /// GET /api/schedules/{id}/runs.
 public struct ScheduleRuns: Codable, Equatable, Hashable, Sendable {
     public var items: [ScheduleRun]
-
-    public init(items: [ScheduleRun] = []) {
-        self.items = items
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -1521,72 +1187,6 @@ public struct ScheduleArchive: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// "Keep allowing this in that scheduled job" (site "" = a step on no site).
-public struct ScheduleRule: Codable, Equatable, Hashable, Sendable {
-    public var id: Int64
-    public var scheduleId: Int64?
-    public var tool: String
-    public var label: String
-    public var site: String
-    public var createdAt: Double
-    public var uses: Int
-    public var lastUsed: Double?
-
-    public init(id: Int64, scheduleId: Int64? = nil, tool: String = "", label: String = "", site: String = "", createdAt: Double = 0, uses: Int = 0, lastUsed: Double? = nil) {
-        self.id = id
-        self.scheduleId = scheduleId
-        self.tool = tool
-        self.label = label
-        self.site = site
-        self.createdAt = createdAt
-        self.uses = uses
-        self.lastUsed = lastUsed
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        id = try j.require("id", j.optInt64("id"))
-        scheduleId = j.optInt64("schedule_id")
-        tool = j.str("tool", "")
-        label = j.str("label", "")
-        site = j.str("site", "")
-        createdAt = j.double("created_at", 0)
-        uses = j.int("uses", 0)
-        lastUsed = j.optDouble("last_used")
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(id, forKey: AnyKey("id"))
-        try c.encodeIfPresent(scheduleId, forKey: AnyKey("schedule_id"))
-        try c.encode(tool, forKey: AnyKey("tool"))
-        try c.encode(label, forKey: AnyKey("label"))
-        try c.encode(site, forKey: AnyKey("site"))
-        try c.encode(createdAt, forKey: AnyKey("created_at"))
-        try c.encode(uses, forKey: AnyKey("uses"))
-        try c.encodeIfPresent(lastUsed, forKey: AnyKey("last_used"))
-    }
-}
-
-/// GET /api/schedules/{id}/rules.
-public struct ScheduleRules: Codable, Equatable, Hashable, Sendable {
-    public var items: [ScheduleRule]
-
-    public init(items: [ScheduleRule] = []) {
-        self.items = items
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        items = j.list("items", of: ScheduleRule.self)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(items, forKey: AnyKey("items"))
-    }
-}
-
 /// What a schedule may do without asking, allowed once at setup (schedule_grants.py). kind: login (login, login_label) | purchase (what, caps).
 public struct ScheduleGrant: Codable, Equatable, Hashable, Sendable {
     public var id: Int64
@@ -1617,13 +1217,14 @@ public struct ScheduleGrant: Codable, Equatable, Hashable, Sendable {
     public var urgent: Bool
     public var maxCount: Int
     public var used: Int
+    public var totalCount: Int
     public var cardLabel: String?
     public var cardLast4: String?
     public var targets: [String]
     public var template: String
     public var allowDelete: Bool
 
-    public init(id: Int64, scheduleId: Int64 = 0, scheduleName: String = "", scheduleWhen: String = "", kind: String = "", site: String = "", createdAt: Double = 0, uses: Int = 0, lastUsed: Double? = nil, login: String = "", loginLabel: String = "", what: String = "", maxAmount: Double = 0, currency: String = "", monthlyCap: Double = 0, runsPerMonth: Int = 0, maxAmountText: String = "", monthlyCapText: String = "", spentThisMonth: Double = 0, scope: String = "schedule", scopeRef: String = "", taskName: String = "", trigger: String = "", action: String = "", once: Bool = false, urgent: Bool = false, maxCount: Int = 0, used: Int = 0, cardLabel: String? = nil, cardLast4: String? = nil, targets: [String] = [], template: String = "", allowDelete: Bool = false) {
+    public init(id: Int64, scheduleId: Int64 = 0, scheduleName: String = "", scheduleWhen: String = "", kind: String = "", site: String = "", createdAt: Double = 0, uses: Int = 0, lastUsed: Double? = nil, login: String = "", loginLabel: String = "", what: String = "", maxAmount: Double = 0, currency: String = "", monthlyCap: Double = 0, runsPerMonth: Int = 0, maxAmountText: String = "", monthlyCapText: String = "", spentThisMonth: Double = 0, scope: String = "schedule", scopeRef: String = "", taskName: String = "", trigger: String = "", action: String = "", once: Bool = false, urgent: Bool = false, maxCount: Int = 0, used: Int = 0, totalCount: Int = 0, cardLabel: String? = nil, cardLast4: String? = nil, targets: [String] = [], template: String = "", allowDelete: Bool = false) {
         self.id = id
         self.scheduleId = scheduleId
         self.scheduleName = scheduleName
@@ -1652,6 +1253,7 @@ public struct ScheduleGrant: Codable, Equatable, Hashable, Sendable {
         self.urgent = urgent
         self.maxCount = maxCount
         self.used = used
+        self.totalCount = totalCount
         self.cardLabel = cardLabel
         self.cardLast4 = cardLast4
         self.targets = targets
@@ -1689,6 +1291,7 @@ public struct ScheduleGrant: Codable, Equatable, Hashable, Sendable {
         urgent = j.bool("urgent", false)
         maxCount = j.int("max_count", 0)
         used = j.int("used", 0)
+        totalCount = j.int("total_count", 0)
         cardLabel = j.optStr("card_label")
         cardLast4 = j.optStr("card_last4")
         targets = j.strings("targets")
@@ -1726,6 +1329,7 @@ public struct ScheduleGrant: Codable, Equatable, Hashable, Sendable {
         try c.encode(urgent, forKey: AnyKey("urgent"))
         try c.encode(maxCount, forKey: AnyKey("max_count"))
         try c.encode(used, forKey: AnyKey("used"))
+        try c.encode(totalCount, forKey: AnyKey("total_count"))
         try c.encodeIfPresent(cardLabel, forKey: AnyKey("card_label"))
         try c.encodeIfPresent(cardLast4, forKey: AnyKey("card_last4"))
         try c.encode(targets, forKey: AnyKey("targets"))
@@ -1737,10 +1341,6 @@ public struct ScheduleGrant: Codable, Equatable, Hashable, Sendable {
 /// Where the weather is for: the town the owner's phone was last in.
 public struct BriefingPlace: Codable, Equatable, Hashable, Sendable {
     public var name: String
-
-    public init(name: String = "") {
-        self.name = name
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -1758,12 +1358,6 @@ public struct BriefingNote: Codable, Equatable, Hashable, Sendable {
     public var kind: String
     public var text: String
     public var at: Double?
-
-    public init(kind: String = "", text: String = "", at: Double? = nil) {
-        self.kind = kind
-        self.text = text
-        self.at = at
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -1793,20 +1387,6 @@ public struct BriefingWeather: Codable, Equatable, Hashable, Sendable {
     public var attributionUrl: String
     public var fallback: Bool
     public var id: String
-
-    public init(high: Int? = nil, low: Int? = nil, unit: String = "C", sky: String = "", headline: String = "", notes: [BriefingNote] = [], provider: String = "", attribution: String = "", attributionUrl: String = "", fallback: Bool = false, id: String = "") {
-        self.high = high
-        self.low = low
-        self.unit = unit
-        self.sky = sky
-        self.headline = headline
-        self.notes = notes
-        self.provider = provider
-        self.attribution = attribution
-        self.attributionUrl = attributionUrl
-        self.fallback = fallback
-        self.id = id
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -1943,16 +1523,6 @@ public struct BriefingAhead: Codable, Equatable, Hashable, Sendable {
     public var open: BriefingOpen?
     public var id: String
 
-    public init(title: String = "", start: Double = 0, kind: String = "", first: String = "", last: String = "", open: BriefingOpen? = nil, id: String = "") {
-        self.title = title
-        self.start = start
-        self.kind = kind
-        self.first = first
-        self.last = last
-        self.open = open
-        self.id = id
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         title = j.str("title", "")
@@ -1984,15 +1554,6 @@ public struct BriefingItem: Codable, Equatable, Hashable, Sendable {
     public var open: BriefingOpen?
     public var source: String
     public var id: String
-
-    public init(kind: String = "", title: String = "", detail: String = "", open: BriefingOpen? = nil, source: String = "", id: String = "") {
-        self.kind = kind
-        self.title = title
-        self.detail = detail
-        self.open = open
-        self.source = source
-        self.id = id
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2187,14 +1748,6 @@ public struct WeatherProviderInfo: Codable, Equatable, Hashable, Sendable {
     public var attribution: String
     public var attributionUrl: String
 
-    public init(id: String = "", name: String = "", needsKey: Bool = false, attribution: String = "", attributionUrl: String = "") {
-        self.id = id
-        self.name = name
-        self.needsKey = needsKey
-        self.attribution = attribution
-        self.attributionUrl = attributionUrl
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         id = j.str("id", "")
@@ -2307,17 +1860,6 @@ public struct SourceAccount: Codable, Equatable, Hashable, Sendable {
     public var on: Bool
     public var problem: String?
 
-    public init(id: String = "", kind: String = "calendar", provider: String = "", name: String = "", address: String = "", label: String = "", on: Bool = true, problem: String? = nil) {
-        self.id = id
-        self.kind = kind
-        self.provider = provider
-        self.name = name
-        self.address = address
-        self.label = label
-        self.on = on
-        self.problem = problem
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         id = j.str("id", "")
@@ -2367,11 +1909,6 @@ public struct BriefingSources: Codable, Equatable, Hashable, Sendable {
     public var calendar: SourceGroup
     public var mail: SourceGroup
 
-    public init(calendar: SourceGroup = SourceGroup(), mail: SourceGroup = SourceGroup()) {
-        self.calendar = calendar
-        self.mail = mail
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         calendar = j.decode("calendar", as: SourceGroup.self) ?? SourceGroup()
@@ -2391,12 +1928,6 @@ public struct CalDavAccount: Codable, Equatable, Hashable, Sendable {
     public var address: String
     public var url: String
 
-    public init(name: String = "", address: String = "", url: String = "") {
-        self.name = name
-        self.address = address
-        self.url = url
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         name = j.str("name", "")
@@ -2415,10 +1946,6 @@ public struct CalDavAccount: Codable, Equatable, Hashable, Sendable {
 /// GET /api/caldav.
 public struct CalDavAccounts: Codable, Equatable, Hashable, Sendable {
     public var accounts: [CalDavAccount]
-
-    public init(accounts: [CalDavAccount] = []) {
-        self.accounts = accounts
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2490,10 +2017,6 @@ public struct PaymentPin: Codable, Equatable, Hashable, Sendable {
 public struct PaymentPinList: Codable, Equatable, Hashable, Sendable {
     public var items: [PaymentPin]
 
-    public init(items: [PaymentPin] = []) {
-        self.items = items
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: PaymentPin.self)
@@ -2510,12 +2033,6 @@ public struct PinSaved: Codable, Equatable, Hashable, Sendable {
     public var pin: PaymentPin?
     public var replaced: Bool
     public var turnId: String?
-
-    public init(pin: PaymentPin? = nil, replaced: Bool = false, turnId: String? = nil) {
-        self.pin = pin
-        self.replaced = replaced
-        self.turnId = turnId
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2536,11 +2053,6 @@ public struct PinSaved: Codable, Equatable, Hashable, Sendable {
 public struct TaskGrantLogin: Codable, Equatable, Hashable, Sendable {
     public var label: String
     public var site: String
-
-    public init(label: String = "", site: String = "") {
-        self.label = label
-        self.site = site
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2606,18 +2118,6 @@ public struct TaskGrantPurchase: Codable, Equatable, Hashable, Sendable {
     public var card: TaskGrantCard?
     public var shipping: String
 
-    public init(site: String = "", what: String = "", maxAmount: Double = 0, currency: String = "", maxAmountText: String = "", maxCount: Int = 0, monthlyCapText: String = "", card: TaskGrantCard? = nil, shipping: String = "") {
-        self.site = site
-        self.what = what
-        self.maxAmount = maxAmount
-        self.currency = currency
-        self.maxAmountText = maxAmountText
-        self.maxCount = maxCount
-        self.monthlyCapText = monthlyCapText
-        self.card = card
-        self.shipping = shipping
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         site = j.str("site", "")
@@ -2653,14 +2153,6 @@ public struct TaskGrantSend: Codable, Equatable, Hashable, Sendable {
     public var varies: String
     public var maxCount: Int
 
-    public init(to: [String] = [], site: String = "", template: String = "", varies: String = "", maxCount: Int = 0) {
-        self.to = to
-        self.site = site
-        self.template = template
-        self.varies = varies
-        self.maxCount = maxCount
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         to = j.strings("to")
@@ -2687,13 +2179,6 @@ public struct TaskGrantChange: Codable, Equatable, Hashable, Sendable {
     public var allowDelete: Bool
     public var maxCount: Int
 
-    public init(what: String = "", places: [String] = [], allowDelete: Bool = false, maxCount: Int = 0) {
-        self.what = what
-        self.places = places
-        self.allowDelete = allowDelete
-        self.maxCount = maxCount
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         what = j.str("what", "")
@@ -2711,6 +2196,30 @@ public struct TaskGrantChange: Codable, Equatable, Hashable, Sendable {
     }
 }
 
+/// A task setup card's application part: what for, at most max_count per run and total over all runs (0 = no limit).
+public struct TaskGrantApply: Codable, Equatable, Hashable, Sendable {
+    public var site: String
+    public var what: String
+    public var maxCount: Int
+    public var total: Int
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        site = j.str("site", "")
+        what = j.str("what", "")
+        maxCount = j.int("max_count", 1)
+        total = j.int("total", 0)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(site, forKey: AnyKey("site"))
+        try c.encode(what, forKey: AnyKey("what"))
+        try c.encode(maxCount, forKey: AnyKey("max_count"))
+        try c.encode(total, forKey: AnyKey("total"))
+    }
+}
+
 /// approval_request.grant: the setup card of a "when X happens, do Y" task (task_allow, schedule_grants.py).
 public struct TaskGrantAsk: Codable, Equatable, Hashable, Sendable {
     public var scope: String
@@ -2725,21 +2234,7 @@ public struct TaskGrantAsk: Codable, Equatable, Hashable, Sendable {
     public var purchase: TaskGrantPurchase?
     public var send: TaskGrantSend?
     public var change: TaskGrantChange?
-
-    public init(scope: String = "", taskName: String = "", taskWhen: String = "", trigger: String = "", action: String = "", once: Bool = false, urgent: Bool = false, missed: String = "", login: TaskGrantLogin? = nil, purchase: TaskGrantPurchase? = nil, send: TaskGrantSend? = nil, change: TaskGrantChange? = nil) {
-        self.scope = scope
-        self.taskName = taskName
-        self.taskWhen = taskWhen
-        self.trigger = trigger
-        self.action = action
-        self.once = once
-        self.urgent = urgent
-        self.missed = missed
-        self.login = login
-        self.purchase = purchase
-        self.send = send
-        self.change = change
-    }
+    public var apply: TaskGrantApply?
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2755,6 +2250,7 @@ public struct TaskGrantAsk: Codable, Equatable, Hashable, Sendable {
         purchase = j.decode("purchase", as: TaskGrantPurchase.self)
         send = j.decode("send", as: TaskGrantSend.self)
         change = j.decode("change", as: TaskGrantChange.self)
+        apply = j.decode("apply", as: TaskGrantApply.self)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2771,16 +2267,13 @@ public struct TaskGrantAsk: Codable, Equatable, Hashable, Sendable {
         try c.encodeIfPresent(purchase, forKey: AnyKey("purchase"))
         try c.encodeIfPresent(send, forKey: AnyKey("send"))
         try c.encodeIfPresent(change, forKey: AnyKey("change"))
+        try c.encodeIfPresent(apply, forKey: AnyKey("apply"))
     }
 }
 
 /// GET /api/schedules/{id}/grants (DELETE /api/schedules/{id}/grants/{grant_id} takes one back).
 public struct ScheduleGrantList: Codable, Equatable, Hashable, Sendable {
     public var items: [ScheduleGrant]
-
-    public init(items: [ScheduleGrant] = []) {
-        self.items = items
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2799,12 +2292,6 @@ public struct RunStarted: Codable, Equatable, Hashable, Sendable {
     public var taskId: Int64?
     public var turnId: String?
 
-    public init(ok: Bool = false, taskId: Int64? = nil, turnId: String? = nil) {
-        self.ok = ok
-        self.taskId = taskId
-        self.turnId = turnId
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         ok = j.bool("ok", false)
@@ -2820,6 +2307,64 @@ public struct RunStarted: Codable, Equatable, Hashable, Sendable {
     }
 }
 
+/// A problem keeping a watcher from being ready to buy (docs/instant-buy.md).
+public struct BuyProblem: Codable, Equatable, Hashable, Sendable {
+    public var code: String
+    public var text: String
+
+    public init(code: String = "", text: String = "") {
+        self.code = code
+        self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        code = j.str("code", "")
+        text = j.str("text", "")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(code, forKey: AnyKey("code"))
+        try c.encode(text, forKey: AnyKey("text"))
+    }
+}
+
+/// The ready-to-buy state of a watcher that buys at its hit (docs/instant-buy.md).
+public struct BuyReady: Codable, Equatable, Hashable, Sendable {
+    public var armed: Bool
+    public var lastKeptAt: Double?
+    public var signedIn: Bool?
+    public var problems: [BuyProblem]
+    public var remembered: Bool
+
+    public init(armed: Bool = false, lastKeptAt: Double? = nil, signedIn: Bool? = nil, problems: [BuyProblem] = [], remembered: Bool = false) {
+        self.armed = armed
+        self.lastKeptAt = lastKeptAt
+        self.signedIn = signedIn
+        self.problems = problems
+        self.remembered = remembered
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        armed = j.bool("armed", false)
+        lastKeptAt = j.optDouble("last_kept_at")
+        signedIn = j.optBool("signed_in")
+        problems = j.list("problems", of: BuyProblem.self)
+        remembered = j.bool("remembered", false)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(armed, forKey: AnyKey("armed"))
+        try c.encodeIfPresent(lastKeptAt, forKey: AnyKey("last_kept_at"))
+        try c.encodeIfPresent(signedIn, forKey: AnyKey("signed_in"))
+        try c.encode(problems, forKey: AnyKey("problems"))
+        try c.encode(remembered, forKey: AnyKey("remembered"))
+    }
+}
+
 /// A watcher's check without the agent (POST /api/watchers/{id}/dry-run).
 public struct DryRun: Codable, Equatable, Hashable, Sendable {
     public var at: Double?
@@ -2830,17 +2375,6 @@ public struct DryRun: Codable, Equatable, Hashable, Sendable {
     public var error: String?
     public var url: String?
     public var title: String?
-
-    public init(at: Double? = nil, ok: Bool = false, satisfied: Bool = false, value: String? = nil, detail: String? = nil, error: String? = nil, url: String? = nil, title: String? = nil) {
-        self.at = at
-        self.ok = ok
-        self.satisfied = satisfied
-        self.value = value
-        self.detail = detail
-        self.error = error
-        self.url = url
-        self.title = title
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2899,8 +2433,9 @@ public struct Watcher: Codable, Equatable, Hashable, Sendable {
     public var createdAt: Double?
     public var updatedAt: Double?
     public var createdBy: String
+    public var buy: BuyReady?
 
-    public init(id: Int64, name: String = "", kind: String = "page", url: String? = nil, mode: String = "", match: String? = nil, selector: String? = nil, regex: String? = nil, threshold: Double? = nil, useBrowser: Bool = false, code: String? = nil, note: String? = nil, everyMinutes: Int = 0, enabled: Bool = false, once: Bool = false, state: String = "off", description: String = "", lastValue: String? = nil, lastCheckedAt: Double? = nil, nextCheckAt: Double? = nil, lastFiredAt: Double? = nil, fireCount: Int = 0, errorCount: Int = 0, lastError: String? = nil, disabledReason: String? = nil, dryRun: DryRun? = nil, canEnable: Bool = false, createdAt: Double? = nil, updatedAt: Double? = nil, createdBy: String = "user") {
+    public init(id: Int64, name: String = "", kind: String = "page", url: String? = nil, mode: String = "", match: String? = nil, selector: String? = nil, regex: String? = nil, threshold: Double? = nil, useBrowser: Bool = false, code: String? = nil, note: String? = nil, everyMinutes: Int = 0, enabled: Bool = false, once: Bool = false, state: String = "off", description: String = "", lastValue: String? = nil, lastCheckedAt: Double? = nil, nextCheckAt: Double? = nil, lastFiredAt: Double? = nil, fireCount: Int = 0, errorCount: Int = 0, lastError: String? = nil, disabledReason: String? = nil, dryRun: DryRun? = nil, canEnable: Bool = false, createdAt: Double? = nil, updatedAt: Double? = nil, createdBy: String = "user", buy: BuyReady? = nil) {
         self.id = id
         self.name = name
         self.kind = kind
@@ -2931,6 +2466,7 @@ public struct Watcher: Codable, Equatable, Hashable, Sendable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.createdBy = createdBy
+        self.buy = buy
     }
 
     public init(from decoder: Decoder) throws {
@@ -2965,6 +2501,7 @@ public struct Watcher: Codable, Equatable, Hashable, Sendable {
         createdAt = j.optDouble("created_at")
         updatedAt = j.optDouble("updated_at")
         createdBy = j.str("created_by", "user")
+        buy = j.decode("buy", as: BuyReady.self)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2999,6 +2536,7 @@ public struct Watcher: Codable, Equatable, Hashable, Sendable {
         try c.encodeIfPresent(createdAt, forKey: AnyKey("created_at"))
         try c.encodeIfPresent(updatedAt, forKey: AnyKey("updated_at"))
         try c.encode(createdBy, forKey: AnyKey("created_by"))
+        try c.encodeIfPresent(buy, forKey: AnyKey("buy"))
     }
 }
 
@@ -3033,14 +2571,6 @@ public struct WatcherEvent: Codable, Equatable, Hashable, Sendable {
     public var detail: String?
     public var value: String?
 
-    public init(id: Int64 = 0, at: Double = 0, kind: String = "", detail: String? = nil, value: String? = nil) {
-        self.id = id
-        self.at = at
-        self.kind = kind
-        self.detail = detail
-        self.value = value
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         id = j.int64("id", 0)
@@ -3064,10 +2594,6 @@ public struct WatcherEvent: Codable, Equatable, Hashable, Sendable {
 public struct WatcherEvents: Codable, Equatable, Hashable, Sendable {
     public var items: [WatcherEvent]
 
-    public init(items: [WatcherEvent] = []) {
-        self.items = items
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: WatcherEvent.self)
@@ -3083,11 +2609,6 @@ public struct WatcherEvents: Codable, Equatable, Hashable, Sendable {
 public struct DryRunAnswer: Codable, Equatable, Hashable, Sendable {
     public var result: DryRun?
     public var watcher: Watcher?
-
-    public init(result: DryRun? = nil, watcher: Watcher? = nil) {
-        self.result = result
-        self.watcher = watcher
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -3190,11 +2711,6 @@ public struct BrowserTabs: Codable, Equatable, Hashable, Sendable {
     public var available: Bool
     public var items: [BrowserTab]
 
-    public init(available: Bool = false, items: [BrowserTab] = []) {
-        self.available = available
-        self.items = items
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         available = j.bool("available", false)
@@ -3208,42 +2724,10 @@ public struct BrowserTabs: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// POST /api/browser/sessions {prompt, url?}.
-public struct BrowserJobStarted: Codable, Equatable, Hashable, Sendable {
-    public var id: String
-    public var taskId: Int64?
-    public var turnId: String?
-
-    public init(id: String = "", taskId: Int64? = nil, turnId: String? = nil) {
-        self.id = id
-        self.taskId = taskId
-        self.turnId = turnId
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        id = j.str("id", "")
-        taskId = j.optInt64("task_id")
-        turnId = j.optStr("turn_id")
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(id, forKey: AnyKey("id"))
-        try c.encodeIfPresent(taskId, forKey: AnyKey("task_id"))
-        try c.encodeIfPresent(turnId, forKey: AnyKey("turn_id"))
-    }
-}
-
 /// POST /api/browser/sessions/{id}/live-ticket: one use, 30 s, this tab and this device only.
 public struct LiveTicket: Codable, Equatable, Hashable, Sendable {
     public var ticket: String
     public var expiresIn: Int
-
-    public init(ticket: String = "", expiresIn: Int = 30) {
-        self.ticket = ticket
-        self.expiresIn = expiresIn
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -3264,13 +2748,6 @@ public struct ControlAnswer: Codable, Equatable, Hashable, Sendable {
     public var controller: String
     public var controlledBy: String?
     public var youControl: Bool
-
-    public init(id: String = "", controller: String = "", controlledBy: String? = nil, youControl: Bool = false) {
-        self.id = id
-        self.controller = controller
-        self.controlledBy = controlledBy
-        self.youControl = youControl
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -3419,14 +2896,6 @@ public struct WorkerReport: Codable, Equatable, Hashable, Sendable {
     public var keepTab: Bool
     public var at: Double?
 
-    public init(status: String = "", summary: String = "", details: String = "", keepTab: Bool = false, at: Double? = nil) {
-        self.status = status
-        self.summary = summary
-        self.details = details
-        self.keepTab = keepTab
-        self.at = at
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         status = j.str("status", "")
@@ -3450,11 +2919,6 @@ public struct WorkerReport: Codable, Equatable, Hashable, Sendable {
 public struct WorkerLine: Codable, Equatable, Hashable, Sendable {
     public var at: Double
     public var text: String
-
-    public init(at: Double = 0, text: String = "") {
-        self.at = at
-        self.text = text
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -3501,39 +2965,6 @@ public struct WorkerDetail: Codable, Equatable, Hashable, Sendable {
     public var outputTokens: Int64
     public var error: String?
     public var keepTab: Bool
-
-    public init(id: String, kind: String = "", title: String = "", status: String = "", parentTaskId: Int64? = nil, taskId: Int64? = nil, turnId: String? = nil, tab: String? = nil, startedAt: Double = 0, updatedAt: Double = 0, finishedAt: Double? = nil, steps: Int = 0, maxSteps: Int = 0, deadlineAt: Double? = nil, waitingFor: String? = nil, login: String? = nil, reason: String? = nil, statusText: String? = nil, lastUrl: String? = nil, thumbnail: String? = nil, task: String = "", url: String? = nil, files: [String] = [], report: WorkerReport? = nil, lines: [WorkerLine] = [], segments: Int = 0, inputTokens: Int64 = 0, outputTokens: Int64 = 0, error: String? = nil, keepTab: Bool = false) {
-        self.id = id
-        self.kind = kind
-        self.title = title
-        self.status = status
-        self.parentTaskId = parentTaskId
-        self.taskId = taskId
-        self.turnId = turnId
-        self.tab = tab
-        self.startedAt = startedAt
-        self.updatedAt = updatedAt
-        self.finishedAt = finishedAt
-        self.steps = steps
-        self.maxSteps = maxSteps
-        self.deadlineAt = deadlineAt
-        self.waitingFor = waitingFor
-        self.login = login
-        self.reason = reason
-        self.statusText = statusText
-        self.lastUrl = lastUrl
-        self.thumbnail = thumbnail
-        self.task = task
-        self.url = url
-        self.files = files
-        self.report = report
-        self.lines = lines
-        self.segments = segments
-        self.inputTokens = inputTokens
-        self.outputTokens = outputTokens
-        self.error = error
-        self.keepTab = keepTab
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -3610,12 +3041,6 @@ public struct WorkerAnswer: Codable, Equatable, Hashable, Sendable {
     public var delivered: String?
     public var worker: Worker?
 
-    public init(ok: Bool = false, delivered: String? = nil, worker: Worker? = nil) {
-        self.ok = ok
-        self.delivered = delivered
-        self.worker = worker
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         ok = j.bool("ok", false)
@@ -3638,14 +3063,6 @@ public struct JournalEntry: Codable, Equatable, Hashable, Sendable {
     public var title: String
     public var summary: String
     public var createdAt: Double
-
-    public init(id: Int64, date: String = "", title: String = "", summary: String = "", createdAt: Double = 0) {
-        self.id = id
-        self.date = date
-        self.title = title
-        self.summary = summary
-        self.createdAt = createdAt
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -3672,12 +3089,6 @@ public struct JournalGap: Codable, Equatable, Hashable, Sendable {
     public var status: String
     public var reason: String
 
-    public init(date: String = "", status: String = "", reason: String = "") {
-        self.date = date
-        self.status = status
-        self.reason = reason
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         date = j.str("date", "")
@@ -3698,12 +3109,6 @@ public struct JournalMonth: Codable, Equatable, Hashable, Sendable {
     public var month: String
     public var items: [JournalEntry]
     public var pending: [JournalGap]
-
-    public init(month: String = "", items: [JournalEntry] = [], pending: [JournalGap] = []) {
-        self.month = month
-        self.items = items
-        self.pending = pending
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -3814,37 +3219,6 @@ public struct LearnedRule: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// GET /api/reflection (404 = the agent's files are off: the app hides the page).
-public struct Lookback: Codable, Equatable, Hashable, Sendable {
-    public var enabled: Bool
-    public var rules: [LearnedRule]
-    public var lastRun: LookbackRun?
-    public var guide: String
-
-    public init(enabled: Bool = true, rules: [LearnedRule] = [], lastRun: LookbackRun? = nil, guide: String = "") {
-        self.enabled = enabled
-        self.rules = rules
-        self.lastRun = lastRun
-        self.guide = guide
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        enabled = j.bool("enabled", true)
-        rules = j.list("rules", of: LearnedRule.self)
-        lastRun = j.decode("last_run", as: LookbackRun.self)
-        guide = j.str("guide", "")
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(enabled, forKey: AnyKey("enabled"))
-        try c.encode(rules, forKey: AnyKey("rules"))
-        try c.encodeIfPresent(lastRun, forKey: AnyKey("last_run"))
-        try c.encode(guide, forKey: AnyKey("guide"))
-    }
-}
-
 /// PUT/DELETE /api/agent/avatar.
 public struct AvatarSaved: Codable, Equatable, Hashable, Sendable {
     public var avatarVersion: Int64
@@ -3852,14 +3226,6 @@ public struct AvatarSaved: Codable, Equatable, Hashable, Sendable {
     public var bytes: Int
     public var width: Int
     public var height: Int
-
-    public init(avatarVersion: Int64 = 0, mime: String = "", bytes: Int = 0, width: Int = 0, height: Int = 0) {
-        self.avatarVersion = avatarVersion
-        self.mime = mime
-        self.bytes = bytes
-        self.width = width
-        self.height = height
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -3957,12 +3323,6 @@ public struct NotificationPage: Codable, Equatable, Hashable, Sendable {
     public var unseen: Int
     public var lastId: Int64
 
-    public init(items: [ServerNotification] = [], unseen: Int = 0, lastId: Int64 = 0) {
-        self.items = items
-        self.unseen = unseen
-        self.lastId = lastId
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: ServerNotification.self)
@@ -3987,16 +3347,6 @@ public struct FollowupSettings: Codable, Equatable, Hashable, Sendable {
     public var wakeEnd: String
     public var timezone: String
     public var awake: Bool?
-
-    public init(enabled: Bool = true, firstMinutes: Int = 30, secondMinutes: Int = 180, wakeStart: String = "", wakeEnd: String = "", timezone: String = "", awake: Bool? = nil) {
-        self.enabled = enabled
-        self.firstMinutes = firstMinutes
-        self.secondMinutes = secondMinutes
-        self.wakeStart = wakeStart
-        self.wakeEnd = wakeEnd
-        self.timezone = timezone
-        self.awake = awake
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -4230,12 +3580,6 @@ public struct MailProviders: Codable, Equatable, Hashable, Sendable {
     public var accounts: [MailAccount]
     public var googleWeb: Bool
 
-    public init(providers: [MailProvider] = [], accounts: [MailAccount] = [], googleWeb: Bool = false) {
-        self.providers = providers
-        self.accounts = accounts
-        self.googleWeb = googleWeb
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         providers = j.list("providers", of: MailProvider.self)
@@ -4364,11 +3708,6 @@ public struct AddressCountry: Codable, Equatable, Hashable, Sendable {
 public struct AddressCountries: Codable, Equatable, Hashable, Sendable {
     public var countries: [AddressCountry]
     public var defaultCountry: String
-
-    public init(countries: [AddressCountry] = [], defaultCountry: String = "") {
-        self.countries = countries
-        self.defaultCountry = defaultCountry
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -4541,17 +3880,6 @@ public struct AddressForm: Codable, Equatable, Hashable, Sendable {
     public var labels: AddressLabels
     public var format: String
 
-    public init(country: String = "", countryName: String = "", lang: String = "", fields: [AddressField] = [], phone: AddressPhone = AddressPhone(), note: AddressNote = AddressNote(), labels: AddressLabels = AddressLabels(), format: String = "") {
-        self.country = country
-        self.countryName = countryName
-        self.lang = lang
-        self.fields = fields
-        self.phone = phone
-        self.note = note
-        self.labels = labels
-        self.format = format
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         country = j.str("country", "")
@@ -4672,10 +4000,6 @@ public struct ShippingProfile: Codable, Equatable, Hashable, Sendable {
 public struct ShippingProfiles: Codable, Equatable, Hashable, Sendable {
     public var profiles: [ShippingProfile]
 
-    public init(profiles: [ShippingProfile] = []) {
-        self.profiles = profiles
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         profiles = j.list("profiles", of: ShippingProfile.self)
@@ -4692,12 +4016,6 @@ public struct ShippingFormAnswer: Codable, Equatable, Hashable, Sendable {
     public var ok: Bool
     public var profile: ShippingProfile?
     public var formatted: String
-
-    public init(ok: Bool = false, profile: ShippingProfile? = nil, formatted: String = "") {
-        self.ok = ok
-        self.profile = profile
-        self.formatted = formatted
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -4768,13 +4086,6 @@ public struct OAuthApp: Codable, Equatable, Hashable, Sendable {
     public var isBroker: Bool
     public var callback: String
 
-    public init(clientId: String = "", hasSecret: Bool = false, isBroker: Bool = false, callback: String = "") {
-        self.clientId = clientId
-        self.hasSecret = hasSecret
-        self.isBroker = isBroker
-        self.callback = callback
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         clientId = j.str("client_id", "")
@@ -4796,10 +4107,6 @@ public struct OAuthApp: Codable, Equatable, Hashable, Sendable {
 public struct UrlAnswer: Codable, Equatable, Hashable, Sendable {
     public var url: String
 
-    public init(url: String = "") {
-        self.url = url
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         url = j.str("url", "")
@@ -4814,10 +4121,6 @@ public struct UrlAnswer: Codable, Equatable, Hashable, Sendable {
 /// An answer that is one keychain name.
 public struct NameAnswer: Codable, Equatable, Hashable, Sendable {
     public var name: String
-
-    public init(name: String = "") {
-        self.name = name
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -4941,15 +4244,6 @@ public struct VaultState: Codable, Equatable, Hashable, Sendable {
     public var enteredOnce: [String]
     public var verifying: [String]
 
-    public init(locked: Bool = false, mailCodesAuto: Bool = true, items: [VaultEntry] = [], pending: [VaultEntry] = [], enteredOnce: [String] = [], verifying: [String] = []) {
-        self.locked = locked
-        self.mailCodesAuto = mailCodesAuto
-        self.items = items
-        self.pending = pending
-        self.enteredOnce = enteredOnce
-        self.verifying = verifying
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         locked = j.bool("locked", false)
@@ -4979,14 +4273,6 @@ public struct VaultLogRow: Codable, Equatable, Hashable, Sendable {
     public var detail: String
     public var ok: Bool
 
-    public init(ts: Double = 0, item: String = "", action: String = "", detail: String = "", ok: Bool = true) {
-        self.ts = ts
-        self.item = item
-        self.action = action
-        self.detail = detail
-        self.ok = ok
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         ts = j.double("ts", 0)
@@ -5009,10 +4295,6 @@ public struct VaultLogRow: Codable, Equatable, Hashable, Sendable {
 /// POST /api/vault/logins.
 public struct NewLogin: Codable, Equatable, Hashable, Sendable {
     public var name: String
-
-    public init(name: String = "") {
-        self.name = name
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -5216,12 +4498,6 @@ public struct WalletLimits: Codable, Equatable, Hashable, Sendable {
     public var timezone: String
     public var limits: [WalletLimit]
 
-    public init(month: String = "", timezone: String = "", limits: [WalletLimit] = []) {
-        self.month = month
-        self.timezone = timezone
-        self.limits = limits
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         month = j.str("month", "")
@@ -5340,11 +4616,6 @@ public struct WalletNotifications: Codable, Equatable, Hashable, Sendable {
     public var items: [WalletPayment]
     public var unseen: Int
 
-    public init(items: [WalletPayment] = [], unseen: Int = 0) {
-        self.items = items
-        self.unseen = unseen
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: WalletPayment.self)
@@ -5388,10 +4659,6 @@ public struct E2eBlob: Codable, Equatable, Hashable, Sendable {
 /// PUT /api/wallet/pause.
 public struct PauseState: Codable, Equatable, Hashable, Sendable {
     public var paused: Bool
-
-    public init(paused: Bool = false) {
-        self.paused = paused
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -5467,11 +4734,13 @@ public struct Subscription: Codable, Equatable, Hashable, Sendable {
     public var provider: String
     public var windows: [UsageWindow]
     public var error: String?
+    public var role: String
 
-    public init(provider: String = "", windows: [UsageWindow] = [], error: String? = nil) {
+    public init(provider: String = "", windows: [UsageWindow] = [], error: String? = nil, role: String = "") {
         self.provider = provider
         self.windows = windows
         self.error = error
+        self.role = role
     }
 
     public init(from decoder: Decoder) throws {
@@ -5479,6 +4748,7 @@ public struct Subscription: Codable, Equatable, Hashable, Sendable {
         provider = j.str("provider", "")
         windows = j.list("windows", of: UsageWindow.self)
         error = j.optStr("error")
+        role = j.str("role", "")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -5486,60 +4756,7 @@ public struct Subscription: Codable, Equatable, Hashable, Sendable {
         try c.encode(provider, forKey: AnyKey("provider"))
         try c.encode(windows, forKey: AnyKey("windows"))
         try c.encodeIfPresent(error, forKey: AnyKey("error"))
-    }
-}
-
-/// GET /api/usage (subscription is nil for providers that report no limits).
-public struct Usage: Codable, Equatable, Hashable, Sendable {
-    public var today: Tokens
-    public var total: Tokens
-    public var subscription: Subscription?
-
-    public init(today: Tokens = Tokens(), total: Tokens = Tokens(), subscription: Subscription? = nil) {
-        self.today = today
-        self.total = total
-        self.subscription = subscription
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        today = j.decode("today", as: Tokens.self) ?? Tokens()
-        total = j.decode("total", as: Tokens.self) ?? Tokens()
-        subscription = j.decode("subscription", as: Subscription.self)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(today, forKey: AnyKey("today"))
-        try c.encode(total, forKey: AnyKey("total"))
-        try c.encodeIfPresent(subscription, forKey: AnyKey("subscription"))
-    }
-}
-
-/// GET /api/uploads items: a document the user uploaded (path "uploads/<name>").
-public struct Upload: Codable, Equatable, Hashable, Sendable {
-    public var path: String
-    public var bytes: Int64
-    public var modified: Double
-
-    public init(path: String, bytes: Int64 = 0, modified: Double = 0) {
-        self.path = path
-        self.bytes = bytes
-        self.modified = modified
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        path = try j.require("path", j.optStr("path"))
-        bytes = j.int64("bytes", 0)
-        modified = j.double("modified", 0)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(path, forKey: AnyKey("path"))
-        try c.encode(bytes, forKey: AnyKey("bytes"))
-        try c.encode(modified, forKey: AnyKey("modified"))
+        try c.encode(role, forKey: AnyKey("role"))
     }
 }
 
@@ -5548,12 +4765,6 @@ public struct UploadText: Codable, Equatable, Hashable, Sendable {
     public var name: String
     public var text: String
     public var truncated: Bool
-
-    public init(name: String = "", text: String = "", truncated: Bool = false) {
-        self.name = name
-        self.text = text
-        self.truncated = truncated
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -5725,18 +4936,6 @@ public struct Resources: Codable, Equatable, Hashable, Sendable {
     public var alert: StorageAlert
     public var canClean: Bool
 
-    public init(memory: MemoryUse = MemoryUse(), cpus: Double? = nil, disk: DiskUse = DiskUse(), host: HostCapacity = HostCapacity(), profile: String = "", minimum: Sizes = Sizes(), recommended: Sizes = Sizes(), alert: StorageAlert = StorageAlert(), canClean: Bool = false) {
-        self.memory = memory
-        self.cpus = cpus
-        self.disk = disk
-        self.host = host
-        self.profile = profile
-        self.minimum = minimum
-        self.recommended = recommended
-        self.alert = alert
-        self.canClean = canClean
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         memory = j.decode("memory", as: MemoryUse.self) ?? MemoryUse()
@@ -5774,16 +4973,6 @@ public struct CleanupItem: Codable, Equatable, Hashable, Sendable {
     public var trashed: Bool
     public var kind: String
 
-    public init(id: String, name: String = "", bytes: Int64 = 0, date: Double = 0, keepsText: Bool = false, trashed: Bool = false, kind: String = "") {
-        self.id = id
-        self.name = name
-        self.bytes = bytes
-        self.date = date
-        self.keepsText = keepsText
-        self.trashed = trashed
-        self.kind = kind
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         id = try j.require("id", j.optStr("id"))
@@ -5814,14 +5003,6 @@ public struct CleanupGroup: Codable, Equatable, Hashable, Sendable {
     public var bytes: Int64
     public var count: Int
     public var items: [CleanupItem]
-
-    public init(id: String, name: String = "", bytes: Int64 = 0, count: Int = 0, items: [CleanupItem] = []) {
-        self.id = id
-        self.name = name
-        self.bytes = bytes
-        self.count = count
-        self.items = items
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -5876,14 +5057,6 @@ public struct CleanupResult: Codable, Equatable, Hashable, Sendable {
     public var freed: Int64
     public var groups: [CleanupGroup]
     public var total: Int64
-
-    public init(removed: [String] = [], skipped: [String] = [], freed: Int64 = 0, groups: [CleanupGroup] = [], total: Int64 = 0) {
-        self.removed = removed
-        self.skipped = skipped
-        self.freed = freed
-        self.groups = groups
-        self.total = total
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -5959,135 +5132,11 @@ public struct CliStatus: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// GET /api/providers items, everything the model page and the keychain's AI key page use. key_source: app | env | nil.
-public struct ProviderDetail: Codable, Equatable, Hashable, Sendable {
-    public var name: String
-    public var displayName: String
-    public var oauth: Bool
-    public var loggedIn: Bool?
-    public var configured: Bool?
-    public var cli: CliStatus?
-    public var effortLevels: [String]
-    public var effortNote: String?
-    public var takesKey: Bool
-    public var keySource: String?
-    public var keyHint: String?
-    public var takesUrl: Bool
-    public var baseUrl: String?
-    public var unofficial: Bool
-    public var vendor: String
-    public var consent: ProviderConsentRecord?
-    public var consentVersion: Int
-
-    public init(name: String, displayName: String = "", oauth: Bool = false, loggedIn: Bool? = nil, configured: Bool? = nil, cli: CliStatus? = nil, effortLevels: [String] = [], effortNote: String? = nil, takesKey: Bool = false, keySource: String? = nil, keyHint: String? = nil, takesUrl: Bool = false, baseUrl: String? = nil, unofficial: Bool = false, vendor: String = "", consent: ProviderConsentRecord? = nil, consentVersion: Int = 0) {
-        self.name = name
-        self.displayName = displayName
-        self.oauth = oauth
-        self.loggedIn = loggedIn
-        self.configured = configured
-        self.cli = cli
-        self.effortLevels = effortLevels
-        self.effortNote = effortNote
-        self.takesKey = takesKey
-        self.keySource = keySource
-        self.keyHint = keyHint
-        self.takesUrl = takesUrl
-        self.baseUrl = baseUrl
-        self.unofficial = unofficial
-        self.vendor = vendor
-        self.consent = consent
-        self.consentVersion = consentVersion
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        name = try j.require("name", j.optStr("name"))
-        displayName = j.str("display_name", "")
-        oauth = j.bool("oauth", false)
-        loggedIn = j.optBool("logged_in")
-        configured = j.optBool("configured")
-        cli = j.decode("cli", as: CliStatus.self)
-        effortLevels = j.strings("effort_levels")
-        effortNote = j.optStr("effort_note")
-        takesKey = j.bool("takes_key", false)
-        keySource = j.optStr("key_source")
-        keyHint = j.optStr("key_hint")
-        takesUrl = j.bool("takes_url", false)
-        baseUrl = j.optStr("base_url")
-        unofficial = j.bool("unofficial", false)
-        vendor = j.str("vendor", "")
-        consent = j.decode("consent", as: ProviderConsentRecord.self)
-        consentVersion = j.int("consent_version", 0)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(name, forKey: AnyKey("name"))
-        try c.encode(displayName, forKey: AnyKey("display_name"))
-        try c.encode(oauth, forKey: AnyKey("oauth"))
-        try c.encodeIfPresent(loggedIn, forKey: AnyKey("logged_in"))
-        try c.encodeIfPresent(configured, forKey: AnyKey("configured"))
-        try c.encodeIfPresent(cli, forKey: AnyKey("cli"))
-        try c.encode(effortLevels, forKey: AnyKey("effort_levels"))
-        try c.encodeIfPresent(effortNote, forKey: AnyKey("effort_note"))
-        try c.encode(takesKey, forKey: AnyKey("takes_key"))
-        try c.encodeIfPresent(keySource, forKey: AnyKey("key_source"))
-        try c.encodeIfPresent(keyHint, forKey: AnyKey("key_hint"))
-        try c.encode(takesUrl, forKey: AnyKey("takes_url"))
-        try c.encodeIfPresent(baseUrl, forKey: AnyKey("base_url"))
-        try c.encode(unofficial, forKey: AnyKey("unofficial"))
-        try c.encode(vendor, forKey: AnyKey("vendor"))
-        try c.encodeIfPresent(consent, forKey: AnyKey("consent"))
-        try c.encode(consentVersion, forKey: AnyKey("consent_version"))
-    }
-}
-
-/// GET /api/push/status. mode: local | broker | off.
-public struct PushStatus: Codable, Equatable, Hashable, Sendable {
-    public var enabled: Bool
-    public var registered: Bool
-    public var mode: String
-    public var brokerReachable: Bool?
-    public var brokerPush: Bool?
-
-    public init(enabled: Bool = false, registered: Bool = false, mode: String = "", brokerReachable: Bool? = nil, brokerPush: Bool? = nil) {
-        self.enabled = enabled
-        self.registered = registered
-        self.mode = mode
-        self.brokerReachable = brokerReachable
-        self.brokerPush = brokerPush
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        enabled = j.bool("enabled", false)
-        registered = j.bool("registered", false)
-        mode = j.str("mode", "")
-        brokerReachable = j.optBool("broker_reachable")
-        brokerPush = j.optBool("broker_push")
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(enabled, forKey: AnyKey("enabled"))
-        try c.encode(registered, forKey: AnyKey("registered"))
-        try c.encode(mode, forKey: AnyKey("mode"))
-        try c.encodeIfPresent(brokerReachable, forKey: AnyKey("broker_reachable"))
-        try c.encodeIfPresent(brokerPush, forKey: AnyKey("broker_push"))
-    }
-}
-
 /// POST/DELETE /api/push/register.
 public struct PushRegistered: Codable, Equatable, Hashable, Sendable {
     public var ok: Bool
     public var push: Bool
     public var removed: Bool?
-
-    public init(ok: Bool = false, push: Bool = false, removed: Bool? = nil) {
-        self.ok = ok
-        self.push = push
-        self.removed = removed
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)

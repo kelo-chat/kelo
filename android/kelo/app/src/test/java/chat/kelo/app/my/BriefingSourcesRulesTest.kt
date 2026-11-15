@@ -27,15 +27,11 @@ class BriefingSourcesRulesTest {
         assertEquals(listOf("phone", "caldav:mail-naver", "google:google-calendar"), s.calendar.accounts.map { it.id })
         assertEquals(listOf(true, true, false), s.calendar.accounts.map { it.on })
         assertEquals(listOf("calendar", "mail"), BriefingSourcesRules.shown(s))
-        assertTrue(BriefingSourcesRules.anyProblem(s))
-        assertEquals(2 to 3, BriefingSourcesRules.readCount(s.calendar))
-        assertEquals(1 to 2, BriefingSourcesRules.readCount(s.mail))
     }
 
     @Test fun anOlderServerOrNothingConnectedShowsNothing() {
         val none = json.decodeFromString<BriefingSources>("{}")
         assertEquals(emptyList<String>(), BriefingSourcesRules.shown(none))
-        assertFalse(BriefingSourcesRules.anyProblem(none))
         val mailOnly = json.decodeFromString<BriefingSources>("""{"mail": {"accounts": [{"id": "mail:mail-naver", "kind": "mail", "name": "Naver Mail"}]}}""")
         assertEquals(listOf("mail"), BriefingSourcesRules.shown(mailOnly))
         assertTrue(mailOnly.mail.accounts.single().on)            // a row without "on" counts as read: everything is read by default

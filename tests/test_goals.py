@@ -163,6 +163,32 @@ def test_answers_that_ask_for_typing_open_a_text_box():
         assert not asks_typing(label), label
 
 
+def test_quick_replies_says_whole_sentence():
+    _, b = book()
+    # options ["A", "B"], says ["Go with A, the cheaper one", "B please"] → item["says"] == the same two
+    qs = b.clean_questions([{"question": "Q", "options": ["A", "B"], "says": ["Go with A, the cheaper one", "B please"]}])
+    assert qs[0]["says"] == ["Go with A, the cheaper one", "B please"]
+
+    # says shorter than options → the missing ones are ""
+    qs = b.clean_questions([{"question": "Q", "options": ["A", "B"], "says": ["Go with A, the cheaper one"]}])
+    assert qs[0]["says"] == ["Go with A, the cheaper one", ""]
+
+    # a duplicate option ["A", "A", "B"] with says ["x", "y", "z"] → options ["A", "B"], says ["x", "z"]
+    qs = b.clean_questions([{"question": "Q", "options": ["A", "A", "B"], "says": ["x", "y", "z"]}])
+    assert qs[0]["options"] == ["A", "B"]
+    assert qs[0]["says"] == ["x", "z"]
+
+    # a say equal to its label is dropped (""), and when no option has a sentence, there is no "says" key at all
+    qs = b.clean_questions([{"question": "Q", "options": ["A", "B"], "says": ["A", "B"]}])
+    assert "says" not in qs[0]
+    qs = b.clean_questions([{"question": "Q", "options": ["A", "B"], "says": ["Go with A, the cheaper one", "B"]}])
+    assert qs[0]["says"] == ["Go with A, the cheaper one", ""]
+
+    # a typed option ("Other (write it)") gets ""
+    qs = b.clean_questions([{"question": "Q", "options": ["A", "Other (write it)"], "says": ["Go with A, the cheaper one", "I'll type it"]}])
+    assert qs[0]["says"] == ["Go with A, the cheaper one", ""]
+
+
 def test_a_goal_shows_working_while_something_runs_for_it_and_waiting_only_after():
     store, b = book()
     g = store.add_goal("Goal A", "")

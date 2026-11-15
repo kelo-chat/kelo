@@ -1,5 +1,4 @@
 import SwiftUI
-import KeloCore
 import KeloShared
 
 /// A quick-reply question's typed field (`ReplyFields`): the system's own picker for its kind, whatever the question is about
@@ -121,7 +120,7 @@ struct ReplyFieldView: View {
 /// How field answers are written in the app language (`ReplyFields.display` with the app's own phrases).
 @MainActor
 enum ReplyFieldWords {
-    static var locale: Locale { Strings.shared.locale }
+    static var locale: Locale { appLocale() }
 
     /// The first day of the week where the user is (Calendar's: 1 = Sunday): the app language's, with the phone's region when the
     /// language carries none (the same rule as the schedule page).
@@ -182,7 +181,7 @@ private struct ReplyDateSheet: View {
             }
             .padding(.horizontal, 20).padding(.bottom, 24)
         }
-        .environment(\.locale, Strings.shared.locale)
+        .environment(\.locale, appLocale())
     }
 }
 
@@ -212,6 +211,6 @@ private struct ReplyTimeSheet: View {
             }
         }
         .padding(.horizontal, 20).padding(.bottom, 24)
-        .environment(\.locale, Strings.shared.locale)
+        .environment(\.locale, appLocale())
     }
 }

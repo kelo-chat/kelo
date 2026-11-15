@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +44,7 @@ def test_shipped_prompt_is_short_and_names_nothing_from_other_products(prompt_te
     "add_service_key", "confirm_purchase", "APPROVED", "wallet_cards", "browser_fill_card", "card numbers", "find_tools",
     "schedule_create", "watch_add", "CHECKLIST.md", "NOTIFY_PREFS.md",
     "journal_search", "extract_document", "view_image", "workroom_run", "assistant.md", "user.md", "MEMORY.md", "AGENTS.md",
-    "memory/people/", "Now:", "language the user writes in", "<message_break/>", "notes/services/"])
+    "memory/people/", "Now:", "Keep names, quotes and code", "<message_break/>", "notes/services/"])
 def test_shipped_prompt_keeps_the_key_facts(prompt_text, fact):
     assert fact in prompt_text
 
@@ -67,7 +68,10 @@ def test_facts_moved_out_of_the_prompt_sit_where_the_model_sees_them():
     from assistant.prompt import goals_block, turn_lines
     lines = "\n".join(turn_lines(tz_name="UTC", now=NOW))
     assert "take weekdays from here, never work one out" in lines
-    assert "App language (every message, also between steps, unless the user writes in another)" in lines   # no English drift mid-turn
+    assert "The user's language: English. Write every message in it, also between steps" in lines   # no English drift mid-turn
+    assert "switch only if the user writes in or asks for another" in lines and "when pages, mails or tools use another" in lines
+    from assistant.prompt import language_line
+    assert language_line("ko").startswith("The user's language: Korean. Write every message in it")
     assert "delegate" in CORE_TOOLS
     block = goals_block([{"id": 1, "title": "g", "status": "tracking"}])
     assert "never silently" in block and "declined stays unasked" in block
@@ -115,7 +119,7 @@ def test_the_real_content_loads_and_stays_small():
     b = PromptBuilder.load(CONTENT, None, Skills(CONTENT / "skills"))
     out = b.build(agent_name="Sage", now=NOW)
     assert "You are Sage, a personal agent" in out and "- shopping-and-bookings:" in out and "- work-room:" in out
-    assert len(out) < 13_000, len(out)   # 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
+    assert len(out) < 13_100, len(out)   # 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
     # and the clause on answering from the closest data; 12_700 before remembering the browser on the owner's sign-ins (2026-11-10)
     assert not FOREIGN.search(out)
 
@@ -174,25 +178,27 @@ async def test_the_agents_tools_exist_only_when_files_are_enabled_and_can_write_
         async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
             async with c.stream("POST", "/api/talk", json={"text": "hi"}) as r:
                 await read_events(r)
-    connect = {"find_tools", "web_search", "web_fetch", "add_service_key", "vault_status", "request_login", "request_card", "request_payment_pin", "connector_get", "connector_send", "mcp_list_tools", "mcp_call_tool",
+    connect = {"find_tools", "web_search", "web_fetch", "add_service_key", "save_found_secret", "vault_status", "request_login", "request_card", "request_payment_pin", "connector_get", "connector_download", "connector_send", "mcp_list_tools", "mcp_call_tool",
                "connect_service", "email_list", "email_read", "email_send", "email_update",
                "gcal_calendars", "gcal_events", "gcal_create_event", "gcal_update_event", "gcal_delete_event", "phone_calendar_events",
                "phone_calendar_add", "phone_calendar_update", "phone_calendar_delete", "phone_contacts", "phone_messages", "phone_send_text",
                "phone_call", "phone_call_log", "phone_notifications", "phone_health", "briefing_sources", "calendar_events",
-               "schedule_create", "schedule_list", "schedule_update", "schedule_delete", "schedule_pause", "schedule_runs", "task_allow", "journal_search",
+               "schedule_create", "schedule_list", "schedule_update", "schedule_delete", "schedule_pause", "schedule_retry", "schedule_runs", "task_allow", "journal_search",
                "watch_add", "watch_list", "watch_update", "watch_remove", "watch_dry_run", "watch_enable",
+               "ha_watch_add", "ha_watch_list", "ha_watch_remove",
                "delegate", "workers_list", "worker_status", "worker_message", "worker_stop", "resume",
-               "await_reply", "followup_snooze", "followup_cancel",
+               "await_reply", "followup_snooze", "followup_cancel", "action_result",   # (action_result: offered only while a result is unknown, done_once.py)
                "goal_get", "goal_set_facts", "goal_plan", "goal_step_done", "goal_log", "goal_metric_add", "goal_link_schedule",
-               "goal_add_document", "goal_suggest", "quick_replies", "react", "set_tone", "big_event_notice", "briefing",
+               "goal_add_document", "goal_suggest", "quick_replies", "compare_options", "react", "set_tone", "big_event_notice", "briefing", "recheck_later", "recheck_watch", "recheck_stop", "recheck_result", "offer_post",
                "package_entries", "package_entry_add", "package_entry_delete",   # entries of installed Nest packages (nest.py)
-               "weather", "my_location", "places_near"}   # forecasts without a browser, the phone's last location, places near it
+               "weather", "my_location", "places_near", "messenger"}   # forecasts without a browser, the phone's last location, places near it
     files = {"read_file", "write_file", "list_files", "read_skill", "search_skills", "extract_document", "generate_image", "save_product_image", "list_product_images", "view_image", "remember",
-             "propose_skill", "storage_cleanup_list", "storage_cleanup"}
+             "propose_skill", "storage_cleanup_list", "storage_cleanup", "show_picture"}
     assert every[0] == files | connect
     assert every[1] == connect                                       # connections need no files area
     # tools on demand: the first request shows only the core set (those this server has); the rest load with find_tools
-    assert set(names[0]) == CORE_TOOLS & every[0] and set(names[1]) == CORE_TOOLS & every[1]
+    shown = CORE_TOOLS - {"action_result"}                            # that one is hidden until some step's result is unknown: no prompt cost
+    assert set(names[0]) == shown & every[0] and set(names[1]) == shown & every[1]
     assert {"read_file", "write_file", "web_search", "find_tools", "quick_replies", "delegate"} <= set(names[0])
 
 
@@ -336,3 +342,69 @@ def test_missing_data_is_answered_from_data_on_the_same_thing_never_another():
     assert "lacking the exact data, answer from data on the same period, place or item, never another time's or thing's" in line
     assert "give the basis for a claim" in line
     assert "weather" not in text.lower()
+
+
+def test_the_prompt_says_to_finish_the_job_and_to_explain_when_blocked():
+    text = (CONTENT / "prompts" / "system.md").read_text(encoding="utf-8")
+    for phrase in ("try 2-3 other ways yourself", "lacks a bulk or one-click feature", "Lead with your next step, not what you cannot do",
+                   "what you tried, why each failed and your recommended option", "ask one question", "what is done, what is left and why",
+                   "keep going until done or really stopped", "never ask whether to continue"):
+        assert phrase in text, phrase
+    assert "rate limits, locked accounts and refusals mean stop and tell the user" in text   # the two rules stay side by side
+
+
+def test_rules_moved_by_the_prompt_diet_sit_where_they_matter(tmp_path):
+    """Each rule is said once, where the step happens: the owner's "remember this browser" rule on browser_login (a core tool and the
+    only way the owner's sign-in is made), the fill-in card sentence in the system prompt only, the rare browser and place tools
+    loaded with find_tools but named where the model meets the need, the work room sentence not promising a tool that may be absent."""
+    text = (CONTENT / "prompts" / "system.md").read_text(encoding="utf-8")
+    assert "remember this browser" not in text and "tell the user in one short sentence to fill it in below" in text
+    assert "when the work room is available" in text
+    assert not {"browser_click_at", "browser_drag", "browser_view", "places_near"} & CORE_TOOLS
+    assert {"browser_login", "browser_look", "browser_open", "weather"} <= CORE_TOOLS
+    app = create_app(Settings(token=TOKEN, provider="p", model="m", cdp_host="127.0.0.1", home_dir=str(tmp_path / "home"),
+                              content_dir=str(CONTENT)))
+    desc = {t.name: t.description for t in app.state.tools}
+    assert "(never someone else's), accept an offer to keep this browser signed in or skip verification next time" in desc["browser_login"]
+    assert "not saving the password, marketing or cookie consent, a recovery phone or email, or security settings" in desc["browser_login"]
+    assert "find_tools" in desc["browser_look"] and "browser_click_at" in desc["browser_look"] and "browser_drag" in desc["browser_look"]
+    view = next(t for t in app.state.tools if t.name == "browser_open").parameters["properties"]["view"]["description"]
+    assert "load browser_view with find_tools" in view
+
+
+async def test_slash_new_starts_a_fresh_conversation_for_the_model_and_keeps_the_messages(tmp_path):
+    """2026-11-12: the owner typed /clear and /new; Kelo said "a new session" and then summarised everything before."""
+    seen = []
+    async with Running(talk_app(tmp_path, seen)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        for text in ("카카오 체험단 신청해", "/new", "안녕"):
+            async with c.stream("POST", "/api/talk", json={"text": text}) as r:
+                await read_events(r)
+        stored = [m["content"] for m in (await c.get("/api/messages")).json()["items"] if m["role"] == "user"] \
+            if isinstance((await c.get("/api/messages")).json(), dict) else []
+    before, at_new, after = seen
+    assert any("카카오 체험단 신청해" == m.get("content") for m in before)
+    flat = lambda msgs: " ".join(str(m.get("content")) for m in msgs)   # noqa: E731
+    assert "new conversation" in flat(at_new) and "카카오 체험단 신청해" not in flat(at_new)
+    assert "카카오 체험단 신청해" not in flat(after) and after[-1]["content"] == "안녕"
+    assert not stored or "카카오 체험단 신청해" in stored   # the messages stay on screen
+
+
+async def test_a_sent_briefing_step_is_a_yes_and_other_text_is_not(tmp_path):
+    """2026-11-12: the owner tapped the card's step "…정리해 드릴까요?" and Kelo answered "원하시면 …" instead of doing it."""
+    seen = []
+    app = talk_app(tmp_path, seen)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        b = app.state.briefing
+        card = {"day": "2026-11-12", "suggestions": [{"text": "심사 결과 메일 확인하고 다음 단계 정리해줘", "refs": []}]}
+        b.store._run("INSERT INTO briefings(day, message_id, card, created_at) VALUES (?, ?, ?, ?)",
+                     ("2026-11-12", None, json.dumps(card, ensure_ascii=False), b.clock()))
+        for text in ("심사 결과 메일 확인하고  다음 단계 정리해줘", "안녕"):
+            async with c.stream("POST", "/api/talk", json={"text": text}) as r:
+                await read_events(r)
+    assert "It is a yes: do it now" in seen[0][-1]["content"] and seen[0][-1]["content"].startswith("심사 결과 메일")
+    assert seen[1][-1]["content"] == "안녕"
+
+
+def test_briefing_steps_are_asked_for_as_the_owners_own_request():
+    from assistant.briefing import PROMPT
+    assert "the owner's own short request" in PROMPT and "Not a question" in PROMPT

@@ -1,5 +1,7 @@
 {
  "connectors": {
+  "actual_budget": "actual_budget",
+  "adguard_home": "adguard_home",
   "agoda": "agoda",
   "ahrefs": "ahrefs",
   "airtable": "airtable",
@@ -13,6 +15,7 @@
   "baemin": "baemin",
   "basecamp": "basecamp",
   "beehiiv": "beehiiv",
+  "beszel": "beszel",
   "betterstack": "betterstack",
   "bitly": "bitly",
   "box": "box",
@@ -48,8 +51,13 @@
   "figma": "figma",
   "firecrawl": "firecrawl",
   "fireflies": "fireflies",
+  "firefly_iii": "firefly_iii",
+  "forgejo": "forgejo",
   "framer": "framer",
   "freshbooks": "freshbooks",
+  "freshrss": "freshrss",
+  "frigate": "frigate",
+  "gitea": "gitea",
   "github": "github",
   "gitlab": "gitlab",
   "gmail": "gmail",
@@ -65,35 +73,45 @@
   "grab_mcp": "grab",
   "grafana_cloud": "grafana",
   "greenhouse": "greenhouse",
+  "grocy": "grocy",
+  "home_assistant": "home_assistant",
   "hugging_face": "hugging_face",
   "ibkr": "ibkr",
   "imap_email": "kelo_mail",
+  "immich": "immich",
   "incident_io": "incident_io",
   "instacart": "instacart",
   "instagram": "instagram",
   "jotform": "jotform",
   "kakao": "kakao_map",
+  "karakeep": "karakeep",
   "kit": "kit",
   "krisp": "krisp",
   "launchdarkly": "launchdarkly",
   "linear": "linear",
+  "linkwarden": "linkwarden",
   "lucid": "lucid",
   "mailerlite": "mailerlite",
   "make": "make",
   "mapbox": "mapbox",
+  "mealie": "mealie",
   "mentimeter": "mentimeter",
   "mercury": "mercury",
   "meta_catalog_search": "facebook",
   "metricool": "metricool",
+  "miniflux": "miniflux",
   "mintlify": "mintlify",
   "miro": "miro",
   "mixpanel": "mixpanel",
   "monday": "monday",
   "mongodb_atlas": "mongodb",
   "motherduck": "motherduck",
+  "n8n": "n8n",
+  "n8n_mcp": "n8n",
   "naver": "naver",
   "neon": "neon",
   "netlify": "netlify",
+  "nextcloud": "nextcloud",
   "notion": "notion",
   "opentable": "opentable",
   "otter": "otter",
@@ -101,8 +119,10 @@
   "outlook_contacts": "outlook",
   "outlook_mail": "outlook",
   "pandadoc": "pandadoc",
+  "paperless": "paperless",
   "paypal": "paypal",
   "philips_hue": "philips_hue",
+  "pihole": "pihole",
   "places": "kelo_place",
   "planetscale": "planetscale",
   "posthog": "posthog",
@@ -128,6 +148,7 @@
   "supabase": "supabase",
   "superhuman_docs": "superhuman",
   "superhuman_mail": "superhuman",
+  "tandoor": "tandoor",
   "tavily": "tavily",
   "ticketmaster": "ticketmaster",
   "ticktick": "ticktick",
@@ -137,8 +158,10 @@
   "toss": "toss",
   "trello": "trello",
   "typefully": "typefully",
+  "uptime_kuma": "uptime_kuma",
   "v0": "v0",
   "vercel": "vercel",
+  "wallabag": "wallabag",
   "webflow": "webflow",
   "webull": "webull",
   "wise": "wise",
@@ -155,6 +178,18 @@
   "zoom": "zoom"
  },
  "icons": {
+  "actual_budget": {
+   "color": "#8F6DDA",
+   "fetched": "2026-11-11",
+   "page": "https://actualbudget.org/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/actual-budget.png"
+  },
+  "adguard_home": {
+   "color": "#72BC7F",
+   "fetched": "2026-11-11",
+   "page": "https://adguard.com/adguard-home.html",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/adguard-home.png"
+  },
   "agoda": {
    "color": "#545454",
    "fetched": "2026-11-10",
@@ -232,6 +267,12 @@
    "fetched": "2026-11-08",
    "page": "https://www.beehiiv.com/",
    "source": "https://beehiiv-marketing-images.s3.amazonaws.com/Redesign2023/favicon.png"
+  },
+  "beszel": {
+   "color": "#56A6C2",
+   "fetched": "2026-11-11",
+   "page": "https://beszel.dev/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/beszel.png"
   },
   "betterstack": {
    "color": "#0C2424",
@@ -437,6 +478,18 @@
    "page": "https://fireflies.ai/",
    "source": "https://fireflies.ai/icon.png?icon.3227koqampzl_.png"
   },
+  "firefly_iii": {
+   "color": "#E39279",
+   "fetched": "2026-11-11",
+   "page": "https://www.firefly-iii.org/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/firefly-iii.png"
+  },
+  "forgejo": {
+   "color": "#E92D00",
+   "fetched": "2026-11-11",
+   "page": "https://forgejo.org/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/forgejo.png"
+  },
   "framer": {
    "color": "#343434",
    "fetched": "2026-11-08",
@@ -448,6 +501,24 @@
    "fetched": "2026-11-08",
    "page": "https://www.freshbooks.com/",
    "source": "https://www.freshbooks.com/mask-icon.svg"
+  },
+  "freshrss": {
+   "color": "#0063C1",
+   "fetched": "2026-11-11",
+   "page": "https://freshrss.org/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/freshrss.png"
+  },
+  "frigate": {
+   "color": "#000000",
+   "fetched": "2026-11-11",
+   "page": "https://frigate.video/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/frigate.png"
+  },
+  "gitea": {
+   "color": "#79A947",
+   "fetched": "2026-11-11",
+   "page": "https://about.gitea.com/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/gitea.png"
   },
   "github": {
    "color": "#696768",
@@ -533,11 +604,23 @@
    "page": "https://www.greenhouse.com/",
    "source": "https://cdn.prod.website-files.com/6668a687e71e2722fccb8357/679a83f9b21b5caab0c682c9_GH-logo-web.png"
   },
+  "grocy": {
+   "color": "#337AB7",
+   "fetched": "2026-11-11",
+   "page": "https://grocy.info/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/grocy.png"
+  },
   "health_connect": {
    "color": "#3C84FC",
    "fetched": "2026-11-10",
    "page": "https://developer.android.com/health-and-fitness/guides/health-connect/design/ui-guidelines",
    "source": "https://developer.android.com/static/downloads/assets/health_connect_logo.png"
+  },
+  "home_assistant": {
+   "color": "#42C7F4",
+   "fetched": "2026-11-11",
+   "page": "https://www.home-assistant.io/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/home-assistant.png"
   },
   "hugging_face": {
    "color": "#FCCC24",
@@ -556,6 +639,12 @@
    "fetched": "2026-11-10",
    "page": "https://www.icloud.com/",
    "source": "https://www.icloud.com/system/icloud.com/2640Build24/favicons/default-favicon-light-180x180.png"
+  },
+  "immich": {
+   "color": "#9F866C",
+   "fetched": "2026-11-11",
+   "page": "https://immich.app/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/immich.png"
   },
   "incident_io": {
    "color": "#FC543C",
@@ -586,6 +675,12 @@
    "fetched": "2026-11-10",
    "page": "https://www.kakaocorp.com/page/service/service/KakaoMap",
    "source": "https://t1.kakaocdn.net/kakaocorp/kakaocorp/admin/1ca66319017800001.png"
+  },
+  "karakeep": {
+   "color": "#FFFFFF",
+   "fetched": "2026-11-11",
+   "page": "https://karakeep.app/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/karakeep.png"
   },
   "kelo_calendar": {
    "color": "#4A5B70",
@@ -632,6 +727,12 @@
    "page": "https://link.com/",
    "source": "https://images.stripeassets.com/fzn2n1nzq965/35yClx6UuTze6h851WsJqW/18da88ac03bd96140d16bdac62b94578/app-icon.png"
   },
+  "linkwarden": {
+   "color": "#09293C",
+   "fetched": "2026-11-11",
+   "page": "https://linkwarden.app/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/linkwarden.png"
+  },
   "lucid": {
    "color": "#43464D",
    "fetched": "2026-11-08",
@@ -656,6 +757,12 @@
    "page": "https://www.mapbox.com/",
    "source": "https://cdn.prod.website-files.com/6050a76fa6a633d5d54ae714/6050ac04955ff26c84dcb8c8_mapbox_favicon_256x256.png"
   },
+  "mealie": {
+   "color": "#E88525",
+   "fetched": "2026-11-11",
+   "page": "https://mealie.io/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/mealie.png"
+  },
   "mentimeter": {
    "color": "#546CE4",
    "fetched": "2026-11-08",
@@ -673,6 +780,12 @@
    "fetched": "2026-11-08",
    "page": "https://metricool.com/",
    "source": "https://metricool.com/wp-content/uploads/cropped-web-app-manifest-512x512-1-192x192.png"
+  },
+  "miniflux": {
+   "color": "#000000",
+   "fetched": "2026-11-11",
+   "page": "https://miniflux.app/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/miniflux.png"
   },
   "mintlify": {
    "color": "#24E49C",
@@ -710,6 +823,12 @@
    "page": "https://motherduck.com/",
    "source": "https://motherduck.com/apple-touch-icon.png"
   },
+  "n8n": {
+   "color": "#F04C74",
+   "fetched": "2026-11-11",
+   "page": "https://n8n.io/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/n8n.png"
+  },
   "naver": {
    "color": "#0CE46C",
    "fetched": "2026-11-10",
@@ -727,6 +846,12 @@
    "fetched": "2026-11-08",
    "page": "https://www.netlify.com/",
    "source": "https://www.netlify.com/favicon/icon-512.png"
+  },
+  "nextcloud": {
+   "color": "#3786CD",
+   "fetched": "2026-11-11",
+   "page": "https://nextcloud.com/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/nextcloud.png"
   },
   "notion": {
    "color": "#B0B0B0",
@@ -758,6 +883,12 @@
    "page": "https://www.pandadoc.com/",
    "source": "https://www.pandadoc.com/favicon.ico?favicon.0aj89v0247hpa.ico"
   },
+  "paperless": {
+   "color": "#17541F",
+   "fetched": "2026-11-11",
+   "page": "https://docs.paperless-ngx.com/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/paperless-ngx.png"
+  },
   "paypal": {
    "color": "#0C249C",
    "fetched": "2026-11-08",
@@ -769,6 +900,12 @@
    "fetched": "2026-11-08",
    "page": "https://www.philips-hue.com/ko-kr",
    "source": "https://www.philips-hue.com/etc.clientlibs/signify-brand-hue/clientlibs/clientlib-main-v2/resources/favicons/favicon_192px.png"
+  },
+  "pihole": {
+   "color": "#9E4712",
+   "fetched": "2026-11-11",
+   "page": "https://pi-hole.net/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/pi-hole.png"
   },
   "planetscale": {
    "color": "#555555",
@@ -896,6 +1033,12 @@
    "page": "https://superhuman.com/",
    "source": "https://superhumanstatic.com/super-funnel/main/public/images/v4/favicons/superhuman-apple-touch-icon.png"
   },
+  "tandoor": {
+   "color": "#A58045",
+   "fetched": "2026-11-11",
+   "page": "https://tandoor.dev/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/tandoor-recipes.png"
+  },
   "tavily": {
    "color": "#363535",
    "fetched": "2026-11-08",
@@ -950,6 +1093,12 @@
    "page": "https://typefully.com/",
    "source": "https://typefully.com/pwa/icon.maskable-min.png"
   },
+  "uptime_kuma": {
+   "color": "#9FE7B9",
+   "fetched": "2026-11-11",
+   "page": "https://uptime.kuma.pet/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/uptime-kuma.png"
+  },
   "v0": {
    "color": "#1C1C1C",
    "fetched": "2026-11-08",
@@ -961,6 +1110,12 @@
    "fetched": "2026-11-08",
    "page": "https://vercel.com/",
    "source": "https://py8fhxnkzwtsqdo9.public.blob.vercel-storage.com/front/favicon/vercel/android-chrome-512x512.png"
+  },
+  "wallabag": {
+   "color": "#000000",
+   "fetched": "2026-11-11",
+   "page": "https://wallabag.org/",
+   "source": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/wallabag.png"
   },
   "webflow": {
    "color": "#0C6CFC",

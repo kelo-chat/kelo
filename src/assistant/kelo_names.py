@@ -1,4 +1,4 @@
-"""Free Kelo addresses (`<name>.kelo.chat`): the operator's side.
+"""Kelo addresses (`<name>.kelo.chat`): the operator's side.
 
 The operator's Kelo server (the one at kelo.chat, the same one that brokers GitHub/Google sign-ins) holds a Cloudflare API token
 for the kelo.chat zone. Any copy of Kelo can ask it for a name. For each name the broker makes one Cloudflare Tunnel whose only
@@ -24,7 +24,7 @@ connected: a refusal first asks Cloudflare again, at most every REFRESH_SECONDS)
 anyone. The operator is told once per trip (`on_busy`).
 
 A full pool (max_names, or a Cloudflare tunnel / DNS record limit) answers 503 {"code": "full"}; the operator is told once when the
-pool reaches NEAR_FULL of max_names and once when it is full, again only after it went below and filled again (`on_pool`). App attestation for claims
+pool reaches each share in WARN_AT (50, 70, 90%) of max_names and once when it is full, again only after it went below and filled again (`on_pool`). App attestation for claims
 (Play Integrity / App Attest) is planned before launch. A hard cap (default 900) keeps the
 operator under the 1,000 free tunnels per Cloudflare account; free DNS zones created after 2024-09-01 hold only 200 records, so on a
 free zone set the cap to about 190 (or move the zone to a paid plan, 3,500 records).
@@ -62,7 +62,8 @@ UNCONNECTED_SECONDS = 3600      # a claimed name whose tunnel never had a connec
 TICK_SECONDS = 600              # the server's sweep while such claims exist (tick)
 PER_IP_DAY = 3                  # new names per client address in 24 h
 PENDING_MAX = 30                # names waiting for their first connector at a time; at that many the broker is "busy"
-NEAR_FULL = 0.9                 # the operator is warned once at this share of max_names, before anyone is refused
+NEAR_FULL = 0.9                 # the last warning before anyone is refused
+WARN_AT = (0.5, 0.7, NEAR_FULL)  # the operator is warned once at each of these shares of max_names (owner, 2026-11-11)
 REFRESH_SECONDS = 60            # a busy refusal asks Cloudflare which waiting names connected, at most this often
 TUNNEL_PREFIX = "kelo-"
 NAME = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,28})[a-z0-9]$")    # 3-30 characters
@@ -372,7 +373,7 @@ class KeloNames:
             # parked, or its tunnel is gone (deleted in Cloudflare by hand): the same name, a new tunnel, CNAME and token; this owner's
             # own name, so neither the daily cap nor the breaker counts it, but it needs a free slot like any name
             if mine["parked_at"] and self.count() >= self.max_names():
-                raise self._full("no free Kelo addresses are left right now. Use Tailscale or your own domain instead "
+                raise self._full("no Kelo addresses are available right now. Use Tailscale or your own domain instead "
                                  "(assistant connect tailscale | assistant connect domain).")
             await cf.delete_record(mine["dns_id"])
             tid, dns_id, token = await self._make(cf, name, host)
@@ -389,7 +390,7 @@ class KeloNames:
         if self.by_name(name):
             raise KeloNameError(f"{host} is taken; pick another name", 409)
         if self.count() >= self.max_names():
-            raise self._full("no free Kelo addresses are left right now. Use Tailscale or your own domain instead "
+            raise self._full("no Kelo addresses are available right now. Use Tailscale or your own domain instead "
                              "(assistant connect tailscale | assistant connect domain).")
         await self._limits(ip)
         tid, dns_id, token = await self._make(cf, name, host)
@@ -409,7 +410,7 @@ class KeloNames:
             made = await cf.create_tunnel(tname)
         except KeloNameError as e:
             if "limit" in str(e).lower() or "quota" in str(e).lower():
-                raise self._full("no free Kelo addresses are left right now (the operator's Cloudflare tunnel limit). "
+                raise self._full("no Kelo addresses are available right now (the operator's Cloudflare tunnel limit). "
                                  "Use Tailscale or your own domain instead.") from None
             raise
         tid = str(made["id"])
@@ -420,7 +421,7 @@ class KeloNames:
         except KeloNameError as e:
             await cf.delete_tunnel(tid)
             if "quota" in str(e).lower() or "limit" in str(e).lower():
-                raise self._full("no free Kelo addresses are left right now (the kelo.chat DNS record limit). "
+                raise self._full("no Kelo addresses are available right now (the kelo.chat DNS record limit). "
                                  "Use Tailscale or your own domain instead.") from None
             raise
         return tid, dns_id, token
@@ -433,23 +434,26 @@ class KeloNames:
                 pass
 
     def _pool_watch(self) -> None:
-        """The operator hears once when the pool is NEAR_FULL used and once when it is full; again only after it went below and
-        filled again."""
+        """The operator hears once at each share in WARN_AT ("near50", "near70", "near" = NEAR_FULL) and once when it is full; a level
+        is told again only after the pool went below it and filled again."""
         used, cap = self.count(), self.max_names()
-        for kind, level in (("near", NEAR_FULL * cap), ("full", cap)):
+        levels = [(f"near{int(share * 100)}" if share != NEAR_FULL else "near", share * cap) for share in WARN_AT]
+        due = []
+        for kind, level in (*levels, ("full", cap)):
             key = f"kelo:told_{kind}"
             if used >= level and self.store.meta(key) != "1":
                 self.store.set_meta(key, "1")
-                if kind == "full" or used < cap:   # at full straight away: only the "full" notice
-                    self._tell(kind)
+                due.append(kind)
             elif used < level and self.store.meta(key) == "1":
                 self.store.set_meta(key, "")
+        if due:   # several levels passed at once: only the highest one is told (at full straight away: only "full")
+            self._tell(due[-1])
 
     def _full(self, message: str) -> KeloNameError:
         """The pool is full (the cap, or a Cloudflare limit): 503 {"code": "full"}, and the operator hears once per fill."""
         if self.store.meta("kelo:told_full") != "1":
-            self.store.set_meta("kelo:told_full", "1")
-            self.store.set_meta("kelo:told_near", "1")
+            for kind in ("full", "near", *(f"near{int(x * 100)}" for x in WARN_AT if x != NEAR_FULL)):
+                self.store.set_meta(f"kelo:told_{kind}", "1")
             self._tell("full")
         return KeloNameError(message, 503, "full")
 

@@ -8,6 +8,7 @@ reviewer ever sees another store's chats or files:
 | App Store (iPhone) | `review-apple` | `https://review-apple.kelo.chat` |
 | Google Play (Android) | `review-google` | `https://review-google.kelo.chat` |
 | Microsoft Store (Windows) | `review-ms` | `https://review-ms.kelo.chat` |
+| TestFlight beta review (iPhone) | `review-testflight` | `https://review-testflight.kelo.chat` |
 
 ## What review mode changes
 

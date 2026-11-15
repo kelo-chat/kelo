@@ -67,16 +67,16 @@ struct ShippingEditPage: View {
     let others: Int
     let onBack: () -> Void
     let onSaved: () -> Void
-    @Environment(AppModel.self) private var app
-    @Environment(\.kelo) private var c
+    let api: KeloApi
+    @State private var model: ShippingEditModel
     @State private var editor: AddressEditor
     @State private var label: String
     @State private var makeDefault: Bool
-    @State private var saving = false
     @State private var deleting = false
-    @State private var msg = ""
 
-    init(profile: ShippingProfile?, others: Int, onBack: @escaping () -> Void, onSaved: @escaping () -> Void) {
+    init(api: KeloApi, profile: ShippingProfile?, others: Int, onBack: @escaping () -> Void, onSaved: @escaping () -> Void) {
+        self.api = api
+        _model = State(initialValue: ShippingEditModel(api: api))
         self.profile = profile
         self.others = others
         self.onBack = onBack
@@ -96,15 +96,15 @@ struct ShippingEditPage: View {
                     KeloTextField(L(R.string.shipping_nickname_hint), text: $label, maxLength: AddressRules.maxLabel)
                         .accessibilityIdentifier("kelo.shipping.nickname")
                 }
-                AddressFields(editor: editor, api: app.api, onCard: true)
+                AddressFields(editor: editor, api: api, onCard: true)
             }
             MyCard {
                 ToggleRow(L(R.string.shipping_default_title), detail: L(R.string.shipping_default_note),
                           isOn: $makeDefault, enabled: !defaultFixed)
                     .accessibilityIdentifier("kelo.shipping.default")
             }
-            if !msg.isEmpty { ErrorText(msg, small: true).accessibilityIdentifier("kelo.shipping.error") }
-            PrimaryButton(L(R.string.save), enabled: editor.form != nil && !saving, busy: saving) { save() }
+            if !model.message.isEmpty { ErrorText(model.message, small: true).accessibilityIdentifier("kelo.shipping.error") }
+            PrimaryButton(L(R.string.save), enabled: editor.form != nil && !model.saving, busy: model.saving) { save() }
                 .accessibilityIdentifier("kelo.shipping.saveProfile")
             if profile != nil {
                 MenuGroup {
@@ -113,7 +113,7 @@ struct ShippingEditPage: View {
                 }
             }
         }
-        .task { await editor.start(app.api) }
+        .task { await editor.start(api) }
         .onAppear { if label.trimmingCharacters(in: .whitespaces).isEmpty && profile == nil { label = L(R.string.shipping_home) } }
         .alert(L(R.string.shipping_delete_confirm, (profile?.label).flatMap { $0.isEmpty ? nil : $0 } ?? L(R.string.shipping_home)),
                isPresented: $deleting) {
@@ -123,39 +123,16 @@ struct ShippingEditPage: View {
     }
 
     private func save() {
-        msg = ""
+        model.clearMessage()
         guard editor.check(), var body = editor.body() else { Haptics.warning(); return }
         body["label"] = .string(AddressRules.startLabel(label, fallback: L(R.string.shipping_home)))
         if makeDefault && profile?.isDefault != true { body["default"] = .bool(true) }
-        saving = true
-        Task {
-            defer { saving = false }
-            do {
-                let api = try app.requireApi()
-                if let profile { _ = try await api.updateShippingProfile(profile.id, .object(body)) }
-                else { _ = try await api.addShippingProfile(.object(body)) }
-                Haptics.success()
-                onSaved()
-            } catch {
-                msg = app.message(for: error)
-                Haptics.warning()
-            }
-        }
+        model.save(body, profile: profile, saved: onSaved)
     }
 
     private func delete() {
         guard let profile else { return }
-        msg = ""
-        Task {
-            do {
-                try await app.requireApi().deleteShippingProfile(profile.id)
-                Haptics.success()
-                onSaved()
-            } catch {
-                msg = app.message(for: error)
-                Haptics.warning()
-            }
-        }
+        model.delete(profile, deleted: onSaved)
     }
 }
 

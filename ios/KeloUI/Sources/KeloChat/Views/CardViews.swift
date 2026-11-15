@@ -6,27 +6,27 @@ import KeloShared
 /// buttons, and a chip says how it ended. The raw arguments are never shown, only readable pairs or the server's sentence.
 struct ApprovalCard: View {
     let approval: ChatItem.Approval
-    let onAnswer: (Bool) -> Void
+    let onAnswer: (Bool, Bool) -> Void
     let onKeepForSchedule: () -> Void
     @Environment(\.kelo) private var c
-    @Environment(\.locale) private var locale
+    @State private var rememberSite = false
 
     var body: some View {
         CardBox {
             // the setup card says it itself, at its end
             if approval.urgent && approval.open && approval.grant?.urgent != true { UrgentLine(missed: approval.missed) }
             if let payment = approval.payment {
-                PurchaseApproval(approval: approval, payment: payment, onAnswer: onAnswer)
+                PurchaseApproval(approval: approval, payment: payment) { ok in onAnswer(ok, false) }
             } else if let grant = approval.grant {
                 // the setup card of a "when X happens, do Y" task: its own layout (trigger, action, limits, the card's auto-pay limit)
                 TaskGrantApproval(grant: grant, open: approval.open, trailing: {
                     if let o = Outcomes.of(approval) { OutcomeChip(outcome: o) }
-                }, onAnswer: onAnswer)
+                }, onAnswer: { ok in onAnswer(ok, false) })
             } else {
                 HStack(alignment: .top, spacing: 8) {
                     Text(TurnEvent.ApprovalRequest.question(approval.ask) ?? L(R.string.chat_approval_ask,
-                           ProviderConsentRules.askWord(approval.shown, language: Strings.shared.code),
-                           ProviderConsentRules.objectParticle(approval.shown)))
+                           AskWords.askWord(approval.shown, language: appLanguageCode()),
+                           AskWords.objectParticle(approval.shown)))
                         .font(KeloFont.titleMedium).foregroundStyle(c.ink)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -35,9 +35,12 @@ struct ApprovalCard: View {
                 ApprovalFacts(lines: approval.lines, detail: approval.detail)
                 if !approval.items.isEmpty { ApprovalItems(items: approval.items) }
                 if approval.open {
+                    if approval.canRemember && !approval.site.isEmpty {
+                        RememberSiteCheck(site: approval.site, checked: rememberSite, enabled: true) { rememberSite = $0 }
+                    }
                     HStack(spacing: 10) {
-                        SecondaryButton(L(R.string.chat_approval_deny), fill: true) { onAnswer(false) }
-                        PrimaryButton(L(R.string.chat_approval_allow)) { onAnswer(true) }
+                        SecondaryButton(L(R.string.chat_approval_deny), fill: true) { onAnswer(false, false) }
+                        PrimaryButton(L(R.string.chat_approval_allow)) { onAnswer(true, rememberSite) }
                     }
                     if approval.canRememberSchedule { LinkButton(L(R.string.approval_keep_for_schedule), action: onKeepForSchedule) }
                 }
@@ -341,8 +344,9 @@ struct ConnectCardRow: View {
     let model: ChatModel
     @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
-    @State private var connector: Connector?
+    @State private var watcher: ConnectCardModel?
     @State private var recheck = 0
+    private var connector: Connector? { watcher?.connector }
     @Environment(\.keloConnectPanel) private var panel
 
     var body: some View {
@@ -387,11 +391,37 @@ struct ConnectCardRow: View {
         .task(id: "\(item.state == .open)#\(recheck)") {
             // the connector's name and whether it is connected yet (again when the user comes back from Connectors)
             guard item.state == .open, let api = app.api else { return }
-            while !Task.isCancelled {
-                if let list = try? await api.connectors() { connector = list.first { $0.id == item.service } }
-                if connector?.status == "connected" { return }
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            let w = watcher ?? ConnectCardModel(api: api, service: item.service)
+            watcher = w
+            await w.watch()
+        }
+    }
+}
+
+/// "Saved in the Keychain": the key's name, where it is used, and the way to the Keychain (behind its own lock).
+struct KeySavedCard: View {
+    let item: ChatItem.KeySaved
+    @Environment(AppModel.self) private var app
+    @Environment(\.kelo) private var c
+
+    var body: some View {
+        CardBox {
+            HStack(spacing: 8) {
+                KeloIconView(.key, size: 20, tint: c.accent)
+                Text(L(R.string.keysaved_title))
+                    .font(KeloFont.titleMedium)
+                    .foregroundStyle(c.ink)
+            }
+            Text(item.name)
+                .font(KeloFont.body)
+                .foregroundStyle(c.ink)
+            if !item.hosts.isEmpty {
+                MutedText(L(R.string.keysaved_hosts, item.hosts.joined(separator: ", ")), small: true)
+            }
+            SecondaryButton(L(R.string.keysaved_open), fill: true) {
+                app.router.openMyPage(.vault)
             }
         }
+        .accessibilityIdentifier("kelo.keySaved")
     }
 }

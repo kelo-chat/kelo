@@ -561,6 +561,40 @@ async def click_at(owner: Any, x: float, y: float) -> None:
     await mp.mouse.up()
 
 
+async def drag(owner: Any, points: list[Point]) -> None:
+    """Press at the first point (CSS px), move through each next one along a human path, let go at the last. With human input off:
+    straight mouse moves in a few steps."""
+    mp = _mouse_page(owner)
+    if mp is None:
+        raise RuntimeError("this page has no mouse")
+    if len(points) < 2:
+        raise ValueError("a drag needs at least two points")
+    if not enabled():
+        await mp.mouse.move(*points[0])
+        await mp.mouse.down()
+        for p in points[1:]:
+            await mp.mouse.move(p[0], p[1], steps=8)
+        await mp.mouse.up()
+        return
+    tm, rng = _state.timing, _state.rng
+    await move_to(mp, *points[0], width=24.0)
+    await _sleep(_u(rng, tm.hover_s))
+    await mp.mouse.down()
+    vw, vh = await _viewport(mp)
+    here = points[0]
+    for p in points[1:]:
+        pts = pointer_path(here, p, rng, tm, bounds=(vw, vh))
+        per = move_seconds(math.hypot(p[0] - here[0], p[1] - here[1]), 24.0, tm) / max(1, len(pts))
+        for px, py in pts:
+            await mp.mouse.move(px, py)
+            await _sleep(per)
+        await mp.mouse.move(p[0], p[1])
+        _set_pointer(mp, p)
+        here = p
+    await _sleep(_u(rng, tm.press_s))
+    await mp.mouse.up()
+
+
 async def type_keys(owner: Any, text: str) -> None:
     """Type `text` into whatever has the focus, key by key with human gaps (the plain keyboard when human input is off)."""
     mp = _mouse_page(owner)

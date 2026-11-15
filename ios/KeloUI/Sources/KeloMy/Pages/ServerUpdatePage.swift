@@ -7,50 +7,56 @@ import KeloShared
 // older server and state "unavailable" see nothing: the page closes itself and 마이 has no row or card.
 
 /// The page's state: the last answer, and what is under way. Kept across the page's own redraws; the last answer is cached so the
-/// page opens with it at once.
+/// page opens with it at once. A run is followed by `follow()`, which the visible page runs in its `.task`: it ends with the page and
+/// starts again when the page opens.
 @MainActor @Observable final class ServerUpdateModel {
     static let cacheSlot = "server-update"
 
-    var status: ServerUpdateStatus?
+    private(set) var status: ServerUpdateStatus?
     /// 403 / 404 / unavailable: nothing to show
-    var hidden = false
+    private(set) var hidden = false
     /// the last ask failed while following a run (the server restarting)
-    var reconnecting = false
+    private(set) var reconnecting = false
     /// 15 minutes without the run ending
-    var gaveUp = false
-    var checking = false
-    var starting = false
-    var savingAuto = false
+    private(set) var gaveUp = false
+    private(set) var checking = false
+    private(set) var starting = false
+    private(set) var savingAuto = false
     /// a refusal or failure in the server's own words
-    var problem: String?
-    private var following = false
+    private(set) var problem: String?
+    @ObservationIgnored private let api: KeloApi
+    @ObservationIgnored private let cache: ScreenCache
+    @ObservationIgnored private var following = false
+    @ObservationIgnored let jobs = Jobs()
 
-    func load(app: AppModel) async {
-        if status == nil, let kept: ServerUpdateStatus = app.cache.get(Self.cacheSlot), ServerUpdateRules.visible(kept) { status = kept }
-        guard let api = app.api else { return }
+    init(api: KeloApi, cache: ScreenCache) { self.api = api; self.cache = cache }
+
+    var running: Bool { status?.isRunning == true }
+
+    func load() async {
+        if status == nil, let kept: ServerUpdateStatus = cache.get(Self.cacheSlot), ServerUpdateRules.visible(kept) { status = kept }
         switch await ServerUpdateRules.load(api) {
-        case .shown(let st): show(st, app: app)
-        case .hidden: hide(app: app)
+        case .shown(let st): show(st)
+        case .hidden: hide()
         case .failed(let f): if status == nil { problem = f.isNetwork ? L(R.string.connect_failed) : f.detail }
         }
-        if status?.isRunning == true { await follow(app: app) }
     }
 
-    private func show(_ st: ServerUpdateStatus, app: AppModel) {
-        guard ServerUpdateRules.visible(st) else { hide(app: app); return }
+    private func show(_ st: ServerUpdateStatus) {
+        guard ServerUpdateRules.visible(st) else { hide(); return }
         status = st
-        app.cache.put(Self.cacheSlot, st)
+        cache.put(Self.cacheSlot, st)
     }
 
-    private func hide(app: AppModel) {
+    private func hide() {
         hidden = true
         status = nil
-        app.cache.put(Self.cacheSlot, ServerUpdateStatus())
+        cache.put(Self.cacheSlot, ServerUpdateStatus())
     }
 
     /// Follows the run the status shows until it ends (through the server's restart).
-    func follow(app: AppModel) async {
-        guard !following, let api = app.api, let st = status, st.isRunning else { return }
+    func follow() async {
+        guard !following, let st = status, st.isRunning else { return }
         following = true
         defer { following = false }
         gaveUp = false
@@ -58,9 +64,9 @@ import KeloShared
         reconnecting = false
         if Task.isCancelled { return }   // the page went away: it picks the run up again when it opens
         switch out {
-        case .finished(let end): show(end, app: app)
+        case .finished(let end): show(end)
         case .gaveUp(let last): status = last; gaveUp = true
-        case .refused(let f): if f.hides { hide(app: app) } else { problem = f.detail }
+        case .refused(let f): if f.hides { hide() } else { problem = f.detail }
         }
     }
 
@@ -69,39 +75,41 @@ import KeloShared
         reconnecting = p.reconnecting
     }
 
-    func check(app: AppModel) async {
-        guard let api = app.api, !checking else { return }
+    func check() {
+        guard !checking else { return }
         checking = true; problem = nil
-        defer { checking = false }
-        do { show(try await ServerUpdateRules.check(api), app: app) } catch { fail(error, app: app) }
-    }
-
-    /// Starts the update (`rollback` false) or the way back, then follows it.
-    func start(app: AppModel, rollback: Bool) async {
-        guard let api = app.api, !starting else { return }
-        starting = true; problem = nil; gaveUp = false
-        do {
-            let st = rollback ? try await ServerUpdateRules.startRollback(api) : try await ServerUpdateRules.startUpdate(api)
-            show(st, app: app)
-            starting = false
-            await follow(app: app)
-        } catch {
-            starting = false
-            fail(error, app: app)
-            if case .shown(let st) = await ServerUpdateRules.load(api) { show(st, app: app) }   // what the refusal was about
+        jobs.run { [self] in
+            defer { checking = false }
+            do { show(try await ServerUpdateRules.check(api)) } catch { fail(error) }
         }
     }
 
-    func setAuto(app: AppModel, _ on: Bool) async {
-        guard let api = app.api else { return }
-        savingAuto = true; problem = nil
-        defer { savingAuto = false }
-        do { show(try await ServerUpdateRules.setAuto(api, on), app: app) } catch { fail(error, app: app) }
+    /// Starts the update (`rollback` false) or the way back; the page's `follow()` then picks the run up.
+    func start(rollback: Bool) {
+        guard !starting else { return }
+        starting = true; problem = nil; gaveUp = false
+        jobs.run { [self] in
+            defer { starting = false }
+            do {
+                show(rollback ? try await ServerUpdateRules.startRollback(api) : try await ServerUpdateRules.startUpdate(api))
+            } catch {
+                fail(error)
+                if case .shown(let st) = await ServerUpdateRules.load(api) { show(st) }   // what the refusal was about
+            }
+        }
     }
 
-    private func fail(_ error: Error, app: AppModel) {
+    func setAuto(_ on: Bool) {
+        savingAuto = true; problem = nil
+        jobs.run { [self] in
+            defer { savingAuto = false }
+            do { show(try await ServerUpdateRules.setAuto(api, on)) } catch { fail(error) }
+        }
+    }
+
+    private func fail(_ error: Error) {
         let f = ServerUpdateRules.failure(error)
-        if f.hides { hide(app: app); return }
+        if f.hides { hide(); return }
         problem = f.isNetwork || f.detail.isEmpty ? L(R.string.connect_failed) : f.detail
     }
 }
@@ -148,12 +156,13 @@ import KeloShared
 // ---- the page -------------------------------------------------------------------------------------------------------------------------
 
 struct ServerUpdatePage: View {
-    @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
-    @State private var model = ServerUpdateModel()
+    @State private var model: ServerUpdateModel
     @State private var confirmUpdate = false
     @State private var confirmBack = false
+
+    init(api: KeloApi, cache: ScreenCache) { _model = State(initialValue: ServerUpdateModel(api: api, cache: cache)) }
 
     var body: some View {
         SubPage(L(R.string.server_update_title), onBack: { dismiss() }) {
@@ -163,7 +172,8 @@ struct ServerUpdatePage: View {
                 if let p = model.problem { ErrorText(p, small: true) } else { SkeletonRows(rows: 3) }
             }
         }
-        .task { await model.load(app: app) }
+        .task { await model.load() }
+        .task(id: model.running) { await model.follow() }
         .onChange(of: model.hidden) { _, h in if h { dismiss() } }
     }
 
@@ -199,7 +209,7 @@ struct ServerUpdatePage: View {
                 LinkButton(L(R.string.server_update_go_back, back)) { confirmBack = true }
                     .accessibilityIdentifier("kelo.serverUpdate.goBack")
                     .alert(L(R.string.server_update_go_back_title, back), isPresented: $confirmBack) {
-                        Button(L(R.string.server_update_go_back_yes), role: .destructive) { Task { await model.start(app: app, rollback: true) } }
+                        Button(L(R.string.server_update_go_back_yes), role: .destructive) { model.start(rollback: true) }
                         Button(L(R.string.cancel), role: .cancel) {}
                     } message: {
                         Text(L(R.string.server_update_go_back_body))
@@ -285,7 +295,7 @@ struct ServerUpdatePage: View {
                 .accessibilityIdentifier("kelo.serverUpdate.update")
                 .padding(.top, 4)
                 .alert(L(R.string.server_update_confirm_title, r.version), isPresented: $confirmUpdate) {
-                    Button(L(R.string.server_update_button)) { Task { await model.start(app: app, rollback: false) } }
+                    Button(L(R.string.server_update_button)) { model.start(rollback: false) }
                     Button(L(R.string.cancel), role: .cancel) {}
                 } message: {
                     Text(L(R.string.server_update_confirm_body))
@@ -309,7 +319,7 @@ struct ServerUpdatePage: View {
 
     private var checkButton: some View {
         SecondaryButton(model.checking ? L(R.string.server_update_checking) : L(R.string.server_update_check_now), icon: .retry,
-                        enabled: !model.checking) { Task { await model.check(app: app) } }
+                        enabled: !model.checking) { model.check() }
     }
 
     private func checkedLine(_ st: ServerUpdateStatus) -> some View {
@@ -321,7 +331,7 @@ struct ServerUpdatePage: View {
         KeloCard(spacing: 4) {
             ToggleRow(L(R.string.server_update_auto_title), detail: L(R.string.server_update_auto_body),
                       isOn: Binding(get: { model.status?.autoUpdate ?? false },
-                                    set: { on in Task { await model.setAuto(app: app, on) } }),
+                                    set: { on in model.setAuto(on) }),
                       enabled: !model.savingAuto)
             if st.autoUpdate, let (h, m) = ServerUpdateRules.clock(st.autoTime) {
                 Text(L(R.string.server_update_auto_tonight, MyFormat.clock(h, m))).font(KeloFont.small).foregroundStyle(c.ink)

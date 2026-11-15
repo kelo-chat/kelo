@@ -6,44 +6,13 @@ import XCTest
 /// Other variables as KeloScreensTests (KELO_SERVER, KELO_KEY, KELO_LANG, KELO_TAG, KELO_SHOTS); screens are named
 /// `<tag>-resources-error.png` and `<tag>-resources-phone.png`. Dark mode: `xcrun simctl ui <device> appearance dark` before the run.
 /// Without KELO_RESOURCES the test is skipped.
-final class KeloResourcesShotsTests: XCTestCase {
-    private let env = ProcessInfo.processInfo.environment
-    private var lang: String { env["KELO_LANG"] ?? "en" }
-    private var tag: String { env["KELO_TAG"] ?? lang }
-    private var app: XCUIApplication!
-
-    private func w(_ en: String, _ ko: String) -> String { lang == "ko" ? ko : en }
+final class KeloResourcesShotsTests: KeloShotCase {
 
     override func setUp() { continueAfterFailure = false }
-
-    private func shot(_ name: String) {
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        let a = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-        a.name = "\(tag)-\(name)"
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = env["KELO_SHOTS"] {
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(tag)-\(name).png"))
-        }
-    }
-
-    private func element(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", label, label)).firstMatch
-    }
 
     private func containing(_ text: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
-
-    private func tap(_ e: XCUIElement, _ what: String, timeout: TimeInterval = 10) {
-        XCTAssertTrue(e.waitForExistence(timeout: timeout), "not found: \(what)\n\(app.debugDescription)")
-        var n = 0
-        while !e.isHittable && n < 8 { app.swipeUp(velocity: .slow); n += 1 }
-        e.tap()
-    }
-
-    private func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
 
     /// What the mock answers GET /api/resources with from now on: fail | phone | phone-ints.
     private func mock(_ mode: String) {
@@ -62,32 +31,10 @@ final class KeloResourcesShotsTests: XCTestCase {
         XCTAssertEqual(code, 200, "the mock did not switch to \(mode)")
     }
 
-    private func signIn(_ key: String) {
-        if element(w("Connect with access key", "접속 키로 연결하기")).waitForExistence(timeout: 10) {
-            tap(element(w("Connect with access key", "접속 키로 연결하기")), "connect with key")
-            let server = app.textFields.firstMatch
-            server.tap()
-            let cur = (server.value as? String) ?? ""
-            if !cur.isEmpty && cur != server.placeholderValue {
-                server.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: cur.count))
-            }
-            server.typeText(env["KELO_SERVER"]!)
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("Connect", "연결"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
-        }
-        XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 25), "chat did not open\n\(app.debugDescription)")
-    }
-
     func testResources() throws {
         guard env["KELO_RESOURCES"] == "1", env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no resources walk asked") }
         mock("fail")
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         signIn(key)
         tap(element("kelo.tab.my"), "My tab")
         pause(1.5)

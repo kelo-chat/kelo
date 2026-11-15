@@ -38,6 +38,8 @@ log = logging.getLogger("assistant.agent")
 # untrusted results are fenced (fence.py): a random id per call, boundary look-alikes neutralized, the app's own words outside,
 # a size budget per kind of source
 from .fence import UNTRUSTED_NOTICE, data, fence, inside, is_fenced, marked, outside, plain, render  # noqa: E402
+from . import found_secrets  # noqa: E402
+from .. import injection_watch  # noqa: E402
 
 
 @dataclass(slots=True)
@@ -61,6 +63,9 @@ class Tool:
     declined: str | Callable[[dict[str, Any]], str] = ""
     # extra fields for the app's approval card, given the approval's id (e.g. which wallet card a payment will use)
     approval_extra: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+    # for an untrusted tool: True when this call's result comes from the owner's own device or app and so does not count as outside text
+    # for the "a request in the user's own chat needs no card" rule (outside_seen); the result is still fenced for the model
+    own_data: Callable[[dict[str, Any]], bool] | None = None
     # awaited first, before validation and any approval card: may wait (e.g. while the user holds the browser) and returns the words
     # the model gets instead of running the tool, or None to go on
     hold: Callable[[dict[str, Any]], Awaitable[str | None]] | None = None
@@ -141,6 +146,9 @@ class ApprovalRequest:
     name: str
     arguments: dict[str, Any]
     detail: str = ""
+    # the owner's own setting for this connector (permissions.py) or the privacy guard (privacy_guard.py) wants a card whatever a standing
+    # rule or a task's permission would have said: the app's approve() skips them for this one
+    force: bool = False
 
 
 @dataclass(slots=True)
@@ -232,7 +240,7 @@ def _wrap_untrusted(text: str, source: str = "", *, head: str = "", tail: str = 
     return fence(text, source=source, head=head, tail=tail)
 
 
-def _result_text(tool: Tool, result: Any) -> str:
+def _result_text(tool: Tool, result: Any, arguments: dict[str, Any] | None = None) -> str:
     """What the model is shown for a tool's result."""
     if isinstance(result, Ours):
         return _clip(plain(str(result)))
@@ -240,8 +248,13 @@ def _result_text(tool: Tool, result: Any) -> str:
         text, head, tail = result.text, result.head, result.tail
     else:
         text, head, tail = str(result), "", ""
+    found = found_secrets.current.get()
+    if found is not None and (tool.untrusted or marked(text)):   # a key in external text never reaches the model (found_secrets.py)
+        where = found_secrets.source_of(head + "\n" + plain(text), arguments)
+        text = found.hide_marked(text, where) if marked(text) else found.hide(text, where)
     # marked external data (fence.data) is fenced wherever it comes from; an untrusted tool's unmarked text is fenced whole
     if tool.untrusted or marked(text):
+        tail = injection_watch.screen(tool.name, tool.source, arguments, text, tail)   # injection watch: one line for the model when the text is aimed at it
         return render(text, source=tool.source, head=head, tail=tail, whole=tool.untrusted)
     return _clip("\n".join(p for p in (head, text, tail) if p))
 
@@ -402,6 +415,8 @@ async def run_agent(
     toolbox: Any = None,
     extra_steps: Callable[[], int] | None = None,
     wrap_up: bool = True,
+    gate: Any = None,
+    done_once: Any = None,
     **stream_kwargs: Any,
 ) -> AsyncIterator[AgentEvent]:
     """Run until the model answers without tool calls. `messages` is not mutated.
@@ -414,14 +429,20 @@ async def run_agent(
     `extra_steps()`: steps added to `max_steps`, asked before every step (a task with a permission for many items gets more).
     Near the end of the budget the model is told once (and to hand the rest to `delegate` when it has it); at the end it gets one
     pass without tools to say what is done and what is left (`wrap_up`; a background job's run goes on in a fresh stretch instead),
-    then StepLimit (with the run's progress) closes the run."""
+    then StepLimit (with the run's progress) closes the run.
+    `gate` (permissions.Gate): the owner's per-connector limits and the privacy guard. `await gate.check(tool, args)` runs before every
+    tool call, here and nowhere else, so chat, schedules and background jobs are all covered: off = the call is not run (the model is told),
+    ask = a card every time, allow = no card (payments and the like keep their own checks), and a guard hit = a card. `gate.hides(name)`
+    leaves a tool out of the list the model is shown when every target of it is off.
+    `done_once` (done_once.DoneOnce): a step that sends, changes or deletes is done once. Right after the gate and the card, `begin` checks the
+    ledger (a repeat is not run; the model is told why) and records the attempt; `settle` closes it with what the handler answered or raised."""
     if images_ok is None:
         from ..providers.vision import supports_images
         images_ok = supports_images(provider)
     by_name = {t.name: t for t in tools}
     if toolbox is not None:   # a job going on from its transcript: what it called before is in its list again
         toolbox.activate([c.get("function", {}).get("name", "") for m in messages for c in (m.get("tool_calls") or [])], by_name)
-    shown_key: tuple[str, ...] | None = None
+    shown_key: tuple[Any, ...] | None = None
     shown_names: list[str] = []
     specs: list[dict[str, Any]] = []
     specs_tokens = 0
@@ -430,10 +451,12 @@ async def run_agent(
     def refresh_specs() -> None:
         """The tool list for the next request: every tool, or the toolbox's core + activated ones (recomputed when that changes)."""
         nonlocal shown_key, shown_names, specs, specs_tokens, stable_tools
-        key = tuple(toolbox.active) if toolbox is not None else ()
+        key = (tuple(toolbox.active) if toolbox is not None else (), gate.hidden_key() if gate is not None else ())
         if key == shown_key:
             return
         shown = toolbox.shown(tools) if toolbox is not None else tools
+        if gate is not None:
+            shown = [t for t in shown if not gate.hides(t.name)]
         shown_key, shown_names = key, [t.name for t in shown]
         stable_tools = sum(1 for t in shown if toolbox is not None and t.name in toolbox.core)   # the core set, always first
         specs = [t.spec() for t in shown]
@@ -504,6 +527,7 @@ async def run_agent(
             return max_steps
 
     box = inbox.get()
+    found = found_secrets.FoundSecrets()   # keys met in tool results this run: kept here, shown to the model as placeholders
     said = False   # the reply has words in it already (an earlier step's text)
     tail = ""      # the end of what was passed on so far
     def show(text: str) -> list[AssistantText]:
@@ -540,6 +564,7 @@ async def run_agent(
         calls: list[ToolCall] = []
         joining, pending = said, ""   # a later step's text starts a new paragraph; marks alone ("??") are dropped
         textcalls = TextCallFilter()   # tool calls written into the text: never shown (textcalls.py)
+        masker = found_secrets.Masker()   # a key the model writes into its reply is hidden before it is shown or stored
         if box is not None:
             for m in box() or []:
                 history.append(m)
@@ -567,6 +592,7 @@ async def run_agent(
                     for k, shown in enumerate(textcalls.feed_parts(ev.text)):
                         if k:   # a tool call written into the text came out here: what follows it is a new paragraph
                             joining, pending = said, ""
+                        shown = masker.feed(shown) if shown else shown
                         if shown:
                             text_parts.append(shown)
                             for out_ev in show(shown):
@@ -574,6 +600,10 @@ async def run_agent(
                 elif isinstance(ev, Thinking):
                     yield AgentThinking()
                 elif isinstance(ev, ToolCall):
+                    if held := masker.finish():   # the words held back belong before the call, not after it
+                        text_parts.append(held)
+                        for out_ev in show(held):
+                            yield out_ev
                     calls.append(ev)
                     joining, pending = said, ""   # text after a call in the same step was written apart: a new paragraph too
                 elif isinstance(ev, Usage):
@@ -592,10 +622,15 @@ async def run_agent(
         for k, rest in enumerate(textcalls.finish_parts()):
             if k:
                 joining, pending = said, ""
+            rest = masker.feed(rest) if rest else rest
             if rest:
                 text_parts.append(rest)
                 for out_ev in show(rest):
                     yield out_ev
+        if held := masker.finish():
+            text_parts.append(held)
+            for out_ev in show(held):
+                yield out_ev
         if textcalls.blocks:   # the model wrote tool calls as text: the readable ones of known tools run like real calls
             read = read_blocks(textcalls.blocks, frozenset(by_name))
             calls += [ToolCall(ident or f"text_call_{k}", name, args) for k, (ident, name, args) in enumerate(read.calls, 1)]
@@ -668,13 +703,15 @@ async def run_agent(
                 token = current_call.set(call.id)
                 box_token = current_box.set((toolbox, tools))
                 seen_token = outside_seen.set(saw_outside)
+                found_token = found_secrets.current.set(found)
                 try:
-                    output, is_error, approved, images = await _execute(call, by_name, approve, images_ok, shown_names)
+                    output, is_error, approved, images = await _execute(call, by_name, approve, images_ok, shown_names, gate, done_once)
                 finally:
+                    found_secrets.current.reset(found_token)
                     outside_seen.reset(seen_token)
                     current_box.reset(box_token)
                     current_call.reset(token)
-                if is_fenced(output):
+                if is_fenced(output) and not (tool_def is not None and tool_def.own_data is not None and _own_data(tool_def, call)):
                     saw_outside[0] = True
                 if is_error and call.name in by_name and by_name[call.name].read_only:   # a failed look-around: remind what else exists
                     output += others(call.name)
@@ -710,8 +747,9 @@ async def run_agent(
 
 
 async def _execute(call: ToolCall, by_name: dict[str, Tool], approve: ApproveFn,
-                   images_ok: bool = False, shown: list[str] | None = None) -> tuple[str, bool, bool | None, list[str]]:
-    out, is_error, approved, result = await _execute_inner(call, by_name, approve, shown)
+                   images_ok: bool = False, shown: list[str] | None = None, gate: Any = None,
+                   done_once: Any = None) -> tuple[str, bool, bool | None, list[str]]:
+    out, is_error, approved, result = await _execute_inner(call, by_name, approve, shown, gate, done_once)
     if isinstance(result, ToolOutput) and result.images:
         if images_ok:
             return out, is_error, approved, list(result.images)
@@ -721,7 +759,7 @@ async def _execute(call: ToolCall, by_name: dict[str, Tool], approve: ApproveFn,
 
 
 async def _execute_inner(call: ToolCall, by_name: dict[str, Tool], approve: ApproveFn,
-                         shown: list[str] | None = None) -> tuple[str, bool, bool | None, Any]:
+                         shown: list[str] | None = None, gate: Any = None, done_once: Any = None) -> tuple[str, bool, bool | None, Any]:
     tool = by_name.get(call.name)
     if tool is None:
         listed = sorted(shown if shown is not None else by_name)
@@ -750,22 +788,33 @@ async def _execute_inner(call: ToolCall, by_name: dict[str, Tool], approve: Appr
         if problem:
             return f"Error: {call.name} was not run: {problem}", True, None, None
 
+    verdict = None
+    if gate is not None:   # the owner's limits for this connector and the privacy guard: one place for every kind of run
+        try:
+            verdict = await gate.check(tool, args)
+        except Exception:  # noqa: BLE001 - a broken check must not stop the owner's own tools; the tool's own approval still applies
+            log.exception("the permission gate failed for %s", call.name)
+        if verdict is not None and verdict.action == "off":
+            return verdict.message, True, None, None
+    forced = verdict is not None and verdict.action == "ask"
     approved: bool | None = None
-    allowed_before = False
-    if tool.requires_approval and tool.auto_approve is not None:
+    allowed_before = verdict is not None and verdict.action == "allow"
+    if tool.requires_approval and tool.auto_approve is not None and not forced and not allowed_before:
         try:
             decided = tool.auto_approve(args)
             allowed_before = bool(await decided if inspect.isawaitable(decided) else decided)
         except Exception:  # noqa: BLE001 - when in doubt, ask
             allowed_before = False
-    if tool.requires_approval and not allowed_before:
+    if (tool.requires_approval or forced) and not allowed_before:
         detail = ""
         if tool.describe is not None:
             try:
                 detail = str(await tool.describe(args))[:300]
             except Exception:  # noqa: BLE001 - the card still works without the extra line
                 detail = ""
-        approved = await approve(ApprovalRequest(call.id, call.name, args, detail))
+        if verdict is not None and verdict.card:   # what goes where, from the privacy guard
+            detail = f"{verdict.card}\n{detail}".strip()[:300]
+        approved = await approve(ApprovalRequest(call.id, call.name, args, detail, force=forced))
         if not approved:
             said = ""
             try:
@@ -774,14 +823,26 @@ async def _execute_inner(call: ToolCall, by_name: dict[str, Tool], approve: Appr
                 said = ""
             return (said or f"The user declined to run {call.name}. Do not retry it; ask what they would like instead."), True, False, None
 
+    once = await done_once.begin(tool, args, approved=approved) if done_once is not None else None   # done once: check, then record
+    if once is not None and once.block:
+        return once.block, True, approved, None
     try:
         result = await tool.handler(args)
     except Exception as e:  # noqa: BLE001 - tool failures are data for the model
         why = str(e)[:300]
         if tool.untrusted:   # a driver's or a server's message can quote the page or the answer: fenced
             why = render(data(why), source=tool.source, whole=False) if why.strip() else why
-        return f"Error: {call.name} failed: {type(e).__name__}: {why}", True, approved, None
-    return _result_text(tool, result), False, approved, result
+        text = f"Error: {call.name} failed: {type(e).__name__}: {why}"
+        return (once.settle(e, text) if once is not None else text), True, approved, None
+    text = _result_text(tool, result, args)
+    return (once.settle(result, text) if once is not None else text), False, approved, result
+
+
+def _own_data(tool: Tool, call: ToolCall) -> bool:
+    try:
+        return bool(tool.own_data(_safe_args(call.arguments))) if tool.own_data is not None else False
+    except Exception:  # noqa: BLE001 - when in doubt it counts as outside text
+        return False
 
 
 def _safe_args(raw: str) -> dict[str, Any]:

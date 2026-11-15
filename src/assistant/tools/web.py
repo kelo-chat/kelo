@@ -44,10 +44,11 @@ BING_RSS = "https://www.bing.com/search?format=rss&q="
 Fetch = Callable[..., Awaitable[Page]]
 
 
-def _fetcher(transport: Any = None, resolver: Any = None) -> Fetch:
+def _fetcher(transport: Any = None, resolver: Any = None, proxy: Callable[[], str | None] | None = None) -> Fetch:
+    """`proxy`: asked at each read; a socks5h:// address while the VPN connector is on (vpn.py), else None (direct)."""
     async def fetch(url: str, **kw: Any) -> Page:
         return await public_get(url, transport=transport, resolver=resolver, max_body=MAX_BODY, user_agent=USER_AGENT,
-                                allow_http=True, timeout=FETCH_TIMEOUT, **kw)
+                                allow_http=True, timeout=FETCH_TIMEOUT, proxy=proxy, **kw)
     return fetch
 
 
@@ -149,8 +150,9 @@ def parse_rss(body: str) -> list[dict[str, str]]:
 
 class WebTools:
     def __init__(self, *, fetch: Fetch | None = None, language: Callable[[], str] = lambda: "",
-                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep):
-        self.fetch = fetch or _fetcher()
+                 clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
+                 proxy: Callable[[], str | None] | None = None):
+        self.fetch = fetch or _fetcher(proxy=proxy)
         self.language = language      # e.g. "ko-KR": the user's language, sent as Accept-Language
         self.clock, self.sleep = clock, sleep
         self._last: dict[str, float] = {}
@@ -247,5 +249,6 @@ class WebTools:
         ]
 
 
-def web_tools(*, language: Callable[[], str] = lambda: "", fetch: Fetch | None = None) -> list[Tool]:
-    return WebTools(fetch=fetch, language=language).tools()
+def web_tools(*, language: Callable[[], str] = lambda: "", fetch: Fetch | None = None,
+              proxy: Callable[[], str | None] | None = None) -> list[Tool]:
+    return WebTools(fetch=fetch, language=language, proxy=proxy).tools()

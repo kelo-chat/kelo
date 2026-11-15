@@ -90,25 +90,24 @@ def router(ctx: AppContext) -> APIRouter:
 
     @router.delete("/api/goals/{goal_id}", dependencies=[Depends(require_auth)])
     async def remove_goal(goal_id: int, schedules_: str = Query("keep", alias="schedules")) -> dict[str, Any]:
-        """`schedules`: keep (the default, also for older apps: the linked schedules keep running, taken off the goal) | pause (they are
-        paused through the usual pause path, and a run of theirs in progress is stopped). The goal's own work in progress always stops."""
-        if schedules_ not in ("keep", "pause"):
-            raise HTTPException(422, "schedules must be keep or pause")
+        """`schedules`: keep (the default, also for older apps: the linked schedules keep running, taken off the goal) | delete (every
+        linked schedule goes to the archive with the goal, restorable there; a run of theirs in progress is stopped). `pause` is what
+        apps before 0.9.4 send for "turn them off too": it deletes as well. The goal's own work in progress always stops."""
+        if schedules_ not in ("keep", "delete", "pause"):
+            raise HTTPException(422, "schedules must be keep or delete")
         if store.goal(goal_id) is None:
             raise HTTPException(404, "no such goal")
         linked = [int(s["id"]) for s in schedules.list(goal_id)]
-        paused: list[int] = []
-        if schedules_ == "pause":
-            for sid in linked:
-                if (s := schedules.get(sid)) is not None and s.get("enabled"):
-                    schedules.pause(sid, i18n.t("The goal it served was deleted"), by="user")
-                    paused.append(sid)
+        deleted = linked if schedules_ != "keep" else []
+        stopped = await stop_goal_work(goal_id, set(deleted))
+        for sid in deleted:
+            schedules.delete(sid)
+        if deleted:
             scheduler.poke()
-        stopped = await stop_goal_work(goal_id, set(paused))
         if not store.delete_goal(goal_id):
             raise HTTPException(404, "no such goal")
         goal_book.delete(goal_id)
-        return {"ok": True, "stopped_turns": stopped["turns"], "stopped_jobs": stopped["jobs"], "paused_schedules": paused,
-                "kept_schedules": [sid for sid in linked if sid not in paused]}
+        return {"ok": True, "stopped_turns": stopped["turns"], "stopped_jobs": stopped["jobs"], "deleted_schedules": deleted,
+                "kept_schedules": [sid for sid in linked if sid not in deleted]}
 
     return router

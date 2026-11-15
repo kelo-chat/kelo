@@ -5,7 +5,7 @@ import Testing
 /// Port of android chat/AgentActivityTest.kt.
 @Suite struct AgentActivityTests {
     private func shot(_ id: String, status: String) -> TurnEvent {
-        .browser(.init(id: id, title: "", url: "", host: "", status: status, image: nil, width: 0, height: 0, at: 0))
+        .browser(.init(id: id, title: "", host: "", status: status, image: nil, width: 0, height: 0))
     }
 
     @Test func theFollowedReplyWinsOverThePolledStatus() {

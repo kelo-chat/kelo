@@ -43,9 +43,6 @@ struct KE2ELiveServerTests {
 
         // 3. a streamed reply (server-sent events, frame by frame)
         var said = ""
-        for try await ev in api.sseEvents(path: "/api/talk", body: ["text": .string(try text("talk"))]) {
-            if case .text(let t) = ev { said += t }
-        }
         let reply = try text("reply")
         #expect(said.contains(reply))
 

@@ -23,14 +23,16 @@ import json
 import logging
 import time
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from .. import e2e
 
 log = logging.getLogger("uvicorn.error")
 
 MAX_BUFFERED = 32 * 1024 * 1024   # a 0x01 envelope is held whole; larger bodies use 0x02 (streamed)
-OUTER_KEEP = (b"host", b"cf-connecting-ip", b"x-forwarded-for", b"user-agent")   # outer headers the app may still see
+# outer headers the app may still see; cf-ray: the outer request came through Cloudflare, whose 100 MB body limit applies to the
+# envelope, so the inner upload route must keep its per-request limit (api/files.py one_request_limit)
+OUTER_KEEP = (b"host", b"cf-connecting-ip", b"x-forwarded-for", b"user-agent", b"cf-ray")
 
 
 def _plain(status: int, body: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -48,7 +50,9 @@ def inner_scope(outer: dict[str, Any], inner: e2e.InnerRequest, kid: str, ws: bo
     headers = keep + [(k.encode("latin-1"), v.encode("latin-1")) for k, v in inner.headers.items()]
     if inner.body and not ws:
         headers.append((b"content-length", str(len(inner.body)).encode()))
-    scope = {**outer, "path": parts.path, "raw_path": parts.path.encode("latin-1"), "query_string": parts.query.encode("latin-1"),
+    # ASGI: "path" is the DECODED path, "raw_path" the bytes as sent. Leaving it encoded broke every path segment with an escaped
+    # character: a job's tab "task:w1" is sent as "task%3Aw1", and the live view looked for a tab named "task%3Aw1" (none: "closed")
+    scope = {**outer, "path": unquote(parts.path), "raw_path": parts.path.encode("latin-1"), "query_string": parts.query.encode("latin-1"),
              "headers": headers, "kelo_e2e": {"kid": kid}}
     if ws:
         scope.update(type="websocket", scheme="wss" if outer.get("scheme") == "wss" else outer.get("scheme", "ws"))

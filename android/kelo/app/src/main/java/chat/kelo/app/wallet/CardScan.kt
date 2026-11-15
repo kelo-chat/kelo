@@ -373,3 +373,9 @@ private fun CardScanPreview(onResult: (CardScanResult) -> Unit, onFailed: () -> 
         },
     )
 }
+
+/** The shared [CardScanner] on this phone: the scan button above, and whether Google Pay's scan screen is up. */
+class AndroidCardScanner : CardScanner {
+    @Composable override fun Button(onResult: (CardScanResult) -> Unit, modifier: Modifier) = CardScanButton(onResult, modifier)
+    override fun active(): Boolean = CardScanAway.active()
+}

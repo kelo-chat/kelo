@@ -97,40 +97,42 @@ class KeyguardKey(context: Context, serverUrl: String) {
     }
 }
 
-/** What asking for the Keyguard key came to. */
-sealed interface KeyguardAuth {
-    /** [cipher] may be used once now (wrap: encrypt; unlock: decrypt), with the AAD set already */
-    class Ok(val cipher: Cipher) : KeyguardAuth
-    data object Cancelled : KeyguardAuth
-    /** The phone has no screen lock, so no key can ask for it */
-    data object NoLock : KeyguardAuth
-    /** This phone has no usable key for this server (removed screen lock, another phone's blob) */
-    data object KeyLost : KeyguardAuth
-    data class Failed(val message: String) : KeyguardAuth
-}
+/** This phone's Keyguard key for the signed-in server ([KeyguardKey], one per server address) and the owner's check that releases it once. */
+class AndroidKeyguardKeys(
+    context: Context,
+    private val activity: () -> FragmentActivity?,
+    private val serverUrl: () -> String?,
+) : KeyguardKeys {
+    private val app = context.applicationContext
+    override val available = true
+    override val checkEveryUse: Boolean get() = KeyguardKey.perUse
 
-/** The owner's check (fingerprint, face or screen lock) that releases the Keyguard key once. */
-class KeyguardAuthenticator(private val activity: FragmentActivity?, val key: KeyguardKey) {
-    fun forWrap(title: String, subtitle: String, onDone: (KeyguardAuth) -> Unit) = run(title, subtitle, onDone) { key.wrapCipher() }
+    private fun key(): KeyguardKey? = serverUrl()?.let { KeyguardKey(app, it) }
 
-    fun forUnwrap(iv: ByteArray, title: String, subtitle: String, onDone: (KeyguardAuth) -> Unit) =
-        run(title, subtitle, onDone) { key.unwrapCipher(iv) }
+    override fun forWrap(title: String, subtitle: String, onDone: (KeyguardAuth) -> Unit) =
+        run(title, subtitle, onDone) { it.wrapCipher() }
 
-    private fun run(title: String, subtitle: String, onDone: (KeyguardAuth) -> Unit, make: () -> Cipher) {
-        val act = activity ?: return onDone(KeyguardAuth.Failed("no activity"))
+    override fun forUnwrap(iv: ByteArray, title: String, subtitle: String, onDone: (KeyguardAuth) -> Unit) =
+        run(title, subtitle, onDone) { it.unwrapCipher(iv) }
+
+    override fun forget() { key()?.forget() }
+
+    private fun run(title: String, subtitle: String, onDone: (KeyguardAuth) -> Unit, make: (KeyguardKey) -> Cipher) {
+        val key = key() ?: return onDone(KeyguardAuth.Failed("signed out"))
+        val act = activity() ?: return onDone(KeyguardAuth.Failed("no activity"))
         if (!key.deviceSecure()) return onDone(KeyguardAuth.NoLock)
         if (act.supportFragmentManager.isStateSaved || act.isFinishing) return onDone(KeyguardAuth.Cancelled)
         val perUse = KeyguardKey.perUse
         var cipher: Cipher? = null
-        if (perUse) cipher = try { make() } catch (e: Exception) { return onDone(classify(e)) }
+        if (perUse) cipher = try { make(key) } catch (e: Exception) { return onDone(classify(key, e)) }
         val prompt = BiometricPrompt(act, ContextCompat.getMainExecutor(act), object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 val c = try {
-                    (if (perUse) result.cryptoObject?.cipher else make())?.also { it.updateAAD(KeyguardBlob.AAD) }
+                    (if (perUse) result.cryptoObject?.cipher else make(key))?.also { it.updateAAD(KeyguardBlob.AAD) }
                 } catch (e: Exception) {
-                    return onDone(classify(e))
+                    return onDone(classify(key, e))
                 }
-                onDone(if (c == null) KeyguardAuth.KeyLost else KeyguardAuth.Ok(c))
+                onDone(if (c == null) KeyguardAuth.KeyLost else KeyguardAuth.Ok(JavaKeyguardCipher(c)))
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -151,7 +153,7 @@ class KeyguardAuthenticator(private val activity: FragmentActivity?, val key: Ke
         }
     }
 
-    private fun classify(e: Exception): KeyguardAuth = when (e) {
+    private fun classify(key: KeyguardKey, e: Exception): KeyguardAuth = when (e) {
         is KeyPermanentlyInvalidatedException -> { key.forget(); KeyguardAuth.KeyLost }
         is KeyguardKey.KeyGone -> KeyguardAuth.KeyLost
         is UserNotAuthenticatedException -> KeyguardAuth.Cancelled
@@ -159,4 +161,10 @@ class KeyguardAuthenticator(private val activity: FragmentActivity?, val key: Ke
             if (!key.deviceSecure()) KeyguardAuth.NoLock else KeyguardAuth.Failed(e.message ?: "")
         else -> KeyguardAuth.Failed(e.message ?: e.javaClass.simpleName)
     }
+}
+
+/** A javax cipher as the shared code takes it. */
+private class JavaKeyguardCipher(private val c: Cipher) : KeyguardCipher {
+    override val iv: ByteArray get() = c.iv
+    override fun doFinal(input: ByteArray): ByteArray = c.doFinal(input)
 }

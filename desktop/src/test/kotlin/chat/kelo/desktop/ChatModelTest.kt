@@ -1,13 +1,20 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.chat.AttachState
+import chat.kelo.desktop.chat.DesktopChat
+import chat.kelo.desktop.chat.attachFile
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import org.junit.Assert.assertFalse
+import chat.kelo.app.chat.AttachError
+import chat.kelo.app.chat.AttachmentWords
+
+import chat.kelo.app.chat.MessageFileRules
+import chat.kelo.desktop.chat.AttachmentKinds
+
 import chat.kelo.app.chat.ChatItem
 import chat.kelo.app.chat.ToolState
 import chat.kelo.app.core.Session
-import chat.kelo.desktop.chat.AttachError
-import chat.kelo.desktop.chat.AttachState
-import chat.kelo.desktop.chat.AttachmentWords
-import chat.kelo.desktop.chat.ChatModel
-import chat.kelo.desktop.chat.MessageFileRules
 import chat.kelo.desktop.core.AppContainer
 import chat.kelo.desktop.core.FileKeyValueStore
 import chat.kelo.desktop.core.NotePoller
@@ -36,6 +43,7 @@ class ChatModelTest {
     private val requests = CopyOnWriteArrayList<String>()
     @Volatile private var approved: Boolean? = null
     @Volatile private var turnBody: String = ""
+    @Volatile private var pending = """{"items":[]}"""
     private lateinit var app: AppContainer
 
     private val events = listOf(
@@ -48,6 +56,7 @@ class ChatModelTest {
     )
 
     @Before fun setUp() {
+        Dispatchers.setMain(Dispatchers.Default.limitedParallelism(1))   // the view model works off the UI thread here
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.path.orEmpty()
@@ -65,6 +74,7 @@ class ChatModelTest {
                     }
                     request.method == "POST" && path == "/api/approvals/ap1" -> { approved = request.body.readUtf8().contains("true"); json("""{"ok":true}""") }
                     request.method == "PUT" && path.startsWith("/api/uploads/") -> json("""{"path":"uploads/${path.substringAfterLast('/')}"}""")
+                    path.startsWith("/api/approvals/pending") -> json(pending)
                     path.startsWith("/api/messages") -> json("[]")
                     path.startsWith("/api/notifications") -> json(
                         """{"items":[{"id":5,"type":"proactive","title":"News","body":"A parcel arrived","seen":false}],"last_id":5}""",
@@ -79,7 +89,7 @@ class ChatModelTest {
         app.sessions.signIn(Session(server.url("/").toString().trimEnd('/'), "tok-123456"))
     }
 
-    @After fun tearDown() = server.shutdown()
+    @After fun tearDown() { server.shutdown(); Dispatchers.resetMain() }
 
     private fun json(s: String) = MockResponse().setHeader("Content-Type", "application/json").setBody(s)
 
@@ -92,7 +102,8 @@ class ChatModelTest {
     }
 
     @Test fun aReplyStreamsInWithItsChipsAndWaitsForTheApproval() {
-        val chat = ChatModel(app, Dispatchers.Default.limitedParallelism(1))
+        val handle = DesktopChat(app)
+        val chat = handle.vm
         chat.setInput("When is my dentist?")
         chat.send(words = AttachmentWords({ it }, { it }, ", "))
         waitFor("the approval card") { chat.state.value.items.any { it is ChatItem.Approval } }
@@ -111,13 +122,14 @@ class ChatModelTest {
         assertEquals(true, a.answer)
         assertTrue(requests.any { it == "POST /api/approvals/ap1" })
         assertTrue(!app.activity.following.value)
-        chat.close()
+        handle.close()
     }
 
     @Test fun filesGoUpAndAreNamedInTheMessage() {
-        val chat = ChatModel(app, Dispatchers.Default.limitedParallelism(1))
+        val handle = DesktopChat(app)
+        val chat = handle.vm
         val f = tmp.newFile("report.pdf").apply { writeBytes(ByteArray(300_000) { 7 }) }
-        chat.attach(f)
+        chat.attachFile(f)
         waitFor("the upload") { chat.state.value.attachments.firstOrNull()?.state == AttachState.DONE }
         assertEquals("report.pdf", chat.state.value.attachments.first().stored)
         assertTrue(requests.any { it.startsWith("PUT /api/uploads/report.pdf") })
@@ -136,18 +148,19 @@ class ChatModelTest {
         assertEquals("true", body["auto_text"].toString())
         assertTrue(chat.state.value.attachments.isEmpty())
         chat.stop()
-        chat.close()
+        handle.close()
     }
 
-    @Test fun aFileOver100MbIsRefusedBeforeAnythingIsSent() {
-        val chat = ChatModel(app, Dispatchers.Default.limitedParallelism(1))
+    @Test fun aFileOver99MbOnAServerWithoutLimitsIsRefusedBeforeAnythingIsSent() {
+        val handle = DesktopChat(app)   // this server has no GET /api/uploads/limits (404): an old server, one request up to 99 MB
+        val chat = handle.vm
         val big = tmp.newFile("video.mp4")
-        RandomAccessFile(big, "rw").use { it.setLength(ChatModel.MAX_UPLOAD + 1) }   // sparse: nothing is written
-        chat.attach(big)
+        RandomAccessFile(big, "rw").use { it.setLength(99_000_001L) }   // sparse: nothing is written
+        chat.attachFile(big)
         waitFor("the refusal") { chat.state.value.attachments.firstOrNull()?.state == AttachState.FAILED }
-        assertEquals(AttachError.TooLarge, chat.state.value.attachments.first().error)
+        assertEquals(AttachError.TooLarge(99_000_000L), chat.state.value.attachments.first().error)
         assertTrue(requests.none { it.startsWith("PUT /api/uploads/") })
-        chat.close()
+        handle.close()
     }
 
     @Test fun notificationsAreNotReplayedOnTheFirstCheck() = runBlocking {
@@ -171,20 +184,20 @@ class ChatModelTest {
         assertEquals(listOf(2, 1), MessageFileRules.rows(3))
         assertEquals(listOf(2, 2), MessageFileRules.rows(4))
         assertEquals(emptyList<Int>(), MessageFileRules.rows(0))
-        assertEquals("image", MessageFileRules.kindOf("Photo.JPG"))
-        assertEquals("video", MessageFileRules.kindOf("clip.mov"))
-        assertEquals("document", MessageFileRules.kindOf("notes"))
+        assertTrue(AttachmentKinds.isImage("Photo.JPG"))
+        assertFalse(AttachmentKinds.isImage("clip.mov"))
+        assertFalse(AttachmentKinds.isImage("notes"))
     }
 
     @Test fun notNowAnswersALocationRequest() {
-        val model = ChatModel(app, Dispatchers.Default.limitedParallelism(1))
-        val ev = chat.kelo.app.chat.TurnEvent.parse(kotlinx.serialization.json.Json.parseToJsonElement(
-            """{"type":"location_request","approval_id":"L1","state":"waiting","reason":"For the weather","settings":false}""")) as chat.kelo.app.chat.TurnEvent.LocationRequest
-        model.applyForTest(ev)
-        assertTrue(model.state.value.items.any { it is ChatItem.LocationAsk && it.open })
-        model.refuseLocation("L1")
+        val handle = DesktopChat(app)
+        val model = handle.vm
+        pending = """{"items":[{"type":"location_request","approval_id":"L1","state":"waiting","reason":"For the weather","settings":false}]}"""
+        model.refreshAsks(force = true)
+        waitFor("the card") { model.state.value.items.any { it is ChatItem.LocationAsk && it.open } }
+        model.answerLocation("L1", null)
         waitFor("the answer") { (model.state.value.items.first { it is ChatItem.LocationAsk } as ChatItem.LocationAsk).state == ChatItem.LocationAsk.REFUSED }
         assertTrue(requests.any { it == "POST /api/location-requests/L1" })
-        model.close()
+        handle.close()
     }
 }

@@ -103,7 +103,7 @@ async def test_requesting_access_registers_without_a_secret_and_says_where_the_u
     out = await t["add_service_key"].handler({"name": "Acme", "label": "Acme", "hosts": ["API.acme.com"], "auth": {"type": "http", "scheme": "bearer"}})
     assert "fill-in card" in out and "below your message" in out and "notes/services/acme.md" in out
     assert st.credentials() == [{"name": "acme", "label": "Acme", "kind": "api", "hosts": ["api.acme.com"], "placement": {"type": "bearer_header"},
-                                 "endpoint": "", "has_secret": False, "auto_allow": False, "last_used": None, "last_result": None, "last_result_at": None,
+                                 "endpoint": "", "has_secret": False, "keyring": False, "auto_allow": False, "last_used": None, "last_result": None, "last_result_at": None,
                                  "last_result_detail": ""}]
     assert (await t["connector_get"].handler({"name": "acme", "url": "https://api.acme.com/v1"})).startswith("error: the user has not entered the key")
     assert fake.calls == []

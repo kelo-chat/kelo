@@ -62,7 +62,7 @@ python3 ../tools/strings_check.py   # every language has every string, placehold
 ### Desktop
 
 ```sh
-python3 desktop/tools/sync_strings.py   # copy the Android strings into the desktop app
+# the text of all apps is shared/strings (check: python3 android/tools/strings_check.py); the desktop reads it as Compose resources, built with the app
 cd desktop && ./gradlew test            # shared Android tests + desktop tests
 ./gradlew run                           # start the app
 ```

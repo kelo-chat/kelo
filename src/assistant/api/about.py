@@ -28,7 +28,9 @@ def router(ctx: AppContext) -> APIRouter:
             db = {"ok": False, "error": type(e).__name__}
         # version, build: this server's release; min_app: the oldest app release it works with (426 app_too_old below it);
         # min_server: the oldest server the apps of this release work with
-        return {"version": rel.version, "build": rel.build, "min_app": rel.min_app, "min_server": rel.min_server,
-                "min_app_version": dict(settings.min_app_version), "db": db}
+        # build as a string: the apps (Android/desktop MyModels.About, iOS ApiModels.About) read it as one, and an int there failed
+        # the whole answer, so My showed an old cached server version
+        return {"version": rel.version, "build": str(rel.build), "min_app": rel.min_app, "min_server": rel.min_server,
+                "min_app_version": dict(settings.min_app_version), "min_app_ignored": list(settings.min_app_ignored), "db": db}
 
     return router

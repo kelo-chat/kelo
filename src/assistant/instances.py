@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .cli import ensure_secret_key, ensure_token, read_env, write_env
+from .cli import ensure_keyring_token, ensure_secret_key, ensure_token, read_env, write_env
 
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}[a-z0-9]$")
 SERVER_PORT_BASE = 8100
@@ -29,7 +29,7 @@ WORKROOM_IMAGE = "assistant-workroom:local"   # the work room (runs code); also 
 # compose.yml names every image of ours through one variable each, so a copy can be held at older images (after a rollback, see
 # updates.py) by setting the variable in its env file. Unset (the normal case) = the shared tag, or that variable from the shell.
 IMAGE_VARS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "KELO_IMAGE": (IMAGE, ("server", "browser", "egress")),
+    "KELO_IMAGE": (IMAGE, ("server", "browser", "egress", "vpn")),
     "KELO_WORKROOM_IMAGE": (WORKROOM_IMAGE, ("workroom",)),
     "KELO_CLI_CLAUDE_IMAGE": ("assistant-cli-claude:local", ("claude-cli",)),
     "KELO_CLI_AGY_IMAGE": ("assistant-cli-agy:local", ("agy-cli",)),
@@ -158,6 +158,7 @@ class Instances:
             write_env(env, {"ASSISTANT_PUBLIC_URL": f"https://{name}.{domain}"})
         ensure_token(env)
         ensure_secret_key(env)
+        ensure_keyring_token(env)   # the key container's shared secret (keyring_service.py)
         return self.load(name)
 
     def compose(self, inst: Instance, *args: str) -> list[str]:
@@ -197,7 +198,7 @@ class Instances:
                 self.out(f"could not check the Kelo address: {type(e).__name__}")
         # without a browser only the server (and the tunnel, when there is one) is started, not everything it could depend on
         sidecar = {"cloudflare": "cloudflared", "kelo": "kelo-tunnel", "direct": "caddy"}.get(inst.connect_mode)
-        only = [] if inst.browser else ["--no-deps", "server", *([sidecar] if sidecar else []), "workroom"]
+        only = [] if inst.browser else ["--no-deps", "server", *([sidecar] if sidecar else []), "workroom", "vpn"]
         if self.skip_services and not only:   # the updater restarting its own copy names every service but itself
             r = self.run(self.compose(inst, "config", "--services"), cwd=self.root, capture_output=True, text=True,
                          env=self.compose_env(inst))

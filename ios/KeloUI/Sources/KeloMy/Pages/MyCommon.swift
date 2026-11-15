@@ -2,7 +2,6 @@ import SwiftUI
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import LocalAuthentication
-import KeloCore
 import KeloShared
 
 // Building blocks the My pages share (Android my/Rows.kt bits that KeloShared does not have, ui/VaultGate.kt, the QR code).
@@ -34,32 +33,6 @@ struct ToastModifier: ViewModifier {
 
 extension View {
     func toast(_ message: Binding<String?>) -> some View { modifier(ToastModifier(message: message)) }
-}
-
-/// Two or more choices side by side (.segmented).
-struct Segmented: View {
-    let options: [String]
-    let selected: Int
-    let onSelect: (Int) -> Void
-    @Environment(\.kelo) private var c
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(options.indices, id: \.self) { i in
-                Button { onSelect(i) } label: {
-                    Text(options[i]).font(i == selected ? KeloFont.titleSmall : KeloFont.body).foregroundStyle(c.ink)
-                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity).padding(.vertical, 10).padding(.horizontal, 4)
-                        .background(RoundedRectangle(cornerRadius: 11).fill(i == selected ? c.card : c.bubble))
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(i == selected ? [.isSelected, .isButton] : .isButton)
-            }
-        }
-        .padding(3)
-        .background(RoundedRectangle(cornerRadius: 14).fill(c.bubble))
-    }
 }
 
 /// A label and its value on one line (wrapping when long).
@@ -104,18 +77,6 @@ struct MenuGroup<Content: View>: View {
     var body: some View { VStack(spacing: 0) { content }.padding(.horizontal, -16) }
 }
 
-/// A mono code in a tinted block (sign-in codes).
-struct CodeBlock: View {
-    let code: String
-    @Environment(\.kelo) private var c
-    var body: some View {
-        Text(code).font(.system(size: 26, weight: .bold, design: .monospaced)).tracking(3).foregroundStyle(c.ink)
-            .multilineTextAlignment(.center).textSelection(.enabled)
-            .frame(maxWidth: .infinity).padding(.vertical, 14).padding(.horizontal, 8)
-            .background(RoundedRectangle(cornerRadius: 14).fill(c.bubble))
-            .accessibilityLabel(L(R.string.device_code_label) + ", " + code)
-    }
-}
 
 /// The link as a QR code (error correction M, like the server's own), drawn crisp at any size.
 enum QRCode {
@@ -143,11 +104,6 @@ public enum VaultGateRules {
         return errorCode == LAError.passcodeNotSet.rawValue ? .openNoLock : .prompt
     }
 
-    /// The user backed out: nothing to say.
-    public static func isCancel(_ code: Int) -> Bool {
-        [LAError.userCancel.rawValue, LAError.appCancel.rawValue, LAError.systemCancel.rawValue, LAError.userFallback.rawValue].contains(code)
-    }
-
     public static func meansNoLock(_ code: Int) -> Bool { code == LAError.passcodeNotSet.rawValue }
 }
 
@@ -170,9 +126,3 @@ public enum VaultGateRules {
         }
     }
 }
-
-/// A page-level helper: the text to show for a failed call.
-@MainActor func errorText(_ e: Error, app: AppModel) -> String { app.message(for: e) }
-
-/// The JSON body helper.
-func body(_ pairs: [String: JSON]) -> JSON { .object(pairs) }

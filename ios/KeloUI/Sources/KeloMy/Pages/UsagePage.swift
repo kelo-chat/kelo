@@ -88,121 +88,383 @@ struct UsageGroupsView: View {
 }
 
 /// All the limits of the chosen model, or (when it reports none) the tokens this app has used; and API-key balances.
+@MainActor private func roleWord(_ role: String) -> String? {
+    switch role {
+    case "background": return L(R.string.usage_role_background)
+    case "fallback": return L(R.string.usage_role_fallback)
+    default: return nil
+    }
+}
+
+/// The limits section: the current model's service first, then other services folded open.
+struct LimitsSection: View {
+    let usage: MyUsage?
+    let chosenModel: String
+    var providers: [ModelProvider] = []
+    let labelForProvider: (String) -> String
+    let onRefresh: () -> Void
+    var onAdminKey: ((String) -> Void)? = nil
+    var onRemoveAdminKey: ((String) -> Void)? = nil
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.kelo) private var c
+    @State private var open: Bool = false
+
+    var body: some View {
+        let parts = UsageLogic.limitParts(usage)
+        MyCard {
+            if let u = usage {
+                if parts.current != nil || parts.currentAccount != nil {
+                    let current = parts.current
+                    let currentAccount = parts.currentAccount
+                    let serviceLabel: String = {
+                        if let current { return labelForProvider(current.provider) }
+                        if let a = currentAccount { return a.displayName.isEmpty ? labelForProvider(a.provider) : a.displayName }
+                        return ""
+                    }()
+                    HStack {
+                        Text(L(R.string.usage_limits_current, serviceLabel))
+                            .font(KeloFont.titleSmall).foregroundStyle(c.ink).lineLimit(2)
+                        Spacer(minLength: 8)
+                        LinkButton(L(R.string.refresh), action: onRefresh)
+                    }
+                    if let current {
+                        if let err = current.error {
+                            MutedText(err, small: true)
+                        } else {
+                            UsageGroupsView(groups: UsageText.groups(MyUsage(subscription: current), model: chosenModel), full: true)
+                        }
+                    } else if let a = currentAccount {
+                        if let v = a.balance { StatLine(label: L(R.string.balance_left), value: MyFormat.money(v, currency: a.currency)) }
+                        if let v = a.limitRemaining {
+                            StatLine(label: L(R.string.balance_limit_left),
+                                     value: MyFormat.money(v, currency: a.currency) + (a.limit.map { " / " + MyFormat.money($0, currency: a.currency) } ?? ""))
+                        }
+                        if let v = a.usedToday { StatLine(label: L(R.string.balance_used_today), value: MyFormat.money(v, currency: a.currency)) }
+                        if let v = a.usedWeek { StatLine(label: L(R.string.balance_used_week), value: MyFormat.money(v, currency: a.currency)) }
+                        if let v = a.usedMonth { StatLine(label: L(R.string.balance_used_month), value: MyFormat.money(v, currency: a.currency)) }
+                        let info = providers.first(where: { $0.name == a.provider })?.adminKey
+                        if let err = a.adminError {
+                            MutedText(err, small: true)
+                        }
+                        if info?.supported == true {
+                            if info?.set == true {
+                                HStack {
+                                    MutedText(L(R.string.admin_key_set, info?.hint ?? ""), small: true)
+                                    Spacer(minLength: 8)
+                                    LinkButton(L(R.string.admin_key_remove), danger: true, action: { onRemoveAdminKey?(a.provider) })
+                                }
+                            } else {
+                                LinkButton(L(R.string.admin_key_add), action: { onAdminKey?(a.provider) })
+                            }
+                        }
+                    }
+                } else {
+                    MutedText(L(R.string.usage_no_limits_app_tokens), small: true)
+                    StatLine(label: L(R.string.usage_today), value: MyFormat.number(u.today.sum))
+                    StatLine(label: L(R.string.usage_total), value: MyFormat.number(u.total.sum))
+                }
+            } else {
+                SkeletonRows(rows: 3)
+            }
+            if parts.otherCount > 0 {
+                if open {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(parts.others.enumerated()), id: \.offset) { _, sub in
+                            Hairline().padding(.top, 6).padding(.bottom, 2)
+                            let label = labelForProvider(sub.provider)
+                            let title: String = {
+                                if let rw = roleWord(sub.role) { return "\(label) · \(rw)" }
+                                return label
+                            }()
+                            Text(title).font(KeloFont.titleSmall).foregroundStyle(c.ink)
+                            if let err = sub.error {
+                                MutedText(err, small: true)
+                            } else {
+                                UsageGroupsView(groups: UsageText.groups(MyUsage(subscription: sub), model: chosenModel), full: false)
+                            }
+                        }
+                        ForEach(Array(parts.otherAccounts.enumerated()), id: \.offset) { _, a in
+                            Hairline().padding(.top, 6).padding(.bottom, 2)
+                            let label = a.displayName.isEmpty ? labelForProvider(a.provider) : a.displayName
+                            let title: String = {
+                                if let rw = roleWord(a.role) { return "\(label) · \(rw)" }
+                                return label
+                            }()
+                            Text(title).font(KeloFont.titleSmall).foregroundStyle(c.ink)
+                            if let v = a.balance { StatLine(label: L(R.string.balance_left), value: MyFormat.money(v, currency: a.currency)) }
+                            if let v = a.limitRemaining {
+                                StatLine(label: L(R.string.balance_limit_left),
+                                         value: MyFormat.money(v, currency: a.currency) + (a.limit.map { " / " + MyFormat.money($0, currency: a.currency) } ?? ""))
+                            }
+                            if let v = a.usedToday { StatLine(label: L(R.string.balance_used_today), value: MyFormat.money(v, currency: a.currency)) }
+                            if let v = a.usedWeek { StatLine(label: L(R.string.balance_used_week), value: MyFormat.money(v, currency: a.currency)) }
+                            if let v = a.usedMonth { StatLine(label: L(R.string.balance_used_month), value: MyFormat.money(v, currency: a.currency)) }
+                        }
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                Button {
+                    if reduceMotion {
+                        open.toggle()
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.32)) {
+                            open.toggle()
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(open ? L(R.string.usage_limits_fold) : L(R.string.usage_limits_more, parts.otherCount))
+                            .font(KeloFont.small)
+                            .foregroundStyle(c.muted)
+                        KeloIconView(.chevronDown, size: 14, tint: c.muted)
+                            .rotationEffect(.degrees(open ? 180 : 0))
+                            .animation(reduceMotion ? nil : .easeInOut(duration: 0.32), value: open)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
 struct UsagePage: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
-    @State private var usage: MyUsage?
-    @State private var providers: [MyProvider] = []
+    @State private var model: UsageModel
+    @State private var adminFor: String?
+    @State private var removeFor: String?
+    private let api: KeloApi
+
+    init(api: KeloApi) {
+        self.api = api
+        _model = State(initialValue: UsageModel(api: api))
+    }
 
     var body: some View {
-        let model = app.profile?.model ?? ""
+        let usage = model.usage
+        let chosen = app.profile?.model ?? ""
         SubPage(L(R.string.usage_title), onBack: { dismiss() }) {
-            MyCard {
-                if let u = usage {
-                    if let sub = u.subscription {
-                        HStack {
-                            Text(label(sub.provider)).font(KeloFont.titleSmall).foregroundStyle(c.ink).lineLimit(2)
-                            Spacer(minLength: 8)
-                            LinkButton(L(R.string.refresh)) { Task { await load(refresh: true) } }
-                        }
-                        if let err = sub.error { MutedText(err, small: true) }
-                        else { UsageGroupsView(groups: UsageText.groups(u, model: model), full: true) }
-                    } else {
-                        MutedText(L(R.string.usage_no_limits_app_tokens), small: true)
-                        StatLine(label: L(R.string.usage_today), value: MyFormat.number(u.today.sum))
-                        StatLine(label: L(R.string.usage_total), value: MyFormat.number(u.total.sum))
-                    }
-                } else {
-                    SkeletonRows(rows: 3)
-                }
-            }
-            if let jobs = usage?.jobs { JobUsageCard(jobs: jobs) }
-            ForEach(Array((usage?.accounts ?? []).filter { $0.error == nil }.enumerated()), id: \.offset) { _, a in
-                MyCard {
-                    Text(a.displayName.isEmpty ? label(a.provider) : a.displayName).font(KeloFont.titleSmall).foregroundStyle(c.ink)
-                    if let v = a.balance { StatLine(label: L(R.string.balance_left), value: MyFormat.money(v, currency: a.currency)) }
-                    if let v = a.limitRemaining {
-                        StatLine(label: L(R.string.balance_limit_left),
-                                 value: MyFormat.money(v, currency: a.currency) + (a.limit.map { " / " + MyFormat.money($0, currency: a.currency) } ?? ""))
-                    }
-                    if let v = a.usedToday { StatLine(label: L(R.string.balance_used_today), value: MyFormat.money(v, currency: a.currency)) }
-                    if let v = a.usedWeek { StatLine(label: L(R.string.balance_used_week), value: MyFormat.money(v, currency: a.currency)) }
-                    if let v = a.usedMonth { StatLine(label: L(R.string.balance_used_month), value: MyFormat.money(v, currency: a.currency)) }
-                }
+            UsageByModelCard(api: api)
+            LimitsSection(
+                usage: usage,
+                chosenModel: chosen,
+                providers: model.providers,
+                labelForProvider: { model.label($0) },
+                onRefresh: { model.refresh() },
+                onAdminKey: { adminFor = $0 },
+                onRemoveAdminKey: { removeFor = $0 }
+            )
+        }
+        .task { await model.load() }
+        .keloSheet(isPresented: Binding(get: { adminFor != nil }, set: { if !$0 { adminFor = nil; model.clearAdminNote() } }), detents: [.medium, .large]) {
+            if let p = adminFor {
+                AdminKeySheet(provider: p, model: model, onDone: {
+                    adminFor = nil
+                    model.refresh()
+                })
             }
         }
-        .task {
-            await load(refresh: false)
-            providers = ((try? await app.requireApi().request("GET", "/api/providers")).map(MyProvider.list)) ?? []
+        .alert(L(R.string.admin_key_remove_q), isPresented: Binding(get: { removeFor != nil }, set: { if !$0 { removeFor = nil } })) {
+            Button(L(R.string.admin_key_remove), role: .destructive) {
+                guard let p = removeFor else { return }
+                removeFor = nil
+                Task {
+                    await model.removeAdminKey(provider: p) {
+                        model.refresh()
+                    }
+                }
+            }
+            Button(L(R.string.cancel), role: .cancel) { removeFor = nil }
         }
-    }
-
-    private func label(_ name: String) -> String { providers.first { $0.name == name }?.displayName ?? name }
-
-    private func load(refresh: Bool) async {
-        if let u = try? await app.requireApi().get("/api/usage" + (refresh ? "?refresh=true" : ""), as: MyUsage.self) { usage = u }
     }
 }
 
-/// A kind of work in the app's words (Android my/UsageUi.kt jobKindLabel).
-@MainActor func jobKindLabel(_ kind: String) -> String {
-    switch UsageLogic.jobKind(kind) {
-    case "chat": L(R.string.usage_kind_chat)
-    case "schedule": L(R.string.usage_kind_schedule)
-    case "checklist": L(R.string.usage_kind_checklist)
-    case "task": L(R.string.usage_kind_task)
-    case "worker": L(R.string.usage_kind_worker)
-    case "reflection": L(R.string.usage_kind_reflection)
-    case "memory": L(R.string.usage_kind_memory)
-    case "journal": L(R.string.usage_kind_journal)
-    case "proactive": L(R.string.usage_kind_proactive)
-    case "compaction": L(R.string.usage_kind_compaction)
-    case "followup": L(R.string.usage_kind_followup)
-    case "briefing": L(R.string.usage_kind_briefing)
-    case "probe": L(R.string.usage_kind_probe)
-    default: L(R.string.usage_kind_other)
+private func adminHowTo(_ provider: String) -> StringKey {
+    switch provider {
+    case "openai": return R.string.admin_key_how_openai
+    case "anthropic": return R.string.admin_key_how_anthropic
+    case "openrouter": return R.string.admin_key_how_openrouter
+    default: return R.string.admin_key_how_openai
     }
 }
 
-/// Where the tokens went, today and this month, by kind of work, with the share reused from the provider's cache when it says.
-struct JobUsageCard: View {
-    let jobs: JobUsage
+struct AdminKeySheet: View {
+    let provider: String
+    @Bindable var model: UsageModel
+    let onDone: () -> Void
+    @State private var text = ""
     @Environment(\.kelo) private var c
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L(R.string.admin_key_title)).font(KeloFont.titleMedium).foregroundStyle(c.ink)
+            MutedText(L(adminHowTo(provider)), small: true)
+            MutedText(L(R.string.admin_key_safety), small: true)
+            KeloTextField(L(R.string.model_key_paste), text: $text, secure: true, keyboard: .text, onSubmit: {
+                if !text.trimmingCharacters(in: .whitespaces).isEmpty && !model.adminBusy {
+                    Task { await model.saveAdminKey(provider: provider, key: text, then: onDone) }
+                }
+            })
+            .onChange(of: text) { _, _ in model.clearAdminNote() }
+            if let note = model.adminNote {
+                ErrorText(L(note), small: true)
+            }
+            PrimaryButton(L(R.string.admin_key_save),
+                          enabled: !text.trimmingCharacters(in: .whitespaces).isEmpty && !model.adminBusy,
+                          busy: model.adminBusy) {
+                Task { await model.saveAdminKey(provider: provider, key: text, then: onDone) }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .padding(.bottom, 16)
+    }
+}
+
+private let modelLight = [0x3B6FD8, 0xE0913A, 0x3AA57A, 0x9B6AD6, 0xC9506A].map { Color(hex: $0) }
+private let modelDark = [0x6C97EE, 0xF0A85A, 0x5CC396, 0xB48BEA, 0xE0718A].map { Color(hex: $0) }
+
+@MainActor @Observable final class UsageByModelViewModel {
+    private(set) var days: Int = UsageLogic.defaultDays
+    private(set) var summary: UsageSummary?
+    private(set) var failed: Bool = false
+    @ObservationIgnored private let api: KeloApi
+    @ObservationIgnored private var loading: Task<Void, Never>?
+
+    init(api: KeloApi) {
+        self.api = api
+        load()
+    }
+
+    func pick(_ days: Int) {
+        guard days != self.days, UsageLogic.periods.contains(days) else { return }
+        self.days = days
+        self.summary = nil
+        self.failed = false
+        load()
+    }
+
+    func load() {
+        let d = days
+        loading?.cancel()
+        loading = Task { @MainActor [self] in
+            do {
+                let s = try await api.get("/api/usage/summary?days=\(d)", as: UsageSummary.self)
+                if !Task.isCancelled, days == d {
+                    summary = s
+                    failed = false
+                }
+            } catch {
+                if !Task.isCancelled, days == d {
+                    failed = true
+                }
+            }
+        }
+    }
+}
+
+/// My → Usage: the period's tokens (fresh input + output) as one number, one bar by model and its legend (design A, mock-up v6).
+struct UsageByModelCard: View {
+    @State private var vm: UsageByModelViewModel
+    @Environment(\.kelo) private var c
+
+    init(api: KeloApi) {
+        _vm = State(initialValue: UsageByModelViewModel(api: api))
+    }
+
+    var body: some View {
+        let lang = appLanguageCode()
+        let palette = c.dark ? modelDark : modelLight
         MyCard {
-            Text(L(R.string.usage_jobs_title)).font(KeloFont.titleSmall).foregroundStyle(c.ink)
-            ForEach(Array([(L(R.string.usage_today), jobs.today), (L(R.string.usage_jobs_month), jobs.month)].enumerated()), id: \.offset) { i, pair in
-                let rows = UsageLogic.jobRows(pair.1)
-                if i > 0 { Hairline().padding(.vertical, 8) }
-                JobLine(label: pair.0, tokens: rows.isEmpty ? nil : UsageLogic.partTokens(pair.1),
-                        cachePercent: UsageLogic.cachePercent(pair.1.cacheReadTokens, pair.1.inputTokens), bold: true)
-                if rows.isEmpty { MutedText(L(R.string.usage_jobs_empty), small: true) }
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, r in JobLine(label: jobKindLabel(r.kind), tokens: r.tokens, cachePercent: r.cachePercent) }
+            HStack(spacing: 6) {
+                ForEach(UsageLogic.periods, id: \.self) { d in
+                    let on = d == vm.days
+                    Button {
+                        vm.pick(d)
+                    } label: {
+                        Text(d == 1 ? L(R.string.usage_today) : L(R.string.usage_days, d))
+                            .font(KeloFont.label)
+                            .foregroundStyle(on ? c.card : c.muted)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule().fill(on ? c.ink : Color.clear)
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(on ? c.ink : c.line, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            MutedText(L(R.string.usage_jobs_note), small: true).padding(.top, 6)
-        }
-    }
-}
+            if let s = vm.summary {
+                if s.total.calls == 0 {
+                    MutedText(L(R.string.usage_models_empty), small: true)
+                } else {
+                    let t = s.total
+                    let big = UsageLogic.used(t.inputTokens, t.outputTokens, t.cacheReadTokens)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L(R.string.usage_jobs_tokens, UsageLogic.compactTokens(big, lang)))
+                            .font(.system(size: 34, weight: .heavy))
+                            .foregroundStyle(c.ink)
+                        Text(L(R.string.usage_replies, t.calls))
+                            .font(KeloFont.small)
+                            .foregroundStyle(c.muted)
+                        if t.cacheReadTokens > 0 {
+                            Text(L(R.string.usage_cache_left_out, UsageLogic.compactTokens(t.cacheReadTokens, lang)))
+                                .font(KeloFont.label)
+                                .foregroundStyle(c.muted)
+                        }
+                    }
+                    let shares = UsageLogic.modelShares(s.models)
+                    if !shares.isEmpty {
+                        let totalTokens = shares.reduce(0) { $0 + $1.tokens }
+                        GeometryReader { proxy in
+                            HStack(spacing: 0) {
+                                ForEach(Array(shares.enumerated()), id: \.offset) { i, sh in
+                                    if sh.tokens > 0 {
+                                        palette[i % palette.count]
+                                            .frame(width: max(0, proxy.size.width * CGFloat(sh.tokens) / CGFloat(max(1, totalTokens))))
+                                    }
+                                }
+                            }
+                        }
+                        .frame(height: 14)
+                        .background(c.line)
+                        .clipShape(RoundedRectangle(cornerRadius: 7))
 
-/// A label that wraps on the left, its tokens on the right, and the cached share under it (only when reported).
-private struct JobLine: View {
-    let label: String
-    let tokens: Int64?
-    let cachePercent: Int?
-    var bold = false
-    @Environment(\.kelo) private var c
+                        Text(L(R.string.usage_models_caption, UsageLogic.compactTokens(big, lang)))
+                            .font(KeloFont.small)
+                            .foregroundStyle(c.muted)
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(label).font(bold ? KeloFont.button : KeloFont.bodyLarge).foregroundStyle(c.ink)
-                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                if let tokens { Text(L(R.string.usage_jobs_tokens, MyFormat.number(tokens))).font(KeloFont.button).foregroundStyle(c.ink) }
+                        ForEach(Array(shares.enumerated()), id: \.offset) { i, sh in
+                            HStack(spacing: 10) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(palette[i % palette.count])
+                                    .frame(width: 10, height: 10)
+                                Text(sh.others > 0 ? L(R.string.usage_models_others, sh.others) : ModelNames.display(sh.model, label: nil))
+                                    .font(KeloFont.body)
+                                    .foregroundStyle(c.ink)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Text(UsageLogic.compactTokens(sh.tokens, lang))
+                                    .font(KeloFont.body.weight(.bold))
+                                    .foregroundStyle(c.ink)
+                                Text("\(sh.percent)%")
+                                    .font(KeloFont.label)
+                                    .foregroundStyle(c.muted)
+                            }
+                        }
+                    }
+                }
+            } else if vm.failed {
+                MutedText(L(R.string.usage_models_failed), small: true)
+            } else {
+                SkeletonRows(rows: 3)
             }
-            if let p = cachePercent, tokens != nil { MutedText(L(R.string.usage_jobs_cache, p), small: true) }
         }
-        .padding(.vertical, 4)
     }
 }

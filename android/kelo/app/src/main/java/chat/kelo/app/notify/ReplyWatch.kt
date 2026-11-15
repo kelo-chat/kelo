@@ -5,23 +5,17 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import chat.kelo.app.R
+import chat.kelo.app.chat.ReplyLive
+import chat.kelo.app.chat.ReplyLiveRules
 import chat.kelo.app.chat.TurnEvent
+import chat.kelo.app.chat.TurnWatch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
-/** What the chat tells about the reply it follows (a fake in tests). */
-interface TurnWatch {
-    fun started()
-    fun event(ev: TurnEvent)
-    /** [ok]: the reply ended normally; false: it failed. A reply the user stopped calls nothing. */
-    fun finished(ok: Boolean)
-    /** The user stopped the reply, or the chat left it */
-    fun cancelled() {}
-}
 
 /** Whether any of the app's screens is on screen (counted from the activities' start / stop). */
 class AppVisibility : Application.ActivityLifecycleCallbacks {
@@ -73,6 +67,9 @@ object ReplyRules {
     fun onShipping(ev: TurnEvent.ShippingForm, visible: Boolean): Post? =
         if (visible) null else Post.Shipping(ev.ask.what.ifBlank { ev.ask.site }, ev.ask.formId)
 
+    /** At most one notification update a second (Android drops faster ones) */
+    const val UPDATE_EVERY_MS = 1_000L
+
     /** The foreground service is started when the app goes away while a reply is followed. */
     fun startService(following: Boolean, visible: Boolean): Boolean = following && !visible
 }
@@ -89,6 +86,12 @@ class ReplyWatch(private val context: Context, private val notifier: Notifier, p
     private val answer = StringBuilder()
     private var sawError = false
 
+    /** The step, site and newest picture of the reply that runs (shown in the ongoing notification while the app is away). */
+    @Volatile var live: ReplyLive = ReplyLive()
+        private set
+    private var stopper: (() -> Unit)? = null
+    private var lastPostMs = 0L
+
     init {
         visibility.onHidden = { if (ReplyRules.startService(_following.value, false)) startService() }
         visibility.onShown = {
@@ -100,11 +103,29 @@ class ReplyWatch(private val context: Context, private val notifier: Notifier, p
     override fun started() {
         answer.clear()
         sawError = false
+        live = ReplyLive()
         _following.value = true
         notifier.cancel(Notifier.REPLY_ID)
     }
 
+    override fun stopWith(stop: () -> Unit) {
+        stopper = stop
+    }
+
+    /** The notification's Stop. It runs on the main thread, from the service's onStartCommand. */
+    fun stopNow() {
+        stopper?.invoke()
+    }
+
     override fun event(ev: TurnEvent) {
+        ReplyLiveRules.next(live, ev, SystemClock.elapsedRealtime())?.let { s ->
+            live = s
+            val now = SystemClock.elapsedRealtime()
+            if (_following.value && !visibility.visible.value && now - lastPostMs >= ReplyRules.UPDATE_EVERY_MS) {
+                lastPostMs = now
+                notifier.updateWorking(s)
+            }
+        }
         when (ev) {
             is TurnEvent.Text -> answer.append(ev.text)
             is TurnEvent.Error, is TurnEvent.StepLimit -> sawError = true
@@ -116,6 +137,8 @@ class ReplyWatch(private val context: Context, private val notifier: Notifier, p
 
     override fun finished(ok: Boolean) {
         _following.value = false
+        stopper = null
+        runCatching { notifier.cancel(Notifier.WORKING_ID) }   // a step update that raced the end never leaves the ongoing line behind
         ReplyRules.onFinish(ok, sawError, visibility.visible.value, answer.toString())?.let(::post)
         answer.clear()
     }
@@ -123,6 +146,8 @@ class ReplyWatch(private val context: Context, private val notifier: Notifier, p
     /** The user stopped the reply (or left it): nothing to tell. */
     override fun cancelled() {
         _following.value = false
+        stopper = null
+        runCatching { notifier.cancel(Notifier.WORKING_ID) }
         answer.clear()
     }
 

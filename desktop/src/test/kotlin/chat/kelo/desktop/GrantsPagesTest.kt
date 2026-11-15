@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -16,13 +17,11 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.notify.OpenTarget
 import chat.kelo.desktop.core.AppContainer
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.my.VaultPage
-import chat.kelo.desktop.pages.my.WalletPage
-import chat.kelo.desktop.pages.work.WorkScreen
+import chat.kelo.app.my.VaultPage
+import chat.kelo.app.wallet.WalletPage
+import chat.kelo.desktop.pages.WorkPane
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -109,51 +108,48 @@ class GrantsPagesTest {
         }
     }
 
-    private val wallet: @Composable (AppContainer) -> Unit = { app -> WalletPage(app, onBack = {}, onSeen = {}) }
+    private val wallet: @Composable (AppContainer) -> Unit = { app -> WalletPage(onBack = {}, onSeen = {}) }
 
     /** Default mock: one card pays on its own, one asks (saved that way), one expired; the schedule's purchase can be revoked. */
     @Test fun walletCountsTheCardsThatPayOnTheirOwn() {
         for (lang in listOf("ko", "en")) {
-            val s = Strings.of(lang)
+            val s = Words.of(lang)
             val card = if (lang == "ko") "회사 카드" else "Work card"
             for ((w, h, tag) in listOf(Triple(760, 1500, ""), Triple(400, 2000, "-narrow"))) {
                 run(lang, ask = false, w, h, wallet) { app ->
                     waitText(card)
-                    waitText(s.get(R.string.wallet_schedule_section))
-                    assertTrue(has(s.get(R.string.wallet_row_pays_auto)))
-                    assertTrue(has(s.get(R.string.wallet_reason_not_auto)))
-                    assertTrue(has(s.get(R.string.wallet_tag_asks)))
-                    assertTrue(has(s.get(R.string.desktop_ops_wallet_on_phone)))        // the asking card's row says how to turn it on
-                    assertTrue(has(s.plural(R.plurals.wallet_auto_cards_value, 1, 1)))
-                    assertTrue(has(s.get(R.string.wallet_first_site_rule)))
-                    assertFalse(has(s.get(R.string.desktop_ops_wallet_auto_none_note)))
-                    assertTrue(has(s.get(R.string.grant_for_schedule, if (lang == "ko") "주간 생수 주문" else "Weekly water order")))
+                    waitText(s.get(Res.string.wallet_schedule_section))
+                    assertTrue(has(s.get(Res.string.wallet_row_pays_auto)))
+                    assertTrue(has(s.get(Res.string.wallet_reason_not_auto)))
+                    assertTrue(has(s.get(Res.string.wallet_tag_asks)))
+                    assertTrue(has(s.plural(Res.plurals.wallet_auto_cards_value, 1, 1)))
+                    assertTrue(has(s.get(Res.string.wallet_first_site_rule)))
+                    assertTrue(has(s.get(Res.string.grant_for_schedule, if (lang == "ko") "주간 생수 주문" else "Weekly water order")))
                     shots(app, "wallet-auto-list-$lang$tag")
                     if (tag.isNotEmpty()) return@run
                     // the card saved to ask each time: its reason, the way to turn auto-pay on (the phone), the first-site rule
                     click(card)
-                    waitText(s.get(R.string.wallet_auto_tip))
-                    assertTrue(has(s.get(R.string.desktop_ops_wallet_on_phone)))
-                    assertTrue(has(s.get(R.string.wallet_reason_not_auto)))
-                    assertTrue(has(s.get(R.string.wallet_first_site_rule)))
+                    waitText(s.get(Res.string.wallet_auto_tip))
+                    assertTrue(has(s.get(Res.string.wallet_reason_not_auto)))
+                    assertTrue(has(s.get(Res.string.wallet_first_site_rule)))
                     shots(app, "wallet-auto-card-asks-$lang")
                 }
             }
             run(lang, ask = false, 400, 1500, wallet) { app ->
                 waitText(card)
                 click(card)
-                waitText(s.get(R.string.wallet_auto_tip))
+                waitText(s.get(Res.string.wallet_auto_tip))
                 shots(app, "wallet-auto-card-asks-$lang-narrow")
             }
         }
         // revoking the schedule's purchase asks first, then the section goes away
         run("ko", ask = false, 760, 1500, wallet) { _ ->
-            val s = Strings.of("ko")
-            waitText(s.get(R.string.wallet_schedule_section))
-            click(s.get(R.string.grant_revoke))
-            waitText(s.get(R.string.grant_revoke_confirm))
-            click(s.get(R.string.grant_revoke), last = true)
-            waitGone(s.get(R.string.wallet_schedule_section))
+            val s = Words.of("ko")
+            waitText(s.get(Res.string.wallet_schedule_section))
+            click(s.get(Res.string.grant_revoke))
+            waitText(s.get(Res.string.grant_revoke_confirm))
+            click(s.get(Res.string.grant_revoke), last = true)
+            waitGone(s.get(Res.string.wallet_schedule_section))
         }
     }
 
@@ -168,17 +164,17 @@ class GrantsPagesTest {
      */
     @Test fun autoPayCardsPauseWhileKeyguardIsOff() {
         for (lang in listOf("ko", "en")) {
-            val s = Strings.of(lang)
+            val s = Words.of(lang)
             val everyday = if (lang == "ko") "생활비 카드" else "Everyday card"
             for ((w, h, tag) in listOf(Triple(760, 1500, ""), Triple(400, 2100, "-narrow"))) {
                 run(lang, ask = false, w, h, wallet, env = mapOf("KELO_MOCK_KEYGUARD" to "off")) { app ->
                     waitText(everyday)
-                    waitText(s.get(R.string.wallet_auto_paused_keyguard))
-                    val paused = s.get(R.string.wallet_auto_paused_value)
+                    waitText(s.get(Res.string.wallet_auto_paused_keyguard))
+                    val paused = s.get(Res.string.wallet_auto_paused_value)
                     assertTrue("the tag and the summary", count(paused) >= 2)
-                    assertFalse(has(s.get(R.string.wallet_row_pays_auto)))
-                    assertFalse(has(s.get(R.string.wallet_first_site_rule)))
-                    assertFalse(has(s.plural(R.plurals.wallet_auto_cards_value, 1, 1)))
+                    assertFalse(has(s.get(Res.string.wallet_row_pays_auto)))
+                    assertFalse(has(s.get(Res.string.wallet_first_site_rule)))
+                    assertFalse(has(s.plural(Res.plurals.wallet_auto_cards_value, 1, 1)))
                     shots(app, "wallet-keyguard-paused-$lang$tag")
                 }
             }
@@ -187,45 +183,44 @@ class GrantsPagesTest {
 
     @Test fun cardsShowNicknameDefaultAndHistory() {
         for (lang in listOf("ko", "en")) {
-            val s = Strings.of(lang)
+            val s = Words.of(lang)
             val everyday = if (lang == "ko") "생활비 카드" else "Everyday card"
             val work = if (lang == "ko") "회사 카드" else "Work card"
             val old = if (lang == "ko") "예전 카드" else "Old card"
             for ((w, h, tag) in listOf(Triple(760, 1500, ""), Triple(400, 2100, "-narrow"))) {
                 run(lang, ask = false, w, h, wallet) { app ->
                     waitText(everyday)
-                    assertTrue(has(s.get(R.string.wallet_tag_default)))
+                    assertTrue(has(s.get(Res.string.wallet_tag_default)))
                     assertTrue(has("Visa ••4242") && has("Mastercard ••5100"))
                     shots(app, "wallet-cards-list-$lang$tag")
                     click(everyday)
-                    waitText(s.get(R.string.wallet_card_history))
-                    waitText(s.get(R.string.wallet_card_history_more))
-                    assertTrue(has(s.get(R.string.wallet_default_on)) && has(s.get(R.string.wallet_nickname)))
-                    assertFalse(has(s.get(R.string.wallet_make_default)))                 // it is the default already
-                    assertFalse(has(s.get(R.string.wallet_limits_title)))                 // the limits live on the wallet list
-                    assertTrue(has(s.get(R.string.wallet_open_chat)) && has(s.get(R.string.wallet_open_task)))
+                    waitText(s.get(Res.string.wallet_card_history))
+                    waitText(s.get(Res.string.wallet_card_history_more))
+                    assertTrue(has(s.get(Res.string.wallet_default_on)) && has(s.get(Res.string.wallet_nickname)))
+                    assertFalse(has(s.get(Res.string.wallet_make_default)))                 // it is the default already
+                    assertTrue(has(s.get(Res.string.wallet_open_chat)) && has(s.get(Res.string.wallet_open_task)))
                     shots(app, "wallet-card-history-$lang$tag")
                     if (tag.isNotEmpty()) return@run
-                    click(s.get(R.string.wallet_card_history_more))
-                    waitGone(s.get(R.string.wallet_card_history_more))                   // 26 payments: 20, then the last 6
-                    click(s.get(R.string.wallet_delete))
-                    waitText(s.get(R.string.wallet_delete_default_title))
-                    assertTrue(has(s.get(R.string.wallet_delete_default_body, everyday)))
+                    click(s.get(Res.string.wallet_card_history_more))
+                    waitGone(s.get(Res.string.wallet_card_history_more))                   // 26 payments: 20, then the last 6
+                    click(s.get(Res.string.wallet_delete))
+                    waitText(s.get(Res.string.wallet_delete_default_title))
+                    assertTrue(has(s.get(Res.string.wallet_delete_default_body, everyday)))
                     shots(app, "wallet-card-delete-default-$lang")
                 }
             }
             run(lang, ask = false, 400, 1500, wallet) { app ->
                 waitText(work)
                 click(work)
-                waitText(s.get(R.string.wallet_make_default))
+                waitText(s.get(Res.string.wallet_make_default))
                 shots(app, "wallet-card-not-default-$lang-narrow")
-                click(s.get(R.string.wallet_make_default))
-                waitGone(s.get(R.string.wallet_make_default))
+                click(s.get(Res.string.wallet_make_default))
+                waitGone(s.get(Res.string.wallet_make_default))
             }
             run(lang, ask = false, 400, 1500, wallet) { app ->
                 waitText(old)
                 click(old)
-                waitText(s.get(R.string.wallet_card_history_empty))
+                waitText(s.get(Res.string.wallet_card_history_empty))
                 shots(app, "wallet-card-history-empty-$lang-narrow")
             }
         }
@@ -234,15 +229,14 @@ class GrantsPagesTest {
     /** KELO_MOCK_WALLET=ask: no card pays on its own, so the row says so and a note says how to change it. */
     @Test fun walletSaysWhenNoCardPaysOnItsOwn() {
         for (lang in listOf("ko", "en")) {
-            val s = Strings.of(lang)
+            val s = Words.of(lang)
             val card = if (lang == "ko") "생활비 카드" else "Everyday card"
             for ((w, h, tag) in listOf(Triple(760, 1500, ""), Triple(400, 2100, "-narrow"))) {
                 run(lang, ask = true, w, h, wallet) { app ->
                     waitText(card)
-                    waitText(s.get(R.string.desktop_ops_wallet_auto_none_note))
-                    assertTrue(has(s.get(R.string.wallet_auto_none_value)))
-                    assertFalse(has(s.get(R.string.wallet_row_pays_auto)))
-                    assertFalse(has(s.get(R.string.wallet_first_site_rule)))
+                    assertTrue(has(s.get(Res.string.wallet_auto_none_value)))
+                    assertFalse(has(s.get(Res.string.wallet_row_pays_auto)))
+                    assertFalse(has(s.get(Res.string.wallet_first_site_rule)))
                     shots(app, "wallet-auto-list-ask-$lang$tag")
                 }
             }
@@ -252,22 +246,22 @@ class GrantsPagesTest {
     /** Schedule 4 (the weekly order) lists its login and its purchase; revoking one asks first and takes it off. */
     @Test fun scheduleShowsWhatItMayDoWithoutAsking() {
         for (lang in listOf("ko", "en")) {
-            val s = Strings.of(lang)
+            val s = Words.of(lang)
             for ((w, h, tag) in listOf(Triple(1100, 1400, ""), Triple(520, 1900, "-narrow"))) {
-                run(lang, ask = false, w, h, { app -> WorkScreen(app, topInset = 16.dp) }) { app ->
-                    waitText(s.get(R.string.tab_work))   // the page is up (답이 필요해요 may push 지금 하는 일 below)
+                run(lang, ask = false, w, h, { app -> WorkPane(app, topInset = 16.dp) }) { app ->
+                    waitText(s.get(Res.string.tab_work))   // the page is up (답이 필요해요 may push 지금 하는 일 below)
                     app.workRequests.value = OpenTarget.Schedule(4)
-                    waitText(s.get(R.string.grant_section_title))
-                    assertTrue(has(s.get(R.string.grant_purchase_title, if (lang == "ko") "생수 2L 12병" else "12 bottles of water (2 L)")))
-                    assertTrue(has(s.get(R.string.grant_login_title, if (lang == "ko") "쿠팡" else "Coupang")))
-                    assertTrue(has(s.get(R.string.grant_section_note)))
+                    waitText(s.get(Res.string.grant_section_title))
+                    assertTrue(has(s.get(Res.string.grant_purchase_title, if (lang == "ko") "생수 2L 12병" else "12 bottles of water (2 L)")))
+                    assertTrue(has(s.get(Res.string.grant_login_title, if (lang == "ko") "쿠팡" else "Coupang")))
+                    assertTrue(has(s.get(Res.string.grant_section_note)))
                     shots(app, "grants-schedule-$lang$tag")
                     if (lang != "ko" || tag.isNotEmpty()) return@run
-                    click(s.get(R.string.grant_revoke))
-                    waitText(s.get(R.string.grant_revoke_confirm))
-                    click(s.get(R.string.grant_revoke), last = true)
-                    waitGone(s.get(R.string.grant_purchase_title, "생수 2L 12병"))
-                    assertTrue(has(s.get(R.string.grant_login_title, "쿠팡")))
+                    click(s.get(Res.string.grant_revoke))
+                    waitText(s.get(Res.string.grant_revoke_confirm))
+                    click(s.get(Res.string.grant_revoke), last = true)
+                    waitGone(s.get(Res.string.grant_purchase_title, "생수 2L 12병"))
+                    assertTrue(has(s.get(Res.string.grant_login_title, "쿠팡")))
                 }
             }
         }
@@ -276,20 +270,20 @@ class GrantsPagesTest {
     /** The Coupang login names the schedule allowed to sign in with it. */
     @Test fun loginShowsTheScheduleThatUsesIt() {
         for (lang in listOf("ko", "en")) {
-            val s = Strings.of(lang)
+            val s = Words.of(lang)
             val login = if (lang == "ko") "쿠팡" else "Coupang"
             for ((w, h, tag) in listOf(Triple(760, 1500, ""), Triple(400, 2000, "-narrow"))) {
-                run(lang, ask = false, w, h, { app -> VaultPage(app, onBack = {}, onGoModel = {}) }) { app ->
+                run(lang, ask = false, w, h, { app -> VaultPage(onBack = {}, onGoModel = {}) }) { app ->
                     waitText("OpenWeather")
                     click(login)
-                    waitText(s.get(R.string.grant_login_section))
-                    assertTrue(has(s.get(R.string.grant_for_schedule, if (lang == "ko") "주간 생수 주문" else "Weekly water order")))
+                    waitText(s.get(Res.string.grant_login_section))
+                    assertTrue(has(s.get(Res.string.grant_for_schedule, if (lang == "ko") "주간 생수 주문" else "Weekly water order")))
                     shots(app, "grants-login-$lang$tag")
                     if (lang != "ko" || tag.isNotEmpty()) return@run
-                    click(s.get(R.string.grant_revoke))
-                    waitText(s.get(R.string.grant_revoke_confirm))
-                    click(s.get(R.string.grant_revoke), last = true)
-                    waitGone(s.get(R.string.grant_login_section))
+                    click(s.get(Res.string.grant_revoke))
+                    waitText(s.get(Res.string.grant_revoke_confirm))
+                    click(s.get(Res.string.grant_revoke), last = true)
+                    waitGone(s.get(Res.string.grant_login_section))
                 }
             }
         }

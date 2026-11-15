@@ -6,37 +6,30 @@ import KeloShared
 /// entries the agent wrote and that night's look-back note; below, the nightly look-back's switch and what it learned
 /// (preferences to confirm or set aside). Android my/RecordsPage.kt.
 struct RecordsPage: View {
-    @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
-    @State private var start = DigestRules.startOf(LocalDay(seconds: Date().timeIntervalSince1970))
-    @State private var entries: [JournalEntry]?
-    @State private var gaps: [JournalGap] = []
-    @State private var weekFailed = false
-    @State private var look: MyLookback?
-    @State private var lookFailed = false
+    @State private var model: RecordsModel
     @State private var expanded: Set<Int64> = []
-    @State private var rebuilding: Set<String> = []
     @State private var askRebuild: String?
     @State private var askDelete: JournalEntry?
-    @State private var toast: String?
-    /// Suggestions just kept or discarded: they stay in place with "지킬게요" / "버렸어요" and an undo for a few seconds.
-    @State private var decided: [Int64: String] = [:]
     @State private var showMemory = false
-    @State private var memChanges: MemoryChanges?
-    @State private var memFailed = false
-    @State private var undoing = false
     @State private var askUndo = false
-    /// Learned message hours waiting for an answer (GET /api/proactive "hours_suggestion"); hoursDone = the choice just made.
-    @State private var hours: HoursSuggestion?
-    @State private var hoursDone: Bool?
 
-    private var today: LocalDay { LocalDay(seconds: Date().timeIntervalSince1970) }
+    let api: KeloApi
+    init(api: KeloApi) { self.api = api; _model = State(initialValue: RecordsModel(api: api)) }
+
+    private var start: LocalDay { model.start }
+    private var today: LocalDay { model.today }
+    private var gaps: [JournalGap] { model.gaps }
+    private var look: MyLookback? { model.look }
+    private var decided: [Int64: String] { model.decided }
+    private var hours: HoursSuggestion? { model.hours }
+    private var rebuilding: Set<String> { model.rebuilding }
 
     var body: some View {
         SubPage(L(R.string.my_records_title), onBack: { dismiss() }) {
             weekBar
-            if let e = entries {
+            if let e = model.entries {
                 dayStrip(DigestRules.perDay(start, e))
                 let notes = Dictionary((look?.notes ?? []).map { (String($0.date.prefix(10)), $0) }, uniquingKeysWith: { a, _ in a })
                 let end = start.adding(days: 6).description
@@ -45,7 +38,7 @@ struct RecordsPage: View {
                 Text(P(R.plurals.my_records_week_count, e.count, e.count)).font(KeloFont.small).foregroundStyle(c.muted)
                 if dates.isEmpty { EmptyNote(L(R.string.my_records_week_empty)) }
                 ForEach(dates, id: \.self) { date in day(date, entries: e.filter { $0.date.hasPrefix(date) }, gap: gaps.first { $0.date.hasPrefix(date) }, note: notes[date]) }
-            } else if weekFailed {
+            } else if model.weekFailed {
                 ErrorText(L(R.string.connect_failed), small: true)
             } else {
                 SkeletonRows(rows: 3)
@@ -59,7 +52,7 @@ struct RecordsPage: View {
                 } else {
                     MenuCard {
                         ToggleRow(L(R.string.lookback_title), detail: L(R.string.lookback_when),
-                                  isOn: Binding(get: { data.enabled }, set: { setLookback($0) }))
+                                  isOn: Binding(get: { data.enabled }, set: { model.setLookback($0) }))
                         if let run = data.lastRun, let kind = LookbackRules.runLine(run), let line = lastRunLine(run, kind) {
                             Text(line).font(KeloFont.small).foregroundStyle(kind.failedLine ? c.danger : c.muted).padding(.bottom, 10)
                                 .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
@@ -71,29 +64,30 @@ struct RecordsPage: View {
                     if let h = hours { hoursCard(h) }
                     learnedRules(data.rules)
                 }
-            } else if lookFailed {
+            } else if model.lookFailed {
                 ErrorText(L(R.string.connect_failed), small: true)
             } else {
                 SkeletonRows(rows: 1)
             }
             // skills Kelo proposed or drafted, waiting for the owner's approval (the same review area as the learned rules)
-            SkillReviewSection(onMessage: { toast = $0 })
+            SkillReviewSection(api: { [api] in api }, onMessage: { model.setNotice($0) })
         }
-        .task(id: start) { await loadWeek() }
-        .task { await loadLookback() }
-        .task { await loadHours() }
+        .task(id: start) { await model.loadWeek() }
+        .task { await model.loadLookback() }
+        .task { await model.loadHours() }
         .alert(askRebuild.map { L(R.string.agent_journal_rebuild_confirm, dayLabel($0)) } ?? "",
                isPresented: Binding(get: { askRebuild != nil }, set: { if !$0 { askRebuild = nil } })) {
-            Button(L(R.string.agent_journal_rebuild)) { if let d = askRebuild { rebuild(d) } }
+            Button(L(R.string.agent_journal_rebuild)) { if let d = askRebuild { model.rebuild(d) } }
             Button(L(R.string.cancel), role: .cancel) {}
         }
         .alert(askDelete.map { L(R.string.agent_journal_delete_confirm, $0.title) } ?? "",
                isPresented: Binding(get: { askDelete != nil }, set: { if !$0 { askDelete = nil } })) {
-            Button(L(R.string.delete), role: .destructive) { if let e = askDelete { delete(e) } }
+            Button(L(R.string.delete), role: .destructive) { if let e = askDelete { model.delete(e) } }
             Button(L(R.string.cancel), role: .cancel) {}
         }
-        .toast($toast)
+        .toast(model.notice, clear: model.clearNotice)
         .sheet(isPresented: $showMemory) { memorySheet }
+        .onChange(of: model.memoryClosed) { _, _ in showMemory = false }
     }
 
     /// The last memory pass in one line ("기억 정리: 3개 추가, 2개 정리") with a link to what changed; after an undo,
@@ -112,7 +106,7 @@ struct RecordsPage: View {
             Text(text).font(KeloFont.small).foregroundStyle(c.muted).frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
             if !pass.undone {
-                LinkButton(L(R.string.memory_pass_view)) { openMemory() }
+                LinkButton(L(R.string.memory_pass_view)) { model.openMemory(); showMemory = true }
             }
         }
         .padding(.bottom, 10)
@@ -133,7 +127,7 @@ struct RecordsPage: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text(L(R.string.memory_pass_changes_title)).font(KeloFont.titleMedium).foregroundStyle(c.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                if let d = memChanges {
+                if let d = model.memChanges {
                     let groups = MemoryPassRules.group(d.changes)
                     if groups.isEmpty { MutedText(L(R.string.memory_pass_no_lines), small: true) }
                     ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
@@ -148,9 +142,9 @@ struct RecordsPage: View {
                     }
                     if d.lastPass?.canUndo == true {
                         SecondaryButton(L(R.string.memory_pass_undo), fill: true) { askUndo = true }
-                            .disabled(undoing).padding(.top, 4)
+                            .disabled(model.undoing).padding(.top, 4)
                     }
-                } else if memFailed {
+                } else if model.memFailed {
                     ErrorText(L(R.string.connect_failed), small: true)
                 } else {
                     SkeletonRows(rows: 3)
@@ -162,7 +156,7 @@ struct RecordsPage: View {
         .background(c.bg.ignoresSafeArea())
         .presentationDetents([.medium, .large])
         .alert(L(R.string.memory_pass_undo_confirm), isPresented: $askUndo) {
-            Button(L(R.string.memory_pass_undo)) { undoMemory() }
+            Button(L(R.string.memory_pass_undo)) { model.undoMemory() }
             Button(L(R.string.cancel), role: .cancel) {}
         }
     }
@@ -186,11 +180,11 @@ struct RecordsPage: View {
         let canNext = DigestRules.canGoNext(start, today: today)
         let a = start, b = start.adding(days: 6)
         return HStack {
-            Button { start = start.adding(days: -7) } label: { KeloIconView(.chevronLeft, size: 22, tint: c.ink).frame(width: 44, height: 44) }
+            Button { model.previousWeek() } label: { KeloIconView(.chevronLeft, size: 22, tint: c.ink).frame(width: 44, height: 44) }
                 .buttonStyle(.plain).accessibilityLabel(L(R.string.my_records_prev_week))
             Text(L(R.string.my_records_week_range, MyFormat.monthDay(year: a.year, month: a.month, day: a.day), MyFormat.monthDay(year: b.year, month: b.month, day: b.day)))
                 .font(KeloFont.titleMedium).foregroundStyle(c.ink).multilineTextAlignment(.center).frame(maxWidth: .infinity)
-            Button { start = start.adding(days: 7) } label: { KeloIconView(.chevronRight, size: 22, tint: canNext ? c.ink : c.disabledInk).frame(width: 44, height: 44) }
+            Button { model.nextWeek() } label: { KeloIconView(.chevronRight, size: 22, tint: canNext ? c.ink : c.disabledInk).frame(width: 44, height: 44) }
                 .buttonStyle(.plain).disabled(!canNext).accessibilityLabel(L(R.string.my_records_next_week))
         }
     }
@@ -300,7 +294,7 @@ struct RecordsPage: View {
     }
 
     @ViewBuilder private func hoursCard(_ h: HoursSuggestion) -> some View {
-        HoursSuggestionCard(suggestion: h, done: hoursDone) { accept in answerHours(h, accept: accept) }
+        HoursSuggestionCard(suggestion: h, done: model.hoursDone) { accept in model.answerHours(h, accept: accept) }
     }
 
     @ViewBuilder private func learnedRules(_ rules: [LearnedRule]) -> some View {
@@ -323,15 +317,15 @@ struct RecordsPage: View {
                                 KeloIconView(choice == LearnedRule.accepted ? .check : .minus, size: 18, tint: choice == LearnedRule.accepted ? c.accent : c.muted)
                                 Text(L(choice == LearnedRule.accepted ? R.string.lookback_rule_kept : R.string.lookback_rule_discarded))
                                     .font(KeloFont.body).foregroundStyle(c.ink).frame(maxWidth: .infinity, alignment: .leading)
-                                LinkButton(L(R.string.undo)) { Haptics.tick(); decided[r.id] = nil; setRule(r.id, LearnedRule.proposed) }
+                                LinkButton(L(R.string.undo)) { Haptics.tick(); model.undoDecision(r.id) }
                             }
                         } else {
                             if LookbackRules.inUse(r) {
                                 Text(L(R.string.lookback_rule_in_use)).font(KeloFont.label).foregroundStyle(c.muted)
                             }
                             HStack(spacing: 8) {
-                                SecondaryButton(L(R.string.lookback_rule_discard), fill: true) { decide(r.id, LearnedRule.rejected) }
-                                PrimaryButton(L(R.string.lookback_rule_keep)) { Haptics.success(); decide(r.id, LearnedRule.accepted) }
+                                SecondaryButton(L(R.string.lookback_rule_discard), fill: true) { model.decide(r.id, LearnedRule.rejected) }
+                                PrimaryButton(L(R.string.lookback_rule_keep)) { Haptics.success(); model.decide(r.id, LearnedRule.accepted) }
                             }
                         }
                     }
@@ -346,7 +340,7 @@ struct RecordsPage: View {
                     if i > 0 { Hairline() }
                     VStack(alignment: .leading, spacing: 4) {
                         ruleText(r)
-                        LinkButton(L(R.string.lookback_rule_stop)) { setRule(r.id, LearnedRule.rejected) }
+                        LinkButton(L(R.string.lookback_rule_stop)) { model.setRule(r.id, LearnedRule.rejected) }
                     }
                     .padding(.vertical, 10)
                 }
@@ -357,7 +351,7 @@ struct RecordsPage: View {
                 ForEach(groups.rejected, id: \.id) { r in
                     VStack(alignment: .leading, spacing: 4) {
                         ruleText(r)
-                        LinkButton(L(R.string.lookback_rule_restore)) { setRule(r.id, LearnedRule.accepted) }
+                        LinkButton(L(R.string.lookback_rule_restore)) { model.setRule(r.id, LearnedRule.accepted) }
                     }
                     .padding(.vertical, 6)
                 }
@@ -403,119 +397,5 @@ struct RecordsPage: View {
         let ev = r.evidence.trimmingCharacters(in: .whitespacesAndNewlines)
         let body = [ruleDay(r), ev.isEmpty ? nil : ev].compactMap { $0 }.joined(separator: " · ")
         return body.isEmpty ? nil : L(R.string.lookback_rule_basis, body)
-    }
-
-    private func decide(_ id: Int64, _ status: String) {
-        decided[id] = status
-        setRule(id, status)
-        Task {
-            try? await Task.sleep(nanoseconds: UInt64(LookbackRules.undoSeconds * 1_000_000_000))
-            if decided[id] == status { decided[id] = nil }
-        }
-    }
-
-    // ---- calls -------------------------------------------------------------------------------------------------------------------
-
-    private func loadWeek() async {
-        weekFailed = false
-        do {
-            let api = try app.requireApi()
-            var all: [JournalEntry] = [], allGaps: [JournalGap] = []
-            for m in DigestRules.months(start) {
-                let month = try await api.journal(month: m)
-                all += month.items; allGaps += month.pending
-            }
-            gaps = DigestRules.gaps(start, allGaps)
-            entries = DigestRules.entries(start, all)
-        } catch {
-            entries = nil
-            weekFailed = true
-        }
-    }
-
-    private func openMemory() {
-        memChanges = nil; memFailed = false; showMemory = true
-        Task {
-            do { memChanges = try await app.requireApi().get("/api/reflection/memory") } catch { memFailed = true }
-        }
-    }
-
-    private func undoMemory() {
-        undoing = true
-        Task {
-            defer { undoing = false }
-            do {
-                try await app.requireApi().request("POST", "/api/reflection/memory/undo")
-                toast = L(R.string.memory_pass_undone)
-                showMemory = false
-            } catch let e as ApiError where e.status == 404 {
-                toast = L(R.string.memory_pass_undo_gone)
-                showMemory = false
-            } catch { toast = app.message(for: error) }
-            await loadLookback()
-        }
-    }
-
-    private func loadHours() async {
-        guard let api = try? app.requireApi(), let got = try? await api.get("/api/proactive", as: ContactHours.self) else { return }
-        hours = ContactHoursRules.open(got)   // the weekday one first, else the weekend one
-    }
-
-    private func answerHours(_ h: HoursSuggestion, accept: Bool) {
-        hoursDone = accept
-        Task {
-            do {
-                _ = try await app.requireApi().post(accept ? ContactHoursRules.acceptPath(h.id) : ContactHoursRules.keepPath(h.id), as: ContactHours.self)
-            } catch let e as ApiError where e.status == 404 {
-                // already answered elsewhere or replaced; the next visit shows what is open now
-            } catch {
-                hoursDone = nil
-                toast = app.message(for: error)
-                return
-            }
-            try? await Task.sleep(nanoseconds: UInt64(ContactHoursRules.doneSeconds * 1_000_000_000))
-            hours = nil
-            hoursDone = nil
-        }
-    }
-
-    private func loadLookback() async {
-        do { look = try await app.requireApi().get("/api/reflection") } catch { lookFailed = true }
-    }
-
-    private func setLookback(_ on: Bool) {
-        Task {
-            do { look = try await app.requireApi().put("/api/reflection/enabled", body: ["enabled": .bool(on)]) }
-            catch { toast = app.message(for: error) }
-        }
-    }
-
-    private func setRule(_ id: Int64, _ status: String) {
-        Task {
-            do {
-                _ = try await app.requireApi().setRuleStatus(id, status: status)
-                await loadLookback()
-            } catch { toast = app.message(for: error) }
-        }
-    }
-
-    private func rebuild(_ date: String) {
-        rebuilding.insert(date)
-        Task {
-            defer { rebuilding.remove(date) }
-            do {
-                try await app.requireApi().request("POST", "/api/journal/rebuild?date=\(date)")
-                await loadWeek()
-            } catch { toast = app.message(for: error) }
-        }
-    }
-
-    private func delete(_ e: JournalEntry) {
-        Task {
-            do {
-                try await app.requireApi().request("DELETE", "/api/journal/\(e.id)")
-                entries?.removeAll { $0.id == e.id }
-            } catch { toast = app.message(for: error) }
-        }
     }
 }

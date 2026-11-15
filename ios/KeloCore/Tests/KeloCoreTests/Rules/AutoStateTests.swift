@@ -114,7 +114,6 @@ import Testing
 
     @Test func theDefaultCardAndWhatDeletingItAsks() throws {
         let a = try named("a", isDefault: true), b = try named("b", usable: false), c = try named("c")
-        #expect(DefaultCardRules.defaultCard([b, a, c])?.id == "a")
         #expect(DefaultCardRules.choicesOnDelete(c, [a, b, c]) == nil)            // not the default: just delete
         #expect(DefaultCardRules.choicesOnDelete(a, [a, c]) == nil)               // one left: the server makes it the default
         #expect(DefaultCardRules.choicesOnDelete(a, [a, b, c])?.map(\.id) == ["b", "c"])
@@ -125,7 +124,6 @@ import Testing
     @Test func theNicknameIsTheTitleWithBrandAndLast4Under() {
         #expect(CardMask.subtitle(label: "Everyday card", brandWord: "Visa", last4: "4242") == "Visa ••4242")
         #expect(CardMask.subtitle(label: "Visa ••4242", brandWord: "Visa", last4: "4242") == nil)   // saved without a nickname
-        #expect(CardBrief(id: "c", label: "생활비 카드", brand: "mastercard", last4: "5100").subtitle == "Mastercard ••5100")
     }
 
     @Test func aCardsHistoryPagesNewestFirstAndLinksToItsChatOrTask() throws {

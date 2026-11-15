@@ -23,7 +23,7 @@ from assistant.tools.connect_tools import connect_tools
 from test_extract import CONTENT
 from test_server import AUTH, TOKEN, Running, scripted
 
-GOOD = "slack-xoxp-GOODtoken123"
+GOOD = "xoxp-GOODtoken123"
 
 
 @pytest.fixture(autouse=True)
@@ -105,8 +105,8 @@ async def test_a_key_is_checked_before_it_is_saved_and_never_comes_back(tmp_path
 async def test_slack_answers_200_even_for_a_bad_token_so_its_ok_field_decides(tmp_path):
     fake = FakeApis()
     async with Running(app_with(tmp_path, fake)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
-        assert (await c.post("/api/keys/slack", json={"values": {"token": "slack-xoxp-BADtoken123"}})).status_code == 422
-        assert (await c.post("/api/keys/slack", json={"values": {"token": GOOD}})).status_code == 200
+        assert (await c.post("/api/keys/slack", json={"values": {"token": "xoxp-BADtoken123", "bot": "xoxb-bot123", "app": "xapp-app123"}})).status_code == 422
+        assert (await c.post("/api/keys/slack", json={"values": {"token": GOOD, "bot": "xoxb-bot123", "app": "xapp-app123"}})).status_code == 200
 
 
 async def test_fixed_headers_go_with_every_call_and_a_shopify_key_is_bound_to_the_users_own_store(tmp_path, monkeypatch):

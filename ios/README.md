@@ -36,7 +36,7 @@ ios/
     test.sh                 = swift test, plus the Command Line Tools workaround
   KeloCore/                 Swift package: API client, models, pairing, turn following, rules, character art + motion
   tools/
-    gen_strings.py          Android res/values*/strings*.xml (+ ios_strings*.json) -> KeloUI .lproj strings + R.swift,
+    gen_strings.py          shared/strings/values*/strings*.xml (+ ios_strings*.json) -> KeloUI .lproj strings + R.swift,
                             and App/Resources InfoPlist.strings; `--check` fails when out of date
     ios_strings_*.json      the few iPhone-only words (per area), en + ko at least
     infoplist_strings.json  iPhone-only permission texts
@@ -105,7 +105,7 @@ xcodebuild -project Kelo.xcodeproj -scheme Kelo -destination 'platform=iOS Simul
 
 ## Words (20 languages)
 
-The iPhone app uses the Android app's own texts. `tools/gen_strings.py` reads `android/kelo/app/src/main/res/values*/strings*.xml`
+The iPhone app uses the Android app's own texts. `tools/gen_strings.py` reads `shared/strings/values*/strings*.xml` (the one home of the text; the desktop-only `strings_desktop*.xml` are skipped)
 with `android/tools/strings_res.py` (the reader the Android checks use) and writes `KeloShared/Resources/<lang>.lproj/
 Localizable.strings` plus `KeloShared/Strings/R.swift`, whose names are Android's: Kotlin `stringResource(R.string.x, a)` is Swift
 `L(R.string.x, a)`, `pluralStringResource(R.plurals.x, n, n)` is `P(R.plurals.x, n, n)`. Placeholders stay in Android syntax and

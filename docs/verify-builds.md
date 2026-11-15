@@ -10,7 +10,7 @@ says plainly where that check is strong, where it is weaker, and where it is not
 | Android app from Google Play | Build the tagged source yourself and compare it with the APKs on your phone | Same files, byte for byte, except the signature |
 | Android APK from kelo.chat | The same, with the one APK | Same file, byte for byte, except the signature |
 | Windows installers (MSI, EXE, MSIX) | `gh attestation verify` shows which workflow and commit built the file | Provenance. Not reproducible: you cannot rebuild the same bytes |
-| macOS disk image | Not covered yet (needs the owner's Apple certificate) | None yet |
+| macOS disk image | Every file of the app against the source, apart from Apple's signature (`tools/verify/mac-verify.sh`) | Strong for the code, none for the signature itself |
 | iPhone app | The readable parts of the app against the source | Weak. A byte-for-byte check is impossible (see below) |
 | Server images | `cosign verify` (see `release-images.yml`) | Signed by the public workflow |
 
@@ -35,7 +35,7 @@ The script:
 
 1. asks the phone for the app's version and where it was installed from (Google Play or a file);
 2. gets the source of the tag and checks that its `android/kelo/version.properties` has the same version as the phone;
-3. builds it with `tools/build/android-reproducible.sh` in the pinned Docker image (the first build is long: a few hours on an
+3. builds it with `tools/build/android-reproducible.sh` in the pinned Docker image (the source it builds is `android/kelo`, `shared/` and `version.json`) (the first build is long: a few hours on an
    Apple Silicon Mac, where the Linux x86-64 image runs emulated; much faster on an x86-64 PC);
 4. **Google Play version:** `bundletool build-apks --connected-device` makes the APKs your phone should get from the bundle, `adb`
    pulls the APKs installed on the phone (`base.apk` and the `split_config.*.apk` files) and `tools/verify/apkdiff.py` compares them
@@ -87,6 +87,7 @@ The SHA-256 of what the run built is in the run's summary and in `SHA256SUMS`. C
 |---|---|
 | Version from the build time | The version is `android/kelo/version.properties` (`build=N` gives versionCode N and versionName `0.1.N`), committed with each release. `tools/build/android.sh version` writes it. The minutes-since-late-2026 rule only picks the number when the owner starts a release |
 | JDK, Gradle, Android SDK, build tools | `android/reproducible/Dockerfile`: the JDK image by digest, Android platform 36 (r02) and build tools 36.0.0 by SHA-256; Gradle 8.11.1 by `distributionSha256Sum` in the wrapper properties |
+| The commit shown in My | The version line in My ends with the short commit the app was built from, a link to that commit on GitHub (`BuildConfig.SOURCE_COMMIT`, `ReleaseInfo.SOURCE_COMMIT`, Info.plist `KeloSourceCommit`). `tools/build/android-reproducible.sh` passes the sha of the commit it builds into the container (`-PkeloCommit`), so the same commit gives the same bytes; a `--worktree` build says "modified" and has no link. The sha is part of the file: an APK that `tools/build/android.sh` made at another commit differs from the tag's build in exactly that value |
 | Libraries and plugins | Exact versions in `gradle/libs.versions.toml`; every downloaded file is checked against `gradle/verification-metadata.xml` (strict in the reproducible build) |
 | R8's timing note in the bundle | R8 writes how long it ran and with how many threads into `BUNDLE-METADATA/com.android.tools/r8.json`; the two numbers are blanked (`app/build.gradle.kts`). This was the only difference between two builds of the bundle |
 | Encrypted dependency list in the APK | `dependenciesInfo { includeInApk = false }`: a file APK has no per-build random value (the bundle keeps its plain list) |
@@ -125,8 +126,38 @@ the workflow file and the commit to see what was built. The installers are not c
 
 ## macOS
 
-The disk image is built on the owner's Mac and is neither signed nor notarized yet, so there is no check beyond the
-source. When the Developer ID certificate exists, the same workflow will build and attest it.
+The disk image (`Kelo-X.Y.Z.dmg`) is built on the owner's Mac, signed with a Developer ID certificate and notarized by Apple. That
+certificate never leaves the owner's Mac, so nobody else can produce the signed file. What anyone can check is that **everything
+inside it** is what the public source builds to.
+
+You need a Mac with the Xcode command line tools, `git`, `python3` and `curl`, and about 8 GB of free disk. Download the disk image,
+then, in a clone of this repository:
+
+```sh
+git clone https://github.com/kelo-chat/kelo && cd kelo
+git fetch --tags
+tools/verify/mac-verify.sh ~/Downloads/Kelo-1.0.9.dmg
+```
+
+The script:
+
+1. opens the disk image read-only and copies `Kelo.app` out;
+2. asks macOS who signed it: `spctl` must say "Notarized Developer ID", and the app's team must be the one written in
+   `desktop/packaging/macos/TEAM_ID` (printed both ways);
+3. reads the app's version and checks out the tag `mac-<version>` into a temporary folder;
+4. builds that tag without a signature (`./gradlew createDistributable`), with the one Java runtime pinned in
+   `desktop/packaging/macos/JDK` (Eclipse Temurin, downloaded once into `~/.cache/kelo/jdk` and checked against its SHA-256);
+5. compares the two apps file by file, and inside every jar entry by entry (`tools/verify/macdiff.py`).
+
+It ends with "every file is the same as the source at mac-<version> (<commit>), apart from Apple's signature" or lists what differs.
+The first run takes about 15 minutes.
+
+What this proves: the code, the Java runtime, the resources and the settings in the app are the ones the tag builds to. What it
+cannot: Apple's signature and notarization ticket are made with the owner's certificate and by Apple, so nobody else can
+reproduce them. That is why both sides are given the same throwaway signature before they are compared (only the code is
+compared). The signature itself is checked the way macOS checks it, against the team id above. The build is the same on every Mac
+only with the pinned Java runtime and the fixed file times of `tools/build/zipclock`; `tools/verify/mac-repro-check.sh` builds
+one commit twice in different folders, time zones and minutes and must print no difference.
 
 ## iPhone
 
@@ -151,10 +182,19 @@ not be the App Store file.
 
 ## For the maintainer: releasing
 
-1. `tools/build/android.sh version` (writes `android/kelo/version.properties`), update `CHANGELOG.md`, commit, tag.
-2. `tools/build/android-reproducible.sh --sign`: Play bundle and sideload APK from exactly that commit, then signed with the upload
+1. Android only: when screens moved since the last release, regenerate the baseline profiles first (with the emulator from the android
+   notes): `./gradlew :app:generateReleaseBaselineProfile -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true` in `android/kelo`,
+   and commit `app/src/release/generated/baselineProfiles`.
+2. `tools/build/android.sh version` (writes `android/kelo/version.properties`), update `CHANGELOG.md`, commit, tag.
+3. `tools/build/android-reproducible.sh --sign`: Play bundle and sideload APK from exactly that commit, then signed with the upload
    key. Upload the signed bundle to Play, offer the signed APK on kelo.chat.
-3. Push the tag to the public repository: `release-build.yml` builds and attests the same files; its `SHA256SUMS` must equal the
-   `-unsigned` sums of step 2 (compare them; if they differ, do not publish).
-4. After Google Play has published it, run `tools/verify/android-verify.sh` once on a phone that installed from Play.
+4. Push the tag to the public repository: `release-build.yml` builds and attests the same files; its `SHA256SUMS` must equal the
+   `-unsigned` sums of step 3 (compare them; if they differ, do not publish).
+5. After Google Play has published it, run `tools/verify/android-verify.sh` once on a phone that installed from Play.
 
+macOS (after the Android steps, or on its own):
+
+1. `tools/build/desktop.sh mac` builds `Kelo-X.Y.Z.dmg` (signed and notarized when the Developer ID certificate is in the keychain) with the pinned Java runtime. Tag the commit it was built
+   from `mac-<version>` and push the tag to the public repository.
+2. Before publishing the disk image, run `tools/verify/mac-verify.sh` on that final file; publish only when it says every file is the
+   same.

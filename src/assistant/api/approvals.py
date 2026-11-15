@@ -34,6 +34,7 @@ class ApprovalIn(BaseModel):
 def router(ctx: AppContext) -> APIRouter:
     router = APIRouter()
     activity = ctx.activity
+    answer_approval = ctx.answer_approval
     weather = ctx.weather
     broker = ctx.broker
     pending_approvals = ctx.pending_approvals
@@ -44,30 +45,10 @@ def router(ctx: AppContext) -> APIRouter:
     # ---- approvals: answers, history, standing rules, what is waiting ----------------------------------------------------------
     @router.post("/api/approvals/{approval_id}", dependencies=[Depends(require_auth)])
     async def answer(approval_id: str, body: ApprovalIn) -> dict[str, Any]:
-        fut = broker.pending.get(approval_id)
-        if fut is None or fut.done():
+        result = answer_approval(approval_id, body.approve, body.remember)
+        if result is None:
             raise HTTPException(404, "no such pending approval")
-        meta = pending_approvals.get(approval_id) or {}
-        if meta.get("kind") == "location":   # the location card answered as an approval: Allow = the app already sent the place
-            meta["answer"] = "allowed" if body.approve else "refused"
-            broker.resolve(approval_id, body.approve)
-            return {"ok": True, "decision": meta["answer"], "remembered": False, "rule": None}
-        if meta.get("kind") == "human_check":   # Skip this site (approve=false), or an older app's Allow: "done, go on"
-            meta["answer"] = "done" if body.approve else "skip"
-            broker.resolve(approval_id, body.approve)
-            return {"ok": True, "decision": "solved" if body.approve else "skipped", "remembered": False, "rule": None}
-        decision, rule = "denied", None
-        if body.approve:
-            decision = "allowed_once"
-            if body.remember == "site" and meta.get("can_remember"):
-                rule = activity.add_rule(meta["name"], meta["site"], approval_id)
-                decision = "allowed_always" if rule else decision
-            elif body.remember == "schedule" and meta.get("can_remember_schedule"):
-                rule = activity.add_schedule_rule(meta["schedule_id"], meta["name"], meta["site"], approval_id)
-                decision = "allowed_always" if rule else decision
-        activity.answer_approval(approval_id, decision)   # recorded before the waiting step goes on
-        broker.resolve(approval_id, body.approve)
-        return {"ok": True, "decision": decision, "remembered": rule is not None, "rule": rule}
+        return result
 
     # LOCATION REQUEST (location.py; the card in server.py ask_location): the app answers the card with the phone's place, or that the
     # user refused (in the OS prompt or on the card). {"allowed": bool, "place"?: {"lat", "lon", "name"?, "country_code"?,

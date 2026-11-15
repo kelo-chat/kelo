@@ -1,6 +1,6 @@
 ---
 name: work-room
-description: Recipes for the work room (workroom_run) - spreadsheets, Word and PowerPoint files, charts, PDF conversion, image, audio and video conversion.
+description: Recipes for workroom_run: spreadsheets, Word, PowerPoint, charts, file and media conversion.
 ---
 
 # Work Room Recipes

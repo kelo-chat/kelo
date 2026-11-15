@@ -5,7 +5,7 @@ One row: {"id", "name", "description", "category", "status": connected|available
 browser|google, "via", "item", "site", "steps", "fallback"?: {another way: "connect", "via", "item", "blurb", "connected"},
 "method"?: how it IS connected when that differs by account (google = Google sign-in, password = app password, key), "account"?: who,
 "connect_state"?: "pending_review" (Google sign-in not open yet; "note" says so in words, "support_url"? a link to show under it),
-"featured": bool, "rank": int|null, "featured_regions": [ISO country codes], "icon"?, "icon_small"?, "icon_color"?: the service's own
+"limited": bool (anything the owner set under "What Kelo may do" differs from the default: permissions.py), "featured": bool, "rank": int|null, "featured_regions": [ISO country codes], "icon"?, "icon_small"?, "icon_color"?: the service's own
 app icon (connector_icons.py; left out when there is none)}.
 Services that cannot be used here are left out.
 
@@ -23,8 +23,11 @@ from . import connector_icons, i18n
 from .catalog import CATALOG, HIDDEN, HIDDEN_WAYS
 from .i18n import N_, t
 from .packages import Registry
+from .presets import NETWORK_IDS, SELF_HOSTED_IDS
 
 CATEGORY = N_("Service")
+SELF_HOSTED_CATEGORY = N_("Self-hosted")
+NETWORK_CATEGORY = N_("Network")
 # Shown first when the Connectors screen opens: services used widely around the world, roughly by popularity. Everything else is
 # still listed ("featured": false) and found by search or "show all".
 FEATURED = ["gmail", "google_calendar", "google_drive", "outlook_mail", "outlook_calendar", "imap_email", "notion", "slack", "zoom", "github",
@@ -64,7 +67,7 @@ def list_connectors(*, connected: set[str] | None = None, available: dict[str, s
         return connector_icons.for_connector(cid) if cid in builtin or registry is None else registry.icon_fields(cid)
 
     return [{"id": s.id, "name": t(s.name) if s.regions else s.name,
-             "description": available.get(s.id) or (t(s.description) if s.regions else s.description), "category": t(CATEGORY),
+             "description": available.get(s.id) or (t(s.description) if s.regions else s.description), "category": t(SELF_HOSTED_CATEGORY if s.id in SELF_HOSTED_IDS else NETWORK_CATEGORY if s.id in NETWORK_IDS else CATEGORY),
              "status": "connected" if s.id in connected else "available" if s.id in available else "coming_soon",
              "featured_regions": list(s.regions), **icons(s.id)} for s in services if s.id not in HIDDEN or s.id in connected]
 

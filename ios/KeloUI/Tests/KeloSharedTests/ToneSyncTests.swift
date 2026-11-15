@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 
 /// 마이 → 에이전트 → 말투: the status poll brings a tone the agent changed in the chat into the shared profile, so the page shows it

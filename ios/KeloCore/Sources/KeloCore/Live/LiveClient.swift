@@ -69,13 +69,7 @@ public final class LiveSocket: @unchecked Sendable {
                         var inner = URLRequest(url: target)
                         if !lang.isEmpty { inner.setValue(lang, forHTTPHeaderField: AcceptLanguage.header) }
                         inner.setValue(Versioning.currentAppHeader, forHTTPHeaderField: Versioning.appHeader)
-                        let ex = try KE2EExchange.seal(head: try LiveSocket.innerHead(inner, baseUrl: self.api.baseUrl, clock: self.api.e2e?.state.clock ?? KE2EClock()),
-                                                       body: Data(), to: pin.key)
-                        var c = try ex.webSocketCipher()
-                        try await ws.send(.data(ex.outerBody))
-                        guard case .data(let first) = try await ws.receive(), case .text(let headText) = try c.open(first),
-                              let head = try? KE2EResponseHead.parse(Data(headText.utf8)) else { throw LiveClosed(code: KE2E.closeBadEnvelope) }
-                        guard head.status == 101 else { throw LiveClosed(code: head.status == 401 ? KE2E.closeUnauthorized : 4404) }
+                        let c = try await KE2ESocketHandshake.begin(ws, inner: inner, api: self.api, pin: pin)
                         self.lock.withLock { self.cipher = c }
                     }
                     self.startPings(ws)
@@ -151,11 +145,6 @@ public final class LiveSocket: @unchecked Sendable {
         }
     }
 
-    /// Typed text, in pieces the server takes.
-    public func sendText(_ text: String) async throws {
-        for piece in LiveMessages.chunks(text) { try await send(LiveMessages.text(piece)) }
-    }
-
     public func close() {
         let (ws, p) = lock.withLock { () -> (URLSessionWebSocketTask?, Task<Void, Never>?) in
             defer { task = nil; pingTask = nil; cipher = nil }
@@ -177,12 +166,28 @@ public final class LiveSocket: @unchecked Sendable {
     }
 }
 
+/// The opening of a WebSocket through KE2E (`/e2e/ws`), shared by the live view and a reply's socket: the first message is the
+/// sealed request for the inner path (with the session's headers), the first answer the sealed head (`{"s": 101}`; anything else is
+/// the refusal's status). Throws `LiveClosed` (4401 for a refused token, 4404 for another refusal, bad envelope for garbage).
+enum KE2ESocketHandshake {
+    static func begin(_ ws: URLSessionWebSocketTask, inner: URLRequest, api: KeloApi, pin: KE2EPin) async throws -> KE2EWebSocketCipher {
+        let ex = try KE2EExchange.seal(head: try LiveSocket.innerHead(inner, baseUrl: api.baseUrl, clock: api.e2e?.state.clock ?? KE2EClock()),
+                                       body: Data(), to: pin.key)
+        var c = try ex.webSocketCipher()
+        try await ws.send(.data(ex.outerBody))
+        guard case .data(let first) = try await ws.receive(), case .text(let headText) = try c.open(first),
+              let head = try? KE2EResponseHead.parse(Data(headText.utf8)) else { throw LiveClosed(code: KE2E.closeBadEnvelope) }
+        guard head.status == 101 else { throw LiveClosed(code: head.status == 401 ? KE2E.closeUnauthorized : 4404) }
+        return c
+    }
+}
+
 /// The WebSocket closed with this code (4401 ticket, 4404 no tab, 4408 silent, 4429 too many tries, 1000 tab closed, 1006 dropped).
 public struct LiveClosed: Error, Equatable, Sendable { public let code: Int }
 
 /// The same frames without a WebSocket (GET /api/browser/sessions/{id}/frame?after=&wait=10).
 public struct LiveFrame: Sendable {
-    public let seq: Int64, w: Int, h: Int, cssW: Int, cssH: Int, url: String, title: String, youControl: Bool, controller: String
+    public let seq: Int64, w: Int, h: Int, url: String, title: String, youControl: Bool, controller: String
     public let jpeg: Data
 }
 
@@ -194,7 +199,7 @@ extension KeloApi {
         if status == 204 { return nil }
         func h(_ k: String) -> String { (headers[k.lowercased()] ?? "").removingPercentEncoding ?? "" }
         return LiveFrame(seq: Int64(h("X-Frame-Seq")) ?? after, w: Int(h("X-Frame-W")) ?? 0, h: Int(h("X-Frame-H")) ?? 0,
-                         cssW: Int(h("X-Frame-Css-W")) ?? 0, cssH: Int(h("X-Frame-Css-H")) ?? 0, url: h("X-Frame-Url"),
+                         url: h("X-Frame-Url"),
                          title: h("X-Frame-Title"), youControl: h("X-You-Control") == "true" || h("X-You-Control") == "1",
                          controller: h("X-Controller"), jpeg: data)
     }

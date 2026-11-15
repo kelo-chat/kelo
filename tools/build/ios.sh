@@ -51,6 +51,9 @@ while [ $# -gt 0 ]; do
 done
 
 IOS="$REPO/ios"
+# the commit this build's source came from, asked now (before this script edits project.yml for a TestFlight build number): My links to it
+source_commit ios shared/strings version.json
+SOURCE_ARGS=("KELO_SOURCE_COMMIT=$SOURCE_COMMIT" "KELO_SOURCE_DIRTY=$([ "$SOURCE_DIRTY" = true ] && echo YES || echo NO)")
 PROJ_DIR="$IOS/Kelo"
 SPEC="$PROJ_DIR/project.yml"
 SIM_NAME="${KELO_SIM_NAME:-kelo-ios-check}"
@@ -149,7 +152,7 @@ for runtime, devs in json.load(sys.stdin)["devices"].items():
   soft_step "xcodebuild test on $SIM_NAME (${ONLY[*]})" "${KELO_XCODE_TIMEOUT:-2700}" "$LOGS/ios-test.log" \
     env ${TEST_ENV[@]+"${TEST_ENV[@]}"} xcodebuild -project "$PROJ_DIR/Kelo.xcodeproj" -scheme Kelo \
       -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DD" -resultBundlePath "$TMP/test.xcresult" \
-      CODE_SIGNING_ALLOWED=NO ${ONLY_ARGS[@]+"${ONLY_ARGS[@]}"} test
+      CODE_SIGNING_ALLOWED=NO "${SOURCE_ARGS[@]}" ${ONLY_ARGS[@]+"${ONLY_ARGS[@]}"} test
   release_lock DEVICE_LOCK
   release_lock XCODE_LOCK
 
@@ -209,7 +212,7 @@ take_lock XCODE_LOCK
 step "archive (unsigned, Release)" "${KELO_ARCHIVE_TIMEOUT:-2400}" "$LOGS/ios-archive.log" \
   xcodebuild -project "$PROJ_DIR/Kelo.xcodeproj" -scheme Kelo -configuration Release -destination 'generic/platform=iOS' \
     -derivedDataPath "$DD" -archivePath "$TMP/Kelo.xcarchive" \
-    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= archive
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= "${SOURCE_ARGS[@]}" archive
 [ "$DRY_RUN" = 1 ] || rm -rf "$DD"     # the archive holds what is needed; free the space before exporting
 
 # An unsigned archive carries no entitlements (push, ...): put them on the app with an ad-hoc signature first; the export below

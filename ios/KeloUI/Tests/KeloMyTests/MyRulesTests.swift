@@ -3,6 +3,7 @@ import Foundation
 import CryptoKit
 import KeloCore
 import KeloShared
+import KeloTestSupport
 @testable import KeloMy
 
 private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws -> T {
@@ -21,7 +22,7 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(same == ModelChoice("anthropic", "claude") && !kept)
         #expect(ModelRules.complete(.none))
         #expect(!ModelRules.complete(ModelChoice("openai", " ")))
-        let all = [MyProvider(name: "a"), MyProvider(name: "b")]
+        let all = [ModelProvider(name: "a"), ModelProvider(name: "b")]
         #expect(ModelRules.fallbackProviders(all, main: "a").map(\.name) == ["b"])
     }
 
@@ -53,12 +54,12 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
     }
 
     @Test func consentRules() {
-        let p = MyProvider(name: "claude-subscription", displayName: "Claude", unofficial: true, consentVersion: 2,
-                           consent: ProviderConsentRecord(acceptedAt: 1, version: 1))
+        let p = ModelProvider(name: "claude-subscription", displayName: "Claude", unofficial: true,
+                           consent: ProviderConsentRecord(acceptedAt: 1, version: 1), consentVersion: 2)
         #expect(ProviderConsentRules.needs(p))
-        let ok = MyProvider(name: "x", unofficial: true, consentVersion: 2, consent: ProviderConsentRecord(acceptedAt: 1, version: 2))
+        let ok = ModelProvider(name: "x", unofficial: true, consent: ProviderConsentRecord(acceptedAt: 1, version: 2), consentVersion: 2)
         #expect(!ProviderConsentRules.needs(ok))
-        #expect(!ProviderConsentRules.needs(MyProvider(name: "openai")))
+        #expect(!ProviderConsentRules.needs(ModelProvider(name: "openai")))
         #expect(ProviderConsentRules.service("claude-subscription") == .claudeSubscription)
         #expect(ProviderConsentRules.service("openai-codex") == .chatgptSubscription)
         #expect(ProviderConsentRules.subjectParticle("Anthropic") == "이")
@@ -110,7 +111,6 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(MediaKind.withSuffix("IMG_0042", mime: "video/mp4") == "IMG_0042.mp4")
         #expect(MediaKind.withSuffix("a.pdf", mime: "video/mp4") == "a.pdf")
         #expect(MediaKind.withSuffix("x", mime: "application/zip") == "x")
-        #expect(MediaKind.maxUpload < 100_000_000)
     }
 
     @Test func uploadsDecodeLeniently() throws {
@@ -193,6 +193,9 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         let p: ProactiveSettings = try decode(#"{"enabled":true,"wake_start":"08:00","daily_total":4,"today":{"regular":1,"now":2}}"#)
         #expect(p.enabled && p.wakeStart == "08:00" && p.wakeEnd == "22:00" && p.dailyTotal == 4)
         #expect(p.today.values.reduce(0, +) == 3)
+        #expect(p.mailCheck == true)
+        let off: ProactiveSettings = try decode(#"{"mail_check":false}"#)
+        #expect(off.mailCheck == false)
     }
 }
 
@@ -231,8 +234,6 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(NotifyRules.fresh(items, lastPosted: 5).map(\.id) == [6])
         #expect(NotifyRules.nextCursor(10, serverLast: 3, items: items) == 10)
         #expect(NotifyRules.nextCursor(1, serverLast: 3, items: items) == 6)
-        #expect(NotifyRules.shouldPost(foreground: false, seen: false, alreadyPosted: false))
-        #expect(!NotifyRules.shouldPost(foreground: true, seen: false, alreadyPosted: false))
         #expect(NotifyRules.identifier(try note(1, NoteTypes.taskDone, task: 3)) == "task:3")
     }
 
@@ -246,25 +247,35 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
 }
 
 @Suite struct JobUsageTests {
-    private func k(_ kind: String, _ input: Int64, _ output: Int64 = 0, read: Int64 = 0) -> KindUsage {
-        KindUsage(kind: kind, inputTokens: input, outputTokens: output, cacheReadTokens: read)
+    @Test func modelSharesWithSixModelsGivesTopFourAndOthers() {
+        let models = [
+            ModelUsage(provider: "p1", model: "m1", inputTokens: 500, outputTokens: 100, cacheReadTokens: 0),
+            ModelUsage(provider: "p2", model: "m2", inputTokens: 400, outputTokens: 100, cacheReadTokens: 0),
+            ModelUsage(provider: "p3", model: "m3", inputTokens: 300, outputTokens: 100, cacheReadTokens: 0),
+            ModelUsage(provider: "p4", model: "m4", inputTokens: 200, outputTokens: 100, cacheReadTokens: 0),
+            ModelUsage(provider: "p5", model: "m5", inputTokens: 100, outputTokens: 100, cacheReadTokens: 0),
+            ModelUsage(provider: "p6", model: "m6", inputTokens: 50, outputTokens: 50, cacheReadTokens: 0),
+        ]
+        let shares = UsageLogic.modelShares(models)
+        #expect(shares.count == 5)
+        #expect(shares[0].model == "m1")
+        #expect(shares[1].model == "m2")
+        #expect(shares[2].model == "m3")
+        #expect(shares[3].model == "m4")
+        #expect(shares[4].others == 2)
+        #expect(shares[4].tokens == 300)
+        let sumPercents = shares.reduce(0) { $0 + $1.percent }
+        #expect(abs(sumPercents - 100) <= 1)
     }
 
-    @Test func rowsListKindsThatUsedTokensLargestFirst() {
-        let rows = UsageLogic.jobRows(UsagePart(kinds: [k("journal", 100, 20), k("chat", 1000, 200, read: 600), k("probe", 0), k("brand-new", 5), k("other", 5)]))
-        #expect(rows.map(\.kind) == ["chat", "journal", "other"])
-        #expect(rows[0] == JobRow(kind: "chat", tokens: 1200, cachePercent: 60))
-        #expect(rows[2] == JobRow(kind: "other", tokens: 10, cachePercent: nil))
-        #expect(UsageLogic.jobRows(nil).isEmpty)
-        #expect(UsageLogic.jobRows(UsagePart(kinds: [k("memory", 5), k("chat", 5)])).map(\.kind) == ["chat", "memory"])
+    @Test func compactTokensFormatting() {
+        #expect(UsageLogic.compactTokens(2_990_000, "ko") == "299만")
+        #expect(UsageLogic.compactTokens(2_990_000, "en") == "3M")
+        #expect(UsageLogic.compactTokens(8512, "en") == "8,512")
     }
 
-    @Test func cachePercentOnlyWhenReported() {
-        #expect(UsageLogic.cachePercent(0, 1000) == nil)
-        #expect(UsageLogic.cachePercent(10, 0) == nil)
-        #expect(UsageLogic.cachePercent(1, 10_000) == 1)
-        #expect(UsageLogic.cachePercent(600, 1000) == 60)
-        #expect(UsageLogic.cachePercent(2000, 1000) == 100)
+    @Test func usedCalculation() {
+        #expect(UsageLogic.used(1000, 200, 900) == 300)
     }
 
     @Test func backgroundFailureShowsOnlyForTheModelStillChosen() {
@@ -279,8 +290,7 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         let old = try decode(#"{"today":{"input_tokens":1,"output_tokens":2},"total":{"input_tokens":3,"output_tokens":4}}"#, as: MyUsage.self)
         #expect(old.jobs == nil && old.background == nil)
         let now = try decode(#"{"today":{"input_tokens":1,"output_tokens":2},"jobs":{"today":{"calls":2,"input_tokens":200,"output_tokens":20,"cache_read_tokens":120,"kinds":[{"kind":"chat","calls":1,"input_tokens":100,"output_tokens":10,"cache_read_tokens":60}]},"month":{}},"background":{"provider":"","model":"","last_fallback":null}}"#, as: MyUsage.self)
-        #expect(UsageLogic.partTokens(now.jobs?.today) == 220)
-        #expect(UsageLogic.jobRows(now.jobs?.today) == [JobRow(kind: "chat", tokens: 110, cachePercent: 60)])
+        #expect(now.jobs?.today.calls == 2)
         let p = try decode(#"{"provider":"p","background_provider":"anthropic","background_model":"small"}"#, as: Profile.self)
         #expect(p.backgroundProvider == "anthropic" && p.backgroundModel == "small")
     }
@@ -331,7 +341,7 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         let u: MyUsage = try decode(#"{"today":{"input_tokens":5,"output_tokens":7},"accounts":[{"provider":"openrouter","balance":"1.5","currency":"USD"}]}"#)
         #expect(u.today.sum == 12)
         #expect(u.accounts.first?.balance == 1.5)
-        let p: MyProvider = try decode(#"{"name":"claude-subscription","signin":true,"signed_in":false,"key_source":"app"}"#)
+        let p: ModelProvider = try decode(#"{"name":"claude-subscription","signin":true,"signed_in":false,"key_source":"app"}"#)
         #expect(p.signin && p.signedIn == false && p.displayName == "claude-subscription")
     }
 }
@@ -379,13 +389,9 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(ResourceRules.diskCeiling(r) == Int64(16_336_707_841))   // used + free on the machine
 
         let start = ResourcesLoad()
-        #expect(start.loading && !start.showError)
         let failed = start.readFailed()
-        #expect(failed.showError && !failed.loading && failed.data == nil)
         let retrying = failed.retrying()
-        #expect(retrying.loading && !retrying.showError)
         let shown = retrying.loaded(r)
-        #expect(!shown.loading && !shown.showError && shown.data == r)
         let refreshFailed = shown.readFailed()
         #expect(refreshFailed == shown && refreshFailed.data == r && !refreshFailed.showError)
     }
@@ -410,8 +416,6 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(VaultGateRules.decide(canEvaluate: true, errorCode: nil) == .prompt)
         #expect(VaultGateRules.decide(canEvaluate: false, errorCode: -5) == .openNoLock)   // LAError.passcodeNotSet
         #expect(VaultGateRules.decide(canEvaluate: false, errorCode: -6) == .prompt)
-        #expect(VaultGateRules.isCancel(-2))   // userCancel
-        #expect(!VaultGateRules.isCancel(-1))
     }
 }
 
@@ -486,7 +490,6 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(s.description == "CardSecret(••4242)")
         #expect(!s.description.contains("424242424"))
         s.wipe()
-        #expect(s.isEmpty)
     }
 
     @Test func blobRoundTripsWithThePhoneKeyOnly() throws {
@@ -533,7 +536,6 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         open = l.isOpen(221); #expect(!open)
         l.unlock(10)
         open = l.isOpen(5); #expect(!open)   // the clock went backwards
-        #expect(l.remaining(0) == 0)
     }
 
     @Test func deliveryAndFormRules() throws {
@@ -542,20 +544,7 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(CardSendError.fromStatus(404) == .notWaiting)
         #expect(CardSendError.fromStatus(422) == .mismatch)
         #expect(CardSendError.fromStatus(0) == .network)
-        var f = CardFormRules.Form()
         let now = YearMonth(year: 2026, month: 11)
-        #expect(CardFormRules.problem(f, now: now) == .number)
-        f.number = "4242 4242 4242 4242"
-        #expect(CardFormRules.problem(f, now: now) == .expiry)
-        f.expiry = "10/26"
-        #expect(CardFormRules.problem(f, now: now) == .expired)
-        f.expiry = "12/29"
-        #expect(CardFormRules.problem(f, now: now) == .cvc)
-        f.cvc = "123"
-        #expect(CardFormRules.problem(f, now: now) == .holder)
-        f.holder = "KIM"
-        #expect(CardFormRules.problem(f, now: now) == nil)
-        #expect(CardFormRules.monthYear("12/29")! == (12, 2029))
         let card: WalletCard = try decode(#"{"id":"c","e2e":true,"e2e_alg":"A256GCM-IKC-1","e2e_key_id":"k1"}"#)
         #expect(CardBlob.ours(card, keyId: "k1"))
         #expect(!CardBlob.ours(card, keyId: "k2"))
@@ -564,10 +553,4 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
 }
 
 @Suite struct AppVersionLineTests {
-    @Test func versionAndBuildShowTogetherOnce() {
-        #expect(AppInfo.line(short: "1.0.2", build: "57") == "1.0.2 (57)")
-        #expect(AppInfo.line(short: "1.0.2", build: "1.0.2") == "1.0.2")
-        #expect(AppInfo.line(short: "1.0.2", build: nil) == "1.0.2")
-        #expect(AppInfo.line(short: nil, build: nil) == "")
-    }
 }

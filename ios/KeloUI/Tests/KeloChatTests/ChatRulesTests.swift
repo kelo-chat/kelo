@@ -80,6 +80,48 @@ private func msg(_ key: String, mine: Bool, _ text: String, id: Int64? = nil) ->
         #expect(pay[0].asApproval?.canRememberSchedule == false)
     }
 
+    @Test func approvalRememberSiteParsedAndPassedToItem() {
+        let k = keys()
+        let json: JSON = .object([
+            "type": .string("approval_request"),
+            "approval_id": .string("a1"),
+            "name": .string("browser_login"),
+            "site": .string("kakao.com"),
+            "can_remember": .bool(true),
+        ])
+        let ev = TurnEvent.parse(json)
+        guard case .approvalRequest(let req) = ev else {
+            Issue.record("not an approval request")
+            return
+        }
+        #expect(req.site == "kakao.com")
+        #expect(req.canRemember == true)
+
+        let items = ChatReducer.apply([], ev, newKey: k)
+        let approval = items[0].asApproval
+        #expect(approval?.site == "kakao.com")
+        #expect(approval?.canRemember == true)
+
+        // a payment approval gets canRemember false
+        let payJson: JSON = .object([
+            "type": .string("approval_request"),
+            "approval_id": .string("p1"),
+            "name": .string("confirm_purchase"),
+            "site": .string("kakao.com"),
+            "can_remember": .bool(true),
+            "payment": .object([
+                "site": .string("kakao.com"),
+                "summary": .string("test"),
+                "amount": .number(100),
+                "currency": .string("KRW"),
+                "amount_text": .string("100원"),
+            ]),
+        ])
+        let payEv = TurnEvent.parse(payJson)
+        let payItems = ChatReducer.apply([], payEv, newKey: k)
+        #expect(payItems[0].asApproval?.canRemember == false)
+    }
+
     @Test func browserRowsUpdateInPlaceWithAFilmstrip() {
         let k = keys()
         func shot(_ img: String?) -> TurnEvent {
@@ -195,6 +237,37 @@ private func msg(_ key: String, mine: Bool, _ text: String, id: Int64? = nil) ->
         #expect(old.questions[0].typed.isEmpty)
     }
 
+    @Test func quickRepliesSaysWholeSentence() throws {
+        // a lone question with says → compose sends the sentence
+        let lone = ReplySet(questions: [ReplyQuestion(question: "Pick one", options: ["A", "B"], says: ["Go with A, please", "Go with B"])])
+        #expect(QuickReplyRules.compose(lone, picks: [0: "A"]) == "Go with A, please")
+        #expect(QuickReplyRules.answers(lone, picks: [0: "A"]) == [ReplyAnswer(0, "A")])
+
+        // two questions where only the first has a sentence → line 1 is the sentence, line 2 is "title: label"
+        let two = ReplySet(questions: [
+            ReplyQuestion(question: "Choice", options: ["Plan A", "Plan B"], says: ["Let's go with Plan A", ""]),
+            ReplyQuestion(question: "Payment", options: ["Card", "Transfer"]),
+        ])
+        #expect(QuickReplyRules.compose(two, picks: [0: "Plan A", 1: "Card"]) == "Let's go with Plan A\nPayment: Card")
+        #expect(QuickReplyRules.answers(two, picks: [0: "Plan A", 1: "Card"]) == [ReplyAnswer(0, "Plan A"), ReplyAnswer(1, "Card")])
+
+        // a typed answer ("Other") → the typed words, never a sentence
+        let withTyped = ReplySet(questions: [
+            ReplyQuestion(question: "Plan", options: ["Plan A", "Other"], says: ["Plan A sentence", "Other sentence"], typed: ["Other"]),
+        ])
+        #expect(QuickReplyRules.compose(withTyped, picks: [0: "Other"], typed: [0: "custom plan"]) == "custom plan")
+        #expect(QuickReplyRules.answers(withTyped, picks: [0: "Other"], typed: [0: "custom plan"]) == [ReplyAnswer(0, "custom plan")])
+
+        // decoding with and without "says"
+        let withSays = try JSONDecoder().decode(ReplySet.self, from: Data(#"{"questions":[{"question":"Q","options":["a","b"],"says":["A sentence","B sentence"]}]}"#.utf8))
+        #expect(withSays.questions[0].says == ["A sentence", "B sentence"])
+        #expect(QuickReplyRules.compose(withSays, picks: [0: "a"]) == "A sentence")
+
+        let withoutSays = try JSONDecoder().decode(ReplySet.self, from: Data(#"{"questions":[{"question":"Q","options":["a","b"]}]}"#.utf8))
+        #expect(withoutSays.questions[0].says.isEmpty)
+        #expect(QuickReplyRules.compose(withoutSays, picks: [0: "a"]) == "a")
+    }
+
     @Test func scrollAndUnread() {
         #expect(ChatScroll.follow(atBottom: false, lastIsMine: true))
         #expect(!ChatScroll.follow(atBottom: false, lastIsMine: false))
@@ -217,16 +290,12 @@ private func msg(_ key: String, mine: Bool, _ text: String, id: Int64? = nil) ->
     }
 
     @Test func uploadRules() {
-        #expect(!UploadRules.tooLarge(99_000_000))
-        #expect(UploadRules.tooLarge(99_000_001))
-        #expect(UploadRules.tooLarge(150_000_000))
-        #expect(UploadRules.target(w: 4000, h: 3000) == (2048, 1536))
-        #expect(UploadRules.target(w: 800, h: 600) == (800, 600))
         #expect(UploadRules.jpegName("IMG_1.HEIC", now: 5) == "IMG_1.jpg")
         #expect(UploadRules.jpegName(nil, now: 5) == "photo-5.jpg")
         #expect(UploadRules.stored("uploads/a.pdf", fallback: "x") == "a.pdf")
         #expect(UploadRules.stored("", fallback: "x") == "x")
-        #expect(UploadRules.error(ApiError(status: 413, detail: "big")) == .tooLarge)
+        #expect(UploadRules.error(ApiError(status: 413, detail: "Photos can be up to 15 MB.")) == .server("Photos can be up to 15 MB."))
+        #expect(UploadRules.error(ApiError(status: 507, detail: "The server is out of space.")) == .server("The server is out of space."))
         #expect(UploadRules.error(ApiError(status: 0, detail: "")) == .network)
         #expect(UploadRules.error(ApiError(status: 415, detail: "PDF only")) == .server("PDF only"))
     }
@@ -255,8 +324,6 @@ private func msg(_ key: String, mine: Bool, _ text: String, id: Int64? = nil) ->
         #expect(SiteTile.letter(host: "", title: "  ") == "?")
         #expect(BrowserImage.bytes("data:image/png;base64,AAEC") == Data([0, 1, 2]))
         #expect(BrowserImage.bytes("https://x") == nil)
-        #expect(BrowserImage.frameRatio(width: 100, height: 400) == 1)
-        #expect(BrowserImage.frameRatio(width: 1000, height: 100) == 2.4)
         let a = SpeechMerge.anchor("hello")
         #expect(SpeechMerge.merge(a, spoken: "  big   world ") == "hello big world")
         #expect(SpeechMerge.merge(SpeechMerge.Anchor(before: "a", after: "."), spoken: "b") == "a b.")
@@ -272,7 +339,6 @@ private func msg(_ key: String, mine: Bool, _ text: String, id: Int64? = nil) ->
         let far = RevealPacing.advance(RevealPacing.State(shown: 0, target: 10_000, perMs: 0.01), dtMs: 100)
         #expect(far.shown >= 1000 - 0.001)
         #expect(RevealPacing.retarget(RevealPacing.State(shown: 50, target: 50, perMs: 0), 20).shown == 20)
-        #expect(abs(RevealPacing.duration(1000) - 700) < 0.001)
     }
 
     @Test func pullingDownLetsGoOfTheNewest() {

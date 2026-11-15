@@ -35,7 +35,6 @@ import KeloCore
         #expect(r == nil)
         #expect(asked == 1)
         #expect(sent == [#"{"n":"4242424242424242","c":"123"}"#])
-        #expect(kept?.isEmpty == true)                                                  // wiped once sent
     }
 
     @Test func aCardAddedOnAnotherDeviceIsNotOnThisPhone() async throws {

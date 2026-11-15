@@ -11,25 +11,27 @@
 #                    comma separated, default play-aab,sideload-apk
 #   --out DIR        where the files go (default dist/android-reproducible)
 #   --worktree       build the working tree (committed + new files, not ignored ones) instead of the commit HEAD: for trying a change
-#   --from DIR       build a copy of android/kelo that is in DIR (made earlier; for testing that the same folder builds the same)
+#   --from DIR       build a copy of android/kelo that is in DIR (made earlier; for testing that the same folder builds the same).
+#                    The shared/ module is taken from DIR/../../shared (a repository-shaped folder: DIR is <root>/android/kelo)
 #   --update-verification-metadata   maintainers: after changing a dependency, record the checksums of every file the build downloads
 #                    in android/kelo/gradle/verification-metadata.xml (commit it; the normal build refuses any file not listed there)
 #   --sign           sign what was built with android/keystore/keystore.properties: .aab with jarsigner, .apk with apksigner. The
 #                    signature is the only difference to the files anyone else builds (it is left out of every comparison)
 #   --cache DIR      Gradle download cache (default ~/.cache/kelo-repro/gradle); --no-cache uses a throw-away one
 #   --dry-run        print the steps and stop
-# Test knobs: --mount PATH (the folder the source has inside the container, default /build/kelo), KELO_REPRO_WORK (where the
-# source copy is made, default ~/.cache/kelo-repro/work; it must be a place Docker can mount).
+# Test knobs: --mount PATH (where android/kelo is inside the container, default /build/android/kelo; the repository-shaped source
+# copy is mounted two folders up, so ../../shared and ../../version.json resolve), KELO_REPRO_WORK (where the source copy is made,
+# default ~/.cache/kelo-repro/work; it must be a place Docker can mount).
 #
 # Needs Docker (on an Apple Silicon Mac the linux/amd64 image runs emulated: allow a few hours for the first build) and git.
 # Output: <out>/kelo-<versionName>-<flavor>-release-unsigned.{aab,apk} (or ...-signed...), SHA256SUMS and build-info.txt.
 # Nothing in the files or in build-info.txt comes from the clock or the machine: the version is android/kelo/version.properties.
 source "$(dirname "$0")/lib.sh"
 
-usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 TARGETS="play-aab,sideload-apk" OUT="$REPO/dist/android-reproducible" WORKTREE=0 SIGN=0 FROM="" WRITE_VERIFY=0
-CACHE="${KELO_REPRO_CACHE:-$HOME/.cache/kelo-repro/gradle}" NOCACHE=0 MOUNT=/build/kelo
+CACHE="${KELO_REPRO_CACHE:-$HOME/.cache/kelo-repro/gradle}" NOCACHE=0 MOUNT=/build/android/kelo
 while [ $# -gt 0 ]; do
   case "$1" in
     --targets) TARGETS="${2:?--targets needs a list}"; shift ;;
@@ -47,7 +49,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-case "$MOUNT" in /*) ;; *) die "--mount must be an absolute path" ;; esac
+case "$MOUNT" in /*/*/*) ;; *) die "--mount must be an absolute path of at least three folders (the repository root is two levels up)" ;; esac
+ROOT_MOUNT="$(dirname "$(dirname "$MOUNT")")"   # the repository-shaped source copy; android/kelo is $MOUNT, shared/ is $ROOT_MOUNT/shared
 case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
 
 # --- what to build: target -> Gradle task, output file, result name
@@ -77,13 +80,13 @@ IMAGE="kelo-android-repro:$HASH"
 
 log "Kelo Android $VERSION, reproducible build (${TARGETS})"
 note "source: $([ -n "$FROM" ] && echo "the folder $FROM" || { [ "$WORKTREE" = 1 ] && echo 'working tree (uncommitted changes included)' || echo "commit $(git -C "$REPO" rev-parse --short=12 HEAD 2>/dev/null || echo '?') (HEAD)"; })"
-note "image:  $IMAGE (linux/amd64)   source folder in the container: $MOUNT"
-if [ "$WORKTREE" = 0 ] && [ -z "$FROM" ] && [ -n "$(git -C "$REPO" status --porcelain -- android/kelo android/reproducible 2>/dev/null)" ]; then
-  warn "android/kelo or android/reproducible has uncommitted changes: they are NOT in this build (it builds HEAD). Use --worktree to include them."
+note "image:  $IMAGE (linux/amd64)   android/kelo in the container: $MOUNT   (source copy mounted at $ROOT_MOUNT)"
+if [ "$WORKTREE" = 0 ] && [ -z "$FROM" ] && [ -n "$(git -C "$REPO" status --porcelain -- android/kelo android/reproducible shared version.json 2>/dev/null)" ]; then
+  warn "android/kelo, shared, version.json or android/reproducible has uncommitted changes: they are NOT in this build (it builds HEAD). Use --worktree to include them."
 fi
 if [ "$DRY_RUN" = 1 ]; then
   note "[dry-run] docker build --platform linux/amd64 -t $IMAGE $DOCKER_DIR"
-  note "[dry-run] copy the source into a clean folder, then: docker run --rm --platform linux/amd64 -u <you> -v <copy>:$MOUNT -w $MOUNT $IMAGE <task>   (once per task: ${TASKS[*]})"
+  note "[dry-run] copy the source (android/kelo, shared, version.json) into a clean repository-shaped folder, then: docker run --rm --platform linux/amd64 -u <you> -v <copy>:$ROOT_MOUNT -w $MOUNT $IMAGE <task>   (once per task: ${TASKS[*]})"
   note "[dry-run] collect the files into $OUT$([ "$SIGN" = 1 ] && echo ', sign them')"
   exit 0
 fi
@@ -100,33 +103,49 @@ else
     docker build --platform linux/amd64 -t "$IMAGE" "$DOCKER_DIR"
 fi
 
-# --- 2. a clean copy of the source: only files git knows (so local junk, build folders, local.properties and keys cannot get in)
+# --- 2. a clean, repository-shaped copy of the source: only files git knows (so local junk, build folders, local.properties and keys
+# cannot get in): $SRC/android/kelo, $SRC/shared (the module both apps use) and $SRC/version.json (app/build.gradle.kts reads
+# ../../version.json). The container mounts $SRC at $ROOT_MOUNT and builds in $MOUNT, so ../../shared and ../../version.json resolve.
 WORK_BASE="${KELO_REPRO_WORK:-$HOME/.cache/kelo-repro/work}"
 mkdir -p "$WORK_BASE"
 SRC="$(mktemp -d "$WORK_BASE/src.XXXXXX")"; _CLEAN_PATHS+=("$SRC")
-mkdir -p "$SRC/kelo"
+mkdir -p "$SRC/android/kelo" "$SRC/shared"
+RSYNC_SKIP=(--exclude build --exclude .gradle --exclude .kotlin --exclude local.properties)
 if [ -n "$FROM" ]; then
   [ -f "$FROM/gradlew" ] || die "--from $FROM has no gradlew"
-  rsync -a --exclude build --exclude .gradle --exclude .kotlin --exclude local.properties "$FROM/" "$SRC/kelo/"
+  [ -f "$FROM/../../shared/settings.gradle.kts" ] || die "--from $FROM needs the shared/ module two folders up ($FROM/../../shared): give the android/kelo folder of a repository-shaped copy"
+  rsync -a "${RSYNC_SKIP[@]}" "$FROM/" "$SRC/android/kelo/"
+  rsync -a "${RSYNC_SKIP[@]}" "$FROM/../../shared/" "$SRC/shared/"
 elif [ "$WORKTREE" = 1 ]; then
-  (cd "$ANDROID_SRC" && git ls-files -z -co --exclude-standard -- . ':!screens') | (cd "$ANDROID_SRC" && rsync -a --from0 --files-from=- ./ "$SRC/kelo/")
+  (cd "$ANDROID_SRC" && git ls-files -z -co --exclude-standard -- . ':!screens') | (cd "$ANDROID_SRC" && rsync -a --from0 --files-from=- ./ "$SRC/android/kelo/")
+  (cd "$REPO/shared" && git ls-files -z -co --exclude-standard -- .) | (cd "$REPO/shared" && rsync -a --from0 --files-from=- ./ "$SRC/shared/")
 else
-  git -C "$REPO" archive --format=tar "HEAD:android/kelo" | tar -x -C "$SRC/kelo"
-  rm -rf "$SRC/kelo/screens"
+  git -C "$REPO" archive --format=tar "HEAD:android/kelo" | tar -x -C "$SRC/android/kelo"
+  rm -rf "$SRC/android/kelo/screens"
+  git -C "$REPO" archive --format=tar "HEAD:shared" | tar -x -C "$SRC/shared"
 fi
-[ -f "$SRC/kelo/gradlew" ] || die "the source copy has no gradlew (is android/kelo committed?)"
-# the app's version comes from the repository's root version.json (app/build.gradle.kts reads ../../version.json): it goes along,
-# from the same source as the rest (HEAD, or the working tree / the repository for --worktree and --from)
+[ -f "$SRC/android/kelo/gradlew" ] || die "the source copy has no gradlew (is android/kelo committed?)"
+[ -f "$SRC/shared/settings.gradle.kts" ] || die "the source copy has no shared/settings.gradle.kts (is shared/ committed?)"
+# the app's version comes from the repository's root version.json: it goes along, from the same source as the rest (HEAD, or the
+# working tree / the repository for --worktree and --from)
 if [ "$WORKTREE" = 0 ] && [ -z "$FROM" ]; then
   git -C "$REPO" show HEAD:version.json > "$SRC/version.json" || die "version.json is not committed at the repository root"
 else
   cp "$REPO/version.json" "$SRC/version.json"
 fi
-_up="$(dirname "$(dirname "$MOUNT")")"; VERSION_JSON_MOUNT="${_up%/}/version.json"   # ../../version.json seen from $MOUNT
-[ "$(sed -n 's/^build=//p' "$SRC/kelo/version.properties")" = "$BUILD_NO" ] || die "version.properties in the source copy differs from $BUILD_NO (commit it, or use --worktree)"
-[ -f "$SRC/kelo/app/google-services.json" ] || warn "android/kelo/app/google-services.json is not in the source: this build has NO push notifications (and will not match the owner's)"
+[ "$(sed -n 's/^build=//p' "$SRC/android/kelo/version.properties")" = "$BUILD_NO" ] || die "version.properties in the source copy differs from $BUILD_NO (commit it, or use --worktree)"
+[ -f "$SRC/android/kelo/app/google-services.json" ] || warn "android/kelo/app/google-services.json is not in the source: this build has NO push notifications (and will not match the owner's)"
 
 # --- 3. the build
+# The commit the source came from goes INTO the container build (the copy has no .git), as Gradle properties through the environment
+# (ORG_GRADLE_PROJECT_<name> = -P<name>; the image stays the same): the version line in My links to that commit. The same commit
+# gives the same bytes. A build of the working tree says "modified" (no link); a --from folder has no commit to name.
+if [ -n "$FROM" ]; then SRC_COMMIT="" SRC_DIRTY=false
+else
+  SRC_COMMIT="$(git -C "$REPO" rev-parse HEAD)"
+  case "$SRC_COMMIT" in *[!0-9a-f]*|"") die "could not read the commit of HEAD" ;; esac
+  SRC_DIRTY=$([ "$WORKTREE" = 1 ] && echo true || echo false)
+fi
 if [ "$NOCACHE" = 1 ]; then CACHE="$(mktemp -d "$WORK_BASE/gradle.XXXXXX")"; _CLEAN_PATHS+=("$CACHE"); fi
 mkdir -p "$CACHE"
 # One container (a fresh Gradle JVM) per target: the result of one target can then never depend on what another target did in the same
@@ -134,11 +153,12 @@ mkdir -p "$CACHE"
 for task in "${TASKS[@]}"; do
   step "gradle $task in the container" "${KELO_GRADLE_TIMEOUT:-14400}" "$LOGS/android-repro-$task.log" \
     docker run --rm --memory="${KELO_REPRO_MEMORY:-6g}" --memory-swap="${KELO_REPRO_MEMORY:-6g}" --platform linux/amd64 -u "$(id -u):$(id -g)" \
-      -v "$SRC/kelo:$MOUNT" -v "$SRC/version.json:$VERSION_JSON_MOUNT:ro" -w "$MOUNT" -v "$CACHE:/gradle-home" -e GRADLE_USER_HOME=/gradle-home \
-      -e KELO_WRITE_VERIFICATION="$WRITE_VERIFY" "$IMAGE" "$task"
+      -v "$SRC:$ROOT_MOUNT" -w "$MOUNT" -v "$CACHE:/gradle-home" -e GRADLE_USER_HOME=/gradle-home \
+      -e KELO_WRITE_VERIFICATION="$WRITE_VERIFY" -e ORG_GRADLE_PROJECT_keloCommit="$SRC_COMMIT" -e ORG_GRADLE_PROJECT_keloDirty="$SRC_DIRTY" \
+      "$IMAGE" "$task"
 done
 if [ "$WRITE_VERIFY" = 1 ]; then
-  cp "$SRC/kelo/gradle/verification-metadata.xml" "$ANDROID_SRC/gradle/verification-metadata.xml"
+  cp "$SRC/android/kelo/gradle/verification-metadata.xml" "$ANDROID_SRC/gradle/verification-metadata.xml"
   log "wrote android/kelo/gradle/verification-metadata.xml ($(grep -c '<component ' "$ANDROID_SRC/gradle/verification-metadata.xml") components): review and commit it"
   exit 0
 fi
@@ -149,8 +169,8 @@ rm -f "$OUT"/kelo-*-release-*.aab "$OUT"/kelo-*-release-*.apk "$OUT/SHA256SUMS" 
 RESULTS=()
 for w in "${WANT[@]}"; do
   flavor="${w%%:*}" ext="${w##*:}"
-  if [ "$ext" = aab ]; then built="$SRC/kelo/app/build/outputs/bundle/${flavor}Release/app-${flavor}-release.aab"
-  else built="$SRC/kelo/app/build/outputs/apk/$flavor/release/app-$flavor-release-unsigned.apk"; fi
+  if [ "$ext" = aab ]; then built="$SRC/android/kelo/app/build/outputs/bundle/${flavor}Release/app-${flavor}-release.aab"
+  else built="$SRC/android/kelo/app/build/outputs/apk/$flavor/release/app-$flavor-release-unsigned.apk"; fi
   [ -f "$built" ] || die "Gradle finished but $built is missing (logs: $LOGS/android-repro-*.log)"
   target="$OUT/kelo-$VERSION-$BUILD_NO-$flavor-release-unsigned.$ext"
   cp "$built" "$target"; RESULTS+=("$target")
@@ -206,7 +226,7 @@ if [ "$SIGN" = 1 ]; then
   RESULTS=("${RESULTS[@]}" "${NEW[@]}")
 fi
 
-( cd "$OUT" && shasum -a 256 kelo-*-release-*.aab kelo-*-release-*.apk 2>/dev/null | sort -k2 >SHA256SUMS )
+( cd "$OUT" && shopt -s nullglob && shasum -a 256 kelo-*-release-*.aab kelo-*-release-*.apk 2>/dev/null | sort -k2 >SHA256SUMS )
 {
   echo "version: $VERSION (versionCode $BUILD_NO)"
   echo "source commit: $(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)$([ "$WORKTREE" = 1 ] && echo ' + uncommitted changes')"

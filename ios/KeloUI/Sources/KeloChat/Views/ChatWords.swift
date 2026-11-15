@@ -20,7 +20,6 @@ enum ChatWords {
         case .message(let t): t
         case .pickModel(let d): L(R.string.chat_error_pick_model, d)
         case .network: L(R.string.chat_error_network)
-        case .tooLarge: L(R.string.chat_upload_too_large)
         case .unsupported(let n): L(R.string.share_unsupported, n)
         case .shareFailed: L(R.string.share_failed)
         case .cameraDenied: L(R.string.chat_camera_denied)
@@ -99,25 +98,25 @@ enum ChatWords {
     }
 
     /// The one line under a model's name: its traits, or "글로 대화" when nothing is known.
-    static func blurb(_ id: String, facts: ModelFacts?) -> String {
+    static func blurb(_ id: String, facts: ModelEffort?) -> String {
         let traits = ModelTraits.of(id, facts: facts)
         return traits.isEmpty ? L(R.string.model_trait_plain) : traits.map(trait).joined(separator: L(R.string.model_trait_separator))
     }
 
     /// The chip's words: "<model> <thinking level>", the level only when this provider takes one. Main model only.
-    static func chip(_ profile: Profile?, providers: [ChatProvider], list: ChatModelList?) -> String {
+    static func chip(_ profile: Profile?, providers: [ModelProvider], list: ModelList?) -> String {
         guard let profile, !profile.model.isEmpty else { return L(R.string.chat_model_none) }
         let label = list?.provider == profile.provider ? list?.labels[profile.model] : nil
         let name = ModelNames.short(ModelNames.display(profile.model, label: label))
         let facts = list?.provider == profile.provider ? list?.info[profile.model] : nil
-        if case .levels(let levels) = ModelChooserRules.effort(providers.first { $0.name == profile.provider }, facts: facts) {
-            return L(R.string.chat_model_chip, name, effort(ModelChooserRules.shownLevel(levels, profile.effort)))
+        if case .levels(let levels) = EffortRules.effort(providers.first { $0.name == profile.provider }, facts: facts) {
+            return L(R.string.chat_model_chip, name, effort(EffortRules.shownLevel(levels, profile.effort)))
         }
         return name
     }
 
     /// A provider as people know it, never its raw id.
-    static func provider(_ id: String, providers: [ChatProvider]) -> String {
+    static func provider(_ id: String, providers: [ModelProvider]) -> String {
         switch ProviderConsentRules.service(id) {
         case .claudeSubscription: return L(R.string.consent_service_claude)
         case .chatgptSubscription: return L(R.string.consent_service_chatgpt)
@@ -176,7 +175,7 @@ enum ChatWords {
     static func attachError(_ e: AttachError?) -> String {
         switch e {
         case .server(let t): t
-        case .tooLarge: L(R.string.chat_upload_too_large)
+        case .tooLarge(let limit): L(R.string.upload_too_large_limit, UploadSizeText.of(limit))
         case .network: L(R.string.attach_error_network)
         case .unreadable, nil: L(R.string.attach_error_unreadable)
         }

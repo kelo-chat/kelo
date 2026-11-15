@@ -5,7 +5,6 @@ import KeloShared
 /// sideways when wide), code blocks (scroll sideways, monospaced), rules; links open in the browser. Never HTML.
 struct MarkdownView: View {
     let blocks: [Markdown.Block]
-    @Environment(\.kelo) private var c
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -116,8 +115,7 @@ enum MarkdownInline {
                 out += a
             case .code(let t):
                 var a = AttributedString(t)
-                a.font = .system(.footnote, design: .monospaced)
-                a.backgroundColor = c.line.opacity(0.6)
+                a.font = .system(.footnote, design: .monospaced)   // no box behind inline code (as Android, owner 2026-11-12)
                 out += a
             case .link(let t, let url):
                 var a = AttributedString(t)

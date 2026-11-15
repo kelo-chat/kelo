@@ -87,6 +87,13 @@ def _fold(text: str) -> tuple[str, list[int]]:
     return "".join(out), where
 
 
+def simplify(text: str) -> str:
+    """`text` for matching words in it, whatever the look-alikes: invisible characters dropped, NFKC, look-alike letters to Latin, lower
+    case. (Unlike `_fold` it keeps Hangul whole.)"""
+    kept = "".join(ch for ch in text if ord(ch) not in _INVISIBLE and unicodedata.category(ch) != "Cf")
+    return unicodedata.normalize("NFKC", kept).translate(_CONFUSABLE).lower()
+
+
 def _spaced(word: str) -> str:
     """A pattern for `word` whose letters may be spaced out or joined by separators ("u n t r u s t e d", "un-trusted")."""
     return r"[\s_.\-*·•]{0,3}".join(re.escape(c) for c in word)

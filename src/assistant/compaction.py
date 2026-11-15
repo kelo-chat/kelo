@@ -197,10 +197,11 @@ class Compactor:
 
     def _head(self, before_id: int | None, capped: bool) -> tuple[list[dict[str, Any]], int]:
         """(the head as it goes in, the id of its last message). Shortened to HEAD_TOKENS once the conversation is compacted."""
-        rows = self.store.first_messages(HEAD_MESSAGES, before_id=before_id)
+        since = self.store.session_start() if hasattr(self.store, "session_start") else 0   # /new: the conversation starts after it
+        rows = self.store.first_messages(HEAD_MESSAGES, before_id=before_id, after_id=since)
         each = HEAD_TOKENS // max(1, len(rows))
         msgs = [{"role": r["role"], "content": clip_tokens(r["content"], each) if capped else r["content"]} for r in rows]
-        return msgs, (rows[-1]["id"] if rows else 0)
+        return msgs, (rows[-1]["id"] if rows else since)
 
     def _candidates(self, before_id: int | None) -> tuple[dict[str, Any], int, list[dict[str, Any]]]:
         cur = self.store.conversation_summary()

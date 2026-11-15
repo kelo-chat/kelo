@@ -136,7 +136,8 @@ async def test_revoking_stops_it_at_once(in_turn):
 async def test_the_tool_asks_once_and_refuses_payments(in_turn):
     page, sess, grants, _, _ = await setup()
     tool = task_permission_tools(grants, sess.current_host, lambda: 7)[0]
-    assert tool.requires_approval and tool.auto_approve is None               # always a card
+    assert tool.requires_approval
+    assert await tool.auto_approve({"site": "musinsa.com", "kind": "apply", "action": "체험단 신청", "max_count": 30}) is False   # no request: a card
     ok = {"site": "musinsa.com", "kind": "apply", "action": "체험단 신청", "max_count": 30}
     assert tool.validate(ok) is None
     assert "confirm_purchase" in tool.validate({**ok, "kind": "pay"})
@@ -151,6 +152,18 @@ async def test_the_tool_asks_once_and_refuses_payments(in_turn):
         current_approval.reset(tok)
     assert "ALLOWED" in out and grants.active()[0]["task_id"] == 7
     assert "30" in await tool.describe(ok)
+
+
+async def test_no_card_when_the_owners_own_words_already_ask_for_it(in_turn):
+    # 2026-11-11: "카카오체험단 … 전체보기 … 다 신청해", then the job asked "471개 모두 … 진행할까요?" once more
+    page, sess, grants, _, _ = await setup()
+    said = ["카카오체험단 처음 체험단 페이지에서 맨 아래 내리면 전체보기있어. 최신등록순으로 다 신청해"]
+    tool = task_permission_tools(grants, sess.current_host, lambda: 7, owner_request=lambda: said[0])[0]
+    ok = {"site": "musinsa.com", "kind": "apply", "action": "체험단 신청", "max_count": 471, "all": True, "targets": ["a"] * 471}
+    assert await tool.auto_approve(ok) is True
+    assert await tool.auto_approve({**ok, "kind": "delete"}) is False          # not what they asked for: a card
+    said[0] = "체험단 목록 좀 보여줘"                                              # only looking: a card
+    assert await tool.auto_approve(ok) is False
 
 
 def test_the_card_asks_a_whole_question_with_the_plan():

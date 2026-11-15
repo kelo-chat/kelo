@@ -8,23 +8,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotifyGroupsTest {
-    @Test fun `each channel bundles on its own`() {
-        val groups = Channel.entries.map(NotifyRules::group)
-        assertEquals(groups.size, groups.toSet().size)
-        assertEquals("kelo.approvals", NotifyRules.group(Channel.APPROVALS))
+    @Test fun `every notification is in one bundle that opens the chat`() {
+        assertEquals("kelo", NotifyRules.GROUP)
+        assertEquals(OpenTarget.Chat, NotifyRules.SUMMARY_TARGET)
+        assertNotEquals(NotifyRules.idFor("task_done", "1"), NotifyRules.SUMMARY_ID)
     }
 
-    @Test fun `a bundle opens its own list`() {
-        assertEquals(OpenTarget.Activity, NotifyRules.summaryTarget(Channel.REPLIES))
-        assertEquals(OpenTarget.Chat, NotifyRules.summaryTarget(Channel.APPROVALS))   // every waiting approval is in the chat
-        assertEquals(OpenTarget.Wallet, NotifyRules.summaryTarget(Channel.PAYMENTS))
-        assertEquals(OpenTarget.Schedules, NotifyRules.summaryTarget(Channel.SCHEDULES))
+    @Test fun `only news is taken down when the app opens`() {
+        assertTrue(NotifyRules.isNews(Channel.REPLIES))
+        assertTrue(NotifyRules.isNews(Channel.SCHEDULES))
+        assertTrue(NotifyRules.isNews(Channel.PAYMENTS))
+        assertFalse(NotifyRules.isNews(Channel.APPROVALS))
+        assertFalse(NotifyRules.isNews(Channel.URGENT))
+        assertFalse(NotifyRules.isNews(Channel.WORKING))
     }
 
-    @Test fun `summary ids differ from each other and from notification ids`() {
-        val ids = Channel.entries.map(NotifyRules::summaryId)
-        assertEquals(ids.size, ids.toSet().size)
-        assertNotEquals(NotifyRules.idFor("task_done", "replies"), NotifyRules.summaryId(Channel.REPLIES))
+    @Test fun `a posted channel id maps back to its channel`() {
+        Channel.entries.forEach { assertEquals(it, NotifyRules.channelOfId(it.id)) }
+        assertNull(NotifyRules.channelOfId("replies"))   // a retired id
+        assertNull(NotifyRules.channelOfId(null))
     }
 
     @Test fun `new targets survive the intent`() {

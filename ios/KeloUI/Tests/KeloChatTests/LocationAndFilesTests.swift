@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 @testable import KeloChat
 
@@ -17,7 +18,7 @@ struct LocationAndFilesTests {
     @Test func theLocationCardComesWaitsAndEnds() {
         let key = keys()
         let waiting = ev(#"{"type":"location_request","approval_id":"a1","state":"waiting","reason":"To find parking near you","settings":true,"expires_at":99}"#)
-        #expect(waiting == .locationRequest(.init(approvalId: "a1", state: "waiting", reason: "To find parking near you", settings: true, expiresAt: 99)))
+        #expect(waiting == .locationRequest(.init(approvalId: "a1", state: "waiting", reason: "To find parking near you", settings: true)))
         var items = ChatReducer.apply([.msg(.init(key: "u", mine: true, text: "주차장 찾아줘"))], waiting, newKey: key)
         let card = ask(items)
         #expect(card?.open == true && card?.settings == true && card?.reason == "To find parking near you")
@@ -45,6 +46,8 @@ struct LocationAndFilesTests {
         #expect(LocationAskRules.onShare(granted: false, settings: false, blocked: false) == .askSystem)
         #expect(LocationAskRules.onShare(granted: false, settings: true, blocked: false) == .openSettings)
         #expect(LocationAskRules.onShare(granted: false, settings: false, blocked: true) == .openSettings)
+        #expect(LocationAskRules.onShare(granted: true, settings: false, blocked: false, servicesOn: false) == .servicesOff)
+        #expect(LocationAskRules.onShare(granted: false, settings: true, blocked: true, servicesOn: false) == .servicesOff)
         #expect(LocationAskRules.endLine(ChatItem.LocationAsk.waiting) == nil)
         #expect(LocationAskRules.endLine(ChatItem.LocationAsk.sending) == nil)
         #expect(LocationAskRules.endLine("allowed") == R.string.location_ask_shared)

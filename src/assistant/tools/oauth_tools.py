@@ -83,6 +83,9 @@ def oauth_tools(table: Callable[[], dict[str, dict[str, Any]]], flows: DeviceFlo
             return f"error: {sid!r} cannot be connected in this app right now."
         tools_hint = "connector_get / connector_send" + (" (or mcp_list_tools / mcp_call_tool)" if k.endpoint else "")
         use = f"Use {tools_hint} with name={item!r}. {k.api}"
+        if k.local:   # an app on the owner's network: they type its address in the card; the url is a path on it
+            use += (" It is an app on the user's own network: give url as a path on it (for example '/api/...'); the server adds the address "
+                    "the user typed. The user types that address in the card.")
         return (f"{k.name} is already connected as {item!r}. {use}" if w["connected"] else f"{card} The user creates a key on {k.name} and enters it. {use}") + origin
 
     return [Tool("connect_service", "Ask the user to connect one of their services from the app's Connectors list so you can use it (also when "

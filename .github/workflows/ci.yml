@@ -11,8 +11,30 @@
 name: ci
 
 on:
+  # main only, and not for changes that no job here tests (owner, 2026-11-11: the private repo's Actions minutes)
   push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "ios/**"
+      - "site/**"
+      - "desktop/screens/**"
+      - "desktop/store/**"
+      - "desktop/packaging/**"
+      - ".github/workflows/desktop-windows.yml"
+      - ".github/workflows/release-*.yml"
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "ios/**"
+      - "site/**"
+      - "desktop/screens/**"
+      - "desktop/store/**"
+      - "desktop/packaging/**"
+      - ".github/workflows/desktop-windows.yml"
+      - ".github/workflows/release-*.yml"
   workflow_dispatch:
 
 permissions:
@@ -88,6 +110,10 @@ jobs:
         working-directory: .
         run: python3 android/tools/strings_check.py
 
+      - name: iPhone version file matches version.json
+        working-directory: .
+        run: python3 ios/tools/gen_version.py --check
+
       - name: Unit tests (full debug)
         run: ./gradlew --no-daemon --console=plain :app:testFullDebugUnitTest
 
@@ -98,6 +124,8 @@ jobs:
           path: |
             android/kelo/app/build/reports/tests
             android/kelo/app/build/test-results
+            shared/build/reports/tests
+            shared/build/test-results
           if-no-files-found: ignore
 
   desktop:
@@ -123,11 +151,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Text in step with the Android strings
-        run: |
-          python3 tools/sync_strings.py
-          git diff --exit-code -- src/main/resources/i18n src/generated || (echo "run: python3 desktop/tools/sync_strings.py and commit" && exit 1)
-
       # the tests draw with Skia off screen (java.awt.headless); fonts so Korean and other scripts measure like on a desktop
       - name: Fonts
         run: sudo apt-get update -q && sudo apt-get install -y -q fonts-noto-cjk fonts-noto-core
@@ -142,6 +165,8 @@ jobs:
           path: |
             desktop/build/reports/tests/test
             desktop/build/test-results/test
+            shared/build/reports/tests
+            shared/build/test-results
             desktop/build/parity
             desktop/build/mock-server
           if-no-files-found: ignore

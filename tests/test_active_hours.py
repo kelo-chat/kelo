@@ -105,7 +105,7 @@ async def test_a_night_owl_gets_a_suggestion_and_keep_current_holds_it_for_14_da
     store, clock, p = setup(tmp_path)
     night_owl(store, clock.t, 5)
     assert p.check_hours() is None                                    # 5 days: not enough
-    night_owl(store, clock.t, 10)
+    night_owl(store, clock.t, 14)
     assert p.check_hours() is None                                    # already looked today
     sug = p.check_hours(force=True)
     assert sug["wake_start"] == "10:00" and sug["wake_end"] == "01:00" and sug["current_start"] == "07:00" and sug["active_days"] >= 7   # weekdays only
@@ -113,10 +113,10 @@ async def test_a_night_owl_gets_a_suggestion_and_keep_current_holds_it_for_14_da
     p.answer_hours(sug["id"], accept=False)
     assert p.public()["hours_suggestion"] is None and p.config()["hours_source"] == "default"
     clock.t += 13 * 86400
-    night_owl(store, clock.t, 10)
+    night_owl(store, clock.t, 14)
     assert await p.tick() is None and p.hours_suggestion() is None    # within 14 days of "keep current"
     clock.t += 2 * 86400
-    night_owl(store, clock.t, 10)
+    night_owl(store, clock.t, 14)
     await p.tick()
     again = p.hours_suggestion()
     assert again and again["id"] != sug["id"]
@@ -132,14 +132,14 @@ async def test_a_night_owl_gets_a_suggestion_and_keep_current_holds_it_for_14_da
 
 def test_a_small_difference_is_not_worth_asking(tmp_path):
     store, clock, p = setup(tmp_path)
-    night_owl(store, clock.t, 10, "07:30", "22:30")
+    night_owl(store, clock.t, 14, "07:30", "22:30")
     assert p.check_hours(force=True) is None
 
 
 def test_auto_adjust_applies_it_without_asking(tmp_path):
     store, clock, p = setup(tmp_path)
     p.update(auto_hours=True)
-    night_owl(store, clock.t, 10)
+    night_owl(store, clock.t, 14)
     assert p.check_hours(force=True) is None
     cfg = p.config()
     assert (cfg["wake_start"], cfg["wake_end"], cfg["hours_source"]) == ("10:00", "01:00", "learned")
@@ -191,7 +191,7 @@ async def test_accept_and_keep_over_http(tmp_path):
 
 def test_changing_the_hours_by_hand_updates_or_closes_the_open_suggestion(tmp_path):
     store, clock, p = setup(tmp_path)
-    night_owl(store, clock.t, 10)
+    night_owl(store, clock.t, 14)
     sug = p.check_hours(force=True)
     p.update(wake_start="08:00")                                      # still far from 10:00–01:00: the row shows the new current hours
     got = p.hours_suggestion()

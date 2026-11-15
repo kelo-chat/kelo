@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 import re
 from collections.abc import AsyncIterator, Callable
@@ -12,16 +14,26 @@ from urllib.parse import urlsplit
 import httpx
 
 from . import cli_agents, cli_remote, oauth, refused, vertex_auth
-from .registry import KEYLESS_OK, Provider, get_provider
+from .registry import KEYLESS_OK, USER_ENDPOINT_PREFIX, Provider, get_provider
 from .transports import anthropic_messages, bedrock_converse, openai_chat, responses
-from .types import ChatRequest, Event, ProviderError, ProviderStalled, UnsupportedProvider, late_notes_as_user
+from .types import ChatRequest, Event, ProviderError, ProviderStalled, UnsupportedProvider, Usage, late_notes_as_user
 
 _TRANSPORTS = {
     "chat_completions": openai_chat.stream,
     "anthropic_messages": anthropic_messages.stream,
     "codex_responses": responses.stream,
+    "responses": responses.stream,
 }
+log = logging.getLogger(__name__)
+
 ANTHROPIC_VERSION = "2023-06-01"
+# Gemini's own "the tool call you wrote could not be parsed" (MALFORMED_FUNCTION_CALL), as agy reports it: worth one more ask
+MALFORMED_CALL = re.compile(r"improperly formatted function call|MALFORMED_FUNCTION_CALL", re.I)
+MALFORMED_RETRIES = 2
+# Gemini out of capacity for a moment ("Our servers are experiencing high traffic right now, please try again in a minute",
+# UNAVAILABLE 503 "No capacity available for model"): a job of 123 steps failed on one such answer (2026-11-11). Waited out a few times.
+BUSY_CALL = re.compile(r"high traffic|No capacity available|UNAVAILABLE \(code 503\)|try again in a minute", re.I)
+BUSY_WAITS = (20.0, 40.0, 60.0)
 
 # The stall guard: a request is given up when NOTHING arrives from the provider for this long (no answer, no reasoning delta, not
 # even an SSE keep-alive comment). Streamed reasoning counts, so a model that thinks for many minutes while it streams is never cut;
@@ -126,11 +138,34 @@ async def stream_chat(
         # The CLI owns auth and the wire. In Docker it runs in a sidecar container (cli_remote).
         if prov.name == cli_agents.AGY:   # agy shows the model only the start of a long system prompt: hand it over in two parts
             request = replace(request, messages=cli_agents.fit_agy_rules(list(request.messages)))
-        source = (cli_remote.stream(prov.name, request) if cli_remote.remote_url(prov.name)
-                  else cli_agents.stream(prov.name, request))
-        async for event in source:
-            yield event
-        return
+        malformed = busy = 0
+        while True:
+            source = (cli_remote.stream(prov.name, request) if cli_remote.remote_url(prov.name)
+                      else cli_agents.stream(prov.name, request))
+            shown = False
+            try:
+                async for event in source:
+                    if not isinstance(event, Usage):
+                        shown = True
+                    yield event
+                return
+            except ProviderError as e:
+                # Gemini (agy) now and then writes a tool call it cannot parse and gives up with "improperly formatted function
+                # call ... Retries remaining". Nothing reached the reply yet: the same call is simply asked again (2026-11-11: a job
+                # applying to 471 items failed twice on it). Any other error, or one after output, goes on as before.
+                if shown:
+                    raise
+                if MALFORMED_CALL.search(str(e)) and malformed < MALFORMED_RETRIES:
+                    malformed += 1
+                    log.info("%s: malformed function call, asking again (%d/%d)", prov.name, malformed, MALFORMED_RETRIES)
+                    continue
+                if BUSY_CALL.search(str(e)) and busy < len(BUSY_WAITS):
+                    wait = BUSY_WAITS[busy]
+                    busy += 1
+                    log.info("%s: the model is busy, asking again in %.0f s (%d/%d)", prov.name, wait, busy, len(BUSY_WAITS))
+                    await asyncio.sleep(wait)
+                    continue
+                raise
 
     if prov.transport == "bedrock_converse":
         # boto3 handles credentials and signing; no HTTP client involved.
@@ -154,7 +189,7 @@ async def stream_chat(
                 request = _codex_request(request)
         else:
             key = prov.resolve_api_key(api_key, env)
-            if key is None and prov.api_key_envs and prov.name not in KEYLESS_OK:
+            if key is None and prov.api_key_envs and prov.name not in KEYLESS_OK and not prov.name.startswith(USER_ENDPOINT_PREFIX):
                 raise ProviderError(f"{prov.name}: no API key (set one of {', '.join(prov.api_key_envs)})")
             url = prov.resolve_base_url(base_url, env)
         if not url:

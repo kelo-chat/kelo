@@ -1,5 +1,8 @@
 package chat.kelo.desktop
 
+import chat.kelo.desktop.chat.DesktopChat
+import chat.kelo.app.chat.ChatViewModel
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -11,7 +14,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.chat.ChatItem
-import chat.kelo.desktop.chat.ChatModel
 import chat.kelo.desktop.ui.KeloFrame
 import chat.kelo.desktop.ui.Page
 import chat.kelo.desktop.ui.Shell
@@ -46,13 +48,14 @@ class ComposerShotsTest {
     private fun flow(lang: String, wide: Boolean) {
         val m = MockServer("--lang", lang, "--form", "--reactions").also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
-        val chat = ChatModel(app)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             KeloFrame(app) {
                 Box(Modifier.size(if (wide) 1024.dp else 480.dp, 760.dp)) {
-                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {})
+                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side)
                 }
             }
         }

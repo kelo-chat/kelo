@@ -104,6 +104,12 @@ class Mailboxes:
         b, name = self._pick(account)
         return await b.list(name, folder, query, limit, unread, skip_bulk=skip_bulk)
 
+    async def arrivals(self, account: str, cursor: dict[str, Any] | None, kind: str = "inbox") -> dict[str, Any] | None:
+        """Everything that came in after `cursor` in one mailbox (see Mail.arrivals / GraphMail.arrivals), oldest first, with the new
+        cursor; None when this kind (spam folder, promotions) does not exist there."""
+        b, name = self._pick(account)
+        return await b.arrivals(name, cursor, kind)
+
     async def read(self, account: str, uid: str, folder: str = "INBOX") -> dict[str, Any]:
         b, name = self._pick(account)
         return await b.read(name, uid, folder)

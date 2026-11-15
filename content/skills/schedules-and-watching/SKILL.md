@@ -1,6 +1,6 @@
 ---
 name: Schedules and watching
-description: Reminders, recurring jobs, watching a page until something happens, and "when X happens, do Y" tasks with one approval at setup.
+description: Reminders, recurring jobs, watching a page, and "when X happens, do Y" tasks.
 ---
 
 # Schedules and watching
@@ -14,9 +14,10 @@ description: Reminders, recurring jobs, watching a page until something happens,
 
 ## "When X happens, do Y"
 - Every such request follows one process, whatever runs it: set it up, then one `task_allow` card at setup that names the trigger in plain words, exactly what will be done, the site / recipients / card and the limits (for a purchase: the most per time, how many times — 1 for a one-shot — and the card; for a message: the recipients and the wording, with {braces} for what may vary; for a change: what may change and where, and whether deleting is allowed).
-- Pick the mechanism that reacts in time: a watcher when the condition can be seen on a public page (checks every 5 minutes at the most often; leave `once` off so a failed try can fire again — the task ends itself after the allowed count); a schedule with `every_minutes` when seeing it needs a sign-in or browsing (5 for things that sell out, 30–60 for slower ones); a one-time schedule for a set moment ("if it rains tomorrow morning": run_at early that morning). A background job (`delegate`) only for a wait of an hour or two; pass its `job_id` to `task_allow` right after delegating.
+- Pick the mechanism that reacts in time: a watcher when the condition can be seen on a page or a site's own JSON address, also signed in (`signed_in`; checks every 5 minutes at the most often; leave `once` off so a failed try can fire again — the task ends itself after the allowed count); a schedule with `every_minutes` when seeing it needs clicking through pages (5 for things that sell out, 30–60 for slower ones); a one-time schedule for a set moment ("if it rains tomorrow morning": run_at early that morning). A background job (`delegate`) only for a wait of an hour or two; pass its `job_id` to `task_allow` right after delegating.
 - Mark it `urgent` (with `missed`: what is lost if a card is not answered in time) when a late answer means missing it; then a card outside the permission is an urgent notice.
 - When it fires, the run gets what was allowed in its instructions: do exactly that without asking. A one-shot task turns itself off once the allowed count is used, so nothing happens twice.
+- A run blocked for a while (the site is under maintenance, down or sold out right now): `schedule_retry` with the time it should work again (the site's own reopening time when it shows one), then reply exactly NO_REPLY; the retry runs under the same permissions and its report says what happened. A lasting block (a login is gone, the site changed for good): `schedule_pause`. Never make a new schedule for a retry: it would not have the permissions.
 
 ## Watching
 - Waiting for something to change on a page: `watch_add` with the page and the condition, then `watch_dry_run`, and `watch_enable` once the user saw what it finds.

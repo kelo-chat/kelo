@@ -22,7 +22,7 @@
   python3 tools/strings_sync.py dump <lang>
       Prints a locale's current strings as flat JSON (the same shape `build` reads), "en" for the default.
 
-Paths are relative to android/kelo/app/src/main/res. Run strings_check.py afterwards.
+Paths are relative to shared/strings. Run strings_check.py afterwards.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import strings_res as sr  # noqa: E402
 
-RES = Path(__file__).resolve().parents[1] / "kelo" / "app" / "src" / "main" / "res"
+RES = Path(__file__).resolve().parents[2] / "shared" / "strings"   # the text of all apps (Android format)
 HEADER = "{lang} text for {file} (generated from values/{file} by tools/strings_sync.py; edit freely, keep the names)"
 
 

@@ -13,8 +13,17 @@ What counts as stalled (an "item", one row of the table followups):
             stopped. Either way the step asks for approval again: a payment is never approved by trying again. Several cards of one
             run that ran out make one item. It closes when tried again, dropped, or when the run moved on by itself (the job was
             resumed some other way or is gone; the schedule ran again or was deleted).
+  entry     a fill-in card the agent showed in the chat for a service key or token, a payment card or a payment PIN (not a login: that is
+            the "login" kind) that nobody has filled in yet (secret_requests.py hands it over when it opens). It closes when the card is
+            filled in, cancelled, replaced or expired. Its follow-ups are the same as a login's (timing, waking hours, at most two); its
+            actions are only snooze and drop (the card itself is in the chat and under My → Keychain → Waiting for input).
   reply     a question the agent asked in chat and needs answered to go on. Only when the agent itself calls
             await_reply(topic, deadline?); nothing is guessed from the text.
+  unknown_result
+            an unattended run ended with a step that sends, changes or deletes (done_once.py) whose result is still unknown (a timeout:
+            it may or may not have gone out) and which the run did not check. One follow-up, once, in waking hours: "Kelo did <action>
+            on <target> at <time> but could not confirm it went through; please check". It closes when the record is settled
+            (action_result) or dropped; snooze and drop only.
 Every pass (once a minute, and on GET /api/followups) the items are checked against the real state, so they close by themselves.
 
 Timing (all settings, GET/PUT /api/followups/settings): the first follow-up `first_delay_min` (30) after the stall began, the second
@@ -49,7 +58,7 @@ fails. It is stored in the conversation, and a notification of type "followup" (
 the item's `actions`, under the message whose id is the item's `message_id`.
 
 FOLLOW-UPS API (also next to serialize() in server.py):
-Followup: {"id": int, "kind": login|worker|approval|approval_expired|reply, "title", "detail", "stage": first|second|on_hold (first: no follow-up sent
+Followup: {"id": int, "kind": login|worker|approval|approval_expired|reply|entry|unknown_result, "title", "detail", "stage": first|second|on_hold (first: no follow-up sent
   yet, the first is next; second: the first went out, the second is next; on_hold: both went out, no more), "sent": n, "next_at":
   unix|null (when the next one goes out, after waking hours, snoozes and the deadline; null on hold or suppressed), "began_at",
   "deadline": unix|null, "deadline_sent": bool, "snoozed_until": unix|null, "suppressed": bool, "last_sent_at": unix|null,
@@ -101,8 +110,8 @@ from .providers import ChatRequest, TextDelta
 
 log = logging.getLogger("uvicorn.error")
 
-KINDS = ("login", "worker", "approval", "approval_expired", "reply")
-BLOCKING = ("login", "worker", "approval", "approval_expired")
+KINDS = ("login", "worker", "approval", "approval_expired", "reply", "entry", "unknown_result")
+BLOCKING = ("login", "worker", "approval", "approval_expired", "entry")
 DEFAULTS: dict[str, Any] = {"enabled": True, "first_delay_min": 30, "second_delay_min": 180}
 LIMITS = {"first_delay_min": (5, 1440), "second_delay_min": (5, 2880)}
 DEADLINE_LEAD = 3600.0        # the extra reminder goes out this long before a known deadline
@@ -135,7 +144,14 @@ message only."""
 # what the user can do, per kind, for the model's facts (English, for the model only)
 NEEDED = {"login": "enter the login in the app's keychain sheet (never in chat)", "approval": "allow or deny the step on its card",
           "worker": "give the background job what it waits for, then let it go on", "reply": "answer the question in the chat",
-          "approval_expired": "say whether to try the step again (it will ask for their OK again; nothing is paid without it)"}
+          "approval_expired": "say whether to try the step again (it will ask for their OK again; nothing is paid without it)",
+          "entry": "fill in the card the agent showed in the chat (or open My → Keychain → Waiting for input), or tell the agent to drop it; "
+                   "the value goes straight into the app's card, never into the chat",
+          "unknown_result": "look at the outside themself (the sent folder, the site's history or order page) and tell the agent if it did not go "
+                            "through"}
+# what an entry item waits for, in words (the detail of the item; N_ keys, translated when the follow-up is written)
+ENTRY_WHAT = {"key": N_("a key"), "card": N_("a payment card"), "payment_pin": N_("a payment PIN")}
+ENTRY_WHAT_EN = {"key": "a service key or token", "card": "a payment card", "payment_pin": "a payment PIN"}   # for the model's facts
 
 TEMPLATES = {
     "login": N_("I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it."),
@@ -143,6 +159,8 @@ TEMPLATES = {
     "approval": N_("A step is still waiting for your OK: {what}. You can allow it, deny it, or have me drop it."),
     "reply": N_("I am still waiting for your answer about {topic} before I can go on. Reply when you can, or tell me to drop it."),
     "approval_expired": N_("The request for your OK ({what}) ran out while you were away, so I skipped that step. Shall I try again?"),
+    "entry": N_("I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it."),
+    "unknown_result": N_("Kelo did {action} on {target} at {time} but could not confirm it went through; please check."),
 }
 PAYMENT_NOTE = N_(" Trying again asks for your OK again; nothing is paid without it.")
 DEADLINE_NOTE = N_(" It has to be done by {when}.")
@@ -211,8 +229,10 @@ class Followups:
                  schedule_since: Callable[[int, float], str] | None = None, retry: RetryFn | None = None,
                  user_marks: tuple[str, ...] = (), clock: Callable[[], float] = time.time,
                  live: Callable[[float], bool] = lambda _t: False, next_wake: Callable[[float], float] | None = None,
-                 tone: Callable[[], str] | None = None):
+                 tone: Callable[[], str] | None = None, entries: Any = None, action_state: Callable[[int], str] | None = None):
         self.store, self.home, self.stream_fn, self.model, self.key_args = store, home, stream_fn, model, key_args
+        self.action_state = action_state or (lambda _i: "unknown")   # done_once.ActionLedger.state_of: "unknown" | "done" | "failed" | "gone"
+        self.entries = entries   # the fill-in cards (secret_requests.SecretRequests): an entry item closes when its card is no longer open
         self.tone = tone or (lambda: store.profile().get("tone", ""))   # how Kelo talks to the user (prompt.tone_line)
         self.live = live   # the owner wrote in the chat within the last 30 minutes: awake now, even outside the contact hours
         self.next_wake = next_wake   # the next moment in the contact hours, each day by its own window (weekday / weekend: proactive.py)
@@ -309,6 +329,14 @@ class Followups:
         c = self.store.credential(name)
         return "gone" if not c else "saved" if c.get("secret") else "waiting"
 
+    def _card_deadline(self, card: dict[str, Any]) -> float | None:
+        """The time a card itself says matters (purchase_result: until when cancelling a wrong charge is free or cheaper), if ahead."""
+        try:
+            at = float(card.get("deadline_at") or 0)
+        except (TypeError, ValueError):
+            return None
+        return at if at > self.clock() else None
+
     def _schedule_deadline(self, schedule_id: int | None) -> float | None:
         if not schedule_id:
             return None
@@ -335,6 +363,35 @@ class Followups:
             return int(row["id"])
         return self._add("login", name, label or host, detail=host, extra={"login": name, "site": host}, task_id=task.get("task_id"),
                          worker_id=worker, schedule_id=sched, deadline=dl)
+
+    def entry_requested(self, req: dict[str, Any]) -> int | None:
+        """The agent showed a fill-in card (a key, a payment card, a payment PIN; logins have their own item) and nobody has filled it:
+        a stall like a login. `req` is the secret_requests row (secret_requests.SecretRequests.on_open)."""
+        rid, kind = str(req.get("id") or ""), str(req.get("kind") or "")
+        if not rid or kind not in ENTRY_WHAT:
+            return None
+        row = self._find("entry", rid)
+        if row is not None:
+            return int(row["id"])
+        src = str(req.get("run_source") or "")
+        sched = int(src[9:]) if src.startswith("schedule:") and src[9:].isdigit() else None
+        return self._add("entry", rid, str(req.get("label") or req.get("name") or t(ENTRY_WHAT[kind])),
+                         detail=t(ENTRY_WHAT[kind]),
+                         extra={"entry": kind, "request_id": rid}, task_id=req.get("task_id"), worker_id=str(req.get("worker_id") or ""),
+                         schedule_id=sched)
+
+    def unknown_result(self, info: dict[str, Any]) -> int | None:
+        """An unattended run ended with a step whose result is still unknown (done_once.DoneOnce.run_ended; `info`: id, ts, task_id, source,
+        action (a msgid), target). One item per step, once: the first follow-up goes out in waking hours and there is no second."""
+        rid = str(info.get("id") or "")
+        if not rid or self._find("unknown_result", rid, open_only=False) is not None:
+            return None
+        src = str(info.get("source") or "")
+        sched = int(src[9:]) if src.startswith("schedule:") and src[9:].isdigit() else None
+        action, target, at = str(info.get("action") or ""), str(info.get("target") or ""), float(info.get("ts") or self.clock())
+        return self._add("unknown_result", rid, f"{t(action)} · {target}"[:200], detail=target,
+                         extra={"record_id": int(rid), "action": action, "target": target, "at": at}, task_id=info.get("task_id"),
+                         schedule_id=sched, began_at=self.clock())
 
     def awaiting_reply(self, topic: str, deadline: float | None, task_id: int | None) -> int:
         topic = re.sub(r"\s+", " ", topic).strip()[:200]
@@ -390,6 +447,11 @@ class Followups:
                 if st != "waiting":
                     self._close(fid, "resolved", "login saved" if st == "saved" else "login request closed")
                     continue
+            elif kind == "entry":
+                req = self.entries.get(row["ref"]) if self.entries is not None else None
+                if req is None or req.get("state") != "open":
+                    self._close(fid, "resolved", "the card was filled in" if req and req.get("state") == "saved" else "the card was closed")
+                    continue
             elif kind == "approval":
                 if row["ref"] not in pending:
                     self._close(fid, "resolved", "approval answered or expired")
@@ -408,6 +470,10 @@ class Followups:
                 if (why := self._expired_moved_on(row)):
                     self._close(fid, "resolved", why)
                     continue
+            elif kind == "unknown_result":
+                if (st := self.action_state(int(row["ref"]))) != "unknown":
+                    self._close(fid, "resolved", "the owner's agent checked it" if st in ("done", "failed") else "the record is gone")
+                    continue
             if kind in BLOCKING and last_msg > row["seen_msg"]:
                 self._set(fid, engaged_at=now, seen_msg=last_msg)   # the user is talking to the agent: wait again from here
         for aid, a in pending.items():
@@ -420,7 +486,8 @@ class Followups:
                       extra={"approval_id": aid, "site": a.get("site") or "", "payment": bool(pay), "expires_at": a.get("expires_at"),
                              "urgent": bool(a.get("urgent"))},
                       task_id=a.get("task_id"),
-                      schedule_id=sid, began_at=float(a.get("asked_at") or now), deadline=self._schedule_deadline(sid))
+                      schedule_id=sid, began_at=float(a.get("asked_at") or now),
+                      deadline=self._card_deadline(a) or self._schedule_deadline(sid))
         if self.workers is not None:
             for w in self.workers.list(50, "needs_input"):
                 full = self.workers.get(w["id"]) or w
@@ -486,7 +553,9 @@ class Followups:
     def _regular_at(self, row: dict[str, Any], cfg: dict[str, Any]) -> float | None:
         """When the next follow-up of the ladder (first, second, or the one a snooze asked for) goes out, in waking hours."""
         first, second = cfg["first_delay_min"] * 60, cfg["second_delay_min"] * 60
-        if row["kind"] == "approval_expired":
+        if row["kind"] == "unknown_result" and row["sent"] >= 1:
+            return None                        # said once; never again
+        if row["kind"] in ("approval_expired", "unknown_result"):
             first = 0                          # the user has been away the card's whole wait already: the first one goes out now
         urgent = row["kind"] == "approval" and bool(_extra(row).get("urgent"))
         if urgent:                             # a card of a task marked urgent at setup: one reminder soon, whatever the hour
@@ -598,12 +667,17 @@ class Followups:
             text = t(TEMPLATES["login"], label=extra["login"])
         elif kind == "login":
             text = t(TEMPLATES["login"], label=row["title"])
+        elif kind == "entry":
+            text = t(TEMPLATES["entry"], what=t(ENTRY_WHAT.get(extra.get("entry"), ENTRY_WHAT["key"])), label=row["title"])
         elif kind == "worker":
             text = t(TEMPLATES["worker"], title=row["title"], reason=(row["detail"] or t(NEEDS_YOU)).strip().rstrip(".")[:160])
         elif kind == "approval":
             text = t(TEMPLATES["approval"], what=row["title"])
         elif kind == "approval_expired":
             text = t(TEMPLATES["approval_expired"], what=row["title"]) + (t(PAYMENT_NOTE) if extra.get("payment") else "")
+        elif kind == "unknown_result":
+            text = t(TEMPLATES["unknown_result"], action=t(extra.get("action") or "a change"), target=extra.get("target") or "?",
+                     time=self._when(float(extra.get("at") or row["began_at"])))
         else:
             text = t(TEMPLATES["reply"], topic=row["title"])
         if deadline and row["deadline"]:
@@ -637,9 +711,15 @@ class Followups:
             lines.append(f"The background job waits for: {extra['waiting_for']}" + (f" (login {extra['login']})" if extra.get("login") else ""))
         if extra.get("payment"):
             lines.append("It is a payment.")
+        if row["kind"] == "entry":
+            lines.append(f"The agent asked for {ENTRY_WHAT_EN.get(extra.get('entry'), 'a value')} with a fill-in card in the chat and nobody "
+                         "has filled it in yet.")
         if row["kind"] == "approval_expired":
             lines.append(f"The request for the user's OK ran out unanswered at {self._when(float(extra.get('expired_at') or row['began_at']))}"
                          ", so that step was skipped. Ask whether to try again.")
+        if row["kind"] == "unknown_result":
+            lines.append(f"At {self._when(float(extra.get('at') or row['began_at']))} Kelo did this in an automatic run; the answer never came "
+                         "back, so it may or may not have gone through. Say it plainly and ask the user to check. This is the only reminder.")
         lines.append(f"What the user needs to do: {NEEDED.get(row['kind'], 'act on it')}")
         lines.append(f"Waiting since: {self._when(row['began_at'])}")
         if row["deadline"]:
@@ -685,7 +765,7 @@ class Followups:
     def public(self, row: dict[str, Any]) -> dict[str, Any]:
         extra = _extra(row)
         d = self.due(row) if row["status"] == "open" else None
-        stage = "first" if row["sent"] == 0 else "second" if row["sent"] == 1 else "on_hold"
+        stage = "first" if row["sent"] == 0 else "second" if row["sent"] == 1 and row["kind"] != "unknown_result" else "on_hold"
         return {"id": row["id"], "kind": row["kind"], "title": row["title"], "detail": row["detail"], "stage": stage, "sent": row["sent"],
                 "next_at": d[0] if d else None, "began_at": row["began_at"], "deadline": row["deadline"],
                 "deadline_sent": bool(row["deadline_sent"]), "snoozed_until": row["snoozed_until"], "suppressed": bool(row["suppressed"]),

@@ -11,47 +11,12 @@ import XCTest
 /// Variables (TEST_RUNNER_ prefixed for xcodebuild): KELO_STORE_SERVER (the store mock; tools/build/ios.sh starts its own plain
 /// mock for KELO_SERVER, which this test does not use), KELO_KEY, KELO_LANG, KELO_TAG, KELO_SHOTS, KELO_STORE_TZ (the time zone the
 /// app runs in, the same one the mock was started with). Without KELO_STORE_SERVER the test is skipped.
-final class KeloStoreShotsTests: XCTestCase {
-    private let env = ProcessInfo.processInfo.environment
-    private var lang: String { env["KELO_LANG"] ?? "en" }
-    private var tag: String { env["KELO_TAG"] ?? lang }
+final class KeloStoreShotsTests: KeloShotCase {
     private var server: String { env["KELO_STORE_SERVER"] ?? "" }
-    private var app: XCUIApplication!
-
-    private func w(_ en: String, _ ko: String) -> String { lang == "ko" ? ko : en }
-
-    override func setUp() { continueAfterFailure = true }
-
-    private func shot(_ name: String) {
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        let a = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-        a.name = "\(tag)-\(name)"
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = env["KELO_SHOTS"] {
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(tag)-\(name).png"))
-        }
-    }
-
-    private func element(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", label, label)).firstMatch
-    }
 
     private func starting(_ label: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", label, label + ",")).firstMatch
     }
-
-    @discardableResult
-    private func tap(_ e: XCUIElement, _ what: String, timeout: TimeInterval = 10) -> Bool {
-        guard e.waitForExistence(timeout: timeout) else { XCTFail("not found: \(what)\n\(app.debugDescription)"); return false }
-        var n = 0
-        while !e.isHittable && n < 8 { app.swipeUp(velocity: .slow); n += 1 }
-        e.tap()
-        return true
-    }
-
-    private func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
 
     /// POST to the store mock (no key needed for /mock/...).
     private func mock(_ path: String, _ body: String) {
@@ -81,30 +46,10 @@ final class KeloStoreShotsTests: XCTestCase {
         pause(2)
         app.terminate()
         launch()
-        signIn(key)   // (only when it opens on the start screen)
+        signIn(key, server: server)   // (only when it opens on the start screen)
         pause(4)
     }
 
-    private func signIn(_ key: String) {
-        let withKey = element(w("Connect with access key", "접속 키로 연결하기"))
-        if withKey.waitForExistence(timeout: 10) {
-            tap(withKey, "connect with key")
-            let field = app.textFields.firstMatch
-            field.tap()
-            let cur = (field.value as? String) ?? ""
-            if !cur.isEmpty && cur != field.placeholderValue {
-                field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: cur.count))
-            }
-            field.typeText(server)
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("Connect", "연결"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
-        }
-        XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 25), "chat did not open\n\(app.debugDescription)")
-    }
 
     /// Drag from the messages down into the keyboard (the chat dismisses it interactively); the list springs back to its end.
     private func hideKeyboard() {
@@ -128,7 +73,7 @@ final class KeloStoreShotsTests: XCTestCase {
         XCUIDevice.shared.appearance = .light
         mock("/mock/chat", #"{"chat":"briefing"}"#)
         launch()
-        signIn(key)
+        signIn(key, server: server)
         pause(4)
 
         // 04: this morning's briefing (the chat as it opens)

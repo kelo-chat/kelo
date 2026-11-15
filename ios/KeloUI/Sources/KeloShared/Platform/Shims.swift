@@ -25,6 +25,9 @@ public extension Image {
 }
 
 public extension PlatformImage {
+}
+
+public extension PlatformImage {
     /// Encoded JPEG bytes (for uploads).
     func keloJPEG(quality: Double = 0.85) -> Data? {
         #if os(iOS)
@@ -39,15 +42,6 @@ public extension PlatformImage {
 public enum KeloKeyboard { case text, url, email, number, ascii, phone }
 
 public extension View {
-    /// A small title in the navigation bar (iOS); nothing on macOS.
-    func keloInlineTitle() -> some View {
-        #if os(iOS)
-        return navigationBarTitleDisplayMode(.inline)
-        #else
-        return self
-        #endif
-    }
-
     /// Keyboard type and no auto-capitalisation / correction for addresses, keys and codes.
     func keloKeyboard(_ kind: KeloKeyboard) -> some View {
         #if os(iOS)
@@ -135,7 +129,7 @@ public enum Haptics {
 public enum DeviceInfo {
     @MainActor public static var model: String {
         #if os(iOS)
-        return UIDevice.current.model
+        return DeviceModels.name(identifier: DeviceModels.identifier, kind: UIDevice.current.model)
         #else
         return Host.current().localizedName ?? "Mac"
         #endif
@@ -145,13 +139,6 @@ public enum DeviceInfo {
     @MainActor public static func openAppSettings() {
         #if os(iOS)
         if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-        #endif
-    }
-
-    /// Hides the keyboard.
-    @MainActor public static func endEditing() {
-        #if os(iOS)
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         #endif
     }
 }

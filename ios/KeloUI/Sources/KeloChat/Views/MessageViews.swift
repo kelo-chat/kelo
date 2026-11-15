@@ -227,7 +227,7 @@ struct TimeLine: View {
     @Environment(\.kelo) private var c
 
     var body: some View {
-        Text(TimeLabels.label(atMs, locale: Strings.shared.locale, today: L(R.string.chat_time_today), yesterday: L(R.string.chat_time_yesterday)))
+        Text(TimeLabels.label(atMs, locale: appLocale(), today: L(R.string.chat_time_today), yesterday: L(R.string.chat_time_yesterday)))
             .font(KeloFont.caption).foregroundStyle(c.muted)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
@@ -329,21 +329,6 @@ struct ResultLine: View {
             KeloIconView(icon, size: 16, tint: muted ? c.muted : c.ink)
             Text(text).font(KeloFont.small).foregroundStyle(muted ? c.muted : c.ink).fixedSize(horizontal: false, vertical: true)
         }
-    }
-}
-
-/// .approval / .secure-card: a full-width card in the chat list.
-struct CardBox<Content: View>: View {
-    let content: Content
-    @Environment(\.kelo) private var c
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) { content }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14).padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 16).fill(c.card))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(c.line, lineWidth: 1))
     }
 }
 

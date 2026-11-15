@@ -98,15 +98,7 @@ public struct OrderDetails: View {
 
     /// One part of the order card: a small icon and title, then its lines (indented under the title).
     private func part<Content: View>(_ icon: KeloIcon, _ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                KeloIconView(icon, size: 16, tint: c.muted)
-                Text(title).font(KeloFont.label).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            VStack(alignment: .leading, spacing: 2) { content() }.padding(.leading, 22)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        CardPart(icon, title, content: content)
     }
 
     /// "블루 머그 / 색상: 네이비" on the left, the price and "× 2" on the right; a long name wraps beside them.
@@ -136,5 +128,27 @@ public struct OrderDetails: View {
 enum OrderMoney {
     static func number(_ v: Double) -> String {
         v == v.rounded() && abs(v) < 1e15 ? String(Int64(v)) : String(v)
+    }
+}
+
+/// One part of a card: a small icon and title, then its lines (indented under the title).
+struct CardPart<Content: View>: View {
+    let icon: KeloIcon
+    let title: String
+    let content: Content
+    @Environment(\.kelo) private var c
+
+    init(_ icon: KeloIcon, _ title: String, @ViewBuilder content: () -> Content) { self.icon = icon; self.title = title; self.content = content() }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                KeloIconView(icon, size: 16, tint: c.muted)
+                Text(title).font(KeloFont.label).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            VStack(alignment: .leading, spacing: 2) { content }.padding(.leading, 22)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

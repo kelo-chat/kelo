@@ -8,24 +8,28 @@ import KeloShared
 struct BetaRequestView: View {
     let c: ConnectorInfo
     let onOpened: () -> Void
-    @Environment(AppModel.self) private var app
-    @State private var state: GoogleBetaState?
+    @State private var model: BetaRequestModel
     @State private var sheet = false
+
+    init(c: ConnectorInfo, api: KeloApi, onOpened: @escaping () -> Void) {
+        self.c = c; self.onOpened = onOpened
+        _model = State(initialValue: BetaRequestModel(api: api))
+    }
 
     var body: some View {
         Group {
             if let product = BetaRules.product(c.id) {
-                switch BetaRules.shown(state) {
+                switch BetaRules.shown(model.state) {
                 case .request:
                     PrimaryButton(L(R.string.beta_request)) { sheet = true }
                         .sheet(isPresented: $sheet) {
-                            BetaSheet(product: product) { got in state = got; sheet = false }
+                            BetaSheet(product: product, model: model) { sheet = false }
                                 .presentationDetents([.medium, .large])
                         }
                 case .requested:
                     VStack(alignment: .leading, spacing: 6) {
                         SecondaryButton(L(R.string.beta_requested), enabled: false, fill: true) {}
-                        MutedText(L(R.string.beta_sent, state?.email ?? ""), small: true)
+                        MutedText(L(R.string.beta_sent, model.state?.email ?? ""), small: true)
                     }
                 case .declined:
                     MutedText(L(R.string.beta_declined), small: true)
@@ -38,20 +42,18 @@ struct BetaRequestView: View {
         }
         .task(id: c.id) {
             guard BetaRules.product(c.id) != nil else { return }
-            state = try? await app.requireApi().googleBeta()
+            await model.load()
         }
     }
 }
 
 private struct BetaSheet: View {
     let product: String
-    let onSent: (GoogleBetaState) -> Void
-    @Environment(AppModel.self) private var app
+    let model: BetaRequestModel
+    let onSent: () -> Void
     @Environment(\.kelo) private var c
     @State private var email = ""
     @State private var tried = false
-    @State private var busy = false
-    @State private var err = ""
 
     var body: some View {
         ScrollView {
@@ -60,8 +62,8 @@ private struct BetaSheet: View {
                 MutedText(L(R.string.beta_sheet_note), small: true)
                 KeloTextField(L(R.string.beta_email_hint), text: $email, keyboard: .email, maxLength: 254) { send() }
                 if tried && BetaRules.email(email) == nil { ErrorText(L(R.string.beta_email_invalid), small: true) }
-                if !err.isEmpty { ErrorText(err, small: true) }
-                PrimaryButton(L(busy ? R.string.beta_sending : R.string.beta_send), enabled: !busy && !email.isEmpty, busy: busy) { send() }
+                if !model.err.isEmpty { ErrorText(model.err, small: true) }
+                PrimaryButton(L(model.busy ? R.string.beta_sending : R.string.beta_send), enabled: !model.busy && !email.isEmpty, busy: model.busy) { send() }
             }
             .padding(16)
         }
@@ -70,18 +72,8 @@ private struct BetaSheet: View {
 
     private func send() {
         tried = true
-        guard let valid = BetaRules.email(email), !busy else { return }
-        busy = true; err = ""
+        guard let valid = BetaRules.email(email), !model.busy else { return }
         let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? ""
-        Task {
-            do {
-                onSent(try await app.requireApi().requestGoogleBeta(email: valid, product: product, appVersion: version))
-            } catch let e as ApiError {
-                err = e.detail
-            } catch {
-                err = L(R.string.connect_failed)
-            }
-            busy = false
-        }
+        model.send(email: valid, product: product, appVersion: version, sent: onSent)
     }
 }

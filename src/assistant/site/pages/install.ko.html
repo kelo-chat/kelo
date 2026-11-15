@@ -79,7 +79,7 @@ cd kelo</code></pre>
         </li>
         <li>
           <h3>밖에서도 닿게 하기</h3>
-          <p>가장 쉬운 건 기본 제공 도메인이에요.</p>
+          <p>가장 쉬운 건 현재 한정 제공 중인 <code>kelo.chat</code> 하위 주소예요. 제공 범위와 조건은 바뀔 수 있어요.</p>
           <pre><code>uv run assistant connect kelo --name 원하는이름
 uv run assistant connect status</code></pre>
           <p><code>status</code>는 주소와 함께, 그 주소로 실제로 서버에 닿는지 확인해 줘요. 다른 방법은 <a href="#reach">아래 표</a>를 보세요.</p>
@@ -97,7 +97,7 @@ uv run assistant connect status</code></pre>
         <table class="stack">
           <thead><tr><th scope="col">방법</th><th scope="col">명령</th><th scope="col">알아 둘 점</th></tr></thead>
           <tbody>
-            <tr><td>기본 제공 도메인</td><td data-label="명령"><code>assistant connect kelo --name 이름</code></td><td data-label="알아 둘 점">가장 쉬워요. 살 것도, 공유기 설정도 없어요. https로 Cloudflare 터널을 통해 연결돼요.</td></tr>
+            <tr><td>Kelo 주소 (현재 한정 제공)</td><td data-label="명령"><code>assistant connect kelo --name 이름</code></td><td data-label="알아 둘 점">가장 쉬워요. 공유기 설정이 없어요. https로 Cloudflare 터널을 통해 연결돼요.</td></tr>
             <tr><td>Tailscale (나만)</td><td data-label="명령"><code>assistant connect tailscale</code></td><td data-label="알아 둘 점">가장 사적이에요. 밖으로 공개되는 게 없어요. 휴대폰마다 같은 계정의 Tailscale 앱이 필요해요.</td></tr>
             <tr><td>Tailscale Funnel (공개)</td><td data-label="명령"><code>assistant connect funnel</code></td><td data-label="알아 둘 점">도메인 없이 공개 https, 서버까지 암호화돼요. 443·8443·10000 포트만 되고, 베타라 대역폭 제한이 있어요.</td></tr>
             <tr><td>내 도메인 + Cloudflare</td><td data-label="명령"><code>assistant connect cloudflare --domain example.com</code></td><td data-label="알아 둘 점">내 Cloudflare 계정의 도메인을 써요. 서버를 설치한 컴퓨터에 <code>cloudflared</code>가 필요해요.</td></tr>
@@ -107,6 +107,21 @@ uv run assistant connect status</code></pre>
         </table>
       </div>
       <p class="note">모든 명령 앞에는 <code>uv run</code>을 붙여요. 연결을 닫을 때는 <code>uv run assistant connect off</code>.</p>
+
+      <h3 id="npm">Nginx Proxy Manager로 연결하기</h3>
+      <p>이미 Nginx Proxy Manager(NPM)를 쓰고 가진 도메인이 있다면 5분 정도면 돼요. <code>kelo.example.com</code>은 내 이름으로 바꿔 주세요.</p>
+      <ol>
+        <li>DNS에서 <code>kelo.example.com</code>이 NPM이 받는 주소를 가리키게 해요 (다른 NPM 호스트와 같은 설정이에요).</li>
+        <li>Kelo가 설치된 컴퓨터에서 <code>uv run assistant connect domain --host kelo.example.com --proxy</code>를 실행해요. Kelo가 집 네트워크에서 요청을 받기 시작하고, 넘겨 줄 주소를 <code>http://192.168.1.20:8080</code>처럼 출력해 줘요.</li>
+        <li>NPM에서 <strong>Hosts → Proxy Hosts → Add Proxy Host</strong>를 열어요. <strong>Details</strong> 탭: Domain Names에 <code>kelo.example.com</code>, Scheme은 <code>http</code>, Forward Hostname / IP에는 Kelo가 출력한 주소(<code>http://</code>는 빼고), Forward Port에는 출력된 포트(바꾸지 않았다면 8080)를 넣어요. <strong>Websockets Support</strong>와 <strong>Block Common Exploits</strong>를 켜요.</li>
+        <li><strong>SSL</strong> 탭: <em>Request a new SSL Certificate</em>를 고르고 <strong>Force SSL</strong>과 <strong>HTTP/2 Support</strong>를 켠 뒤 Let’s Encrypt 약관에 동의해요.</li>
+        <li><strong>Advanced</strong> 탭에 아래 두 줄을 붙여 넣어요. 답이 써지는 대로 바로 보이고 사진도 올릴 수 있게 해 줘요. 그다음 <strong>Save</strong>를 눌러요:
+          <pre><code>proxy_buffering off; proxy_request_buffering off; proxy_cache off;
+proxy_read_timeout 300s; proxy_send_timeout 300s; client_max_body_size 0;</code></pre></li>
+        <li><code>uv run assistant connect status</code>로 확인한 뒤 <code>uv run assistant phone add</code>를 실행하고 Kelo 앱으로 QR 코드를 스캔해요. 이제 앱은 <code>https://kelo.example.com</code>을 써요.</li>
+      </ol>
+      <p class="note">Kelo는 집 네트워크 안에서 평문 http로 답해요. 방화벽이 허용하면 NPM만 그 포트에 닿게 해 주세요. 되돌리려면 <code>uv run assistant connect off</code>를 실행하고 NPM에서 그 호스트를 지워요.</p>
+
 
       <h2 id="more">설치 후에</h2>
       <ul class="ticks">

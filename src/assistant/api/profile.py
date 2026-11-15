@@ -36,6 +36,7 @@ def router(ctx: AppContext) -> APIRouter:
     avatar = ctx.avatar
     consent_of = ctx.consent_of
     provider_key = ctx.provider_key
+    provider_identity = ctx.provider_identity   # the main/fallback rule: a custom endpoint is its host
     require_auth = ctx.require_auth
     settings = ctx.settings
     store = ctx.store
@@ -104,7 +105,7 @@ def router(ctx: AppContext) -> APIRouter:
             cur = store.profile()
             main = (fields.get("provider", cur["provider"]) or settings.provider).strip()   # empty = the server's default provider
             fb = fields.get("fallback_provider", cur["fallback_provider"]).strip()
-            if main and fb and provider_key(main) == provider_key(fb):
+            if main and fb and provider_identity(main) == provider_identity(fb):
                 chosen = fields.get("fallback_provider", "").strip()
                 if chosen and chosen != cur["fallback_provider"]:   # this very request picked the same provider for both
                     raise HTTPException(422, "the fallback model must come from a different provider than the main model")

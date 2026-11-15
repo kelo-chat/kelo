@@ -56,11 +56,6 @@ public enum TimeLabels {
         return cal.component(.year, from: at) == cal.component(.year, from: today) ? .thisYear : .earlier
     }
 
-    /// Whether a message at `atMs` starts a new stretch after one at `prevMs` (nil: it is the first message shown).
-    public static func startsStretch(prev prevMs: Int64?, at atMs: Int64, zone: TimeZone) -> Bool {
-        startsStretch(prev: prevMs, at: atMs, cal: calendar(zone))
-    }
-
     private static func startsStretch(prev prevMs: Int64?, at atMs: Int64, cal: Calendar) -> Bool {
         guard let prevMs, prevMs > 0 else { return true }
         return !cal.isDate(date(prevMs), inSameDayAs: date(atMs)) || atMs - prevMs >= gapMinutes * 60_000

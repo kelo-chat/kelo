@@ -29,20 +29,21 @@ from .loop import Tool, current_box
 # in (vault_status, request_login, browser_login), connecting a service, the payment check that must come before any final pay
 # click (confirm_purchase: kept in the core so it can never be skipped for want of loading it) and the start of an order the user asked
 # for (begin_order: the one-card order path), handing off long work (delegate),
-# a background job's final report, the reaction on the user's message (react), the weather (so a weather question never opens a
-# browser), places near the user (places_near: "near me" questions are common, and weaker models never went looking for it), and
-# find_tools itself.
+# a background job's final report and progress line, the reaction on the user's message (react), the weather (so a weather question never opens a
+# browser), and find_tools itself. Rare ones load with find_tools (the prompt diet, 2026-11-11): browser_click_at, browser_drag (points of
+# a browser_look picture: canvas, maps, sliders), browser_view (desktop / phone view) and places_near; browser_look names the first two.
 CORE_TOOLS: frozenset[str] = frozenset({
     "find_tools", "quick_replies", "await_reply",
     "read_file", "write_file", "list_files", "read_skill",
     "web_search", "web_fetch",
-    "browser_open", "browser_read", "browser_view", "browser_click", "browser_type", "browser_login",
-    "vault_status", "request_login", "connect_service",
-    "begin_order", "confirm_purchase", "delegate", "report", "remember", "react",
-    "weather", "places_near",
+    "browser_open", "browser_read", "browser_click", "browser_type", "browser_login", "browser_look",
+    "vault_status", "request_login", "connect_service", "add_service_key",
+    "begin_order", "confirm_purchase", "delegate", "report", "job_progress", "remember", "react",
+    "weather", "recheck_later",
+    "action_result",   # shown only while a step's result is unknown (done_once.py: the gate hides it otherwise)
 })
-# loaded up front for every automatic run of a schedule (the run note tells it to pause a job that cannot work any more)
-SCHEDULE_RUN_TOOLS: tuple[str, ...] = ("schedule_pause",)
+# loaded up front for every automatic run of a schedule (the run note tells it to pause a job that cannot work any more, or to try again later when the block is temporary)
+SCHEDULE_RUN_TOOLS: tuple[str, ...] = ("schedule_pause", "schedule_retry")
 ACTIVE_MAX = 30            # at most this many activated tools per scope; the oldest go first
 ACTIVE_TTL = 45 * 86_400   # a saved activation not used for this long is dropped when the scope is loaded again
 FIND_LIMIT = 8             # tools one search loads
@@ -57,10 +58,12 @@ class ToolBox:
         self.active: list[str] = [n for n in dict.fromkeys(active) if n and n not in self.core]
         self.used: set[str] = set()   # activated tools called in this run (their saved activation is renewed)
         self.on_change = on_change    # (activated names in order, names used in this run): saves the list
+        self.blocked: Callable[[str], bool] | None = None   # a tool the owner switched off everywhere (permissions.py): never shown or loaded
 
     def shown(self, tools: list[Tool]) -> list[Tool]:
         by_name = {t.name: t for t in tools}
-        return [t for t in tools if t.name in self.core] + [by_name[n] for n in self.active if n in by_name]
+        out = [t for t in tools if t.name in self.core] + [by_name[n] for n in self.active if n in by_name]
+        return [t for t in out if not (self.blocked is not None and self.blocked(t.name))]
 
     def is_shown(self, name: str) -> bool:
         return name in self.core or name in self.active
@@ -161,7 +164,7 @@ def find_tools_tool(loadable: Callable[[], list[str]] | None = None) -> Tool:
         if cur is None:
             return "All your tools are already in your list."
         box, tools = cur
-        hidden = [t for t in tools if box is not None and not box.is_shown(t.name)]
+        hidden = [t for t in tools if box is not None and not box.is_shown(t.name) and not (box.blocked is not None and box.blocked(t.name))]
         if box is None or not hidden:
             return "All your tools are already in your list."
         exact = args.get("names")
@@ -180,8 +183,7 @@ def find_tools_tool(loadable: Callable[[], list[str]] | None = None) -> Tool:
 
     return Tool(
         "find_tools",
-        "Load more tools. Your list holds the common ones; the rest load by keywords (what you need to do) or exact names, "
-        "and stay loaded. Call it before a tool you have not got." + where,
+        "Load more tools by keywords (what you need to do) or exact names; call it before a tool you have not got." + where,
         {"type": "object", "properties": {
             "query": {"type": "string", "description": "keywords in English"},
             "names": {"type": "array", "items": {"type": "string"}, "description": "exact tool names"}}},

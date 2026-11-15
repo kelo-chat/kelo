@@ -3,40 +3,6 @@ import Observation
 import KeloCore
 import KeloShared
 
-/// The 커넥터 tab's data (Android ConnectorsViewModel): the list kept from last time shows at once and is refreshed in place.
-@MainActor @Observable
-final class ConnectorsModel {
-    var state = ConnectorsState()
-    @ObservationIgnored private var loading: Task<Void, Never>?
-    @ObservationIgnored private var warmed = false
-
-    /// The kept list (screen cache) before the first refresh.
-    func warm(_ app: AppModel) {
-        guard !warmed else { return }
-        warmed = true
-        if let kept: [ConnectorInfo] = app.cache.get("connectors") { state.list = kept; state.loaded = true }
-    }
-
-    /// GET /api/connectors (and the keychain's items) again: on start, on returning to the app, after a panel changed something.
-    func reload(_ app: AppModel) {
-        loading?.cancel()
-        loading = Task { [weak self] in
-            do {
-                let api = try app.requireApi()
-                async let creds = try? api.credentials()
-                let l = try await api.connectorList()
-                let c = await creds
-                guard !Task.isCancelled, let self else { return }
-                app.cache.put("connectors", l)
-                self.state.loaded(l, creds: c)
-            } catch {
-                guard !Task.isCancelled, let self else { return }
-                self.state.failedToLoad()
-            }
-        }
-    }
-}
-
 /// A pushed connector detail.
 struct ConnectorRoute: Hashable { let id: String }
 
@@ -44,27 +10,42 @@ struct ConnectorRoute: Hashable { let id: String }
 /// filter chips), the phone's own data, and each service's detail page with its connect panel. Opens `app.router.connectorOpen`.
 public struct ConnectorsScreen: View {
     @Environment(AppModel.self) private var app
-    @Environment(\.kelo) private var c
-    @Environment(\.scenePhase) private var phase
-    @State private var model = ConnectorsModel()
 
     public init() {}
 
     public var body: some View {
+        // the model is built once per signed-in API (a new session starts a new one)
+        if let api = app.api { ConnectorsStack(api: api, cache: app.cache).id(ObjectIdentifier(api)) }
+    }
+}
+
+private struct ConnectorsStack: View {
+    let api: KeloApi
+    @Environment(AppModel.self) private var app
+    @Environment(\.scenePhase) private var phase
+    @State private var model: ConnectorsModel
+
+    init(api: KeloApi, cache: ScreenCache) {
+        self.api = api
+        _model = State(initialValue: ConnectorsModel(api: api, cache: cache))
+    }
+
+    var body: some View {
         NavigationStack(path: app.router.path(.connectors)) {
             ConnectorListView(model: model)
                 .keloShellInsets()
                 .navigationDestination(for: ConnectorRoute.self) { r in
-                    ConnectorDetailView(model: model, id: r.id)
+                    ConnectorDetailView(model: model, id: r.id, api: api)
                 }
                 .keloHideNavigationBar()
         }
         .onAppear {
-            model.warm(app)
-            model.reload(app)
+            model.warm()
+            model.reload()
             openRequested()
         }
-        .onChange(of: phase) { _, p in if p == .active { model.reload(app) } }
+        // back from a browser sign-in: the list (and the open connector's page, which reads it) is read again
+        .onChange(of: phase) { _, p in if p == .active { model.reload() } }
         .onChange(of: app.router.connectorOpen) { _, _ in openRequested() }
     }
 
@@ -81,7 +62,6 @@ public struct ConnectorsScreen: View {
 /// The list.
 struct ConnectorListView: View {
     @Bindable var model: ConnectorsModel
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
 
     var body: some View {
@@ -109,7 +89,7 @@ struct ConnectorListView: View {
                             if s.failed {
                                 VStack(alignment: .leading, spacing: 10) {
                                     MutedText(L(R.string.connect_failed))
-                                    SecondaryButton(L(R.string.retry)) { model.reload(app) }
+                                    SecondaryButton(L(R.string.retry)) { model.reload() }
                                 }
                             } else {
                                 MutedText(L(R.string.connectors_empty))
@@ -121,12 +101,12 @@ struct ConnectorListView: View {
                 .keloPageWidth()
             }
             .scrollDismissesKeyboard(.interactively)
-            .refreshable { model.reload(app) }
+            .refreshable { await model.load() }
             .onTabReselect(.connectors) { withAnimation { proxy.scrollTo("top", anchor: .top) } }
         }
         .background(c.bg.ignoresSafeArea())
         .overlay(alignment: .bottom) {
-            StaleHint(visible: s.offline) { model.reload(app) }.padding(.bottom, 12)
+            StaleHint(visible: s.offline) { model.reload() }.padding(.bottom, 12)
         }
     }
 
@@ -194,7 +174,11 @@ struct ConnectorRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            RowBadgeView(badge: badge).frame(maxWidth: 120, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 4) {
+                RowBadgeView(badge: badge)
+                if x.limited { LimitedChip() }
+            }
+            .frame(maxWidth: 120, alignment: .trailing)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .contentShape(Rectangle())

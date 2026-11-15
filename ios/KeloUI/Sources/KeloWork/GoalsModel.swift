@@ -8,41 +8,55 @@ import KeloShared
 @MainActor @Observable
 final class GoalsModel {
     var state = GoalsState()
-    @ObservationIgnored var app: AppModel?
+    @ObservationIgnored private let api: () -> KeloApi?
+    @ObservationIgnored private let cache: ScreenCache
     @ObservationIgnored private var keptLoaded = false
+    @ObservationIgnored private var loading: Task<Void, Never>?
+    @ObservationIgnored let jobs = Jobs()
+
+    /// `api`: where the signed-in API comes from, read when a call is made.
+    init(api: @escaping () -> KeloApi?, cache: ScreenCache) { self.api = api; self.cache = cache }
 
     private func requireApi() throws -> KeloApi {
-        guard let a = app?.api else { throw ApiError(status: 401, detail: "signed out") }
+        guard let a = api() else { throw ApiError(status: 401, detail: "signed out") }
         return a
     }
 
     /// The goals kept from last time (once).
     func warm() {
-        guard !keptLoaded, let app else { return }
+        guard !keptLoaded else { return }
         keptLoaded = true
-        if let kept: [GoalItem] = app.cache.get("goals") { state.goals = kept; state.loaded = true }
+        if let kept: [GoalItem] = cache.get("goals") { state.goals = kept; state.loaded = true }
     }
 
-    func load() {
+    func load() { jobs.run { [self] in await read() } }
+
+    /// A newer read cancels the older one, so an old list never covers what a change just made.
+    func read() async {
         warm()
-        Task {
+        loading?.cancel()
+        let task = Task { @MainActor [self] in
             do {
                 let api = try requireApi()
                 let goals: [GoalItem] = try await api.get("/api/goals")
-                app?.cache.put("goals", goals)
+                if Task.isCancelled { return }
+                cache.put("goals", goals)
                 state.goals = goals; state.loaded = true; state.failed = false; state.offline = false
             } catch let e as ApiError {
+                if Task.isCancelled { return }
                 // with goals on screen a failed refresh is only a hint, not an error
                 if state.loaded && e.isNetwork { state.offline = true } else { state.failed = true }
-            } catch { state.failed = true }
+            } catch { if !Task.isCancelled { state.failed = true } }
             // an older server has no suggestions: nothing shows
-            if let s: GoalSuggestions = try? await requireApi().get("/api/goals/suggestions") { state.suggestions = s.items }
+            if !Task.isCancelled, let s: GoalSuggestions = try? await requireApi().get("/api/goals/suggestions") { state.suggestions = s.items }
         }
+        loading = task
+        await task.value
     }
 
     func acceptSuggestion(_ s: GoalSuggestion, onAdded: @escaping () -> Void) {
         state.settling.insert(s.id)
-        Task {
+        jobs.run { [self] in
             do {
                 try await requireApi().request("POST", "/api/goals/suggestions/\(s.id)/accept")
                 onAdded()
@@ -55,7 +69,7 @@ final class GoalsModel {
     func dismissSuggestion(_ s: GoalSuggestion) {
         state.settling.insert(s.id)
         state.suggestions.removeAll { $0.id == s.id }
-        Task {
+        jobs.run { [self] in
             _ = try? await requireApi().request("POST", "/api/goals/suggestions/\(s.id)/dismiss")
             state.settling.remove(s.id)
         }
@@ -91,9 +105,9 @@ final class GoalsModel {
 
     func commitRemove(_ goal: GoalItem) {
         guard state.removing.contains(goal.id) else { return }   // undone meanwhile
-        Task {
+        jobs.run { [self] in
             do {
-                try await requireApi().request("DELETE", GoalsRules.deletePath(goal.id, pauseSchedules: state.pausing.contains(goal.id)))
+                try await requireApi().request("DELETE", GoalsRules.deletePath(goal.id, deleteSchedules: state.pausing.contains(goal.id)))
                 state.goals.removeAll { $0.id == goal.id }
             } catch { state.failed = true }
             state.removing.remove(goal.id)   // a failed delete brings the goal back
@@ -108,7 +122,7 @@ final class GoalsModel {
     }
 
     private func call(_ block: @escaping (KeloApi) async throws -> Void) {
-        Task {
+        jobs.run { [self] in
             do { try await block(requireApi()); load() } catch { state.failed = true }
         }
     }
@@ -125,29 +139,39 @@ final class GoalDetailModel {
     /// The line shown after "Kelo에게 이어서 맡기기".
     var resumed: String?
     var resuming = false
-    @ObservationIgnored var app: AppModel?
+    @ObservationIgnored private let api: () -> KeloApi?
+    @ObservationIgnored private var loading: Task<Void, Never>?
+    @ObservationIgnored let jobs = Jobs()
 
-    init(goalId: Int64) { self.goalId = goalId }
+    init(goalId: Int64, api: @escaping () -> KeloApi?) { self.goalId = goalId; self.api = api }
 
     private func requireApi() throws -> KeloApi {
-        guard let a = app?.api else { throw ApiError(status: 401, detail: "signed out") }
+        guard let a = api() else { throw ApiError(status: 401, detail: "signed out") }
         return a
     }
 
-    func load() {
-        Task {
+    func load() { jobs.run { [self] in await read() } }
+
+    /// A newer read cancels the older one, so an old page never covers a tick just made.
+    func read() async {
+        loading?.cancel()
+        let task = Task { @MainActor [self] in
             do {
-                workspace = try await requireApi().get("/api/goals/\(goalId)")
+                let w: GoalWorkspace = try await requireApi().get("/api/goals/\(goalId)")
+                if Task.isCancelled { return }
+                workspace = w
                 failed = false; ticking = [:]
-            } catch { failed = true }
+            } catch { if !Task.isCancelled { failed = true } }
         }
+        loading = task
+        await task.value
     }
 
     func tick(_ step: GoalStep) {
         guard GoalDetailRules.canTick(step) else { return }
         let next = GoalDetailRules.toggled(step)
         ticking[step.id] = next
-        Task {
+        jobs.run { [self] in
             do { try await requireApi().request("PATCH", "/api/goals/\(goalId)/steps/\(step.id)", body: ["status": .string(next)]) } catch { failed = true }
             load()
         }
@@ -156,7 +180,7 @@ final class GoalDetailModel {
     func resume(onStarted: @escaping () -> Void) {
         guard !resuming else { return }
         resuming = true
-        Task {
+        jobs.run { [self] in
             do {
                 try await requireApi().request("POST", "/api/goals/\(goalId)/work")
                 resumed = L(R.string.goal_resume_started)

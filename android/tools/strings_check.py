@@ -33,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import strings_res as sr  # noqa: E402
 
-RES = Path(__file__).resolve().parents[1] / "kelo" / "app" / "src" / "main" / "res"
+RES = Path(__file__).resolve().parents[2] / "shared" / "strings"   # the text of all apps (Android format)
 
 PH = re.compile(r"%(?:(\d+)\$)?[-#+ 0,(]*\d*(?:\.\d+)?([sdfxXoceEgGbh])")
 STRAY_PERCENT = re.compile(r"%(?![-#+ 0,(\d.]*[sdfxXoceEgGbhn%]|\d+\$)")

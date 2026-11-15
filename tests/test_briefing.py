@@ -460,6 +460,25 @@ async def test_bulk_and_marketing_mail_never_counts_as_missed(tmp_path):
     assert "Wardrobe" not in seen[0]
 
 
+async def test_until_a_language_is_picked_the_owners_language_follows_the_signed_in_apps(tmp_path):
+    """The phone's language changed: the app's next request (a signed-in device) moves ui_lang with it; a pick in the app holds."""
+    from test_push import pair
+    s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "a.db"), scheduler=False,
+                 home_dir=str(tmp_path / "home"))
+    async with Running(create_app(s, tools=[])) as srv, httpx.AsyncClient(base_url=srv.url) as c:
+        store = srv.server.config.app.state.proactive.store
+        _, phone = await pair(c)
+        await c.get("/api/briefing", headers={**phone, "Accept-Language": "ko-KR,ko;q=0.9"})
+        assert store.meta("ui_lang") == "ko"
+        await c.get("/api/briefing", headers={**phone, "Accept-Language": "ja-JP,ja;q=0.9"})
+        assert store.meta("ui_lang") == "ja" and store.meta("ui_lang_from") == "app"   # the phone now speaks Japanese
+        await c.get("/api/briefing", headers={**AUTH, "Accept-Language": "en-US"})
+        assert store.meta("ui_lang") == "ja"                                           # a script with the master token does not move it
+        await c.put("/api/language", json={"language": "ko"}, headers=phone)
+        await c.get("/api/briefing", headers={**phone, "Accept-Language": "ja-JP"})
+        assert store.meta("ui_lang") == "ko"                                           # a pick in the app holds
+
+
 async def test_the_owners_language_is_the_one_chosen_in_the_app_and_one_request_can_not_flip_it(tmp_path):
     """ui_lang (what background jobs speak) follows the owner's pick in the app (PUT /api/language); a request's Accept-Language only
     fills it while nothing is set, so a request from another device or app in English never turns the briefing English."""

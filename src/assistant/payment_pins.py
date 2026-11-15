@@ -334,6 +334,11 @@ class ApprovedPayment:
     pin_slot: str = ""             # the PinDeliveries slot of this payment ("" when no PIN is saved for the site)
     pin_used: bool = False
     path: str = ""                 # how it is paid, for PaymentPaths: card_form | site_method (the card is typed, or the site's own way)
+    amount: float | None = None    # the approved total as a number (amount_text is for showing) and its ISO currency, for purchase_result
+    currency: str = ""
+    task_id: int | None = None     # the task (reply or run) that paid; its end warns when the receipt was never checked
+    state: str = "open"            # purchase_result's check: open (not checked) | closed (checked, kept, or cancelled) | cancel (waiting for the cancel)
+    warned: bool = False           # the end of the task already said the receipt was not confirmed
 
     def order(self) -> dict[str, Any]:
         return {"site": self.host, "summary": self.summary, "amount_text": self.amount_text, "items": self.items, "pay_with": self.pay_with}
@@ -360,6 +365,12 @@ class PaymentLedger:
 
     def forget(self, owner: str) -> None:
         self._last.pop(owner, None)
+
+    def unchecked(self, task_id: int | None) -> list[ApprovedPayment]:
+        """Payments of that task whose receipt purchase_result never closed, not yet warned about (none without a task)."""
+        if not task_id:
+            return []
+        return [p for p in self._last.values() if p.state != "closed" and not p.warned and p.task_id == task_id]
 
 
 # ---------------------------------------------------------------- which way of paying went through on a site

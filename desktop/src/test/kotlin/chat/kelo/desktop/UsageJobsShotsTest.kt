@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -10,10 +11,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.MyPane
-import chat.kelo.desktop.pages.MyView
+import chat.kelo.app.my.UsageLogic
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.After
 import org.junit.Rule
@@ -21,9 +19,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 /**
- * 마이 → 사용량's "토큰을 쓴 곳" (today and this month by kind of work, the cached share only where reported) and 마이 → 모델's
- * background work model row, against tools/mock_server.py: Korean and English, light and dark, plus a narrow window in German
- * and Arabic (wrapping, right to left). Saved as usage-jobs-*.png and model-background-*.png in build/parity ($KELO_SHOTS).
+ * 마이 → 사용량's model usage card (one number, bar by model and legend) and 마이 → 모델's
+ * background work model row, against tools/mock_server.py.
  */
 class UsageJobsShotsTest {
     @get:Rule val compose = createComposeRule()
@@ -44,41 +41,43 @@ class UsageJobsShotsTest {
     private fun shots(lang: String, themes: List<String>, width: Int, tag: String = "") {
         val server = MockServer("--lang", if (lang == "ko") "ko" else "en").also { mocks += it }   // the mock speaks Korean or English
         val app = server.app(tmp.newFolder(), lang = lang, theme = "light")
-        val s = Strings.of(lang)
+        val s = Words.of(lang)
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             Box(Modifier.size(width.dp, 1500.dp)) {
-                KeloFrame(app) { MyPane(app, topInset = 0.dp, start = start.value, onStartUsed = { start.value = null }, onSignedOut = {}) }
+                KeloFrame(app) { MyPaneAt(app, start) }
             }
         }
-        val title = s.get(R.string.usage_jobs_title)
+        val bigTokens = UsageLogic.compactTokens(2_990_000, lang)
+        val bigNumber = s.get(Res.string.usage_jobs_tokens, bigTokens)
+        val caption = s.get(Res.string.usage_models_caption, bigTokens)
+        val legendModel = chat.kelo.app.chat.ModelNames.display("gemini-3.8-flash", null)
         try {
             for (theme in themes) {
                 app.settings.setTheme(theme)
-                ui.waitText(s.get(R.string.my_section_account))
-                ui.waitText(s.get(R.string.usage_used, 61), timeout = 15_000)   // the usage row's value: GET /api/usage has answered
+                ui.waitText(s.get(Res.string.my_section_account))
+                ui.waitText(s.get(Res.string.usage_used, 61), timeout = 15_000)   // the usage row's value: GET /api/usage has answered
                 start.value = MyView.USAGE
                 ui.settle()
-                ui.waitText(title, timeout = 15_000)
-                ui.waitText(s.get(R.string.usage_kind_chat))
-                ui.waitText(s.get(R.string.usage_jobs_cache, 65))   // the sample chat: 98,000 of 150,000 input tokens from the cache
-                check(!ui.has(s.get(R.string.usage_jobs_cache, 0))) { "a kind without a reported cache shows no 0%" }
-                compose.onAllNodesWithText(title).onFirst().performScrollTo()
-                ui.shot("usage-jobs-$tag$lang-$theme")
-                compose.onAllNodesWithContentDescription(s.get(R.string.back))[0].performClick()
-                ui.waitText(s.get(R.string.my_section_account))
+                ui.waitText(bigNumber, timeout = 15_000)
+                ui.waitText(caption)
+                ui.waitText(legendModel)
+                compose.onAllNodesWithText(bigNumber).onFirst().performScrollTo()
+                ui.shot("usage-by-model-$tag$lang-$theme")
+                compose.onAllNodesWithContentDescription(s.get(Res.string.back))[0].performClick()
+                ui.waitText(s.get(Res.string.my_section_account))
                 start.value = MyView.MODEL
                 ui.settle()
-                ui.waitText(s.get(R.string.model_background_title), timeout = 15_000)
-                ui.waitText(s.get(R.string.model_background_same))
-                compose.onAllNodesWithText(s.get(R.string.model_background_title)).onFirst().performScrollTo()
+                ui.waitText(s.get(Res.string.model_background_title), timeout = 15_000)
+                ui.waitText(s.get(Res.string.model_background_same))
+                compose.onAllNodesWithText(s.get(Res.string.model_background_title)).onFirst().performScrollTo()
                 ui.shot("model-background-$tag$lang-$theme")
-                compose.onAllNodesWithContentDescription(s.get(R.string.back))[0].performClick()
-                ui.waitText(s.get(R.string.my_section_account))
+                compose.onAllNodesWithContentDescription(s.get(Res.string.back))[0].performClick()
+                ui.waitText(s.get(Res.string.my_section_account))
             }
         } catch (e: Throwable) {
-            runCatching { ui.shot("usage-jobs-zz-failed-$tag$lang") }
+            runCatching { ui.shot("usage-by-model-zz-failed-$tag$lang") }
             throw e
         }
     }

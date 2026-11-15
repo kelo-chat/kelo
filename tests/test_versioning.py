@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from assistant import version as rv
+from assistant.app_releases import AppReleases
 from assistant.server import Settings, create_app
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,15 +71,19 @@ def test_app_too_old_rules():
     assert rv.app_too_old(None, rel, {}) is None and rv.app_too_old("junk", rel, {}) is None
 
 
-async def test_the_server_shows_its_release_and_refuses_a_too_old_app(tmp_path):
-    rel = rv.current()
+async def test_the_server_shows_its_release_and_refuses_a_too_old_app(tmp_path, monkeypatch):
+    # a server that demands 0.9.0, with every platform's 0.9.x really released (releases/apps.json shape)
+    rel = rv.Release("0.9.3", 15, "0.9.0", "0.9.0")
+    monkeypatch.setattr(rv, "current", lambda: rel)
+    released = AppReleases.parse({p: [{"version": "0.9.3", "build": 600, "channel": "download", "date": "2026-11-13"}]
+                                  for p in ("android", "ios", "desktop")})
     app = create_app(Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "s.db"),
-                              min_app_version={"android": 500}), tools=[])
+                              min_app_version={"android": 500}), tools=[], app_releases=released)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://kelo.test") as c:
         r = await c.get("/healthz")
         assert r.json() == {"ok": True} and r.headers["x-kelo-server"] == rel.header
         about = (await c.get("/api/about", headers=AUTH)).json()
-        assert (about["version"], about["build"], about["min_app"], about["min_server"]) == (rel.version, rel.build, rel.min_app,
+        assert (about["version"], about["build"], about["min_app"], about["min_server"]) == (rel.version, str(rel.build), rel.min_app,
                                                                                              rel.min_server)
         assert about["min_app_version"] == {"android": 500}
         # an app below min_app: 426 on /api/*, before auth; /api/about still answers so it can show "update needed"
@@ -127,6 +132,23 @@ def test_bump_writes_every_place_and_never_tags(tmp_path, capsys):
     for bad in (["9.8.7"], ["9.8.9", "--build", "50"], ["x.y"], ["9.9.0", "--min-server", "9.9.1"]):
         with pytest.raises(SystemExit):
             bump.main([*bad, "--root", str(root)])
+
+
+def test_bump_levels_and_same_version_only_as_a_rebuild(tmp_path):
+    """A change gets a new version by its kind (patch | minor | major), never by its size; the build counts builds by itself."""
+    root = _copy_repo(tmp_path)
+    bump = _bump()
+    (root / "version.json").write_text('{"version": "0.9.1", "build": 13, "min_app": "0.9.0", "min_server": "0.9.0"}')
+    assert bump.next_version("0.9.1", "patch") == "0.9.2" and bump.next_version("0.9.1", "minor") == "0.10.0"
+    assert bump.next_version("0.9.1", "major") == "1.0.0"
+    assert bump.main(["patch", "--root", str(root)]) == 0
+    r = rv.read(root / "version.json")
+    assert (r.version, r.build, r.min_app) == ("0.9.2", 14, "0.9.0")
+    with pytest.raises(SystemExit):
+        bump.main(["0.9.2", "--root", str(root)])          # same version, no --rebuild
+    assert bump.main(["0.9.2", "--rebuild", "--root", str(root)]) == 0
+    assert rv.read(root / "version.json").build == 15
+    assert bump.main(["minor", "--root", str(root)]) == 0 and rv.read(root / "version.json").version == "0.10.0"
 
 
 def test_bump_check_tag(tmp_path):

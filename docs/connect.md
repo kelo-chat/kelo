@@ -5,7 +5,7 @@ new one turns the old one off first (gives a Kelo name back, stops Funnel / Serv
 
 | Way | Command | Good for | Keep in mind |
 |--- |--- |--- |--- |
-| **Kelo address** `name.kelo.chat` | `assistant connect kelo --name NAME` | Easiest: nothing to buy, no router changes. | Uses https through a Cloudflare Tunnel. |
+| **Kelo address** `name.kelo.chat` (offered for now) | `assistant connect kelo --name NAME` | Easiest: no router changes. | Uses https through a Cloudflare Tunnel. |
 | **Tailscale (private)** | `assistant connect tailscale` | Most private: nothing is public. | Every phone needs the Tailscale app on the same account. |
 | **Tailscale Funnel (public)** | `assistant connect funnel` (= `tailscale --public`) | Public https with no domain, encrypted end to end to this computer. | Ports 443/8443/10000 only. Beta, with bandwidth limits Tailscale does not publish. |
 | **Own domain: Cloudflare** | `assistant connect cloudflare --domain example.com` | Your domain on your own Cloudflare account. | Goes through Cloudflare. Needs `cloudflared` on this computer. |
@@ -21,6 +21,8 @@ assistant connect off               # close it again (a Kelo name is given back)
 ```
 
 ## Kelo address (`name.kelo.chat`)
+
+The Kelo project offers these addresses for now. Availability and terms may change. Tailscale and your own domain are always available.
 
 - Names are 3 to 30 characters long, made of `a-z`, `0-9` and `-`. Some names are reserved (www, api, admin, mail, kelo, broker,
   relay, and others). An extra copy uses its own name by default. The main copy needs `--name`.
@@ -71,13 +73,13 @@ Funnel's relays cannot read the traffic, because TLS ends on this computer.
     Without it the app falls back to fetching one picture at a time (`/api/browser/sessions/<id>/frame`), which is slower.
   - buffering off
   - timeouts of at least 120 s
-  - uploads of at least 30 MB
+  - no upload size limit (Kelo checks sizes and the storage cap itself). Through Cloudflare (the `kelo.chat` address or an own Cloudflare domain) one request is limited to 100 MB by Cloudflare, so the apps send files over 99 MB in parts of 90 MB (each part is tried again after a dropped connection, and the apps ask the server what it already holds first); on Tailscale or a direct domain a file goes up in one request, whatever its size
 
   For Nginx Proxy Manager (Advanced tab):
 
   ```
   proxy_buffering off; proxy_request_buffering off; proxy_cache off;
-  proxy_read_timeout 300s; proxy_send_timeout 300s; client_max_body_size 30m;
+  proxy_read_timeout 300s; proxy_send_timeout 300s; client_max_body_size 0;
   ```
 
   The **Websockets Support** switch adds the `Upgrade` / `Connection` headers. In plain Nginx, add them yourself in the
@@ -87,13 +89,15 @@ Funnel's relays cannot read the traffic, because TLS ends on this computer.
 
   Example: an NPM host `kelo.me.duckdns.org` forwarding to `http://192.168.1.20:8080` is
   `assistant connect domain --host kelo.me.duckdns.org --proxy`. `connect off` puts back the `SERVER_BIND` you had before.
+
+  **Step by step in Nginx Proxy Manager:** see [the guide in the README](../README.md#through-nginx-proxy-manager).
 - **`--duckdns`** is optional. It keeps a `.duckdns.org` name pointed at this computer. The token is read from `$DUCKDNS_TOKEN`
   or typed without being shown. It is saved sealed with the copy's `ASSISTANT_SECRET_KEY` and never printed. Leave it out if
   your router or proxy already updates the name.
 
 ## For the operator of kelo.chat
 
-1. **Add the zone.** Add `kelo.chat` to a Cloudflare account. Use a separate account if you want the free-address service kept
+1. **Add the zone.** Add `kelo.chat` to a Cloudflare account. Use a separate account if you want the address service kept
    apart from everything else.
 2. **Create the API token** (My Profile or Account → API Tokens → Create custom token). It needs only these permissions:
    - **Account → Cloudflare Tunnel → Edit**
@@ -127,7 +131,7 @@ Funnel's relays cannot read the traffic, because TLS ends on this computer.
   - On a free zone, set `max_names` to about 190.
   - For more, move `kelo.chat` to a paid plan (Pro or higher: 3,500 records).
 
-When the cap or a Cloudflare limit is reached, a claim gets HTTP 503 "no free Kelo addresses are left right now". The message
+When the cap or a Cloudflare limit is reached, a claim gets HTTP 503 "no Kelo addresses are available right now". The message
 suggests Tailscale or your own domain instead.
 
 **Broker API** (public, rate limited per address; the copy calls it with `assistant connect kelo`):

@@ -60,8 +60,6 @@ public enum KE2E {
 public enum KE2EError: Error, Equatable, Sendable {
     /// Not a usable server public key (not 32 bytes, not base64url, or `/api/e2e/info` whose kid/fingerprint do not match its key).
     case badKey
-    /// The server answered with something that is not KE2E (plaintext where a pinned app expects ciphertext).
-    case notEncrypted
     /// A frame did not open: wrong key, a changed byte, a frame missing in between (counter gap) or out of order.
     case badFrame
     /// The stream ended without its last frame (cut off), or with half a frame.

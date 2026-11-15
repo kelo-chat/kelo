@@ -6,51 +6,38 @@ import KeloShared
 /// chosen at first; the user ticks items (or a whole group), presses 지우기 and confirms. Only then does the server delete, and only items
 /// on its own current list (notes, memory and the chat history are never on it). The result line says how much room was freed.
 struct CleanupPage: View {
-    @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
-    @State private var list: CleanupList?
-    @State private var failed: StringKey?
-    @State private var attempt = 0
-    @State private var selected: Set<String> = []
-    @State private var busy = false
+    @State private var model: CleanupModel
     @State private var confirm = false
-    @State private var result: CleanupResult?
-    @State private var error: StringKey?
+
+    init(api: KeloApi) { _model = State(initialValue: CleanupModel(api: api)) }
+
+    private var selected: Set<String> { model.selected }
+    private var busy: Bool { model.busy }
 
     var body: some View {
         SubPage(L(R.string.storage_cleanup_title), onBack: { dismiss() }) {
-            if let l = list {
+            if let l = model.list {
                 content(l)
-            } else if let why = failed {
+            } else if let why = model.failed {
                 ErrorText(L(why))
-                if why != R.string.storage_owner_only { SecondaryButton(L(R.string.retry)) { attempt += 1 } }
+                if why != R.string.storage_owner_only { SecondaryButton(L(R.string.retry)) { model.retry() } }
             } else {
                 SkeletonRows(rows: 4)
             }
         }
-        .task(id: attempt) {
-            failed = nil
-            do {
-                let l = try await app.requireApi().cleanupList()
-                list = l
-                selected = StorageRules.keep(selected, l)
-            } catch is CancellationError {
-                return
-            } catch {
-                failed = (error as? ApiError)?.status == 403 ? R.string.storage_owner_only : R.string.storage_load_failed
-            }
-        }
+        .task(id: model.attempt) { await model.load() }
         .alert(L(R.string.storage_confirm_title), isPresented: $confirm) {
-            Button(L(R.string.storage_delete_button), role: .destructive) { delete() }
+            Button(L(R.string.storage_delete_button), role: .destructive) { model.delete() }
             Button(L(R.string.cancel), role: .cancel) {}
         } message: {
-            Text(L(R.string.storage_confirm_body, MyFormat.storageSize(StorageRules.selectedBytes(list, selected))))
+            Text(L(R.string.storage_confirm_body, MyFormat.storageSize(StorageRules.selectedBytes(model.list, selected))))
         }
     }
 
     @ViewBuilder private func content(_ l: CleanupList) -> some View {
-        if let r = result {
+        if let r = model.result {
             VStack(alignment: .leading, spacing: 4) {
                 Text(L(R.string.storage_deleted, MyFormat.storageSize(r.freed))).font(KeloFont.body).foregroundStyle(c.successInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -72,7 +59,7 @@ struct CleanupPage: View {
             ForEach(groups, id: \.id) { g in
                 MyCard {
                     checkRow(checked: StorageRules.groupChecked(selected, g), id: "kelo.cleanup.group.\(g.id)") {
-                        selected = StorageRules.toggleGroup(selected, g)
+                        model.toggle(group: g)
                     } label: {
                         Text(groupTitle(g)).font(KeloFont.titleSmall).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
                         Text(MyFormat.storageSize(g.bytes)).font(KeloFont.small).foregroundStyle(c.muted)
@@ -81,7 +68,7 @@ struct CleanupPage: View {
                     ForEach(g.items, id: \.id) { i in
                         KeyBox(first: false) {
                             checkRow(checked: selected.contains(i.id), id: "kelo.cleanup.item") {
-                                selected = StorageRules.toggle(selected, i.id)
+                                model.toggle(i.id)
                             } label: {
                                 // a file name never breaks mid-word: one line, shortened in the middle (a backup with no name: its kind)
                                 let note = itemNote(i)
@@ -96,7 +83,7 @@ struct CleanupPage: View {
                 }
             }
             MutedText(L(R.string.storage_selected, selected.count, MyFormat.storageSize(StorageRules.selectedBytes(l, selected))), small: true)
-            if let e = error { ErrorText(L(e), small: true) }
+            if let e = model.error { ErrorText(L(e), small: true) }
             PrimaryButton(L(R.string.storage_delete_button), enabled: !selected.isEmpty && !busy, busy: busy) { confirm = true }
                 .accessibilityIdentifier("kelo.cleanup.delete")
         }
@@ -150,24 +137,6 @@ struct CleanupPage: View {
         case "memory": return L(R.string.storage_backup_memory)
         case "migration": return L(R.string.storage_backup_migration)
         default: return nil
-        }
-    }
-
-    private func delete() {
-        let ids = Array(selected)
-        busy = true
-        error = nil
-        Task {
-            defer { busy = false }
-            do {
-                let r = try await app.requireApi().cleanup(ids)
-                result = r
-                let fresh = CleanupList(groups: r.groups, total: r.total, olderThanDays: list?.olderThanDays ?? 14)
-                list = fresh
-                selected = StorageRules.keep(selected.subtracting(r.removed), fresh)
-            } catch {
-                self.error = R.string.storage_delete_failed
-            }
         }
     }
 }

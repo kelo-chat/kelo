@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
@@ -8,7 +9,6 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.chat.ApprovalCardInfo
 import chat.kelo.app.chat.CardBrief
 import chat.kelo.app.chat.ChatItem
@@ -24,12 +24,6 @@ import chat.kelo.app.wallet.AddressRules
 import chat.kelo.app.wallet.OrderItem
 import chat.kelo.app.wallet.OrderShipping
 import chat.kelo.app.wallet.ShippingProfiles
-import chat.kelo.desktop.chat.OrderDetails
-import chat.kelo.desktop.chat.cardLine
-import chat.kelo.desktop.chat.isOrder
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.my.DraftSync
-import chat.kelo.desktop.pages.my.countryName
 import chat.kelo.desktop.ui.KeloFrame
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -61,14 +55,12 @@ class ShippingTest {
         val p = ev.payment!!
         assertEquals(listOf(OrderItem("블루 머그", "색상: 네이비 · 용량: 350ml", 2, "24,000원")), p.items)
         val s = p.shipping!!
-        assertEquals(OrderShipping.SOURCE_PROFILE, s.source)
+        assertEquals("profile", s.source)
         assertEquals("집 · 홍길동 · +821012345678", AddressRules.who(s.label, s.name, s.phone))
         assertEquals(listOf("서울특별시 강남구 테헤란로 152", "10층 1004호", "06236"), AddressRules.lines(s.formatted))
         assertEquals("WELCOME10", p.coupon)
         assertEquals("블루 머그 2개", p.orderWhat)
         assertEquals("24,000원", p.amountText)
-        assertTrue(p.isOrder())
-        assertEquals("생활비 카드 ••4242", cardLine(ev.card!!))
         // the chat's list keeps it on the approval row
         val items = ChatReducer.apply(emptyList(), ev) { "k" }
         assertEquals(p, (items.single() as ChatItem.Approval).payment)
@@ -80,11 +72,7 @@ class ShippingTest {
 
     @Test fun anOlderPaymentIsNotAnOrder() {
         val p = PaymentInfo("shop.example.com", "a mug", 9.0, "USD", "9.00 USD")
-        assertFalse(p.isOrder())
         // a card without a nickname is named by its brand; the last 4 are not repeated when the nickname already ends with them
-        assertEquals("Visa ••4242", cardLine(ApprovalCardInfo(CardBrief("c", "", "visa", "4242"), false, false, "", "")))
-        assertEquals("Card 4242", cardLine(ApprovalCardInfo(CardBrief("c", "Card 4242", "visa", "4242"), false, false, "", "")))
-        assertEquals("Travel", cardLine(ApprovalCardInfo(CardBrief("c", "Travel", "visa", ""), false, false, "", "")))
     }
 
     @Test fun shippingFormEventBecomesAFormCard() {
@@ -152,13 +140,10 @@ class ShippingTest {
         assertFalse(AddressRules.matches(gb.field("postal_code")!!.pattern, "12345"))
     }
 
-    @Test fun countryNamesInTheAppsLanguage() {
-        assertEquals("South Korea", countryName("KR", "South Korea", Locale.ENGLISH))
-        assertEquals("대한민국", countryName("KR", "South Korea", Locale.KOREAN))
-        assertEquals("미국", countryName("US", "United States", Locale.KOREAN))
-        assertEquals("日本", countryName("JP", "Japan", Locale.JAPANESE))
-        // a code the JVM has no name for: the server's English name
-        assertEquals("Somewhere", countryName("Q1", "Somewhere", Locale.KOREAN))
+    /** What the shared shipping view model does when a country's form arrives (ShippingViewModel.onFormShown): carry the values, show a saved number nationally. */
+    private fun draftOnForm(draft: AddressDraft, form: AddressForm, first: Boolean): AddressDraft {
+        val carried = AddressRules.carry(draft, form)
+        return if (first) carried.copy(phone = AddressRules.nationalPart(carried.phone, form.phone.callingCode)) else carried
     }
 
     @Test fun aDraftFollowsTheFormItIsShownWith() {
@@ -167,23 +152,23 @@ class ShippingTest {
         val kr = form("form_KR_ko.json")
         val us = form("form_US_en.json")
         // a saved profile's phone is E.164: next to the "+82" chip it shows without it
-        var d = DraftSync.onForm(AddressDraft(home.country, home.values(), home.phone, home.note), kr, first = true)
+        var d = draftOnForm(AddressDraft(home.country, home.values(), home.phone, home.note), kr, first = true)
         assertEquals("1012345678", d.phone)
         assertEquals("06236", d.value("postal_code"))
         assertEquals("문 앞에 놓아 주세요", d.note)
         // to the US: the keys both forms have stay, the phone and the note stay as typed
-        d = DraftSync.onForm(d.copy(country = "US"), us, first = false)
+        d = draftOnForm(d.copy(country = "US"), us, first = false)
         assertEquals("US", d.country)
         assertEquals("홍길동", d.value("name"))
         assertEquals("06236", d.value("postal_code"))
         assertEquals("1012345678", d.phone)
         // to Korea again from a US address with a state: the state goes (Korea's form has none)
         val office = profiles.first { it.country == "US" }
-        val back = DraftSync.onForm(DraftSync.onForm(AddressDraft("US", office.values(), office.phone), us, true).copy(country = "KR"), kr, false)
+        val back = draftOnForm(draftOnForm(AddressDraft("US", office.values(), office.phone), us, true).copy(country = "KR"), kr, false)
         assertFalse("admin_area" in back.values)
         assertFalse("locality" in back.values)
         assertEquals("Jane Roe", back.value("name"))
-        assertEquals("6502530000", DraftSync.onForm(AddressDraft("US", office.values(), office.phone), us, true).phone)
+        assertEquals("6502530000", draftOnForm(AddressDraft("US", office.values(), office.phone), us, true).phone)
         // what is sent: every key, the ones the form does not have as ""
         val body = AddressRules.profileBody(kr, back, "회사", true)
         assertEquals("\"\"", body["admin_area"].toString())
@@ -191,29 +176,4 @@ class ShippingTest {
         assertEquals("true", body["default"].toString())
     }
 
-    /** The order block 320 dp wide: long, spaceless names and addresses wrap inside the window; nothing is cut off at its edge. */
-    @Test fun orderBlockWrapsAt320() = runDesktopComposeUiTest(320, 1400) {
-        val app = chat.kelo.desktop.core.AppContainer(Files.createTempDirectory("kelo-order").toFile().also { it.deleteOnExit() }, requireE2e = false)
-        app.settings.setLanguage("de")
-        val long = "Superlangerproduktnamemitvielenbuchstabenohneleerzeichendasumbrechenmuss"
-        val p = PaymentInfo(
-            "a-very-long-shop-name.example.com", "", 1234.5, "EUR", "1.234,50 €",
-            items = listOf(OrderItem(long, "Farbe: Mitternachtsblau · Größe: XXL", 12, "1.000,00 €"), OrderItem("Tasse", "", 1, "234,50 €")),
-            shipping = OrderShipping("once", "Ferienwohnung am See", "Maximiliane Mustermann-Schmidt", "+4930123456789",
-                "Hauptstraßeundnochvielmehrstraßennamenohnepause 123\n10115 Berlin", "DE"),
-            coupon = "WILLKOMMENRABATTCODE2026", orderWhat = "",
-        )
-        val card = ApprovalCardInfo(CardBrief("c1", "Gemeinsames Haushaltskonto für den Alltag", "visa", "4242"), false, false, "", "")
-        setContent { KeloFrame(app) { Box(Modifier.fillMaxSize()) { Box(Modifier.width(320.dp)) { OrderDetails(p, card) } } } }
-        waitForIdle()
-        val s = Strings.of("de")
-        for (text in listOf(long, "× 12", "Ferienwohnung am See · Maximiliane Mustermann-Schmidt · +4930123456789", "10115 Berlin",
-            "Gemeinsames Haushaltskonto für den Alltag ••4242", "WILLKOMMENRABATTCODE2026", "1.234,50 €", s.get(R.string.order_total),
-            s.get(R.string.order_ship_once), s.get(R.string.order_pay_with))) {
-            val node = onAllNodesWithText(text, substring = true).fetchSemanticsNodes().firstOrNull()
-            assertNotNull("\"$text\" is shown", node)
-            assertTrue("\"$text\" stays inside 320 dp (right edge ${node!!.boundsInRoot.right} px)", node.boundsInRoot.right <= 320f * density.density + 0.5f)
-            assertTrue("\"$text\" is not squeezed to nothing", node.boundsInRoot.width > 0f)
-        }
-    }
 }

@@ -12,7 +12,7 @@ screenshot compared with Android.
 ## 0. Freezes and chat-critical bugs
 
 - [x] Chat list freezes (main thread busy, ChatPage body recomputed again and again) when scrolled away from the bottom.
-      iOS `KeloChat/ChatScreen.swift`. Reference: `A/chat/ChatScreen.kt`, `A/chat/ChatScroll.kt`. The old evidence was gone, so
+      iOS `KeloChat/ChatScreen.swift`. Reference: `A/chat/ChatMessageList.kt`, `A/chat/ChatScroll.kt`. The old evidence was gone, so
       the cause was looked for in code and with `sample` on a 300-message history (KELO_MOCK_LONG_HISTORY): the rows the list draws
       were rebuilt on every read (`rows` was computed; now stored, made once per change of the items and with the folded tool chips),
       and "at the end of the list" came from a 1-pt sentinel row whose appear / disappear wrote state on every flap (and the sentinel
@@ -41,12 +41,12 @@ screenshot compared with Android.
 - [x] The tab bar shows above the keyboard and covers the floating composer / an in-chat form's send button.
       iOS `KeloShell/MainShell.swift`, `KeloShared/App/Router.swift` (hideChrome). Reference: `A/shell/MainShell.kt` (bar hidden while the IME is up).
 - [x] The list stops with the last card under the composer, and no ↓ button in some themes. iOS `ChatScreen.swift`
-      (bottom inset / JumpPill colours). Reference: `A/chat/ChatScreen.kt`, `A/chat/ComposerScrim.kt`. Cause: the end-of-list
+      (bottom inset / JumpPill colours). Reference: `A/chat/ChatMessageList.kt`, `A/chat/ChatJumpPill.kt`, `A/chat/ComposerScrim.kt`. Cause: the end-of-list
       sentinel counted as seen while hidden under the composer and its scrim, so the list thought it was at the end (no ↓, no
       following). Now "at the end" = the visible part above the bottom inset reaches the content's end (within 64 pt: the list's bottom padding and the scrim's fade); "↓" also takes
       hold of the newest row again. The colours were the same as Android's in both themes.
 - [x] Plain "no model" message only for the server's `code: model_required` 400 (any other 400 shows its own words).
-      Reference: `A/chat/ChatViewModel.kt` (model_required). iOS `KeloChat/ChatModel.swift`.
+      Reference: `A/chat/ChatTurns.kt` (model_required). iOS `KeloChat/ChatModel*.swift`.
 
 - [x] "Connect with access key" also takes a typed sign-in / review code (16-128 characters once single spaces are taken out,
       so "ABCD EFGH JKMN PQRS" works too): a 401 on the key is tried again through POST /api/pair with the spaces stripped, like
@@ -66,13 +66,13 @@ screenshot compared with Android.
 
 - [x] Tool steps of one group in a row fold into one chip that updates in place ("메일 읽는 중 · 3/6" → "✓ 메일 6개 읽음"), tap to
       list each call; `tool_started`/`tool_result` `group`, `done`, argument detail. Reference: `A/chat/ChatItems.kt`
-      (`foldTools`, `foldedState`, `foldedText`, `detailOf`), `A/chat/ChatScreen.kt` (ToolChip, `chat_tool_progress`,
+      (`foldTools`, `foldedState`, `foldedText`, `detailOf`), `A/chat/ChatStatusRows.kt` (ToolChip, `chat_tool_progress`,
       `chat_tool_ok_failed`), `A/chat/TurnEvents.kt`.
 - [x] One live browser card per reply and tab (follows the agent from step to step and site to site, "사이트 N곳"); browser
       steps show no chips in a reply with a card. Reference: `A/chat/ChatItems.kt` (Browser), `A/chat/PurchaseUi.kt`
       (`chat_browser_step_sites`).
 - [x] Bulk task permission card: the real count and "목록 보기 (N)" / hide (`approval_request.items`). Reference:
-      `A/chat/ChatScreen.kt` (`chat_approval_list_show/hide`), `A/agent/ApprovalParts.kt`.
+      `A/chat/ChatCards.kt` (`chat_approval_list_show/hide`), `A/agent/ApprovalParts.kt`.
 - [x] `step_limit` with `next` from a newer server: no error bubble (the server writes the line + Continue). Reference:
       `A/chat/ChatItems.kt`, `A/chat/TurnEvents.kt`.
 - [x] Approval lines with `full` (shown whole). Reference: `A/chat/TurnEvents.kt` ApprovalLine.

@@ -49,6 +49,10 @@ import CoreLocation
         return s == .denied || s == .restricted
     }
 
+    /// The phone's own Location Services switch (Settings → Privacy & Security → Location Services). Off: iOS reports every app as
+    /// denied, and Kelo's own Settings page has no Location row to turn on.
+    public static var servicesOn: Bool { CLLocationManager.locationServicesEnabled() }
+
     /// Asks for location "while using the app" (iOS lets the owner pick precise or approximate); true when allowed.
     public static func ask() async -> Bool { await finder.ask() }
 
@@ -64,21 +68,22 @@ import CoreLocation
     }
 
     /// Sends the phone's location when it is due (or `force`, right after the owner allowed it).
-    public static func maybeSend(api: KeloApi, force: Bool = false) async {
+    public static func maybeSend(api: KeloApi, force: Bool = false, prefs: Prefs = .shared) async {
         let now = Date().timeIntervalSince1970
-        let last = Double(Prefs.shared.string(atKey) ?? "") ?? 0
+        let last = Double(prefs.string(atKey) ?? "") ?? 0
         guard force ? granted : due(granted: granted, lastAt: last, now: now) else { return }
         guard let body = await read() else { return }
         if (try? await api.request("POST", "/api/briefing/location", body: .object(body))) != nil {
-            Prefs.shared.set(atKey, String(now))
+            prefs.set(atKey, String(now))
         }
     }
     #else
+    public static var servicesOn: Bool { true }
     public static var granted: Bool { false }
     public static var refused: Bool { false }
     public static func ask() async -> Bool { false }
     public static func read() async -> [String: JSON]? { nil }
-    public static func maybeSend(api: KeloApi, force: Bool = false) async {}
+    public static func maybeSend(api: KeloApi, force: Bool = false, prefs: Prefs = .shared) async {}
     #endif
 }
 

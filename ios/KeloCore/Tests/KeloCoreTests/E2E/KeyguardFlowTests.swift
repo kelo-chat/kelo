@@ -18,10 +18,8 @@ import Testing
 
     @Test func theViewAndTheLockedAnswer() throws {
         let v = try JSONDecoder().decode(KeyguardView.self, from: Data(#"{"mode":"phone","locked":true,"env_key":false,"recovery":true,"phones":[{"device_id":7,"name":"iPhone","alg":2,"created":1.0}]}"#.utf8))
-        #expect(v.on && v.locked && v.recovery)
+        #expect(v.on && v.locked)
         #expect(v.holds(7) && !v.holds(8) && !v.holds(nil))
-        #expect(KeyguardRules.lockedAction(holdsCopy: v.holds(7)) == .unlock)
-        #expect(KeyguardRules.lockedAction(holdsCopy: v.holds(8)) == .recoverOnly)
         #expect(!KeyguardView().on)
         #expect(KeyguardRules.isLocked(ApiError.from(status: 423, body: Data(#"{"detail":"Kelo is locked","code":"locked"}"#.utf8))))
         #expect(KeyguardRules.lastPhoneCodes.contains("last_keyguard_phone") && KeyguardRules.lastPhoneCodes.contains("last_phone"))

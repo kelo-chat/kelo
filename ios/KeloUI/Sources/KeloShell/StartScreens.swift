@@ -18,6 +18,16 @@ final class ConnectModel {
     var keyError: String?
     /// A valid pairing link waiting for "Connect to this server?": nothing is sent before the user sees which server it is.
     var confirm: PairingLink?
+    @ObservationIgnored private let client: PairingClient
+    @ObservationIgnored private let deviceName: () -> String
+    @ObservationIgnored private let signIn: (Session) -> Void
+    @ObservationIgnored let jobs = Jobs()
+
+    /// `signIn`: the app opens the session once the server took this phone; `deviceName`: what this phone is called in 마이 → 내 기기.
+    init(client: PairingClient = PairingClient(), deviceName: @escaping () -> String = { "iPhone" },
+         signIn: @escaping (Session) -> Void = { _ in }) {
+        self.client = client; self.deviceName = deviceName; self.signIn = signIn
+    }
 
     /// A scanned or pasted link. False (and why) when it is not a Kelo pairing link.
     @discardableResult
@@ -37,15 +47,15 @@ final class ConnectModel {
         return true
     }
 
-    func confirmPair(app: AppModel) {
+    func confirmPair() {
         guard let link = confirm, !pairing else { return }
         confirm = nil
         pairing = true
-        Task {
+        jobs.run { [self] in
             do {
-                let session = try await PairingClient().pair(link, deviceName: app.deviceName)
+                let session = try await client.pair(link, deviceName: deviceName())
                 pairing = false
-                app.signIn(session)
+                signIn(session)
             } catch let e as ApiError {
                 pairing = false
                 notice = e.code == KE2ETransport.unsupportedCode ? L(R.string.e2e_server_old_body, KeloVersion.minServer)
@@ -57,24 +67,24 @@ final class ConnectModel {
         }
     }
 
-    func connectWithKey(address: String, key: String, app: AppModel) {
+    func connectWithKey(address: String, key: String) {
         guard let server = ServerAddress.normalize(address) else { keyError = L(R.string.connect_server_invalid); return }
         guard ServerAddress.isAllowed(server) else { keyError = L(R.string.connect_https_only); return }
         keyBusy = true
         keyError = nil
-        Task {
+        jobs.run { [self] in
             do {
-                let (session, _) = try await PairingClient().checkKey(serverUrl: server, key: key.trimmingCharacters(in: .whitespaces))
+                let (session, _) = try await client.checkKey(serverUrl: server, key: key.trimmingCharacters(in: .whitespaces))
                 keyBusy = false
-                app.signIn(session)
+                signIn(session)
             } catch let e as ApiError {
                 // not an access key: it may be a sign-in code typed by hand (the server's code, e.g. an app store reviewer's from
                 // the review notes), which signs this device in like a scanned link
                 if e.isUnauthorized && PairingLinks.looksLikeCode(key),
-                   let session = try? await PairingClient().pair(PairingLink(serverUrl: server, code: PairingLinks.codeOf(key)),
-                                                                 deviceName: app.deviceName) {
+                   let session = try? await client.pair(PairingLink(serverUrl: server, code: PairingLinks.codeOf(key)),
+                                                        deviceName: deviceName()) {
                     keyBusy = false
-                    app.signIn(session)
+                    signIn(session)
                     return
                 }
                 keyBusy = false
@@ -96,11 +106,16 @@ final class ConnectModel {
 
 /// Signed out: the connect screen and its QR scanner.
 struct ConnectFlow: View {
-    @Environment(AppModel.self) private var app
-    @State private var model = ConnectModel()
+    @State private var model: ConnectModel
     @State private var scanning = false
     /// A link handed in from outside (opened from another app) waiting for the confirm question.
     let incoming: String?
+
+    init(app: AppModel, incoming: String?) {
+        self.incoming = incoming
+        _model = State(initialValue: ConnectModel(deviceName: { [weak app] in app?.deviceName ?? "iPhone" },
+                                                  signIn: { [weak app] in app?.signIn($0) }))
+    }
 
     var body: some View {
         Group {
@@ -111,7 +126,7 @@ struct ConnectFlow: View {
             }
         }
         .alert(L(R.string.connect_confirm_title), isPresented: Binding(get: { model.confirm != nil }, set: { if !$0 { model.confirm = nil } })) {
-            Button(L(R.string.connect_confirm_yes)) { model.confirmPair(app: app) }
+            Button(L(R.string.connect_confirm_yes)) { model.confirmPair() }
             Button(L(R.string.cancel), role: .cancel) { model.confirm = nil }
         } message: {
             if let link = model.confirm {
@@ -195,7 +210,7 @@ private struct ConnectScreen: View {
 
     private func submitKey() {
         guard !model.keyBusy, !key.isEmpty, !server.isEmpty else { return }
-        model.connectWithKey(address: server, key: key, app: app)
+        model.connectWithKey(address: server, key: key)
     }
 
     private func step(_ n: Int, _ text: Text) -> some View {
@@ -210,12 +225,18 @@ private struct ConnectScreen: View {
 /// First visit to a server whose profile has no agent name yet: the user's name and the agent's name ("Kelo" to start with).
 struct OnboardingScreen: View {
     let initial: Profile
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
+    @State private var model: OnboardingModel
     @State private var userName = ""
     @State private var agentName = ""
-    @State private var busy = false
-    @State private var error: String?
+
+    init(initial: Profile, app: AppModel) {
+        self.initial = initial
+        _model = State(initialValue: OnboardingModel(api: { [weak app] in app?.api }, onSaved: { [weak app] in app?.setProfile($0) }))
+    }
+
+    private var busy: Bool { model.busy }
+    private var error: String? { model.error }
 
     private var ready: Bool {
         !userName.trimmingCharacters(in: .whitespaces).isEmpty && !agentName.trimmingCharacters(in: .whitespaces).isEmpty && !busy
@@ -241,19 +262,35 @@ struct OnboardingScreen: View {
 
     private func finish() {
         guard ready else { return }
+        model.finish(user: userName, agent: agentName)
+    }
+}
+
+/// The first visit's names: PUT /api/profile, then the app shows the profile it got back (Android Onboarding).
+@MainActor @Observable
+final class OnboardingModel {
+    private(set) var busy = false
+    private(set) var error: String?
+    @ObservationIgnored private let api: () -> KeloApi?
+    @ObservationIgnored private let onSaved: (Profile) -> Void
+    @ObservationIgnored let jobs = Jobs()
+
+    init(api: @escaping () -> KeloApi?, onSaved: @escaping (Profile) -> Void) { self.api = api; self.onSaved = onSaved }
+
+    func finish(user: String, agent: String) {
         busy = true
         error = nil
-        Task {
+        jobs.run { [self] in
+            defer { busy = false }
             do {
-                let p = try await app.requireApi().updateProfile([
-                    "user_name": userName.trimmingCharacters(in: .whitespaces),
-                    "agent_name": agentName.trimmingCharacters(in: .whitespaces),
-                ])
-                app.setProfile(p)
+                guard let api = api() else { throw ApiError(status: 401, detail: "signed out") }
+                onSaved(try await api.updateProfile([
+                    "user_name": user.trimmingCharacters(in: .whitespaces),
+                    "agent_name": agent.trimmingCharacters(in: .whitespaces),
+                ]))
             } catch {
-                self.error = app.message(for: error)
+                self.error = ApiMessage.text(error)
             }
-            busy = false
         }
     }
 }

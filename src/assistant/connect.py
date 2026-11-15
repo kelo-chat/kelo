@@ -1,7 +1,7 @@
 """Reach a copy of the assistant from a phone anywhere, and sign phones in.
 
 Ways to the outside, your choice per copy (docs/connect.md compares them):
-- Kelo address: free https://<name>.kelo.chat from the operator's broker, run by a tunnel container next to the server
+- Kelo address: https://<name>.kelo.chat, offered for now, from the operator's broker, run by a tunnel container next to the server
   (traffic passes through Cloudflare, TLS ends there).
 - Tailscale Funnel: public https on <machine>.<tailnet>.ts.net (ports 443/8443/10000 only), no domain, TLS ends on this computer.
 - Own domain straight to this computer (bundled Caddy on 80/443) or through a reverse proxy you already run.
@@ -273,7 +273,7 @@ def _put(*a: Any, **k: Any) -> Any:
 
 
 MODES = {
-    "kelo": "free Kelo address (through Cloudflare)",
+    "kelo": "Kelo address (offered for now; through Cloudflare)",
     "tailscale": "Tailscale, private",
     "funnel": "Tailscale Funnel, public",
     "cloudflare": "own domain, your Cloudflare account",
@@ -360,7 +360,7 @@ def funnel_off(m: Instances, inst: Instance) -> None:
     _forget(inst, *CONNECT_KEYS, "ASSISTANT_PUBLIC_URL")
 
 
-# ---------------------------------------------------------------------------------------------------------- free Kelo address
+# ---------------------------------------------------------------------------------------------------------- Kelo address
 KELO_BROKER = "https://kelo.chat"
 
 
@@ -387,7 +387,7 @@ def _broker_error(r: Any, host: str) -> ConnectError:
     if r.status_code == 404:
         return ConnectError(f"{host} does not hand out Kelo addresses (yet). Use Tailscale or your own domain instead.")
     if code == "full":
-        return ConnectError("Sorry, all free Kelo addresses are taken right now. The operator has been told and is fixing it. Please "
+        return ConnectError("Sorry, no Kelo addresses are available right now. The operator has been told and is fixing it. Please "
                             "try again later, or use Tailscale or your own domain now (assistant connect tailscale | assistant connect "
                             "domain).")
     if code == "daily_cap":
@@ -684,11 +684,11 @@ def proxy_settings(host: str, url: str, target: str) -> str:
         "  websockets            on   (the live view of the agent's browser; in Nginx Proxy Manager: 'Websockets Support')",
         "  response buffering    off  (replies are streamed)",
         "  timeouts              at least 120 s (300 s is safer)",
-        "  upload size           at least 30 MB",
+        "  upload size           no limit (Kelo checks the size and the storage cap itself; large files come in 90 MB parts)",
         "  https                 a certificate for the host (Let's Encrypt), force https",
         "Nginx / Nginx Proxy Manager (Advanced tab, custom config):",
         "  proxy_buffering off; proxy_request_buffering off; proxy_cache off;",
-        "  proxy_read_timeout 300s; proxy_send_timeout 300s; client_max_body_size 30m;",
+        "  proxy_read_timeout 300s; proxy_send_timeout 300s; client_max_body_size 0;",
         "Caddy:",
         f"  {host} {{ reverse_proxy {target.removeprefix('http://')} {{ flush_interval -1 }} }}",
         "Traefik: a router for Host(`" + host + "`) with a service at " + target + " (Traefik streams by default; raise",

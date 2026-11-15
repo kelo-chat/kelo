@@ -13,6 +13,11 @@ values strings, no notification title or body). The phone wakes up, asks its own
 and shows them. The broker therefore never learns what a copy's assistant did, only that something happened. FCM tokens and data
 payloads never reach a log line (only notification types and counts do) and no answer ever echoes a token back.
 
+Live Activities (live_activity.py): while a reply runs, the iPhone's lock screen and Dynamic Island show its step. These updates are
+the one place words travel, and they are sealed for the phone: the words are encrypted with a key only the phone holds (given to its
+own server once, with the activity's push token), so Apple and the broker see ciphertext and a step number only (check_live,
+apns_live_payload, PushBroker.handle_live).
+
 A copy proves who it is with its own random push install secret (made on first use, kept encrypted in its own database); the
 broker keeps only its SHA-256 (the same scheme as kelo_names.py) and registers it on first use. Rate limits on the broker: per
 install PER_INSTALL_HOUR requests an hour, per address PER_IP_HOUR, at most NEW_INSTALLS_PER_IP_DAY new installs per address a
@@ -73,6 +78,10 @@ APNS_ENVIRONMENTS = ("production", "development")   # the app's aps-environment:
 APNS_TOKEN_RE = re.compile(r"^[0-9a-f]{64,200}$")
 APNS_JWT_SECONDS = 40 * 60               # Apple wants a provider token refreshed between every 20 and 60 minutes
 APNS_LOC_KEY = "kelo_push_update"        # the app's own Localizable.strings entry ("Kelo has an update", in the phone's language)
+LIVE_STALE_SECONDS = 300                 # a Live Activity update is stale after 5 minutes (the phone then shows it as old)
+LIVE_DISMISS_SECONDS = 600               # an end is dismissed after 10 minutes
+LIVE_SEALED_MAX = 2048                   # the base64 of the sealed words (live_activity.py): a few hundred characters of text
+LIVE_PER_INSTALL_HOUR = 4000             # Live Activity updates per copy an hour (one per 5 s per reply, a few replies at once)
 MAX_TOKENS = 10                          # tokens per broker request
 PER_INSTALL_HOUR = 120
 PER_IP_HOUR = 600
@@ -329,6 +338,29 @@ def apns_payload(data: dict[str, str]) -> bytes:
     return json.dumps(body, separators=(",", ":")).encode()
 
 
+def check_live(content: Any, event: Any) -> tuple[dict[str, Any], str]:
+    """A Live Activity update may carry only {"v": 1, "n": int, "sealed": base64} (the words are sealed for the phone)."""
+    if event not in ("update", "end"):
+        raise PushError("event must be update or end")
+    if not isinstance(content, dict) or set(content) != {"v", "n", "sealed"} or content.get("v") != 1:
+        raise PushError("content must be {v: 1, n, sealed}")
+    n, sealed = content.get("n"), content.get("sealed")
+    if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= 100_000:
+        raise PushError("n must be a whole number")
+    if not isinstance(sealed, str) or not sealed or len(sealed) > LIVE_SEALED_MAX or not re.fullmatch(r"[A-Za-z0-9+/=]+", sealed):
+        raise PushError("sealed must be base64")
+    return {"v": 1, "n": n, "sealed": sealed}, event
+
+
+def apns_live_payload(content: dict[str, Any], event: str, ts: int) -> bytes:
+    aps: dict[str, Any] = {"timestamp": ts, "event": event, "content-state": content}
+    if event == "end":
+        aps["dismissal-date"] = ts + LIVE_DISMISS_SECONDS
+    else:
+        aps["stale-date"] = ts + LIVE_STALE_SECONDS
+    return json.dumps({"aps": aps}, separators=(",", ":")).encode()
+
+
 class Apns:
     """Sends pushes straight to Apple's push service (HTTP/2) with the operator's APNs auth key (.p8). The key never enters the
     database or an answer: only its FILE PATH, key id, team id and topic (the app's bundle id) are read from the environment
@@ -383,9 +415,20 @@ class Apns:
             raise PushError("this server does not send iPhone push notifications", 404)
         state = {"jwt": self.provider_token(s), "refreshed": False}
         body = apns_payload(data)
-        return list(await asyncio.gather(*(self._one(s, t, env, body, data, state) for t, env in items)))
+        collapse = f"kelo-{data['id']}"[:64]
+        return list(await asyncio.gather(*(self._one(s, t, env, body, state, collapse=collapse) for t, env in items)))
 
-    async def _one(self, s: dict[str, str], token: str, env: str, body: bytes, data: dict[str, str], state: dict[str, Any]) -> dict[str, Any]:
+    async def send_live(self, token: str, env: str, content: dict[str, Any], event: str, ts: int) -> dict[str, Any]:
+        """One Live Activity push (topic <bundle id>.push-type.liveactivity; an end at priority 10, updates at 5)."""
+        s = self.settings()
+        if s is None or not Path(s["key_file"]).is_file():
+            raise PushError("this server does not send iPhone push notifications", 404)
+        state = {"jwt": self.provider_token(s), "refreshed": False}
+        return await self._one(s, token.lower(), env, apns_live_payload(content, event, ts), state, push_type="liveactivity",
+                               topic=f"{s['topic']}.push-type.liveactivity", priority="10" if event == "end" else "5")
+
+    async def _one(self, s: dict[str, str], token: str, env: str, body: bytes, state: dict[str, Any], *, push_type: str = "alert",
+                   topic: str | None = None, priority: str = "10", collapse: str | None = None) -> dict[str, Any]:
         if not isinstance(token, str) or not APNS_TOKEN_RE.match(token):
             return {"ok": False, "invalid": True, "error": "BadDeviceToken"}
         host = APNS_SANDBOX_HOST if env == "development" else APNS_HOST
@@ -393,9 +436,10 @@ class Apns:
         code, attempt, reauth = "UNREACHABLE", 0, False
         while True:
             wait: float | None = None
-            headers = {"authorization": f"bearer {state['jwt']}", "apns-topic": s["topic"], "apns-push-type": "alert", "apns-priority": "10",
-                       "apns-expiration": str(int(self.clock()) + 86400), "apns-collapse-id": f"kelo-{data['id']}"[:64],
-                       "content-type": "application/json"}
+            headers = {"authorization": f"bearer {state['jwt']}", "apns-topic": topic or s["topic"], "apns-push-type": push_type,
+                       "apns-priority": priority, "apns-expiration": str(int(self.clock()) + 86400), "content-type": "application/json"}
+            if collapse is not None:
+                headers["apns-collapse-id"] = collapse
             try:
                 r = await self.fetcher("POST", url, allowed_hosts=[host], content=body, headers=headers, http2=True)
             except NetGuardError:
@@ -492,6 +536,31 @@ class PushBroker:
         log.info("push broker: %s to %d device(s), %d delivered, %d invalid", data["type"], len(everyone),
                  sum(1 for r in everyone if r["ok"]), sum(1 for r in everyone if r["invalid"]))
         return out
+
+    async def handle_live(self, body: Any, ip: str) -> dict[str, Any]:
+        """One Live Activity update for one iPhone (the words inside are sealed: only the phone can open them)."""
+        if not self.enabled():
+            raise PushError("this server does not send push notifications", 404)
+        # its own budget per address: a long reply's updates never use up the one the notifications need
+        self._gate(f"live-ip:{ip}", LIVE_PER_INSTALL_HOUR, 3600, "live activity updates from one address")
+        if not isinstance(body, dict):
+            raise PushError("send {install_id, token, environment, content, event, timestamp}")
+        token, env = body.get("token"), body.get("environment")
+        if not isinstance(token, str) or not APNS_TOKEN_RE.match(token):
+            raise PushError("token must be an iPhone push token (hex)")
+        if env not in APNS_ENVIRONMENTS:
+            raise PushError(f"environment must be one of {', '.join(APNS_ENVIRONMENTS)}")
+        content, event = check_live(body.get("content"), body.get("event"))
+        ts = body.get("timestamp")
+        if not isinstance(ts, int) or isinstance(ts, bool) or abs(ts - self.wall()) > 86400:
+            raise PushError("timestamp must be a whole number of seconds within a day of now")
+        if self.apns is None or not self.apns.enabled():
+            raise PushError("this server does not send iPhone push notifications", 404)
+        owner = self._install(body.get("install_id"), ip)
+        self._gate(f"live:{owner}", LIVE_PER_INSTALL_HOUR, 3600, "live activity updates from this copy")
+        result = await self.apns.send_live(token, env, content, event, ts)
+        log.info("push broker: live activity %s %s", event, "delivered" if result.get("ok") else ("invalid" if result.get("invalid") else "not sent"))
+        return result
 
 
 # ---------------------------------------------------------------------------------------------------------------- each copy
@@ -594,6 +663,40 @@ class PushClient:
         return out
 
     # ---- sending
+    async def live(self, token: str, env: str, content: dict[str, Any], event: str, ts: int) -> dict[str, Any]:
+        """One Live Activity update to one iPhone (live_activity.py): straight to Apple here, or through the broker. Never raises:
+        a failure answers {"ok": False, "invalid": False} and the next update comes in a few seconds anyway."""
+        off = {"ok": False, "invalid": False}
+        mode = self.mode()
+        if mode == "local":
+            if self.apns is None or not self.apns.enabled():
+                return off
+            try:
+                return await self.apns.send_live(token, env, content, event, ts)
+            except PushError as e:
+                log.warning("push: live activity not sent (%s)", e)
+                return off
+        if mode != "broker":
+            return off
+        body = json.dumps({"install_id": self.install_id(), "token": token, "environment": env, "content": content, "event": event,
+                           "timestamp": ts}, separators=(",", ":")).encode()
+        host = urlsplit(self.broker).hostname or ""
+        try:
+            r = await self.fetcher("POST", f"{self.broker}/broker/push/live", allowed_hosts=[host], content=body,
+                                   headers={"Content-Type": "application/json", "Accept": "application/json"})
+        except NetGuardError as e:
+            log.warning("push: live activity: broker not reachable (%s)", str(e)[:60])
+            return off
+        if r.status != 200:
+            return off
+        try:
+            answer = json.loads(r.body)
+        except (ValueError, TypeError):
+            return off
+        if not isinstance(answer, dict) or not isinstance(answer.get("invalid"), bool):
+            return off
+        return answer
+
     def notify(self, note: dict[str, Any]) -> None:
         """Called (synchronously) for each new notification nobody saw arrive; the push goes out in the background."""
         if not self.mode():

@@ -15,32 +15,32 @@ public final class AgentAvatarModel {
     private struct Blob: Codable { var version: Int64; var data: Data }
 
     /// Brings the picture in step with `version`.
-    public func sync(_ version: Int64, app: AppModel) async {
+    public func sync(_ version: Int64, api: KeloApi?, cache: ScreenCache) async {
         guard version != shown else { return }
         if version <= 0 {
             image = nil; shown = 0
-            app.cache.put("avatar", Blob(version: 0, data: Data()))
+            cache.put("avatar", Blob(version: 0, data: Data()))
             return
         }
-        if let kept: Blob = app.cache.get("avatar"), kept.version == version, let img = PlatformImage(data: kept.data) {
+        if let kept: Blob = cache.get("avatar"), kept.version == version, let img = PlatformImage(data: kept.data) {
             image = img; shown = version
             return
         }
-        guard let api = app.api else { return }
+        guard let api else { return }
         do {
             let bytes = try await api.avatar()
             guard let img = PlatformImage(data: bytes) else { return }
             image = img; shown = version
-            app.cache.put("avatar", Blob(version: version, data: bytes))
+            cache.put("avatar", Blob(version: version, data: bytes))
         } catch let e as ApiError {
             if e.status == 404 { image = nil; shown = 0 }
         } catch {}
     }
 
     /// After this phone saved a new picture (the My page's agent page).
-    public func set(_ img: PlatformImage?, version: Int64, data: Data?, app: AppModel) {
+    public func set(_ img: PlatformImage?, version: Int64, data: Data?, cache: ScreenCache) {
         image = img; shown = version
-        app.cache.put("avatar", Blob(version: version, data: data ?? Data()))
+        cache.put("avatar", Blob(version: version, data: data ?? Data()))
     }
 
     public func reset() { image = nil; shown = -1 }
@@ -48,13 +48,12 @@ public final class AgentAvatarModel {
 
 /// The agent's photo in a circle, or Kelo's character (in `mood`) when it has none (Android agent/AgentParts.kt AgentPicture).
 public struct AgentPicture: View {
-    let name: String
     let image: PlatformImage?
     let size: CGFloat
     let mood: KeloMood
 
-    public init(name: String, image: PlatformImage?, size: CGFloat, mood: KeloMood = .idle) {
-        self.name = name; self.image = image; self.size = size; self.mood = mood
+    public init(image: PlatformImage?, size: CGFloat, mood: KeloMood = .idle) {
+        self.image = image; self.size = size; self.mood = mood
     }
 
     public var body: some View {
@@ -76,7 +75,6 @@ public struct AgentPicture: View {
 /// name and script. Used by 마이 → 언어.
 public struct LanguageList: View {
     @Binding var value: String
-    @Environment(\.kelo) private var c
 
     public init(value: Binding<String>) { _value = value }
 

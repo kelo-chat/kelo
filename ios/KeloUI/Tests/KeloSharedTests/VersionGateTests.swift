@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 
 /// A server that answers every call with `status` and `body`, and `X-Kelo-Server: server` when given.

@@ -48,10 +48,10 @@ object UpdateRules {
         (property?.trim()?.takeIf { it.isNotEmpty() } ?: env?.trim()?.takeIf { it.isNotEmpty() } ?: DEFAULT_BASE).trimEnd('/')
 
     /** The latest.json key of this computer's installer: the .exe on Windows, the .dmg on a Mac; Linux has none (no check). */
-    fun platformKey(os: Platform.Os): String? = when (os) {
-        Platform.Os.WINDOWS -> "windows"
-        Platform.Os.MAC -> "mac"
-        Platform.Os.LINUX -> null
+    fun platformKey(os: DesktopPlatform.Os): String? = when (os) {
+        DesktopPlatform.Os.WINDOWS -> "windows"
+        DesktopPlatform.Os.MAC -> "mac"
+        DesktopPlatform.Os.LINUX -> null
     }
 
     private fun extension(key: String): String = if (key == "mac") ".dmg" else ".exe"
@@ -95,8 +95,8 @@ object UpdateRules {
         return u.toString().takeIf { u.scheme == "https" || u.scheme == "http" }
     }
 
-    fun userAgent(version: String, os: Platform.Os): String =
-        "Kelo-Desktop/$version (${when (os) { Platform.Os.WINDOWS -> "Windows"; Platform.Os.MAC -> "macOS"; Platform.Os.LINUX -> "Linux" }})"
+    fun userAgent(version: String, os: DesktopPlatform.Os): String =
+        "Kelo-Desktop/$version (${when (os) { DesktopPlatform.Os.WINDOWS -> "Windows"; DesktopPlatform.Os.MAC -> "macOS"; DesktopPlatform.Os.LINUX -> "Linux" }})"
 
     fun sha256(file: File): String {
         val md = MessageDigest.getInstance("SHA-256")
@@ -113,12 +113,6 @@ object UpdateRules {
 
     /** The downloaded file is the published one: its sha256 is the one latest.json names. */
     fun verify(file: File, expected: String): Boolean = file.isFile && sha256(file).equals(expected.trim(), ignoreCase = true)
-
-    /** 78970873 -> "75.3 MB" (as the download page shows it). */
-    fun humanSize(bytes: Long): String {
-        val mb = bytes / 1024.0 / 1024.0
-        return if (mb < 100) String.format(Locale.ROOT, "%.1f MB", mb) else String.format(Locale.ROOT, "%.0f MB", mb)
-    }
 
     /** At start (never checked in this run) and then once a day. */
     fun due(lastCheckMs: Long?, nowMs: Long): Boolean = lastCheckMs == null || nowMs - lastCheckMs >= DAY_MS
@@ -165,12 +159,12 @@ data class UpdateState(
  */
 class Updater(
     val currentVersion: String?,
-    private val os: Platform.Os = Platform.os,
+    private val os: DesktopPlatform.Os = DesktopPlatform.os,
     val base: String = UpdateRules.base(System.getProperty("kelo.update.base"), System.getenv("KELO_UPDATE_BASE")),
     private val dir: File,
     private val client: OkHttpClient = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build(),
     private val opener: (File) -> Boolean = ::openInstaller,
-    private val store: Boolean = Platform.isMsix,
+    private val store: Boolean = DesktopPlatform.isMsix,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val key = UpdateRules.platformKey(os)
@@ -334,10 +328,10 @@ class Updater(
             Updater(System.getProperty("jpackage.app-version") ?: System.getProperty("kelo.version"), dir = File(dataDir, "cache"))
 
         /** Windows runs the .exe (its own installer window asks the user); macOS opens the .dmg in Finder. */
-        fun openInstaller(f: File): Boolean = when (Platform.os) {
-            Platform.Os.WINDOWS -> { ProcessBuilder(f.absolutePath).start(); true }
-            Platform.Os.MAC -> ProcessBuilder("open", f.absolutePath).start().let { pr -> pr.waitFor(20, TimeUnit.SECONDS) && pr.exitValue() == 0 }
-            Platform.Os.LINUX -> false
+        fun openInstaller(f: File): Boolean = when (DesktopPlatform.os) {
+            DesktopPlatform.Os.WINDOWS -> { ProcessBuilder(f.absolutePath).start(); true }
+            DesktopPlatform.Os.MAC -> ProcessBuilder("open", f.absolutePath).start().let { pr -> pr.waitFor(20, TimeUnit.SECONDS) && pr.exitValue() == 0 }
+            DesktopPlatform.Os.LINUX -> false
         }
     }
 }

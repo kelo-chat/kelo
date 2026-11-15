@@ -2,12 +2,6 @@ import Foundation
 
 // Hand-written helpers on the generated models (ApiModels.swift), the same as the Android models' members.
 
-extension Goal {
-    public static let statusTracking = "tracking"
-    public static let statusDone = "done"
-    public var isDone: Bool { status == Goal.statusDone }
-}
-
 extension AgentTask {
     public static let statusRunning = "running"
     public static let statusWaiting = "waiting_approval"
@@ -26,7 +20,6 @@ extension Worker {
     public static let statusRunning = "running"
     public static let statusNeedsInput = "needs_input"
     public static let statusBlocked = "blocked"
-    public static let statusDone = "done"
     public static let statusFailed = "failed"
     public static let statusStopped = "stopped"
     public static let statusInterrupted = "interrupted"
@@ -50,10 +43,6 @@ extension WorkerDetail {
 
 extension Tokens {
     public var sum: Int64 { inputTokens + outputTokens }
-}
-
-extension Upload {
-    public var name: String { path.replacingOccurrences(of: "uploads/", with: "") }
 }
 
 extension OAuthFlow {
@@ -81,14 +70,6 @@ extension VaultEntry {
     public var signedIn: Bool { kind == VaultEntry.kindEmail || placement.via == "oauth" || name == "github-api" }
 }
 
-extension ProviderDetail {
-    /// The shorter form the chat's model picker takes.
-    public func asInfo() -> ProviderInfo {
-        ProviderInfo(name: name, displayName: displayName, configured: configured, effortLevels: effortLevels, effortNote: effortNote,
-                     unofficial: unofficial, vendor: vendor, consent: consent, consentVersion: consentVersion)
-    }
-}
-
 extension LearnedRule {
     public static let proposed = "proposed"
     public static let accepted = "accepted"
@@ -100,7 +81,6 @@ public struct RuleGroups: Equatable, Sendable {
     public let proposed: [LearnedRule]
     public let accepted: [LearnedRule]
     public let rejected: [LearnedRule]
-    public var empty: Bool { proposed.isEmpty && accepted.isEmpty && rejected.isEmpty }
 }
 
 /// When the last run happened, in words (Android RunWhen).
@@ -183,26 +163,10 @@ public enum LookbackRules {
         }
         return .day
     }
-
-    public static func withStatus(_ rules: [LearnedRule], id: Int64, status: String) -> [LearnedRule] {
-        rules.map { r in var c = r; if r.id == id { c.status = status }; return c }
-    }
-
-    public static func replace(_ rules: [LearnedRule], with rule: LearnedRule) -> [LearnedRule] {
-        rules.contains { $0.id == rule.id } ? rules.map { $0.id == rule.id ? rule : $0 } : rules + [rule]
-    }
 }
 
 /// Chat history kept on the phone for the next open (Android ChatHistoryCache): the newest 200 messages, at most 300k characters.
 public enum ChatHistoryCache {
     public static let maxMessages = 200
     public static let maxChars = 300_000
-
-    public static func trim(_ messages: [StoredMessage]) -> [StoredMessage] {
-        let last = messages.count > maxMessages ? Array(messages.suffix(maxMessages)) : messages
-        var total = last.reduce(0) { $0 + $1.content.utf16.count }
-        var from = 0
-        while total > maxChars && from < last.count - 1 { total -= last[from].content.utf16.count; from += 1 }
-        return from == 0 ? last : Array(last[from...])
-    }
 }

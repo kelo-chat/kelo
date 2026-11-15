@@ -168,3 +168,16 @@ async def test_every_background_kind_can_use_the_background_model(kind):
     assert seen == [("anthropic", "small"), ("p", "m")] and fell[0][0] == kind
     assert records == [{"kind": kind, "task_id": 4, "provider": "p", "model": "m", "input_tokens": 100, "output_tokens": 10,
                         "cache_read_tokens": 60, "cache_write_tokens": 20, "note": f"background model failed: {fell[0][1]}"}]
+
+
+async def test_every_model_call_leaves_one_timing_line_without_text(caplog):
+    """2026-11-12 (agy felt slow): one log line per call with the first event's time, the total, tokens and the message count."""
+    import logging
+    seen, records = [], []
+    counted = usage_meter.metered(fake(seen), records.append, lambda: {"source": "chat"})
+    with caplog.at_level(logging.INFO, logger="uvicorn.error"):
+        async for _ev in counted()("p", ChatRequest(model="m", messages=[{"role": "user", "content": "secret words here"}])):
+            pass
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("model call ")]
+    assert len(lines) == 1 and "p m (chat)" in lines[0] and "total " in lines[0] and "1 messages" in lines[0]
+    assert "secret words" not in lines[0]

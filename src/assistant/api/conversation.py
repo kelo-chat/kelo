@@ -6,6 +6,7 @@ import asyncio
 import logging
 from typing import Any
 from fastapi import Depends
+from ..recheck import RECHECK_MARK
 from ..schedules import SCHEDULE_MARK
 from ..watchers import WATCH_MARK
 from ..chat_images import chat_image_routes
@@ -30,6 +31,7 @@ def router(ctx: AppContext) -> APIRouter:
     cancel_turn = ctx.cancel_turn
     chat_images = ctx.chat_images
     chat_attachments = ctx.chat_attachments
+    comparisons = ctx.comparisons
     compactor = ctx.compactor
     deliveries = ctx.deliveries
     ended_tabs = ctx.ended_tabs
@@ -40,6 +42,7 @@ def router(ctx: AppContext) -> APIRouter:
     pending_approvals = ctx.pending_approvals
     pending_links = ctx.pending_links
     pending_replies = ctx.pending_replies
+    pending_comparisons = ctx.pending_comparisons
     require_auth = ctx.require_auth
     resolved_checks = ctx.resolved_checks
     running_turns = ctx.running_turns
@@ -59,8 +62,9 @@ def router(ctx: AppContext) -> APIRouter:
     @router.get("/api/messages", dependencies=[Depends(require_auth)])
     async def get_messages(limit: int = 100, before_id: int | None = None) -> list[dict[str, Any]]:
         rows = store.messages(limit=max(1, min(limit, 500)), before_id=before_id)
-        rows = [m for m in rows if not (m["role"] == "user" and m["content"].startswith((HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK)))]   # not the user's words
+        rows = [m for m in rows if not (m["role"] == "user" and m["content"].startswith((HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK)))]   # not the user's words
         rows = goal_book.replies_for(rows)   # tap-to-answer buttons on the newest agent messages
+        rows = ctx.comparisons.for_messages(rows)   # comparison cards (comparison.py)
         rows = chat_images.for_messages(rows)  # screenshots Kelo showed with a reply (chat_images.py)
         rows = chat_attachments.for_messages(rows)   # files the user sent with a message (chat_attachments.py)
         return briefing.attach(rows)         # the morning briefing's card on its message (briefing.py)
@@ -91,6 +95,7 @@ def router(ctx: AppContext) -> APIRouter:
         for tid in [k for k, t in turns.items() if t.done]:   # a phone asking for a finished reply again gets 404, not its words
             turns.pop(tid, None)
         pending_replies.clear()
+        pending_comparisons.clear()
         pending_links.clear()
         chat_images.clear()
         owner_tasks.clear()

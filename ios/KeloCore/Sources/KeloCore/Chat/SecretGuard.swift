@@ -10,7 +10,6 @@ import Foundation
 public struct SecretSpan: Equatable, Hashable, Sendable {
     public static let password = "password"
     public static let card = "card"
-    public static let privateKey = "private_key"
 
     public var start: Int
     public var end: Int
@@ -24,7 +23,6 @@ public struct SecretTarget: Equatable, Hashable, Sendable {
     public static let connector = "connector"
     public static let wallet = "wallet"
     public static let vault = "vault"
-    public static let keychain = SecretTarget(vault, "")
 
     public var type: String
     public var id: String
@@ -35,11 +33,10 @@ public struct SecretTarget: Equatable, Hashable, Sendable {
 /// `label`: the server's guess of what it belongs to ("Anthropic", "GitHub", a connector's name), "" when it has none.
 public struct SecretFound: Equatable, Sendable {
     public var spans: [SecretSpan]
-    public var placeholder: String
     public var target: SecretTarget
     public var label: String
-    public init(spans: [SecretSpan], placeholder: String, target: SecretTarget, label: String = "") {
-        self.spans = spans; self.placeholder = placeholder; self.target = target; self.label = label
+    public init(spans: [SecretSpan], target: SecretTarget, label: String = "") {
+        self.spans = spans; self.target = target; self.label = label
     }
 }
 
@@ -68,7 +65,7 @@ public enum SecretGuard {
         }.sorted { $0.start < $1.start }
         let t = detail["target"]?.objectValue
         let type = str(t?["type"])
-        return SecretFound(spans: spans, placeholder: str(detail["placeholder"]),
+        return SecretFound(spans: spans,
                            target: SecretTarget(types.contains(type) ? type : SecretTarget.vault, str(t?["id"])),
                            label: str(detail["label"]).trimmingCharacters(in: .whitespacesAndNewlines))
     }

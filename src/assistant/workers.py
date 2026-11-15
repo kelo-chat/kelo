@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field
 from . import tool_labels
 from .activity import host_of, title_from
 from .agent import Tool, emit_ui, inbox
+from .agent.found_secrets import scrub
 from .agent.loop import digest_tool_results
 from .compaction import request_tokens
 from .i18n import N_, t
@@ -96,6 +97,18 @@ CREATE TABLE IF NOT EXISTS workers (
 CREATE TABLE IF NOT EXISTS worker_messages (
     worker_id TEXT NOT NULL, seq INTEGER NOT NULL, message TEXT NOT NULL, PRIMARY KEY (worker_id, seq));
 """
+
+
+BUSY_GIVE_UP = 48 * 3600.0   # a job waiting for a busy / unreachable model gives up after this long in all
+
+
+def _outage_text(text: str) -> bool:
+    """The job's turn failed because the model was busy or unreachable (resume.is_outage on its error), not because of the job."""
+    if not text:
+        return False
+    from .providers.types import ProviderError
+    from .resume import is_outage
+    return is_outage(ProviderError(text))
 
 
 @dataclass(slots=True)
@@ -154,6 +167,7 @@ class _Live:
     seen: set[str] = field(default_factory=set)   # distinct tool calls that succeeded in this job (progress)
     chunk_progress: int = 0                        # of them, in the stretch of work going on now
     chunks: int = 0                                # fresh budgets given since the job was (re)started
+    progress: str = ""                             # "300 / 1,545 · label" from job_progress: stays on the job card while it works
 
 
 class _Recorder:
@@ -230,7 +244,7 @@ class _Recorder:
         elif kind == "error":
             self.error = str(item.get("message", ""))
         elif kind == "browser":
-            self.w._update(self.wid, last_url=str(item.get("url") or "")[:500], status_text=str(item.get("status") or "")[:80])
+            self.w._update(self.wid, last_url=str(item.get("url") or "")[:500], status_text=self.w._status(self.wid, str(item.get("status") or "")))
 
 
 # ---- the app's API for jobs (mounted by the server; contracts next to serialize() in server.py) ------------------------------------
@@ -297,7 +311,12 @@ class Workers:
             return
         lines = json.loads(r["lines"] or "[]")[-(LINES_KEPT - 1):]
         lines.append({"at": round(self._clock(), 3), "text": f"{label} · {target}" if target else label})
-        self._update(wid, lines=json.dumps(lines, ensure_ascii=False), steps=r["steps"], status_text=label[:80])
+        self._update(wid, lines=json.dumps(lines, ensure_ascii=False), steps=r["steps"], status_text=self._status(wid, label))
+
+    def _status(self, wid: str, label: str) -> str:
+        """The job card's one line (80 characters): the job's own progress while it reported one, else what the last step was."""
+        live = self._live.get(wid)
+        return ((live.progress if live is not None and live.progress else label) or "")[:80]
 
     def _prune(self) -> None:
         old = self.store._all("SELECT id FROM workers WHERE status NOT IN ('running', 'needs_input', 'blocked', 'interrupted') "
@@ -340,6 +359,28 @@ class Workers:
         r = self._row(wid)
         return self.public(r, full=True) if r else None
 
+    def prompt_block(self, within: float = 86400) -> str:
+        """For the main agent's turn lines: the jobs that run or wait now and the ones that ended in the last day, with their state
+        right now. The chat may still say "it runs in the background" after the user stopped a job from the Work page (a stop sends
+        no message), so without this a reply would tell them it is still going."""
+        now = self._clock()
+        lines = []
+        for w in self.list(10):
+            st, at = w["status"], float(w.get("updated_at") or 0)
+            if st not in ("running", "needs_input", "blocked") and now - at > within:
+                continue
+            ago = max(0, int((now - at) // 60))
+            state = {"running": "running now",
+                     "done": f"finished {ago} min ago",
+                     "failed": f"ended without success {ago} min ago",
+                     "stopped": f"stopped {ago} min ago: it is not running and does nothing more unless the user asks again",
+                     "interrupted": f"cut off by a server restart {ago} min ago, not running now"}.get(st, "paused, waiting for the user")
+            lines.append(f"- {w['id']} · {w['title']} · {state}")
+        if not lines:
+            return ""
+        return ("Background jobs, their state right now (this overrides what earlier messages say about them; bring them up only when "
+                "it matters or the user asks):\n" + "\n".join(lines))
+
     def holds_tab(self, key: str) -> bool:
         """The browser tab of a job that is running, paused (the user may take it over and hand it back) or kept: it must stay open."""
         if not key.startswith("task:w"):
@@ -370,11 +411,16 @@ class Workers:
         lines.append("If the job does the same kind of step on many items (all / every / these N), find the items first, then call "
                      "request_task_permission once with the real count and the list, then do them one after another. Work in order and "
                      "keep track of what is done: when a stretch of work uses its budget and you were getting somewhere, a fresh budget "
-                     "follows by itself.")
+                     "follows by itself. Keep going until every item is done or something really stops you (a limit, a refusal, a check you "
+                     "cannot solve, an approval declined); do not stop to ask whether to continue. Show how far you are with "
+                     "job_progress(done, total, label) every 10-25 items.")
         lines.append(
             f"Budget: about {steps} steps and {minutes} minutes. Finish by calling report(status, summary, details?, keep_tab?) once, as your last step:\n"
             "- done: the job is complete. summary: the result in the user's language, with facts (prices, times, numbers) copied exactly.\n"
-            "- needs_input: you need the user: a login, a choice, a one-time code, or a step they must do on the page. When a website login "
+            "- needs_input: you need the user: a login, a choice, a one-time code, or a step they must do on the page. Before you pause "
+            "for anything but a login or a code, try 2-3 other ways yourself (the per-item action again, the site's own request, another "
+            "page or tool). Then the summary says in 2-4 lines what you tried and why each failed, the concrete options with your "
+            "recommendation, and ends with one question; never just \"tell me how\". When a website login "
             "is missing, call request_login for that site first. You will be resumed here, with this history and this tab, once it is "
             "saved or once the user hands the browser back.\n"
             "- blocked: a hard stop you cannot get past (the site refuses you).\n"
@@ -539,7 +585,7 @@ class Workers:
 
     # ------------------------------------------------------------------ running
     def _worker_tools(self) -> list[Tool]:
-        return [t for t in self.host.tools() if t.name not in MAIN_ONLY and t.name != "report"] + [self.report_tool()]
+        return [t for t in self.host.tools() if t.name not in MAIN_ONLY and t.name != "report"] + [self.progress_tool(), self.report_tool()]
 
     def _fit(self, msgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """A long job's history for the next request: older results as one-line digests, then the oldest steps left out (the brief stays)."""
@@ -567,6 +613,7 @@ class Workers:
         outcome: tuple[str, str, str, bool] | None = None
         rec: _Recorder | None = None
         held: tuple[float] | None = None
+        busy = False   # the model was busy / unreachable (resume.is_outage): the job pauses and goes on by itself
         try:
             while True:
                 r = self._row(wid)
@@ -632,6 +679,9 @@ class Workers:
                 if turn.final_status == "failed" and getattr(turn, "limited", False):
                     held = (getattr(turn, "limit_reset", None) or 0.0,)   # the model's usage is used up: pause, go on after the reset
                     break
+                if turn.final_status == "failed" and _outage_text(turn.final_error or rec.error):
+                    busy = True   # 2026-11-11: Gemini's "high traffic / no capacity" ended a 130-step job twice; it waits now
+                    break
                 if turn.final_status == "failed":
                     outcome = ("failed", t("Stopped by an error: {error}", error=(turn.final_error or rec.error)[:200]), "", False)
                     break
@@ -657,6 +707,10 @@ class Workers:
         if held is not None and not live.stop:
             self._hold_for_limit(wid, held[0] or None)
             return
+        if busy and not live.stop and self._hold_for_busy(wid):
+            return
+        if busy and outcome is None:
+            outcome = ("failed", t("Stopped by an error: {error}", error=t("the AI model stayed unavailable for too long")), "", False)
         await self._settle(wid, outcome, rec)
 
     def _next_chunk(self, wid: str, r: dict[str, Any], live: _Live) -> None:
@@ -690,11 +744,43 @@ class Workers:
         self._emit(wid)
         self._drain()
 
+    def _hold_for_busy(self, wid: str) -> bool:
+        """The model was busy or unreachable: pause the job as it is and go on by itself after a wait that grows (resume.next_wait:
+        1, 5, 15, then every 60 minutes). False once it has waited BUSY_GIVE_UP in all: then it stops with its report."""
+        from .resume import next_wait
+        r = self._row(wid) or {}
+        try:
+            prev = json.loads(r.get("wait_on") or "{}")
+        except ValueError:
+            prev = {}
+        now = self._clock()
+        n = int(prev.get("n") or 0) if prev.get("kind") == "model_busy" else 0
+        since = float(prev.get("since") or now) if prev.get("kind") == "model_busy" else now
+        if now - since > BUSY_GIVE_UP:
+            return False
+        until = now + next_wait(n)
+        self._update(wid, status="interrupted", error=t("The AI model is busy; the job goes on by itself in a few minutes."),
+                     auto_resume=0, keep_tab=1,
+                     wait_on=json.dumps({"kind": "model_busy", "until": until, "n": n + 1, "since": since}))
+        self._emit(wid)
+        self._drain()
+        return True
+
     def limit_tick(self, now: float | None = None) -> list[str]:
         """Called every minute: jobs held by the usage limit tell the user once (when the host says it is a good time) and go on once
         the hold is over (a provider still held pushes it back)."""
         now = self._clock() if now is None else now
         out = []
+        for r in self.store._all("SELECT * FROM workers WHERE status = 'interrupted' AND wait_on LIKE '%model_busy%'"):
+            try:
+                wait = json.loads(r["wait_on"] or "{}")
+            except ValueError:
+                continue
+            if wait.get("kind") == "model_busy" and float(wait.get("until") or 0) <= now:
+                ok, _ = self.resume(r["id"], why="The AI model was busy and you were paused for a while; go on from where you were.",
+                                    auto=True)
+                if ok:
+                    out.append(r["id"])
         for r in self.store._all("SELECT * FROM workers WHERE status = 'interrupted' AND wait_on LIKE '%model_limit%'"):
             try:
                 wait = json.loads(r["wait_on"] or "{}")
@@ -762,6 +848,8 @@ class Workers:
                  f"{rep['status']}.", f"Summary: {rep['summary'] or '-'}"]
         if rep["details"]:
             lines.append(f"Details: {rep['details']}")
+        if progress := self._progress_line(r):
+            lines.append(progress)
         st = rep["status"]
         if st == "done":
             lines.append("Pass the result on to the user.")
@@ -774,11 +862,34 @@ class Workers:
             lines.append("Say what stopped it. The user can take over its browser tab from the agent screen; it goes on by itself when "
                          "they hand it back.")
         else:
-            lines.append("Say that it did not work and what was tried.")
+            lines.append("Say that it stopped, why, and how far it got (the counts above are the server's own record: use them; never "
+                         "guess that something was not done).")
         quiet = r["parent_source"] not in ("chat", "api") and st == "done"
         lines.append("Answer briefly in the user's language. Do not start a new job for the same thing; use resume or worker_message."
                      + (f" This came from a run the user is not watching: if nothing here is worth telling them, reply exactly NO_REPLY." if quiet else ""))
         return "\n".join(lines)
+
+    def _progress_line(self, r: dict[str, Any]) -> str:
+        """How far the job got, from the server's own records (never the model's memory): its steps, and the steps that committed
+        something in the user's name and went through (approval_log: allowed by the user, by their request or a rule), by site.
+        2026-11-11: a job stopped by a model error after 30+ applications was reported as "only the first one was done"."""
+        try:
+            tasks = [int(x["id"]) for x in self.store._all("SELECT id FROM tasks WHERE worker_id = ?", (r["id"],))]
+            done: list[dict[str, Any]] = []
+            if tasks:
+                marks = ",".join("?" * len(tasks))
+                done = self.store._all(f"SELECT site, COUNT(*) AS n FROM approval_log WHERE task_id IN ({marks}) AND decision LIKE 'allowed%' "
+                                       "GROUP BY site ORDER BY n DESC", tuple(tasks))
+        except Exception:  # noqa: BLE001 - the handoff goes out without it
+            return ""
+        parts = [f"Progress (server record): {int(r.get('steps') or 0)} steps"]
+        if done:
+            parts.append("; steps that committed something and went through: " + ", ".join(f"{d['n']} on {d['site']}" for d in done[:5]))
+        else:
+            parts.append("; no step that commits something went through")
+        if r.get("last_url"):
+            parts.append(f"; last page: {str(r['last_url'])[:200]}")
+        return "".join(parts) + "."
 
     def _emit(self, wid: str) -> None:
         r = self._row(wid)
@@ -842,6 +953,32 @@ class Workers:
             await asyncio.wait(tasks, timeout=5)
 
     # ------------------------------------------------------------------ tools
+    def progress_tool(self) -> Tool:
+        async def job_progress(args: dict[str, Any]) -> str:
+            wid = current_worker.get()
+            live = self._live.get(wid) if wid else None
+            if live is None:
+                return "Error: job_progress is only for background jobs."
+            try:
+                done, total = int(args.get("done")), int(args.get("total") or 0)
+            except (TypeError, ValueError):
+                return "Error: done and total must be whole numbers."
+            if done < 0 or total < 0:
+                return "Error: done and total cannot be negative."
+            label = " ".join(str(args.get("label") or "").split())
+            live.progress = (f"{done:,} / {total:,}" if total else f"{done:,}") + (f" · {label}" if label else "")
+            live.progress = live.progress[:80]
+            self._update(wid, status_text=live.progress)
+            self._emit(wid)
+            return "Progress shown. Go on with the work."
+
+        return Tool("job_progress", "Show the user how far this job is (item-by-item work over many items): done of total and what is being "
+                    "done, e.g. done=300, total=1545, label='deleting comments'. Call it about every 10-25 items, not after each one; "
+                    "it costs no step of the work.",
+                    {"type": "object", "properties": {"done": {"type": "integer"}, "total": {"type": "integer", "description": "0 if unknown"},
+                                                      "label": {"type": "string", "description": "a few words, in the user's language"}},
+                     "required": ["done", "total"]}, job_progress)
+
     def report_tool(self) -> Tool:
         async def report(args: dict[str, Any]) -> str:
             wid = current_worker.get()
@@ -854,8 +991,8 @@ class Workers:
                 return f"Error: status must be one of {', '.join(REPORT_STATUSES)}."
             if not summary:
                 return "Error: summary is required: say in a few sentences what came of the job, in the user's language."
-            live.report = {"status": status, "summary": summary, "details": str(args.get("details") or ""), "keep_tab": bool(args.get("keep_tab")),
-                           "deadline": str(args.get("deadline") or "")}
+            live.report = {"status": status, "summary": scrub(summary), "details": scrub(str(args.get("details") or "")),
+                           "keep_tab": bool(args.get("keep_tab")), "deadline": str(args.get("deadline") or "")}
             return "Report received. Stop here."
 
         return Tool("report", "End this background job and send its outcome to the main assistant, once, as your last step. status: done, "
@@ -918,8 +1055,9 @@ class Workers:
         wid_prop = {"id": {"type": "string", "description": "the job id"}}
         return [
             Tool("delegate", "Hand long work (many browser steps, research across many sources) to a background job and return at once; "
-                 "tell the user in one line that it started. The job gets its own tab, a larger step budget and your tools, but cannot ask "
-                 "the user anything: put everything it needs in task. Its report comes back to you by itself; do not check on it.",
+                 "tell the user in one line that it started. It cannot ask the user anything: put everything it needs in task, including the "
+                 "user's own choices and saved preferences that apply (sizes, colors, options, address; from your memory files). Its report "
+                 "comes back by itself.",
                  {"type": "object", "properties": {"task": {"type": "string"}, "kind": {"type": "string", "enum": list(KINDS)},
                                                    "url": {"type": "string", "description": "where to start"},
                                                    "files": {"type": "array", "items": {"type": "string"}, "description": "your files to use"},

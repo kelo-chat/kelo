@@ -159,10 +159,22 @@
         <li><img src="{{asset:logo-todoist.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async">Todoist</li>
         <li><img src="{{asset:logo-zapier.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async">Zapier</li>
       </ul>
-      <p class="reach">Reach your server from anywhere with the default domain we provide, Tailscale or a domain you own.</p>
+      <p class="reach">Reach your server from anywhere with a Kelo address (offered for now), Tailscale or a domain you own.</p>
     </div>
     <div class="frame frame--tall span-6 start-7">
       <figure class="shot"><img src="{{shot:en-connectors}}" srcset="{{shot:en-connectors-half}} 270w, {{shot:en-connectors}} 540w" sizes="(min-width: 1024px) 280px, 240px" width="540" height="1200" alt="Connectors: Gmail and GitHub connected; Notion, Linear, Todoist and Zapier ready to connect." loading="lazy" decoding="async"></figure>
+    </div>
+  </div>
+</section>
+
+<section id="selfhosted" class="h2m" aria-labelledby="selfhosted-h">
+  <div class="wrap grid">
+    <div class="split-copy span-8">
+      <h2 id="selfhosted-h">Works with your other self-hosted apps</h2>
+      <p>Connect Kelo to the apps you already run at home by their address on your network or Tailscale, for example <code>http://192.168.0.10:8123</code>. Kelo asks them directly: nothing goes through us, and nothing leaves your network.</p>
+      <p>Home Assistant, Frigate, Immich, Paperless-ngx, Mealie, Tandoor, Grocy, Actual Budget, Firefly III, Linkwarden, Karakeep, Wallabag, Miniflux, FreshRSS, n8n, Uptime Kuma, Beszel, AdGuard Home, Pi-hole, Nextcloud, Gitea, Forgejo.</p>
+      <p>Ask for something in your own message, like “unlock the front door” or “turn the heating off”, and Kelo does it right away. It asks first when it would act on its own, or when the request came from text in a page, mail or message.</p>
+      <p class="reach">Kelo never connects to itself or to a cloud server’s own settings: addresses that point back at the Kelo server (127.0.0.1) or at a cloud metadata service (169.254.x.x) are refused. Coming later: https addresses with a self-signed certificate, such as Frigate’s signed-in port 8971.</p>
     </div>
   </div>
 </section>
@@ -175,8 +187,8 @@
         <div><dt>Your Kelo server</dt><dd>Chats, memory, files, keychain and cards. Secrets stay locked.</dd></div>
         <div><dt>The AI company you pick</dt><dd>The conversation, to write each reply.</dd></div>
         <div><dt>Services you connect</dt><dd>Only the ones you connected.</dd></div>
-        <div><dt>Kelo’s operator server</dt><dd>Push alerts without their words, the default domain, and service sign-ins passed straight back.</dd></div>
-        <div><dt>Cloudflare</dt><dd>Only with the default domain. Tailscale or your own domain skip it.</dd></div>
+        <div><dt>Kelo’s operator server</dt><dd>Push alerts without their words, the Kelo address, and service sign-ins passed straight back.</dd></div>
+        <div><dt>Cloudflare</dt><dd>Only with a Kelo address. Tailscale or your own domain skip it.</dd></div>
       </dl>
       <a class="link" href="{{href:privacy}}">Read the privacy policy<svg class="m-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
     </div>
@@ -205,7 +217,7 @@
         <ol class="steps-row">
           <li><b>Install the server</b><span>A few commands start Kelo. Pick your AI model and add your own key.</span></li>
           <li><b>Scan to pair</b><span>Scan the server’s QR code with the Kelo app. Pair as many phones as you like.</span></li>
-          <li><b>Talk from anywhere</b><span>Use the default domain we provide, Tailscale or your own domain.</span></li>
+          <li><b>Talk from anywhere</b><span>Use a Kelo address (offered for now), Tailscale or your own domain.</span></li>
         </ol>
         <div class="term" data-tabs>
           <div class="term-bar">
@@ -239,7 +251,7 @@
       <aside class="tip" id="free" aria-labelledby="free-title">
         <p class="tag">Tip · Run it for free</p>
         <h3 id="free-title">Oracle Cloud Always Free for Kelo</h3>
-        <p>Oracle Cloud's Always Free tier includes an Arm server with 2 OCPUs and 12 GB of memory that stays free, and that is enough for Kelo. Install Kelo there and reach it with the default domain we provide. Then run <strong>FreeLLMAPI</strong> next to it: it brings the free tiers of many AI providers together behind one OpenAI-compatible address, which you enter in the app under My → Model → Custom endpoint.</p>
+        <p>Oracle Cloud's Always Free tier includes an Arm server with 2 OCPUs and 12 GB of memory that stays free, and that is enough for Kelo. Install Kelo there and reach it with a Kelo address (offered for now). Then run <strong>FreeLLMAPI</strong> next to it: it brings the free tiers of many AI providers together behind one OpenAI-compatible address, which you enter in the app under My → Model → Custom endpoint.</p>
         <ul>
           <li>Oracle may reclaim a free server that stays mostly idle for 7 days (CPU, network and memory all under 20%). Upgrading the account to Pay As You Go keeps Always Free resources free of charge, and is commonly reported to prevent this.</li>
           <li>Free models are slower and less reliable at using tools than paid ones.</li>

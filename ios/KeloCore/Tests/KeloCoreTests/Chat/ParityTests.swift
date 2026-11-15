@@ -25,7 +25,7 @@ import Foundation
         let j = try JSON.parse(#"{"items":[{"id":"g1","site":"shop.example","action":"체험단 신청","max_count":24,"used":5,"task_id":12},{"site":"no id"}]}"#)
         let g = TaskPermission.parseList(j)
         #expect(g.count == 1)
-        #expect(g[0].maxCount == 24 && g[0].used == 5 && g[0].taskId == 12)
+        #expect(g[0].maxCount == 24 && g[0].used == 5)
         #expect(g[0].action == "체험단 신청")
     }
 }

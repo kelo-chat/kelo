@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -10,14 +11,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.core.Profile
 import chat.kelo.app.core.Session
 import chat.kelo.desktop.core.AppContainer
 import chat.kelo.desktop.core.FileKeyValueStore
 import chat.kelo.desktop.core.StoreKey
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.MyPane
 import chat.kelo.desktop.ui.KeloFrame
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -101,21 +99,21 @@ class StorageShotsTest {
 
     private fun walk(lang: String, level: String, width: Int, cleanup: Boolean, tag: String = "") {
         val base = server(if (lang == "ko") "ko" else "en", level)
-        val s = Strings.of(lang)
+        val s = Words.of(lang)
         val app = app(base, lang, "light")
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             Box(Modifier.size(width.dp, 2400.dp)) {   // tall: the whole cleanup list fits, nothing to scroll
-                KeloFrame(app) { MyPane(app, topInset = 0.dp, start = start.value, onStartUsed = { start.value = null }, onSignedOut = {}) }
+                KeloFrame(app) { MyPaneAt(app, start) }
             }
         }
         val name = "storage-$tag$level-$lang"
         try {
             val row = when (level) {
-                "host" -> s.get(R.string.storage_row_host)
-                "critical" -> s.get(R.string.storage_row_critical)
-                else -> s.get(R.string.storage_row_warn, 82).substringBefore("82")
+                "host" -> s.get(Res.string.storage_row_host)
+                "critical" -> s.get(Res.string.storage_row_critical)
+                else -> s.get(Res.string.storage_row_warn, 82).substringBefore("82")
             }
             ui.waitText(row, timeout = 20_000)                                    // My home: the row says it
             for (theme in listOf("light", "dark")) {
@@ -124,8 +122,8 @@ class StorageShotsTest {
                 ui.shot("$name-my-$theme")
             }
             app.settings.setTheme("light")
-            compose.onAllNodesWithText(s.get(R.string.resources_title)).onFirst().performClick()   // as a person would
-            val clean = s.get(R.string.storage_clean_up)
+            compose.onAllNodesWithText(s.get(Res.string.resources_title)).onFirst().performClick()   // as a person would
+            val clean = s.get(Res.string.storage_clean_up)
             ui.waitText(clean, timeout = 20_000)                                  // the warning with 정리하기
             for (theme in listOf("light", "dark")) {
                 app.settings.setTheme(theme)
@@ -135,9 +133,9 @@ class StorageShotsTest {
             app.settings.setTheme("light")
             if (!cleanup) return
             compose.onAllNodesWithText(clean).onFirst().performClick()
-            val intro = s.get(R.string.storage_cleanup_intro)
+            val intro = s.get(Res.string.storage_cleanup_intro)
             ui.waitText(intro, timeout = 20_000)
-            ui.waitText(s.get(R.string.storage_group_uploads))
+            ui.waitText(s.get(Res.string.storage_group_uploads))
             for (theme in listOf("light", "dark")) {
                 app.settings.setTheme(theme)
                 ui.settle()
@@ -145,20 +143,20 @@ class StorageShotsTest {
             }
             app.settings.setTheme("light")
             // tick the old uploads (the whole group) and the older backups, then delete with the confirm dialog
-            compose.onAllNodesWithText(s.get(R.string.storage_group_uploads)).onFirst().performClick()
+            compose.onAllNodesWithText(s.get(Res.string.storage_group_uploads)).onFirst().performClick()
             scroll(intro, 200f)                                                      // the window is 768 high: down to the end
-            compose.onAllNodesWithText(s.get(R.string.storage_group_backups)).onFirst().performClick()
+            compose.onAllNodesWithText(s.get(Res.string.storage_group_backups)).onFirst().performClick()
             ui.settle()
-            val delete = s.get(R.string.storage_delete_button)
+            val delete = s.get(Res.string.storage_delete_button)
             ui.shot("$name-selected-light")
             compose.onAllNodesWithText(delete).onFirst().performClick()
-            ui.waitText(s.get(R.string.storage_confirm_title))
+            ui.waitText(s.get(Res.string.storage_confirm_title))
             ui.shot("$name-confirm-light")
             compose.onAllNodesWithText(delete).fetchSemanticsNodes().size.let { check(it >= 2) { "the dialog's button" } }
             compose.onAllNodesWithText(delete)[compose.onAllNodesWithText(delete).fetchSemanticsNodes().size - 1].performClick()
-            ui.waitText(s.get(R.string.storage_deleted, "").trim().substringBefore(" ").ifEmpty { "✓" }, timeout = 20_000)
+            ui.waitText(s.get(Res.string.storage_deleted, "").trim().substringBefore(" ").ifEmpty { "✓" }, timeout = 20_000)
             ui.settle(20)
-            check(!ui.has(s.get(R.string.storage_group_uploads))) { "the old uploads are gone from the list" }
+            check(!ui.has(s.get(Res.string.storage_group_uploads))) { "the old uploads are gone from the list" }
             scroll(intro, -200f)                                                     // back to the top, where the result is
             ui.shot("$name-result-light")
             app.settings.setTheme("dark")

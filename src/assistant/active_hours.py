@@ -71,7 +71,8 @@ def activity_days(store: Any, tz: ZoneInfo, now: float, owner_marks: tuple[str, 
         if got:
             days[d] = got
     since = now - KEEP_DAYS * 86400
-    for r in store._all("SELECT content, created_at FROM messages WHERE role = 'user' AND created_at >= ?", (since,)):
+    # nothing after "now" (a clock set back, or a test clock): a later message would count as a day that has not happened yet
+    for r in store._all("SELECT content, created_at FROM messages WHERE role = 'user' AND created_at >= ? AND created_at <= ?", (since, now)):
         if owner_marks and str(r["content"]).startswith(owner_marks):
             continue
         local = datetime.fromtimestamp(float(r["created_at"]), tz)

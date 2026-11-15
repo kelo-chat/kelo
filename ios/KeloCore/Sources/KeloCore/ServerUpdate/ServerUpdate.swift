@@ -326,9 +326,6 @@ public enum ServerUpdateRules {
     /// The step to name, nil for an unknown or empty step.
     public static func step(_ job: ServerUpdateJob) -> String? { steps.contains(job.step) ? job.step : nil }
 
-    /// The server is restarting in this step: polls may fail, the app says it reconnects.
-    public static func restarting(_ job: ServerUpdateJob) -> Bool { ["restart", "health", "rollback", "self_update"].contains(job.step) }
-
     /// "03:50" -> (3, 50); nil for anything else.
     public static func clock(_ text: String?) -> (hour: Int, minute: Int)? {
         guard let t = text?.trimmingCharacters(in: .whitespaces) else { return nil }

@@ -6,14 +6,10 @@ import XCTest
 ///   TEST_RUNNER_KELO_BIGTEXT=1 (optional: Dynamic Type at an accessibility size)
 /// The mock is desktop/tools/mock_server.py (started on another port). Without KELO_SERVER the test is skipped, so a plain
 /// `xcodebuild test` stays green. The app must start signed out (uninstall it and reset the simulator's keychain first).
-final class KeloScreensTests: XCTestCase {
-    private let env = ProcessInfo.processInfo.environment
-    private var lang: String { env["KELO_LANG"] ?? "en" }
-    private var tag: String { env["KELO_TAG"] ?? lang }
-    private var app: XCUIApplication!
+final class KeloScreensTests: KeloShotCase {
 
     /// The few words the walk taps, in both languages it runs in.
-    private func w(_ key: String) -> String {
+    func w(_ key: String) -> String {
         let words: [String: (String, String)] = [
             "withKey": ("Connect with access key", "접속 키로 연결하기"),
             "key": ("Access key", "접속 키"),
@@ -35,29 +31,13 @@ final class KeloScreensTests: XCTestCase {
         return lang == "ko" ? pair.1 : pair.0
     }
 
-    override func setUp() {
-        continueAfterFailure = true
-    }
-
-    private func shot(_ name: String) {
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        let a = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-        a.name = "\(tag)-\(name)"
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = env["KELO_SHOTS"] {
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(tag)-\(name).png"))
-        }
-    }
-
-    private func element(_ label: String) -> XCUIElement {
+    override func element(_ label: String) -> XCUIElement {
         let p = NSPredicate(format: "label == %@ OR identifier == %@", label, label)
         return app.descendants(matching: .any).matching(p).firstMatch
     }
 
     @discardableResult
-    private func tap(_ label: String, timeout: TimeInterval = 8) -> Bool {
+    func tap(_ label: String, timeout: TimeInterval = 8) -> Bool {
         let e = element(label)
         guard e.waitForExistence(timeout: timeout) else {
             XCTFail("not found: \(label)\n\(app.debugDescription)")
@@ -75,8 +55,6 @@ final class KeloScreensTests: XCTestCase {
         return e
     }
 
-    private func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
-
     func testWalk() throws {
         guard env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no mock server given") }
         app = XCUIApplication()
@@ -91,18 +69,7 @@ final class KeloScreensTests: XCTestCase {
         XCTAssertTrue(element(w("withKey")).waitForExistence(timeout: 10), "the connect screen is not in \(lang)\n\(app.debugDescription)")
         pause(1)
         shot("02-connect")
-        tap(w("withKey"))
-        let server = app.textFields.firstMatch
-        XCTAssertTrue(server.waitForExistence(timeout: 5))
-        server.tap()
-        server.typeText(serverText(server.value as? String, server))
-        let secure = app.secureTextFields.firstMatch
-        secure.tap()
-        secure.typeText(key)
-        shot("03-connect-key")
-        let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-        if !submit.isHittable { app.swipeUp() }
-        submit.tap()
+        connectWithKey(key: key) { shot("03-connect-key") }
 
         // chat
         let composer = element("kelo.composer")
@@ -195,21 +162,9 @@ final class KeloScreensTests: XCTestCase {
     /// (an earlier year, earlier this year, yesterday). Screens: `<tag>-timelines-today.png`, `<tag>-timelines-history.png`.
     func testTimeLines() throws {
         guard env["KELO_SERVER"] != nil, env["KELO_TIMELINES"] == "1", let key = env["KELO_KEY"] else { throw XCTSkip("no mock server given") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         XCTAssertTrue(element(w("withKey")).waitForExistence(timeout: 10))
-        tap(w("withKey"))
-        let server = app.textFields.firstMatch
-        XCTAssertTrue(server.waitForExistence(timeout: 5))
-        server.tap()
-        server.typeText(serverText(server.value as? String, server))
-        let secure = app.secureTextFields.firstMatch
-        secure.tap()
-        secure.typeText(key)
-        let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-        if !submit.isHittable { app.swipeUp() }
-        submit.tap()
+        connectWithKey(key: key)
         let composer = element("kelo.composer")
         XCTAssertTrue(composer.waitForExistence(timeout: 15), "chat did not open\n\(app.debugDescription)")
         pause(2)
@@ -260,17 +215,7 @@ final class KeloScreensTests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", ko ? "ko_KR" : "en_US", "-notify.asked_in_chat", "YES"]
         app.launch()
         XCTAssertTrue(element(w("withKey")).waitForExistence(timeout: 10))
-        tap(w("withKey"))
-        let server = app.textFields.firstMatch
-        XCTAssertTrue(server.waitForExistence(timeout: 5))
-        server.tap()
-        server.typeText(serverText(server.value as? String, server))
-        let secure = app.secureTextFields.firstMatch
-        secure.tap()
-        secure.typeText(key)
-        let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-        if !submit.isHittable { app.swipeUp() }
-        submit.tap()
+        connectWithKey(key: key)
         let composer = element("kelo.composer")
         XCTAssertTrue(composer.waitForExistence(timeout: 15), "chat did not open\n\(app.debugDescription)")
         pause(2)
@@ -425,16 +370,7 @@ final class KeloScreensTests: XCTestCase {
         }
         app.launch()
         if element(w("withKey")).waitForExistence(timeout: 10) {
-            tap(w("withKey"))
-            let server = app.textFields.firstMatch
-            server.tap()
-            server.typeText(serverText(server.value as? String, server))
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
+            connectWithKey(key: key)
         }
         XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 20), "chat did not open\n\(app.debugDescription)")
         let ask = element("kelo.ask")
@@ -492,22 +428,11 @@ final class KeloScreensTests: XCTestCase {
     /// KELO_ONLY_SHOT. Without KELO_ONLY_SHOT it is skipped.
     func testShotAsIs() throws {
         guard let name = env["KELO_ONLY_SHOT"] else { throw XCTSkip("no shot asked") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         let next = element("→")
         if next.waitForExistence(timeout: 5) { next.tap() }
         if let key = env["KELO_KEY"], element(w("withKey")).waitForExistence(timeout: 5) {
-            tap(w("withKey"))
-            let server = app.textFields.firstMatch
-            server.tap()
-            server.typeText(serverText(server.value as? String, server))
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
+            connectWithKey(key: key)
         }
         XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 20))
         let offline = lang == "ko" ? "서버에 연결할 수 없어요" : "Can't reach the server"
@@ -521,22 +446,11 @@ final class KeloScreensTests: XCTestCase {
     /// types into the boxes they open, saves the chat, then the goals tab (a goal Kelo is working on next to one waiting).
     func testTypedAnswer() throws {
         guard env["KELO_TYPED"] == "1", env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no typed-answer walk asked") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         let next = element("→")
         if next.waitForExistence(timeout: 5) { next.tap() }
         if element(w("withKey")).waitForExistence(timeout: 5) {
-            tap(w("withKey"))
-            let server = app.textFields.firstMatch
-            server.tap()
-            server.typeText(serverText(server.value as? String, server))
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
+            connectWithKey(key: key)
         }
         XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 20))
         pause(2)
@@ -569,22 +483,11 @@ final class KeloScreensTests: XCTestCase {
     /// choice with the app's own "Other", days with a time), then "Other" opened and typed into, then the time picker.
     func testAnswerFields() throws {
         guard env["KELO_FIELDS"] == "1", env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no answer-fields walk asked") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         let next = element("→")
         if next.waitForExistence(timeout: 5) { next.tap() }
         if element(w("withKey")).waitForExistence(timeout: 5) {
-            tap(w("withKey"))
-            let server = app.textFields.firstMatch
-            server.tap()
-            server.typeText(serverText(server.value as? String, server))
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
+            connectWithKey(key: key)
         }
         XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 20))
         pause(2)
@@ -632,20 +535,9 @@ final class KeloScreensTests: XCTestCase {
     /// tap (while it grows or shrinks) and once it has settled. Signs in first when the app starts signed out.
     func testModelFold() throws {
         guard env["KELO_FOLD"] == "1", env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no fold walk asked") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         if element(w("withKey")).waitForExistence(timeout: 8) {
-            tap(w("withKey"))
-            let server = app.textFields.firstMatch
-            server.tap()
-            server.typeText(serverText(server.value as? String, server))
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
+            connectWithKey(key: key)
         }
         XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 20))
         pause(3)
@@ -681,22 +573,11 @@ final class KeloScreensTests: XCTestCase {
     /// app starts signed out, then waits for the screen that covers the app and saves it.
     func testUpdateRequired() throws {
         guard env["KELO_UPDATE"] == "1", env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no update-required shot asked") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         let next = element("→")
         if next.waitForExistence(timeout: 5) { next.tap() }
         if element(w("withKey")).waitForExistence(timeout: 8) {
-            tap(w("withKey"))
-            let server = app.textFields.firstMatch
-            server.tap()
-            server.typeText(serverText(server.value as? String, server))
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("connect"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
+            connectWithKey(key: key)
         }
         let title = lang == "ko" ? "업데이트가 필요해요" : "Update Kelo to continue"
         XCTAssertTrue(app.staticTexts[title].waitForExistence(timeout: 30), "no required-update screen\n\(app.debugDescription)")
@@ -718,16 +599,7 @@ final class KeloScreensTests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(\(show))", "-AppleLocale", locales[show] ?? "en_US"]
         app.launch()
         if element(withKey).waitForExistence(timeout: 10) {
-            tap(withKey)
-            let server = app.textFields.firstMatch
-            server.tap()
-            server.typeText(serverText(server.value as? String, server))
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", connect)).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
+            connectWithKey(key: key, withKey: withKey, connect: connect)
         }
         XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 25), "chat did not open\n\(app.debugDescription)")
         let words: [String: [String: String]] = [
@@ -780,6 +652,23 @@ final class KeloScreensTests: XCTestCase {
         lift(same, to: 0.55)
         pause(1)
         shot("model-background")
+    }
+
+    /// On the connect screen: "connect with key", the mock's address and the key typed, then connect. `beforeConnect` runs once the
+    /// fields are filled (a screenshot of them).
+    private func connectWithKey(key: String, withKey: String? = nil, connect: String? = nil, beforeConnect: () -> Void = {}) {
+        tap(withKey ?? w("withKey"))
+        let server = app.textFields.firstMatch
+        XCTAssertTrue(server.waitForExistence(timeout: 5))
+        server.tap()
+        server.typeText(serverText(server.value as? String, server))
+        let secure = app.secureTextFields.firstMatch
+        secure.tap()
+        secure.typeText(key)
+        beforeConnect()
+        let submit = app.buttons.matching(NSPredicate(format: "label == %@", connect ?? w("connect"))).firstMatch
+        if !submit.isHittable { app.swipeUp() }
+        submit.tap()
     }
 
     private func serverText(_ current: String?, _ field: XCUIElement) -> String {

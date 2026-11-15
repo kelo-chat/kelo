@@ -649,8 +649,10 @@ class Wallet:
         self.store._run("INSERT INTO wallet_sites(site, first_at, payments) VALUES(?,?,1) ON CONFLICT(site) DO UPDATE SET payments = payments + 1",
                         (site_key(host), self._clock()))
 
-    def decide(self, card: dict[str, Any] | None, host: str, amount: float, currency: str) -> Decision:
-        """Whether this payment may go through without asking the phone, and if not, why."""
+    def decide(self, card: dict[str, Any] | None, host: str, amount: float, currency: str, *, asked_here: bool = False) -> Decision:
+        """Whether this payment may go through without asking the phone, and if not, why. `asked_here`: the owner's own words asked
+        to buy and the order runs on this site, so the first payment on a new site needs no extra question (owner 2026-11-11: "결제하라고
+        했으면 자동결제한도 안에서는 그냥 해야"); the card, the limits and the pause still decide."""
         cur = (currency or "KRW").upper()
         if not card:
             return Decision(False, "not_auto")
@@ -665,7 +667,7 @@ class Wallet:
             return Decision(False, "over_per_payment")
         if self.spent(cur) + amount > monthly:
             return Decision(False, "over_monthly")
-        if not self.known_site(host):
+        if not self.known_site(host) and not asked_here:
             return Decision(False, "first_site")
         return Decision(True, "auto")
 

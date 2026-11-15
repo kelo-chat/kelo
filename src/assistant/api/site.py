@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import urllib.parse
 from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from .. import website
 from ..downloads import PLATFORMS as DOWNLOAD_PLATFORMS
+from ..testers import SignupError
 from fastapi import APIRouter
 from .context import AppContext
 
@@ -15,16 +17,19 @@ from .context import AppContext
 def router(ctx: AppContext) -> APIRouter:
     router = APIRouter()
     downloads = ctx.downloads
+    google_web = ctx.google_web
+    tester_desk = ctx.tester_desk
 
     # ---- the public website (website.py): home, install guide, privacy policy. Pairing links (/#pair=CODE) land on "/", whose
     # page carries the "open the Kelo app" panel that site.js shows when the address has #pair=.
-    def site_page(page: str, request: Request) -> Response:
+    def site_page(page: str, request: Request, notice: str | None = None) -> Response:
         lang = website.pick_lang(request.query_params.get("lang"), request.headers.get("accept-language"))
         apps = downloads.latest() if page == "index" else None
-        html = website.render(page, lang, apps)
+        html = website.render(page, lang, apps, notice=notice)
         tag = '"' + hashlib.sha256(html.encode()).hexdigest()[:16] + '"'
+        csp = website.CSP_FORM if page == "tester" else website.CSP
         headers = {"Cache-Control": "no-cache", "ETag": tag, "Vary": "Accept-Language", "Content-Language": lang,
-                   "Referrer-Policy": "no-referrer", "Content-Security-Policy": website.CSP, "X-Content-Type-Options": "nosniff"}
+                   "Referrer-Policy": "no-referrer", "Content-Security-Policy": csp, "X-Content-Type-Options": "nosniff"}
         if tag in (request.headers.get("if-none-match") or ""):
             return Response(status_code=304, headers=headers)
         return Response(html, media_type="text/html; charset=utf-8", headers=headers)
@@ -44,6 +49,45 @@ def router(ctx: AppContext) -> APIRouter:
     @router.get("/support", include_in_schema=False)
     async def site_support(request: Request) -> Response:
         return site_page("support", request)
+
+    @router.get("/tester", include_in_schema=False)
+    async def site_tester(request: Request) -> Response:
+        if not google_web.is_broker():
+            raise HTTPException(404, "not found")
+        sent = request.query_params.get("sent")
+        return site_page("tester", request, notice=sent)
+
+    @router.post("/tester", include_in_schema=False)
+    async def site_tester_post(request: Request) -> Response:
+        if not google_web.is_broker():
+            raise HTTPException(404, "not found")
+        content_len = request.headers.get("content-length")
+        if content_len:
+            try:
+                if int(content_len) > 4096:
+                    raise HTTPException(413, "request entity too large")
+            except ValueError:
+                pass
+        body = await request.body()
+        if len(body) > 4096:
+            raise HTTPException(413, "request entity too large")
+        try:
+            form = urllib.parse.parse_qs(body.decode("utf-8"), keep_blank_values=True)
+        except UnicodeDecodeError:
+            form = urllib.parse.parse_qs(body.decode("utf-8", errors="replace"), keep_blank_values=True)
+        email = form.get("email", [""])[0]
+        model = form.get("model", [""])[0]
+        consent = form.get("consent", [""])[0]
+        lang = form.get("lang", [""])[0]
+        website_trap = form.get("website", [""])[0]
+        out_lang = lang if lang in website.LANGS else website.pick_lang(None, request.headers.get("accept-language"))
+        ip = request.client.host if request.client else ""
+        try:
+            ok = await tester_desk.sign_up(email, model, lang, consent == "yes", ip=ip, trap=website_trap)
+            key = "sent" if ok else "again"
+        except SignupError as e:
+            key = e.code
+        return Response(status_code=303, headers={"Location": f"/tester?lang={out_lang}&sent={key}#form"})
 
     # ---- app downloads (downloads.py): only files the publisher's manifest names; no listing; read only
     dl_headers = {"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer"}

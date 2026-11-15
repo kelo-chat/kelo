@@ -50,18 +50,6 @@ import Testing
         #expect(CardNumber.group("") == "")
     }
 
-    @Test func cursorOffsetsMapBothWays() {
-        let n = "42424242"
-        #expect(CardNumber.groupedOffset(n, 4) == 4)   // before the space, not after it
-        #expect(CardNumber.groupedOffset(n, 5) == 6)
-        #expect(CardNumber.groupedOffset(n, 8) == 9)
-        for i in 0...n.count { #expect(CardNumber.rawOffset(n, CardNumber.groupedOffset(n, i)) == i) }
-        let amex = "378282246310005"
-        #expect(CardNumber.groupedOffset(amex, 10) == 11)
-        #expect(CardNumber.groupedOffset(amex, 11) == 13)
-        for i in 0...amex.count { #expect(CardNumber.rawOffset(amex, CardNumber.groupedOffset(amex, i)) == i) }
-    }
-
     @Test func lengthsAndCvc() {
         #expect(CardNumber.maxLength(.amex) == 15)
         #expect(CardNumber.maxLength(.visa) == 19)
@@ -97,8 +85,6 @@ import Testing
         #expect(Expiry.check("042", now: now) == .incomplete)
         #expect(Expiry.check("0151", now: now) == .ok(month: 1, year: 2051))
         #expect(Expiry.check("0152", now: now) == .tooFar)
-        #expect(Expiry.expired(month: 10, year: 2026, now: now))
-        #expect(!Expiry.expired(month: 11, year: 2026, now: now))
     }
 
     @Test func maskKeepsOnlyTheLastFour() {

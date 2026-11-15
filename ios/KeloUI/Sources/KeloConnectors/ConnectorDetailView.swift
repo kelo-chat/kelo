@@ -7,6 +7,7 @@ import KeloShared
 struct ConnectorDetailView: View {
     @Bindable var model: ConnectorsModel
     let id: String
+    let api: KeloApi
     @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
     @State private var askDisconnect = false
@@ -74,20 +75,18 @@ struct ConnectorDetailView: View {
                 let host = ConnectorRules.host(x.site)
                 FactRow(label: L(R.string.connector_site), value: host.isEmpty ? x.site : host)
             }
-            if x.connect == "device" && x.status == "connected" { DeviceScopes(provider: x.via.isEmpty ? x.id : x.via, connection: x.item) }
+            if x.connect == "device" && x.status == "connected" { DeviceScopes(provider: x.via.isEmpty ? x.id : x.via, connection: x.item, api: api) }
         }
+        if x.status == "connected" { PermissionsSection(id: x.id, api: api) }
         if x.connect != nil {
             // needing a new connection: the panel offers connecting again (the stored one is replaced), and it can still go
             KeloCard {
-                ConnectPanel(connector: broken != nil ? x.with(status: "available") : x, onChanged: { model.reload(app) })
+                ConnectPanel(connector: broken != nil ? x.with(status: "available") : x, api: api, onChanged: { model.reload() })
             }
             if broken != nil && !x.item.isEmpty {
                 LinkButton(L(R.string.connector_disconnect), danger: true) { askDisconnect = true }
                     .keloConfirm(L(R.string.mcp_disconnect_confirm, x.name), isPresented: $askDisconnect, yes: L(R.string.connector_disconnect)) {
-                        Task {
-                            try? await app.requireApi().disconnect(item: x.item)
-                            model.reload(app)
-                        }
+                        model.disconnect(item: x.item)
                     }
             }
         }
@@ -138,13 +137,17 @@ struct FactRow: View {
 struct DeviceScopes: View {
     let provider: String
     var connection: String = ""
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
-    @State private var granted: OAuthScope?
+    @State private var model: DeviceScopesModel
+
+    init(provider: String, connection: String = "", api: KeloApi) {
+        self.provider = provider; self.connection = connection
+        _model = State(initialValue: DeviceScopesModel(api: api))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let s = granted {
+            if let s = model.granted {
                 Text(L(R.string.connector_permissions)).font(KeloFont.body).foregroundStyle(c.muted).padding(.top, 4)
                 HStack(alignment: .top, spacing: 8) {
                     KeloIconView(.check, size: 16, tint: c.accent).padding(.top, 2)
@@ -156,8 +159,6 @@ struct DeviceScopes: View {
                 }
             }
         }
-        .task(id: provider + "|" + connection) {
-            if let l = try? await app.requireApi().oauthProviders() { granted = ConnectorRules.grantedScope(l.first { $0.id == provider }) }
-        }
+        .task(id: provider + "|" + connection) { await model.load(provider: provider) }
     }
 }

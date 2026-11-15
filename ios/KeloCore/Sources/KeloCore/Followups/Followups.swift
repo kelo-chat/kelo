@@ -30,12 +30,10 @@ public struct FollowupAction: Equatable, Hashable, Sendable {
     public var workerId: String
     public var followupId: String
     public var minutes: Int?
-    /// The button's words in the app's language, from the server.
-    public var label: String
 
-    public init(kind: String, name: String = "", approvalId: String = "", workerId: String = "", followupId: String = "", minutes: Int? = nil, label: String = "") {
+    public init(kind: String, name: String = "", approvalId: String = "", workerId: String = "", followupId: String = "", minutes: Int? = nil) {
         self.kind = kind; self.name = name; self.approvalId = approvalId; self.workerId = workerId; self.followupId = followupId
-        self.minutes = minutes; self.label = label
+        self.minutes = minutes
     }
 
     public static func parse(_ e: JSON?) -> FollowupAction? {
@@ -44,7 +42,7 @@ public struct FollowupAction: Equatable, Hashable, Sendable {
         let kind = o.text("kind")
         if kind.isEmpty { return nil }
         return FollowupAction(kind: kind, name: o.text("name"), approvalId: o.text("approval_id"), workerId: o.text("worker_id"),
-                              followupId: o.text("followup_id"), minutes: o.optInt("minutes"), label: o.text("label"))
+                              followupId: o.text("followup_id"), minutes: o.optInt("minutes"))
     }
 
     public static func parseList(_ e: JSON?) -> [FollowupAction] { (e?.arrayValue ?? []).compactMap(parse) }
@@ -52,12 +50,9 @@ public struct FollowupAction: Equatable, Hashable, Sendable {
 
 /// A thing the agent is asking about again.
 public struct Followup: Equatable, Sendable {
-    public static let first = "first"
-    public static let second = "second"
     public static let onHoldStage = "on_hold"
     public static let approvalExpired = "approval_expired"
     public static let statusOpen = "open"
-    public static let statusResolved = "resolved"
     public static let statusDropped = "dropped"
 
     public var id: String
@@ -65,21 +60,17 @@ public struct Followup: Equatable, Sendable {
     public var kind: String
     public var title: String
     public var stage: String
-    public var nextAt: Double?
     public var createdAt: Double
     public var actions: [FollowupAction]
-    /// worker | schedule | background | ""
-    public var origin: String
-    public var scheduleId: Int64?
     /// The chat message of its latest follow-up: its buttons go under that message.
     public var messageId: Int64?
     /// open | resolved | dropped
     public var status: String
 
-    public init(id: String, kind: String, title: String, stage: String, nextAt: Double?, createdAt: Double, actions: [FollowupAction],
-                origin: String = "", scheduleId: Int64? = nil, messageId: Int64? = nil, status: String = Followup.statusOpen) {
-        self.id = id; self.kind = kind; self.title = title; self.stage = stage; self.nextAt = nextAt; self.createdAt = createdAt
-        self.actions = actions; self.origin = origin; self.scheduleId = scheduleId; self.messageId = messageId; self.status = status
+    public init(id: String, kind: String, title: String, stage: String, createdAt: Double, actions: [FollowupAction],
+                messageId: Int64? = nil, status: String = Followup.statusOpen) {
+        self.id = id; self.kind = kind; self.title = title; self.stage = stage; self.createdAt = createdAt
+        self.actions = actions; self.messageId = messageId; self.status = status
     }
 
     public var onHold: Bool { stage == Followup.onHoldStage }
@@ -91,9 +82,9 @@ public struct Followup: Equatable, Sendable {
         let id = o.text("id")
         if id.isEmpty { return nil }
         let status = o.text("status")
-        return Followup(id: id, kind: o.text("kind"), title: o.text("title"), stage: o.text("stage"), nextAt: o.optDouble("next_at"),
+        return Followup(id: id, kind: o.text("kind"), title: o.text("title"), stage: o.text("stage"),
                         createdAt: (o["began_at"] ?? o["created_at"])?.doubleValue ?? 0, actions: FollowupAction.parseList(o["actions"]),
-                        origin: o.text("origin"), scheduleId: Int64(o.text("schedule_id")), messageId: Int64(o.text("message_id")),
+                        messageId: Int64(o.text("message_id")),
                         status: status.isEmpty ? Followup.statusOpen : status)
     }
 
@@ -132,8 +123,6 @@ public enum FollowupRules {
     public static let defaultSnoozeMinutes = 60
     /// The most buttons under one message or card.
     public static let maxButtons = 4
-    public static let firstChoices = [5, 15, 30, 60, 120, 240]
-    public static let secondChoices = [30, 60, 120, 180, 360, 720, 1440]
 
     /// What an action does, or nil when it lacks what it needs (an approve without an approval, a login without a name) or is a kind
     /// this app does not know. A follow-up's own id stands in when the action names none (`ownId`).
@@ -186,17 +175,6 @@ public enum FollowupRules {
             .map(\.element)
     }
 
-    /// The second ask comes after the first: a second delay shorter than the first is raised to it.
-    public static func delays(first: Int, second: Int) -> (first: Int, second: Int) {
-        let f = max(first, 1)
-        return (f, max(second, f))
-    }
-
-    /// The choices of a delay picker, with the current value in them even when it is not one of the usual ones.
-    public static func choices(_ usual: [Int], current: Int) -> [Int] {
-        Array(Set((usual + [current]).filter { $0 > 0 })).sorted()
-    }
-
     /// The HTTP call of a step that talks to the server (nil for one done on the phone).
     public static func call(_ s: FollowupStep) -> (method: String, path: String, body: JSON?)? {
         switch s {
@@ -227,20 +205,6 @@ public struct FollowupCalls: Sendable {
         } catch let e as ApiError where e.status == 404 {
             return FollowupList(available: false)
         }
-    }
-
-    /// Nil on a server without follow-ups.
-    public func settings() async throws -> FollowupSettings? {
-        do { return try await api.get("/api/followups/settings") } catch let e as ApiError where e.status == 404 { return nil }
-    }
-
-    /// PUT any of enabled, first_delay_min (5..1440), second_delay_min (5..2880).
-    public func putSettings(enabled: Bool? = nil, firstMinutes: Int? = nil, secondMinutes: Int? = nil) async throws -> FollowupSettings {
-        var body: [String: JSON] = [:]
-        if let enabled { body["enabled"] = .bool(enabled) }
-        if let firstMinutes { body["first_delay_min"] = .number(Double(firstMinutes)) }
-        if let secondMinutes { body["second_delay_min"] = .number(Double(secondMinutes)) }
-        return try await api.put("/api/followups/settings", body: .object(body))
     }
 
     /// Does `s`: done, already settled elsewhere (gone), or failed with the server's reason.

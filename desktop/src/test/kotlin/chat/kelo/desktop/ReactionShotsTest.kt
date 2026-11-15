@@ -1,5 +1,9 @@
 package chat.kelo.desktop
 
+import chat.kelo.desktop.chat.DesktopChat
+import chat.kelo.app.chat.ChatViewModel
+
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -12,13 +16,10 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.chat.ChatItem
 import chat.kelo.app.chat.Reactions
-import chat.kelo.desktop.chat.ChatModel
-import chat.kelo.desktop.chat.ReactionEndInset
-import chat.kelo.desktop.chat.ReactionOverhang
-import chat.kelo.desktop.i18n.Strings
+import chat.kelo.app.chat.ReactionEndInset
+import chat.kelo.app.chat.ReactionOverhang
 import chat.kelo.desktop.ui.KeloFrame
 import chat.kelo.desktop.ui.Page
 import chat.kelo.desktop.ui.Shell
@@ -133,16 +134,17 @@ class ReactionShotsTest {
     }
 
     private fun flow(lang: String, wide: Boolean) {
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val m = MockServer("--lang", lang, "--reactions", "--final-reaction", RUNNER).also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
-        val chat = ChatModel(app)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             KeloFrame(app) {
                 Box(Modifier.size(if (wide) 1024.dp else 480.dp, 760.dp)) {
-                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {})
+                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side)
                 }
             }
         }
@@ -155,8 +157,8 @@ class ReactionShotsTest {
             ui.settle()
         }
         fun mine() = chat.state.value.items.filterIsInstance<ChatItem.Msg>().filter { it.mine }
-        val read = words.get(R.string.chat_reaction_read)
-        val ran = words.get(R.string.chat_reaction_done, RUNNER)
+        val read = words.get(Res.string.chat_reaction_read)
+        val ran = words.get(Res.string.chat_reaction_done, RUNNER)
         /** Sends [text]; 👀 on it while the reply runs; the reply's approval allowed; 🏃‍♂️ once it is over. Shots of both. */
         fun exchange(text: String, name: String) {
             val approvals = chat.state.value.items.count { it is ChatItem.Approval }
@@ -182,7 +184,7 @@ class ReactionShotsTest {
             assertEquals(listOf("🗓️", "📝"), mine().map { it.reaction })
             // the newest one with its chip, in its place: the cards below it (an approval, a human check while it is open) can fill
             // the window, so scroll to it rather than count on it being in view
-            checkInView(ui, mine().last().text, words.get(R.string.chat_reaction_done, "📝"))
+            checkInView(ui, mine().last().text, words.get(Res.string.chat_reaction_done, "📝"))
             shots("history")
             // a long message over several lines, then a very short answer
             exchange(if (lang == "ko") LONG_KO else LONG_EN, "long")

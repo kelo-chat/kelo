@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from ..agent import Tool, approval_of_current_call, approval_timeout, current_call, emit_ui
+from ..agent import Tool, approval_of_current_call, approval_timeout, current_box, current_call, emit_ui
 from ..agent.fence import data
 from ..i18n import t
 from ..wallet import CARD_TTL, EXPLAIN, CardDeliveries, CardSecret, Decision, Wallet, WalletError, money_text
@@ -126,12 +126,13 @@ def clean_items(raw: Any) -> list[dict[str, Any]]:
 
 def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None, deliveries: CardDeliveries | None = None,
                    *, card_wait: float = CARD_TTL, grants: Any = None, orders: Any = None, pins: Any = None, pin_deliveries: Any = None,
-                   ledger: Any = None, paths: Any = None) -> list[Tool]:
+                   ledger: Any = None, paths: Any = None, notify: Any = None, timezone: Any = None, clock: Any = time.time) -> list[Tool]:
     """`grants`: the standing permissions of conditional tasks (schedule_grants.ConditionalGrants): a run of a task (a schedule, a
     watcher's hit, a job) the user allowed at setup to buy on its own completes a purchase within its limits without a card.
     `orders`: the order going on (tools/order.Orders). `pins` / `pin_deliveries` (payment_pins.py): a payment PIN saved for the site is
     released by the phone for an approved payment (with the approval's Allow, or a `pin_needed` card when there was none) and kept in
-    `pin_deliveries` for one use. `ledger`: the approved payment of each tab (the payment-step card shows it). `paths`: PaymentPaths."""
+    `pin_deliveries` for one use. `ledger`: the approved payment of each tab (the payment-step card shows it). `paths`: PaymentPaths. `notify(title, body, task_id)`: an urgent notice to the owner (purchase_result's wrong charge). `timezone()`: the
+    owner's timezone name (a cancel deadline the page gave without one)."""
     arms: dict[str, _Arm] = {}               # device -> the card of the payment approved last on its tab
     # (device, tool call id) -> (the decision taken for it, the covering schedule grant, the reason in words): read back by the handler
     decided: dict[tuple[str, str], tuple[Decision, Any, str]] = {}
@@ -196,6 +197,17 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
                 return f"the card '{card['label']}' has no stored details yet; ask the user to finish adding it in the app, or use another card"
         return None
 
+    def asked_to_buy_here(order: Any, host: str) -> bool:
+        """The owner's own words (never page or mail text: Orders.request reads only their messages) ask to buy, and the order the
+        agent runs for them is on this payment's site."""
+        if order is None or orders is None or not host or site_key(host.lower()) != order.site or orders.request is None:
+            return False
+        from .order import buy_request
+        try:
+            return buy_request(" ".join(str(orders.request() or "").split()))
+        except Exception:  # noqa: BLE001 - when in doubt the first payment on a site asks
+            return False
+
     def judge(args: dict[str, Any]) -> tuple[Decision, Any, str]:
         """Whether this payment goes ahead without a card, and if not, why: first a task's standing permission (only in a run of that
         task, only within its limits; a card kept on the phone only still needs the phone; the wallet's pause and the vault lock
@@ -218,7 +230,7 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
             return Decision(False, check.reason), None, check.note
         if not wallet or card is None:
             return Decision(False, "no_card"), None, ""
-        return wallet.decide(card, host, amount, cur), None, ""
+        return wallet.decide(card, host, amount, cur, asked_here=asked_to_buy_here(order, host)), None, ""
 
     def auto(args: dict[str, Any]) -> bool:
         """Approved without a card only by the user's own rules: a task's standing permission, or auto-pay for this card."""
@@ -350,7 +362,8 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
                        "enters it (browser_pin_keypad_card shows the page's keypad in their card).")
         pay_with = card["label"] if card else str(args.get("pay_with") or "").strip()[:60]
         ledger.record(ApprovedPayment(owner, host, str(args.get("summary") or "").strip()[:MAX_SUMMARY], money(amount_value, cur),
-                                      clean_items(args.get("items")), pay_with, time.time(), slot, path="card_form" if card else "site_method"))
+                                      clean_items(args.get("items")), pay_with, time.time(), slot, path="card_form" if card else "site_method",
+                                      amount=amount_value, currency=cur, task_id=(current_turn.get() or {}).get("task_id")))
         hint = paths.hint(host) if paths is not None else ""
         return (say + (" " + hint if hint else "") + " If the page then asks to approve the payment outside it (a code, a QR code, a "
                 "countdown, a push, a passkey) call payment_step_wait; if it asks for a PIN on a keypad that hides or scrambles its "
@@ -360,6 +373,9 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
         out = await confirm_inner(args)
         if orders is not None:
             orders.mark_paid()   # the order's one payment: from here on its steps are covered by this approval only
+        cur = current_box.get()   # the receipt check the result asks for is loaded right away (no find_tools round trip)
+        if cur is not None and cur[0] is not None:
+            cur[0].activate(["purchase_result"], [t.name for t in cur[1]])
         return out
 
     def order_extra(args: dict[str, Any]) -> dict[str, Any]:
@@ -374,8 +390,8 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
         decision, grant, note = verdict if verdict else (None, None, "")
         why = why_text(decision, note)
         after = ("Do not add or change anything: if the total on the page is not exactly this, stop and call confirm_purchase again with "
-                 "the new total. Afterwards read the page and tell the user the result with the order, booking or receipt number copied "
-                 "from the page.")
+                 "the new total. Afterwards read the confirmation page and call purchase_result with what it shows (order number, charged "
+                 "total, items, cancel terms); then tell the user.")
         if decision is not None and decision.auto and grant is not None:
             # a run of a task the user allowed at setup to buy this, within its limits: no card; recorded, notified, logged
             payment = wallet.record("auto", card, host, summary, amount_value, cur, grant_id=grant["id"]) if wallet else {}
@@ -448,17 +464,18 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
             "site": {"type": "string", "description": "the shop's address"},
             "pay_with": {"type": "string", "description": "the payment way in words, never a card number"},
             "items": {"type": "array", "description": "each line of the order as the page shows it", "items": {"type": "object", "properties": {
-                "name": {"type": "string"}, "options": {"type": "string", "description": "chosen options, e.g. colour and size"},
-                "quantity": {"type": "integer"}, "price": {"type": "string", "description": "the line's price as shown"}}}},
+                "name": {"type": "string"}, "options": {"type": "string"},
+                "quantity": {"type": "integer"}, "price": {"type": "string"}}}},
             "ship_to": {"type": "string", "description": "the address the order goes to as the page shows it, when the site account's "
                                                          "saved address is used (leave out after browser_fill_shipping)"},
             "coupon": {"type": "string", "description": "a coupon or code applied, if any"},
-            **({"card": {"type": "string", "description": "a wallet card's nickname (wallet_cards); without card or pay_with the "
-                                                         "default card is used; then browser_fill_card"}} if wallet else {})},
+            **({"card": {"type": "string", "description": "a wallet card's nickname (default card if neither card nor pay_with)"}} if wallet else {})},
          "required": ["summary", "amount", "site"]},
         confirm, requires_approval=True, describe=describe, validate=validate, declined=declined,
         auto_approve=auto if (wallet or grants is not None) else None, approval_extra=approval_extra,
     )]
+    if ledger is not None and session is not None:
+        tools.append(_result_tool(session, ledger, notify=notify, timezone=timezone, clock=clock))
     if wallet is None:
         return tools
 
@@ -561,3 +578,174 @@ def _same_site(a: str, b: str) -> bool:
     """One site: the same registrable domain by the Public Suffix List (sites.py), so 'pay.example.co.kr' is the site of
     'www.example.co.kr' and 'badexample.co.kr' is not."""
     return same_site(a, b)
+
+
+# ---------------------------------------------------------------- purchase_result: the receipt against what was approved
+RESULT_CHECKED = "Checked: matches what was approved."
+
+
+def _result_tool(session: BrowserSession, ledger: Any, *, notify: Any = None, timezone: Any = None, clock: Any = time.time) -> Tool:
+    """After a payment: the confirmation page's order number, total, items and cancel terms, checked against what was approved
+    (assistant.receipt). Owner's rules: a charge that differs (higher total, another item, option or quantity) is cancelled at once when
+    cancelling is free now (the cancel window of BrowserSession.allow_cancel opens, the owner gets an urgent notice); with a fee, or when
+    that is unknown, the owner is asked first (an approval card, Allow = cancel the order, Deny = keep it) and nothing is cancelled
+    before the answer. Every report states the approved condition and the real charge plainly, and the next option."""
+    from ..receipt import cancel_terms, compare
+
+    def pay() -> Any:
+        return ledger.last(browser_owner.get())
+
+    def current_task() -> int | None:
+        from ..workers import current_turn
+        return (current_turn.get() or {}).get("task_id")
+
+    def tz() -> str:
+        try:
+            return str(timezone() or "") if timezone is not None else ""
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def validate(args: dict[str, Any]) -> str | None:
+        p = pay()
+        if p is None:
+            return ("no approved payment here: purchase_result checks the receipt of a payment that confirm_purchase approved in this "
+                    "task (within the last half hour), on this browser tab")
+        if any(CARD_NUMBER.search(str(args.get(k) or "")) for k in ("order_no", "charged_total", "items", "cancel")):
+            return "it contains what looks like a card number. Never put card numbers in a request"
+        if args.get("cancelled") is True or p.state == "closed":
+            return None
+        from ..receipt import parse_money
+        if parse_money(args.get("charged_total"))[0] is None:
+            return "charged_total is required: the total the confirmation page shows, as the page writes it (number and currency)"
+        if args.get("items") is not None and not isinstance(args.get("items"), list):
+            return "items must be a list of {name, options, quantity}"
+        if p.items and not clean_items(args.get("items")):
+            return "items is required: every line of the receipt (name, options, quantity), copied from the confirmation page"
+        if args.get("cancel") is not None and not isinstance(args.get("cancel"), dict):
+            return "cancel must be an object {free_until, fee, how} copied from the page, or null when the page gives no cancel terms"
+        return None
+
+    def judge(args: dict[str, Any]) -> tuple[str, Any]:
+        """(kind, details): cancelled | closed | match | lower | free (cancel now, free) | ask (the owner decides)."""
+        p = pay()
+        if args.get("cancelled") is True:
+            return "cancelled", None
+        if p.state == "closed":
+            return "closed", None
+        chk = compare(p.amount, p.currency, p.items, args.get("charged_total"), clean_items(args.get("items")))
+        if chk.ok:
+            return ("match" if chk.status == "match" else "lower"), chk
+        terms = cancel_terms(args.get("cancel"), clock(), tz())
+        # free now by the page's own words / deadline; or the owner already chose to cancel (state "cancel")
+        return ("free" if terms.free_now or p.state == "cancel" else "ask"), (chk, terms)
+
+    def auto(args: dict[str, Any]) -> bool:
+        return judge(args)[0] != "ask"
+
+    def _diff_text(p: Any, chk: Any) -> str:
+        parts = list(chk.problems)
+        if chk.difference:
+            parts.insert(0, f"{'+' if chk.difference > 0 else '-'}{money(abs(chk.difference), p.currency)}")
+        return "; ".join(parts) or "-"
+
+    def _until_text(terms: Any) -> str:
+        if terms.until is not None:
+            return str(terms.until_text or time.strftime("%Y-%m-%d %H:%M", time.localtime(terms.until)))
+        return terms.until_text or t("not stated on the page")
+
+    def title_of(p: Any, chk: Any) -> str:
+        return t("Charged {charged} instead of {approved} at {site}", charged=chk.charged_text, approved=p.amount_text, site=p.host)
+
+    def approval_extra(approval_id: str, args: dict[str, Any]) -> dict[str, Any]:
+        p = pay()
+        if p is None or (got := judge(args))[0] != "ask":
+            return {}
+        chk, terms = got[1]
+        lines = [{"label": t("Difference"), "value": _diff_text(p, chk)},
+                 {"label": t("Cancel fee"), "value": terms.fee or t("not stated on the page")},
+                 {"label": t("Free or cheaper until"), "value": _until_text(terms)},
+                 {"label": t("Order number"), "value": " ".join(str(args.get("order_no") or "").split())[:60] or t("not shown")}]
+        return {"ask": title_of(p, chk), "notice_title": title_of(p, chk), "lines": lines, "urgent": True,
+                "deadline_at": terms.until, "charge_check": {"site": p.host, "approved": p.amount_text, "charged": chk.charged_text,
+                                                             "allow": t("Cancel the order"), "deny": t("Keep")}}
+
+    async def describe(args: dict[str, Any]) -> str:
+        p = pay()
+        if p is None or (got := judge(args))[0] != "ask":
+            return t("Checking the receipt at {site}", site=p.host if p else "")
+        chk, terms = got[1]
+        return t("{title} · Difference: {difference} · Cancel fee: {fee} · Free or cheaper until: {until} · Allow = cancel the order, Deny = keep it",
+                 title=title_of(p, chk), difference=_diff_text(p, chk), fee=terms.fee or t("not stated on the page"),
+                 until=_until_text(terms))[:300]
+
+    def declined(args: dict[str, Any]) -> str:
+        p = pay()
+        if p is None:
+            return "The owner did not choose to cancel."
+        p.state = "closed"
+        session.end_cancel()
+        return ("The owner chose to KEEP the order (or did not answer in time). Do NOT cancel it. Tell the owner plainly: approved "
+                f"{p.amount_text} ({p.summary}), charged {args.get('charged_total')}, what differs, and that they can still cancel it "
+                "themselves or tell you to. Do not buy again.")
+
+    def sums(p: Any, chk: Any, args: dict[str, Any]) -> str:
+        return f"approved {p.amount_text} ({p.summary}), charged {chk.charged_text}; {_diff_text(p, chk)}"
+
+    async def result(args: dict[str, Any]) -> str:
+        p = pay()
+        kind, data = judge(args)
+        order_no = " ".join(str(args.get("order_no") or "").split())[:60]
+        if kind == "cancelled":
+            p.state = "closed"
+            session.end_cancel()
+            return ("Closed: the cancel is done. Tell the owner plainly, without excuses: what they approved, what was really charged, "
+                    "that you cancelled the order, and the refund state the page shows (amount, when). Then the next option (buy again "
+                    "at the right price, only if they ask). Do not buy again on your own.")
+        if kind == "closed":
+            return "This payment's receipt was already checked and closed. Do not check it again; tell the owner the result."
+        if kind == "match":
+            p.state = "closed"
+            return RESULT_CHECKED + (f" Order {order_no}." if order_no else "") + " Tell the owner the result with the order number."
+        if kind == "lower":
+            p.state = "closed"
+            return (f"Checked: the charge {data.charged_text} is lower than the approved {p.amount_text}; everything else matches. "
+                    "That is fine: say so plainly with the order number.")
+        chk, terms = data
+        first = p.state != "cancel"
+        p.state = "cancel"
+        session.allow_cancel(p.host, order_no)
+        until = f" (free until {_until_text(terms)})" if terms.until_text or terms.until else ""
+        how = f" Its cancel control on the page: {terms.how}." if terms.how else ""
+        if kind == "free" and first and notify is not None:
+            try:
+                notify(t("Kelo was charged {charged} instead of {approved} at {site}; it is cancelling it now (free).",
+                         charged=chk.charged_text, approved=p.amount_text, site=p.host), _diff_text(p, chk)
+                       + (f" · {order_no}" if order_no else ""), current_task())
+            except Exception:  # noqa: BLE001 - the notice never stops the cancel
+                pass
+        who = "The owner chose to cancel it." if kind == "ask" else "Cancelling is free now" + until + "."
+        return ("It does NOT match what was approved (" + sums(p, chk, args) + "). " + who + " Cancel this order at once on the page" +
+                (f" (order {order_no})" if order_no else "") + f".{how} The cancel click needs no card for the next few minutes, on "
+                f"{p.host} only; click nothing else. Then read the page and call purchase_result again with cancelled=true (order_no). "
+                "Do not buy again. Afterwards tell the owner plainly what was approved, what was really charged, that it is cancelled "
+                "and the refund the page shows.")
+
+    return Tool(
+        "purchase_result",
+        "Right after a payment went through: copy what the confirmation page shows (order number, charged total, items, cancel terms) "
+        "and the server checks it against what the owner approved. If the charge differs and cancelling is free, it opens the cancel "
+        "for you; with a fee, the owner decides. Call it again with cancelled=true after you cancelled.",
+        {"type": "object", "properties": {
+            "order_no": {"type": "string", "description": "the order, booking or receipt number as the page shows it"},
+            "charged_total": {"type": "string", "description": "the total charged, as the page writes it (number and currency)"},
+            "items": {"type": "array", "description": "each line of the receipt as the page shows it", "items": {"type": "object", "properties": {
+                "name": {"type": "string"}, "options": {"type": "string"}, "quantity": {"type": "integer"}}}},
+            "cancel": {"type": ["object", "null"], "description": "the cancel terms the page gives, null if none",
+                       "properties": {"free_until": {"type": "string", "description": "until when cancelling is free: ISO time, or the page's words"},
+                                      "fee": {"type": "string", "description": "the cancel fee as the page says it"},
+                                      "how": {"type": "string", "description": "the words of the page's cancel button or link"}}},
+            "cancelled": {"type": "boolean", "description": "true on the second call, after the order was cancelled"}},
+         "required": ["order_no"]},
+        result, requires_approval=True, describe=describe, validate=validate, declined=declined, auto_approve=auto,
+        approval_extra=approval_extra,
+    )

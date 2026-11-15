@@ -9,21 +9,16 @@ public struct KeyguardView: Equatable, Sendable, Decodable {
     public static let modeServer = "server", modePhone = "phone"
     public var mode: String
     public var locked: Bool
-    /// ASSISTANT_SECRET_KEY is still set in the server's .env: turning it on is refused until `assistant keyguard enable` ran
-    public var envKey: Bool
-    public var recovery: Bool
     public var phones: [KeyguardPhone]
 
-    public init(mode: String = KeyguardView.modeServer, locked: Bool = false, envKey: Bool = false, recovery: Bool = false, phones: [KeyguardPhone] = []) {
-        self.mode = mode; self.locked = locked; self.envKey = envKey; self.recovery = recovery; self.phones = phones
+    public init(mode: String = KeyguardView.modeServer, locked: Bool = false, phones: [KeyguardPhone] = []) {
+        self.mode = mode; self.locked = locked; self.phones = phones
     }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         mode = j.str("mode", KeyguardView.modeServer)
         locked = j.bool("locked")
-        envKey = j.bool("env_key")
-        recovery = j.bool("recovery")
         phones = j.list("phones", of: KeyguardPhone.self)
     }
 
@@ -34,13 +29,10 @@ public struct KeyguardView: Equatable, Sendable, Decodable {
 }
 
 public struct KeyguardPhone: Equatable, Sendable, Decodable {
-    public var deviceId: Int64, name: String, alg: Int, created: Double
-    public init(deviceId: Int64, name: String = "", alg: Int = 0, created: Double = 0) {
-        self.deviceId = deviceId; self.name = name; self.alg = alg; self.created = created
-    }
+    public var deviceId: Int64, name: String
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
-        deviceId = j.int64("device_id"); name = j.str("name"); alg = j.int("alg"); created = j.double("created")
+        deviceId = j.int64("device_id"); name = j.str("name")
     }
 }
 
@@ -70,7 +62,6 @@ public enum KeyguardRules {
     public static let codeLocked = "locked"
     public static let codeEnvKey = "env_key"
     public static let codeWrongKey = "wrong_key"
-    public static let codeNotEnrolled = "not_enrolled"
     /// The server's name for "this is the last phone holding the key" (DELETE /api/devices: last_keyguard_phone)
     public static let lastPhoneCodes: Set<String> = ["last_phone", "last_keyguard_phone"]
     /// The iPhone's blob kind (`KeyguardBlob.iPhoneFormat`), as POST /api/keyguard/enroll/finish "alg".
@@ -96,10 +87,6 @@ public enum KeyguardRules {
 
     /// Typed enough to send (the server's codes have 24 characters).
     public static func codeReady(_ text: String) -> Bool { normalizeCode(text).count >= 20 }
-
-    /// What the locked banner offers on this phone: unlock with its own copy, else only the recovery code (or another phone).
-    public enum LockedAction: Equatable, Sendable { case unlock, recoverOnly }
-    public static func lockedAction(holdsCopy: Bool) -> LockedAction { holdsCopy ? .unlock : .recoverOnly }
 
     /// A failed call means "Kelo is locked" (423 locked).
     public static func isLocked(_ e: ApiError) -> Bool { e.status == 423 || e.code == codeLocked }

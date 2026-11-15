@@ -11,13 +11,9 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import chat.kelo.app.ui.VaultGateRules
-import chat.kelo.app.ui.findActivity
 import java.security.KeyStore
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -115,29 +111,27 @@ class JceCardCipher(private val cipher: Cipher) : CardCipher {
     override fun doFinal(input: ByteArray): ByteArray = cipher.doFinal(input)
 }
 
-/** What asking for the card key came to. */
-sealed interface CardAuth {
-    data class Ok(val cipher: CardCipher, val keyId: String) : CardAuth
-    /** The user backed out of the prompt */
-    data object Cancelled : CardAuth
-    /** The phone has no screen lock, so no card key can exist */
-    data object NoLock : CardAuth
-    /** This phone has no key that opens this card (made elsewhere, or the key was invalidated) */
-    data object KeyLost : CardAuth
-    data class Failed(val message: String) : CardAuth
-}
+/**
+ * The phone's card key behind the shared [CardKeys]: asks for the owner's check (fingerprint, face or screen lock) and hands back a
+ * cipher the Keystore lets this app use once. [activity] is the one on screen when asked (null: none, the check cannot come up).
+ */
+class AndroidCardKeys(context: Context, private val activity: () -> FragmentActivity?) : CardKeys {
+    private val key = WalletKey(context)
+    override val available: Boolean get() = true
+    override val credentialLeavesApp: Boolean get() = Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
+    override fun keyId(): String? = key.keyId()
+    override fun deviceSecure(): Boolean = key.deviceSecure()
+    override fun promptActive(): Boolean = CardPrompts.active()
 
-/** Asks for the owner's check and hands back a cipher the Keystore lets this app use once. */
-class CardAuthenticator internal constructor(private val activity: FragmentActivity?, val key: WalletKey) {
     /** Encrypt a new card (or a re-entered one). */
-    fun forSaving(title: String, subtitle: String, onDone: (CardAuth) -> Unit) = run(title, subtitle, onDone) { key.encryptCipher() }
+    override fun forSaving(title: String, subtitle: String, onDone: (CardAuth) -> Unit) = run(title, subtitle, onDone) { key.encryptCipher() }
 
     /** Decrypt a blob whose IV is [iv]. */
-    fun forPaying(iv: ByteArray, title: String, subtitle: String, onDone: (CardAuth) -> Unit) =
+    override fun forPaying(iv: ByteArray, title: String, subtitle: String, onDone: (CardAuth) -> Unit) =
         run(title, subtitle, onDone) { key.decryptCipher(iv) }
 
     private fun run(title: String, subtitle: String, onDone: (CardAuth) -> Unit, make: () -> Cipher) {
-        val act = activity ?: return onDone(CardAuth.Failed("no activity"))
+        val act = activity() ?: return onDone(CardAuth.Failed("no activity"))
         if (!key.deviceSecure()) return onDone(CardAuth.NoLock)
         // BiometricPrompt quietly does nothing once the activity has saved its state: answer instead of leaving the caller waiting
         if (act.supportFragmentManager.isStateSaved || act.isFinishing) return onDone(CardAuth.Cancelled)
@@ -201,11 +195,4 @@ internal object CardPrompts {
     @Synchronized fun started() { count++ }
     @Synchronized fun ended() { count = (count - 1).coerceAtLeast(0) }
     @Synchronized fun active(): Boolean = count > 0
-}
-
-@Composable
-fun rememberCardAuthenticator(): CardAuthenticator {
-    val context = LocalContext.current
-    val activity = context.findActivity() as? FragmentActivity
-    return remember(activity) { CardAuthenticator(activity, WalletKey(context)) }
 }

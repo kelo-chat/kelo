@@ -141,7 +141,8 @@ def test_a_critically_low_disk_is_told_at_once_even_at_night_and_once_per_crossi
     b.quota.wrote()
     assert b.check() == ["host"]
     typ, title, body = b.sent[-1]
-    assert "disk is almost full" in title and "512MB" in body and "chat history" in body
+    assert "disk is almost full" in title and "512MB" in body
+    assert "Kelo's own data is only" in body and "docker image prune" in body   # Kelo's few MB are not what fills that disk
     assert b.check() == []
     b.usage = Usage(500 * GB, 498 * GB, int(1.2 * GB))
     assert b.check() == []                                   # 1.2 GB: better, but not past the 1.5x clear mark
@@ -151,6 +152,21 @@ def test_a_critically_low_disk_is_told_at_once_even_at_night_and_once_per_crossi
     assert b.check() == ["host"]                             # a new crossing
     st = json.loads(b.store.meta(META))
     assert st["host_low"] and st["host_told"] and st["level"] == 0   # no cap: no cap levels
+
+
+def test_a_low_but_not_critical_disk_is_told_only_when_it_stays_low(tmp_path):
+    # 2026-11-11: building Kelo's own update dipped an 84 GB disk to ~3 GB (under 5%) for a few minutes, and every update pushed a
+    # "disk almost full" warning though the build's images were pruned right after
+    from assistant.storage_watch import HOST_LOW_HOLD
+    b = Box(tmp_path, limit=0, free=3 * GB, total=84 * GB)
+    assert b.check() == []                                   # low, but only just now
+    b.usage = Usage(84 * GB, 75 * GB, 9 * GB)                # the build is done and pruned: back up
+    assert b.check() == []
+    b.usage = Usage(84 * GB, 81 * GB, 3 * GB)
+    for _ in range(HOST_LOW_HOLD // 60):                   # the first low minute, then 14 more
+        assert b.check() == []
+    assert b.check() == ["host"]                             # low for the whole hold: told once
+    assert b.check() == []
 
 
 def test_the_public_answer_says_the_level_the_biggest_part_and_the_host_state(tmp_path):

@@ -10,6 +10,7 @@ public enum KeloIcon: String, CaseIterable, Sendable {
     case globe = "globe"
     case chevronRight = "chevron.right"
     case chevronLeft = "chevron.left"
+    case chevronDown = "chevron.down"
     case plus = "plus"
     case minus = "minus"
     case send = "arrow.up"

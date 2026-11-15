@@ -1,5 +1,4 @@
 import Foundation
-import KeloCore
 
 /// The typed answer fields of a quick-reply question (Android chat/ReplyFields.kt, the same rules; the server checks the same plain
 /// forms, goals.py check_answer).

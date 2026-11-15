@@ -1,14 +1,14 @@
 package chat.kelo.desktop.core
 
 import chat.kelo.app.chat.AgentActivity
-import chat.kelo.app.chat.ChatHistoryCache
-import chat.kelo.app.chat.ProviderInfo
-import chat.kelo.app.chat.StoredMessage
+import chat.kelo.app.AppServices
+import chat.kelo.app.Caches
+import chat.kelo.app.agent.AgentAvatar
 import chat.kelo.app.core.AcceptLanguage
-import chat.kelo.app.core.CacheSlot
 import chat.kelo.app.core.KeloApi
 import chat.kelo.app.core.KeyValueStore
 import chat.kelo.app.core.Languages
+import chat.kelo.desktop.i18n.DesktopLocale
 import chat.kelo.app.core.Profile
 import chat.kelo.app.core.ScreenCache
 import chat.kelo.app.core.SecureStore
@@ -20,22 +20,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.util.Locale
-
-/** The screens' kept data (encrypted, per server; see chat.kelo.app.core.ScreenCache). Signing out forgets all of it. */
-object DesktopCaches {
-    val MESSAGES = CacheSlot("messages", ListSerializer(StoredMessage.serializer()), ChatHistoryCache::trim)
-    val PROVIDERS = CacheSlot("providers", ListSerializer(ProviderInfo.serializer()))
-    val PROFILE = CacheSlot("profile", Profile.serializer())
-    /** The providers as the model settings show them (their list shows at once on the next open; see chat.kelo.desktop.chat.ModelCatalog) */
-    val PROVIDER_DETAILS = CacheSlot("provider_details", ListSerializer(chat.kelo.app.my.ProviderDetail.serializer()))
-    /** The last good model list (labels and facts too) of each provider, newest first */
-    val MODEL_LISTS = CacheSlot("model_lists", MapSerializer(String.serializer(), chat.kelo.app.chat.ModelList.serializer()))
-}
 
 /** The app's choices that are not secret (kept in kelo.properties). Each one is a flow the screens watch. */
 class Settings(private val kv: KeyValueStore) {
@@ -66,7 +52,7 @@ class Settings(private val kv: KeyValueStore) {
         java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).take(8).joinToString("") { "%02x".format(it) }
 
     /** The language the app is shown in: the pick, else the system's when the app has it, else English. */
-    fun shownLanguage(): String = Languages.override(language.value) ?: Languages.suggested(listOf(Locale.getDefault().toLanguageTag()))
+    fun shownLanguage(): String = Languages.override(language.value) ?: Languages.suggested(listOf(DesktopLocale.system.toLanguageTag()))
 
     companion object {
         private const val LANGUAGE = "language.pick"
@@ -93,7 +79,7 @@ data class DesktopNote(
  * notifications for the tray. One per run.
  */
 class AppContainer(
-    val dataDir: File = Platform.dataDir,
+    val dataDir: File = DesktopPlatform.dataDir,
     kv: KeyValueStore = FileKeyValueStore(File(dataDir, "kelo.properties")),
     cipher: ValueCipher = StoreKey.cipher(dataDir),
     /**
@@ -101,7 +87,7 @@ class AppContainer(
      * the plain mock server (tools/mock_server.py) pass false; nothing at run time can turn it off.
      */
     val requireE2e: Boolean = true,
-) {
+) : AppServices {
     init {
         DesktopVersion.install()   // X-Kelo-App on every call, min_server for the answers (docs/versioning.md)
     }
@@ -114,15 +100,27 @@ class AppContainer(
      * adds the KE2E interceptor after it (Sessions.apiFor), so the header travels inside the envelope.
      */
     val apiClient: okhttp3.OkHttpClient = KeloApi.defaultClient
-    val sessions = Sessions(store, apiClient, cache, requireE2e)
+    override val sessions = Sessions(store, apiClient, cache, requireE2e)
+    override val appVersion: String = ReleaseInfo.VERSION
+    override val sourceCommit: String = ReleaseInfo.SOURCE_COMMIT
+    override val sourceDirty: Boolean = ReleaseInfo.SOURCE_DIRTY
+    /** The agent's picture: one holder per run, shared by the header and the status poll */
+    override val agentAvatar = AgentAvatar(sessions)
     /** Pairing and the key sign-in: a link's `k` pins the key (verified); otherwise the key held for that server, else TOFU. */
-    fun pairingClient(): chat.kelo.app.core.PairingClient = chat.kelo.app.core.PairingClient(apiClient, store::pinFor)
+    override val pairing = chat.kelo.app.core.PairingClient(apiClient, store::pinFor)
+    override fun deviceName(): String = DesktopPlatform.deviceName() + " · Kelo"
+    override val allowLocalHttp: Boolean = true
     val activity = AgentActivity()
+    override val agentActivity: AgentActivity get() = activity
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     /** The signed-in server's profile (null until loaded) */
-    val profile = MutableStateFlow<Profile?>(runCatching { sessions.cached(DesktopCaches.PROFILE) }.getOrNull())
+    val profile = MutableStateFlow<Profile?>(runCatching { sessions.cached(Caches.PROFILE) }.getOrNull())
     /** The main window is on screen (not hidden in the tray, not minimized) */
     val windowShown = MutableStateFlow(true)
+    /** The tray line of a reply that runs (its step, else the site), or null */
+    val liveStep = MutableStateFlow<String?>(null)
+    /** The way to stop the reply that runs (the tray's Stop), or null */
+    val stopReply = MutableStateFlow<(() -> Unit)?>(null)
     /** Notifications for the tray to show */
     val notes = MutableSharedFlow<DesktopNote>(extraBufferCapacity = 16)
     /** A request from the tray or a notification to bring the window up on a page */
@@ -133,15 +131,40 @@ class AppContainer(
      * Where the app should go (a notification clicked, a card's button, the tray): the phone's chat.kelo.app.notify.OpenTarget, handled
      * by the shell (the page, the live view, a My or Work sub page).
      */
-    val openRequests = MutableStateFlow<chat.kelo.app.notify.OpenTarget?>(null)
+    override val openRequests = MutableStateFlow<chat.kelo.app.notify.OpenTarget?>(null)
     /** The chat should scroll to this message (a follow-up notification) */
-    val chatFocus = MutableStateFlow<Long?>(null)
+    override val chatFocus = MutableStateFlow<Long?>(null)
     /** The chat should scroll to this secure entry's card and mark it for a moment (a row in 답이 필요해요) */
-    val chatEntryFocus = MutableStateFlow<String?>(null)
+    override val chatEntryFocus = MutableStateFlow<String?>(null)
+    override val chatFollowTurn = MutableStateFlow<String?>(null)
     /** A My sub page to open (MY_PAGE_*), set with the My page switch */
-    val myPageRequests = MutableStateFlow<String?>(null)
+    override val myPageRequests = MutableStateFlow<String?>(null)
     /** A Work target (a task, a schedule, a section) for the Work page to open, set with the Work page switch */
     val workRequests = MutableStateFlow<chat.kelo.app.notify.OpenTarget?>(null)
+    // ---- what the shared My and wallet pages ask of the device: the computer has no card key, no phone settings, no location
+    override val filePicker: chat.kelo.app.platform.FilePicker = DesktopFilePicker()
+    override val systemSettings: chat.kelo.app.platform.SystemSettings = chat.kelo.app.platform.SystemSettings.None
+    override val browser: chat.kelo.app.platform.ExternalBrowser = chat.kelo.app.platform.ExternalBrowser { url -> Browser.open(url) }
+    override val phoneData: chat.kelo.app.platform.PhoneDataSection? = null
+    override val connectorIcons = chat.kelo.app.connectors.ConnectorIcons(File(dataDir, "connector-icons"))
+    override val notifications: chat.kelo.app.platform.PhoneNotifications? = null
+    override val phoneLocation: chat.kelo.app.platform.PhoneLocation? = null
+    override val appUpdates: chat.kelo.app.platform.AppUpdateSource? = null
+    override val language: chat.kelo.app.platform.AppLanguage = object : chat.kelo.app.platform.AppLanguage {
+        override val systemShownCode: String get() = Languages.suggested(listOf(DesktopLocale.system.toLanguageTag()))
+        override val current: String? get() = settings.language.value
+        override fun pick(code: String) { settings.setLanguage(code); applyLanguage(); tellServerLanguage(code) }
+    }
+    override val cardKeys: chat.kelo.app.wallet.CardKeys = chat.kelo.app.wallet.CardKeys.None
+    override val keyguardKeys: chat.kelo.app.keyguard.KeyguardKeys = chat.kelo.app.keyguard.KeyguardKeys.None
+    override val cardScanner: chat.kelo.app.wallet.CardScanner? = null
+    override val walletConsent: chat.kelo.app.wallet.WalletConsent = object : chat.kelo.app.wallet.WalletConsent {
+        override fun cardSaved(cardId: String, at: Long) {}
+        override fun autoPayAccepted(cardId: String, at: Long) {}
+        override fun forget(cardId: String) {}
+    }
+    override val walletPlaces = chat.kelo.app.wallet.WalletPlaces(scope) { System.nanoTime() / 1_000_000 }
+    override val secretHandoff = chat.kelo.app.chat.SecretHandoff()
     /** The app's own update check (core/Updates.kt); tests put one pointed at a mock here */
     var updates: Updater = Updater.forThisApp(dataDir)
     /** What the newest desktop notification opens when clicked (the tray gives no per-notification click) */
@@ -153,13 +176,12 @@ class AppContainer(
         if (requireE2e) scope.launch {
             sessions.api.collect { api -> if (api != null && api.keyPin == null) runCatching { sessions.upgradeToE2e() } }
         }
-        chat.kelo.desktop.pages.connectors.ConnectorIcons.bind(sessions, File(dataDir, "connector-icons"))
         applyLanguage()
     }
 
     /** Tells the server which language to answer in (Accept-Language), after a pick. */
     fun applyLanguage() {
-        AcceptLanguage.current = AcceptLanguage.build(Languages.override(settings.language.value), listOf(Locale.getDefault().toLanguageTag()))
+        AcceptLanguage.current = AcceptLanguage.build(Languages.override(settings.language.value), listOf(DesktopLocale.system.toLanguageTag()))
     }
 
     /**
@@ -169,14 +191,14 @@ class AppContainer(
      */
     fun tellServerLanguage(code: String) {
         val api = sessions.api.value ?: return
-        val language = Languages.forServer(code, listOf(Locale.getDefault().toLanguageTag()))
+        val language = Languages.forServer(code, listOf(DesktopLocale.system.toLanguageTag()))
         val body = kotlinx.serialization.json.buildJsonObject { put("language", kotlinx.serialization.json.JsonPrimitive(language)) }
         scope.launch { runCatching { api.request("PUT", "/api/language", body) } }
     }
 
     fun setProfile(p: Profile) {
         profile.value = p
-        sessions.keep(DesktopCaches.PROFILE, p)
+        sessions.keep(Caches.PROFILE, p)
     }
 
     fun notify(note: DesktopNote) {

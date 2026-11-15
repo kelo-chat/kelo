@@ -16,23 +16,34 @@ struct MainShell: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduce
     /// Tabs visited so far (each keeps its state once built).
-    @State private var built: Set<KeloTab> = [.chat]
+    @State private var built: Set<String> = [KeloTab.chat.rawValue]
+    @State private var shell: ShellModel
+    private let background: KeloBackground
+    @Environment(\.nestSurfaceView) private var nestSurface
     @State private var headerHeight: CGFloat = 0
     @State private var barHeight: CGFloat = 0
     /// the keyboard covers the bar, so the pages need no room for it then
     @State private var keyboardUp = false
 
+    init(app: AppModel, background: KeloBackground = KeloLaunch.background) {
+        self.background = background
+        _shell = State(initialValue: ShellModel(activity: app.activity, avatar: app.avatar, cache: app.cache,
+                                                api: { [weak app] in app?.api }, profile: { [weak app] in app?.profile }))
+    }
+
     var body: some View {
         let router = app.router
+        let tabs = shownTabs
         ZStack(alignment: .top) {
             c.bg.ignoresSafeArea()
             ZStack {
-                ForEach(KeloTab.allCases, id: \.self) { tab in
-                    if built.contains(tab) {
-                        page(tab)
-                            .opacity(router.tab == tab ? 1 : 0)
-                            .allowsHitTesting(router.tab == tab)
-                            .accessibilityHidden(router.tab != tab)
+                ForEach(tabs) { spec in
+                    if built.contains(spec.id) {
+                        let on = isOpen(spec)
+                        spec.content()
+                            .opacity(on ? 1 : 0)
+                            .allowsHitTesting(on)
+                            .accessibilityHidden(!on)
                     }
                 }
             }
@@ -64,7 +75,7 @@ struct MainShell: View {
                 // the bar steps aside while the keyboard is up, whoever has it (the composer, an in-chat form, a page's field), so it
                 // never sits above the keyboard over a send or save button (Android hides it while the IME shows)
                 if !router.barHidden && !keyboardUp {
-                    TabBar()
+                    TabBar(tabs: tabs)
                         .onGeometryChange(for: CGFloat.self, of: { $0.size.height }, action: { barHeight = $0 })
                         .ignoresSafeArea(.keyboard, edges: .bottom)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -86,20 +97,20 @@ struct MainShell: View {
 
             // Keyguard: the server holds no key ("Kelo is locked"): unlock with this phone, or the recovery code in 마이 → 보안
             if app.locked, router.tab != .my, !router.workOpen, router.liveTab == nil {
-                LockedBanner(onRecover: { router.openMyPage(.keyguardCode) })
+                LockedBanner(app: app, onRecover: { router.openMyPage(.keyguardCode) })
                     .padding(.top, headerHeight + 8).padding(.horizontal, 12)
                     .frame(maxWidth: 560)
                     .transition(.opacity)
             }
 
             if router.workOpen {
-                WorkScreen(onClose: { router.workOpen = false })
+                WorkScreen(api: { [weak app] in app?.api }, onClose: { router.workOpen = false })
                     .background(c.bg.ignoresSafeArea())
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                     .zIndex(1)
             }
             if let tab = router.liveTab {
-                LiveOverlay(tabId: tab, takeControl: router.liveTakeControl, onClose: { router.closeLive() })
+                LiveOverlay(api: { [weak app] in app?.api }, tabId: tab, takeControl: router.liveTakeControl, onClose: { router.closeLive() })
                     .background(c.bg.ignoresSafeArea())
                     .transition(.opacity)
                     .zIndex(2)
@@ -114,38 +125,54 @@ struct MainShell: View {
                 ServerTooOldView(server: server, onRetry: { app.recheckServer() }).zIndex(3)
             }
         }
+        .environment(\.keloApi, app.api)
+        .environment(\.keloBackground, background)
         .animation(KeloMotionSpec.enter(reduce), value: router.workOpen)
         .animation(KeloMotionSpec.enter(reduce), value: router.liveTab)
-        .onChange(of: router.tab) { _, t in built.insert(t) }
+        .onChange(of: router.tab) { _, t in built.insert(t.rawValue) }
+        .onChange(of: router.nestTab) { _, t in if let t { built.insert(t) } }
+        .task(id: app.session?.serverUrl) { await app.nest?.loadOnce() }
         // the status poll and the notification check run while the app is in the foreground
         .task(id: phase == .active) {
             guard phase == .active else { return }
-            await app.activity.poll { [weak app] in app?.api }
+            await shell.pollStatus()
         }
         .task(id: phase == .active) {
             guard phase == .active else { return }
-            await KeloBackground.run(app: app)
+            await background.run(app: app)
         }
         // the phone's location for the weather and "near me" questions: only when allowed, only now that the app is open
         .task(id: phase == .active) {
-            guard phase == .active, let api = app.api else { return }
-            await PhonePlace.maybeSend(api: api)
+            guard phase == .active else { return }
+            await shell.sendPlace()
         }
-        .task(id: app.profile?.avatarVersion) {
-            if let v = app.profile?.avatarVersion { await app.avatar.sync(v, app: app) }
-        }
-        .onChange(of: app.activity.status?.avatarVersion) { _, v in
-            if let v, v >= 0 { Task { await app.avatar.sync(v, app: app) } }
+        // the agent's picture follows the status poll's version (the newest word), else the profile's
+        .task(id: AvatarKey(profile: app.profile?.avatarVersion, polled: app.activity.status?.avatarVersion)) {
+            await shell.syncAvatar()
         }
         .onChange(of: phase) { _, p in if p == .background { KeloBackground.scheduleRefresh() } }
     }
 
-    @ViewBuilder private func page(_ tab: KeloTab) -> some View {
-        switch tab {
-        case .chat: ChatScreen(cardSender: WalletCardSender(app: app)).environment(\.keloConnectPanel, ChatConnectPanel.builder)
-        case .goals: GoalsScreen()
-        case .connectors: ConnectorsScreen()
-        case .my: MyScreen()
+    private func isOpen(_ spec: TabSpec) -> Bool {
+        if let tab = spec.builtIn { return app.router.nestTab == nil && app.router.tab == tab }
+        return app.router.nestTab == spec.id
+    }
+
+    /// The tabs the bar shows: the built-in ones, minus the hidden, plus Nest's (none while the app has no Nest renderer).
+    private var shownTabs: [TabSpec] {
+        let nest = app.nest?.state ?? .empty
+        return Tabs.for(builtIn: builtInTabs, nest: nest.entries(NestPlace.tab, surface: nestSurface), layout: app.tabLayout,
+                        maxTabs: nest.maxTabs, page: { e in nestSurface?.view(for: e) ?? AnyView(EmptyView()) })
+    }
+
+    private var builtInTabs: [TabSpec] {
+        Tabs.builtIn { tab in
+            switch tab {
+            case .chat: AnyView(ChatScreen(cardSender: WalletCardSender()).environment(\.keloConnectPanel, ChatConnectPanel.builder))
+            case .goals: AnyView(GoalsScreen())
+            case .connectors: AnyView(ConnectorsScreen())
+            case .my: AnyView(MyScreen())
+            }
         }
     }
 }
@@ -195,7 +222,7 @@ struct FloatingHeader: View {
 
     var body: some View {
         let activity = app.activity
-        let name = app.profile?.agentName ?? ""
+        let name = HeaderName.of(app.profile)
         let mood = activity.mood()
         let line = activity.line
         let waiting = activity.badge
@@ -220,7 +247,7 @@ struct FloatingHeader: View {
                     ZStack {
                         Circle().fill(photo != nil ? c.card : KeloColors.badgeCream)
                         if let photo {
-                            AgentPicture(name: name, image: photo, size: HeaderMetrics.badge)
+                            AgentPicture(image: photo, size: HeaderMetrics.badge)
                         } else {
                             KeloCharacterView(mood)
                                 .frame(width: HeaderMetrics.character, height: HeaderMetrics.character)
@@ -254,8 +281,9 @@ struct FloatingHeader: View {
     }
 }
 
-/// Four destinations; the chosen one sits in a tinted pill. No fade or highlight on press, no animation on switching.
+/// The tabs' destinations (four built in, and Nest's when it has a renderer); the chosen one sits in a tinted pill. No fade or highlight on press, no animation on switching.
 struct TabBar: View {
+    let tabs: [TabSpec]
     @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
     /// 12 pt at the default text size, growing with the phone's text size like Android's 12 sp (Dynamic Type)
@@ -265,9 +293,9 @@ struct TabBar: View {
         VStack(spacing: 0) {
             Hairline()
             HStack(spacing: 0) {
-                ForEach(KeloTab.allCases, id: \.self) { tab in
-                    let on = app.router.tab == tab
-                    Button { app.router.tap(tab) } label: {
+                ForEach(tabs) { tab in
+                    let on = tab.builtIn.map { app.router.nestTab == nil && app.router.tab == $0 } ?? (app.router.nestTab == tab.id)
+                    Button { if let b = tab.builtIn { app.router.tap(b) } else { app.router.tapNest(tab.id) } } label: {
                         VStack(spacing: 4) {
                             KeloIconView(tab.icon, size: 22, tint: on ? c.ink : c.muted)
                                 .frame(width: 56, height: 30)
@@ -283,7 +311,7 @@ struct TabBar: View {
                     .buttonStyle(NoFeedbackStyle())
                     .accessibilityLabel(tab.label)
                     .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
-                    .accessibilityIdentifier("kelo.tab.\(tab.rawValue)")
+                    .accessibilityIdentifier("kelo.tab.\(tab.id)")
                 }
             }
         }
@@ -330,4 +358,17 @@ struct ChooseModelCard: View {
             return P(key, p.count, p.count)
         }.joined(separator: ", ")
     }
+}
+
+/// The header's name: the agent's, "Kelo" while it has none (Android Shell header).
+enum HeaderName {
+    static func of(_ p: Profile?) -> String {
+        let n = p?.agentName.trimmingCharacters(in: .whitespaces) ?? ""
+        return n.isEmpty ? "Kelo" : n
+    }
+}
+
+private struct AvatarKey: Equatable {
+    var profile: Int64?
+    var polled: Int64?
 }

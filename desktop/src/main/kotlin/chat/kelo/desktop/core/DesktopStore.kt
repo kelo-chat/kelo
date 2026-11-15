@@ -9,7 +9,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * The app's small key/value file (kelo.properties in [Platform.dataDir]). Secret values (the server address and this device's
+ * The app's small key/value file (kelo.properties in [DesktopPlatform.dataDir]). Secret values (the server address and this device's
  * token, the unsent chat text) arrive here already encrypted by chat.kelo.app.core.SecureStore; plain ones are settings.
  * Every change is written at once, through a temporary file, so a crash never leaves half a file.
  */
@@ -36,7 +36,7 @@ class FileKeyValueStore(private val file: File) : KeyValueStore {
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, file.name + ".tmp")
         tmp.outputStream().use { props.store(it, "Kelo for desktop") }
-        Platform.restrict(tmp)
+        DesktopPlatform.restrict(tmp)
         if (!tmp.renameTo(file)) {
             file.delete()
             tmp.renameTo(file)
@@ -56,8 +56,8 @@ object StoreKey {
     private const val BYTES = 32
 
     fun load(dir: File): SecretKey {
-        val raw = when (Platform.os) {
-            Platform.Os.WINDOWS -> windowsKey(File(dir, "store.key.dpapi"))
+        val raw = when (DesktopPlatform.os) {
+            DesktopPlatform.Os.WINDOWS -> windowsKey(File(dir, "store.key.dpapi"))
             else -> fileKey(File(dir, "store.key"))
         }
         return SecretKeySpec(raw, "AES")
@@ -77,7 +77,7 @@ object StoreKey {
         }
         val k = fresh()
         f.writeBytes(k)
-        Platform.restrict(f)
+        DesktopPlatform.restrict(f)
         return k
     }
 
@@ -90,7 +90,7 @@ object StoreKey {
         val sealed = runCatching { com.sun.jna.platform.win32.Crypt32Util.cryptProtectData(k) }.getOrNull()
         if (sealed != null) {
             f.writeBytes(sealed)
-            Platform.restrict(f)
+            DesktopPlatform.restrict(f)
             return k
         }
         return fileKey(File(f.parentFile, "store.key"))   // DPAPI not reachable (very unusual): an owner-only file instead

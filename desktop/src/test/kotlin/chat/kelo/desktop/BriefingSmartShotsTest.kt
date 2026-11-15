@@ -1,5 +1,9 @@
 package chat.kelo.desktop
 
+import chat.kelo.desktop.chat.DesktopChat
+import chat.kelo.app.chat.ChatViewModel
+
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -11,10 +15,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.chat.ChatItem
-import chat.kelo.desktop.chat.ChatModel
-import chat.kelo.desktop.i18n.Strings
 import chat.kelo.desktop.ui.KeloFrame
 import chat.kelo.desktop.ui.Page
 import chat.kelo.desktop.ui.Shell
@@ -49,15 +50,16 @@ class BriefingSmartShotsTest {
     @Test fun koreanWideLong() = flow("ko", 1024, long = true)
 
     private fun flow(lang: String, width: Int, long: Boolean) {
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val env = mapOf("KELO_MOCK_CATCHUP" to "1") + if (long) mapOf("KELO_MOCK_BRIEFING" to "long") else emptyMap()
         val m = MockServer("--lang", lang, env = env).also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
-        val chat = ChatModel(app)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
-            KeloFrame(app) { Box(Modifier.size(width.dp, 1300.dp)) { Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}) } }
+            KeloFrame(app) { Box(Modifier.size(width.dp, 1300.dp)) { Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side) } }
         }
         val name = "briefing-smart-" + (if (long) "long-" else "") + "$lang-$width"
         try {
@@ -66,8 +68,8 @@ class BriefingSmartShotsTest {
             assertTrue(card.connections.size == 2 && card.suggestions.size == 2)
             compose.onAllNodes(hasScrollToKeyAction()).onFirst().performScrollToKey("m3")
             ui.settle(12)
-            ui.waitText(words.get(R.string.briefing_connections))
-            ui.waitText(words.get(R.string.briefing_steps))
+            ui.waitText(words.get(Res.string.briefing_connections))
+            ui.waitText(words.get(Res.string.briefing_steps))
             ui.shot("$name-steps")
             if (!long) {
                 // a next step writes its text into the composer; nothing is sent
@@ -79,7 +81,7 @@ class BriefingSmartShotsTest {
             }
             // the card is taller than the window: the same card scrolled up to its top (headline, notes with their chips, weather)
             val list = compose.onAllNodes(hasScrollToKeyAction()).onFirst()
-            val titleTop = { compose.onAllNodes(hasText(words.get(R.string.briefing_title))).onFirst().fetchSemanticsNode().positionInRoot.y }
+            val titleTop = { compose.onAllNodes(hasText(words.get(Res.string.briefing_title))).onFirst().fetchSemanticsNode().positionInRoot.y }
             var part = 0
             while (titleTop() < 110f && part < 14) {   // 110: just under the floating agent's tag
                 list.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, if (titleTop() < -200f) 300f else 120f) }
@@ -97,7 +99,7 @@ class BriefingSmartShotsTest {
                 // a chip does what a tap on its item does: the contract mail's chip writes the mail question
                 val subject = if (lang == "ko") "계약서 검토 요청" else "Contract review request"
                 compose.onAllNodes(hasText(subject)).onFirst().performSemanticsAction(SemanticsActions.OnClick)
-                ui.waitUntil("the mail question in the composer") { chat.state.value.input == words.get(R.string.briefing_mail_ask, subject) }
+                ui.waitUntil("the mail question in the composer") { chat.state.value.input == words.get(Res.string.briefing_mail_ask, subject) }
             }
         } catch (e: Throwable) {
             runCatching { ui.shot("$name-zz-failed") }

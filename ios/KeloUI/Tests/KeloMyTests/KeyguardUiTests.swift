@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
 import CryptoKit
 @testable import KeloShared
 @testable import KeloMy

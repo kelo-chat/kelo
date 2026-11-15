@@ -5,65 +5,10 @@ import XCTest
 /// `accept` the row after "이 시간으로 바꾸기" and then 마이 → 알림 saying the hours were learned, with "쓰는 시간에 맞춰 알림 시간 바꾸기"; `notify` only
 /// that page. Other variables as KeloScreensTests (KELO_SERVER, KELO_KEY, KELO_LANG, KELO_TAG, KELO_SHOTS); screens are named
 /// `<tag>-hours-suggest.png`, `<tag>-hours-accepted.png`, `<tag>-hours-learned.png`. Without KELO_HOURS the test is skipped.
-final class KeloHoursShotsTests: XCTestCase {
-    private let env = ProcessInfo.processInfo.environment
-    private var lang: String { env["KELO_LANG"] ?? "en" }
-    private var tag: String { env["KELO_TAG"] ?? lang }
-    private var app: XCUIApplication!
-
-    private func w(_ en: String, _ ko: String) -> String { lang == "ko" ? ko : en }
-
-    override func setUp() { continueAfterFailure = true }
-
-    private func shot(_ name: String) {
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        let a = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-        a.name = "\(tag)-\(name)"
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = env["KELO_SHOTS"] {
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(tag)-\(name).png"))
-        }
-    }
-
-    private func element(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", label, label)).firstMatch
-    }
+final class KeloHoursShotsTests: KeloShotCase {
 
     private func containing(_ text: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
-    }
-
-    @discardableResult
-    private func tap(_ e: XCUIElement, _ what: String, timeout: TimeInterval = 10) -> Bool {
-        guard e.waitForExistence(timeout: timeout) else { XCTFail("not found: \(what)\n\(app.debugDescription)"); return false }
-        var n = 0
-        while !e.isHittable && n < 8 { app.swipeUp(velocity: .slow); n += 1 }
-        e.tap()
-        return true
-    }
-
-    private func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
-
-    private func signIn(_ key: String) {
-        if element(w("Connect with access key", "접속 키로 연결하기")).waitForExistence(timeout: 10) {
-            tap(element(w("Connect with access key", "접속 키로 연결하기")), "connect with key")
-            let server = app.textFields.firstMatch
-            server.tap()
-            let cur = (server.value as? String) ?? ""
-            if !cur.isEmpty && cur != server.placeholderValue {
-                server.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: cur.count))
-            }
-            server.typeText(env["KELO_SERVER"]!)
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("Connect", "연결"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
-        }
-        XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 25), "chat did not open\n\(app.debugDescription)")
     }
 
     private func scrollTo(_ e: XCUIElement, _ what: String) {
@@ -87,9 +32,7 @@ final class KeloHoursShotsTests: XCTestCase {
 
     func testHours() throws {
         guard let mode = env["KELO_HOURS"], env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no hours walk asked") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         signIn(key)
         if mode == "notify" { openNotify(); return }
 

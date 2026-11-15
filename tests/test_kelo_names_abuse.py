@@ -1,7 +1,7 @@
 """Abuse limits of the free <name>.kelo.chat broker, against the fake Cloudflare of test_kelo_names.py: a name whose tunnel never had a
 connector is released an hour after its claim (a connected one stays), one network gets at most 3 new names a day, 30 names waiting for
 their first connector trip a breaker (503 busy with the real time left, the operator told once) that lifts as soon as fewer wait, and a
-full pool answers 503 full with the operator told at 90% and at full, once per fill. The CLI explains every refusal. Nothing reaches
+full pool answers 503 full with the operator told at 50, 70 and 90% and at full, once per fill. The CLI explains every refusal. Nothing reaches
 the real Cloudflare API."""
 
 import httpx
@@ -142,7 +142,7 @@ async def test_a_burst_of_names_that_connect_does_not_trip_the_breaker(cf):
 
 
 # ---- 4. a full pool
-async def test_a_full_pool_answers_full_and_the_operator_hears_at_ninety_percent_and_at_full_once_per_fill(cf):
+async def test_a_full_pool_answers_full_and_the_operator_hears_at_50_70_90_percent_and_at_full_once_per_fill(cf):
     app = app_for(cf)
     names = app.state.kelo_names
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://kelo.test") as c:
@@ -151,29 +151,32 @@ async def test_a_full_pool_answers_full_and_the_operator_hears_at_ninety_percent
 
         async def pool_notes():
             return [n["title"] for n in (await c.get("/api/notifications", headers=AUTH)).json()["items"] if n["type"] == "operator_pool"]
-        for i in range(8):
+        for i in range(4):
             assert (await c.post("/broker/tunnel/claim", json={"name": f"n{i:03d}", "install_id": install(i)}, headers=net(i))).status_code == 200
         assert await pool_notes() == []
+        for i in range(4, 8):
+            assert (await c.post("/broker/tunnel/claim", json={"name": f"n{i:03d}", "install_id": install(i)}, headers=net(i))).status_code == 200
+        assert await pool_notes() == ["Kelo addresses: 70% used (7/10)", "Kelo addresses: 50% used (5/10)"]   # newest first
         await c.post("/broker/tunnel/claim", json={"name": "n008", "install_id": install(8)}, headers=net(8))      # 9/10: 90%
-        assert await pool_notes() == ["Free Kelo addresses are almost all taken (9/10)"]
+        assert (await pool_notes())[0] == "Kelo addresses are almost all taken (9/10)"
         await c.post("/broker/tunnel/claim", json={"name": "n009", "install_id": install(9)}, headers=net(9))      # 10/10
-        assert (await pool_notes())[0] == "Free Kelo addresses are all taken (10/10)"
+        assert (await pool_notes())[0] == "Kelo addresses are all taken (10/10)"
         for i in (10, 11):
             r = await c.post("/broker/tunnel/claim", json={"name": f"n{i:03d}", "install_id": install(i)}, headers=net(i))
             assert r.status_code == 503 and r.json()["code"] == "full"
-            assert "all free Kelo addresses are taken" in str(connect._broker_error(r, "kelo.chat"))
-        assert len(await pool_notes()) == 2                                            # once per fill
+            assert "no Kelo addresses are available" in str(connect._broker_error(r, "kelo.chat"))
+        assert len(await pool_notes()) == 4                                            # once per fill
         assert (await c.post("/broker/tunnel/release", json={"install_id": install(0)})).json() == {"released": "n000"}
         assert (await c.post("/broker/tunnel/claim", json={"name": "n010", "install_id": install(10)}, headers=net(10))).status_code == 200
-        assert len(await pool_notes()) == 3                                            # below the cap and full again: told again
-        assert (await pool_notes())[0] == "Free Kelo addresses are all taken (10/10)"
+        assert len(await pool_notes()) == 5                                            # below the cap and full again: told again
+        assert (await pool_notes())[0] == "Kelo addresses are all taken (10/10)"
     assert names.count() == 10
 
 
 # ---- 5. what the CLI says
 def test_the_cli_explains_every_refusal():
     full = connect._broker_error(httpx.Response(503, json={"detail": {"code": "full", "message": "x"}, "code": "full"}), "kelo.chat")
-    assert str(full).startswith("Sorry, all free Kelo addresses are taken right now. The operator has been told and is fixing it.")
+    assert str(full).startswith("Sorry, no Kelo addresses are available right now. The operator has been told and is fixing it.")
     assert "assistant connect tailscale | assistant connect domain" in str(full)
     cap = connect._broker_error(httpx.Response(429, json={"detail": {"code": "daily_cap", "message": "x"}, "code": "daily_cap"}), "k")
     assert "most new Kelo addresses allowed in a day" in str(cap)

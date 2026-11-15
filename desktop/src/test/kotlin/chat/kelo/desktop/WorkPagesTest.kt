@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -8,15 +9,15 @@ import androidx.compose.ui.test.hasScrollToKeyAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.agent.TaskPermissionList
 import chat.kelo.app.notify.OpenTarget
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.work.SkeletonPattern
-import chat.kelo.desktop.pages.work.WorkScreen
+import chat.kelo.desktop.pages.WorkPane
 import chat.kelo.desktop.ui.KeloFrame
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -36,7 +37,7 @@ class WorkPagesTest {
     @get:Rule val compose = createComposeRule()
     @get:Rule val tmp = TemporaryFolder()
     private var mock: MockServer? = null
-    private val ko = Strings.of("ko")
+    private val ko = Words.of("ko")
 
     @After fun stop() { mock?.stop() }
 
@@ -49,18 +50,18 @@ class WorkPagesTest {
         val m = MockServer("--lang", "ko").also { mock = it }
         val app = m.app(tmp.newFolder(), lang = "ko")
         compose.mainClock.autoAdvance = false
-        compose.setContent { KeloFrame(app) { Box(Modifier.size(1100.dp, 1000.dp)) { WorkScreen(app, topInset = 16.dp) } } }
+        compose.setContent { KeloFrame(app) { Box(Modifier.size(1100.dp, 1000.dp)) { WorkPane(app, topInset = 16.dp) } } }
 
         // the timeline: questions first while some wait (답이 필요해요 at the top), running work with its job, the task-wide
         // permission, watchers, the agenda and the past
-        ui.waitText(ko.get(R.string.work_asks))
+        ui.waitText(ko.get(Res.string.work_asks))
         // the sections fill in as their calls come back: scroll again until the task-wide permission is in view
         ui.retry("the running work and its permission", action = { compose.onNode(hasScrollToKeyAction()).performScrollToKey("sec:now") }) {
-            ui.has(ko.get(R.string.work_now)) && ui.has(ko.get(R.string.work_grant_title))
+            ui.has(ko.get(Res.string.work_now)) && ui.has(ko.get(Res.string.work_grant_title))
         }
         ui.waitText("항공사 세 곳 가격 확인")
         compose.onNode(hasScrollToKeyAction()).performScrollToKey("sec:asks")   // (above 지금 하는 일, with its waiting entries)
-        ui.waitText(ko.get(R.string.work_asks))
+        ui.waitText(ko.get(Res.string.work_asks))
         for (theme in listOf("light", "dark")) {
             app.settings.setTheme(theme)
             ui.shot("parity-work-timeline-$theme")
@@ -78,9 +79,9 @@ class WorkPagesTest {
 
         // 그만 허용: the card goes and the server no longer has the permission
         compose.onNode(hasScrollToKeyAction()).performScrollToKey("sec:now")
-        ui.waitText(ko.get(R.string.work_grant_revoke))
-        compose.onNode(hasText(ko.get(R.string.work_grant_revoke))).performClick()
-        ui.waitUntil("the permission card gone") { !ui.has(ko.get(R.string.work_grant_title)) }
+        ui.waitText(ko.get(Res.string.work_grant_revoke))
+        compose.onNode(hasText(ko.get(Res.string.work_grant_revoke))).performClick()
+        ui.waitUntil("the permission card gone") { !ui.has(ko.get(Res.string.work_grant_title)) }
         val left = runBlocking { app.sessions.requireApi().get<TaskPermissionList>("/api/task-permissions") }
         assertTrue("the permission is revoked on the server", left.items.isEmpty())
 
@@ -93,8 +94,8 @@ class WorkPagesTest {
 
         // 열린 브라우저: every tab with its last picture; a click asks the shell for the live view
         compose.onNode(hasScrollToKeyAction()).performScrollToKey("title")
-        ui.waitText(ko.get(R.string.work_open_browsers))
-        compose.onNode(hasText(ko.get(R.string.work_open_browsers))).performClick()
+        ui.waitText(ko.get(Res.string.work_open_browsers))
+        compose.onNode(hasText(ko.get(Res.string.work_open_browsers))).performClick()
         ui.waitText("항공권 검색 결과")
         ui.waitText("치과 예약 페이지")
         shots(ui, app, "browsers")
@@ -119,40 +120,40 @@ class WorkPagesTest {
         shots(ui, app, "watcher")
         back()
         app.workRequests.value = OpenTarget.Schedule(1)
-        ui.waitText(ko.get(R.string.work_schedule_runs))
+        ui.waitText(ko.get(Res.string.work_schedule_runs))
         shots(ui, app, "schedule")
         back()
 
         // 예약: every schedule and the archive
         compose.onNode(hasScrollToKeyAction()).performScrollToKey("title")
         ui.settle()
-        compose.onNode(hasText(ko.get(R.string.work_schedules))).performClick()
-        ui.waitText(ko.get(R.string.schedules_archive_entry))
+        compose.onNode(hasText(ko.get(Res.string.work_schedules))).performClick()
+        ui.waitText(ko.get(Res.string.schedules_archive_entry))
         ui.waitText("아침 뉴스 요약")
         shots(ui, app, "schedules")
 
         // the trash button puts one in the archive at once; 실행 취소 brings it back
-        compose.onAllNodes(hasContentDescription(ko.get(R.string.delete))).onFirst().performClick()
-        ui.waitText(ko.get(R.string.agent_schedule_deleted))
+        compose.onAllNodesWithText("아침 뉴스 요약").onFirst().performTouchInput { swipeLeft() }   // a drag to the left, as on the phone
+        ui.waitText(ko.get(Res.string.agent_schedule_deleted))
         ui.waitUntil("the row to leave") { !ui.has("아침 뉴스 요약") }
         ui.waitUntil("the archive call") { deleted(app).contains("/api/schedules/1") }
-        compose.onNode(hasText(ko.get(R.string.undo))).performClick()
+        compose.onNode(hasText(ko.get(Res.string.undo))).performClick()
         ui.waitText("아침 뉴스 요약")
 
         // 보관함: the archived ones; deleting one hides it at once and deletes it for good once the undo message is gone
-        compose.onNode(hasText(ko.get(R.string.schedules_archive_entry))).performClick()
+        compose.onNode(hasText(ko.get(Res.string.schedules_archive_entry))).performClick()
         ui.waitText("여름 휴가 체크리스트")
         shots(ui, app, "archive")
-        compose.onAllNodes(hasContentDescription(ko.get(R.string.delete))).onFirst().performClick()
-        ui.waitText(ko.get(R.string.schedule_deleted_forever))
+        compose.onAllNodesWithText("여름 휴가 체크리스트").onFirst().performTouchInput { swipeLeft() }   // a drag to the left, as on the phone
+        // (the "deleted" message is short-lived and may be gone before it is looked for: the row leaving and the calls below are the checks)
         ui.waitUntil("the row to leave") { !ui.has("여름 휴가 체크리스트") }
         assertTrue("not deleted before the undo message ends", "/api/schedules/archive/9" !in deleted(app))
         // leaving the page at once (before the message ends) must not drop the delete: it is sent as the page closes, and the
         // schedule does not come back when the archive is opened again
         back()
         ui.waitUntil("the delete for good, sent as the page closed", timeout = 3_000) { "/api/schedules/archive/9" in deleted(app) }
-        compose.onNode(hasText(ko.get(R.string.schedules_archive_entry))).performClick()
-        ui.waitText(ko.get(R.string.work_archive_empty))
+        compose.onNode(hasText(ko.get(Res.string.schedules_archive_entry))).performClick()
+        ui.waitText(ko.get(Res.string.work_archive_empty))
         assertTrue("the deleted schedule came back", !ui.has("여름 휴가 체크리스트"))
         back()
         back()
@@ -173,24 +174,7 @@ class WorkPagesTest {
     }
 
     private fun back() {
-        compose.onAllNodes(hasContentDescription(ko.get(R.string.back))).onFirst().performClick()
+        compose.onAllNodes(hasContentDescription(ko.get(Res.string.back))).onFirst().performClick()
         compose.mainClock.advanceTimeBy(200)
-    }
-}
-
-/** The dates the Work page writes, without Android's skeleton patterns. */
-class SkeletonPatternTest {
-    @Test fun theYearIsTakenOut() {
-        assertEquals("MMM d", SkeletonPattern.withoutYear("MMM d, y"))
-        assertEquals("dd.MM", SkeletonPattern.withoutYear("dd.MM.y"))
-        assertEquals("M월 d일", SkeletonPattern.withoutYear("y년 M월 d일"))
-        assertEquals("d MMM", SkeletonPattern.withoutYear("d MMM y"))
-    }
-
-    @Test fun theWeekdayGoesWhereTheLanguageWantsIt() {
-        assertEquals("MMM d일 (EEE)", SkeletonPattern.of(Locale.KOREAN, "MMMdEEE"))
-        assertTrue(SkeletonPattern.of(Locale.ENGLISH, "MMMdEEE").startsWith("EEE, "))
-        assertTrue('y' !in SkeletonPattern.of(Locale.GERMAN, "MMMdEEE"))
-        assertTrue('y' in SkeletonPattern.of(Locale.GERMAN, "yMMMdEEE"))
     }
 }

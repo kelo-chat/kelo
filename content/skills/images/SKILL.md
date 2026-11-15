@@ -1,6 +1,6 @@
 ---
 name: Images
-description: Look at the user's photos, generate pictures, keep product photos, and edit or convert images.
+description: Look at photos, generate pictures, keep product photos, and edit or convert images.
 ---
 
 # Images

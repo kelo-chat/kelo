@@ -269,28 +269,6 @@ public enum Markdown {
         return i
     }
 
-    /// Where the final blocks of `text` end while it is still growing: just after the last blank line outside a code fence.
-    public static func stableCut(_ text: String, from: Int = 0) -> Int {
-        let ns = text as NSString
-        var cut = from
-        var fence: String?
-        var at = from
-        while true {
-            let r = ns.range(of: "\n", range: NSRange(location: at, length: ns.length - at))
-            if r.location == NSNotFound { break }
-            let line = ns.substring(with: NSRange(location: at, length: r.location - at))
-            if let open = fence {
-                if closesFence(line, open) { fence = nil }
-            } else if let f = fenceOf(line) {
-                fence = f
-            } else if isBlank(line) {
-                cut = r.location + 1
-            }
-            at = r.location + 1
-        }
-        return cut
-    }
-
     /// The text as a person reads it, without the Markdown marks (복사, 공유, 텍스트 선택).
     public static func plain(_ text: String) -> String { blocks(text).compactMap(plainBlock).joined(separator: "\n\n") }
 
@@ -336,25 +314,5 @@ public enum Markdown {
         }
         parts.append(ns.substring(from: at))
         return parts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-    }
-}
-
-/// `Markdown.blocks` for a text that keeps growing: the blocks before the last blank line are parsed once and kept.
-public final class IncrementalBlocks {
-    private var headText = ""
-    private var head: [Markdown.Block] = []
-
-    public init() {}
-
-    public func blocks(_ text: String) -> [Markdown.Block] {
-        if !text.hasPrefix(headText) { headText = ""; head = [] }
-        let ns = text as NSString
-        let headLen = (headText as NSString).length
-        let cut = Markdown.stableCut(text, from: headLen)
-        if cut > headLen {
-            head += Markdown.blocks(ns.substring(with: NSRange(location: headLen, length: cut - headLen)))
-            headText = ns.substring(to: cut)
-        }
-        return cut >= ns.length ? head : head + Markdown.blocks(ns.substring(from: cut))
     }
 }

@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -16,10 +17,6 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.MyPane
-import chat.kelo.desktop.pages.MyView
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.After
 import org.junit.Rule
@@ -64,29 +61,29 @@ class HoursShotsTest {
     private fun shots(lang: String) {
         val server = MockServer("--lang", lang).also { mocks += it }
         val app = server.app(tmp.newFolder(), lang = lang, theme = "light")
-        val s = Strings.of(lang)
+        val s = Words.of(lang)
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             Box(Modifier.size(1000.dp, 760.dp)) {   // within the test window (768 high), so the page scrolls
-                KeloFrame(app) { MyPane(app, topInset = 0.dp, start = start.value, onStartUsed = { start.value = null }, onSignedOut = {}) }
+                KeloFrame(app) { MyPaneAt(app, start) }
             }
         }
-        val heading = s.get(R.string.hours_suggest_heading)
-        val accept = s.get(R.string.hours_suggest_accept)
+        val heading = s.get(Res.string.hours_suggest_heading)
+        val accept = s.get(Res.string.hours_suggest_accept)
         fun back() {
-            compose.onAllNodesWithContentDescription(s.get(R.string.back))[0].performClick()
-            ui.waitText(s.get(R.string.my_section_account))
+            compose.onAllNodesWithContentDescription(s.get(Res.string.back))[0].performClick()
+            ui.waitText(s.get(Res.string.my_section_account))
         }
         try {
             for (theme in listOf("light", "dark")) {
                 app.settings.setTheme(theme)
-                ui.waitText(s.get(R.string.my_section_account))
+                ui.waitText(s.get(Res.string.my_section_account))
                 start.value = MyView.RECORDS
                 ui.settle()
                 ui.waitText(heading, timeout = 15_000)
                 bringIntoView(ui, accept)
-                check(ui.has(s.get(R.string.hours_suggest_keep))) { "keep current is offered" }
+                check(ui.has(s.get(Res.string.hours_suggest_keep))) { "keep current is offered" }
                 ui.shot("hours-suggest-$lang-$theme")
                 back()
             }
@@ -97,7 +94,7 @@ class HoursShotsTest {
             ui.waitText(heading, timeout = 15_000)
             bringIntoView(ui, accept)
             compose.onNodeWithText(accept).performClick()
-            val changed = s.get(R.string.hours_suggest_accepted, "").trimEnd(' ', '·').trim()
+            val changed = s.get(Res.string.hours_suggest_accepted, "").trimEnd(' ', '·').trim()
             ui.waitText(changed)
             ui.shot("hours-accepted-$lang")
             ui.waitUntil("the row to go", timeout = 15_000) { !ui.has(heading) }
@@ -106,9 +103,9 @@ class HoursShotsTest {
                 app.settings.setTheme(theme)
                 start.value = MyView.NOTIFY
                 ui.settle()
-                ui.waitText(s.get(R.string.hours_learned), timeout = 15_000)
-                ui.waitText(s.get(R.string.hours_auto_switch))
-                bringIntoView(ui, s.get(R.string.hours_learned))
+                ui.waitText(s.get(Res.string.hours_learned), timeout = 15_000)
+                ui.waitText(s.get(Res.string.hours_auto_switch))
+                bringIntoView(ui, s.get(Res.string.hours_learned))
                 ui.shot("hours-learned-$lang-$theme")
                 back()
             }

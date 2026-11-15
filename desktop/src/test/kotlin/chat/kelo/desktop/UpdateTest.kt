@@ -1,5 +1,9 @@
 package chat.kelo.desktop
 
+import chat.kelo.desktop.chat.DesktopChat
+import chat.kelo.app.chat.ChatViewModel
+
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
@@ -13,14 +17,12 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
-import chat.kelo.desktop.chat.ChatModel
 import chat.kelo.desktop.core.LatestBuild
-import chat.kelo.desktop.core.Platform
+import chat.kelo.desktop.core.DesktopPlatform
 import chat.kelo.desktop.core.UpdateRules
+import chat.kelo.app.update.UpdateRules as SharedUpdateRules
 import chat.kelo.desktop.core.UpdateState.Phase
 import chat.kelo.desktop.core.Updater
-import chat.kelo.desktop.i18n.Strings
 import chat.kelo.desktop.ui.KeloFrame
 import chat.kelo.desktop.ui.Page
 import chat.kelo.desktop.ui.Shell
@@ -97,9 +99,9 @@ class UpdateTest {
 
     @Test fun theRightRowTheRightAddressAndAnHonestRequest() {
         val all = UpdateRules.parse(latest(sha(installer)))
-        assertEquals("mac", UpdateRules.platformKey(Platform.Os.MAC))
-        assertEquals("windows", UpdateRules.platformKey(Platform.Os.WINDOWS))
-        assertNull(UpdateRules.platformKey(Platform.Os.LINUX))
+        assertEquals("mac", UpdateRules.platformKey(DesktopPlatform.Os.MAC))
+        assertEquals("windows", UpdateRules.platformKey(DesktopPlatform.Os.WINDOWS))
+        assertNull(UpdateRules.platformKey(DesktopPlatform.Os.LINUX))
         assertEquals("kelo-1.0.3.dmg", UpdateRules.pick(all, "mac")?.file)
         assertEquals("kelo-1.0.3.exe", UpdateRules.pick(all, "windows")?.file)
         assertNull(UpdateRules.pick(all, null))
@@ -117,8 +119,7 @@ class UpdateTest {
         assertEquals("https://kelo.chat", UpdateRules.base(null, null))
         assertEquals("http://127.0.0.1:9", UpdateRules.base(" http://127.0.0.1:9/ ", "https://other"))
         assertEquals("https://env", UpdateRules.base("", "https://env"))
-        assertEquals("Kelo-Desktop/1.0.2 (macOS)", UpdateRules.userAgent("1.0.2", Platform.Os.MAC))
-        assertEquals("75.3 MB", UpdateRules.humanSize(78970873))
+        assertEquals("Kelo-Desktop/1.0.2 (macOS)", UpdateRules.userAgent("1.0.2", DesktopPlatform.Os.MAC))
         assertTrue(UpdateRules.due(null, 0))
         assertFalse(UpdateRules.due(1000, 1000 + UpdateRules.DAY_MS - 1))
         assertTrue(UpdateRules.due(1000, 1000 + UpdateRules.DAY_MS))
@@ -136,7 +137,7 @@ class UpdateTest {
         val s = serve(sha(installer))
         val opened = mutableListOf<File>()
         val dir = tmp.newFolder()
-        val u = Updater("1.0.2", Platform.Os.MAC, s.url("/").toString().trimEnd('/'), dir, opener = { opened += it; true }, store = false)
+        val u = Updater("1.0.2", DesktopPlatform.Os.MAC, s.url("/").toString().trimEnd('/'), dir, opener = { opened += it; true }, store = false)
         assertTrue(u.enabled)
         u.check()
         assertEquals(Phase.AVAILABLE, u.state.value.phase)
@@ -157,7 +158,7 @@ class UpdateTest {
         // the same build again with a wrong sha256 in the list: the file is deleted, nothing is opened
         s.shutdown()
         val s2 = serve(sha(installer + 1), version = "1.0.4")
-        val u2 = Updater("1.0.2", Platform.Os.MAC, s2.url("/").toString().trimEnd('/'), dir, opener = { opened += it; true }, store = false)
+        val u2 = Updater("1.0.2", DesktopPlatform.Os.MAC, s2.url("/").toString().trimEnd('/'), dir, opener = { opened += it; true }, store = false)
         u2.check()
         u2.download()
         assertEquals(Phase.MISMATCH, u2.state.value.phase)
@@ -165,13 +166,13 @@ class UpdateTest {
         assertFalse(File(dir, "updates/kelo-1.0.4.dmg").exists())
         assertFalse(File(dir, "updates/kelo-1.0.4.dmg.part").exists())
         // the same version as running, Linux, a store copy or a run without a version: no offer / no check
-        val same = Updater("1.0.4", Platform.Os.MAC, s2.url("/").toString().trimEnd('/'), dir, store = false)
+        val same = Updater("1.0.4", DesktopPlatform.Os.MAC, s2.url("/").toString().trimEnd('/'), dir, store = false)
         same.check()
         assertEquals(Phase.LATEST, same.state.value.phase)
-        assertFalse(Updater("1.0.2", Platform.Os.LINUX, "http://x", dir, store = false).enabled)
-        assertFalse(Updater("1.0.2", Platform.Os.WINDOWS, "http://x", dir, store = true).enabled)
-        assertFalse(Updater(null, Platform.Os.MAC, "http://x", dir, store = false).enabled)
-        val gone = Updater("1.0.2", Platform.Os.MAC, "http://127.0.0.1:1", dir, store = false)
+        assertFalse(Updater("1.0.2", DesktopPlatform.Os.LINUX, "http://x", dir, store = false).enabled)
+        assertFalse(Updater("1.0.2", DesktopPlatform.Os.WINDOWS, "http://x", dir, store = true).enabled)
+        assertFalse(Updater(null, DesktopPlatform.Os.MAC, "http://x", dir, store = false).enabled)
+        val gone = Updater("1.0.2", DesktopPlatform.Os.MAC, "http://127.0.0.1:1", dir, store = false)
         gone.check()
         assertEquals(Phase.CHECK_FAILED, gone.state.value.phase)
     }
@@ -182,38 +183,39 @@ class UpdateTest {
     }
 
     private fun bannerFlow(ui: UiSteps) {
-        val ko = Strings.of("ko")
+        val ko = Words.of("ko")
         val m = MockServer("--lang", "ko").also { mock = it }
         val app = m.app(tmp.newFolder(), lang = "ko")
         val s = serve(sha(installer))
         val opened = mutableListOf<File>()
-        app.updates = Updater("1.0.2", Platform.Os.MAC, s.url("/").toString().trimEnd('/'), tmp.newFolder(), opener = { opened += it; true }, store = false)
-        val chat = ChatModel(app)
+        app.updates = Updater("1.0.2", DesktopPlatform.Os.MAC, s.url("/").toString().trimEnd('/'), tmp.newFolder(), opener = { opened += it; true }, store = false)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         compose.mainClock.autoAdvance = false
         compose.setContent {
             var page by remember { mutableStateOf(Page.GOALS) }
             KeloFrame(app) {
                 Box(Modifier.size(1024.dp, 768.dp)) {
-                    Shell(app, chat, page, onPage = { page = it }, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {})
+                    Shell(app, chat, page, onPage = { page = it }, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side)
                 }
             }
         }
-        val offer = ko.get(R.string.update_available, "1.0.3", UpdateRules.humanSize(installer.size.toLong()))
+        val offer = ko.get(Res.string.update_available, "1.0.3", SharedUpdateRules.size(installer.size.toLong()))
         ui.waitText("매일 30분 걷기")
         ui.waitText(offer)
         app.settings.setTheme("light"); ui.shot("v18-update-banner-ko-light")
         app.settings.setTheme("dark"); ui.shot("v18-update-banner-ko-dark")
         app.settings.setTheme("light")
-        compose.onAllNodes(hasText(ko.get(R.string.update_get)) and hasClickAction()).onFirst().performClick()
+        compose.onAllNodes(hasText(ko.get(Res.string.update_get)) and hasClickAction()).onFirst().performClick()
         ui.settle()
         assertEquals("1.0.3", app.settings.dismissedUpdate.value)          // the banner shows once per version
-        ui.waitText(ko.get(R.string.update_check))                          // My opened, with the card and the manual check row
+        ui.waitText(ko.get(Res.string.update_check))                          // My opened, with the card and the manual check row
         ui.waitUntil("the download's progress", 15_000) { app.updates.state.value.phase == Phase.DOWNLOADING && app.updates.state.value.progress in 0.2f..0.8f }
         app.settings.setTheme("light"); ui.shot("v18-update-my-progress-ko-light")
         app.settings.setTheme("dark"); ui.shot("v18-update-my-progress-ko-dark")
         app.settings.setTheme("light")
         ui.waitUntil("the installer opened", 20_000) { app.updates.state.value.phase == Phase.OPENED }
-        ui.waitText(ko.get(R.string.desktop_update_quit_note))
+        ui.waitText(ko.get(Res.string.desktop_update_quit_note))
         assertEquals(1, opened.size)
         app.settings.setTheme("light"); ui.shot("v18-update-my-opened-ko-light")
         app.settings.setTheme("dark"); ui.shot("v18-update-my-opened-ko-dark")
@@ -246,7 +248,7 @@ class UpdateTest {
     @Test fun belowTheMinimumTheButtonDownloadsAtOnce() = runBlocking {
         val s = serve(sha(installer))
         val opened = mutableListOf<File>()
-        val u = Updater("1.0.2", Platform.Os.WINDOWS, s.url("/").toString().trimEnd('/'), tmp.newFolder(), opener = { opened += it; true }, store = false)
+        val u = Updater("1.0.2", DesktopPlatform.Os.WINDOWS, s.url("/").toString().trimEnd('/'), tmp.newFolder(), opener = { opened += it; true }, store = false)
         u.requireAtLeast(UpdateRules.versionCode("1.0.2"))
         assertFalse(u.required.value)
         assertEquals(Phase.IDLE, u.state.value.phase)                     // nothing asked of the network
@@ -262,21 +264,21 @@ class UpdateTest {
         u.requireAtLeast(null)
         assertFalse(u.required.value)
         // without a check first, the button checks and then downloads
-        val fresh = Updater("1.0.2", Platform.Os.MAC, s.url("/").toString().trimEnd('/'), tmp.newFolder(), opener = { opened += it; true }, store = false)
+        val fresh = Updater("1.0.2", DesktopPlatform.Os.MAC, s.url("/").toString().trimEnd('/'), tmp.newFolder(), opener = { opened += it; true }, store = false)
         fresh.updateNow()
         assertEquals(Phase.OPENED, fresh.state.value.phase)
         // the Store copy goes to the Store, Linux to the website; neither downloads
         val links = mutableListOf<String>()
-        val store = Updater("1.0.2", Platform.Os.WINDOWS, "https://kelo.example", tmp.newFolder(), store = true)
+        val store = Updater("1.0.2", DesktopPlatform.Os.WINDOWS, "https://kelo.example", tmp.newFolder(), store = true)
         store.requireAtLeast(UpdateRules.versionCode("1.0.3"))
         assertTrue(store.required.value)
         assertEquals(Phase.IDLE, store.state.value.phase)
         store.updateNow { links += it; true }
-        val linux = Updater("1.0.2", Platform.Os.LINUX, "https://kelo.example", tmp.newFolder(), store = false)
+        val linux = Updater("1.0.2", DesktopPlatform.Os.LINUX, "https://kelo.example", tmp.newFolder(), store = false)
         linux.updateNow { links += it; true }
         assertEquals(listOf(Updater.STORE_UPDATES, "https://kelo.example"), links)
         // a run without a version is never stopped
-        val dev = Updater(null, Platform.Os.MAC, "https://kelo.example", tmp.newFolder(), store = false)
+        val dev = Updater(null, DesktopPlatform.Os.MAC, "https://kelo.example", tmp.newFolder(), store = false)
         dev.requireAtLeast(UpdateRules.versionCode("9.0.0"))
         assertFalse(dev.required.value)
     }
@@ -293,39 +295,40 @@ class UpdateTest {
         assertEquals(100000003L, app.profile.value?.minAppVersion?.get("desktop"))
         val s = serve(sha(installer))
         val opened = mutableListOf<File>()
-        app.updates = Updater("1.0.2", Platform.Os.MAC, s.url("/").toString().trimEnd('/'), tmp.newFolder(), opener = { opened += it; true }, store = false)
-        val chat = ChatModel(app)
+        app.updates = Updater("1.0.2", DesktopPlatform.Os.MAC, s.url("/").toString().trimEnd('/'), tmp.newFolder(), opener = { opened += it; true }, store = false)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         compose.mainClock.autoAdvance = false
         compose.setContent {
             var page by remember { mutableStateOf(Page.CHAT) }
             KeloFrame(app) {
                 Box(Modifier.size(1024.dp, 768.dp)) {
-                    Shell(app, chat, page, onPage = { page = it }, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {})
+                    Shell(app, chat, page, onPage = { page = it }, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side)
                 }
             }
         }
         for (lang in listOf("ko", "en")) {
-            val words = Strings.of(lang)
+            val words = Words.of(lang)
             app.settings.setLanguage(lang); app.applyLanguage()
-            ui.waitText(words.get(R.string.update_required_title))
+            ui.waitText(words.get(Res.string.update_required_title))
             ui.waitUntil("the check before the button", 10_000) { app.updates.state.value.phase == Phase.AVAILABLE }
-            ui.waitText(words.get(R.string.update_now))
-            ui.waitText(words.get(R.string.my_version, "1.0.2"))
+            ui.waitText(words.get(Res.string.update_now))
+            ui.waitText(words.get(Res.string.my_version, "1.0.2"))
             app.settings.setTheme("light"); ui.shot("parity-update-required-$lang-light")
             app.settings.setTheme("dark"); ui.shot("parity-update-required-$lang-dark")
             app.settings.setTheme("light")
         }
         // 업데이트 starts the download right there; the card shows its progress, then the installer opens
-        val ko = Strings.of("ko")
+        val ko = Words.of("ko")
         app.settings.setLanguage("ko"); app.applyLanguage()
-        ui.waitText(ko.get(R.string.update_now))
-        compose.onAllNodes(hasText(ko.get(R.string.update_now)) and hasClickAction()).onFirst().performClick()
+        ui.waitText(ko.get(Res.string.update_now))
+        compose.onAllNodes(hasText(ko.get(Res.string.update_now)) and hasClickAction()).onFirst().performClick()
         ui.waitUntil("the download's progress", 15_000) { app.updates.state.value.phase == Phase.DOWNLOADING && app.updates.state.value.progress in 0.2f..0.8f }
         app.settings.setTheme("light"); ui.shot("parity-update-required-progress-ko-light")
         app.settings.setTheme("dark"); ui.shot("parity-update-required-progress-ko-dark")
         app.settings.setTheme("light")
         ui.waitUntil("the installer opened", 20_000) { app.updates.state.value.phase == Phase.OPENED }
-        ui.waitText(ko.get(R.string.desktop_update_quit_note))
+        ui.waitText(ko.get(Res.string.desktop_update_quit_note))
         assertEquals(1, opened.size)
         assertTrue(app.updates.required.value)                            // it stays until the new version runs
     }

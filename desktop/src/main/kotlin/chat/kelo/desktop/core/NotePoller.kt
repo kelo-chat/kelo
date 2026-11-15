@@ -1,5 +1,8 @@
 package chat.kelo.desktop.core
 
+import chat.kelo.app.res.*
+import chat.kelo.app.ui.text.loadString
+import org.jetbrains.compose.resources.StringResource
 import chat.kelo.app.agent.NotificationPage
 import chat.kelo.app.agent.ServerNotification
 import chat.kelo.app.core.ApiError
@@ -22,7 +25,7 @@ import kotlin.coroutines.coroutineContext
 class NotePoller(
     private val settings: Settings,
     private val shown: () -> Boolean,
-    private val post: (ServerNotification) -> Unit,
+    private val post: suspend (ServerNotification) -> Unit,
 ) {
     private val lock = Mutex()
 
@@ -69,27 +72,27 @@ object NoteText {
     private val OWN_TITLES = setOf(NoteTypes.WATCH_FIRED, NoteTypes.WATCH_DISABLED, NoteTypes.PROACTIVE, NoteTypes.BETA_REQUEST, NoteTypes.CLI_UPDATE, NoteTypes.SERVER_UPDATE,
         NoteTypes.STORAGE)
 
-    fun titleRes(type: String, urgent: Boolean = false): Int = when (type) {
-        NoteTypes.TASK_DONE -> chat.kelo.app.R.string.notify_task_done
-        NoteTypes.TASK_FAILED -> chat.kelo.app.R.string.notify_task_failed
-        NoteTypes.APPROVAL_WAITING -> if (urgent) chat.kelo.app.R.string.notify_approval_urgent else chat.kelo.app.R.string.notify_approval_waiting
-        NoteTypes.PAYMENT_AUTO -> chat.kelo.app.R.string.notify_payment_auto
-        NoteTypes.SCHEDULE_PAUSED -> chat.kelo.app.R.string.notify_schedule_paused
-        NoteTypes.WATCH_FIRED -> chat.kelo.app.R.string.notify_watch_fired
-        NoteTypes.WATCH_DISABLED -> chat.kelo.app.R.string.notify_watch_disabled
-        NoteTypes.PROACTIVE -> chat.kelo.app.R.string.notify_proactive
-        NoteTypes.BETA_REQUEST -> chat.kelo.app.R.string.notify_beta_request
-        NoteTypes.CLI_UPDATE -> chat.kelo.app.R.string.notify_cli_update
-        NoteTypes.SERVER_UPDATE -> chat.kelo.app.R.string.server_update_notify
-        NoteTypes.STORAGE -> chat.kelo.app.R.string.storage_notify
-        NoteTypes.BRIEFING -> chat.kelo.app.R.string.notify_briefing
-        else -> chat.kelo.app.R.string.notify_schedule_disabled
+    fun titleRes(type: String, urgent: Boolean = false): StringResource = when (type) {
+        NoteTypes.TASK_DONE -> Res.string.notify_task_done
+        NoteTypes.TASK_FAILED -> Res.string.notify_task_failed
+        NoteTypes.APPROVAL_WAITING -> if (urgent) Res.string.notify_approval_urgent else Res.string.notify_approval_waiting
+        NoteTypes.PAYMENT_AUTO -> Res.string.notify_payment_auto
+        NoteTypes.SCHEDULE_PAUSED -> Res.string.notify_schedule_paused
+        NoteTypes.WATCH_FIRED -> Res.string.notify_watch_fired
+        NoteTypes.WATCH_DISABLED -> Res.string.notify_watch_disabled
+        NoteTypes.PROACTIVE -> Res.string.notify_proactive
+        NoteTypes.BETA_REQUEST -> Res.string.notify_beta_request
+        NoteTypes.CLI_UPDATE -> Res.string.notify_cli_update
+        NoteTypes.SERVER_UPDATE -> Res.string.server_update_notify
+        NoteTypes.STORAGE -> Res.string.storage_notify
+        NoteTypes.BRIEFING -> Res.string.notify_briefing
+        else -> Res.string.notify_schedule_disabled
     }
 
     /** (title, body): a watcher's and the agent's own notes carry their own title; an empty body says to open the app. */
-    fun of(n: ServerNotification, words: (Int) -> String): Pair<String, String> {
-        val title = if (n.type in OWN_TITLES && n.title.isNotBlank()) n.title else words(titleRes(n.type, n.urgent))
-        val body = n.body.ifBlank { n.title }.ifBlank { words(chat.kelo.app.R.string.notify_open_hint) }
+    suspend fun of(n: ServerNotification): Pair<String, String> {
+        val title = if (n.type in OWN_TITLES && n.title.isNotBlank()) n.title else loadString(titleRes(n.type, n.urgent))
+        val body = n.body.ifBlank { n.title }.ifBlank { loadString(Res.string.notify_open_hint) }
         return title to body
     }
 }

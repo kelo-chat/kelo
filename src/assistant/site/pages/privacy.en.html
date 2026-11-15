@@ -38,7 +38,7 @@
         <ul>
           <li><strong>Your data is on your server.</strong> Chats, memory, files, keychain and cards are stored by the Kelo server you run. The operator has no way into it (<a href="#model">section 2</a>).</li>
           <li><strong>Your messages go to the AI company you choose</strong>, to get a reply, and to the services you connect (<a href="#third">section 6</a>).</li>
-          <li><strong>kelo.chat helps with only a few things</strong>: the default domain (https through a Cloudflare Tunnel to your server), push notifications that carry only a signal, the Google and GitHub sign-in relay (tokens are not stored), the update check, and replies you choose to report (<a href="#operator">section 5</a>).</li>
+          <li><strong>kelo.chat helps with only a few things</strong>: the Kelo address (https through a Cloudflare Tunnel to your server), push notifications that carry only a signal, the Google and GitHub sign-in relay (tokens are not stored), the update check, and replies you choose to report (<a href="#operator">section 5</a>).</li>
           <li><strong>No ads, no analytics.</strong> The apps have neither. The only exception is Google ML Kit in the Android app, used to scan QR codes and cards, which sends anonymous diagnostics (<a href="#app">section 3</a>). This website sets no cookies.</li>
           <li><strong>Nothing on your server expires on its own</strong>: it stays until you delete it. What kelo.chat keeps is deleted on a fixed schedule (<a href="#keep">section 8</a>).</li>
         </ul>
@@ -49,7 +49,7 @@
       <ul>
         <li><strong>The Kelo app</strong>: the Android app (package <code>chat.kelo.app</code>) and the iPhone app.</li>
         <li><strong>The Kelo server</strong>: software you install and run on a computer you choose.</li>
-        <li><strong>The operator server</strong>: this website at <code>kelo.chat</code> and the optional services the Kelo operator runs there (sign-in relay, push relay, default address).</li>
+        <li><strong>The operator server</strong>: this website at <code>kelo.chat</code> and the optional services the Kelo operator runs there (sign-in relay, push relay, Kelo address).</li>
       </ul>
 
       <h2 id="model">2. The basic idea: your data is on your server</h2>
@@ -106,7 +106,7 @@
         <li>To send a notification, your server sends up to 10 push tokens (FCM tokens for Android phones, APNs device tokens for iPhones, each with the app's environment) and a payload holding only the notification's kind and ids. The operator server hands them to Google FCM or to Apple's push service (APNs). No titles, no text, nothing the assistant wrote; an iPhone banner is a fixed line ("Kelo has an update") that the phone words itself.</li>
         <li>Stored: the SHA-256 hash of your install secret, when it was first and last used, and a request count. FCM and APNs tokens and payloads are not stored and never written to logs; the operator's APNs key is read from a file on the operator server and is never sent anywhere except as a signature to Apple; logs record only the kind of notification and counts.</li>
       </ul>
-      <h3>Default address (an address under <code>kelo.chat</code>)</h3>
+      <h3>Kelo address (an address under <code>kelo.chat</code>)</h3>
       <ul>
         <li>Stored: the name you chose, the SHA-256 hash of your install secret, the Cloudflare tunnel and DNS record ids, and when the name was created and last requested.</li>
         <li>Traffic uses https and goes through a Cloudflare Tunnel to your server, not through the operator's computer.</li>
@@ -118,6 +118,7 @@
         <li>Nothing else is sent: no other part of your chat history, no account data, and not your server's address. Your server identifies itself with a random install secret, of which the operator server keeps only a SHA-256 hash, to limit abuse.</li>
         <li>Why: to find offensive, harmful, wrong or privacy-exposing replies and improve Kelo, as Google Play requires of apps with AI-generated content.</li>
         <li>Kept for 1 year, then deleted automatically. Ask through the contact below to have a report deleted sooner. Only the operator reads them.</li>
+        <li><strong>Tester sign-ups</strong> (kelo.chat/tester): email, the phone model you typed, language and time. Used only to send the Google Play closed-test link and to contact you about the test. Emailed to the operator once; deleted when the test ends or on request, and after 180 days at the latest.</li>
       </ul>
       <h3>All requests</h3>
       <ul>
@@ -137,7 +138,7 @@
         <li><strong>Weather services</strong>: for the morning briefing and weather questions, your Kelo server asks for the forecast at the last location your phone sent, rounded to about 1 km: Open-Meteo by default (no key), or the Korea Meteorological Administration (data.go.kr) or WeatherAPI.com when you add your own key. When you name a city in a weather question, that name goes to Open-Meteo. Weather data by Open-Meteo.com (CC BY 4.0).</li>
         <li><strong>Place names</strong>: only when Kelo needs to know which neighbourhood a position is in, or to find places near it (for example "parking near me"), your Kelo server asks Photon by komoot, with coordinates rounded to about 110 m and the words searched for. No key and no account; answers are kept on your server for up to 30 days so the same spot is not asked again. Place data © OpenStreetMap contributors (ODbL).</li>
         <li><strong>The operator</strong>: only a reply you choose to report, as described in section 5.</li>
-        <li><strong>Cloudflare</strong>: traffic passes through it when you use the default address or the Cloudflare way to connect.</li>
+        <li><strong>Cloudflare</strong>: traffic passes through it when you use a Kelo address or the Cloudflare way to connect.</li>
       </ul>
       <p>The operator does not sell personal data and does not use it for advertising.</p>
 

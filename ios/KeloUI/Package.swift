@@ -25,6 +25,7 @@ let testLink: [LinkerSetting] = needsCLTPath
                      "-Xlinker", "-rpath", "-Xlinker", cltLib])] : []
 
 let core: Target.Dependency = .product(name: "KeloCore", package: "KeloCore")
+let live: Target.Dependency = .product(name: "KeloLive", package: "KeloCore")   // the Live Activity of a running reply (backlog 64b)
 
 let package = Package(
     name: "KeloUI",
@@ -39,20 +40,22 @@ let package = Package(
     ],
     targets: [
         .target(name: "KeloShared", dependencies: [core], resources: [.process("Resources")]),
-        .target(name: "KeloChat", dependencies: [core, "KeloShared"]),
+        // fakes the page-model tests share (a routed fake server, a gate); not part of the app
+        .target(name: "KeloTestSupport", dependencies: [core, "KeloShared"]),
+        .target(name: "KeloChat", dependencies: [core, live, "KeloShared"]),
         .target(name: "KeloMy", dependencies: [core, "KeloShared"]),
         .target(name: "KeloWork", dependencies: [core, "KeloShared"]),
         .target(name: "KeloConnectors", dependencies: [core, "KeloShared"]),
-        .target(name: "KeloShell", dependencies: [core, "KeloShared", "KeloChat", "KeloMy", "KeloWork", "KeloConnectors"]),
+        .target(name: "KeloShell", dependencies: [core, live, "KeloShared", "KeloChat", "KeloMy", "KeloWork", "KeloConnectors"]),
         // the module the app imports: re-exports KeloShell
         .target(name: "KeloUI", dependencies: ["KeloShell"]),
         // renders the app icon with the app's own character renderer (macOS tool; not part of the iPhone app)
         .executableTarget(name: "KeloIconTool", dependencies: ["KeloShared"]),
-        .testTarget(name: "KeloSharedTests", dependencies: [core, "KeloShared"], swiftSettings: testSwift, linkerSettings: testLink),
-        .testTarget(name: "KeloChatTests", dependencies: [core, "KeloShared", "KeloChat"], swiftSettings: testSwift, linkerSettings: testLink),
-        .testTarget(name: "KeloMyTests", dependencies: [core, "KeloShared", "KeloMy"], swiftSettings: testSwift, linkerSettings: testLink),
-        .testTarget(name: "KeloWorkTests", dependencies: [core, "KeloShared", "KeloWork"], swiftSettings: testSwift, linkerSettings: testLink),
-        .testTarget(name: "KeloShellTests", dependencies: [core, "KeloShared", "KeloShell"], swiftSettings: testSwift, linkerSettings: testLink),
-        .testTarget(name: "KeloConnectorsTests", dependencies: [core, "KeloShared", "KeloConnectors"], swiftSettings: testSwift, linkerSettings: testLink),
+        .testTarget(name: "KeloSharedTests", dependencies: [core, "KeloShared", "KeloTestSupport"], swiftSettings: testSwift, linkerSettings: testLink),
+        .testTarget(name: "KeloChatTests", dependencies: [core, "KeloShared", "KeloTestSupport", "KeloChat"], swiftSettings: testSwift, linkerSettings: testLink),
+        .testTarget(name: "KeloMyTests", dependencies: [core, "KeloShared", "KeloTestSupport", "KeloMy"], swiftSettings: testSwift, linkerSettings: testLink),
+        .testTarget(name: "KeloWorkTests", dependencies: [core, "KeloShared", "KeloTestSupport", "KeloWork"], swiftSettings: testSwift, linkerSettings: testLink),
+        .testTarget(name: "KeloShellTests", dependencies: [core, "KeloShared", "KeloTestSupport", "KeloShell"], swiftSettings: testSwift, linkerSettings: testLink),
+        .testTarget(name: "KeloConnectorsTests", dependencies: [core, "KeloShared", "KeloTestSupport", "KeloConnectors"], swiftSettings: testSwift, linkerSettings: testLink),
     ]
 )

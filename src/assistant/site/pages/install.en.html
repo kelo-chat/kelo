@@ -79,7 +79,7 @@ cd kelo</code></pre>
         </li>
         <li>
           <h3>Make it reachable from outside</h3>
-          <p>The easiest way is the default domain we provide.</p>
+          <p>The easiest way is a <code>&lt;name&gt;.kelo.chat</code> address, offered for now. Availability and terms may change.</p>
           <pre><code>uv run assistant connect kelo --name yourname
 uv run assistant connect status</code></pre>
           <p><code>status</code> shows the address and checks that it really reaches your server. For other ways, see the <a href="#reach">table below</a>.</p>
@@ -97,7 +97,7 @@ uv run assistant connect status</code></pre>
         <table class="stack">
           <thead><tr><th scope="col">Way</th><th scope="col">Command</th><th scope="col">Keep in mind</th></tr></thead>
           <tbody>
-            <tr><td>Default domain</td><td data-label="Command"><code>assistant connect kelo --name NAME</code></td><td data-label="Keep in mind">Easiest: nothing to buy, no router changes. Traffic uses https through a Cloudflare Tunnel.</td></tr>
+            <tr><td>Kelo address (offered for now)</td><td data-label="Command"><code>assistant connect kelo --name NAME</code></td><td data-label="Keep in mind">Easiest: no router changes. Traffic uses https through a Cloudflare Tunnel.</td></tr>
             <tr><td>Tailscale (private)</td><td data-label="Command"><code>assistant connect tailscale</code></td><td data-label="Keep in mind">Most private: nothing is public. Every phone needs the Tailscale app on the same account.</td></tr>
             <tr><td>Tailscale Funnel (public)</td><td data-label="Command"><code>assistant connect funnel</code></td><td data-label="Keep in mind">Public https without a domain, encrypted all the way to the server. Ports 443, 8443 and 10000 only; it's in beta, with bandwidth limits.</td></tr>
             <tr><td>Your domain on Cloudflare</td><td data-label="Command"><code>assistant connect cloudflare --domain example.com</code></td><td data-label="Keep in mind">Uses a domain on your own Cloudflare account. Needs <code>cloudflared</code> on the computer the server runs on.</td></tr>
@@ -107,6 +107,21 @@ uv run assistant connect status</code></pre>
         </table>
       </div>
       <p class="note">Put <code>uv run</code> in front of each command. To close it again: <code>uv run assistant connect off</code>.</p>
+
+      <h3 id="npm">Through Nginx Proxy Manager</h3>
+      <p>If you already run Nginx Proxy Manager (NPM) and own a domain, this takes about five minutes. Replace <code>kelo.example.com</code> with your own name.</p>
+      <ol>
+        <li>In your DNS, point <code>kelo.example.com</code> at the address your NPM answers on (the same record your other NPM hosts use).</li>
+        <li>On the computer where Kelo is installed, run <code>uv run assistant connect domain --host kelo.example.com --proxy</code>. Kelo now listens on your home network and prints the address to forward to, like <code>http://192.168.1.20:8080</code>.</li>
+        <li>In NPM open <strong>Hosts → Proxy Hosts → Add Proxy Host</strong>. On <strong>Details</strong>: Domain Names <code>kelo.example.com</code>, Scheme <code>http</code>, Forward Hostname / IP the address Kelo printed (without <code>http://</code>), Forward Port the port it printed (8080 unless you changed it). Turn on <strong>Websockets Support</strong> and <strong>Block Common Exploits</strong>.</li>
+        <li>On <strong>SSL</strong>: pick <em>Request a new SSL Certificate</em>, turn on <strong>Force SSL</strong> and <strong>HTTP/2 Support</strong>, accept the Let’s Encrypt terms.</li>
+        <li>On <strong>Advanced</strong>, paste these two lines so replies stream as they are written and photos can be uploaded, then press <strong>Save</strong>:
+          <pre><code>proxy_buffering off; proxy_request_buffering off; proxy_cache off;
+proxy_read_timeout 300s; proxy_send_timeout 300s; client_max_body_size 0;</code></pre></li>
+        <li>Check it with <code>uv run assistant connect status</code>, then run <code>uv run assistant phone add</code> and scan the QR code with the Kelo app. The app now uses <code>https://kelo.example.com</code>.</li>
+      </ol>
+      <p class="note">Kelo speaks plain http on your home network, so let only NPM reach that port if your firewall allows it. To undo it, run <code>uv run assistant connect off</code> and delete the host in NPM.</p>
+
 
       <h2 id="more">After installing</h2>
       <ul class="ticks">

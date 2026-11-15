@@ -46,7 +46,7 @@ class FollowupRulesTest {
     }
 
     @Test fun `on hold cards show exactly what the server sent`() {
-        val f = Followup("5", "worker", "도서관 책 연장", Followup.ON_HOLD, null, 1.0,
+        val f = Followup("5", "worker", "도서관 책 연장", Followup.ON_HOLD, 1.0,
             listOf(a("resume", worker = "w1"), a("snooze", fid = "5", minutes = 60), a("drop", fid = "5")))
         assertEquals(listOf(FollowupStep.ResumeWorker("w1"), FollowupStep.Snooze("5", 60), FollowupStep.Drop("5")), FollowupRules.holdButtons(f).map { it.second })
         assertEquals(listOf(FollowupStep.Drop("5")), FollowupRules.holdButtons(f.copy(actions = listOf(a("drop")))).map { it.second })
@@ -54,10 +54,10 @@ class FollowupRulesTest {
 
     @Test fun `on hold list and delays`() {
         val items = listOf(
-            Followup("1", "reply", "", Followup.FIRST, null, 5.0, emptyList()),
-            Followup("2", "reply", "", Followup.ON_HOLD, null, 9.0, emptyList()),
-            Followup("3", "reply", "", Followup.ON_HOLD, null, 2.0, emptyList()),
-            Followup("4", "reply", "", Followup.ON_HOLD, null, 1.0, emptyList(), status = Followup.DROPPED),
+            Followup("1", "reply", "", "first", 5.0, emptyList()),
+            Followup("2", "reply", "", Followup.ON_HOLD, 9.0, emptyList()),
+            Followup("3", "reply", "", Followup.ON_HOLD, 2.0, emptyList()),
+            Followup("4", "reply", "", Followup.ON_HOLD, 1.0, emptyList(), status = Followup.DROPPED),
         )
         assertEquals(listOf("3", "2"), FollowupRules.onHold(items).map { it.id })
         assertEquals(30 to 30, FollowupRules.delays(30, 10))
@@ -100,10 +100,10 @@ class FollowupRulesTest {
 
     @Test fun `each message gets its follow-up, an open one before a closed one`() {
         val items = listOf(
-            Followup("1", "login", "", Followup.FIRST, null, 0.0, emptyList(), messageId = 10, status = Followup.RESOLVED),
-            Followup("2", "login", "", Followup.SECOND, null, 0.0, listOf(a("drop", fid = "2")), messageId = 10),
-            Followup("3", "reply", "", Followup.FIRST, null, 0.0, emptyList(), messageId = 11, status = Followup.DROPPED),
-            Followup("4", "reply", "", Followup.FIRST, null, 0.0, emptyList()),
+            Followup("1", "login", "", "first", 0.0, emptyList(), messageId = 10, status = Followup.RESOLVED),
+            Followup("2", "login", "", "second", 0.0, listOf(a("drop", fid = "2")), messageId = 10),
+            Followup("3", "reply", "", "first", 0.0, emptyList(), messageId = 11, status = Followup.DROPPED),
+            Followup("4", "reply", "", "first", 0.0, emptyList()),
         )
         val map = FollowupRules.byMessage(items)
         assertEquals(setOf(10L, 11L), map.keys)
@@ -112,7 +112,7 @@ class FollowupRulesTest {
     }
 
     @Test fun `a closed follow-up leaves one line, what was pressed here first`() {
-        val open = Followup("2", "login", "", Followup.SECOND, null, 0.0, emptyList(), messageId = 10)
+        val open = Followup("2", "login", "", "second", 0.0, emptyList(), messageId = 10)
         assertNull(ChatReducer.closedOutcome(open, null))
         assertEquals(ActionOutcome.SNOOZED, ChatReducer.closedOutcome(open, ActionOutcome.SNOOZED))
         assertEquals(ActionOutcome.DROPPED, ChatReducer.closedOutcome(open.copy(status = Followup.DROPPED), null))

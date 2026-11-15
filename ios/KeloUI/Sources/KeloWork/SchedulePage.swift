@@ -216,9 +216,15 @@ private struct PickerRow: View {
 private struct ScheduleStateBlock: View {
     let model: WorkModel
     let schedule: Schedule
-    @State private var runs: [ScheduleRun]?
-    @State private var grants: [ScheduleGrant] = []
+    @State private var read: ScheduleRunsModel
     @Environment(\.kelo) private var c
+
+    init(model: WorkModel, schedule: Schedule) {
+        self.model = model; self.schedule = schedule
+        _read = State(initialValue: ScheduleRunsModel(work: model, id: schedule.id))
+    }
+
+    private var runs: [ScheduleRun]? { read.runs }
 
     var body: some View {
         let s = schedule
@@ -277,34 +283,24 @@ private struct ScheduleStateBlock: View {
                 SkeletonRows(rows: 2)
             }
         }
-        .task(id: s.id) {
-            runs = (try? await model.scheduleRuns(s.id)) ?? []
-            // loaded here: a view with nothing to show yet never appears, so its own .task would never run
-            grants = (try? await model.scheduleGrants(s.id)) ?? []
-        }
-        ScheduleGrantsBlock(model: model, grants: $grants)
+        .task(id: s.id) { await read.load() }
+        ScheduleGrantsBlock(read: read)
     }
 }
 
 /// What this schedule's runs may do without asking (a login, a purchase up to a cap), allowed once at setup; each can be revoked.
 /// Nothing shows while there is none (Android SchedulePage GrantsBlock).
 private struct ScheduleGrantsBlock: View {
-    let model: WorkModel
-    @Binding var grants: [ScheduleGrant]
+    let read: ScheduleRunsModel
     @Environment(\.kelo) private var c
 
     var body: some View {
         Group {
-            if !grants.isEmpty {
+            if !read.grants.isEmpty {
                 // headed like the runs above it
                 Text(L(R.string.grant_section_title)).font(KeloFont.titleSmall).foregroundStyle(c.muted).padding(.top, 6)
                     .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
-                ScheduleGrantRows(grants, showSchedule: false) { g in
-                    Task {
-                        do { try await model.revokeScheduleGrant(g); grants.removeAll { $0.id == g.id }; Haptics.success() }
-                        catch { Haptics.warning() }
-                    }
-                }
+                ScheduleGrantRows(read.grants, showSchedule: false) { g in read.revoke(g) }
                 MutedText(L(R.string.grant_section_note), small: true)
             }
         }
@@ -340,7 +336,7 @@ private struct TimeSheet: View {
             }
         }
         .padding(.horizontal, 20).padding(.bottom, 24)
-        .environment(\.locale, Strings.shared.locale)
+        .environment(\.locale, appLocale())
     }
 }
 
@@ -367,7 +363,7 @@ private struct DateSheet: View {
             }
             .padding(.horizontal, 20).padding(.bottom, 24)
         }
-        .environment(\.locale, Strings.shared.locale)
+        .environment(\.locale, appLocale())
     }
 }
 
@@ -375,7 +371,6 @@ private struct DateSheet: View {
 private struct RepeatSheet: View {
     @Binding var plan: SchedulePlan
     let onClose: () -> Void
-    @Environment(\.kelo) private var c
 
     var body: some View {
         ScrollView {

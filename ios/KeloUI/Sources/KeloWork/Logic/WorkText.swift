@@ -6,7 +6,7 @@ import KeloShared
 /// from the locale. A schedule is always said in words, never as its cron expression.
 @MainActor
 enum WorkText {
-    static var locale: Locale { Strings.shared.locale }
+    static var locale: Locale { appLocale() }
 
     private static func formatter(_ template: String, zone: TimeZone = .current) -> DateFormatter {
         let f = DateFormatter()
@@ -66,16 +66,7 @@ enum WorkText {
     }
 
     /// "8시간 뒤" / "3분 전" / "곧" / "방금"
-    static func rel(_ seconds: Double, now: Double = Date().timeIntervalSince1970) -> String {
-        let r = RelTime.of(seconds, now: now)
-        let n = Int(r.amount)
-        switch r.unit {
-        case .now: return L(r.future ? R.string.agent_rel_soon : R.string.agent_rel_now)
-        case .minutes: return P(r.future ? R.plurals.agent_rel_minutes_future : R.plurals.agent_rel_minutes_past, n, n)
-        case .hours: return P(r.future ? R.plurals.agent_rel_hours_future : R.plurals.agent_rel_hours_past, n, n)
-        case .days: return P(r.future ? R.plurals.agent_rel_days_future : R.plurals.agent_rel_days_past, n, n)
-        }
-    }
+    static func rel(_ seconds: Double, now: Double = Date().timeIntervalSince1970) -> String { RelWords.of(seconds, now: now) }
 
     /// A weekday's short name ("월"), 0 = Sunday.
     static func weekdayShort(_ cronDay: Int) -> String {
@@ -280,18 +271,6 @@ enum WorkText {
         }
     }
 
-    static func decision(_ d: String) -> String {
-        switch d {
-        case "allowed_once": return L(R.string.agent_decision_once)
-        case "allowed_always": return L(R.string.agent_decision_always)
-        case "allowed_by_rule": return L(R.string.agent_decision_rule)
-        case "denied": return L(R.string.agent_decision_denied)
-        case "expired": return L(R.string.agent_decision_expired)
-        case "cancelled": return L(R.string.agent_decision_cancelled)
-        default: return L(R.string.agent_decision_pending)
-        }
-    }
-
     static func tabKind(_ t: BrowserTab) -> String {
         switch t.kind {
         case "owner": return L(R.string.agent_tab_kind_owner)
@@ -332,22 +311,7 @@ enum WorkText {
     /// The approval card's question ("사이트 열기를 할까요?"): an English "-ing" label reads lower-case inside the sentence, and
     /// Korean gets its object particle.
     static func approvalAsk(_ word: String) -> String {
-        L(R.string.chat_approval_ask, askWord(word, language: Strings.shared.code), objectParticle(word))
-    }
-
-    nonisolated static func askWord(_ word: String, language: String) -> String {
-        guard language == "en" else { return word }
-        let first = word.split(separator: " ").first.map(String.init) ?? word
-        guard first.count >= 4, first.hasSuffix("ing"), let c0 = first.first, c0.isUppercase,
-              !first.dropFirst().contains(where: { $0.isUppercase }) else { return word }
-        return word.prefix(1).lowercased() + word.dropFirst()
-    }
-
-    nonisolated static func objectParticle(_ word: String) -> String {
-        guard let last = word.trimmingCharacters(in: .whitespaces).last(where: { $0.isLetter || $0.isNumber }) else { return "를" }
-        if let v = last.unicodeScalars.first?.value, (0xAC00...0xD7A3).contains(v) { return (v - 0xAC00) % 28 != 0 ? "을" : "를" }
-        if last.isNumber { return "013678".contains(last) ? "을" : "를" }
-        return "aeiouy".contains(last.lowercased()) ? "를" : "을"
+        L(R.string.chat_approval_ask, AskWords.askWord(word, language: appLanguageCode()), AskWords.objectParticle(word))
     }
 }
 

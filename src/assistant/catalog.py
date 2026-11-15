@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import NamedTuple
 
 from .i18n import N_
+from .presets import SELF_HOSTED_IDS  # noqa: F401  (loads presets first: selfhosted needs it)
+from .selfhosted import DESCRIPTIONS as _SH_DESC, NAMES as _SH_NAMES
 
 
 class Service(NamedTuple):
@@ -55,6 +57,7 @@ CATALOG: tuple[Service, ...] = (
     Service("deepl", "DeepL", "Machine translation between many languages"),
     Service("descript", "Descript", "Edit audio and video by editing the transcript"),
     Service("digitalocean", "DigitalOcean", "Cloud servers, databases and apps"),
+    Service("discord", "Discord", "Talk to Kelo from Discord, alone or in your own servers"),
     Service("dropbox", "Dropbox", "Cloud file storage and sharing"),
     Service("egnyte", "Egnyte", "Business file storage with sharing controls"),
     Service("elevenlabs", "ElevenLabs", "AI voices for speech, dubbing and voice agents"),
@@ -139,7 +142,7 @@ CATALOG: tuple[Service, ...] = (
     Service("shopback_mcp", "ShopBack", "Cashback and deals at online shops"),
     Service("shopify", "Shopify", "Products, orders and customers in your online store"),
     Service("shopify-ucp", "Shopify UCP", "A shared protocol for AI agents to shop at Shopify stores"),
-    Service("slack", "Slack", "Read channels and post messages in your workspace"),
+    Service("slack", "Slack", "Read channels, post messages, and talk to Kelo from Slack"),
     Service("spotify", "Spotify", "Music, podcasts and playlists"),
     Service("stripe", "Stripe", "Customers, payments and subscriptions"),
     Service("stripe-link", "Link by Stripe", "A saved-payment wallet for one-click checkout"),
@@ -147,6 +150,7 @@ CATALOG: tuple[Service, ...] = (
     Service("superhuman_docs", "Superhuman Docs", "Documents written and edited with AI help"),
     Service("superhuman_mail", "Superhuman Mail", "A fast email client with split inboxes and reminders"),
     Service("tavily", "Tavily", "Web search and page extraction made for AI"),
+    Service("telegram", "Telegram", "Talk to Kelo from Telegram, and get its messages there"),
     Service("threads", "Threads", "Read and post short text updates through the website"),
     Service("ticketmaster", "Ticketmaster", "Find concerts, sports and shows and their tickets"),
     Service("ticktick", "TickTick", "To-do lists, reminders and habit tracking"),
@@ -157,6 +161,8 @@ CATALOG: tuple[Service, ...] = (
     Service("typefully", "Typefully", "Write, schedule and publish posts for X and other networks"),
     Service("v0", "v0", "Generate web interfaces from a text prompt"),
     Service("vercel", "Vercel", "Deployments, domains and logs for web projects"),
+    Service("vpn_proxy", "Proxy", "Send Kelo's web browsing through a SOCKS5 or HTTP proxy"),
+    Service("vpn_wireguard", "VPN (WireGuard)", "Send Kelo's web browsing through your own VPN"),
     Service("webflow", "Webflow", "Visual website builder with a content manager"),
     Service("webull", "Webull", "Stock trading, quotes and portfolio"),
     Service("wise", "Wise", "Send money abroad and hold many currencies"),
@@ -181,6 +187,8 @@ CATALOG: tuple[Service, ...] = (
     Service("daangn", N_("Daangn"), N_("Buy and sell second-hand items with neighbours"), ("KR",)),
     # used mostly in Korea; a hosted MCP server signed in with a Kakao account
     Service("kakao_playmcp", N_("Kakao PlayMCP"), N_("Kakao's hub of AI tools, reached with one Kakao sign-in"), ("KR",)),
+    # apps the owner runs on their own network (selfhosted.py); shown under their own group
+    *(Service(cid, _SH_NAMES[cid], desc) for cid, desc in _SH_DESC.items()),
 )
 BY_ID: dict[str, Service] = {s.id: s for s in CATALOG}
 

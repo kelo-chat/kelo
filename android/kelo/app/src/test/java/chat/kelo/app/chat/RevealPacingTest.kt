@@ -8,6 +8,10 @@ import org.junit.Test
 class RevealPacingTest {
     private val frame = 16f
 
+    /** How far behind the counter is, in milliseconds at the current speed. */
+    private fun lagMs(s: RevealPacing.State): Float =
+        if (s.done) 0f else (s.target - s.shown) / maxOf(s.perMs, (s.target - s.shown) / RevealPacing.MAX_LAG_MS, RevealPacing.READ_PER_MS)
+
     /** Runs frames until done (or [limitMs]); returns the time it took. */
     private fun runUntilDone(start: RevealPacing.State, limitMs: Float = 10_000f): Pair<RevealPacing.State, Float> {
         var s = start
@@ -64,7 +68,7 @@ class RevealPacingTest {
             }
             s = RevealPacing.advance(s, frame)
             t += frame
-            worst = maxOf(worst, RevealPacing.lagMs(s))
+            worst = maxOf(worst, lagMs(s))
         }
         assertTrue("worst lag $worst", worst <= RevealPacing.MAX_LAG_MS)
         val (end, rest) = runUntilDone(s)
@@ -92,7 +96,7 @@ class RevealPacingTest {
         val s = RevealPacing.State(0f, 300, 0f)
         val next = RevealPacing.advance(s, frame)
         assertTrue(next.shown > 0f)
-        assertTrue(RevealPacing.lagMs(next) <= RevealPacing.MAX_LAG_MS)
+        assertTrue(lagMs(next) <= RevealPacing.MAX_LAG_MS)
     }
 
     @Test fun theEdgeFadesIn() {

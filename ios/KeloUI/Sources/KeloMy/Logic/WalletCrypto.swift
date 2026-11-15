@@ -18,7 +18,6 @@ public final class CardSecret: CustomStringConvertible, @unchecked Sendable {
     }
 
     public var last4: String { String(decoding: number.suffix(4), as: UTF8.self) }
-    public var isEmpty: Bool { number.isEmpty }
 
     /// {"n":"<digits>","c":"<digits>"} as UTF-8 bytes. The caller wipes them.
     public func payload() -> [UInt8] { Array("{\"n\":\"".utf8) + number + Array("\",\"c\":\"".utf8) + cvc + Array("\"}".utf8) }
@@ -124,11 +123,6 @@ public struct WalletLock: Sendable {
         if now - at >= Self.timeout || now < at { lastActive = nil; return false }
         return true
     }
-
-    public func remaining(_ now: Double) -> Double {
-        guard let at = lastActive else { return 0 }
-        return max(0, Self.timeout - (now - at))
-    }
 }
 
 /// Why a card could not be sent for a payment the user allowed (Android CardSendError / DeliveryRules).
@@ -202,36 +196,5 @@ public enum AutoPayGate {
     /// The card's auto-pay waits for Keyguard (the card page says so, with "Turn on Keyguard").
     public static func pausedForKeyguard(_ card: WalletCard, keyguardOn: Bool?) -> Bool {
         card.autoPay && !card.expired && (card.askReason == reasonKeyguard || keyguardOn == false)
-    }
-}
-
-/// The add form's checks (KeloCore CardNumber / Cvc / Expiry).
-public enum CardFormRules {
-    public struct Form: Equatable, Sendable {
-        public var number = "", cvc = "", expiry = "", holder = "", postal = "", label = ""
-        public var autoPay = false
-        public init() {}
-    }
-
-    public enum Problem: Equatable, Sendable { case number, expiry, expired, cvc, holder }
-
-    public static func problem(_ f: Form, now: YearMonth) -> Problem? {
-        let digits = CardNumber.digits(f.number)
-        if !CardNumber.valid(digits) { return .number }
-        switch Expiry.check(Expiry.clean(f.expiry), now: now) {
-        case .ok: break
-        case .expired: return .expired
-        default: return .expiry
-        }
-        if !Cvc.valid(f.cvc, brand: CardNumber.brand(digits)) { return .cvc }
-        if f.holder.trimmingCharacters(in: .whitespaces).isEmpty { return .holder }
-        return nil
-    }
-
-    /// (month, year) from "MMYY" digits.
-    public static func monthYear(_ expiryDigits: String) -> (Int, Int)? {
-        let d = Expiry.clean(expiryDigits)
-        guard d.count == 4, let m = Int(d.prefix(2)), let y = Int(d.suffix(2)) else { return nil }
-        return (m, 2000 + y)
     }
 }

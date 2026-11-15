@@ -8,17 +8,18 @@ struct DevicesPage: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
-    @State private var devices: [Device] = []
-    @State private var current: Int64?
-    @State private var pair: (link: String, until: Date)?
-    @State private var left = 0
-    @State private var err = ""
+    @State private var model: DevicesModel
     @State private var copied = false
     @State private var removing: Device?
     @State private var scanning = false
     @State private var verifyNote = ""
 
+    init(api: KeloApi, onThisDeviceRemoved: @escaping () -> Void) {
+        _model = State(initialValue: DevicesModel(api: api, onThisDeviceRemoved: onThisDeviceRemoved))
+    }
+
     var body: some View {
+        let devices = model.devices, current = model.current
         SubPage(L(R.string.devices_title), onBack: { dismiss() }) {
             encryptionCard
             MyCard {
@@ -33,26 +34,17 @@ struct DevicesPage: View {
                         LinkButton(L(R.string.my_disconnect_button), danger: true) { removing = d }
                     }
                 }
-                if let p = pair {
+                if let p = model.pair {
                     KeyBox(first: devices.isEmpty) { pairingBox(p.link) }
                     if !p.link.hasPrefix("https://") && !isLocal(p.link) { ErrorText(L(R.string.devices_insecure), small: true) }
                 } else {
-                    SecondaryButton(L(R.string.devices_add), fill: true) { add() }
+                    SecondaryButton(L(R.string.devices_add), fill: true) { copied = false; model.add() }
                 }
-                if !err.isEmpty { ErrorText(err, small: true) }
+                if !model.error.isEmpty { ErrorText(model.error, small: true) }
             }
         }
-        .task { await load() }
-        .task(id: pair?.link) {
-            guard let p = pair else { return }
-            while !Task.isCancelled {
-                let s = max(0, Int(p.until.timeIntervalSinceNow.rounded()))
-                left = s
-                if s == 0 { pair = nil; break }
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                await load()   // the new device shows up as soon as it joins
-            }
-        }
+        .task { await model.load() }
+        .task(id: model.pairLink) { await model.followPairing() }
         .keloFullScreen(isPresented: $scanning) {
             QrScanScreen(accept: { PairingLinks.parse($0) != nil }, onScanned: { raw in
                 scanning = false
@@ -62,7 +54,7 @@ struct DevicesPage: View {
         }
         .alert(removing.map { $0.id == current ? L(R.string.my_disconnect_confirm) : L(R.string.devices_remove_confirm, $0.name) } ?? "",
                isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
-            Button(L(R.string.my_disconnect_button), role: .destructive) { if let d = removing { remove(d) } }
+            Button(L(R.string.my_disconnect_button), role: .destructive) { if let d = removing { model.remove(d) } }
             Button(L(R.string.cancel), role: .cancel) {}
         }
     }
@@ -109,7 +101,7 @@ struct DevicesPage: View {
                 .frame(maxWidth: .infinity)
                 .accessibilityLabel(L(R.string.devices_qr_label))
         }
-        MutedText(L(R.string.devices_qr_help, left / 60, left % 60), small: true)
+        MutedText(L(R.string.devices_qr_help, model.left / 60, model.left % 60), small: true)
         Text(link).font(KeloFont.small).foregroundStyle(c.muted).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) { pairButtons(link) }
@@ -124,43 +116,13 @@ struct DevicesPage: View {
                 .padding(.horizontal, 14).padding(.vertical, 11)
                 .background(Capsule().fill(c.card)).overlay(Capsule().stroke(c.line, lineWidth: 1))
         }
-        SecondaryButton(L(R.string.close)) { pair = nil }
+        SecondaryButton(L(R.string.close)) { model.closePairing() }
     }
 
     private func isLocal(_ link: String) -> Bool {
         let base = link.components(separatedBy: "#").first ?? link
         guard let host = URL(string: base)?.host else { return false }
         return host == "localhost" || host == "127.0.0.1"
-    }
-
-    private func load() async {
-        if let d = try? await app.requireApi().devices() { devices = d.devices; current = d.current }
-    }
-
-    private func add() {
-        err = ""; copied = false
-        Task {
-            do {
-                let api = try app.requireApi()
-                let p: PairStart = try await api.post("/api/devices/pair", body: ["origin": .string(api.baseUrl)])
-                guard let link = p.link, !link.isEmpty else { err = L(R.string.devices_no_link); return }
-                pair = (link, Date().addingTimeInterval(Double(p.expiresIn)))
-                left = p.expiresIn
-            } catch {
-                err = app.message(for: error)
-            }
-        }
-    }
-
-    private func remove(_ d: Device) {
-        Task {
-            do {
-                try await app.requireApi().removeDevice(d.id)
-                if d.id == current { app.signOut() } else { await load() }
-            } catch {
-                err = app.message(for: error)
-            }
-        }
     }
 }
 
@@ -173,8 +135,9 @@ struct ResourcesPage: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
-    @State private var load = ResourcesLoad()
-    @State private var attempt = 0
+    @State private var model: ResourcesModel
+
+    init(api: KeloApi) { _model = State(initialValue: ResourcesModel(api: api)) }
 
     private static let parts: [String: StringKey] = [
         "database": R.string.resources_part_database, "uploads": R.string.resources_part_uploads, "images": R.string.resources_part_images,
@@ -183,29 +146,16 @@ struct ResourcesPage: View {
 
     var body: some View {
         SubPage(L(R.string.resources_title), onBack: { dismiss() }) {
-            if let res = load.data {
+            if let res = model.load.data {
                 content(res)
-            } else if load.showError {
+            } else if model.load.showError {
                 ErrorText(L(R.string.resources_load_failed))
-                SecondaryButton(L(R.string.retry)) { load = load.retrying(); attempt += 1 }
+                SecondaryButton(L(R.string.retry)) { model.retry() }
             } else {
                 SkeletonRows(rows: 3)
             }
         }
-        .task(id: attempt) {
-            while !Task.isCancelled {
-                do {
-                    let x = try await app.requireApi().resources()
-                    load = load.loaded(x)
-                } catch is CancellationError {
-                    return
-                } catch {   // offline, an error answer, or numbers this app cannot read
-                    if Task.isCancelled { return }
-                    load = load.readFailed()
-                }
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-            }
-        }
+        .task(id: model.attempt) { await model.poll() }
     }
 
     @ViewBuilder private func content(_ res: Resources) -> some View {

@@ -5,6 +5,7 @@ found by searching. Fake model only."""
 import json
 
 import httpx
+import pytest
 
 from assistant.agent import Tool, run_agent
 from assistant.agent.toolbox import (
@@ -144,7 +145,20 @@ def test_every_tool_is_reachable_by_search(tmp_path):
         assert t in search(hidden, t.name.replace("_", " ")), t.name                    # by the words of its name
         assert t.name in finder.description or f"{t.name.split('_')[0]}_*" in finder.description, t.name   # named in the map
     shown = [t for t in every if t.name in CORE_TOOLS]
-    assert {t.name for t in shown} == CORE_TOOLS - {"report"}
+    assert {t.name for t in shown} == CORE_TOOLS - {"report", "job_progress"}
+
+
+@pytest.mark.parametrize("query,tool_name", [
+    ("click point", "browser_click_at"), ("click a point on a canvas", "browser_click_at"), ("slider", "browser_click_at"),
+    ("drag", "browser_drag"), ("drag slider", "browser_drag"), ("canvas", "browser_click_at"),
+    ("phone view", "browser_view"), ("mobile", "browser_view"), ("mobile view of a site", "browser_view"),
+    ("nearby places", "places_near"), ("places near me", "places_near")])
+def test_tools_taken_out_of_the_core_are_found_by_what_they_do(tmp_path, query, tool_name):
+    """The prompt diet moved browser_click_at, browser_drag, browser_view and places_near out of the core set: the words a model
+    would search with must still find them."""
+    app = full_app(tmp_path, scripted([TextDelta("ok"), Done("stop")]), browser=True)
+    hidden = [t for t in app.state.tools if t.name not in CORE_TOOLS]
+    assert tool_name in {t.name for t in search(hidden, query)}, query
 
 
 def test_the_catalog_names_what_is_shown_and_what_loads():

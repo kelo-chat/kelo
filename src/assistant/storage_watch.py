@@ -49,6 +49,9 @@ HOST_MIN_FREE = 1024**3
 HOST_MIN_SHARE = 0.05
 HOST_SHARE_CAP = 5 * 1024**3
 HOST_CLEAR = 1.5                  # back over 1.5x the low marks: the host warning is armed again
+# a low disk that is not yet critical (under HOST_MIN_FREE) must stay low this long before anyone is told: building Kelo's own update
+# (a few GB of images for some minutes, pruned right after) dipped under the 5% mark and pushed a warning at every update (2026-11-11)
+HOST_LOW_HOLD = 15 * 60
 FULL_EVERY = 600.0                # seconds between full looks at the cap's numbers when nothing was written
 META = "storage:alert"            # {"level": 0|80|95, "told": 0|80|95, "host_low": bool, "host_told": bool}
 NOTE_TYPE = "storage"
@@ -154,7 +157,7 @@ class StorageWatch:
         except ValueError:
             raw = {}
         return {"level": int(raw.get("level") or 0), "told": int(raw.get("told") or 0), "host_low": bool(raw.get("host_low")),
-                "host_told": bool(raw.get("host_told"))}
+                "host_told": bool(raw.get("host_told")), "host_since": float(raw.get("host_since") or 0)}
 
     def public(self, nums: dict[str, Any] | None = None) -> dict[str, Any]:
         """For GET /api/resources: {"level": ok|warn|critical, "percent": int | null, "host_low": bool, "top": part | null}."""
@@ -173,8 +176,10 @@ class StorageWatch:
         told = min(st["told"], level)               # dropped under a clear mark: that crossing may be told again
         low = host_low(n["free"], n["total"], st["host_low"])
         host_told = st["host_told"] and low
+        since = (st["host_since"] or now) if low else 0.0
+        critical = low and (n["free"] or 0) < HOST_MIN_FREE
         sent: list[str] = []
-        if low and not host_told:
+        if low and not host_told and (critical or now - since >= HOST_LOW_HOLD):
             if self._send("host", n):
                 host_told = True
                 sent.append("host")
@@ -183,7 +188,7 @@ class StorageWatch:
             if self._send(kind, n):
                 told = level
                 sent.append(kind)
-        new = {"level": level, "told": told, "host_low": low, "host_told": host_told}
+        new = {"level": level, "told": told, "host_low": low, "host_told": host_told, "host_since": since}
         if new != st:
             try:
                 self.store.set_meta(META, json.dumps(new))
@@ -207,7 +212,13 @@ class StorageWatch:
             title = (t("Kelo storage is almost full ({percent}%)", percent=int((n["ratio"] or 0) * 100)) if kind == "critical"
                      else t("Kelo storage is {percent}% full", percent=int((n["ratio"] or 0) * 100)))
             body = t("{used} of {limit} used.", used=fmt_size(n["used"]), limit=fmt_size(n["limit"] or 0))
-        body = " ".join(x for x in (body, biggest, t("Clean up shows what can be removed.")) if x)
+        if kind == "host" and (n.get("used") or 0) < HOST_MIN_FREE:
+            # Kelo's own files are not what fills that disk: cleaning them up would not help, so say what does
+            biggest = t("Kelo's own data is only {used}; the rest is other files on that computer, for example Docker images "
+                        "(`docker image prune` on that computer removes unused ones).", used=fmt_size(n.get("used") or 0))
+            body = " ".join(x for x in (body, biggest) if x)
+        else:
+            body = " ".join(x for x in (body, biggest, t("Clean up shows what can be removed.")) if x)
         try:
             self.notify(NOTE_TYPE, title, body)
             return True

@@ -51,6 +51,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .agent import Tool, approval_of_current_call
+from .effects import GRANTABLE, effect_of, norm_target  # noqa: F401  (norm_target: re-exported, other modules take it from here)
 from .i18n import N_, t
 from .wallet import CURRENCY, money_text, site_key, site_keys
 
@@ -71,6 +72,7 @@ COLUMNS = (("shipping_id", "TEXT NOT NULL DEFAULT ''"), ("scope", "TEXT NOT NULL
            ("total_count", "INTEGER NOT NULL DEFAULT 0"))
 KINDS = ("login", "purchase", "send", "change", "apply")
 COUNTED = ("purchase", "send", "change", "apply")
+CLICK_TOOLS = ("browser_click", "browser_click_at", "browser_drag")   # a point step counts as a click on the element read there
 APPLY_STEPS = ("apply", "form", "personal")   # browser commits an apply permission covers on its site (password fields never)
 SCOPES = ("schedule", "watcher", "job")
 MAX_WHAT = 80
@@ -86,6 +88,7 @@ ACTION_COVERED = N_("Allowed at setup: {action} ({used}/{count})")
 ACTION_COVERED_FREE = N_("Allowed at setup: {action}")
 APPLY_COVERED = N_("apply for {what} on {site}")
 APPLIED_TITLE = N_("{count} application(s) sent")
+PROGRESS_TITLE = N_("{count} application(s) sent so far, still going")   # a long run's one progress notice (run_progress.py)
 
 # why a run's purchase is NOT covered although its task has a purchase permission (the approval card and the model say this)
 MISSES = {
@@ -127,6 +130,11 @@ def _words(text: str) -> set[str]:
     return {w.casefold() for w in re.findall(r"[^\W\d_]{2,}", text or "")}
 
 
+def words_of(text: str) -> set[str]:
+    """The words a permission's `what` is compared by (public for buy_replay.py)."""
+    return _words(text)
+
+
 def _host(value: str) -> str:
     text = (value or "").strip().lower()
     if "://" in text:
@@ -145,29 +153,6 @@ def _sites(value: str) -> list[str]:
 
 def _clip(value: Any, n: int = MAX_WORDS) -> str:
     return " ".join(str(value or "").split())[:n] if isinstance(value, (str, int, float)) else ""
-
-
-def norm_target(value: str) -> str:
-    """One recipient or place in a comparable form: an email (lower case), a phone number (its digits), "site:<domain>",
-    "connector:<name>[/<tool>]", "calendar", or a contact name (case-folded)."""
-    text = " ".join(str(value or "").split()).strip()
-    low = text.casefold()
-    if not low:
-        return ""
-    if low in ("calendar", "phone calendar", "google calendar", "캘린더", "달력", "일정"):
-        return "calendar"
-    if low.startswith("site:"):
-        return "site:" + _site(low[5:])
-    if low.startswith("connector:"):
-        return "connector:" + low[10:].strip()
-    if "@" in low and " " not in low:
-        return low
-    digits = re.sub(r"\D", "", low)
-    if len(digits) >= 6 and not re.search(r"[^\d\s+\-().]", low):
-        return digits[-10:]   # the last 10 digits: +82 10-... and 010-... compare the same
-    if re.fullmatch(r"(https?://)?[a-z0-9.-]+\.[a-z]{2,}(/.*)?", low):
-        return "site:" + _site(low)
-    return low
 
 
 def change_target(value: str) -> str:
@@ -204,34 +189,22 @@ class ActionCheck:
 
 def action_of(tool: str, args: dict[str, Any], site: str = "", commit: str = "") -> tuple[str, list[str], bool, str] | None:
     """What a step does, as a standing permission sees it: (kind send|change, its targets, whether it deletes, the message text), or
-    None for a step no send/change permission can cover (payments, sign-ups and account steps, code, installs, ...)."""
-    if tool == "email_send":
-        to = [*(args.get("to") or []), *(args.get("cc") or [])] if isinstance(args.get("to") or [], list) else [args.get("to")]
-        return "send", [norm_target(str(x)) for x in to if str(x or "").strip()], False, str(args.get("body") or "")
-    if tool == "email_update":   # only moving to the trash ever asks (the rest is easy to undo): a deleting change of the mailbox
-        if str(args.get("action") or "").strip().lower() != "trash":
-            return None
-        box = str(args.get("account") or "").strip().casefold().removeprefix("mail-") or "mail"
-        return "change", [f"connector:{box}"], True, ""
-    if tool == "phone_send_text":
-        return "send", [norm_target(str(args.get("to") or ""))], False, str(args.get("text") or "")
-    if tool in ("gcal_create_event", "gcal_update_event", "phone_calendar_add", "phone_calendar_update"):
-        return "change", ["calendar"], False, ""
-    if tool in ("gcal_delete_event", "phone_calendar_delete"):
-        return "change", ["calendar"], True, ""
+    None for a step no send/change permission can cover (payments, sign-ups and account steps, code, installs, reads, ...). A thin view
+    of effects.effect_of, which knows what every tool does; only the tools a permission has always covered are viewed."""
+    if tool not in GRANTABLE:
+        return None
+    e = effect_of(tool, args, site=site, commit=commit)
+    if e is None:
+        return None
+    if tool == "mcp_call_tool":   # a standing permission has always seen every MCP call as a change, a delete by these words
+        return "change", e.targets, bool(DELETE_WORDS.search(str(args.get("tool") or "").strip().casefold())), ""
     if tool == "connector_send":
-        name = str(args.get("name") or "").strip().casefold()
-        return "change", [f"connector:{name}"], str(args.get("method") or "").upper() == "DELETE", ""
-    if tool == "mcp_call_tool":
-        name, sub = str(args.get("name") or "").strip().casefold(), str(args.get("tool") or "").strip().casefold()
-        return "change", [f"connector:{name}/{sub}"], bool(DELETE_WORDS.search(sub)), ""
-    if tool in ("browser_click", "browser_type") and commit and site:
-        where = "site:" + _site(site)
-        if commit in ("send", "form", "personal", "apply"):
-            return "send", [where], False, str(args.get("text") or "") if tool == "browser_type" else ""
-        if commit == "delete":
-            return "change", [where], True, ""
-    return None
+        return "change", e.targets, e.kind == "delete", ""
+    if e.kind == "read":
+        return None
+    if tool == "email_update" and e.kind != "delete":
+        return None   # only moving to the trash ever asks (the rest is easy to undo): a deleting change of the mailbox
+    return ("send" if e.kind == "send" else "change"), e.targets, e.kind == "delete", e.text
 
 
 def _target_ok(want: str, have: set[str]) -> bool:
@@ -636,12 +609,14 @@ class ConditionalGrants:
     def action_check(self, tool: str, args: dict[str, Any], site: str = "", commit: str = "") -> ActionCheck:
         """Whether a run of the task going on may do this message or change on its own. ActionCheck(None) when the task has no
         permission of that kind (or the step is not one a permission can cover): it asks as usual."""
+        if commit == "unknown":
+            return ActionCheck(None)   # a step whose target could not be read is never covered
         if commit == "account":
             scopes = self.scopes()
             if scopes and (self._rows("send", scopes) or self._rows("change", scopes) or self._rows("apply", scopes)):
                 return ActionCheck(None, "task_account", ACTION_MISSES["task_account"])
             return ActionCheck(None)
-        if tool in ("browser_click", "browser_type") and commit in APPLY_STEPS and site:
+        if tool in (*CLICK_TOOLS, "browser_type") and commit in APPLY_STEPS and site:
             hit = self._apply_check(tool, site, commit)
             if hit is not None:
                 return hit
@@ -689,10 +664,31 @@ class ConditionalGrants:
             return ActionCheck(None, "task_run_used_up", ACTION_MISSES["task_run_used_up"].format(count=g["max_count"]), "apply")
         return ActionCheck(g, kind="apply")
 
+    def covered_targets(self) -> set[str]:
+        """Everywhere the running task's standing permissions reach (the targets of its send / change permissions, the sites of its
+        apply, purchase and login permissions), in the comparable form of effects.norm_target. Empty in a plain chat. The rule for steps
+        after outside text (outside_rule.py) takes these as the places the task may act on."""
+        scopes = self.scopes()
+        out: set[str] = set()
+        for kind in ("send", "change", "apply", "purchase", "login"):
+            for r in self._rows(kind, scopes):
+                if r.get("site"):
+                    out.update(f"site:{k}" for k in site_keys(str(r["site"])))
+                try:
+                    out.update(str(x) for x in json.loads(r.get("targets") or "[]"))
+                except ValueError:
+                    continue
+        return out
+
+    def apply_covers(self, site: str) -> bool:
+        """The task going on has an "apply" permission for this site: its form's basic fields (name, contact phone and email, shipping
+        address) need no card; a field the privacy guard puts in another category (ID, account, health, ...) still does."""
+        return any(r["site"] in _sites(site) for r in self._rows("apply", self.scopes()))
+
     @staticmethod
     def _apply_counts(tool: str, commit: str, in_run: int) -> bool:
         """Whether an application step sends one application: an "apply" click, or a "form" click before any in this run."""
-        return tool == "browser_click" and (commit == "apply" or (commit == "form" and in_run == 0))
+        return tool in CLICK_TOOLS and (commit == "apply" or (commit == "form" and in_run == 0))
 
     @staticmethod
     def counts(tool: str, commit: str = "") -> bool:

@@ -20,9 +20,12 @@ let package = Package(
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
         .library(name: "KeloCore", targets: ["KeloCore"]),
+        .library(name: "KeloLive", targets: ["KeloLive"]),
     ],
     targets: [
         .target(name: "KeloCore"),
-        .testTarget(name: "KeloCoreTests", dependencies: ["KeloCore"], swiftSettings: testSwift, linkerSettings: testLink),
+        // the Live Activity's shared bits (attributes, sealed words, keys): the app and its widget extension both import it
+        .target(name: "KeloLive"),
+        .testTarget(name: "KeloCoreTests", dependencies: ["KeloCore", "KeloLive"], swiftSettings: testSwift, linkerSettings: testLink),
     ]
 )

@@ -12,12 +12,12 @@ enum WalletKey {
     private static let account = "card-key-v1"
 
     /// The key's id (not secret), kept outside the Keychain so the list can tell its cards without asking for Face ID.
-    static var keyId: String? { Prefs.shared.string("wallet.key_id") }
+    static func keyId(prefs: Prefs = .shared) -> String? { prefs.string("wallet.key_id") }
 
     enum Failure: Error { case noLock, cancelled, lost }
 
     /// The key after the owner's check (made on first use). `reason` is shown in the system prompt.
-    static func key(reason: String) async throws -> SymmetricKey {
+    static func key(reason: String, prefs: Prefs = .shared) async throws -> SymmetricKey {
         let ctx = LAContext()
         var err: NSError?
         guard ctx.canEvaluatePolicy(.deviceOwnerAuthentication, error: &err) else {
@@ -34,12 +34,12 @@ enum WalletKey {
         var out: CFTypeRef?
         if SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data, d.count == 32 {
             let k = SymmetricKey(data: d)
-            if keyId == nil { Prefs.shared.set("wallet.key_id", CardBlob.keyId(k)) }
+            if keyId(prefs: prefs) == nil { prefs.set("wallet.key_id", CardBlob.keyId(k)) }
             return k
         }
-        if keyId != nil {
+        if keyId(prefs: prefs) != nil {
             // the key is gone (the passcode was removed, the phone restored): forget it, cards made with it are not usable here
-            Prefs.shared.set("wallet.key_id", nil as String?)
+            prefs.set("wallet.key_id", nil as String?)
         }
         let k = SymmetricKey(size: .bits256)
         guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly, .userPresence, nil) else { throw Failure.lost }
@@ -48,7 +48,7 @@ enum WalletKey {
              kSecUseAuthenticationContext as String: ctx]
         SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account] as CFDictionary)
         guard SecItemAdd(q as CFDictionary, nil) == errSecSuccess else { throw Failure.lost }
-        Prefs.shared.set("wallet.key_id", CardBlob.keyId(k))
+        prefs.set("wallet.key_id", CardBlob.keyId(k))
         return k
     }
 }
@@ -67,9 +67,8 @@ enum CardStatus: Equatable { case usable, autoOnly, notOnPhone, expired, unfinis
 /// Sends a card for a payment the owner allowed (the chat's payment card calls this): opens the phone's copy after Face ID and
 /// posts it once to POST /api/wallet/deliveries/{approval_id}. Exposed for the chat; never stores the number.
 public enum WalletDelivery {
-    @MainActor public static func deliver(app: AppModel, approvalId: String, cardId: String) async -> CardSendError? {
+    @MainActor public static func deliver(api: KeloApi, approvalId: String, cardId: String) async -> CardSendError? {
         do {
-            let api = try app.requireApi()
             let blob: E2eBlob = try await api.get("/api/wallet/cards/\(KeloApi.segment(cardId))/blob")
             let key: SymmetricKey
             do { key = try await WalletKey.key(reason: L(R.string.wallet_auth_pay_subtitle)) }
@@ -93,11 +92,10 @@ public enum WalletDelivery {
 /// Turning auto-pay on from this iPhone without typing the card again (`AutoPayOn` with this phone's Keychain key): the card's blob from
 /// the server, Face ID / Touch ID / the passcode (which releases the key), open it here, PATCH {"auto_pay": true, number, cvc} once.
 enum WalletAutoPay {
-    @MainActor static func turnOn(app: AppModel, card: WalletCard) async -> CardSendError? {
-        guard let api = try? app.requireApi() else { return .other }
+    @MainActor static func turnOn(api: KeloApi, card: WalletCard) async -> CardSendError? {
         let path = "/api/wallet/cards/\(KeloApi.segment(card.id))"
         let reason = L(R.string.wallet_auth_auto_subtitle, card.label.isEmpty ? card.last4 : card.label)
-        return await AutoPayOn.run(card: card, keyId: WalletKey.keyId, blob: { try await api.get("\(path)/blob") }, unlock: {
+        return await AutoPayOn.run(card: card, keyId: WalletKey.keyId(), blob: { try await api.get("\(path)/blob") }, unlock: {
             do { return .key(try await WalletKey.key(reason: reason)) }
             catch WalletKey.Failure.noLock { return .noLock }
             catch WalletKey.Failure.cancelled { return .cancelled }
@@ -113,6 +111,7 @@ enum WalletAutoPay {
 /// 마이 → 결제 카드. Opening it always takes the owner's check; it locks again when the app goes to the background or after two
 /// minutes without a touch. Card numbers never leave the phone unsealed, and are never shown.
 struct WalletPage: View {
+    let api: KeloApi
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var phase
@@ -125,7 +124,7 @@ struct WalletPage: View {
     var body: some View {
         Group {
             if open {
-                WalletOpenView(onBack: { leave() }, touch: { lock.touch(ProcessInfo.processInfo.systemUptime) })
+                WalletOpenView(api: api, keyguard: { await app.refreshKeyguard() }, onBack: { leave() }, touch: { lock.touch(ProcessInfo.processInfo.systemUptime) })
             } else {
                 lockedView
             }

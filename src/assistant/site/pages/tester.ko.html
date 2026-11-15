@@ -1,0 +1,33 @@
+<div class="doc">
+  <header class="doc-hero">
+    <div class="wrap doc-hero-in">
+      <div class="doc-hero-copy">
+        <p class="kicker"><span class="num">/tester</span>테스터 모집</p>
+        <h1>테스터 모집</h1>
+        <p class="lead">Google Play 비공개 테스트에 참여할 테스터를 모집해요.</p>
+      </div>
+      <div class="doc-hero-art" aria-hidden="true">{{svg:working}}</div>
+    </div>
+  </header>
+
+  <div class="wrap doc-grid">
+    <article class="prose">
+      <h2 id="what">비공개 테스트에 함께해 주세요</h2>
+      <p>Kelo Android 앱을 Google Play에 정식으로 내놓기 전에, 14일 동안 써 볼 테스터를 모으고 있어요. 신청하시면 Play 스토어에서 받을 수 있는 참여 링크를 보내 드려요.</p>
+      <p>Kelo는 직접 설치한 Kelo 서버와 함께 쓰는 앱이에요. 서버가 없으시면 신청 메일에 답장으로 알려 주세요. 테스트용 서버를 마련해 드릴게요.</p>
+      <h2 id="form">신청하기</h2>
+      {{tester_notice}}
+      <form class="tester-form" method="post" action="/tester">
+        <label for="email">Google Play에서 쓰는 Google 계정 이메일</label>
+        <input id="email" name="email" type="email" required autocomplete="email" maxlength="254">
+        <label for="model">휴대폰 기종 (선택)</label>
+        <input id="model" name="model" type="text" maxlength="60" placeholder="예: Galaxy S24">
+        <div class="hp" aria-hidden="true"><label for="website">웹사이트</label><input id="website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+        <label class="consent"><input type="checkbox" name="consent" value="yes" required> 테스트 참여 링크를 받고 연락받는 데에만 이 이메일을 쓰는 것에 동의해요. 신청 정보는 테스트가 끝나거나 요청하면 지우고, 늦어도 180일 뒤에 지워요.</label>
+        <input type="hidden" name="lang" value="ko">
+        <button type="submit" class="btn">테스터 신청하기</button>
+      </form>
+      <p class="muted">개인정보 처리방침의 <a href="{{href:privacy}}#operator">운영 서버가 다루는 정보</a>에 자세히 적혀 있어요.</p>
+    </article>
+  </div>
+</div>

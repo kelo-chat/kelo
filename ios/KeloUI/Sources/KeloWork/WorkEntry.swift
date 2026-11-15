@@ -22,19 +22,26 @@ enum WorkPage: Hashable {
 public struct WorkScreen: View {
     let onClose: () -> Void
     @Environment(AppModel.self) private var app
+    private var activity: AgentActivityModel { app.activity }
     @Environment(\.scenePhase) private var phase
-    @State private var model = WorkModel()
+    @State private var model: WorkModel
+    @State private var offersModel: OffersModel
     @State private var path: [WorkPage] = []
     @State private var jumpTo: String?
     @Environment(\.kelo) private var c
 
-    public init(onClose: @escaping () -> Void) { self.onClose = onClose }
+    /// `api`: where the signed-in API comes from (the app model's, read when a call is made).
+    public init(api: @escaping () -> KeloApi?, onClose: @escaping () -> Void) {
+        self.onClose = onClose
+        _model = State(initialValue: WorkModel(api: api))
+        _offersModel = State(initialValue: OffersModel(api: api))
+    }
 
     public var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 BackTitleBar(L(R.string.tab_work), onBack: onClose)
-                WorkTimeline(model: model, jumpTo: $jumpTo, push: { path.append($0) }, onOpenLive: openLive, onOpenChat: openChat,
+                WorkTimeline(model: model, offersModel: offersModel, jumpTo: $jumpTo, push: { path.append($0) }, onOpenLive: openLive, onOpenChat: openChat,
                              onOpenEntry: { id in onClose(); app.router.open(.entry(id)) })
             }
             .background(c.bg.ignoresSafeArea())
@@ -45,20 +52,22 @@ public struct WorkScreen: View {
         }
         .workToast($model.toast)
         .onAppear {
-            model.api = { [weak app] in app?.api }
             useStart()
             model.loadWork()
+            Task { await offersModel.load() }
         }
         .onChange(of: app.router.workStart) { _, _ in useStart() }
-        .onChange(of: phase) { _, p in if p == .active { model.loadWork() } }
+        .onChange(of: phase) { _, p in if p == .active { model.loadWork(); Task { await offersModel.load() } } }
         // new things show up while the page is open: often while the agent works, now and then otherwise
         .task(id: busy) {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: busy ? 4_000_000_000 : 20_000_000_000)
                 if Task.isCancelled { break }
                 model.loadWork()
+                await offersModel.load()
             }
         }
+        .onChange(of: activity.workChanged) { _, _ in model.refreshLive() }
     }
 
     private var busy: Bool {
@@ -111,6 +120,7 @@ struct WorkTimeline: View {
     static let past = "sec:past"
 
     let model: WorkModel
+    let offersModel: OffersModel
     @Binding var jumpTo: String?
     let push: (WorkPage) -> Void
     let onOpenLive: (String) -> Void
@@ -142,6 +152,30 @@ struct WorkTimeline: View {
         }
     }
 
+    @ViewBuilder
+    private var offersSection: some View {
+        SectionTitle(L(R.string.offers_title), count: offersModel.items.count).id("sec:offers")
+        ForEach(offersModel.items) { o in
+            RailItem(.ask) {
+                OfferCard(
+                    offer: o,
+                    starting: offersModel.starting == o.id,
+                    problem: offersModel.problem?.id == o.id ? offersModel.problem?.start : nil,
+                    onStart: {
+                        offersModel.start(o) { turnId in
+                            app.router.chatFollowTurn = turnId
+                            app.router.workOpen = false
+                            app.router.go(.chat)
+                        }
+                    },
+                    onDismiss: { reason in
+                        offersModel.dismiss(o, reason: reason)
+                    }
+                )
+            }
+        }
+    }
+
     var body: some View {
         let today = LocalDay.today()
         let taskItems = model.tasks.data?.items ?? []
@@ -164,6 +198,7 @@ struct WorkTimeline: View {
                 VStack(alignment: .leading, spacing: 0) {
                     shortcuts
                     if !asks.isEmpty { asksSection(asks) }
+                    if !offersModel.items.isEmpty { offersSection }
                     // ---- 지금 하는 일
                     SectionTitle(L(R.string.work_now), count: now.count).id(WorkTimeline.now)
                     if model.tasks.data == nil && model.tasks.failed {
@@ -240,7 +275,7 @@ struct WorkTimeline: View {
             }
             .refreshable { model.loadWork() }
             .onChange(of: jumpTo) { _, key in jump(proxy, key) }
-            .onChange(of: model.tasks.data != nil) { _, _ in jump(proxy, jumpTo) }
+            .onChange(of: jumpReady) { _, _ in jump(proxy, jumpTo) }
             .onAppear { jump(proxy, jumpTo) }
             // looked at: the finished ones count as seen (their dots stay for this visit)
             .task(id: taskItems.first(where: { !$0.running })?.id) {
@@ -251,8 +286,16 @@ struct WorkTimeline: View {
         }
     }
 
+    /// The section a jump waits for has answered (SectionJump): then it happens once, never earlier and never dropped.
+    private var jumpReady: Bool {
+        guard let key = jumpTo else { return false }
+        func answered<T>(_ l: Loadable<T>) -> Bool { l.data != nil || l.failed }
+        return SectionJump.ready(key: key, tasks: answered(model.tasks), perms: answered(model.pending),
+                                 schedules: answered(model.schedules), watchers: answered(model.watchers))
+    }
+
     private func jump(_ proxy: ScrollViewProxy, _ key: String?) {
-        guard let key, model.tasks.data != nil else { return }
+        guard let key, jumpReady else { return }
         withAnimation { proxy.scrollTo(key, anchor: .top) }
         jumpTo = nil
     }
@@ -335,16 +378,17 @@ public struct LiveOverlay: View {
     let takeControl: Bool
     let onClose: () -> Void
     @Environment(AppModel.self) private var app
-    @State private var resolved: String?
+    @State private var model: LiveOverlayModel
     @Environment(\.kelo) private var c
 
-    public init(tabId: String, takeControl: Bool = false, onClose: @escaping () -> Void) {
+    public init(api: @escaping () -> KeloApi?, tabId: String, takeControl: Bool = false, onClose: @escaping () -> Void) {
         self.tabId = tabId; self.takeControl = takeControl; self.onClose = onClose
+        _model = State(initialValue: LiveOverlayModel(api: api))
     }
 
     public var body: some View {
         Group {
-            if let id = resolved, let api = app.api {
+            if let id = model.resolved, let api = app.api {
                 BrowserTabPage(api: api, id: id, takeControl: takeControl, onBack: onClose)
             } else {
                 VStack {
@@ -356,16 +400,7 @@ public struct LiveOverlay: View {
             }
         }
         .background(c.bg.ignoresSafeArea())
-        .task(id: tabId) {
-            if tabId != "owner" { resolved = tabId; return }
-            resolved = await LiveOverlay.ownTabId(app.api)
-        }
-    }
-
-    /// The tab a chat reply works in: this phone's own (its device id), or "owner" when signed in with the access key.
-    static func ownTabId(_ api: KeloApi?) async -> String {
-        guard let api, let list = try? await api.devices(), let current = list.current else { return "owner" }
-        return String(current)
+        .task(id: tabId) { await model.resolve(tabId) }
     }
 }
 

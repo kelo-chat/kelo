@@ -44,7 +44,7 @@ _KNOWN: list[tuple[re.Pattern[str], str, tuple[str, str], str]] = [
     (re.compile(_B + r"(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}" + _E), "api_key", ("vault", ""), "Stripe"),
     (re.compile(_B + r"(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,})" + _E), "token", ("vault", ""), "GitHub"),
     (re.compile(_B + r"glpat-[A-Za-z0-9_\-]{20,}" + _E), "token", ("vault", ""), "GitLab"),
-    (re.compile(_B + r"xox[abposr]-[A-Za-z0-9\-]{10,}" + _E), "token", ("connector", "slack"), "Slack"),
+    (re.compile(_B + r"(?:xox[abposr]-|xapp-)[A-Za-z0-9\-]{10,}" + _E), "token", ("connector", "slack"), "Slack"),
     (re.compile(_B + r"(?:AKIA|ASIA)[0-9A-Z]{16}" + _E), "api_key", ("vault", ""), "AWS"),
     (re.compile(_B + r"AIza[0-9A-Za-z_\-]{35}" + _E), "api_key", ("vault", ""), "Google"),
     (re.compile(_B + r"(?:npm_[A-Za-z0-9]{36}|hf_[A-Za-z]{30,}|xai-[A-Za-z0-9]{40,}|shp(?:at|ss|ca|pa)_[a-fA-F0-9]{32}|SG\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,})" + _E),

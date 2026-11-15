@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import secrets
 from collections.abc import AsyncIterator
@@ -176,8 +177,29 @@ def create_app(provider_key: str, token: str, *, stream_fn: Any = None, login: c
         return StreamingResponse(events(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
+    @app.post("/warm", dependencies=[Depends(require_auth)])
+    async def warm_cli(body: RunIn) -> dict[str, Any]:
+        """Start the chat's CLI session for this system prompt without a model request (agy only; see AgyPool.warm)."""
+        try:
+            return {"warm": await cli_agents.warm(provider, cli_remote.request_from_json(body.request))}
+        except Exception as e:  # noqa: BLE001 - warming is only an optimisation
+            return {"warm": False, "error": type(e).__name__}
+
     return app
 
 
+def _show_own_logs() -> None:
+    """The sidecar's own INFO lines (agy_pool: which session a call used, and why a new one started) in the container log next to
+    uvicorn's; only times, modes and reasons are logged there, never prompts or tokens."""
+    own = logging.getLogger("assistant")
+    if not own.handlers:
+        h = logging.StreamHandler()
+        h.setFormatter(logging.Formatter("%(levelname)s:     %(name)s %(message)s"))
+        own.addHandler(h)
+        own.setLevel(logging.INFO)
+        own.propagate = False
+
+
 def app_factory() -> FastAPI:
+    _show_own_logs()
     return create_app(os.environ.get("CLI_PROVIDER", ""), os.environ.get("CLI_RUNNER_TOKEN", ""))

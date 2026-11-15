@@ -25,6 +25,12 @@ public struct TaskNode: Equatable, Sendable {
     public var live: Bool {
         task.running || children.contains { $0.running } || jobs.contains { $0.worker.running || $0.runs.contains { $0.running } }
     }
+    /// The task itself is over but a job it handed off still goes on (running, waiting for the owner, or blocked).
+    public var inBackground: Bool {
+        !task.running && jobs.contains { j in
+            Timeline.jobGoing.contains(j.worker.status) || j.runs.contains { $0.running }
+        }
+    }
     public var problem: Bool {
         task.status == AgentTask.statusFailed || task.status == AgentTask.statusStopped ||
             jobs.contains { $0.worker.status == Worker.statusFailed || $0.worker.status == Worker.statusStopped }
@@ -52,15 +58,6 @@ public enum Ask: Equatable, Sendable {
         }
     }
 
-    public var at: Double {
-        switch self {
-        case .approval(let a): return a.askedAt
-        case .job(let w): return w.updatedAt
-        case .hold(let f): return f.createdAt
-        case .entry(let r): return r.createdAt
-        }
-    }
-
     /// An entry the agent asked for in the chat (its card is there); false: the Keychain's own waiting item.
     public var chatCard: Bool {
         if case .entry(let r) = self { return r.fromAgent }
@@ -78,6 +75,9 @@ public enum Ask: Equatable, Sendable {
 public enum PastFilter: Sendable { case all, done, problems, automatic }
 
 public enum Timeline {
+    /// A job that is not over yet: running, waiting for the owner's answer, or blocked; its browser tab can still be open.
+    public static let jobGoing: Set<String> = [Worker.statusRunning, Worker.statusNeedsInput, Worker.statusBlocked]
+
     /// Sources that mean "the agent started this by itself" rather than a chat message.
     static let autoSources: Set<String> = ["api", "background", "worker", "handoff"]
 
@@ -163,9 +163,11 @@ public enum Timeline {
         return workers.first { $0.id == wid }?.tab
     }
 
-    /// A job's tab, when it works in a browser.
+    /// A job's tab, when it works in a browser: only while the job is going: a finished job's tab is closed.
     public static func tabFor(_ worker: Worker) -> String? {
-        guard let tab = worker.tab, !tab.trimmingCharacters(in: .whitespaces).isEmpty, worker.kind == "browser" || worker.thumbnail != nil else { return nil }
+        guard let tab = worker.tab, !tab.trimmingCharacters(in: .whitespaces).isEmpty,
+              worker.kind == "browser" || worker.thumbnail != nil,
+              jobGoing.contains(worker.status) else { return nil }
         return tab
     }
 
@@ -226,9 +228,6 @@ public enum Watching {
         default: return 3
         }
     }
-
-    /// It may be switched on now (a fresh successful check), or it is on already.
-    public static func switchable(_ w: Watcher) -> Bool { w.enabled || w.canEnable }
 }
 
 /// The red dot on the header's agent (and the app icon's badge): only while something waits for the owner to act. That is

@@ -51,6 +51,27 @@ object SpeechMerge {
 /** Why listening ended without words, for a short line under the composer. */
 enum class SpeechProblem { NO_MATCH, NETWORK, BUSY, OTHER }
 
+/** Which recognizer to use, best first (pure, so it can be tested). */
+object RecognizerChoice {
+    enum class Way { ON_DEVICE, GOOGLE_SERVICE, DEFAULT }
+
+    /** Google's recognition services, the better first (the Google app, then Speech Services by Google). */
+    val GOOGLE_PACKAGES = listOf("com.google.android.googlequicksearchbox", "com.google.android.tts")
+
+    /**
+     * The ways to try, in order. [sdk]: Build.VERSION.SDK_INT; [onDevice]: SpeechRecognizer.isOnDeviceRecognitionAvailable;
+     * [googleService]: a Google recognition service is installed; [onDeviceFailed]: the on-device model already said no this session.
+     */
+    fun order(sdk: Int, onDevice: Boolean, googleService: Boolean, onDeviceFailed: Boolean): List<Way> = buildList {
+        if (sdk >= 31 && onDevice && !onDeviceFailed) add(Way.ON_DEVICE)
+        if (googleService) add(Way.GOOGLE_SERVICE)
+        add(Way.DEFAULT)
+    }
+
+    /** The recognizer errors that mean "this language is not there" (Android 12+: 12 not supported, 13 unavailable). */
+    fun languageMissing(error: Int): Boolean = error == 12 || error == 13
+}
+
 /**
  * The phone's own speech recognition (android.speech.SpeechRecognizer) in the phone's language, with partial results. Make it with
  * [rememberSpeechInput]; [start] needs the RECORD_AUDIO permission. It ends by itself after a pause in speaking, or with [stop].
@@ -62,17 +83,62 @@ class SpeechInput internal constructor(private val context: Context) {
     /** 0 … 1, how loud it hears right now */
     var level by mutableFloatStateOf(0f)
         private set
-    val available: Boolean = runCatching { SpeechRecognizer.isRecognitionAvailable(context) }.getOrDefault(false)
+    val available: Boolean = runCatching {
+        SpeechRecognizer.isRecognitionAvailable(context) ||
+            (android.os.Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context))
+    }.getOrDefault(false)
 
     private var recognizer: SpeechRecognizer? = null
     internal var onWords: (String, Boolean) -> Unit = { _, _ -> }
     internal var onEnd: (SpeechProblem?) -> Unit = {}
     private var heard = false
+    private var way: RecognizerChoice.Way? = null
+    private var onDeviceFailed = false
+    private var switchedThisTime = false
+    private val googleService: android.content.ComponentName? = runCatching {
+        val services = context.packageManager.queryIntentServices(
+            Intent(android.speech.RecognitionService.SERVICE_INTERFACE), 0)
+        RecognizerChoice.GOOGLE_PACKAGES.firstNotNullOfOrNull { pkg ->
+            services.firstOrNull { it.serviceInfo.packageName == pkg }?.serviceInfo?.let { android.content.ComponentName(it.packageName, it.name) }
+        }
+    }.getOrNull()
+
+    /** A recognizer of the first way that still applies; remembers which way it is. */
+    private fun makeRecognizer(): SpeechRecognizer {
+        val onDevice = android.os.Build.VERSION.SDK_INT >= 31 && runCatching { SpeechRecognizer.isOnDeviceRecognitionAvailable(context) }.getOrDefault(false)
+        val ways = RecognizerChoice.order(android.os.Build.VERSION.SDK_INT, onDevice, googleService != null, onDeviceFailed)
+        for (w in ways) {
+            val r = runCatching {
+                when (w) {
+                    RecognizerChoice.Way.ON_DEVICE -> SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+                    RecognizerChoice.Way.GOOGLE_SERVICE -> SpeechRecognizer.createSpeechRecognizer(context, googleService)
+                    RecognizerChoice.Way.DEFAULT -> SpeechRecognizer.createSpeechRecognizer(context)
+                }
+            }.getOrNull()
+            if (r != null) { way = w; return r }
+        }
+        way = RecognizerChoice.Way.DEFAULT
+        return SpeechRecognizer.createSpeechRecognizer(context)
+    }
+
+    /** Android 13+: the phone downloads the on-device model for this language in the background, for next time. */
+    private fun askForLanguage(intent: Intent) {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        runCatching { recognizer?.triggerModelDownload(intent) }
+    }
 
     fun start() {
         if (listening || !available) return
-        val r = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also { recognizer = it }
+        val r = recognizer ?: makeRecognizer().also { recognizer = it }
         heard = false
+        switchedThisTime = false
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
             override fun onBeginningOfSpeech() {}
@@ -80,6 +146,17 @@ class SpeechInput internal constructor(private val context: Context) {
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() { level = 0f }
             override fun onError(error: Int) {
+                // the on-device model lacks this language: ask the phone to fetch it, then go on with the next way, once, quietly
+                if (way == RecognizerChoice.Way.ON_DEVICE && RecognizerChoice.languageMissing(error) && !switchedThisTime && !heard) {
+                    askForLanguage(intent)
+                    onDeviceFailed = true
+                    switchedThisTime = true
+                    runCatching { recognizer?.destroy() }
+                    recognizer = null
+                    listening = false
+                    start()
+                    return
+                }
                 // after words were heard, "no match" at the end is just the end
                 val problem = when (error) {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> if (heard) null else SpeechProblem.NO_MATCH
@@ -99,13 +176,6 @@ class SpeechInput internal constructor(private val context: Context) {
             }
             override fun onEvent(eventType: Int, params: Bundle?) {}
         })
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        }
         listening = true
         try {
             r.startListening(intent)
@@ -132,6 +202,7 @@ class SpeechInput internal constructor(private val context: Context) {
         listening = false
         runCatching { recognizer?.destroy() }
         recognizer = null
+        way = null
     }
 
     private fun words(b: Bundle?): String? = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()

@@ -636,6 +636,10 @@ async def test_a_watcher_starts_off_needs_a_dry_run_and_fires_on_a_change_into_i
     assert fired == [] and w.get(wt["id"])["last_checked_at"]
     pages.html = PAGE.replace("1,250,000", "980,000")                # the price drops under the line
     clock.t += 31 * 60
+    first = await w.check(wt["id"])
+    assert first["confirming"] and fired == []                       # a hit is looked at once more before it fires
+    assert w.get(wt["id"])["next_check_at"] == clock.t + 30
+    clock.t += 31
     await w.check(wt["id"])
     assert len(fired) == 1 and fired[0][1]["value"] == "980,000" and w.get(wt["id"])["fire_count"] == 1
     clock.t += 31 * 60
@@ -645,6 +649,7 @@ async def test_a_watcher_starts_off_needs_a_dry_run_and_fires_on_a_change_into_i
     await w.check(wt["id"])
     pages.html = PAGE.replace("1,250,000", "900,000")
     await w.check(wt["id"])                                          # back over, then under again: a new hit
+    await w.check(wt["id"])
     assert len(fired) == 2
     kinds = [e["kind"] for e in w.events(wt["id"])]
     assert kinds[:2] == ["fired", "fired"] and "dry_run" in kinds and "enabled" in kinds
@@ -660,6 +665,7 @@ async def test_once_turns_a_watcher_off_after_its_first_hit_and_errors_turn_it_o
     await w.dry_run(wt["id"])
     w.enable(wt["id"])
     pages.html = PAGE.replace("판매중", "재입고 완료")
+    await w.check(wt["id"])
     await w.check(wt["id"])
     got = w.get(wt["id"])
     assert len(fired) == 1 and got["enabled"] is False and got["state"] == "done" and "telling you once" in got["disabled_reason"]
@@ -738,6 +744,7 @@ async def test_a_firing_watcher_notifies_and_wakes_the_agent_with_a_hidden_hando
         assert dry["result"]["ok"] and dry["result"]["value"] == "1,250,000" and dry["watcher"]["can_enable"]
         assert (await c.post(f"/api/watchers/{wid}/enable", json={"enabled": True})).json()["enabled"]
         pages.html = PAGE.replace("1,250,000", "980,000")
+        await srv_w.check(wid)
         await srv_w.check(wid)
         note = await until(lambda: _note(c, "watch_fired"))
         assert note["title"] == "A watched condition came true: 자전거" and "980,000" in note["body"]

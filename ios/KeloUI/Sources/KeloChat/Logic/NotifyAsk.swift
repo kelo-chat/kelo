@@ -12,15 +12,15 @@ import UserNotifications
     nonisolated static func shouldAsk(askedBefore: Bool, enabled: Bool) -> Bool { !askedBefore && !enabled }
 
     /// Whether to show the question now; marks it as asked either way.
-    static func takeTurn() async -> Bool {
-        let asked = Prefs.shared.bool(askedKey, default: false)
-        Prefs.shared.set(askedKey, true)
+    static func takeTurn(prefs: Prefs = .shared) async -> Bool {
+        let asked = prefs.bool(askedKey, default: false)
+        prefs.set(askedKey, true)
         if asked { return false }
         return shouldAsk(askedBefore: false, enabled: await enabled())
     }
 
     /// The message was held back (secret sheet), so it was not sent: the question waits for the next message (Android ChatScreen).
-    static func giveBack() { Prefs.shared.set(askedKey, false) }
+    static func giveBack(prefs: Prefs = .shared) { prefs.set(askedKey, false) }
 
     static func enabled() async -> Bool {
         #if canImport(UserNotifications)
@@ -32,12 +32,12 @@ import UserNotifications
     }
 
     /// "Turn on notifications": the system's own question while it may still be asked, else iPhone Settings.
-    static func enable() async {
+    static func enable(prefs: Prefs = .shared) async {
         #if canImport(UserNotifications)
         let s = await UNUserNotificationCenter.current().notificationSettings()
         if s.authorizationStatus == .notDetermined {
             let ok = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])) ?? false
-            Prefs.shared.set("notify.allowed", ok)
+            prefs.set("notify.allowed", ok)
         } else if s.authorizationStatus == .denied {
             DeviceInfo.openAppSettings()
         }

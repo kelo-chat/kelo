@@ -262,3 +262,21 @@ def test_every_event_type_can_cross_the_sidecar():
     assert {t.__name__ for t in typing.get_args(Event)} == set(samples), "add the new event to this test AND to cli_remote"
     for ev in samples.values():
         assert cli_remote.decode_event(cli_remote.encode_event(ev)) == ev
+
+
+async def test_warm_endpoint_asks_for_the_token_and_hands_the_request_to_cli_agents(monkeypatch):
+    seen = []
+
+    async def fake_warm(provider, req):
+        seen.append((provider, req.purpose, req.model))
+        return True
+
+    monkeypatch.setattr(cli_agents, "warm", fake_warm)
+    app = create_app("agy", TOKEN, stream_fn=lambda *a: None)
+    body = {"request": {"model": "m", "messages": [], "purpose": "chat"}}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://runner") as c:
+        assert (await c.post("/warm", json=body)).status_code == 401
+        r = await c.post("/warm", json=body, headers={"authorization": f"Bearer {TOKEN}"})
+        assert r.json() == {"warm": True} and seen == [(cli_manage.AGY, "chat", "m")]
+        monkeypatch.setenv("ASSISTANT_CLI_AGY_URL", "http://runner")
+        assert await cli_remote.warm(cli_manage.AGY, ChatRequest(model="m", messages=[], purpose="chat"), client=c) is True

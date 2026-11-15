@@ -8,9 +8,6 @@ import UIKit
 
 // Small pieces of the connectors tab (Android connectors/ConnectorUi.kt, GoogleReview.kt).
 
-/// An Android string by name (the rules return names; R.string holds the same ones).
-@MainActor func LS(_ name: String, _ args: Any...) -> String { Strings.shared.string(StringKey(name), args) }
-
 /// A service's tile: its own app icon from the server when there is one (ConnectorIcons.swift; the services' trademarks, shown only
 /// to say which service a row is), else its initials on a colour made from its id.
 struct ConnectorTile: View {
@@ -143,39 +140,11 @@ struct SmallText: View {
     }
 }
 
-/// A choice among a few options (Android SelectField): a menu with the current value.
-struct SelectField: View {
-    let label: String
-    let options: [(id: String, name: String)]
-    @Binding var value: String
-    @Environment(\.kelo) private var c
-
-    var body: some View {
-        Menu {
-            ForEach(options, id: \.id) { o in
-                Button { value = o.id } label: {
-                    if o.id == value { Label(o.name, systemImage: "checkmark") } else { Text(o.name) }
-                }
-            }
-        } label: {
-            HStack {
-                Text(options.first { $0.id == value }?.name ?? label).font(KeloFont.bodyLarge).foregroundStyle(c.ink)
-                    .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.up.chevron.down").foregroundStyle(c.muted)
-            }
-            .padding(.horizontal, 14).padding(.vertical, 13)
-            .background(RoundedRectangle(cornerRadius: 12).fill(c.card))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(c.line, lineWidth: 1))
-        }
-        .accessibilityLabel(label)
-    }
-}
-
 /// Why there is no Google sign-in button yet (the server's note, else the app's own) and the operator's support link; below it the
 /// way to ask to be let in early (BetaRequestView). `onOpened` reloads the screen once that request is approved.
 struct ReviewNote: View {
     let c: ConnectorInfo
+    let api: KeloApi
     var onOpened: () -> Void = {}
     @Environment(\.openURL) private var openURL
 
@@ -186,7 +155,7 @@ struct ReviewNote: View {
             if ConnectorLogic.showsSupportLink(c.supportUrl), let url = URL(string: c.supportUrl) {
                 LinkButton(L(R.string.google_review_support)) { openURL(url) }
             }
-            BetaRequestView(c: c, onOpened: onOpened)
+            BetaRequestView(c: c, api: api, onOpened: onOpened)
         }
     }
 }
@@ -218,7 +187,7 @@ extension View {
 @MainActor
 enum SystemBrowser {
     #if os(iOS)
-    private static var session: ASWebAuthenticationSession?
+    private static var session: ASWebAuthenticationSession?   // held while the sheet is open (a session that is let go closes)
     private static let anchor = Anchor()
 
     private final class Anchor: NSObject, ASWebAuthenticationPresentationContextProviding {
@@ -255,5 +224,18 @@ enum SystemBrowser {
         guard let url = URL(string: urlText), url.scheme == "https" || url.scheme == "http" else { return false }
         openURL(url)
         return true
+    }
+}
+
+extension View {
+    /// "Disconnect this account?": asks about the chosen item, and `remove` runs for it when the answer is yes.
+    func removeAlert<T>(_ item: Binding<T?>, title: @escaping (T) -> String, remove: @escaping (T) -> Void) -> some View {
+        alert(item.wrappedValue.map(title) ?? "", isPresented: Binding(get: { item.wrappedValue != nil }, set: { if !$0 { item.wrappedValue = nil } })) {
+            Button(L(R.string.connector_disconnect), role: .destructive) {
+                guard let a = item.wrappedValue else { return }
+                remove(a)
+            }
+            Button(L(R.string.cancel), role: .cancel) {}
+        }
     }
 }

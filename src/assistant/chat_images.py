@@ -165,6 +165,35 @@ class ChatImages:
                 p.unlink(missing_ok=True)
         self.store._run("DELETE FROM chat_images")
 
+    def library_tool(self, library: Any, current_turn: Callable[[], dict[str, Any] | None]) -> Tool:
+        """show_picture: a picture of the user's library (a camera snapshot or photo saved with connector_download) shown in the chat."""
+        async def show_picture(a: dict[str, Any]) -> str:
+            from PIL import Image, ImageOps
+            turn = current_turn() or {}
+            tid = str(turn.get("turn_id") or "")
+            if not tid:
+                return "Error: a picture can only go into a chat reply."
+            if self.count_for(tid) >= PER_TURN:
+                return f"Error: at most {PER_TURN} pictures in one reply."
+            try:
+                path = library.path(str(a.get("name") or ""))
+                with Image.open(path) as im:
+                    im = ImageOps.exif_transpose(im).convert("RGB")
+                    im.thumbnail((1600, 1600))
+                    buf = io.BytesIO()
+                    im.save(buf, "JPEG", quality=85)
+                    w, h = im.size
+            except Exception as e:  # noqa: BLE001 - a missing file, or one that is not a picture
+                return f"Error: that is not a picture in the library ({type(e).__name__})."
+            shown = self.add(tid, buf.getvalue(), w, h, str(a.get("caption") or ""))
+            await emit_ui({"type": "image", "image_id": shown["id"], **{k: shown[k] for k in ("url", "width", "height", "caption")}})
+            return "The picture is in the chat now, under your reply. Say in a few words what it shows."
+        return Tool("show_picture", "Show the user a picture from their library (files/) in the chat, for example a camera snapshot you saved "
+                    "with connector_download.",
+                    {"type": "object", "properties": {"name": {"type": "string", "description": "file name in the library"},
+                                                      "caption": {"type": "string", "description": "a few words under the picture"}},
+                     "required": ["name"]}, show_picture)
+
     def tool(self, grab: GrabFn, current_turn: Callable[[], dict[str, Any] | None]) -> Tool:
         async def send_screenshot(a: dict[str, Any]) -> str:
             turn = current_turn() or {}

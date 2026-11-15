@@ -4,6 +4,8 @@ The agent browses in its own browser (the `browser` container): Google Chrome, o
 below), driven by the server over the Chrome DevTools Protocol. This page
 explains how that browser is fenced off from your home network, how it is set up, and the tools built on it.
 
+> Browsing can also go out through your own VPN or proxy (Connectors → Network): see [vpn.md](vpn.md). The LAN block below stays in force.
+
 ## The LAN block (network level)
 
 ```
@@ -99,6 +101,25 @@ page it is on. When the element cannot be read, the selector's own words are jud
 own), in English and Korean, and lean towards asking: a missed commit is worse than an extra card. "Allow on this site" rules never
 cover a payment-like click. Payments still go through `confirm_purchase`; after it is approved the few committing steps that finish the
 purchase on the same site need no second card. Sign-ins (`browser_login`), uploads and one-time codes ask exactly as before.
+
+### After paying: the receipt is checked
+
+After a payment Kelo reads the confirmation page and calls `purchase_result` (`tools/purchase.py`, the checks in `receipt.py`) with the
+order number, the total charged, the items and the cancel terms the page shows. The server compares them with what the owner approved
+(a higher total, another item, option or quantity is a mismatch; a lower total is fine and said). The owner's three rules:
+
+1. A wrong charge and cancelling is free right now (the page says so, or its deadline is still ahead): Kelo cancels the order at once,
+   money back first, then reports. The cancel click of that order on that site goes through without a card for a few minutes
+   (`BrowserSession.allow_cancel`, only words that cancel an order, never an account or a subscription); it is logged as a cancel of a
+   wrong charge and the owner gets an urgent notice.
+2. A wrong charge and cancelling costs a fee, or the terms are unclear: Kelo never cancels on its own, because that would lock in the
+   fee. It asks the owner at once with the amount charged against the approved one, the difference, the fee and until when cancelling
+   is free or cheaper. Allow cancels the order, Deny keeps it. An unanswered card gets the usual follow-ups, with the free-until time
+   as the deadline when known.
+3. The report says the approved condition and the real charge plainly, without excuses, and gives the next option.
+
+If a task ends with a paid order whose receipt was never checked, the report ends with one line saying so and asking the owner to check
+the order.
 
 To have every click and typing step ask, as before, set `ASSISTANT_APPROVE_BROWSER_ACTIONS=1` in `.env` (default `0`).
 

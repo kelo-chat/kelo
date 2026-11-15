@@ -15,6 +15,7 @@ from .google_web import REVIEW_NOTE, support_url
 from .i18n import N_, t
 from .packages import Package, Registry
 from .store import Store
+from .vpn import VpnRoute
 
 CALENDAR_ITEM = "google-calendar"
 CALENDAR_BLURB = N_("Sees your schedule and adds, moves or deletes events. Each change is asked first.")
@@ -31,10 +32,11 @@ def _pending(store: Store) -> dict[str, Any]:
 
 
 def ways(store: Store, mail: Mail, *, browser: bool, google_open: bool = False, registry: Registry | None = None,
-         relay: str = "") -> dict[str, dict[str, Any]]:
+         relay: str = "", vpn: VpnRoute | None = None) -> dict[str, dict[str, Any]]:
     """`relay`: the fixed page sign-ins return to (the address an organisation's admin has to allow, in a caution note).
     `google_open`: new Google sign-ins are open (GoogleWeb.open_to_all()). While closed, Gmail and Google Calendar rows that are not
     connected yet say "pending_review" (Gmail keeps the app password as the other way); connected ones stay as they are.
+    `vpn`: the VPN / Proxy connectors (vpn.py) are listed only where the vpn container exists, and a connected one shows "exit <ip>".
     `registry`: installed connector packages (packages.py) are added after the built-in ones; a built-in id always wins."""
     have = {c["name"] for c in store.credentials() if c["has_secret"]}
     out: dict[str, dict[str, Any]] = {}
@@ -59,7 +61,12 @@ def ways(store: Store, mail: Mail, *, browser: bool, google_open: bool = False, 
                               "blurb": t(CALDAV_BLURB), "connected": bool(mine),
                               **({"method": "password", "account": ", ".join(a["address"] for a in mine)} if mine else {})}
     for k in KEYS.values():
+        if k.route and (vpn is None or not vpn.available):
+            out[k.id] = {"connect": None, "reason": t("This installation has no VPN support.")}   # not listed (connectors.connector_rows)
+            continue
         out[k.id] = {"connect": "key", "via": k.id, "item": k.item, "blurb": t(k.blurb), "connected": k.item in have}
+        if k.route and k.item in have and vpn is not None and (account := vpn.account()) and vpn.kind == k.route:
+            out[k.id]["account"] = account
     for cid in GOOGLE_CONNECTORS:
         out[cid] = {"connect": "key", "via": GOOGLE.id, "item": GOOGLE.item, "blurb": t(GOOGLE.blurb), "connected": GOOGLE.item in have}
     # Google Calendar: the Google sign-in first (google_calendar.py); the service account stays as the other way

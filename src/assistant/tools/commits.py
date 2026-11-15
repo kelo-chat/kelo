@@ -10,6 +10,10 @@ go through without a card. A step asks when it would do something in the user's 
   optout   opt out, stop receiving something (messages, notifications, a list), turn alerts off: low risk, can usually be turned
            back on (also a plain "Confirm" / "Save" on a page whose purpose is opting out)
   account  sign up, register, change account settings (a plain "Save" on a settings page)
+  security change how the account is protected or reached (create an app password or an API key, turn 2-step verification
+           on or off, add or remove a device, a passkey or a recovery address) or issue an official document or certificate
+           in the user's name (a family register, a tax statement, 증명서 발급): ALWAYS asks — no rule, grant, order or request
+           covers it (2026-11-12: another assistant made itself an app password to keep reading the user's mail)
   form     a button that sends a form holding personal details or a message
   personal typing personal details (e-mail, phone, name, address, password, card, ...) or a message (a text area)
 
@@ -167,6 +171,28 @@ _OPTOUT_PAGE = re.compile(r"unsubscribe|opt-?out|optout|e-?mail[-_ ]?preferences
 _MONEY_PAGE = re.compile(r"checkout|payment|/pay\b|billing|/order|/booking|/book\b|reservation|/cart|purchase|결제|주문|예약", re.I)
 _SETTINGS_PAGE = re.compile(r"setting|/account|profile|preference|privacy|security|mypage|my-page|설정|계정|회원\s*정보|내\s*정보", re.I)
 
+# security: what an account's protection or access is made of, and the verbs that change it (security_step)
+_SEC_OBJECT = re.compile(r"app(?:lication)?[- ]?passwords?|passkeys?|security[- ]?keys?|2[- ]?step|two[- ]?(?:step|factor)|\b2fa\b|\bmfa\b|"
+                         r"multi[- ]?factor|authenticator|\btokens?\b|credentials?|recovery (?:e-?mail|phone|codes?|address)|backup codes?|(?:trusted|signed[- ]in|"
+                         r"login|registered) devices?|api[- ]?keys?|(?:personal )?access tokens?|connected apps?|third[- ]party (?:apps?|access)|"
+                         r"애플리케이션\s*비밀번호|앱\s*비밀번호|2\s*단계|이중\s*인증|2\s*차\s*인증|\botp\b|패스\s*키|보안\s*키|복구\s*(?:이메일|메일|전화|"
+                         r"번호|코드)|백업\s*코드|(?:신뢰|등록|로그인|사용)\S*\s*기기|연결된\s*(?:앱|서비스)|api\s*키|접근\s*토큰|인증서|"
+                         r"forwarding|auto-?forward|forward (?:all|your|incoming) (?:mail|e-?mail|messages)|delegat\w*|grant access to your account|"
+                         r"account access|mailbox permissions?|전달\s*주소|자동\s*전달|메일\s*전달|위임|대리인|액세스\s*권한\s*부여|계정\s*액세스", re.I)
+_DELEGATION = re.compile(r"\bdelegat\w*|(?:^|\s)(?:위임|대리인)(?:\s|$)", re.I)   # naming delegation is enough: there is no harmless press
+_SEC_VERB = re.compile(r"\b(?:create|generate|add|new|make|turn (?:on|off)|enable|disable|remove|revoke|delete|reset|change|set ?up|"
+                       r"register|allow|grant|issue|export|copy|sign out|save(?: changes)?)\b|생성|발급|추가|등록|만들|해제|끄기|켜기|사용\s*안\s*함|삭제|변경|"
+                       r"재발급|허용|설정|내보내기|복사|로그아웃|저장", re.I)
+# a page about the account's protection (path and title, _page)
+_SECURITY_PAGE = re.compile(r"security|apppasswords|app[-_]?passwords|signinoptions|two[-_]?step|2fa|mfa|passkey|/tokens|api[-_]?keys|credentials|보안|2단계|이중\s*인증|"
+                           r"fwdandpop|forwarding|delegat|/accounts?(?:and|&)import|options/mail/forwarding|mailboxpermissions|메일\s*전달|위임", re.I)
+# issuing an official document or certificate in the user's name; "발급" alone issues something wherever it stands
+_DOC_ISSUE = re.compile(r"(?:재)?발급|(?:증명서|등본|초본|확인서|증명원|인증서)\S*\s*(?:신청|출력|인쇄|저장|내려받기|다운로드)|"
+                        r"\b(?:issue|print|request|download) (?:an? |the |my )?(?:official |tax |family )?(?:certificate|transcript|"
+                        r"statement|record|register)\b", re.I)
+# ... but a coupon, points or a gift card "issued" in a shop is not a document (those words go on as before)
+_NOT_A_DOCUMENT = re.compile(r"coupon|voucher|gift ?card|쿠폰|할인|적립|포인트|상품권|이용권|교환권|번호표|대기", re.I)
+
 _SEARCH_FIELD = re.compile(r"search|query|keyword|\bfind\b|destination|where|location|city|\bdate|check.?in|check.?out|\bfrom\b|\bto\b|"
                            r"검색|찾기|목적지|도시|여행지|날짜|출발|도착|지역", re.I)
 _SEARCH_NAMES = {"q", "query", "k", "kw", "keyword", "keywords", "s", "search", "term", "searchterm", "text", "wd", "p"}
@@ -246,11 +272,41 @@ def continue_only(label: str) -> bool:
     return bool(w) and bool(_CONTINUE_ONLY.match(w))
 
 
+def security_step(label: str, page: str = "") -> bool:
+    """The words change how the account is protected or reached (an app password, 2-step verification, a device, a key) or issue an
+    official document: an object of that kind with a verb that changes it, a changing verb alone on a security page, or "발급"-like
+    words. Generic: no site has its own rule."""
+    w = _norm(label)
+    if not w:
+        return False
+    if _DOC_ISSUE.search(w) and not _NOT_A_DOCUMENT.search(w):
+        return True
+    if _DELEGATION.search(w):
+        return True
+    verb = bool(_SEC_VERB.search(w))
+    if verb and _SEC_OBJECT.search(w):
+        return True
+    return verb and bool(page) and bool(_SECURITY_PAGE.search(page)) and len(w) <= 40
+
+
+_CANCEL_ORDER = re.compile(r"\bcancel(?:l?ation)?\b|\brefund|취소|환불")
+_NOT_AN_ORDER = re.compile(r"\b(account|membership|subscription|plan)\b|계정|탈퇴|해지|구독|멤버십")
+
+
+def cancel_words(label: str) -> bool:
+    """The words of a button or link that cancels an order, booking or payment ("Cancel order", "주문 취소"); never an account,
+    a membership or a subscription (purchase_result's cancel window covers only the wrongly charged order)."""
+    w = _norm(label)
+    return bool(w) and bool(_CANCEL_ORDER.search(w)) and not _NOT_AN_ORDER.search(w)
+
+
 def judge_words(label: str) -> str:
     """The commit kind the words of a button or link name, or "" for words that only look (see the module docstring)."""
     w = _norm(label)
     if not w:
         return ""
+    if security_step(w):
+        return "security"
     if _EN_DELETE.search(w) or _KO_DELETE.search(w):
         return "delete"
     if _EN_OPTOUT.search(w) or _XX_OPTOUT.search(w):
@@ -319,11 +375,13 @@ def _judge_click(info: dict[str, Any] | None, selector: str, url: str) -> str:
     money, settings = bool(_MONEY_PAGE.search(page)), bool(_SETTINGS_PAGE.search(page))
     if info is None:
         label = selector_words(selector)
+        if security_step(label, page):
+            return "security"
         kind = judge_words(label)
         if kind:
             return kind
         if _EN_GENERIC.match(_norm(label)) or _KO_GENERIC.match(_norm(label).replace(" ", "")):
-            return "pay" if money else "account" if settings else "generic"
+            return "pay" if money else "security" if _SECURITY_PAGE.search(page) else "account" if settings else "generic"
         return ""
     if not pressable(info):
         return ""   # plain text on the page (not a button, link, field or anything with click code): pressing it sends nothing
@@ -331,24 +389,24 @@ def _judge_click(info: dict[str, Any] | None, selector: str, url: str) -> str:
     label = f"{text} {words}".strip() if len(text) <= 60 else words
     real_link = info.get("tag") == "a" and not re.match(r"^\s*(#|javascript:|$)", str(info.get("href") or ""), re.I)
     submits = bool(info.get("submits"))
-    if real_link and len(text) > LONG_LINK and not submits:
+    if real_link and len(text) > LONG_LINK and not submits and not security_step(label, page):
         return ""   # a search result, an article or a product card
-    if len(label) > 80 and not submits:
+    if len(label) > 80 and not submits and not security_step(label, page):
         return ""
     search = bool(info.get("search_form"))
     holds_details = not search and (int(info.get("form_personal") or 0) > 0 or int(info.get("form_message") or 0) > 0)
-    kind = judge_words(label)
+    kind = "security" if security_step(label, page) else judge_words(label)
     how = structure(info)
     if kind and how == "opens":
         return ""   # it only opens a window or a tab (a "바로구매 새창" opener): what is done in that window asks there
-    if kind and how == "goes" and not (info.get("in_form") and money) and kind not in ("delete", "optout") \
+    if kind and how == "goes" and not (info.get("in_form") and money) and kind not in ("delete", "optout", "security") \
             and not _PAY_HREF.search(str(info.get("href") or "")):
         return ""   # a plain link with no code that sends anything only opens the page; the pay button there asks
     goes = real_link or str(info.get("role") or "") in _NAV_ROLES
     if kind and goes and not submits and not (info.get("in_form") and money):
         # a link to another page only opens it ("예약하기" to the booking page, "회원가입" to the sign-up form): what is done there
-        # asks. Payment words and deletions keep asking.
-        return kind if kind in ("delete", "optout") or (kind == "pay" and money_words(label)) else ""
+        # asks. Payment words, deletions and security steps keep asking.
+        return kind if kind in ("delete", "optout", "security") or (kind == "pay" and money_words(label)) else ""
     if kind == "send" and submits and search:
         return ""   # "Submit" on a search form only searches
     if kind:
@@ -358,6 +416,8 @@ def _judge_click(info: dict[str, Any] | None, selector: str, url: str) -> str:
     if generic and (submits or plain):
         if money:
             return "pay"
+        if _SECURITY_PAGE.search(page):
+            return "security"
         if settings:
             return "account"
     if submits and holds_details:

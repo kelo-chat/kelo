@@ -22,11 +22,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from typing import Any
+
+log = logging.getLogger("uvicorn.error")
 
 KINDS = ("key", "login", "card", "payment_pin")
 STATES = ("open", "saved", "cancelled", "expired", "replaced")
@@ -71,6 +74,7 @@ class SecretRequests:
                  on_answer: Callable[[dict[str, Any]], str | None] | None = None):
         self.store, self.clock = store, clock
         self.log_consent, self.on_answer = log_consent, on_answer
+        self.on_open: Callable[[dict[str, Any]], None] | None = None   # a new agent-asked card (not a login) opened: gets its request row (server: followups)
         if not hasattr(store, "credential_listeners"):
             store.credential_listeners = []
         store.credential_listeners.append(self.login_checked)   # how a saved login's sign-in went (sign_in in public)
@@ -174,6 +178,11 @@ class SecretRequests:
                         (rid, kind, name, label[:80], json.dumps(list(hosts or [])), reason[:300], check_url, source,
                          str(turn.get("turn_id") or ""), turn.get("task_id"), worker_id, str(turn.get("source") or ""), owner,
                          int(after or 0), self.clock()))
+        if source == "agent" and kind != "login" and self.on_open is not None:   # a login has its own follow-up item (followups.py)
+            try:
+                self.on_open(self._row(rid) or {})
+            except Exception:  # noqa: BLE001 - a follow-up that could not be made never fails the card
+                log.exception("secret request %s: on_open failed", rid)
         return self.get(rid) or {}
 
     def ensure_draft(self, kind: str, name: str, label: str, hosts: list[str]) -> None:

@@ -4,8 +4,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import chat.kelo.app.connectors.ConnectorList
-import chat.kelo.app.ui.theme.AvatarGradient
-import chat.kelo.app.ui.theme.AvatarInk
 import chat.kelo.app.ui.theme.DarkKeloColors
 import chat.kelo.app.ui.theme.KeloColors
 import chat.kelo.app.ui.theme.LightKeloColors
@@ -99,6 +97,5 @@ class ThemeContrastTest {
             val r = ratio(TileInk, ConnectorList.tileColor(h.toFloat(), dark))
             assertTrue("hue $h dark=$dark ${"%.2f".format(r)}", r >= large)
         }
-        AvatarGradient.forEach { assertTrue(ratio(AvatarInk, it) >= body) }
     }
 }

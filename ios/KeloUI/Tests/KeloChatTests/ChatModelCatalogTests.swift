@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import CryptoKit
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 @testable import KeloChat
 
@@ -56,10 +57,10 @@ private func until(_ cond: @MainActor () -> Bool) async {
     }
 
     @Test func theChatsFormKeepsEachModelsFacts() throws {
-        let l = ChatModelList(provider: "p", models: ["a"], labels: ["a": "A"], info: ["a": ModelFacts(images: true, effortLevels: [])])
+        let l = ModelList(provider: "p", models: ["a"], labels: ["a": "A"], info: ["a": ModelEffort(images: true, effortLevels: [])])
         #expect(ModelCatalog.keepable(l))
-        #expect(ModelCatalog.placeholder(provider: "p", model: "sonnet", as: ChatModelList.self) == ChatModelList(provider: "p", models: ["sonnet"]))
-        #expect(ModelCatalog.shown(ChatModelList.catalogFailure(provider: "p", error: "x"), l)?.stale == true)
+        #expect(ModelCatalog.placeholder(provider: "p", model: "sonnet", as: ModelList.self) == ModelList(provider: "p", models: ["sonnet"]))
+        #expect(ModelCatalog.shown(ModelList.catalogFailure(provider: "p", error: "x"), l)?.stale == true)
         #expect(ModelCatalog.shown(nil, l) == l)
     }
 
@@ -70,17 +71,17 @@ private func until(_ cond: @MainActor () -> Bool) async {
         let (app, t) = makeApp(server, cache: newCache())
         let api = try app.requireApi()
 
-        let got = try await ModelCatalog.fetch(api, app.cache, provider: "antigravity-oauth", as: ChatModelList.self)
+        let got = try await ModelCatalog.fetch(api, app.cache, provider: "antigravity-oauth", as: ModelList.self)
         #expect(got.labels["gemini-3.8-flash-medium"] == "Gemini 3.8 Flash (Medium)")
         #expect(t.requests.contains { $0.url?.query?.contains("provider=antigravity-oauth") == true })
         server.fail = true
-        let failed = try await ModelCatalog.fetch(api, app.cache, provider: "antigravity-oauth", as: ChatModelList.self)
+        let failed = try await ModelCatalog.fetch(api, app.cache, provider: "antigravity-oauth", as: ModelList.self)
         #expect(failed.error != nil)
 
         // the next launch: the last good list, with its labels and facts (the chat's form), and 마이's form from the same copy
         let next = newCache()
         next.use(server: "https://kelo.test")
-        let kept = try #require(ModelCatalog.keptList(next, "antigravity-oauth", as: ChatModelList.self))
+        let kept = try #require(ModelCatalog.keptList(next, "antigravity-oauth", as: ModelList.self))
         #expect(kept.models == ["gemini-3.8-flash-medium", "claude-sonnet-4-6"])
         #expect(kept.info["claude-sonnet-4-6"]?.images == true)
         #expect(kept.info["claude-sonnet-4-6"]?.effortLevels == ["low", "high"])
@@ -90,25 +91,24 @@ private func until(_ cond: @MainActor () -> Bool) async {
 
         // the providers: a good answer is kept (both forms read it), a failure keeps it
         server.fail = false
-        let rows = try await ModelCatalog.fetchChatProviders(api, app.cache)
+        let rows = try await ModelCatalog.fetchModelProviders(api, app.cache)
         #expect(rows.single?.displayName == "Antigravity")
         server.fail = true
-        _ = try? await ModelCatalog.fetchChatProviders(api, app.cache)
+        _ = try? await ModelCatalog.fetchModelProviders(api, app.cache)
         let again = newCache()
         again.use(server: "https://kelo.test")
-        let keptRows = ModelCatalog.keptChatProviders(again)
+        let keptRows = ModelCatalog.keptModelProviders(again)
         #expect(keptRows == rows)
         #expect(keptRows.single?.account == "me@example.com")   // what only the chat's rows know is not lost
-        #expect(ModelCatalog.keptProviders(again)?[0]?["cli"]?["checked_at"]?.doubleValue == 1700000000.5)   // nor what only 마이's rows know
     }
 
     @MainActor @Test func theChatReadsProvidersKeptByAnEarlierVersion() {
         let cache = ScreenCache(directory: nil, key: { nil })
         cache.use(server: "https://kelo.test")
-        cache.put(ModelCatalog.legacyChatProvidersSlot, [ChatProvider(name: "openai", displayName: "OpenAI")])
-        #expect(ModelCatalog.keptChatProviders(cache).map(\.name) == ["openai"])
+        cache.put(ModelCatalog.legacyChatProvidersSlot, [ModelProvider(name: "openai", displayName: "OpenAI")])
+        #expect(ModelCatalog.keptModelProviders(cache).map(\.name) == ["openai"])
         ModelCatalog.keepProviders(cache, [["name": "anthropic", "display_name": "Anthropic"]])
-        #expect(ModelCatalog.keptChatProviders(cache).map(\.name) == ["anthropic"])
+        #expect(ModelCatalog.keptModelProviders(cache).map(\.name) == ["anthropic"])
     }
 
     @MainActor @Test func theChipShowsTheKeptNameAtOnceAndKeepsItWhenTheRefreshFails() async throws {
@@ -118,8 +118,8 @@ private func until(_ cond: @MainActor () -> Bool) async {
         // an earlier run kept the list and the providers
         do {
             let (app, _) = makeApp(server, cache: newCache())
-            _ = try await ModelCatalog.fetch(try app.requireApi(), app.cache, provider: "antigravity-oauth", as: ChatModelList.self)
-            _ = try await ModelCatalog.fetchChatProviders(try app.requireApi(), app.cache)
+            _ = try await ModelCatalog.fetch(try app.requireApi(), app.cache, provider: "antigravity-oauth", as: ModelList.self)
+            _ = try await ModelCatalog.fetchModelProviders(try app.requireApi(), app.cache)
         }
         server.fail = true
         let (app, _) = makeApp(server, cache: newCache())

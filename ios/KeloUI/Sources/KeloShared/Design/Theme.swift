@@ -33,9 +33,6 @@ public struct KeloColors: Sendable {
 
     public static func of(_ scheme: ColorScheme) -> KeloColors { scheme == .dark ? darkPalette : light }
 
-    /// The avatar gradient (the same in both themes) and its letter.
-    public static let avatarGradient = [Color(hex: 0x5A4FE0), Color(hex: 0x7C4DEB)]
-    public static let avatarInk = Color.white
     /// The letters on a service's coloured tile.
     public static let tileInk = Color.white
     /// The cream disc behind the character in the header badge (the launcher icon's background, light in both themes).
@@ -91,7 +88,6 @@ public enum KeloFont {
 /// The app's motion (Android ui/theme/Motion.kt, Material 3 tokens). With Reduce Motion every animation is nil.
 public enum KeloMotionSpec {
     public static func enter(_ reduce: Bool) -> Animation? { reduce ? nil : .timingCurve(0.05, 0.7, 0.1, 1, duration: 0.4) }
-    public static func exit(_ reduce: Bool) -> Animation? { reduce ? nil : .timingCurve(0.3, 0, 0.8, 0.15, duration: 0.2) }
     public static func standard(_ reduce: Bool) -> Animation? { reduce ? nil : .timingCurve(0.2, 0, 0, 1, duration: 0.3) }
     public static func small(_ reduce: Bool) -> Animation? { reduce ? nil : .timingCurve(0.2, 0, 0, 1, duration: 0.15) }
     public static let pressShrink: CGFloat = 0.96
@@ -112,6 +108,5 @@ public struct KeloThemeModifier: ViewModifier {
 }
 
 public extension View {
-    @MainActor func keloTheme() -> some View { modifier(KeloThemeModifier(strings: Strings.shared)) }
-    @MainActor func keloTheme(_ strings: Strings) -> some View { modifier(KeloThemeModifier(strings: strings)) }
+    @MainActor func keloTheme(_ strings: Strings = .shared) -> some View { modifier(KeloThemeModifier(strings: strings)) }
 }

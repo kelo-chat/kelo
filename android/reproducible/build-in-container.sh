@@ -1,10 +1,13 @@
 #!/bin/bash
-# Runs inside the image (see Dockerfile): one Gradle build of the Android app in the current folder (the mounted source).
+# Runs inside the image (see Dockerfile): one Gradle build of the Android app in the current folder (android/kelo of the mounted
+# repository-shaped source: ../../shared and ../../version.json are next to it).
 # The same flags everywhere, so nothing about how it is started can change the result. Extra arguments are the Gradle tasks.
 set -euo pipefail
 
 [ -f gradlew ] && [ -f settings.gradle.kts ] || { echo "kelo-build: run it in the android/kelo folder (gradlew not found in $PWD)" >&2; exit 2; }
 [ ! -e local.properties ] || { echo "kelo-build: local.properties would change the build; it must not exist" >&2; exit 2; }
+[ -f ../../shared/settings.gradle.kts ] && [ -f ../../version.json ] || { echo "kelo-build: ../../shared and ../../version.json must exist (the source is a repository-shaped folder: android/kelo, shared, version.json)" >&2; exit 2; }
+[ ! -e ../../shared/local.properties ] || { echo "kelo-build: shared/local.properties would change the build; it must not exist" >&2; exit 2; }
 [ ! -e ../keystore/keystore.properties ] || { echo "kelo-build: a keystore next to the source would sign the build; it must not exist" >&2; exit 2; }
 
 echo "== java:   $(java -version 2>&1 | head -1)"

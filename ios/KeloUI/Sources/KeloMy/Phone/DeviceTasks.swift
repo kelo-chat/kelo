@@ -13,22 +13,24 @@ import UIKit
 /// server queues it after the approval (POST /api/phone/tasks/claim hands each one out once); the phone checks right after an
 /// approval is answered here, when the app comes to the front and in background refreshes, then reports how it went
 /// (POST /api/phone/tasks/{id}/result). The phone checks again that the row is still on before doing anything.
-@MainActor enum DeviceTasks {
-    private static var done: [Int64] = []
-    private static var running = false
-    private static weak var app: AppModel?
+@MainActor final class DeviceTasks {
+    private var done: [Int64] = []
+    private var running = false
+    private weak var app: AppModel?
+    private let sync: PhoneDataSync
+
+    init(sync: PhoneDataSync) { self.sync = sync }
 
     /// Some row that can do work is on: only then is there anything to ask the server about.
-    static func anyOn() -> Bool {
-        let s = PhoneDataSync.shared
-        return s.on(.dialer) || (s.on(.calendar) && s.writeAllowed)
+    func anyOn() -> Bool {
+        sync.on(.dialer) || (sync.on(.calendar) && sync.writeAllowed)
     }
 
     /// An approval was just allowed in the app: what it allowed may be waiting for this phone now (checked a few times).
-    static func afterApproval(app: AppModel) {
+    func afterApproval(app: AppModel) {
         self.app = app
         guard anyOn() else { return }
-        Task {
+        Task { [self] in
             for wait: UInt64 in [1_500, 4_000, 10_000] {
                 try? await Task.sleep(nanoseconds: wait * 1_000_000)
                 await check(app: app)
@@ -36,7 +38,7 @@ import UIKit
         }
     }
 
-    static func check(app: AppModel?) async {
+    func check(app: AppModel?) async {
         guard let app, let api = app.api, anyOn(), !running else { return }
         self.app = app
         running = true
@@ -54,8 +56,8 @@ import UIKit
     }
 
     /// (ok, outcome, error)
-    private static func run(_ t: DeviceTask) async -> (Bool, String, String) {
-        let s = PhoneDataSync.shared
+    private func run(_ t: DeviceTask) async -> (Bool, String, String) {
+        let s = sync
         let calWrite = s.writeAllowed && s.permitted(.calendar)
         if let why = DeviceTaskRules.refuse(t, on: { s.on($0) }, calWrite: calWrite, now: Date().timeIntervalSince1970) { return (false, "", why) }
         if t.kind == "dial" { return await dial(t) }
@@ -64,7 +66,7 @@ import UIKit
         return (ok, ok ? "done" : "", err)
     }
 
-    private static func dial(_ t: DeviceTask) async -> (Bool, String, String) {
+    private func dial(_ t: DeviceTask) async -> (Bool, String, String) {
         #if os(iOS)
         guard let url = URL(string: "tel:" + DeviceTaskRules.dialNumber(t.s("number"))) else { return (false, "", "no number") }
         let visible = UIApplication.shared.applicationState == .active
@@ -81,6 +83,7 @@ import UIKit
             content.title = L(R.string.device_dial_title, who)
             content.body = L(R.string.device_dial_body)
             content.sound = .default
+            content.threadIdentifier = NotifyRules.thread
             content.userInfo = ["dial": url.absoluteString]
             content.interruptionLevel = .timeSensitive
             let req = UNNotificationRequest(identifier: "dial:\(t.id)", content: content, trigger: nil)

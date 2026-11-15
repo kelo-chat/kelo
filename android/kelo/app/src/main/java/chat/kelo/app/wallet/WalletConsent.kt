@@ -7,44 +7,25 @@ import android.content.Context
  * for a card. What was accepted is kept on this phone only, as the notice's version and the time: the server's wallet API has no
  * field for it (POST/PATCH /api/wallet/cards ignore unknown fields).
  */
-class WalletConsent(context: Context) {
+class PrefsWalletConsent(context: Context) : WalletConsent {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /** The card notice was accepted for a card that was then saved. */
-    fun cardSaved(cardId: String, at: Long = System.currentTimeMillis()) {
-        prefs.edit().putString(ConsentRules.cardKey(cardId), ConsentRules.record(CARD_NOTICE_VERSION, at)).apply()
+    override fun cardSaved(cardId: String, at: Long) {
+        prefs.edit().putString(ConsentRules.cardKey(cardId), ConsentRules.record(WalletConsent.CARD_NOTICE_VERSION, at)).apply()
     }
 
     /** The auto-pay notice was accepted for [cardId]. */
-    fun autoPayAccepted(cardId: String, at: Long = System.currentTimeMillis()) {
-        prefs.edit().putString(ConsentRules.autoPayKey(cardId), ConsentRules.record(AUTOPAY_NOTICE_VERSION, at)).apply()
+    override fun autoPayAccepted(cardId: String, at: Long) {
+        prefs.edit().putString(ConsentRules.autoPayKey(cardId), ConsentRules.record(WalletConsent.AUTOPAY_NOTICE_VERSION, at)).apply()
     }
 
-    fun forget(cardId: String) {
+    override fun forget(cardId: String) {
         prefs.edit().remove(ConsentRules.cardKey(cardId)).remove(ConsentRules.autoPayKey(cardId)).apply()
     }
 
-    companion object {
-        /** Raise when the wording of a notice changes in meaning. */
-        const val CARD_NOTICE_VERSION = 1
-        const val AUTOPAY_NOTICE_VERSION = 1
-        private const val PREFS = "kelo.wallet.consent"
+    private companion object {
+        const val PREFS = "kelo.wallet.consent"
     }
 }
 
-object ConsentRules {
-    fun cardKey(cardId: String) = "card_notice:$cardId"
-    fun autoPayKey(cardId: String) = "autopay_notice:$cardId"
-
-    /** "v1@1762500000000" */
-    fun record(version: Int, at: Long) = "v$version@$at"
-
-    /** (version, time) of a stored record, or null. */
-    fun parse(text: String?): Pair<Int, Long>? {
-        val m = Regex("v(\\d+)@(\\d+)").matchEntire(text ?: return null) ?: return null
-        return m.groupValues[1].toInt() to m.groupValues[2].toLong()
-    }
-
-    /** Saving is possible only with the notice's box ticked and the card details complete. */
-    fun canSave(detailsReady: Boolean, acknowledged: Boolean): Boolean = detailsReady && acknowledged
-}

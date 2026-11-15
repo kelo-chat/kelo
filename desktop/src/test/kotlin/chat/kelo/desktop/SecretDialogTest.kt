@@ -1,5 +1,9 @@
 package chat.kelo.desktop
 
+import chat.kelo.desktop.chat.DesktopChat
+import chat.kelo.app.chat.ChatViewModel
+
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -10,10 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.chat.ChatItem
-import chat.kelo.desktop.chat.ChatModel
-import chat.kelo.desktop.i18n.Strings
 import chat.kelo.desktop.ui.KeloFrame
 import chat.kelo.desktop.ui.Page
 import chat.kelo.desktop.ui.Shell
@@ -47,16 +48,17 @@ class SecretDialogTest {
     @Test fun japanese320() = flow("ja", 320, sendAsIs = false)
 
     private fun flow(lang: String, width: Int, sendAsIs: Boolean) {
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val m = MockServer("--lang", if (lang == "ko") "ko" else "en", "--secrets").also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
-        val chat = ChatModel(app)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             KeloFrame(app) {
                 Box(Modifier.size(width.dp, 820.dp)) {
-                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {})
+                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side)
                 }
             }
         }
@@ -66,7 +68,7 @@ class SecretDialogTest {
             val typed = if (lang == "ko") "🙂 Anthropic 키는 $key 이거야. 이걸로 연결해줘" else "🙂 My Anthropic key is $key — please connect it"
             chat.setInput(typed)
             chat.send()
-            ui.waitText(words.get(R.string.secret_title))
+            ui.waitText(words.get(Res.string.secret_title))
             val before = chat.state.value
             assertEquals(typed, before.input)                                                  // back in the composer
             assertTrue(before.items.none { it is ChatItem.Msg && it.mine && key in it.text })  // no sent bubble
@@ -79,18 +81,18 @@ class SecretDialogTest {
             }
             shots("ask")
             fun click(text: String) = compose.onAllNodes(hasText(text) and hasClickAction()).onFirst().performSemanticsAction(SemanticsActions.OnClick)
-            click(words.get(R.string.secret_save))
-            ui.waitText(words.get(R.string.secret_for))
-            ui.waitText(words.get(R.string.secret_key_for, "Anthropic"))
+            click(words.get(Res.string.secret_save))
+            ui.waitText(words.get(Res.string.secret_for))
+            ui.waitText(words.get(Res.string.secret_key_for, "Anthropic"))
             shots("save")
-            click(words.get(R.string.back))
-            ui.waitText(words.get(R.string.secret_send_as_is))
+            click(words.get(Res.string.back))
+            ui.waitText(words.get(Res.string.secret_send_as_is))
             if (sendAsIs) {
-                click(words.get(R.string.secret_send_as_is))
+                click(words.get(Res.string.secret_send_as_is))
                 ui.waitUntil("sent as is") { chat.state.value.items.any { it is ChatItem.Msg && it.mine && it.text == typed } }
                 assertEquals("", chat.state.value.input)
             } else {
-                click(words.get(R.string.secret_edit))
+                click(words.get(Res.string.secret_edit))
                 ui.waitUntil("closed") { chat.state.value.secretAsk == null }
                 assertEquals(typed, chat.state.value.input)
             }

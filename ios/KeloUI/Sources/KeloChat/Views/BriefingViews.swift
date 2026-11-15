@@ -22,10 +22,9 @@ public enum BriefingTap: Equatable, Sendable {
 
 /// A small reference chip under a "worth noticing" note: the card item it points at, labelled with it; `tap` nil = not clickable.
 public struct BriefingChip: Equatable, Sendable {
-    public var ref: String
     public var label: String
     public var tap: BriefingTap?
-    public init(ref: String, label: String, tap: BriefingTap? = nil) { self.ref = ref; self.label = label; self.tap = tap }
+    public init(label: String, tap: BriefingTap? = nil) { self.label = label; self.tap = tap }
 }
 
 /// The briefing card's small rules, apart from the UI (Android BriefingRules).
@@ -94,12 +93,12 @@ public enum BriefingRules {
     }
 
     private static func chip(_ ref: String, _ card: BriefingCard, weatherLabel: String, clock: (Double) -> String) -> BriefingChip? {
-        if let w = card.weather, ref == (w.id.isBlank ? "w" : w.id) { return BriefingChip(ref: ref, label: weatherLabel) }
+        if let w = card.weather, ref == (w.id.isBlank ? "w" : w.id) { return BriefingChip(label: weatherLabel) }
         if let e = card.events.first(where: { $0.id == ref }), !e.title.isBlank {
-            return BriefingChip(ref: ref, label: clock(e.start) + " " + e.title, tap: tap(e.open))
+            return BriefingChip(label: clock(e.start) + " " + e.title, tap: tap(e.open))
         }
-        if let a = card.ahead.first(where: { $0.id == ref }), !a.title.isBlank { return BriefingChip(ref: ref, label: a.title, tap: tap(a.open)) }
-        if let m = card.missed.first(where: { $0.id == ref }), !m.title.isBlank { return BriefingChip(ref: ref, label: m.title, tap: tap(m.open)) }
+        if let a = card.ahead.first(where: { $0.id == ref }), !a.title.isBlank { return BriefingChip(label: a.title, tap: tap(a.open)) }
+        if let m = card.missed.first(where: { $0.id == ref }), !m.title.isBlank { return BriefingChip(label: m.title, tap: tap(m.open)) }
         return nil
     }
 
@@ -254,7 +253,7 @@ struct BriefingCardView: View {
 
     /// A day as the app's language writes a month and day ("11월 12일", "Nov 12").
     @MainActor static func monthDay(_ y: Int, _ m: Int, _ d: Int) -> String {
-        let f = DateFormatter(); f.locale = Strings.shared.locale; f.timeZone = TimeZone(identifier: "UTC")
+        let f = DateFormatter(); f.locale = appLocale(); f.timeZone = TimeZone(identifier: "UTC")
         f.setLocalizedDateFormatFromTemplate("MMMd")
         var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
         guard let date = cal.date(from: DateComponents(year: y, month: m, day: d, hour: 12)) else { return "\(m)/\(d)" }
@@ -262,7 +261,7 @@ struct BriefingCardView: View {
     }
 
     private func clock(_ unix: Double) -> String {
-        Date(timeIntervalSince1970: unix).formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(Strings.shared.locale))
+        Date(timeIntervalSince1970: unix).formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(appLocale()))
     }
 
     /// A reference chip: the item's label (wraps, never cut); tappable ones show it in the accent colour and do what the item does.
@@ -276,10 +275,6 @@ struct BriefingCardView: View {
         } else {
             label.accessibilityElement(children: .combine)
         }
-    }
-
-    private func small(_ t: String) -> some View {
-        Text(t).font(KeloFont.small).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true)
     }
 
     private func section<Content: View>(_ icon: KeloIcon, _ title: String, @ViewBuilder _ content: () -> Content) -> some View {
@@ -354,7 +349,7 @@ private struct BriefingHoursLine: View {
     private func clock(_ hour: Int, _ minute: Int) -> String {
         var comps = DateComponents(); comps.hour = hour; comps.minute = minute; comps.year = 2000; comps.month = 1; comps.day = 1
         let d = Calendar(identifier: .gregorian).date(from: comps) ?? Date()
-        return d.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(Strings.shared.locale))
+        return d.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(appLocale()))
     }
 
     private func span(_ a: String, _ b: String) -> String {

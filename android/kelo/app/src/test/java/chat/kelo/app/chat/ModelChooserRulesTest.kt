@@ -82,7 +82,6 @@ class ModelChooserRulesTest {
         val l = chat.kelo.app.core.KeloApi.json.decodeFromString<ModelList>(
             """{"provider":"openrouter","models":["a"],"labels":{},"info":{"a":{"images":false,"context":null,"effort_levels":[]}},"error":null,"stale":true,"fetched_at":1700000000,"retry_in":30}""")
         assertEquals(true, l.stale)
-        assertEquals(1700000000L, l.fetchedAt)
         assertEquals(emptyList<String>(), l.info["a"]?.effortLevels)
         assertEquals(null, chat.kelo.app.core.KeloApi.json.decodeFromString<ModelList>("""{"models":["a"],"info":{"a":{}}}""").info["a"]?.effortLevels)
     }

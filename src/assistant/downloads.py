@@ -35,6 +35,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from .app_releases import AppReleases
+
 MANIFEST = "manifest.json"
 # platform -> (file extension, media type, what the site calls it)
 PLATFORMS: dict[str, tuple[str, str, str]] = {
@@ -341,7 +343,7 @@ class Publisher:
 
 
 class ServerPublisher(Publisher):
-    def publish_server(self, manifest: Path, registry: str | None = None) -> dict[str, Any]:
+    def publish_server(self, manifest: Path, registry: str | None = None, releases: AppReleases | None = None) -> dict[str, Any]:
         """Puts a server release (release.json from the release workflow) into the manifest; the app rows stay as they are."""
         from .release import DEFAULT_REGISTRY, ReleaseError, parse
 
@@ -354,6 +356,11 @@ class ServerPublisher(Publisher):
             release = parse(raw, registry or (raw.get("registry") if isinstance(raw, dict) else None) or DEFAULT_REGISTRY)
         except ReleaseError as e:
             raise PublishError(f"{manifest.name} is not a valid server release: {e}") from None
+        # a minimum app version may never be above an app people can install (app_releases.py)
+        problems = (releases or AppReleases.load()).check_manifest(release.min_app)
+        if problems:
+            raise PublishError(f"{manifest.name} demands an app version that was never released, so it is not published:\n  "
+                               + "\n  ".join(p.message for p in problems))
         cid = self.container()
         with tempfile.TemporaryDirectory(prefix="kelo-publish-") as tmp:
             scratch = Path(tmp)
@@ -370,7 +377,7 @@ class ServerPublisher(Publisher):
 
 
 def run_publish_server(args: Any, root: Path | None = None, *, run: Callable[..., Any] = subprocess.run,
-                       out: Callable[[str], None] = print) -> int:
+                       out: Callable[[str], None] = print, releases: AppReleases | None = None) -> int:
     """`assistant publish-server release.json`, on the operator's server only (the same rule as publish-app)."""
     from .cli import read_env
 
@@ -386,7 +393,7 @@ def run_publish_server(args: Any, root: Path | None = None, *, run: Callable[...
         out("error: server releases are published only on the operator's server. If this is it, set ASSISTANT_OPERATOR=1 in .env.")
         return 1
     try:
-        ServerPublisher(root, run=run, out=out).publish_server(Path(args.manifest), getattr(args, "registry", None))
+        ServerPublisher(root, run=run, out=out).publish_server(Path(args.manifest), getattr(args, "registry", None), releases)
     except PublishError as e:
         out(f"error: {e}")
         return 1
@@ -412,9 +419,41 @@ def run_publish(args: Any, root: Path | None = None, *, run: Callable[..., Any] 
             "If this is it, set ASSISTANT_OPERATOR=1 in .env.")
         return 1
     try:
-        Publisher(root, run=run, out=out).publish(args.platform, Path(args.file), args.version,
-                                                  base_url=_origin(public) or "https://kelo.chat")
+        row = Publisher(root, run=run, out=out).publish(args.platform, Path(args.file), args.version,
+                                                        base_url=_origin(public) or "https://kelo.chat")
     except PublishError as e:
         out(f"error: {e}")
         return 1
+    record_published(root, row, out)
     return 0
+
+
+def record_published(root: Path, row: dict[str, Any], out: Callable[[str], None] = print) -> None:
+    """A file offered at /download is live at once: add it to releases/apps.json (app_releases.py) when this folder has the repo's
+    record, otherwise print the exact line to add. Never raises: the publish itself has succeeded."""
+    from .app_releases import AppReleases, RecordError, line_for
+    from .settings import desktop_version_code
+
+    platform = "android" if row.get("platform") == "android" else "desktop"
+    version = str(row.get("version") or "")
+    build = row.get("version_code") if platform == "android" else desktop_version_code(version)
+    target = root / "releases" / "apps.json"
+    try:
+        if build is None:
+            raise RecordError("the build number is not known (aapt2 missing and none given with --version X+BUILD)")
+        entry = line_for(platform, version, build, "download", now_date())
+        if not target.is_file():
+            out(f"Record this release (a copy without the repo's releases/apps.json): add to \"{platform}\" in releases/apps.json:\n  {entry}")
+            return
+        record = AppReleases.read(target)
+        added = record.add(platform, version, build, "download", now_date())
+        if added:
+            record.save(target)
+            out(f"Recorded {platform} {version} (build {build}) in {target}: commit it.")
+    except RecordError as e:
+        out(f"Not recorded in releases/apps.json ({e}). Record it by hand: assistant release-record {platform} {version or '<version>'} "
+            f"{build if build is not None else '<build>'} download")
+
+
+def now_date() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%d")

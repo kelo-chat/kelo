@@ -96,20 +96,20 @@ public struct SecretEntryCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         if framed {
-            SecretCardFrame { inner }.keloSensitive()
+            CardBox { inner }.keloSensitive()
         } else {
             inner.keloSensitive()
         }
     }
 }
 
-/// The chat's card frame (the same look as the chat's other cards).
-private struct SecretCardFrame<Content: View>: View {
+/// .approval / .secure-card: a full-width card in the chat list.
+public struct CardBox<Content: View>: View {
     let content: Content
     @Environment(\.kelo) private var c
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    public init(@ViewBuilder content: () -> Content) { self.content = content() }
 
-    var body: some View {
+    public var body: some View {
         VStack(alignment: .leading, spacing: 10) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14).padding(.vertical, 12)
@@ -149,6 +149,8 @@ private struct SecretOpenEntry: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityAddTraits(.isHeader)
+            LinkButton(L(R.string.cancel), action: onCancel)
+                .accessibilityIdentifier("kelo.secretEntry.cancel")
         }
         if let reason = SecretEntryWords.reason(r) {
             Text(reason).font(KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
@@ -166,21 +168,20 @@ private struct SecretOpenEntry: View {
             }
         }
         .id(r.id)
-        LinkButton(L(R.string.cancel), action: onCancel)
-            .accessibilityIdentifier("kelo.secretEntry.cancel")
     }
 }
 
-/// A key or token: one masked field with Show and Paste. Tried once before it is saved when `check`.
+/// A key or token: one masked field with Show. Tried once before it is saved when `check`.
 private struct SecretKeyEntry: View {
     let r: SecretRequest
     let onSaved: (SecretSaveAnswer, SecretResult?) -> Void
     let onGone: () -> Void
-    @Environment(AppModel.self) private var app
+    @Environment(\.keloApi) private var api
     // memory only (@State, never @SceneStorage/@AppStorage): the value goes when the entry goes
     @State private var value = ""
-    @State private var busy = false
-    @State private var problem = ""
+    @State private var answer = SecretAnswerModel()
+    private var busy: Bool { answer.busy }
+    private var problem: String { answer.problem }
 
     var body: some View {
         SecretValueField(label: L(R.string.secret_field_key), value: $value, keyboard: .ascii)
@@ -194,38 +195,26 @@ private struct SecretKeyEntry: View {
     }
 
     private func save() {
-        busy = true; problem = ""
         let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        Task {
-            defer { busy = false }
-            do {
-                let answer = try await SecretCalls(api: app.requireApi()).putSecret(name: r.name, secret: v)
-                value = ""
-                Haptics.success()
-                onSaved(answer, SecretResult(checked: answer.checked ? "ok" : "unchecked"))
-            } catch let e as ApiError {
-                if e.status == 404 { onGone() } else { problem = e.isNetwork || e.detail.isEmpty ? L(R.string.secret_failed) : e.detail }
-                Haptics.warning()
-            } catch {
-                problem = L(R.string.secret_failed)
-                Haptics.warning()
-            }
-        }
+        answer.saveKey(name: r.name, secret: v, api: api, saved: { got in
+            value = ""
+            onSaved(got, SecretResult(checked: got.checked ? "ok" : "unchecked"))
+        }, onGone: onGone)
     }
 }
 
-/// A website login: user name and password (Show, Paste), and how it is kept (by default only once a sign-in with it works).
+/// A website login: user name and password (Show), and how it is kept (by default only once a sign-in with it works).
 private struct SecretLoginEntry: View {
     let r: SecretRequest
     let onSaved: (SecretSaveAnswer, SecretResult?) -> Void
     let onGone: () -> Void
-    @Environment(AppModel.self) private var app
-    @Environment(\.kelo) private var c
+    @Environment(\.keloApi) private var api
     @State private var user = ""
     @State private var pass = ""
     @State private var mode: SecretLoginMode = .afterSuccess
-    @State private var busy = false
-    @State private var problem = ""
+    @State private var answer = SecretAnswerModel()
+    private var busy: Bool { answer.busy }
+    private var problem: String { answer.problem }
 
     var body: some View {
         SecretValueField(label: L(R.string.vault_username), value: $user, keyboard: .email, masked: false, content: .username)
@@ -233,13 +222,7 @@ private struct SecretLoginEntry: View {
         SecretValueField(label: L(R.string.vault_password), value: $pass, keyboard: .ascii, content: .password)
             .accessibilityIdentifier("kelo.secretEntry.password")
         FieldLabel(L(R.string.vault_mode))
-        VStack(spacing: 0) {
-            ForEach(Array(SecretLoginMode.allCases.enumerated()), id: \.offset) { i, m in
-                if i > 0 { Hairline() }
-                modeRow(m)
-            }
-        }
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(c.line, lineWidth: 1))
+        LoginModeMenu(mode: mode) { mode = $0 }
         if !problem.isEmpty { ErrorText(problem, small: true) }
         PrimaryButton(L(SecretEntryWords.saveLabel(busy: busy, check: false)), enabled: !busy && SecretEntryRules.loginReady(user: user, pass: pass), busy: busy) { save() }
             .accessibilityIdentifier("kelo.secretEntry.save")
@@ -247,47 +230,12 @@ private struct SecretLoginEntry: View {
             .onDisappear { user = ""; pass = "" }
     }
 
-    private func modeRow(_ m: SecretLoginMode) -> some View {
-        let on = mode == m
-        let (title, help): (StringKey, StringKey) = switch m {
-        case .afterSuccess: (R.string.vault_mode_after_success, R.string.vault_mode_after_success_help)
-        case .now: (R.string.vault_mode_now, R.string.vault_mode_now_help)
-        case .once: (R.string.vault_mode_once, R.string.vault_mode_once_help)
-        }
-        return Button { mode = m } label: {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: on ? "largecircle.fill.circle" : "circle").foregroundStyle(on ? c.accent : c.muted).padding(.top, 2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L(title)).font(on ? KeloFont.titleSmall : KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
-                    if on { Text(L(help)).font(KeloFont.small).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true) }
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 10)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
-    }
-
     private func save() {
-        busy = true; problem = ""
-        let u = user.trimmingCharacters(in: .whitespacesAndNewlines), p = pass, m = mode
-        Task {
-            defer { busy = false }
-            do {
-                let answer = try await SecretCalls(api: app.requireApi()).putLogin(name: r.name, username: u, password: p, mode: m)
-                user = ""; pass = ""
-                Haptics.success()
-                onSaved(answer, SecretResult(mode: m.rawValue))
-            } catch let e as ApiError {
-                if e.status == 404 { onGone() } else { problem = e.isNetwork || e.detail.isEmpty ? L(R.string.secret_failed) : e.detail }
-                Haptics.warning()
-            } catch {
-                problem = L(R.string.secret_failed)
-                Haptics.warning()
-            }
-        }
+        let u = user.trimmingCharacters(in: .whitespacesAndNewlines)
+        answer.saveLogin(name: r.name, user: u, pass: pass, mode: mode, api: api, saved: { got in
+            user = ""; pass = ""
+            onSaved(got, SecretResult())
+        }, onGone: onGone)
     }
 }
 
@@ -299,7 +247,9 @@ private struct SecretCardEntry: View {
     let onSaved: (SecretSaveAnswer, SecretResult?) -> Void
     let onGone: () -> Void
     @Environment(AppModel.self) private var app
-    @State private var problem = ""
+    @Environment(\.keloApi) private var api
+    @State private var answer = SecretAnswerModel()
+    private var problem: String { answer.problem }
 
     var body: some View {
         if let wallet = app.wallet {
@@ -314,24 +264,17 @@ private struct SecretCardEntry: View {
     /// The card the form saved answers the entry (its nickname and last four digits only).
     private func saved(_ card: JSON) {
         let c = Lenient(card)
-        Task {
-            do {
-                let answer = try await SecretCalls(api: app.requireApi()).cardSaved(id: r.id, cardId: c.str("id"))
-                onSaved(answer, SecretResult(card: SecretCard(id: c.str("id"), label: c.str("label"), brand: c.str("brand"), last4: c.str("last4"))))
-            } catch let e as ApiError {
-                // the card is in the wallet either way; an entry that is gone just folds
-                if e.status == 404 { onGone() } else { problem = e.isNetwork || e.detail.isEmpty ? L(R.string.secret_failed) : e.detail }
-            } catch {
-                problem = L(R.string.secret_failed)
-            }
-        }
+        // the card is in the wallet either way; an entry that is gone just folds
+        answer.cardSaved(id: r.id, cardId: c.str("id"), api: api, saved: { got in
+            onSaved(got, SecretResult(card: SecretCard(id: c.str("id"), label: c.str("label"))))
+        }, onGone: onGone)
     }
 
     @ViewBuilder private var nextButton: some View {
         if !problem.isEmpty { ErrorText(problem, small: true) }
         PrimaryButton(L(R.string.secret_card_next)) {
             Haptics.tick()
-            problem = ""
+            answer.clearProblem()
             app.secretCardWait.start(r.id, returnTo: returnTo)
             app.router.openMyPage(.walletAdd)
         }
@@ -343,9 +286,9 @@ private struct SecretCardEntry: View {
     private func takeOutcome() {
         guard let o = app.secretCardWait.take(r.id) else { return }
         switch o.kind {
-        case .saved: onSaved(SecretSaveAnswer(ok: true, turnId: o.turnId), o.result)
+        case .saved: onSaved(SecretSaveAnswer(turnId: o.turnId), o.result)
         case .gone: onGone()   // the card is in the wallet either way; an entry that is gone just folds
-        case .failed: problem = o.detail.isEmpty ? L(R.string.secret_failed) : o.detail
+        case .failed: answer.setProblem(o.detail.isEmpty ? L(R.string.secret_failed) : o.detail)
         }
     }
 }
@@ -359,12 +302,12 @@ private struct SecretPinEntry: View {
 
     var body: some View {
         if let wallet = app.wallet {
-            wallet.pinForm(r.hosts.first ?? r.name, true, r.id) { turnId in onSaved(SecretSaveAnswer(ok: true, turnId: turnId), SecretResult()) }
+            wallet.pinForm(r.hosts.first ?? r.name, true, r.id) { turnId in onSaved(SecretSaveAnswer(turnId: turnId), SecretResult()) }
         }
     }
 }
 
-/// A labelled field; `masked` values show as dots until Show is pressed. Paste puts the clipboard's text in (trimmed).
+/// A labelled field; `masked` values show as dots until Show is pressed (the system's own paste works in it).
 private struct SecretValueField: View {
     enum Content { case username, password, none }
     let label: String
@@ -391,9 +334,6 @@ private struct SecretValueField: View {
                     .accessibilityLabel(L(shown ? R.string.secret_hide : R.string.secret_show))
                 }
             }
-            SecondaryButton(L(R.string.secret_paste), icon: .copy) {
-                if let t = Clipboard.text()?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { value = String(t.prefix(4096)) }
-            }
         }
     }
 }
@@ -411,5 +351,94 @@ private struct SecretContentType: ViewModifier {
         #else
         content
         #endif
+    }
+}
+
+/// How a login is kept, as one compact row: the chosen way's name (a tap lists the three ways, each with its one-line explanation),
+/// and the chosen way's explanation under it.
+public struct LoginModeMenu: View {
+    let mode: SecretLoginMode
+    let onPick: (SecretLoginMode) -> Void
+    @Environment(\.kelo) private var c
+
+    public init(mode: SecretLoginMode, onPick: @escaping (SecretLoginMode) -> Void) {
+        self.mode = mode
+        self.onPick = onPick
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Menu {
+                ForEach(SecretLoginMode.allCases, id: \.self) { m in
+                    Button(L(title(m))) { onPick(m) }
+                }
+            } label: {
+                HStack {
+                    Text(L(title(mode)))
+                        .font(KeloFont.body)
+                        .foregroundStyle(c.ink)
+                    Spacer()
+                    KeloIconView(.chevronRight, size: 16, tint: c.muted)
+                        .rotationEffect(.degrees(90))
+                }
+                .padding(12)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(c.line, lineWidth: 1))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("kelo.secretEntry.mode")
+            Text(L(help(mode)))
+                .font(KeloFont.small)
+                .foregroundStyle(c.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func title(_ m: SecretLoginMode) -> StringKey {
+        switch m {
+        case .afterSuccess: R.string.vault_mode_after_success
+        case .now: R.string.vault_mode_now
+        case .once: R.string.vault_mode_once
+        }
+    }
+
+    private func help(_ m: SecretLoginMode) -> StringKey {
+        switch m {
+        case .afterSuccess: R.string.vault_mode_after_success_help
+        case .now: R.string.vault_mode_now_help
+        case .once: R.string.vault_mode_once_help
+        }
+    }
+}
+
+/// One way to keep a typed login (once a sign-in with it works / now / once): a radio row, the chosen row's explanation under its name.
+public struct LoginModeRow: View {
+    let mode: SecretLoginMode
+    let on: Bool
+    let pick: () -> Void
+    @Environment(\.kelo) private var c
+
+    public init(mode: SecretLoginMode, on: Bool, pick: @escaping () -> Void) { self.mode = mode; self.on = on; self.pick = pick }
+
+    public var body: some View {
+        let (title, help): (StringKey, StringKey) = switch mode {
+        case .afterSuccess: (R.string.vault_mode_after_success, R.string.vault_mode_after_success_help)
+        case .now: (R.string.vault_mode_now, R.string.vault_mode_now_help)
+        case .once: (R.string.vault_mode_once, R.string.vault_mode_once_help)
+        }
+        Button(action: pick) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: on ? "largecircle.fill.circle" : "circle").foregroundStyle(on ? c.accent : c.muted).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L(title)).font(on ? KeloFont.titleSmall : KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
+                    if on { Text(L(help)).font(KeloFont.small).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true) }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? [.isSelected, .isButton] : .isButton)
     }
 }

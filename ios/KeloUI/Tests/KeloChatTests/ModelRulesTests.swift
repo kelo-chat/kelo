@@ -28,36 +28,36 @@ import KeloShared
     }
 
     @Test func traitsComeFromTierWordsAndFactsOnly() {
-        #expect(ModelTraits.of("claude-haiku-5-5", facts: ModelFacts(images: true, context: 1_000_000)) == [.fast, .images, .long])
-        #expect(ModelTraits.of("gemini-3.8-pro", facts: ModelFacts(images: true, context: 200_000)) == [.large, .images])
+        #expect(ModelTraits.of("claude-haiku-5-5", facts: ModelEffort(images: true, context: 1_000_000)) == [.fast, .images, .long])
+        #expect(ModelTraits.of("gemini-3.8-pro", facts: ModelEffort(images: true, context: 200_000)) == [.large, .images])
         #expect(ModelTraits.of("deepseek/deepseek-r1", facts: nil) == [.reasoning])
         #expect(ModelTraits.of("gemini-3.8-flash-pro", facts: nil) == [.fast])
-        #expect(ModelTraits.of("llama3.2", facts: ModelFacts(images: false, context: 131_072)).isEmpty)
+        #expect(ModelTraits.of("llama3.2", facts: ModelEffort(images: false, context: 131_072)).isEmpty)
         #expect(ModelTraits.of("gemini-3", facts: nil).isEmpty)
     }
 
     @Test func effortAndSections() {
-        #expect(ModelChooserRules.effort(ChatProvider(name: "a", effortLevels: ["low", "medium", "high"])) == .levels(["", "low", "medium", "high"]))
-        #expect(ModelChooserRules.effort(ChatProvider(name: "agy", effortNote: "set by the name")) == .fromModel("set by the name"))
-        #expect(ModelChooserRules.effort(ChatProvider(name: "anthropic")) == .none)
-        #expect(ModelChooserRules.effort(nil) == .none)
+        #expect(EffortRules.effort(ModelProvider(name: "a", effortLevels: ["low", "medium", "high"])) == .levels(["", "low", "medium", "high"]))
+        #expect(EffortRules.effort(ModelProvider(name: "agy", effortNote: "set by the name")) == .fromModel("set by the name"))
+        #expect(EffortRules.effort(ModelProvider(name: "anthropic")) == .none)
+        #expect(EffortRules.effort(nil) == .none)
         // the levels the provider's model list states for the chosen model win; nil = it does not say
-        let codex = ChatProvider(name: "openai-codex", effortLevels: ["low", "medium", "high"])
-        #expect(ModelChooserRules.effort(codex, facts: ModelFacts(effortLevels: ["low", "medium", "high", "xhigh"])) == .levels(["", "low", "medium", "high", "xhigh"]))
-        #expect(ModelChooserRules.effort(codex, facts: ModelFacts(effortLevels: [])) == .none)
-        #expect(ModelChooserRules.effort(codex, facts: ModelFacts()) == .levels(["", "low", "medium", "high"]))
-        #expect(ModelChooserRules.effort(ChatProvider(name: "anthropic"), facts: ModelFacts(effortLevels: ["low", "max"])) == .levels(["", "low", "max"]))
+        let codex = ModelProvider(name: "openai-codex", effortLevels: ["low", "medium", "high"])
+        #expect(EffortRules.effort(codex, facts: ModelEffort(effortLevels: ["low", "medium", "high", "xhigh"])) == .levels(["", "low", "medium", "high", "xhigh"]))
+        #expect(EffortRules.effort(codex, facts: ModelEffort(effortLevels: [])) == .none)
+        #expect(EffortRules.effort(codex, facts: ModelEffort()) == .levels(["", "low", "medium", "high"]))
+        #expect(EffortRules.effort(ModelProvider(name: "anthropic"), facts: ModelEffort(effortLevels: ["low", "max"])) == .levels(["", "low", "max"]))
         let providers = [
-            ChatProvider(name: "claude-subscription", displayName: "Claude", configured: true, unofficial: true),
-            ChatProvider(name: "openrouter", displayName: "OpenRouter", configured: true),
-            ChatProvider(name: "anthropic", displayName: "Anthropic", configured: true),
-            ChatProvider(name: "gemini", displayName: "Gemini", configured: false),
-            ChatProvider(name: "custom", displayName: "Custom", configured: nil),
+            ModelProvider(name: "claude-subscription", displayName: "Claude", configured: true, unofficial: true),
+            ModelProvider(name: "openrouter", displayName: "OpenRouter", configured: true),
+            ModelProvider(name: "anthropic", displayName: "Anthropic", configured: true),
+            ModelProvider(name: "gemini", displayName: "Gemini", configured: false),
+            ModelProvider(name: "custom", displayName: "Custom", configured: nil),
         ]
         #expect(ModelChooserRules.sections(current: "openrouter", providers: providers) == ["openrouter", "anthropic", "claude-subscription"])
         #expect(ModelChooserRules.sections(current: "gemini", providers: providers) == ["gemini", "anthropic", "openrouter", "claude-subscription"])
         #expect(ModelChooserRules.sections(current: "", providers: providers) == ["anthropic", "openrouter", "claude-subscription"])
-        let list = ChatModelList(provider: "p", models: ["a", "b"])
+        let list = ModelList(provider: "p", models: ["a", "b"])
         #expect(ModelChooserRules.rows(provider: "p", list: list, current: ModelChoice("p", "mine")) == ["mine", "a", "b"])
         #expect(ModelChooserRules.rows(provider: "p", list: list, current: ModelChoice("p", "a")) == ["a", "b"])
         #expect(ModelChooserRules.rows(provider: "p", list: list, current: ModelChoice("q", "mine")) == ["a", "b"])
@@ -65,20 +65,20 @@ import KeloShared
     }
 
     @Test func fallbackMustBeAnotherProvider() {
-        #expect(ModelSheetRules.initialFallback(Profile(provider: "a", fallbackProvider: "a", fallbackModel: "x")) == .none)
-        #expect(ModelSheetRules.initialFallback(Profile(provider: "a", fallbackProvider: "b", fallbackModel: "x")) == ModelChoice("b", "x"))
-        let (fb, cleared) = ModelSheetRules.afterMainChange(ModelChoice("b", "m"), ModelChoice("b", "x"))
+        #expect(ModelRules.initialFallback(Profile(provider: "a", fallbackProvider: "a", fallbackModel: "x")) == .none)
+        #expect(ModelRules.initialFallback(Profile(provider: "a", fallbackProvider: "b", fallbackModel: "x")) == ModelChoice("b", "x"))
+        let (fb, cleared) = ModelRules.afterMainChange(ModelChoice("b", "m"), ModelChoice("b", "x"))
         #expect(fb == .none && cleared)
-        #expect(ModelSheetRules.afterMainChange(ModelChoice("a", "m"), ModelChoice("b", "x")).1 == false)
-        #expect(!ModelSheetRules.complete(ModelChoice("a", " ")))
-        #expect(ModelSheetRules.complete(.none))
+        #expect(ModelRules.afterMainChange(ModelChoice("a", "m"), ModelChoice("b", "x")).1 == false)
+        #expect(!ModelRules.complete(ModelChoice("a", " ")))
+        #expect(ModelRules.complete(.none))
     }
 
     @Test func consentWordsAndRules() {
-        #expect(ProviderConsentRules.needs(ChatProvider(name: "q", unofficial: true, consentVersion: 2)))
-        #expect(!ProviderConsentRules.needs(ChatProvider(name: "q", unofficial: true, consent: ProviderConsentRecord(acceptedAt: 1, version: 2), consentVersion: 2)))
-        #expect(ProviderConsentRules.needs(ChatProvider(name: "q", unofficial: true, consent: ProviderConsentRecord(acceptedAt: 1, version: 1), consentVersion: 2)))
-        #expect(!ProviderConsentRules.needs(ChatProvider(name: "anthropic", consentVersion: 2)))
+        #expect(ProviderConsentRules.needs(ModelProvider(name: "q", unofficial: true, consentVersion: 2)))
+        #expect(!ProviderConsentRules.needs(ModelProvider(name: "q", unofficial: true, consent: ProviderConsentRecord(acceptedAt: 1, version: 2), consentVersion: 2)))
+        #expect(ProviderConsentRules.needs(ModelProvider(name: "q", unofficial: true, consent: ProviderConsentRecord(acceptedAt: 1, version: 1), consentVersion: 2)))
+        #expect(!ProviderConsentRules.needs(ModelProvider(name: "anthropic", consentVersion: 2)))
         #expect(ProviderConsentRules.service("claude-subscription") == .claudeSubscription)
         #expect(ProviderConsentRules.service("openai-codex") == .chatgptSubscription)
         #expect(ProviderConsentRules.subjectParticle("Anthropic") == "이")
@@ -86,40 +86,14 @@ import KeloShared
         #expect(ProviderConsentRules.subjectParticle("카카오") == "가")
         #expect(ProviderConsentRules.subjectParticle("네이버") == "가")
         #expect(ProviderConsentRules.subjectParticle("구글") == "이")
-        #expect(ProviderConsentRules.objectParticle("사이트 열기") == "를")
-        #expect(ProviderConsentRules.objectParticle("로그인 정보 입력") == "을")
-        #expect(ProviderConsentRules.objectParticle("Gmail") == "을")
-        #expect(ProviderConsentRules.askWord("Adding an event", language: "en") == "adding an event")
-        #expect(ProviderConsentRules.askWord("GitHub", language: "en") == "GitHub")
-        #expect(ProviderConsentRules.askWord("Adding an event", language: "ko") == "Adding an event")
+        #expect(AskWords.objectParticle("사이트 열기") == "를")
+        #expect(AskWords.objectParticle("로그인 정보 입력") == "을")
+        #expect(AskWords.objectParticle("Gmail") == "을")
+        #expect(AskWords.askWord("Adding an event", language: "en") == "adding an event")
+        #expect(AskWords.askWord("GitHub", language: "en") == "GitHub")
+        #expect(AskWords.askWord("Adding an event", language: "ko") == "Adding an event")
         #expect(ProviderConsentRules.requiredBy(ApiError(status: 428, detail: "consent_required:qwen")) == "qwen")
         #expect(ProviderConsentRules.requiredBy(ApiError(status: 422, detail: "consent_required:qwen")) == nil)
-    }
-
-    @Test func selectRules() {
-        let none = SelectOption("", "서버 기본값", keep: true)
-        let providers = [
-            none,
-            SelectOption("zai", "Z.ai (설정 필요)", sortKey: "Z.ai"),
-            SelectOption("openai", "OpenAI ✓", rank: 0, sortKey: "OpenAI"),
-            SelectOption("anthropic", "Anthropic (설정 필요)", sortKey: "Anthropic"),
-            SelectOption("gemini", "Gemini ✓", rank: 0, sortKey: "Gemini"),
-            SelectOption("deepseek", "deepseek · 기본 모델로 쓰는 중", enabled: false, sortKey: "deepseek"),
-        ]
-        #expect(SelectRules.arrange(providers, query: "", sorted: true).map(\.value) == ["", "gemini", "openai", "anthropic", "deepseek", "zai"])
-        #expect(SelectRules.arrange(providers, query: "", sorted: false).map(\.value) == providers.map(\.value))
-        #expect(SelectRules.arrange(providers, query: " OPEN", sorted: true).map(\.value) == ["", "openai"])
-        #expect(SelectRules.arrange(providers, query: "deep", sorted: true).map(\.value) == ["", "deepseek"])
-        let nothing = SelectRules.arrange(providers, query: "qqq", sorted: true)
-        #expect(nothing.map(\.value) == [""])
-        #expect(SelectRules.nothingFound(nothing, query: "qqq"))
-        #expect(!SelectRules.useSheet(10))
-        #expect(SelectRules.useSheet(11))
-        let grouped = [none, SelectOption("q", "Qwen", rank: 0, group: 1), SelectOption("a", "Anthropic", rank: 1)]
-        let arranged = SelectRules.arrange(grouped, query: "", sorted: true)
-        #expect(arranged.map(\.value) == ["", "a", "q"])
-        #expect(SelectRules.dividerBefore(arranged, 2))
-        #expect(!SelectRules.dividerBefore(arranged, 1))
     }
 
     @Test func phoneSignInOnlyWhenTheServerOffersIt() {
@@ -156,13 +130,13 @@ import KeloShared
         #expect(m.replies?.goalId == 3)
         let list = ChatMessage.parseList(try JSON.parse(#"[{"id": 1, "content": "a"}, {"content": "no id"}]"#))
         #expect(list.count == 1)
-        let p = ChatProvider.parseList(try JSON.parse(#"[{"name": "claude-subscription", "signin": true, "signed_in": false, "unofficial": true, "consent": {"version": 1}, "consent_version": 2}]"#))
+        let p = ModelProvider.list(try JSON.parse(#"[{"name": "claude-subscription", "signin": true, "signed_in": false, "unofficial": true, "consent": {"version": 1}, "consent_version": 2}]"#))
         #expect(p.first?.signin == true && p.first?.signedIn == false && p.first?.consent?.version == 1)
-        let ml = try KeloApi.decode(ChatModelList.self, try JSON.parse(#"{"provider": "p", "models": ["a"], "labels": {"a": "A"}, "info": {"a": {"images": true, "context": 1000000}}}"#))
+        let ml = try KeloApi.decode(ModelList.self, try JSON.parse(#"{"provider": "p", "models": ["a"], "labels": {"a": "A"}, "info": {"a": {"images": true, "context": 1000000}}}"#))
         #expect(ml.labels["a"] == "A" && ml.info["a"]?.images == true && ml.info["a"]?.context == 1_000_000)
         #expect(ml.stale == false && ml.info["a"]?.effortLevels == nil)
-        let old = try KeloApi.decode(ChatModelList.self, try JSON.parse(#"{"provider": "p", "models": ["a"], "info": {"a": {"effort_levels": []}}, "stale": true, "fetched_at": 1700000000}"#))
-        #expect(old.stale && old.fetchedAt == 1_700_000_000 && old.info["a"]?.effortLevels == [])
+        let old = try KeloApi.decode(ModelList.self, try JSON.parse(#"{"provider": "p", "models": ["a"], "info": {"a": {"effort_levels": []}}, "stale": true, "fetched_at": 1700000000}"#))
+        #expect(old.stale && old.info["a"]?.effortLevels == [])
         let trimmed = ChatHistory.trim((1...250).map { ChatMessage(id: Int64($0), content: "x") })
         #expect(trimmed.count == 200 && trimmed.first?.id == 51)
     }
@@ -187,29 +161,28 @@ import KeloShared
         // the grow / shrink of the folding lists: animated normally, instant with Reduce Motion
         #expect(KeloMotionSpec.standard(false) != nil)
         #expect(KeloMotionSpec.standard(true) == nil)
-        #expect(KeloMotionSpec.enter(true) == nil && KeloMotionSpec.exit(true) == nil)
     }
 
     @Test func aCustomServerHasItsLevelsUntilItRefusesThem() throws {
-        let custom = ChatProvider(name: "custom", effortLevels: ["low", "medium", "high", "max"])
-        #expect(ModelChooserRules.effort(custom, facts: ModelFacts()) == .levels(["", "low", "medium", "high", "max"]))
-        let refused = ModelChooserRules.effort(custom, facts: ModelFacts(effortLevels: [], effortNote: "이 서버는 생각 수준 설정을 받지 않아요"))
+        let custom = ModelProvider(name: "custom", effortLevels: ["low", "medium", "high", "max"])
+        #expect(EffortRules.effort(custom, facts: ModelEffort()) == .levels(["", "low", "medium", "high", "max"]))
+        let refused = EffortRules.effort(custom, facts: ModelEffort(effortLevels: [], effortNote: "이 서버는 생각 수준 설정을 받지 않아요"))
         #expect(refused == .refused("이 서버는 생각 수준 설정을 받지 않아요"))
-        #expect(ModelChooserRules.effortNote(refused) == "이 서버는 생각 수준 설정을 받지 않아요")
-        #expect(ModelChooserRules.effortNote(.fromModel("set by the name")) == "set by the name")
-        #expect(ModelChooserRules.effortNote(.levels(["", "low"])) == nil)
+        #expect(EffortRules.effortNote(refused) == "이 서버는 생각 수준 설정을 받지 않아요")
+        #expect(EffortRules.effortNote(.fromModel("set by the name")) == "set by the name")
+        #expect(EffortRules.effortNote(.levels(["", "low"])) == nil)
         #expect(ModelChooserRules.closeAfterPick(refused))
-        let facts = try JSONDecoder().decode(ModelFacts.self, from: Data(#"{"images":false,"effort_levels":[],"effort_note":"no"}"#.utf8))
-        #expect(ModelChooserRules.effort(custom, facts: facts) == .refused("no"))
+        let facts = try JSONDecoder().decode(ModelEffort.self, from: Data(#"{"images":false,"effort_levels":[],"effort_note":"no"}"#.utf8))
+        #expect(EffortRules.effort(custom, facts: facts) == .refused("no"))
     }
 
     @Test func theShownLevelIsWhatTheServerSends() {
         let custom = ["", "low", "medium", "high", "max"]
-        #expect(ModelChooserRules.shownLevel(custom, "max") == "max")
-        #expect(ModelChooserRules.shownLevel(custom, "") == "")
-        #expect(ModelChooserRules.shownLevel(custom, "xhigh") == "high")   // no xhigh here: the next lower one, like effort.clamp
-        #expect(ModelChooserRules.shownLevel(["", "low", "medium", "high"], "max") == "high")
-        #expect(ModelChooserRules.shownLevel(custom, "turbo") == "")
+        #expect(EffortRules.shownLevel(custom, "max") == "max")
+        #expect(EffortRules.shownLevel(custom, "") == "")
+        #expect(EffortRules.shownLevel(custom, "xhigh") == "high")   // no xhigh here: the next lower one, like effort.clamp
+        #expect(EffortRules.shownLevel(["", "low", "medium", "high"], "max") == "high")
+        #expect(EffortRules.shownLevel(custom, "turbo") == "")
     }
 
     @Test func aLongThinkIsSaidAfterAMinute() {

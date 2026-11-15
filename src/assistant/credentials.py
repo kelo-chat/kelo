@@ -7,6 +7,7 @@ returned to the model, and it is removed from anything an upstream service echoe
 
 from __future__ import annotations
 
+import base64
 import re
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -141,6 +142,10 @@ def apply_secret(url: str, placement: dict[str, str], secret: str) -> tuple[str,
         headers["Authorization"] = f"Bearer {secret}"
     elif kind == "custom_header":
         headers[placement["header"]] = f"{placement.get('prefix', '')}{secret}"
+    elif kind == "basic_auth":   # self-hosted presets only (presets.py): the user name is not secret and sits in the placement
+        headers["Authorization"] = "Basic " + base64.b64encode(f"{placement.get('user', '')}:{secret}".encode()).decode()
+    elif kind == "none":         # an app on the network that needs no key (Frigate's open port)
+        pass
     elif kind == "query_param":
         sep = "&" if urlsplit(url).query else "?"
         url = f"{url}{sep}{quote(placement['param'], safe='')}={quote(secret, safe='')}"
@@ -152,3 +157,17 @@ def redact(text: str, secret: str) -> str:
     for form in {secret, quote(secret, safe=""), quote(secret)}:
         text = text.replace(form, "[redacted]")
     return text
+
+
+def local_origin(cred: dict[str, Any]) -> str:
+    """The owner-typed address of a connection to an app on their own network ("" for an ordinary internet service). It lives in the
+    placement, which only the owner's form (keyconnect.py) can write: the agent's own registration builds a fresh placement."""
+    return str((cred.get("placement") or {}).get("origin") or "")
+
+
+def local_url(cred: dict[str, Any], url: str) -> str:
+    """A path like /api/states becomes origin + base path + path; a full URL is left for fetch_local to check against the origin."""
+    place = cred.get("placement") or {}
+    if url.startswith("/") and not url.startswith("//"):
+        return f"{place['origin']}{place.get('base', '')}{url}"
+    return url

@@ -19,6 +19,8 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from .agent.found_secrets import scrub
+
 from . import i18n
 from .i18n import N_, t
 
@@ -57,10 +59,12 @@ RESTART_RESULT = N_("Stopped because the server restarted")   # the result of a 
 # Approvals that may be remembered per site, and under which kind. A rule allows the same kind of step on the same site later.
 # Never: payments (confirm_purchase and anything of the wallet), schedules, and every tool not listed here.
 RULE_KINDS: dict[str, str] = {"browser_click": "browser_action", "browser_type": "browser_action", "browser_login": "login",
+                              # a point step: only when its element was read (one Kelo could not read never matches a rule, turn_engine)
+                              "browser_click_at": "browser_action", "browser_drag": "browser_action",
                               "workroom_install": "install"}   # install: one package (its "site" is <name>.pypi|npm.install, workroom.install_site)
 KIND_LABELS = {"browser_action": N_("Clicking and typing on a site"), "login": N_("Typing a saved login"),
                "install": N_("Installing a program in the work room")}
-NEVER_REMEMBER = ("confirm_purchase", "browser_fill_card", "wallet_", "browser_upload", "find_login_code",   # the last two: every time
+NEVER_REMEMBER = ("confirm_purchase", "purchase_result", "browser_fill_card", "wallet_", "browser_upload", "find_login_code",   # the last two: every time
                   "task_allow")   # the setup question of a conditional task is asked once, never remembered
 
 
@@ -429,6 +433,7 @@ class Activity:
                provider: str = "", urgent: bool = False) -> int:
         """Adds a notification. `push`: also wake the phones (false when the user is following the reply right now). `provider`: the
         provider it is about (cli_update: the apps open My → Model at that CLI)."""
+        title, body = scrub(title), scrub(body)   # a key never goes into a notification (agent/found_secrets.py)
         nid = int(self.store._run("INSERT INTO notifications(type, title, body, task_id, approval_id, schedule_id, payment_id, created_at, "
                                   "followup_id, provider, urgent) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                                   (type_, title[:120], body[:400], task_id, approval_id, schedule_id, payment_id, self._clock(), followup_id,
@@ -446,6 +451,10 @@ class Activity:
         return {"id": r["id"], "type": r["type"], "title": r["title"], "body": r["body"], "task_id": r["task_id"], "approval_id": r["approval_id"],
                 "schedule_id": r["schedule_id"], "payment_id": r["payment_id"], "followup_id": r.get("followup_id"), "created_at": r["created_at"],
                 "seen": bool(r["seen"]), "provider": r.get("provider") or "", "urgent": bool(r.get("urgent"))}
+
+    def notification(self, nid: int) -> dict[str, Any] | None:
+        rows = self.store._all("SELECT * FROM notifications WHERE id = ?", (nid,))
+        return self._note(rows[0]) if rows else None
 
     def notifications(self, after: int = 0, limit: int = 50) -> dict[str, Any]:
         rows = self.store._all("SELECT * FROM notifications WHERE id > ? ORDER BY id DESC LIMIT ?", (after, max(1, min(limit, 200))))

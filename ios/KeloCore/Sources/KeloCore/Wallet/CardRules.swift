@@ -76,23 +76,6 @@ public enum CardNumber {
         return chunk(Array(n), sizes: groups(brand(n), length: n.count), keepRest: true)
     }
 
-    /// Where raw digit `offset` lands in `group`'s output (for the field's cursor).
-    public static func groupedOffset(_ number: String, _ offset: Int) -> Int {
-        let n = digits(number)
-        var spaces = 0, edge = 0
-        for size in groups(brand(n), length: n.count) {
-            edge += size
-            if offset > edge && edge < n.count { spaces += 1 } else { break }
-        }
-        return offset + spaces
-    }
-
-    /// The reverse of `groupedOffset`.
-    public static func rawOffset(_ number: String, _ grouped: Int) -> Int {
-        let text = group(number)
-        return text.prefix(min(max(grouped, 0), text.count)).filter { $0 != " " }.count
-    }
-
     /// How many digits a complete number of `brand` has (the form stops there).
     public static func maxLength(_ brand: CardBrand) -> Int { brand == .amex ? 15 : maxDigits }
 
@@ -148,10 +131,6 @@ public enum Expiry {
         if YearMonth(year: y, month: m) < now { return .expired }
         if y > now.year + 25 { return .tooFar }
         return .ok(month: m, year: y)
-    }
-
-    public static func expired(month: Int, year: Int, now: YearMonth) -> Bool {
-        (1...12).contains(month) && YearMonth(year: year, month: month) < now
     }
 
     /// "04/28" for display on a saved card.

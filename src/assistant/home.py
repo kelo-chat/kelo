@@ -20,8 +20,10 @@ Older layouts are moved into this one at start-up (`migrate`), with the original
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import secrets
 import shutil
 import tempfile
 import time
@@ -53,12 +55,19 @@ MAX_UPLOAD = 99_000_000         # per file ("up to 100 MB": Cloudflare's tunnel 
                                 # for the request's own overhead); the storage cap (quota.py) and the free disk still apply
 DISK_MARGIN = 200_000_000       # an upload never fills the disk: this much stays free for the database and the system
 CHECK_EVERY = 32 * 1024**2      # while a file streams in, the cap and the free disk are checked again after this many bytes
+PART_SIZE = 90_000_000          # uploads in parts: every part but the last is exactly this big (under Cloudflare's 100 MB body limit)
+MAX_OPEN_PARTS = 3              # part-uploads that may be open at once
+PART_ID = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 INCOMING = ".incoming"          # where a file is written while it arrives (hidden, inside the storage cap); moved to uploads/ when whole
 MAX_READ = 200_000
 MAX_WRITE = 100_000
 SKILL_NOTES_DIR = "notes/skills"   # notes/skills/<skill id>.md: this server's notes on a skill (read_skill appends them)
 SKILL_NOTES_MAX = 6_000            # bytes one such file may hold (and characters shown after the skill)
 HISTORY_KEEP = 20
+TRASH = ".trash"        # deleted results (deliverables.py: files straight in it, index.json) and deleted agent files (Home.trash: one folder each)
+TRASH_DAYS = 30         # both trashes keep what they hold this long; the daily jobs purge the rest
+TRASH_ENTRY = ".entry.json"   # inside <trash>/<id>/: {"id", "path", "bytes", "deleted_at", "type"}; no path can begin with "." so it never clashes
+TRASH_ID = re.compile(r"[0-9a-f]{12}")
 ROSTER_MAX = 80
 
 TEMPLATES = {
@@ -143,9 +152,25 @@ class HomeFull(HomeError):
     """The storage cap is reached (the app answers 507 for this one)."""
 
 
+class NotDeletable(HomeError):
+    """A path that is inside the area but is not the owner's to delete here (uploads/, files/, the top level; the app answers 422)."""
+
+
+class CoreFile(NotDeletable):
+    """A core file (assistant.md, user.md, MEMORY.md, AGENTS.md, CHECKLIST.md, NOTIFY_PREFS.md): reset it instead of deleting it."""
+
+
 class UploadTooLarge(HomeError):
     """A file over the per-file limit (the app answers 413)."""
 
+
+
+class UploadBusy(HomeError):
+    """Too many part-uploads are open at once (the app answers 409)."""
+
+
+class UploadUnknown(HomeError):
+    """No such part-upload, or its part folder was swept (the app answers 404)."""
 
 
 def too_large(limit: int) -> UploadTooLarge:
@@ -154,6 +179,7 @@ def too_large(limit: int) -> UploadTooLarge:
 
 class Home:
     quota: Any = None   # set by the app: a Quota that refuses writes past the storage cap
+    clock = staticmethod(time.time)   # tests replace it
 
     def __init__(self, root: str | Path):
         self.root = Path(root)
@@ -361,15 +387,20 @@ class Home:
         visit(base, norm, 1)
         return out
 
-    def tree(self) -> list[dict[str, Any]]:
-        """Every readable file, for the Settings editor."""
+    def tree(self, folders: bool = False) -> list[dict[str, Any]]:
+        """Every readable file, for the Settings editor. `folders`: the folders too (even empty ones), as {"path", "type": "dir", "bytes":
+        None, "writable": whether files can be made in it}; every row then has a "type" ("file" or "dir")."""
         out = []
         for p in sorted(self.root.rglob("*")):
             rel = p.relative_to(self.root).as_posix()
-            if (not p.is_file() or p.is_symlink() or rel.startswith(".history/") or p.suffix.lower() not in ALLOWED_SUFFIXES
-                    or any(part.startswith(".") for part in p.relative_to(self.root).parts)):
+            if p.is_symlink() or any(part.startswith(".") for part in p.relative_to(self.root).parts):
                 continue
-            out.append({"path": rel, "bytes": p.stat().st_size, "writable": self._writable(rel, "user")})
+            if folders and p.is_dir():
+                out.append({"path": rel, "type": "dir", "bytes": None, "writable": rel.split("/")[0] in WRITABLE_DIRS})
+                continue
+            if not p.is_file() or p.suffix.lower() not in ALLOWED_SUFFIXES:
+                continue
+            out.append({"path": rel, "bytes": p.stat().st_size, "writable": self._writable(rel, "user"), **({"type": "file"} if folders else {})})
         return out
 
     def write(self, rel: str, content: str, *, by: str = "agent") -> str:
@@ -404,6 +435,153 @@ class Home:
         if self.quota:
             self.quota.wrote()
         return norm
+
+    # ------------------------------------------------------------------ the owner's file manager: folders, trash, reset
+    @staticmethod
+    def core_files() -> tuple[str, ...]:
+        """Files the server needs to exist; deleting one resets it to its template instead (TEMPLATES and SIDE_TEMPLATES)."""
+        return (*TEMPLATES, *SIDE_TEMPLATES)
+
+    def mkdir(self, rel: str) -> str:
+        """A new folder inside memory/ or notes/ (parents too). Only the owner's app does this. Returns its path; an existing folder is fine."""
+        target, norm = self._resolve(rel)
+        if norm.split("/")[0] not in WRITABLE_DIRS:
+            raise NotDeletable(f"folders can be made only inside {', '.join(d + '/' for d in WRITABLE_DIRS)}")
+        if target.exists() and not target.is_dir():
+            raise HomeError(f"{norm} is a file")
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            raise HomeError(f"a file is in the way of {norm}") from None
+        return norm
+
+    @staticmethod
+    def _size_of(p: Path) -> int:
+        if p.is_file() and not p.is_symlink():
+            return p.stat().st_size
+        total = 0
+        for q in p.rglob("*"):
+            if q.is_file() and not q.is_symlink():
+                total += q.stat().st_size
+        return total
+
+    def _entry_view(self, e: dict[str, Any]) -> dict[str, Any]:
+        return {**e, "purge_at": float(e["deleted_at"]) + TRASH_DAYS * 86400}
+
+    def _to_trash(self, target: Path, norm: str) -> dict[str, Any]:
+        entry = {"id": secrets.token_hex(6), "path": norm, "bytes": self._size_of(target), "deleted_at": self.clock(),
+                 "type": "dir" if target.is_dir() else "file"}
+        dest = self.root / TRASH / entry["id"] / norm
+        dest.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        target.replace(dest)
+        (self.root / TRASH / entry["id"] / TRASH_ENTRY).write_text(json.dumps(entry, ensure_ascii=False), encoding="utf-8")
+        if self.quota:
+            self.quota.wrote()
+        return self._entry_view(entry)
+
+    def trash(self, rel: str) -> dict[str, Any]:
+        """Move a file (or a folder with its files) to <home>/.trash/<id>/<its path>, kept TRASH_DAYS days (restore() brings it back).
+        Only what the owner's editor can change: files and folders inside memory/ and notes/. Core files raise CoreFile (reset them),
+        uploads/ and files/ have their own delete (and the library its own trash), anything else NotDeletable; a path outside the area
+        or a missing one raises HomeError. Returns {"id", "path", "bytes", "deleted_at", "type": "file"|"dir", "purge_at"}."""
+        target, norm = self._resolve(rel)
+        if norm in self.core_files():
+            raise CoreFile(f"{norm} is a core file: reset it instead")
+        top = norm.split("/")[0]
+        if top in ("uploads", "files"):
+            raise NotDeletable(f"{top}/ has its own delete ({'DELETE /api/uploads/{name}' if top == 'uploads' else 'DELETE /api/files/library/{name}'})")
+        if top not in WRITABLE_DIRS or "/" not in norm:
+            raise NotDeletable(f"only files and folders inside {', '.join(d + '/' for d in WRITABLE_DIRS)} can be deleted")
+        if not target.exists():
+            raise HomeError(f"no such file: {norm}")
+        return self._to_trash(target, norm)
+
+    def _trash_entries(self) -> list[dict[str, Any]]:
+        d = self.root / TRASH
+        out: list[dict[str, Any]] = []
+        if not d.is_dir() or d.is_symlink():
+            return out
+        for p in d.iterdir():
+            if not p.is_dir() or p.is_symlink() or not TRASH_ID.fullmatch(p.name):
+                continue
+            try:
+                e = json.loads((p / TRASH_ENTRY).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if (isinstance(e, dict) and e.get("id") == p.name and isinstance(e.get("path"), str)
+                    and isinstance(e.get("deleted_at"), (int, float)) and (p / e["path"]).exists()):
+                out.append(e)
+        return out
+
+    def trashed(self) -> list[dict[str, Any]]:
+        """[{"id", "path", "bytes", "deleted_at", "type", "purge_at"}], newest deletion first."""
+        return [self._entry_view(e) for e in sorted(self._trash_entries(), key=lambda e: -e["deleted_at"])]
+
+    def _entry(self, tid: str) -> dict[str, Any]:
+        e = next((e for e in self._trash_entries() if e["id"] == tid), None) if isinstance(tid, str) and TRASH_ID.fullmatch(tid) else None
+        if e is None:
+            raise HomeError("nothing with that id in the trash")
+        return e
+
+    def restore(self, tid: str) -> str:
+        """Bring a trashed file or folder back to its old path; when that path exists again, as "<name> (restored)" (then "(restored 2)"...).
+        Returns the path it is at now."""
+        e = self._entry(tid)
+        src = self.root / TRASH / tid / e["path"]
+        target, norm = self._resolve(e["path"])
+        n, parent = 0, norm.rpartition("/")[0]
+        stem, suffix = (target.name, "") if src.is_dir() else (target.stem, target.suffix)
+        while target.exists() or target.is_symlink():
+            n += 1
+            name = f"{stem} (restored{'' if n == 1 else f' {n}'}){suffix}"
+            target, norm = self._resolve(f"{parent}/{name}" if parent else name)
+        if target.parent.exists() and not target.parent.is_dir():
+            raise HomeError(f"{norm.rpartition('/')[0]} is a file now; nothing to restore into")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            src.replace(target)
+        except OSError:
+            raise HomeError(f"{norm} cannot be restored there (a file is in the way)") from None
+        shutil.rmtree(self.root / TRASH / tid, ignore_errors=True)
+        if self.quota:
+            self.quota.wrote()
+        return norm
+
+    def forget_trashed(self, tid: str) -> None:
+        """Remove one trashed item for good."""
+        self._entry(tid)
+        shutil.rmtree(self.root / TRASH / tid, ignore_errors=True)
+        if self.quota:
+            self.quota.wrote()
+
+    def purge_trash(self) -> int:
+        """Delete what has been in the trash TRASH_DAYS days (the daily job), and folders left half-made by a crash. Returns how many items went."""
+        now, n = self.clock(), 0
+        d = self.root / TRASH
+        if not d.is_dir() or d.is_symlink():
+            return 0
+        known = {e["id"]: e for e in self._trash_entries()}
+        for p in d.iterdir():
+            if not p.is_dir() or p.is_symlink() or not TRASH_ID.fullmatch(p.name):
+                continue   # the library's own files and index live in here too: not ours
+            e = known.get(p.name)
+            old = now - (float(e["deleted_at"]) if e else p.stat().st_mtime) >= TRASH_DAYS * 86400
+            if old:
+                shutil.rmtree(p, ignore_errors=True)
+                n += 1
+        if n and self.quota:
+            self.quota.wrote()
+        return n
+
+    def reset(self, rel: str) -> dict[str, Any]:
+        """A core file's old text goes to the trash and the file gets its template again (as at first start), written as the user.
+        Returns {"path", "trashed": the trash entry | None (there was no file)}."""
+        target, norm = self._resolve(rel)
+        if norm not in self.core_files():
+            raise NotDeletable(f"{norm} is not a core file")
+        entry = self._to_trash(target, norm) if target.is_file() and not target.is_symlink() else None
+        self.write(norm, {**TEMPLATES, **SIDE_TEMPLATES}[norm], by="user")
+        return {"path": norm, "trashed": entry}
 
     # ------------------------------------------------------------------ uploads (documents the USER hands over)
     @staticmethod
@@ -452,16 +630,17 @@ class Home:
             raise HomeFull(t("The Kelo server's disk has no room for this file ({need} needed, {free} free).",
                              need=_fmt(size), free=_fmt(max(0, free - DISK_MARGIN))))
 
-    async def receive_upload(self, name: str, chunks: AsyncIterator[bytes], *, declared: int = 0, limit: int | None = None) -> str:
+    async def receive_upload(self, name: str, chunks: AsyncIterator[bytes], *, declared: int = 0, limit: int | None = None,
+                             unlimited: bool = False) -> str:
         """Store an upload as it arrives, a chunk at a time, so a large video never sits in memory. It is written to .incoming/
         and moved into uploads/ only when whole; a refused or broken upload leaves nothing behind. Checks, before and while it
-        streams in: the per-file limit (photos: photos.MAX_IMAGE), the storage cap and the free disk. A photo, once whole, is
-        cleaned like any other (save_upload). Raises UploadTooLarge, HomeFull or HomeError."""
+        streams in: the per-file limit (MAX_UPLOAD, or none with unlimited=True; photos always photos.MAX_IMAGE), the storage cap
+        and the free disk. A photo, once whole, is cleaned like any other (save_upload). Raises UploadTooLarge, HomeFull or HomeError."""
         base = self.upload_name(name)
-        limit = MAX_UPLOAD if limit is None else limit
+        limit = None if unlimited else (MAX_UPLOAD if limit is None else limit)
         if is_image(base):
-            limit = min(limit, MAX_IMAGE)
-        if declared > limit:
+            limit = MAX_IMAGE if limit is None else min(limit, MAX_IMAGE)
+        if limit is not None and declared > limit:
             raise too_large(limit)
         if declared:
             self.room_for(declared)
@@ -470,39 +649,172 @@ class Home:
         self._sweep_incoming(inbox)
         fd, tmp_name = tempfile.mkstemp(dir=inbox, suffix=".part")
         tmp = Path(tmp_name)
-        cap = self.quota.limit if self.quota is not None else 0
-        used0 = self.quota.used() if cap else 0
-        size, next_check = 0, CHECK_EVERY
         try:
             with os.fdopen(fd, "wb") as f:
-                async for chunk in chunks:
-                    if not chunk:
-                        continue
-                    size += len(chunk)
-                    if size > limit:
-                        raise too_large(limit)
-                    f.write(chunk)
-                    if size >= next_check:
-                        next_check += CHECK_EVERY
-                        if cap and used0 + size > cap:
-                            self.quota.invalidate()
-                            self._check_room(0)            # past the cap: the quota's own message says how full it is
-                            raise HomeFull(t("Storage is full ({used} / {limit}). Delete uploads or images in Settings to make room.",
-                                             used=_fmt(used0 + size), limit=_fmt(cap)))
-                        if disk_free(self.root) < DISK_MARGIN:
-                            raise HomeFull(t("The Kelo server's disk has no room for this file ({need} needed, {free} free).",
-                                             need=_fmt(max(size, declared)), free=_fmt(0)))
+                size = await self._stream_into(f, chunks, limit=limit, declared=declared, too_big=lambda: too_large(limit or 0))
             if size == 0:
                 raise HomeError("the file is empty")
-            if cap and used0 + size > cap:
-                self.quota.invalidate()
-                self._check_room(0)
-                raise HomeFull(t("Storage is full ({used} / {limit}). Delete uploads or images in Settings to make room.",
-                                 used=_fmt(used0 + size), limit=_fmt(cap)))
             return self._finish(tmp, base)
         finally:
             if tmp.exists():
                 tmp.unlink()
+
+    async def _stream_into(self, f: Any, chunks: AsyncIterator[bytes], *, limit: int | None, declared: int, too_big: Any) -> int:
+        """Write the chunks to the open file f; every CHECK_EVERY bytes (and at the end) the storage cap and the free disk are
+        checked again. Raises too_big() past `limit`, HomeFull past the cap or when the disk runs low. Returns the bytes written."""
+        cap = self.quota.limit if self.quota is not None else 0
+        used0 = self.quota.used() if cap else 0
+        size, next_check = 0, CHECK_EVERY
+
+        def over_cap() -> HomeFull:
+            self.quota.invalidate()
+            try:
+                self._check_room(0)                         # past the cap: the quota's own message says how full it is
+            except HomeFull as e:
+                return e
+            return HomeFull(t("Storage is full ({used} / {limit}). Delete uploads or images in Settings to make room.",
+                              used=_fmt(used0 + size), limit=_fmt(cap)))
+        async for chunk in chunks:
+            if not chunk:
+                continue
+            size += len(chunk)
+            if limit is not None and size > limit:
+                raise too_big()
+            f.write(chunk)
+            if size >= next_check:
+                next_check += CHECK_EVERY
+                if cap and used0 + size > cap:
+                    raise over_cap()
+                if disk_free(self.root) < DISK_MARGIN:
+                    raise HomeFull(t("The Kelo server's disk has no room for this file ({need} needed, {free} free).",
+                                     need=_fmt(max(size, declared)), free=_fmt(0)))
+        if cap and used0 + size > cap:
+            raise over_cap()
+        return size
+
+    # ---- uploads in parts: a big file goes up in PART_SIZE pieces (each one request), is joined on disk, then finished like any upload
+    def _part_dir(self, upload_id: str) -> Path:
+        if not isinstance(upload_id, str) or not PART_ID.match(upload_id):
+            raise UploadUnknown(t("No such upload."))
+        d = self.root / INCOMING / upload_id
+        if not d.is_dir():
+            raise UploadUnknown(t("No such upload."))
+        return d
+
+    def _part_meta(self, upload_id: str) -> tuple[Path, dict[str, Any]]:
+        d = self._part_dir(upload_id)
+        try:
+            return d, json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raise UploadUnknown(t("No such upload.")) from None
+
+    def start_parts(self, name: str, size: int, sha256: str | None = None) -> dict[str, Any]:
+        """Open a part-upload for a file of `size` bytes. Returns {"upload_id", "part_size", "parts"}. Raises UploadTooLarge (a photo
+        over MAX_IMAGE), HomeFull (storage cap or free disk), UploadBusy (MAX_OPEN_PARTS already open) or HomeError."""
+        base = self.upload_name(name)
+        if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+            raise HomeError("the file is empty")
+        if sha256 is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", str(sha256)):
+            raise HomeError("sha256 must be 64 hex characters")
+        if is_image(base) and size > MAX_IMAGE:
+            raise too_large(MAX_IMAGE)
+        self.room_for(size)
+        inbox = self.root / INCOMING
+        inbox.mkdir(exist_ok=True, mode=0o700)
+        self._sweep_incoming(inbox)
+        if sum(1 for p in inbox.iterdir() if p.is_dir() and PART_ID.match(p.name)) >= MAX_OPEN_PARTS:
+            raise UploadBusy(t("Too many large uploads are open at once; wait for one to finish."))
+        upload_id = secrets.token_urlsafe(18)
+        d = inbox / upload_id
+        d.mkdir(mode=0o700)
+        part_size = PART_SIZE
+        (d / "meta.json").write_text(json.dumps({"name": base, "size": size, "sha256": (sha256 or "").lower() or None,
+                                                 "part_size": part_size}), encoding="utf-8")
+        return {"upload_id": upload_id, "part_size": part_size, "parts": -(-size // part_size)}
+
+    def parts_status(self, upload_id: str) -> dict[str, Any]:
+        d, m = self._part_meta(upload_id)
+        got = sorted(int(p.name[:-5]) for p in d.glob("*.part") if p.name[:-5].isdigit())
+        return {"name": m["name"], "size": m["size"], "part_size": m["part_size"], "received": got}
+
+    async def receive_part(self, upload_id: str, index: int, chunks: AsyncIterator[bytes], *, declared: int = 0) -> int:
+        """Store part `index` (0-based; a part sent again replaces the old one). Same cap and disk checks as a whole upload.
+        Returns how many parts are in now. Raises UploadUnknown, HomeFull or HomeError (wrong size)."""
+        d, m = self._part_meta(upload_id)
+        n = -(-m["size"] // m["part_size"])
+        if not 0 <= index < n:
+            raise HomeError(t("This upload has parts 0 to {last}.", last=n - 1))
+        expected = m["size"] - index * m["part_size"] if index == n - 1 else m["part_size"]
+
+        def wrong() -> HomeError:
+            return HomeError(t("Part {index} must be exactly {size} bytes.", index=index, size=expected))
+        if declared and declared != expected:
+            raise wrong()
+        old = d / f"{index}.part"
+        self.room_for(max(0, expected - (old.stat().st_size if old.exists() else 0)))
+        try:
+            fd, tmp_name = tempfile.mkstemp(dir=d, suffix=".tmp")
+        except OSError:
+            raise UploadUnknown(t("No such upload.")) from None
+        tmp = Path(tmp_name)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                size = await self._stream_into(f, chunks, limit=expected, declared=expected, too_big=wrong)
+            if size != expected:
+                raise wrong()
+            if not d.is_dir():                              # cancelled, swept or being joined meanwhile
+                raise UploadUnknown(t("No such upload."))
+            os.replace(tmp, old)
+            os.utime(d)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
+        return len(list(d.glob("*.part")))
+
+    def cancel_parts(self, upload_id: str) -> None:
+        d = self._part_dir(upload_id)
+        shutil.rmtree(d, ignore_errors=True)
+
+    async def finish_parts(self, upload_id: str) -> str:
+        """Join the parts in order (streamed, each part is deleted once copied so the disk never holds the file twice), check the
+        size and the sha256 when given, then finish like any upload. Raises HomeError (missing part: the upload stays open so the
+        part can be sent; wrong size or hash: the upload is dropped) or HomeFull."""
+        import asyncio
+        return await asyncio.to_thread(self._finish_parts, upload_id)
+
+    def _finish_parts(self, upload_id: str) -> str:
+        import hashlib
+        d, m = self._part_meta(upload_id)
+        n = -(-m["size"] // m["part_size"])
+        missing = [i for i in range(n) if not (d / f"{i}.part").is_file()]
+        if missing:
+            raise HomeError(t("Parts are missing: {list}.", list=", ".join(str(i) for i in missing[:20]) + (" ..." if len(missing) > 20 else "")))
+        j = d.with_name(d.name + ".joining")                # from here no part can be added or sent again (the id no longer matches)
+        try:
+            d.rename(j)
+        except OSError:
+            raise UploadUnknown(t("No such upload.")) from None
+        try:
+            self.room_for(m["part_size"])                   # one part's worth of extra room while joining
+            joined = j / "joined.tmp"
+            h = hashlib.sha256()
+            total = 0
+            with open(joined, "wb") as out:
+                for i in range(n):
+                    part = j / f"{i}.part"
+                    with open(part, "rb") as src:
+                        while buf := src.read(1024 * 1024):
+                            out.write(buf)
+                            h.update(buf)
+                            total += len(buf)
+                    part.unlink()
+            if total != m["size"]:
+                raise HomeError(t("The parts add up to {have} bytes, not {size}.", have=total, size=m["size"]))
+            if m.get("sha256") and h.hexdigest() != m["sha256"]:
+                raise HomeError(t("The file does not match its checksum; send it again."))
+            return self._finish(joined, m["name"])
+        finally:
+            shutil.rmtree(j, ignore_errors=True)
 
     def _finish(self, tmp: Path, base: str) -> str:
         """A whole upload in .incoming/ -> uploads/ under a free name (a photo is cleaned first, see save_upload)."""
@@ -525,12 +837,19 @@ class Home:
 
     @staticmethod
     def _sweep_incoming(inbox: Path, older_than: float = 86_400) -> None:
-        """Parts left by a server that stopped in the middle of an upload."""
+        """Files and part folders left by a server that stopped in the middle of an upload, or by an upload nobody finished
+        (a part folder counts as touched when its last part arrived)."""
         cutoff = time.time() - older_than
         for p in inbox.iterdir():
             try:
+                if p.is_symlink():
+                    continue
                 if p.is_file() and p.stat().st_mtime < cutoff:
                     p.unlink()
+                elif p.is_dir():
+                    newest = max([p.stat().st_mtime] + [c.stat().st_mtime for c in p.iterdir()])
+                    if newest < cutoff:
+                        shutil.rmtree(p, ignore_errors=True)
             except OSError:
                 pass
 

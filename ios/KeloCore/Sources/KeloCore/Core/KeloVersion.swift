@@ -3,9 +3,7 @@
 /// Kelo's release version for this build (docs/versioning.md).
 public enum KeloVersion {
     /// The release people see ("0.9.0"), also in `X-Kelo-App`.
-    public static let version = "0.9.0"
-    /// The release's build number in version.json (not the App Store's CFBundleVersion).
-    public static let releaseBuild = 9
+    public static let version = "0.10.0"
     /// The oldest Kelo server release this app works with.
     public static let minServer = "0.9.0"
 }

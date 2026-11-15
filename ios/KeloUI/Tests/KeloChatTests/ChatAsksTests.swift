@@ -5,8 +5,8 @@ import KeloCore
 
 private func pa(_ id: String, at: Double = 0, source: String = "", worker: String? = nil, unattended: Bool = false, kind: String = "",
                 canRemember: Bool = false, schedule: Bool = false) -> PendingApproval {
-    PendingApproval(event: TurnEvent.ApprovalRequest(approvalId: id, name: "n", arguments: [:], detail: nil, label: "", payment: nil, card: nil,
-                                                     toolId: "", canRememberSchedule: schedule, lines: [], kind: kind),
+    PendingApproval(event: TurnEvent.ApprovalRequest(approvalId: id, name: "n", detail: nil, label: "", payment: nil, card: nil,
+                                                     canRememberSchedule: schedule, lines: [], kind: kind),
                     site: "s.example", canRemember: canRemember, askedAt: at, unattended: unattended, canRememberSchedule: schedule,
                     source: source, workerId: worker)
 }
@@ -37,19 +37,39 @@ private func pa(_ id: String, at: Double = 0, source: String = "", worker: Strin
         let asks = ChatAsks.merge([], pending: [pa("h", kind: PendingApproval.humanCheck)], newestKey: "k")
         let folded = ChatAsks.merge(asks, pending: [], newestKey: "k", resolved: ["h": "solved"])
         #expect(folded.first?.end == .solved)
+        #expect(ChatAsks.resolvedEnd("progressed") == .progressed)
         #expect(ChatAsks.resolvedEnd("skipped") == .skipped)
         #expect(ChatAsks.resolvedEnd("expired") == .gone)
     }
 
     @Test func visibleSkipsTheFollowedReplysOwnCard() {
         let asks = ChatAsks.merge([], pending: [pa("x"), pa("y")], newestKey: nil)
-        let items: [ChatItem] = [.approval(.init(key: "k1", id: "x", name: "n", args: "", detail: nil))]
+        let items: [ChatItem] = [.approval(.init(key: "k1", id: "x", name: "n", detail: nil))]
         #expect(ChatAsks.visible(asks, items: items).map(\.id) == ["y"])
+    }
+
+    @Test func checkInfoApproveStep() throws {
+        let check = CheckInfo.parse(try JSON.parse(#"{"kind":"verification","step":"approve"}"#))
+        #expect(check?.isApproveStep == true)
+        let codeCheck = CheckInfo.parse(try JSON.parse(#"{"kind":"verification","step":"code"}"#))
+        #expect(codeCheck?.isApproveStep == false)
+        let nonVerifyCheck = CheckInfo.parse(try JSON.parse(#"{"kind":"","step":"approve"}"#))
+        #expect(nonVerifyCheck?.isApproveStep == false)
     }
 
     @Test func answerEnds() {
         let h = pa("h", kind: PendingApproval.humanCheck)
         #expect(ChatAsks.answerEnd(h, approve: false, rememberSite: false, rememberSchedule: false) == .skipped)
+        #expect(ChatAsks.answerEnd(h, approve: true, rememberSite: false, rememberSchedule: false) == .solved)
+        let v = PendingApproval(
+            event: TurnEvent.ApprovalRequest(
+                approvalId: "v", name: "n", detail: nil, label: "", payment: nil, card: nil,
+                canRememberSchedule: false, lines: [], kind: PendingApproval.humanCheck,
+                check: CheckInfo(name: "Approve sign-in", kind: "verification", step: "approve")
+            ),
+            site: "s.example"
+        )
+        #expect(ChatAsks.answerEnd(v, approve: true, rememberSite: false, rememberSchedule: false) == .progressed)
         #expect(ChatAsks.answerEnd(pa("a", canRemember: true), approve: true, rememberSite: true, rememberSchedule: false) == .always)
         #expect(ChatAsks.answerEnd(pa("a"), approve: true, rememberSite: true, rememberSchedule: false) == .allowed)
         #expect(ChatAsks.answerEnd(pa("a", schedule: true), approve: true, rememberSite: false, rememberSchedule: true) == .keptForSchedule)

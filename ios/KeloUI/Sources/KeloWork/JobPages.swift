@@ -11,11 +11,18 @@ struct TaskPage: View {
     let id: Int64
     let onBack: () -> Void
     let onOpenLive: (String) -> Void
-    @State private var detail: TaskDetail?
-    @State private var failed = false
+    @State private var read: TaskDetailModel
     @State private var confirmStop = false
     @State private var tick = 0
     @Environment(\.kelo) private var c
+
+    init(model: WorkModel, id: Int64, onBack: @escaping () -> Void, onOpenLive: @escaping (String) -> Void) {
+        self.model = model; self.id = id; self.onBack = onBack; self.onOpenLive = onOpenLive
+        _read = State(initialValue: TaskDetailModel(work: model, id: id))
+    }
+
+    private var detail: TaskDetail? { read.detail }
+    private var failed: Bool { read.failed }
 
     var body: some View {
         SubPage(detail.flatMap { $0.title.isEmpty ? nil : $0.title } ?? L(R.string.work_task_title), onBack: onBack) {
@@ -40,13 +47,13 @@ struct TaskPage: View {
                     MutedText(d.result)
                 }
                 if !d.error.isEmpty { ErrorText(d.error, small: true) }
-                if SkillRules.canSave(d.status) { SaveAsSkillSection(taskId: d.id, onMessage: { model.say($0) }) }
+                if SkillRules.canSave(d.status) { SaveAsSkillSection(api: model.api, taskId: d.id, onMessage: { model.say($0) }) }
                 if !d.approvals.isEmpty {
                     Text(L(R.string.agent_task_approvals)).font(KeloFont.titleSmall).foregroundStyle(c.ink).padding(.top, 6)
                     VStack(spacing: 0) {
                         ForEach(Array(d.approvals.enumerated()), id: \.offset) { i, a in
                             if i > 0 { Hairline().padding(.leading, 16) }
-                            ApprovalRecordRow(a: a)
+                            ApprovalRecordRow(a: a, when: a.askedAt > 0 ? WorkText.dayClock(a.askedAt) : "", padded: true)
                         }
                     }
                     .background(RoundedRectangle(cornerRadius: 12).fill(c.card))
@@ -58,13 +65,7 @@ struct TaskPage: View {
                 SkeletonRows(rows: 4)
             }
         }
-        .task(id: tick) {
-            while !Task.isCancelled {
-                do { detail = try await model.task(id); failed = false } catch { failed = true }
-                if detail?.running != true { break }
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-            }
-        }
+        .task(id: tick) { await read.follow() }
         .onAppear { model.markSeen(id) }
         .keloConfirm(L(R.string.agent_task_stop_confirm), isPresented: $confirmStop, yes: L(R.string.agent_task_stop)) {
             Haptics.warning()
@@ -90,25 +91,6 @@ struct TaskPage: View {
     }
 }
 
-/// One approval in a history: what, where, and how it was answered.
-struct ApprovalRecordRow: View {
-    let a: ApprovalRecord
-    @Environment(\.kelo) private var c
-    var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(a.label.isEmpty ? a.tool : a.label).font(KeloFont.body).foregroundStyle(c.ink).lineLimit(3)
-                let sub = [a.site, a.detail].filter { !$0.isEmpty }.joined(separator: " · ")
-                if !sub.isEmpty { Text(sub).font(KeloFont.small).foregroundStyle(c.muted).lineLimit(3) }
-                if a.askedAt > 0 { Text(WorkText.dayClock(a.askedAt)).font(KeloFont.label).foregroundStyle(c.muted) }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            KeloBadge(WorkText.decision(a.decision), denied: a.decision == "denied")
-        }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-    }
-}
-
 /// One background job: what it was asked, its state, step budget, steps so far and report; Stop / go on / a few words / live.
 struct JobPage: View {
     let model: WorkModel
@@ -116,12 +98,22 @@ struct JobPage: View {
     let onBack: () -> Void
     let onOpenLive: (String) -> Void
     let onOpenTask: (Int64) -> Void
-    @State private var detail: WorkerDetail?
-    @State private var failed = false
+    @State private var read: WorkerDetailModel
     @State private var tick = 0
     @State private var confirmStop = false
     @State private var answering = false
     @Environment(\.kelo) private var c
+    @Environment(AppModel.self) private var app
+    private var activity: AgentActivityModel { app.activity }
+
+    init(model: WorkModel, id: String, onBack: @escaping () -> Void, onOpenLive: @escaping (String) -> Void, onOpenTask: @escaping (Int64) -> Void) {
+        self.model = model; self.id = id; self.onBack = onBack; self.onOpenLive = onOpenLive; self.onOpenTask = onOpenTask
+        _read = State(initialValue: WorkerDetailModel(work: model, id: id))
+    }
+
+    private var detail: WorkerDetail? { read.detail }
+    private var failed: Bool { read.failed }
+    private func reload() { tick += 1 }
 
     var body: some View {
         SubPage(detail.flatMap { $0.title.isEmpty ? nil : $0.title } ?? L(R.string.work_job_title), onBack: onBack) {
@@ -139,7 +131,7 @@ struct JobPage: View {
                     ThinProgress(value: p, tone: c.job(d.status), height: 6)
                     Text(L(R.string.work_job_steps, d.steps, d.maxSteps)).font(KeloFont.label).foregroundStyle(c.muted)
                 }
-                if w.running { SecondaryButton(L(R.string.agent_task_stop), fill: true) { confirmStop = true } }
+                if w.active { SecondaryButton(L(R.string.agent_task_stop), fill: true) { confirmStop = true } }
                 if w.canResume { PrimaryButton(L(R.string.work_job_resume)) { model.resumeWorker(id) { tick += 1 } } }
                 SecondaryButton(L(R.string.work_job_answer), icon: .chat, fill: true) { answering = true }
                 if let tab = Timeline.tabFor(w) { SecondaryButton(L(R.string.work_live_view), icon: .eye, fill: true) { onOpenLive(tab) } }
@@ -152,7 +144,7 @@ struct JobPage: View {
                 }
                 if let e = d.error, !e.isEmpty { ErrorText(e, small: true) }
                 TaskGrantsBlock(key: "job:" + id, load: { await model.grants { try await $0.jobGrants(id) } }, revoke: model.revokeGrant)
-                if SkillRules.canSave(d.status) { SaveAsSkillSection(workerId: id, onMessage: { model.say($0) }) }
+                if SkillRules.canSave(d.status) { SaveAsSkillSection(api: model.api, workerId: id, onMessage: { model.say($0) }) }
                 if !d.task.isEmpty {
                     PanelLabel(L(R.string.work_job_asked))
                     Panel {
@@ -181,13 +173,8 @@ struct JobPage: View {
                 SkeletonRows(rows: 4)
             }
         }
-        .task(id: tick) {
-            while !Task.isCancelled {
-                do { detail = try await model.worker(id); failed = false } catch { failed = true }
-                if detail?.status != Worker.statusRunning { break }
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-            }
-        }
+        .task(id: tick) { await read.follow() }
+        .onChange(of: activity.workChanged) { _, _ in reload() }
         .keloConfirm(L(R.string.work_job_stop_confirm), isPresented: $confirmStop, yes: L(R.string.agent_task_stop)) {
             model.stopWorker(id) { tick += 1 }
         }
@@ -237,10 +224,17 @@ struct WatcherPage: View {
     let model: WorkModel
     let id: Int64
     let onBack: () -> Void
-    @State private var events: [WatcherEvent]?
+    @State private var read: WatcherEventsModel
     @State private var checking = false
     @State private var confirmDelete = false
     @Environment(\.kelo) private var c
+
+    init(model: WorkModel, id: Int64, onBack: @escaping () -> Void) {
+        self.model = model; self.id = id; self.onBack = onBack
+        _read = State(initialValue: WatcherEventsModel(work: model, id: id))
+    }
+
+    private var events: [WatcherEvent]? { read.events }
 
     var body: some View {
         let w = model.watchers.data?.items.first { $0.id == id }
@@ -250,6 +244,9 @@ struct WatcherPage: View {
                     WatcherRow(model: model, watcher: w, onOpen: nil)
                     if !w.enabled && !w.canEnable { MutedText(L(R.string.work_watch_needs_check), small: true) }
                     if let r = w.disabledReason, !r.isEmpty, !w.enabled { Text(r).font(KeloFont.small).foregroundStyle(c.danger) }
+                }
+                if let b = w.buy, b.armed {
+                    BuyReadyPanel(model: model, id: w.id, start: b)
                 }
                 Panel {
                     if let u = w.url, !u.isEmpty { FactRow(label: L(R.string.work_watch_url), value: TokenText.fit(u)) }
@@ -304,15 +301,62 @@ struct WatcherPage: View {
             }
         }
         .onAppear { if model.watchers.data == nil { model.loadWatchers() } }
-        .task(id: "\(id)-\(w?.dryRun?.at ?? 0)-\(w?.lastCheckedAt ?? 0)") {
-            events = (try? await model.watcherEvents(id)) ?? []
-        }
+        .task(id: "\(id)-\(w?.dryRun?.at ?? 0)-\(w?.lastCheckedAt ?? 0)") { await read.load() }
         .keloConfirm(L(R.string.work_watch_delete_confirm, w?.name ?? ""), isPresented: $confirmDelete, yes: L(R.string.delete)) {
             if let w { model.deleteWatcher(w, then: onBack) }
         }
     }
 
     private func firstNonEmpty(_ xs: String?...) -> String { xs.compactMap { $0 }.first { !$0.isEmpty } ?? "" }
+}
+
+/// "바로 구매 준비됨": the state of a watcher that buys at its hit, what is not ready in the server's words, and a check now.
+private struct BuyReadyPanel: View {
+    let model: WorkModel
+    let id: Int64
+    let start: BuyReady
+    @State private var b: BuyReady
+    @State private var busy = false
+    @Environment(\.kelo) private var c
+
+    init(model: WorkModel, id: Int64, start: BuyReady) {
+        self.model = model
+        self.id = id
+        self.start = start
+        _b = State(initialValue: start)
+    }
+
+    var body: some View {
+        PanelLabel(L(R.string.buy_ready_title))
+        Panel {
+            Text(L(b.problems.isEmpty ? R.string.buy_ready_ok : R.string.buy_ready_not_ok))
+                .font(.system(.body, weight: .semibold))
+                .foregroundStyle(b.problems.isEmpty ? c.success : c.danger)
+            ForEach(b.problems, id: \.self) { p in
+                Text("· " + p.text).font(KeloFont.small).foregroundStyle(c.ink)
+            }
+            if let signedIn = b.signedIn {
+                FactRow(label: L(R.string.buy_ready_login), value: L(signedIn ? R.string.buy_ready_login_kept : R.string.buy_ready_login_out))
+            }
+            if let lastKeptAt = b.lastKeptAt {
+                FactRow(label: L(R.string.buy_ready_checked), value: WorkText.rel(lastKeptAt))
+            }
+            if b.remembered {
+                MutedText(L(R.string.buy_ready_remembered), small: true)
+            }
+            MutedText(L(R.string.buy_ready_about), small: true)
+            SecondaryButton(L(busy ? R.string.work_watch_checking : R.string.buy_ready_check), enabled: !busy) {
+                busy = true
+                Task {
+                    if let res = try? await model.buyCheck(id: id) {
+                        b = res
+                    }
+                    busy = false
+                }
+            }
+        }
+        .onChange(of: start) { _, nw in b = nw }
+    }
 }
 
 /// 작업 → 예약: a 보관함 entry at the top (with how many are kept there), a button to add one, and every schedule (tap to change it;

@@ -9,6 +9,226 @@ build's version and date, and copy the app lines into the Play release notes (en
 
 ## Unreleased
 
+## 0.10.0 (build 16, 2026-11-14)
+
+Apps in this release: Android 0.10.0 (versionCode 410012), desktop 1.0.9 (Windows, macOS), iPhone 0.10.0 on TestFlight.
+
+### Added
+- Server: instant buy remembers a site's checkout steps after a paid run and replays them at the next hit with no AI call (seconds instead of a minute); the total is read and checked in code against the purchase permission, and on any doubt the AI takes over from that page (docs/instant-buy.md C).
+- Apps: a watcher that buys at its hit shows "ready to buy": what is not ready yet in plain words, whether the site is kept signed in, whether Kelo remembers the checkout steps, and a "check now" button.
+- Server: API keys of connected internet services (in a header or a key parameter) now also live in the key container, which adds them only to that service's own address and removes them from anything the service sends back; sign-ins, network apps, Basic auth and messenger tokens stay in the vault.
+- Server: an optional admin (billing) key per provider for OpenAI, Anthropic and OpenRouter, kept in the key container and usable only for reading spend and balance; Usage then shows this month's and today's spend (OpenAI, Anthropic) or the remaining credits (OpenRouter).
+- Apps: Usage can show spend (OpenAI, Anthropic) or the remaining credits (OpenRouter) after you add that provider's admin key; the key is kept in the key container and only reads billing. The privacy page says where keys are kept.
+- Server: a watcher with a purchase permission is ready to buy: its product page stays open and signed in, readiness is checked every 15 minutes, it may look every 2 minutes, and at the hit a short buying run starts at once on that page (docs/instant-buy.md).
+- Server: a key container ("keyring") that keeps AI-provider keys outside the Kelo server and adds them only for each key's own provider address (docs/keyring.md; the server starts using it in the next change).
+- iPhone: while Kelo works on a reply, a Live Activity on the lock screen and in the Dynamic Island shows the step, the site and a Stop button; its words are sealed with a key only this iPhone has, so Apple and the push broker see none of them.
+- Server: iPhone Live Activities — while a reply runs, the server updates the phone's lock screen and Dynamic Island through Apple's push service; the step words are sealed with a key only the phone has, so Apple and the push broker see none of them.
+- Apps: Connectors → a connected service → "What Kelo may do": allow, ask or off for reading, changing, sending and deleting, and for single actions; "Limited" shows in the list when anything differs from the defaults.
+- Apps: My → Kelo's files: read, edit and delete the files Kelo keeps for itself (who you are, its memory, notes); core files go back to the start instead of being deleted; a 30-day trash with restore.
+- Website: kelo.chat/tester takes sign-ups for the Android app's Google Play closed test; each sign-up is emailed to the operator ("[Kelo Pre-Test] …") and deleted after the test, on request, or after 180 days.
+- Apps: My → Notifications has a switch "Look at new mail too" for the regular check (off: no mailbox is opened for it; schedules and deadlines are still checked).
+- Models: add as many custom endpoints as you like, each with its own name, address and key; they are listed by name and can be the main or the fallback model (two endpoints count as different providers when their hosts differ).
+- Android: while Kelo works on a reply with the app in the background, the ongoing notification shows the step it is on, the latest picture of its browser page and a Stop button. Desktop: the tray shows the step and has Stop.
+- Server: Home Assistant live watches: ask "tell me when the front door opens" and Kelo watches that device over Home Assistant's own live connection and tells you within seconds (no polling); the connection is open only while a watch is on.
+- Apps: the tasks Kelo offers to do (from what it knows about you) show as cards on the Work page and in the empty chat: "Hand it over" starts the task in the chat; "Not interested" (not interested / already done / later) takes the card away and teaches Kelo.
+- Chat: when Kelo compares options it can show them as one card under its message: the options side by side over the same rows, the recommended one marked, what to check first, and a button per option that sends your choice as a whole sentence.
+- Apps: typing "/" in the chat lists the commands above the message field (today "/new", which starts a new conversation); tap one to put it in the field. On the desktop Enter or Tab picks it.
+- Apps: when Kelo saves a key it found on a page, the chat shows a small "Saved in the Keychain" card with the key's name, where it is used and a button to the Keychain.
+- Server: the server can no longer lock your phone out by demanding an app version that was never released. A minimum app version is checked against the list of apps people can really install (the store builds that are live and the downloads on kelo.chat); a minimum above them is refused when a release is made, and a server that is started with one ignores it, says so in its log and in /api/about (`min_app_ignored`), and keeps serving every app. Server release: the minimum app version in version.json is 0.0.0 (no minimum) until the 0.9 apps are out.
+- Server: Kelo shows up to 6 short cards, each one concrete thing it can do for you now, with one button that starts it ("LG U+ 결합으로 인터넷·TV 가입 접수해 드릴게요. 지금 쓰는 통신사와 주소만 확인해 주세요."). A task that paused for your answer (a question, a login, a fill-in card) comes first with "continue"; then something with a date coming up, then what Kelo noticed in your chat today, then wishes you voiced and things you keep doing. The nightly look-back adds at most 3 a night, each from your own words and never with a price or number (it cannot look anything up); during a chat Kelo may add one with checked numbers and its sources, which it drops after a week. Tapping a card sends its request as your message and Kelo starts on it with the steps it prepared (you never see those steps in the chat). Dismiss a card with "not interested", "already done" or "not now" (hidden for 3 days): similar cards show up less, and after three dismissals of one kind Kelo pauses that kind for two weeks. A card you keep ignoring moves down and goes away after 12 days of being shown. Switch it off with `offers` (PUT /api/proactive); GET /api/offers lists the cards, POST /api/offers/{id}/start and /dismiss act on one.
+- Server: Kelo checks its own earlier answers and corrects them first. When it told you something that may change and that you may act on (rules and law, prices, availability, the result of a review or application, opening times), it looks again later by itself: after a day, then every few days, until the date you decide by (or 30 days). If it changed or was wrong, Kelo tells you without being asked: what it said and when, what is right now and since when, what is still unconfirmed, the sources, that nothing has to be decided now, and one offer of the next step. Before it tells you, Kelo checks the change a second time itself, and it claims nothing without two independent sources or one official one (a government site or the institution's own); otherwise it stays silent. If nothing changed, you hear nothing. Say "keep an eye on X every 3 days" to have Kelo watch something until you say stop, and "그만 확인해" / "stop checking this" to end a topic. It speaks only in your waking hours, never about topics on your don't-tell-me list, and does at most 4 checks a day (settings `rechecks` and `recheck_per_day`, PUT /api/proactive; GET /api/rechecks lists them).
+- Server: Kelo does a step that sends, changes or deletes (a mail, a text, a calendar change, a call to a service, a form on a site) only once per request. Before it runs, Kelo checks its own record: a repeat you did not ask for (Kelo trying again inside the same answer, or an automatic run redoing what another run did) is not run, but a new request from you always is, so "불 켜줘" in the morning and again in the evening both work, and "두 번 보내" sends twice. A step whose result is unknown (a timeout, a dropped connection) is not repeated until Kelo has checked whether it went through and told you. A scheduled job still repeats its own recurring step on its next run; if an automatic run ends without knowing whether a step went through, you get one reminder to check. `GET /api/actions` lists what Kelo did. See docs/security/done-once.md.
+- Apps: the version at the bottom of My links to the exact source code of this build on GitHub.
+- Apps: files of any size can be sent — over Tailscale or a direct domain in one go, through Cloudflare in parts that resume after a dropped connection.
+- Server: files of any size can be uploaded. Over Tailscale or your own direct domain there is no 100 MB limit any more (only your storage space), and through Cloudflare big files go up in parts, so they pass too.
+- Server: an automation blocked for a while (site maintenance, a site down) quietly tries again when it should work, with the same permissions, and tells you once it is done.
+- Server: after paying, Kelo checks the receipt against what you approved. If the charge is different and cancelling is free, it cancels at once and tells you; if cancelling costs a fee, it asks you first with the difference, the fee and the deadline.
+- Server: Kelo answers with what it will do next instead of what it cannot do: when something is missing it names the one thing it needs and what it does as soon as it has it.
+- Server: when Kelo compares prices it reads the seller's own page and counts the whole cost over the term (fees, penalties, card-only discounts); when something is sold out it offers to watch for a restock instead of pushing a pricier substitute; when one site blocks a purchase it prepares the same item elsewhere before asking; questions with short answers put Kelo's recommendation first.
+- Server: watchers look lightly first and use the browser only when they must. A watcher asks for the page from the server like Kelo's own browser would; if the site says no (HTTP 403 and the like, or a "just a moment" check) it tries the same look from inside Kelo's browser, and then with a full page load, and remembers what worked for a day. Watching a page that shows your own data (a reservation, a seat list) can use your sign-in in Kelo's browser without any cookie leaving it: give the watcher the site's own JSON address (`signed_in`, and `method` POST with a `body` when it needs one). A watcher only reads: addresses that order, book, pay or cancel are refused. See docs/watchers.md.
+- Server: watchers check at slightly varied times (the interval ±20%), and a hit is looked at once more half a minute later before it wakes you, so a half-loaded page no longer gives a false alarm.
+- Server: when a page insists on a human check that Kelo's browser cannot pass, the watcher waits longer between checks instead of failing, and tells you once a day to open the page in Kelo's browser view and pass it. Kelo never uses a solving service.
+- Server: in a Telegram or Discord group Kelo now reads everything the messenger hands it as context for its answers, and still answers only when called. In Telegram you choose how much: by default it sees only messages to it; make the bot an admin of the group to let it follow the whole talk.
+- Server: send Kelo's web browsing through your own VPN or proxy (Connectors → Network → VPN (WireGuard) / Proxy): paste your VPN provider's WireGuard file, or a SOCKS5/HTTP proxy address. Kelo's browser and its web reads go through it; AI calls, other connectors, mail, push and your phone connection stay direct. If the VPN is down, browsing stops (never sent around it), a switch waits until Kelo is not browsing (or is forced), and open connections reopen through the new route. New `vpn` container (WireGuard in user space, no extra privileges; needs the newer compose file). See docs/vpn.md.
+- Server: docs/connector-permissions.md lists every call Kelo never makes or always asks about, with the service's own documentation.
+- Server: in the browser, setting up mail forwarding or delegating your mailbox (Gmail, Outlook and others) always asks first, like app passwords; forwarding a single mail you have open does not.
+- Server: Kelo never makes some calls on a connected app, and always asks before others, even when the connector is set to allow: creating keys, tokens or app passwords, running code on your machine, changing who can get in, restarting or managing the system an app runs on, workflows, webhooks, and deleting data that cannot come back (GitHub, Gitea, Forgejo, n8n, Nextcloud, Shopify, Pi-hole, AdGuard Home, Frigate, Paperless, Firefly III, Mealie, Immich, Datadog, Slack, Miniflux, Telegram, Home Assistant and more).
+- Server: type /new in the chat to start a fresh conversation for Kelo: earlier messages stay on screen but leave its context (memory files, schedules and goals stay). /clear is no longer a command (it was the same as /new).
+- Server: Kelo writes to you in your language even when the pages, mails or tools it works with are in another; it switches only when you write in or ask for another language. Until you pick a language in the app, the server follows your phone's or computer's language when it changes.
+- Server: the browser reads pages as a tree of controls with short refs (e12) and clicks by ref, so it no longer guesses selectors; a reading can show only what can be clicked or typed into. New: a picture of the page with every control boxed and numbered, and clicking or dragging at a point of it for canvases, maps and sliders (a point Kelo cannot read always asks first). Tabs in the background keep working at full speed. A replayed shopping task used 68% fewer tokens.
+- Server: connect Kelo to apps you run on your own network by their address (Connectors → Self-hosted): Home Assistant, Frigate, Immich, Paperless-ngx, Mealie, Tandoor, Grocy, Actual Budget (actual-http-api), Firefly III, Linkwarden, Karakeep, Wallabag, Miniflux, FreshRSS, n8n, Uptime Kuma, Beszel, AdGuard Home, Pi-hole, Nextcloud, Gitea, Forgejo. Only your own form can set an address; loopback and link-local addresses stay refused.
+- Server: a change to Home Assistant you ask for in your own chat message goes ahead without an approval card; anything Kelo starts itself, or that came from outside text, still asks.
+- Server: pictures and files from those apps can be saved to your library (connector_download) and pictures shown in the chat (show_picture).
+- Server: compose.yml gives the server host.docker.internal (for an app on the server computer itself).
+- Site, README: a section about the self-hosted apps. Coming later: https with a self-signed certificate.
+- Site, README, docs: a step-by-step guide for connecting through Nginx Proxy Manager (`assistant connect domain --host … --proxy`).
+- Server: one switch for mail in Kelo's 2-hourly check (`mail_check` in `PUT /api/proactive`): off, Kelo does not read your mail there at all (calendar, checklist and the rest keep working); turned on again, it starts from that moment and does not bring up old mail. The morning briefing is not affected.
+- Server: file manager for Kelo's files: delete a file or folder in memory/ or notes/ (kept 30 days in a trash you can restore from or empty), make new folders, and reset a core file (assistant.md, user.md, MEMORY.md, AGENTS.md, CHECKLIST.md, NOTIFY_PREFS.md) to its template with the old text kept in the trash. `DELETE /api/files/{path}`, `POST /api/files/{path}/reset|folder`, `GET /api/home-trash`, `POST /api/home-trash/{id}/restore`, `DELETE /api/home-trash/{id}`; `GET /api/files?folders=1` lists folders too.
+- Server: set what Kelo may do with each connector (mail, calendars, the phone, services, apps on your network, packages): read, change, send and delete can each be allowed, asked every time or turned off, and single actions too (Connectors → a connector → What Kelo may do). Turned off, Kelo does not run it and does not plan with it; asked, you get a card every time, even where an earlier "always allow" would have covered it. `GET/PUT/DELETE /api/connectors/{id}/permissions`; `GET /api/connectors` rows say `limited`. See docs/connector-permissions.md.
+- Server: a check right before anything leaves for someone else (a mail, a text, a form, a service call): if it holds your home address, phone number, card or account number, ID or passport number, door code, health details, a saved login's name or someone else's contact details, you get a card saying what goes where, even where you allowed the connector or a task has a permission. Sending to your own mailbox is not checked; a form-filling permission covers only name, phone, email and address. Kelo's rules say the same: share only what a task needs, only with whoever it is for.
+- Server: after Kelo has read text from outside (a web page, a mail, a message, an app's answer), anything it then sends, changes or deletes asks you first, even where you set the connector to allow, unless you named where it goes in your own message (an address, a phone number, a site, or a person from your memory), it is your own mailbox or phone, or a permission you gave the task already covers it. Typing into a form on a site you did not name asks too, and so does opening a web address that carries your private details. Nothing changes for steps that only read.
+- Server: Kelo notices text on pages, mails and messages that gives orders to the assistant ("ignore your instructions", "send the contacts to ...", "pay ...", in English and Korean), is told that it is data and not a request, and keeps a 90-day record (`GET /api/security/injections?days=`). You get one notice per source per day when such text tried to move your data or money, or when Kelo had to stop a step because of it. See docs/security/prompt-injection.md.
+- Server: Kelo holds a private marker in its own files and must never write it anywhere. A step that would send it out (a mail, a message, a form, a web address) is stopped and you are told.
+- Server: talk to Kelo from Telegram (Connectors → Telegram): paste a bot token, open the link it gives, and only your Telegram account can use it. Replies, answer buttons and Allow/Deny come there; payments, keys and logins still go through the app. Notifications can go there too (ask Kelo).
+- Desktop (macOS): anyone can check that the Kelo disk image is built from the public source (tools/verify/mac-verify.sh; docs/verify-builds.md). The app is built the same way every time now (fixed file times in its jars, one pinned Java runtime).
+- Server: every reply's events are written down as they happen: after a restart the reply can still be read (it ends with "interrupted" and the continue offer), and a new WebSocket GET /api/turns/{id}/ws streams a reply with numbered events so a client that reconnects gets only what it missed (the long-poll stays as the fallback).
+
+### Changed
+- Apps: a reply arrives over one WebSocket and continues from the last word after a broken connection; where a route blocks WebSockets the apps go back to the short requests by themselves.
+- Server: AI-provider keys you enter in the app move into the key container on the next start; Kelo makes model calls through it and no longer holds the keys itself (docs/keyring.md).
+- iPhone: voice input uses Apple's newer speech recognizer on iOS 26 (it downloads its language model the first time; until then the older one is used); on older iOS Apple chooses the best recognizer and punctuation is added.
+- Usage: the limits of the model in use come first ("Model in use · Claude subscription"); the other subscriptions and accounts that report usage (background and fallback models) fold open under them. Server: GET /api/usage adds "subscriptions" (main, background, fallback) and a role on each account.
+- iPhone (internal): the last unused code found by periphery is removed and test-only helpers moved to the tests; no change in behaviour.
+- Chat: an answer button can send a whole sentence (e.g. "LG U+" sends "LG U+ 인터넷+TV 결합으로 진행할게"), so your message says what you chose; the button keeps its short label.
+- Apps: the chat's login card is shorter: no Paste buttons (the system's paste works in the fields), how to keep the login is one dropdown with the chosen way explained under it, and Cancel sits in the card's title row.
+- Apps: a sign-in that a site asks you to approve on your phone shows "I approved it" first and the live view second; when your step is done but the sign-in goes on, the card says "Moved on to the next step" instead of "Signed in".
+- Apps: My → Usage shows how many tokens each model used (today, 7 or 30 days): one number for the period (new tokens and replies, without re-reading the earlier conversation), one bar by model and a legend with each model's share. Server: Google Antigravity's input count now includes its cache reads, like every other provider's.
+- Server: before work that takes several steps (the browser, many tool calls), Kelo first says in one short sentence what it is about to do, so the chat shows something at once instead of only progress chips.
+- Apps: an approval Kelo may remember (starting with "Sign in?") has a "Don't ask again on this site" checkbox, off by default, with what it covers ("Applies to example.com and all its sub-addresses"); it replaces the small "always allow" link on the Work page and now shows in the chat too. Payments never offer it.
+- Apps: a task allowed to send applications (trial campaigns, draws, sign-up forms) shows that part on its setup card (what, where, how many per run and in all) and in its permission list, where it can be taken back.
+- iPhone: all Kelo notifications stack in one group, and opening the app clears the ones that were only news (replies, finished jobs, schedules, payment news); approvals and urgent cards stay until answered (as on Android).
+- Apps: a newly paired device is named after its model in My → Devices ("Galaxy S24 · Kelo", "iPhone 15 Pro · Kelo", "MacBook Pro · Kelo") instead of a model code, a plain "iPhone" or the computer's host name.
+- Desktop: My → Keyguard shows whether it is on, the phones that hold the key, and unlocks with the recovery code; the "Kelo is locked" banner offers the recovery code. Android and desktop now share one Keyguard page.
+- Server: a long run that sends applications tells you once how far it got after 10 minutes ("N application(s) sent so far, still going"); the notice at the end is unchanged.
+- Desktop: Korean in chat messages wraps between words instead of inside them.
+- Android: voice input uses Google's on-device speech recognition when the phone has it (better than some phones' default, works offline), then Google's own service, then the phone's default; a missing language is downloaded for next time.
+- Android: tapping or dragging the messages closes the keyboard, as on the iPhone.
+- Desktop: in a long chat the messages fade out under the floating Kelo at the top of the window instead of showing through around it.
+- Android: all Kelo notifications stack in one bundle, and opening the app clears the ones that were only news (replies, finished jobs, schedules, payment news); approvals and urgent cards stay until answered.
+- Desktop: when Kelo asks you to connect a service, the chat card shows the service's sign-in form right there (code, sign-in, key, mailbox), as on the phone, instead of a button that opens the Connectors page.
+- Desktop: the chat's location question looks as on the phone: the same title and spacing, with "Not now" and the note that a phone shares the place.
+- Desktop: the operator's GitHub and Google sign-in settings (in My → Operator) are the phone's own card.
+- Apps: the connectors and goals pages, and the chat's connect and location cards, are one code for Android and desktop now (no visible change on the phone).
+- Desktop: the header's agent name falls back to "Kelo" like on the phone, and the phone follows an agent-name change from the status check like the desktop already did.
+- Desktop: the connect screen is the phone's: the server's address is shown for you to confirm before anything is sent, a pairing link can be pasted or scanned (here: pasted) from the same buttons, and a refused access key says only that it did not match.
+- Desktop: the screens that cover the window when a server's key changed or the server is too old look like the phone's, and Esc/back no longer leaves them.
+- Desktop: the address form in the chat is the phone's form (its fields are named for screen readers); the note "cards are added on the phone" under a sent form no longer shows there, the wallet page that opens says it.
+- Apps (Android, iPhone, desktop): file names and other inline code in Kelo's messages no longer sit on a white box; they keep the monospace font only.
+- Apps: removed unused code and texts (no visible change).
+- Apps: one set of texts for all apps instead of copies (no visible change).
+- Desktop: text fields show their hint inside the field, as on the phone.
+- Deleting a goal and answering "delete them too" now deletes its linked schedules (into the schedule archive, restorable there) instead of pausing them; all apps word the question as delete. `DELETE /api/goals/{id}?schedules=delete|keep` (older apps' `pause` deletes as well); the answer lists `deleted_schedules`.
+- Server: Kelo looks facts up (a carrier's network, a price) instead of asking you; advice is weighed against what you already told it (your current plan or price, with the difference) and ends by offering the next step it can do itself, not where you could go.
+- Apps: Android and desktop share one code module instead of copying files (no visible change).
+- Desktop: the chat's picture, file, briefing, model and reaction parts are now the phone's own code, so they behave the same; a long file name under a message is cut in the middle and keeps its ending (.pdf), as on the phone.
+- Desktop: the model list in the chat no longer shows a "needs setup" row per service; "More settings" opens the model settings, where services are set up, as on the phone.
+- Desktop: if the agent's picture or the model lists cannot be saved on this computer, the app now shows the error instead of ignoring it, as on the phone.
+- Desktop: the "change contact hours" button in the briefing looks as it does on the phone.
+- Desktop: the chat's small screens are now the phone's own: the AI-service question, the held-back-secret question (a card number goes on to Wallet, where cards are added on the phone), the Markdown in replies, the time lines and the "thinking" line behave as on the phone.
+- Desktop: a list of more than ten choices (the services in the model settings) opens a list with a search field, with ready services first, instead of one long menu; a short list stays a menu.
+- Desktop: signing a service in has a "Paste" button for the code from the browser, and the code sits in the phone's softer box.
+- Desktop: a payment step says "tap to copy" for its code, as on the phone, and its keypad note is the phone's wording.
+- Desktop: the "thinking" line under the messages is cut after one line, as on the phone.
+- Desktop: the chat runs on the phone's own chat code (sending, history, approvals, uploads, held-back messages): a failed save of the draft or an upload problem is handled and worded as on the phone.
+- Desktop: a "check whether you are a person" card folds into its result a moment after you solve or skip it (when the list refreshes), as on the phone.
+- Desktop: a video you attach shows as a file chip in the sent message, not a picture thumbnail, until the chat reloads.
+- Desktop: the chat page is now the phone's own screen (messages, cards, tool chips, the "↓" pill, the composer), so rows and cards look and behave as on the phone; the window keeps its centred column, Enter-to-send, right-click menu, drag and drop, and pasted pictures.
+- Desktop: a payment with a card kept on the phone offers Allow and tells you that card can only be sent from the phone, as the phone's card does.
+- Desktop: "More settings" in the model list opens the phone's model sheet (service, model, fallback) in a window; keys and addresses are set up in My → Model.
+- Desktop: reporting a reply uses the phone's report sheet.
+- Desktop: the Work page (timeline, task, job, watcher, schedule and browser pages, approvals) is now the phone's own screen, so it reads and behaves as on the phone.
+- Desktop: the live view of a browser tab is the phone's: the page is shown through a live connection, with the same take-control button and picture handling, instead of the desktop's own picture polling.
+- Desktop: the update banner, the My update card and the "update required" screen are the phone's own screens.
+- Desktop: the pairing and sign-in start screen, the notices for a changed server key and an old server, and the window's header and side tabs run on the phone's shared code (the same waiting words, badge and agent line).
+- Desktop: a schedule goes to the archive by dragging it to the left (as on the phone) or from its page, instead of a trash button; the live view is the phone's page, which also has the zoom buttons (−/+) and Ctrl/⌘ + wheel zoom for a pointer.
+- Desktop: replies show their lists, numbers and spacing as on the phone, and a reply bubble fits its text instead of always stretching across.
+- Desktop: choice fields (language of a mail service, briefing times, models) look as the phone's: the choice with a small arrow after it.
+- Server: Kelo uses your saved preferences (sizes, colors, options, address) for choices on any site, also in the instructions it gives background jobs and schedules, instead of picking defaults or at random or asking whether they apply; once you answer a question it acts instead of asking again.
+- Server: a scheduled job's instructions are now written as a full runbook (what must be true first, the exact addresses, the steps with your own choices, how to check it worked, what to report, when to skip), since each run starts with no memory of the chat.
+- Server: when you ask Kelo to buy something, a card with auto-pay on pays within your limits without asking, also on a site you have not paid at before (that first-site question stays for purchases you did not ask for).
+- Server: shorter instructions and tool texts sent with every message (about 1,500 fewer tokens per first message); rarely used browser and place tools load on demand.
+- Server: agy keeps the chat's session alive while background jobs run, so more replies reuse the cached conversation (faster, fewer tokens).
+- Server, site, docs: the `<name>.kelo.chat` address is described as offered for now (availability and terms may change) instead of free; the Kelo-address-pool notices and menus say "Kelo address (offered for now)" in every language.
+- Server: what Kelo tells you in one check goes out as one message per mailbox (a line per item, the same mail twice shown once as "(2 mails)", the mailbox named when you have several) instead of one message each.
+- Desktop: My is now the phone's own page: devices, documents, keychain, model, notifications, briefing, operator, server update, storage and cleanup, and the wallet look and behave as on the phone (the wallet says "add a card on the phone", since a computer never holds a card).
+- Desktop: the switch for notifications on this computer moved from Notifications to My → This device.
+- Desktop: in the model settings, signing out of a service is offered for the model in use only (as on the phone), and the country search in an address finds the names shown (not the English ones).
+- Desktop: Connectors and Goals are now the phone's own pages (in a wide window the open connector or goal still sits beside the list): the service filter chips scroll sideways, "Add goal" is a floating button, and a goal is removed with the bin on its row or by swiping.
+- Desktop: connecting a mailbox by IMAP starts on the same service as on the phone (the list is unchanged).
+- Desktop: the model settings opened from the chat's "choose a model" card are the same page as My → Model, shown over the whole window.
+- Desktop: the sign-in form that follows a message in the chat is the phone's, as a dialog; the phone's sheet now uses the same sheet look as the chat's other questions.
+- Phone: a schedule in a goal opens on the Work tab.
+- Phone: signing out also removes this phone from the Devices list on the server (the computer app already did).
+- Desktop: dates in the agent's records and the version line at the bottom of My are written as on the phone.
+- iPhone: signing out first removes this phone from the Devices list on the server (best effort, at most 5 seconds, then the local sign-out); pairing again keeps the plain local sign-out.
+- iPhone: the pages that poll (storage and resources, adding a device, a server update under way, the AI service's sign-in) stop asking the server as soon as the page is left.
+- iPhone (internal): every page under My has a page model that does the server work and keeps its state (the views only draw it), and a slow older answer can no longer cover a newer one on those pages.
+- iPhone: a schedule row in a goal's page opens that schedule on the work page.
+- iPhone: a notification that opens the work page at a section (asks, watchers, upcoming) waits until that section has its data, then goes there once; it was dropped when the list was still loading.
+- iPhone: the name in the header says "Kelo" while the agent has none, and follows a rename (made by the agent or on another device) at the next status check.
+- iPhone: the chat's check for news, the goals refresh and the server-update follow on 마이 run only while their tab is the one on screen.
+- iPhone (internal): the chat, work, goals, connectors and start screens do their server work in page models (the views only draw), the bottom tabs are a list (`TabSpec`) built by `tabsFor`, and the app reads Kelo Nest's extensions into slots for tabs, 마이 sections, home cards and chat cards; with no Nest renderer nothing from Nest shows anywhere.
+- iPhone (internal): the chat's model sheet and 마이 → 모델 are one page (one provider type, one set of consent and sign-in rules, models and views in the shared module), the repeated rows, enums and test setup are single copies, the app's shared objects (language, settings, connector icons, phone-data sync, network cost) are handed in by init or the environment instead of being reached from views, and the iPhone's strings leave out the 148 texts it never shows.
+
+### Fixed
+- Work: a job whose browser tab is gone no longer shows as running: when the live view finds the tab closed, the Work page and the job page load again at once.
+- Apps: on the Work page a task that handed its work to a background job says "In the background" while the job runs instead of "Done", and a finished job no longer offers a live view of its closed tab.
+- Apps: when the phone's location is off altogether, the location card and the briefing's "Allow location" say so and point to the phone's location settings (Android opens them; iPhone shows the way), instead of opening Kelo's own settings page.
+- Apps (Korean): the message sent after connecting a service no longer puts a fixed particle after the service's name ("Telegram 연결을 마쳤어요" instead of "Telegram를 연결했어요").
+- Server: the usage page counts agy's whole prompt (it reported input without the cached part, so its cache share looked wrong), and every agy call records whether it went on with a kept session or had to start a new one, and why.
+- Korean (fixed): the update line said "새 버전 1.0.3가 있어요"; a version cannot take a particle, so it now reads "새 버전이 있어요: 1.0.3 · 0.3 MB" like the server update line.
+- Phone / desktop (fixed): a goal's chips ("Kelo's waiting for your answer", the plan count, the tag) wrap onto a second line instead of being cut off mid-phrase in a narrow row, and every other one-line chip (connector badges, work and live-view chips, reply chips) ends with an ellipsis when its text is too long.
+- Desktop (fixed): in a narrow window the work page's title and its task, job, schedule and browser pages, and a connector's page, started under the agent's picture at the top and could be covered by it; they start below it as before. The work tab has no back arrow that went nowhere, and a goal opened beside the list is no longer pushed down twice.
+- Phone / desktop (fixed): the goals list and the work page open at their top and stay there while more arrives (goal suggestions come after the goals); before, the suggestion or the first section could be scrolled out of sight under the header, most often in a small window.
+- iPhone: on My → Agent, an older answer of the profile read can no longer put the old tone back after you picked another one.
+- Server: Kelo never calls Home Assistant services that run code or manage the system it runs on (shell and Python scripts, REST commands, the Supervisor, restarting or stopping Home Assistant), whoever asks; switching devices works as before.
+- Server: when Kelo needs a key or token (or you offer one), it shows the fill-in card in the chat right away instead of sending you to the Keychain page.
+- Server: Kelo always asks before a browser step that changes how one of your accounts is protected (creating an app password or a key, turning 2-step verification off, adding or removing a device) or issues an official document in your name (e.g. 증명서 발급). No rule, standing permission or ongoing order skips this card.
+- Server: a next step tapped on the morning briefing card is now done instead of offered again; new steps are written as your own request ("…정리해줘"), not as Kelo's question.
+- Server: what you asked for on a site (e.g. "apply to the trials") keeps going there without cards while you chat about the same work ("seems stuck", "try one yourself"), for up to 6 hours after its last step; saying stop ends it at once. Payments still ask.
+- Server: a button clicked again after the page changed no longer shows a bare "press a button?" card; Kelo reads the button's own name, so what you asked for (e.g. applying) goes through and a payment still asks.
+- Server: a background job no longer fails when the AI model is busy or unreachable for a while; it pauses and goes on by itself (after 1, 5, 15, then every 60 minutes, up to 48 hours).
+- Server: when a background job stops on an error, Kelo now tells you how far it really got (its steps, and how many applications/sends went through on which site, from the server's own record) instead of guessing that nothing was done.
+- Server: when Gemini (agy) answers "servers are experiencing high traffic" (no capacity), Kelo waits and asks again (after 20, 40 and 60 seconds) instead of stopping the task.
+- Server: agy could lose its Google sign-in when two of its sessions started at the same moment (the token file was left empty, and every reply failed with "not authenticated"). Starts now go one at a time and a good sign-in is kept and put back if it is ever emptied.
+- Server: the "disk almost full" warning no longer fires during a Kelo update (a short dip while the new version builds); it waits until the disk stays low for 15 minutes, except under 1 GB. It also says when Kelo's own data is not what fills the disk.
+- Server: when Gemini (agy) writes a tool call it cannot read ("improperly formatted function call"), Kelo asks it again (up to twice) instead of stopping the task.
+- Server: when you asked to apply to (or send to) all items, Kelo no longer asks a second time with a "all N items?" card; your own words are the permission. Deleting and anything you did not ask for still ask.
+- Server: the live view of a background job's browser tab opens again from the app; it said the tab was closed (the encrypted connection passed the tab's name still escaped).
+- Server: a background job doing what you asked (e.g. applying to every item on a list) no longer asks before each step after it reported back once; its own report was read as if you had said stop.
+- Server: every self-hosted connector (all 23) was run against a real, current instance of its app; the Immich, Actual Budget, Pi-hole and Nextcloud notes the assistant and the form show were corrected to match.
+- Server: a key, card or payment PIN card that Kelo showed in the chat and you did not fill in now gets the same follow-up reminders as a login that was not entered (it stops when you fill it in, close it, or it runs out).
+
+
+## 0.9.3 (build 15, 2026-11-11)
+
+### Changed
+- Server: Kelo checks every new mail since its last look in each mailbox (Gmail, Naver, Daum, iCloud, Yahoo, Outlook), not only the newest five; read mail and promotions stay out.
+- Server: a mail heads-up is titled "New mail · sender · subject" instead of just the assistant's name.
+- Server: background jobs keep going on many-item work, try other ways before pausing, explain what they tried when they do pause, and show progress on the job card ("300 / 1,545 · …").
+
+### Added
+- Apps: My → Kelo's files: read, edit and delete the files Kelo keeps for itself (who you are, its memory, notes); core files go back to the start instead of being deleted; a 30-day trash with restore.
+- Server: once a day Kelo skims the spam and promotions folders for clearly important mail filed there by mistake.
+- Server: booking and payment confirmations are checked against the calendar; a different date, time, place or people is pointed out.
+- Server: flight or train changes, cancelled or changed bookings and security alerts are told right away, outside the daily heads-up limits.
+
+### Fixed
+- Server: every heads-up decision keeps its reason, including the ones not told.
+- Build: a signed macOS disk image is notarized and stapled (the build stopped after signing).
+
+### Fixed
+- App, desktop, iOS: a background job waiting for an answer (or cut off by a restart) has a Stop button on its page, not only a running one.
+
+## 0.9.2 (build 14, 2026-11-11)
+
+- Added (server): the operator gets a notification and a push for every new reply report (reason only), and Kelo-address warnings at 50 and 70% as well as 90% and full.
+
+## 0.9.1 (build 13, 2026-11-11)
+
+- Changed (release): every release that changes anything gets a new version by the kind of change (patch: fixes, minor: features); the build number only counts builds (`bump.py patch|minor|major`, docs/versioning.md).
+- Fixed (server): the apps showed an old server version (0.1.0) on My: /api/about sent `build` as a number and the apps read it as text, so the whole answer failed and the cached value stayed. It is sent as text now.
+
+## 0.9.0 (build 12, 2026-11-11)
+
+- Fixed (server): Kelo said Gmail was "read-only" and refused to mark mail read without looking for its mail tools; it now checks find_tools before saying it cannot do something with a connected service.
+- Fixed (server): an API key the agent comes across (a key it creates on a provider's dashboard in the browser, or one in mail, a file or a service's answer) no longer reaches the model or the chat in plain text. Tool results show it as `[secret #N]`; the new `save_found_secret` tool saves it straight to the Keychain (only for the site it was found on unless the user allows other hosts). A key the model writes into a reply is hidden as it streams, and job reports and notifications are cleaned the same way.
+
+## 0.9.0 (build 11, 2026-11-11)
+
+- Fixed (server): after the user stopped a background job from the Work page, Kelo still said in chat that it was running. Each chat turn now carries the jobs' state right now (running, stopped, finished), which overrides what earlier messages said.
+- Changed (desktop): the MSIX's display name is the product name reserved in Partner Center (Kelo AI).
+
 ## 0.9.0 (build 10, 2026-11-10)
 - Server (changed): there is no "owner phone" any more: every device signed in to a server has the same full rights (Keyguard, updates, settings). On a review server the reviewers' devices still cannot reach Keyguard or the operator settings.
 - Server (fixed): Kelo no longer declines a purchase or sign-up over what it assumes a site or the law requires; it opens the site and tries.
@@ -296,6 +516,7 @@ build's version and date, and copy the app lines into the Play release notes (en
 - Server CLI: the size menu (`instance create`, `limits --choose`) first shows what the computer should have (minimum / recommended), then the caps, labelled as caps.
 
 ### Added
+- Apps: My → Kelo's files: read, edit and delete the files Kelo keeps for itself (who you are, its memory, notes); core files go back to the start instead of being deleted; a 30-day trash with restore.
 - Owner phones: the server's owner can give their own phone the owner's rights, so My → Operator settings (free Kelo addresses, Beta requests, push key, sign-in apps) opens on it. Only from the server machine: `assistant phone add --owner` (the QR pairs the phone as owner), `assistant phone owner` (list devices, `--grant` / `--revoke <number|name>`, or pick one in a terminal). `assistant setup` pairs the main copy's first phone as owner while nobody holds the rights; extra copies and plain `phone add` pair ordinary phones. No phone can grant these rights, and an owner phone otherwise stays an ordinary device (its own browser tab, push and phone data). My → Devices marks it **Operator** (Android, iOS).
 - Gmail and Google Calendar (app: Android, desktop, iOS; also in the chat's connect card): while Google sign-in is still closed, **Request beta access** asks the Kelo developer to let you in. Type the Google email you will connect; the button then shows "Requested" (kept on your server, so it stays after reopening). Once approved you get one email, and the screen shows "Sign in with Google" the next time you open it. If it is not approved, the screen says so.
 - Operator (My → Operator settings → Beta requests, owner only): each request with its email, services, time and state; **Approved** (after adding the address as a test user in Google Cloud Console) emails the person in their language and lets their copy sign in, **Decline** can send a short email. A new request also shows as a notification and is emailed to support@kelo.chat through the Gmail connected on the operator's server (no Gmail connected: no email, and the screen says so).
@@ -347,6 +568,7 @@ build's version and date, and copy the app lines into the Play release notes (en
 ## 0.1.401961 — 2026-11-08 (server and site deployed to kelo.chat the same day)
 
 ### Added
+- Apps: My → Kelo's files: read, edit and delete the files Kelo keeps for itself (who you are, its memory, notes); core files go back to the start instead of being deleted; a 30-day trash with restore.
 - Server: licence chosen: GNU AGPL-3.0-or-later (`LICENSE`, `NOTICE`). The Kelo name, logo and mascot are not covered.
 - Server: `web_search` and `web_fetch` tools: quick look-ups (prices, comparisons) are answered in the chat without opening the
   browser or starting a background job. Works with every model provider; no key needed.
@@ -374,6 +596,7 @@ build's version and date, and copy the app lines into the Play release notes (en
 ## 0.1.401790 — 2026-11-08
 
 ### Added
+- Apps: My → Kelo's files: read, edit and delete the files Kelo keeps for itself (who you are, its memory, notes); core files go back to the start instead of being deleted; a 30-day trash with restore.
 - App: sign in to Claude and Antigravity (and other sign-in providers) from My → Model, without a terminal.
 
 ### Changed

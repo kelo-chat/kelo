@@ -71,16 +71,14 @@ struct SignInSheet: View {
     let name: String
     let onNotify: (String) -> Void
     let onClose: () -> Void
-    @Environment(AppModel.self) private var app
-    @Environment(\.kelo) private var c
-    /// 0 looking, 1 found, 2 gone
-    @State private var state = 0
+    @Environment(\.keloApi) private var api
+    @State private var lookup = SecureLookupModel()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 SheetHeader(L(R.string.signin_sheet_title), onClose: onClose)
-                switch state {
+                switch lookup.state {
                 case 0: ProgressView()
                 case 1: SecureCard(name: name) { text in onNotify(text); onClose() }
                 default: MutedText(L(R.string.signin_sheet_gone), small: true)
@@ -88,10 +86,7 @@ struct SignInSheet: View {
             }
             .padding(.horizontal, 16).padding(.bottom, 24)
         }
-        .task {
-            guard let api = app.api, let info = try? await api.get("/api/vault", as: ChatVaultInfo.self) else { state = 2; return }
-            state = info.find(name) != nil ? 1 : 2
-        }
+        .task { await lookup.load(name, api: api) }
     }
 }
 
@@ -100,15 +95,15 @@ struct SignInSheet: View {
 struct SecureCard: View {
     let name: String
     let onNotify: ((String) -> Void)?
-    @Environment(AppModel.self) private var app
+    @Environment(\.keloApi) private var api
     @Environment(\.kelo) private var c
-    @State private var item: ChatVaultItem?
-    @State private var done: VaultMode?
-    @State private var closed = false
+    @State private var lookup = SecureLookupModel()
+    @State private var done: SecretLoginMode?
 
     var body: some View {
+        let closed = lookup.closed
         Group {
-            if let it = item {
+            if let it = lookup.item {
                 let what = L(it.isLogin ? R.string.vault_what_login : R.string.vault_what_key, it.label)
                 CardBox {
                     if closed {
@@ -130,13 +125,8 @@ struct SecureCard: View {
                             }
                         } else {
                             SecureEntryForm(item: it, defaultMode: it.isLogin ? .afterSuccess : .now) { done = $0 }
-                            LinkButton(L(R.string.cancel)) {
-                                // nothing was entered: the request is forgotten, and nothing is left in the keychain
-                                Task {
-                                    if let api = app.api { _ = try? await api.request("DELETE", "/api/vault/\(KeloApi.segment(name))/draft") }
-                                    closed = true
-                                }
-                            }
+                            // nothing was entered: the request is forgotten, and nothing is left in the keychain
+                            LinkButton(L(R.string.cancel)) { lookup.discard(name, api: api) }
                         }
                     }
                 }
@@ -144,10 +134,7 @@ struct SecureCard: View {
                 EmptyView()
             }
         }
-        .task(id: name) {
-            guard let api = app.api else { return }
-            item = (try? await api.get("/api/vault", as: ChatVaultInfo.self))?.find(name)
-        }
+        .task(id: name) { await lookup.load(name, api: api) }
     }
 }
 
@@ -155,15 +142,14 @@ struct SecureCard: View {
 /// passwords above the keyboard by itself (no extra button, no hint text); a service key is never offered for AutoFill.
 struct SecureEntryForm: View {
     let item: ChatVaultItem
-    let defaultMode: VaultMode
-    let onSaved: (VaultMode) -> Void
-    @Environment(AppModel.self) private var app
+    let defaultMode: SecretLoginMode
+    let onSaved: (SecretLoginMode) -> Void
+    @Environment(\.keloApi) private var api
     @Environment(\.kelo) private var c
     @State private var user = ""
     @State private var pass = ""
-    @State private var mode: VaultMode?
-    @State private var msg = ""
-    @State private var busy = false
+    @State private var mode: SecretLoginMode?
+    @State private var save = SecureEntrySaveModel()
     @FocusState private var focus: Field?
 
     enum Field { case user, pass }
@@ -185,11 +171,11 @@ struct SecureEntryForm: View {
                 .keloKeyboard(.ascii)
             if login {
                 FieldLabel(L(R.string.vault_mode))
-                ModePicker(mode: chosen) { mode = $0 }
+                LoginModeMenu(mode: chosen) { mode = $0 }
             }
             let ready = !pass.isEmpty && (login ? !user.trimmingCharacters(in: .whitespaces).isEmpty : pass.trimmingCharacters(in: .whitespaces).count >= 8)
-            PrimaryButton(L(busy ? R.string.vault_saving : R.string.vault_save), enabled: !busy && ready) { submit(login: login, mode: chosen) }
-            if !msg.isEmpty { ErrorText(msg, small: true) }
+            PrimaryButton(L(save.busy ? R.string.vault_saving : R.string.vault_save), enabled: !save.busy && ready) { submit(mode: chosen) }
+            if !save.msg.isEmpty { ErrorText(save.msg, small: true) }
             MutedText(L(R.string.vault_footer), small: true)
         }
         .keloSensitive()
@@ -204,62 +190,10 @@ struct SecureEntryForm: View {
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(focus == focused ? c.accent : c.line, lineWidth: focus == focused ? 2 : 1))
     }
 
-    private func submit(login: Bool, mode: VaultMode) {
-        guard let api = app.api else { return }
-        busy = true; msg = ""
-        Task {
-            defer { busy = false }
-            do {
-                if login {
-                    _ = try await api.request("PUT", "/api/vault/\(KeloApi.segment(item.name))/login", body: [
-                        "username": .string(user.trimmingCharacters(in: .whitespaces)), "password": .string(pass), "mode": .string(mode.rawValue),
-                    ])
-                } else {
-                    _ = try await api.request("PUT", "/api/credentials/\(KeloApi.segment(item.name))/secret",
-                                              body: ["secret": .string(pass.trimmingCharacters(in: .whitespaces))])
-                }
-                user = ""; pass = ""
-                onSaved(mode)
-            } catch {
-                msg = app.message(for: error)
-            }
+    private func submit(mode: SecretLoginMode) {
+        save.save(item, user: user, pass: pass, mode: mode, api: api) {
+            user = ""; pass = ""
+            onSaved(mode)
         }
-    }
-}
-
-/// The three ways to keep a login, as one grouped list: a radio per row, the chosen row's explanation under its name.
-private struct ModePicker: View {
-    let mode: VaultMode
-    let onPick: (VaultMode) -> Void
-    @Environment(\.kelo) private var c
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(VaultMode.allCases.enumerated()), id: \.offset) { i, m in
-                if i > 0 { Hairline() }
-                Button { onPick(m) } label: {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: mode == m ? "largecircle.fill.circle" : "circle")
-                            .foregroundStyle(mode == m ? c.accent : c.muted).padding(.top, 2)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L(m == .afterSuccess ? R.string.vault_mode_after_success : m == .now ? R.string.vault_mode_now : R.string.vault_mode_once))
-                                .font(mode == m ? KeloFont.button : KeloFont.body).foregroundStyle(c.ink)
-                                .fixedSize(horizontal: false, vertical: true)
-                            if mode == m {
-                                Text(L(m == .afterSuccess ? R.string.vault_mode_after_success_help
-                                       : m == .now ? R.string.vault_mode_now_help : R.string.vault_mode_once_help))
-                                    .font(KeloFont.small).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(mode == m ? [.isSelected] : [])
-            }
-        }
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(c.line, lineWidth: 1))
     }
 }

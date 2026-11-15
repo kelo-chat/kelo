@@ -2,7 +2,7 @@ import SwiftUI
 import KeloCore
 
 // The setup card of a "when X happens, do Y" task (Android agent/TaskGrantCard.kt), its urgent line, and the "see the list" of a
-// permission for many items (Android chat/ChatScreen.kt ApprovalItems): the same in the chat and on the Work page, so they live here.
+// permission for many items (Android chat/ChatCards.kt ApprovalItems): the same in the chat and on the Work page, so they live here.
 
 /// The setup card: the question, the trigger and the action, then one block per thing allowed (purchase, message, change, login) with
 /// its limits, the card's own auto-pay limit next to the amount asked for, "ends by itself" for a one-shot task, and when time matters
@@ -83,6 +83,15 @@ public struct TaskGrantApproval<Trailing: View>: View {
                             .foregroundStyle(ch.allowDelete ? c.warn : c.muted).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                if let a = g.apply {
+                    Hairline()
+                    part(.edit, L(R.string.task_grant_apply)) {
+                        body(a.what)
+                        if !a.site.isBlank { small(a.site, muted: true) }
+                        small(L(R.string.task_grant_apply_per_run, a.maxCount))
+                        if a.total > 0 { small(L(R.string.task_grant_apply_total, a.total), muted: true) }
+                    }
+                }
                 if let l = g.login {
                     Hairline()
                     part(.key, L(R.string.task_grant_login)) { body(L(R.string.task_grant_login_line, l.label, l.site)) }
@@ -117,15 +126,7 @@ public struct TaskGrantApproval<Trailing: View>: View {
     }
 
     private func part<Content: View>(_ icon: KeloIcon, _ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                KeloIconView(icon, size: 16, tint: c.muted)
-                Text(title).font(KeloFont.label).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            VStack(alignment: .leading, spacing: 2) { content() }.padding(.leading, 22)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        CardPart(icon, title, content: content)
     }
 }
 

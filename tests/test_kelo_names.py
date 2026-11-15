@@ -197,7 +197,7 @@ async def test_the_cap_and_cloudflare_limits_give_a_clear_full_error(cf):
     await names.configure(api_token=None, account_id=None, zone_id=None, zone_name=None, max_names=1)
     await names.claim("alice", INSTALL_A)
     assert names.check("bob") == {"name": "bob", "available": False, "reason": "full"}
-    with pytest.raises(KeloNameError, match="no free Kelo addresses") as e:
+    with pytest.raises(KeloNameError, match="no Kelo addresses") as e:
         await names.claim("bob", INSTALL_B)
     assert e.value.status == 503 and len(cf.live()) == 1
     await names.configure(api_token=None, account_id=None, zone_id=None, zone_name=None, max_names=10)

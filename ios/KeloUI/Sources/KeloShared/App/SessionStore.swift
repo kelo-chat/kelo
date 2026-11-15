@@ -39,13 +39,6 @@ public final class KeychainSessionStore: SessionStore, @unchecked Sendable {
     }
 }
 
-public final class MemorySessionStore: SessionStore, @unchecked Sendable {
-    private var session: Session?
-    public init(_ session: Session? = nil) { self.session = session }
-    public func load() -> Session? { session }
-    public func save(_ session: Session?) { self.session = session }
-}
-
 /// Small settings that are not secret (UserDefaults): the language pick, the last server address, notification choices.
 public final class Prefs: @unchecked Sendable {
     public static let shared = Prefs()

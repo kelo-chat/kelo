@@ -18,10 +18,11 @@ def last_user_id(ctx: Any) -> int:
     S = _server()   # read at each call (tests tune some of these on assistant.server)
     GOAL_MARK = S.GOAL_MARK
     HANDOFF_MARK = S.HANDOFF_MARK
+    RECHECK_MARK = S.RECHECK_MARK
     SCHEDULE_MARK = S.SCHEDULE_MARK
     WATCH_MARK = S.WATCH_MARK
     store = ctx.store
-    marks = (HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK)
+    marks = (HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK)
     return next((int(r["id"]) for r in store._all("SELECT id, content FROM messages WHERE role = 'user' ORDER BY id DESC LIMIT 50")
                  if not str(r["content"]).startswith(marks)), 0)
 

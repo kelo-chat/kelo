@@ -126,7 +126,7 @@ def test_a_copy_asks_for_its_own_name_and_restarts_the_tunnel_only_when_the_toke
     assert read_env(tok, "TUNNEL_TOKEN") == "eyJ-new-token-0123456789abcdefghijk"
     assert any("--force-recreate" in c and "kelo-tunnel" in c for c in run.calls[n:])
     busy = Broker(claim=Reply(503, {"detail": {"code": "full", "message": "x"}, "code": "full"}))
-    assert "all free Kelo addresses are taken" in connect.kelo_refresh(m, m.load("alice"), post=busy)
+    assert "no Kelo addresses are available" in connect.kelo_refresh(m, m.load("alice"), post=busy)
     assert read_env(tok, "TUNNEL_TOKEN") == "eyJ-new-token-0123456789abcdefghijk"   # kept when the broker says no
     assert connect.kelo_refresh(m, m.load(), post=same) is None                        # the main copy is not on a Kelo address
 

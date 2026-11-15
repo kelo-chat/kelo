@@ -104,6 +104,10 @@ def main():
             fail(r, "Committing the edit")
         edit = None
         print(f"Done: version code {code} is on the {args.track} track as {args.status}.")
+        # Review and rollout can take days, so this script never marks a release live. The operator records it when it is
+        # (a minimum app version may never be above a recorded release; internal testing does not count).
+        print(f"When it is live for people (production or open testing, not internal testing), record it with\n"
+              f"  assistant release-record android <version> {code} play")
         if args.status == "draft":
             print("Open Play Console -> Test and release -> the track -> Edit release -> Review release -> roll it out.")
     finally:

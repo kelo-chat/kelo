@@ -173,3 +173,64 @@ main > .hero { padding-top: clamp(40px, 7vw, 96px); }
     @keyframes a-drift { from { transform: translateY(24px); } to { transform: none; } }
   }
 }
+
+/* ---------------------------------------------------------------- tester sign-up (backlog 86) */
+.tester-form { display: flex; flex-direction: column; gap: 12px; max-width: 540px; margin: 1.5em 0; }
+.tester-form label { font-weight: 500; font-size: 15px; color: var(--ink); }
+.tester-form input[type="email"],
+.tester-form input[type="text"] {
+  width: 100%;
+  padding: 12px 14px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  outline: none;
+}
+.tester-form input[type="email"]:focus,
+.tester-form input[type="text"]:focus {
+  border-color: var(--accent);
+}
+.tester-form .consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+  cursor: pointer;
+  margin: 4px 0;
+}
+.tester-form .consent input[type="checkbox"] {
+  margin-top: 3px;
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.tester-form .hp, .hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.tester-form .btn { align-self: flex-start; margin-top: 4px; }
+
+.notice {
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  margin-bottom: 1.5em;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.notice.notice-sent,
+.notice.notice-again {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--ink);
+}
+.notice.notice-invalid,
+.notice.notice-consent,
+.notice.notice-limited,
+.notice.notice-full,
+.notice.notice-off {
+  background: color-mix(in srgb, #d93829 12%, transparent);
+  border: 1px solid color-mix(in srgb, #d93829 35%, transparent);
+  color: var(--ink);
+}
+

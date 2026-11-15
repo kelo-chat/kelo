@@ -38,9 +38,19 @@ final class LiveModel {
     @ObservationIgnored private var lastSeq: Int64 = 0
     @ObservationIgnored private var socketOpen = false
 
-    init(api: KeloApi, tabId: String) { self.api = api; self.tabId = tabId }
+    @ObservationIgnored private let cost: NetworkCost
 
-    var quality: LiveQuality { LiveQuality.pick(metered: NetworkCost.shared.metered) }
+    init(api: KeloApi, tabId: String, cost: NetworkCost = .shared) { self.api = api; self.tabId = tabId; self.cost = cost }
+
+    /// The tab's own row (its title, host and status in the header); nil until read, or when it is gone.
+    private(set) var tab: BrowserTab?
+
+    func loadTab() async {
+        let found = (try? await api.browserTabs(thumbnails: false))?.items.first { $0.id == tabId }
+        if !Task.isCancelled { tab = found }
+    }
+
+    var quality: LiveQuality { LiveQuality.pick(metered: cost.metered) }
 
     func start() {
         guard !running else { return }
@@ -56,7 +66,7 @@ final class LiveModel {
         socket?.close(); socket = nil
         socketOpen = false
         if giveBack && status.youControl {
-            status.youControl = false; status.controller = "agent"; status.controlledBy = nil
+            status.youControl = false; status.controller = "agent"
             let api = api, id = tabId
             Task { _ = try? await api.browserControl(id, take: false) }
         }
@@ -170,7 +180,6 @@ final class LiveModel {
             if let l = try? await api.browserTabs(thumbnails: false), let t = l.items.first(where: { $0.id == tabId }) {
                 status.label = t.statusText
                 status.viewers = t.viewers
-                status.controlledBy = t.controlledBy
                 status.agent.busy = t.status == "working"
             }
             try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -206,7 +215,6 @@ final class LiveModel {
             let a = try await api.browserControl(tabId, take: take)
             status.youControl = a.youControl
             status.controller = a.controller.isEmpty ? status.controller : a.controller
-            status.controlledBy = a.controlledBy
             return .ok
         } catch let e as ApiError {
             switch e.status {

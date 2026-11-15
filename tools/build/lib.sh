@@ -63,6 +63,16 @@ make_temp() {
   printf -v "$2" '%s' "$d"
 }
 
+# source_commit PATH...: sets SOURCE_COMMIT (the full sha of HEAD; "" without git) and SOURCE_DIRTY (true when a tracked file under
+# PATH... (relative to the repository root) differs from HEAD, else false). The apps show the commit in My and link to it on GitHub
+# (shared SourceLink); a build from changed files says "modified" instead. Never fails.
+source_commit() {
+  SOURCE_COMMIT="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
+  case "$SOURCE_COMMIT" in *[!0-9a-f]*|"") SOURCE_COMMIT="" ;; esac
+  SOURCE_DIRTY=false
+  if [ -n "$SOURCE_COMMIT" ] && [ -n "$(git -C "$REPO" status --porcelain --untracked-files=no -- "$@" 2>/dev/null)" ]; then SOURCE_DIRTY=true; fi
+}
+
 # Refuses to build when the data volume has less than MIN_FREE_GB free (a full disk broke builds before).
 need_disk() {
   local vol=/System/Volumes/Data
@@ -188,6 +198,70 @@ use_jdk17() {
   [ -x "$jdk/bin/java" ] || die "JDK 17 not found at $jdk (brew install openjdk@17, or set KELO_JAVA_HOME)"
   export JAVA_HOME="$jdk"
   export PATH="$JAVA_HOME/bin:$PATH"
+}
+
+# kelo_packaging_jdk [JDK-FILE]: the one exact Java runtime the macOS app is packaged with, so that two Macs build the same app
+# (the runtime inside Kelo.app is made from this JDK by jlink). JDK-FILE (default desktop/packaging/macos/JDK) has one line:
+#   temurin-17.0.21+9 aarch64 <sha256 of the Eclipse Temurin tar.gz>
+# The tar.gz is downloaded from github.com/adoptium/temurin17-binaries once into ~/.cache/kelo/jdk/<version>, checked against that
+# SHA-256, and JAVA_HOME / PATH point to it. Apple Silicon Macs only (the app is arm64).
+kelo_packaging_jdk() {
+  local file="${1:-$REPO/desktop/packaging/macos/JDK}" line name arch want ver dir url tgz part
+  [ -f "$file" ] || die "no JDK pin file: $file"
+  line="$(grep -v '^[[:space:]]*#' "$file" | head -1)"
+  read -r name arch want <<<"$line"
+  case "$name" in temurin-17.*+*) ;; *) die "$file: expected 'temurin-17.X.Y+Z aarch64 <sha256>', got '$line'" ;; esac
+  [ "$arch" = aarch64 ] || die "$file: only aarch64 is supported, got '$arch'"
+  [ "$(uname -m)" = arm64 ] || die "the macOS app is built on an Apple Silicon Mac (this machine is $(uname -m))"
+  [ ${#want} = 64 ] || die "$file: the SHA-256 must be 64 hex digits"
+  ver="${name#temurin-}"
+  dir="${KELO_JDK_CACHE:-$HOME/.cache/kelo/jdk}/$name"
+  if [ ! -x "$dir/Contents/Home/bin/java" ]; then
+    url="https://github.com/adoptium/temurin17-binaries/releases/download/jdk-${ver/+/%2B}/OpenJDK17U-jdk_aarch64_mac_hotspot_${ver/+/_}.tar.gz"
+    [ "$DRY_RUN" = 1 ] && { note "[dry-run] would download $url"; return 0; }
+    mkdir -p "$(dirname "$dir")"
+    part="$(mktemp -d "$(dirname "$dir")/.download.XXXXXX")"
+    tgz="$part/jdk.tar.gz"
+    log "download the pinned JDK $name (about 180 MB, once)"
+    with_timeout 1800 curl -fsSL -o "$tgz" "$url" || { rm -rf "$part"; die "could not download $url"; }
+    [ "$(shasum -a 256 "$tgz" | awk '{print $1}')" = "$want" ] || { rm -rf "$part"; die "the download of $name does not match the SHA-256 in $file"; }
+    mkdir "$part/x" && tar -xzf "$tgz" -C "$part/x" || { rm -rf "$part"; die "could not unpack the JDK"; }
+    [ -x "$part/x/jdk-$ver/Contents/Home/bin/java" ] || { rm -rf "$part"; die "unexpected layout in the JDK archive"; }
+    rm -rf "$dir"; mv "$part/x/jdk-$ver" "$dir"; rm -rf "$part"
+  fi
+  export JAVA_HOME="$dir/Contents/Home"
+  export PATH="$JAVA_HOME/bin:$PATH"
+  note "packaging JDK: $name ($JAVA_HOME)"
+}
+
+# kelo_zip_clock [TOOLS-DIR [BUILD-DIR]]: for the macOS app build (needs JAVA_HOME = the pinned JDK, see kelo_packaging_jdk). Compiles the Java agent
+# in tools/build/zipclock (README there) once into ~/.cache/kelo/zipclock/<hash of its source>/ and sets the array GRADLE_REPRO_ARGS
+# to the Gradle option that starts the build with it: "${GRADLE_REPRO_ARGS[@]}" goes into the ./gradlew command line. SOURCE-DIR (default
+# this checkout) is the checkout whose tools/build/zipclock is used, when it has one; BUILD-DIR (default the same) is the checkout that is built
+# (its desktop/gradle.properties gives the Gradle JVM options the agent is added to).
+GRADLE_REPRO_ARGS=()
+kelo_zip_clock() {
+  local src="${1:-$REPO}" build cache jar sum jvmargs
+  build="${2:-$src}"
+  [ -f "$src/tools/build/zipclock/ZipClock.java" ] || src="$REPO"
+  [ -x "$JAVA_HOME/bin/javac" ] || die "kelo_zip_clock needs JAVA_HOME to be the pinned JDK (call kelo_packaging_jdk first)"
+  sum="$(cat "$src/tools/build/zipclock/ZipClock.java" "$src/tools/build/zipclock/MANIFEST.MF" | shasum -a 256 | cut -c1-16)"
+  cache="${KELO_ZIPCLOCK_CACHE:-$HOME/.cache/kelo/zipclock}/$sum-$(basename "$(dirname "$(dirname "$JAVA_HOME")")")"
+  jar="$cache/zipclock.jar"
+  if [ ! -f "$jar" ]; then
+    [ "$DRY_RUN" = 1 ] && { note "[dry-run] would build the zipclock agent"; return 0; }
+    mkdir -p "$cache.tmp" && rm -rf "$cache.tmp/classes" && mkdir "$cache.tmp/classes"
+    "$JAVA_HOME/bin/javac" --add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -d "$cache.tmp/classes" \
+      "$src/tools/build/zipclock/ZipClock.java" >"$cache.tmp/javac.log" 2>&1 || { cat "$cache.tmp/javac.log" >&2; die "could not compile the zipclock agent"; }
+    [ -f "$cache.tmp/classes/ZipClock.class" ] || die "could not compile the zipclock agent"
+    "$JAVA_HOME/bin/jar" --create --file "$cache.tmp/zipclock.jar" --manifest "$src/tools/build/zipclock/MANIFEST.MF" \
+      --date 2000-01-01T00:00:00Z -C "$cache.tmp/classes" . || die "could not pack the zipclock agent"
+    rm -rf "$cache" && mkdir -p "$cache" && mv "$cache.tmp/zipclock.jar" "$jar" && rm -rf "$cache.tmp"
+  fi
+  # the build's own JVM options (desktop/gradle.properties), plus the agent and the access it needs to the JDK's bundled ASM
+  jvmargs="$(sed -n 's/^org.gradle.jvmargs=//p' "$build/desktop/gradle.properties" | head -1)"
+  GRADLE_REPRO_ARGS=("-Dorg.gradle.jvmargs=${jvmargs:--Xmx3g} --add-exports=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -javaagent:$jar")
+  note "zipclock agent: $jar"
 }
 
 human_size() { du -h "$1" 2>/dev/null | awk '{print $1}'; }

@@ -12,8 +12,8 @@ from typing import Any
 from .oauth import OAUTH_PROVIDERS
 
 # Wire protocol -> implemented?
-IMPLEMENTED_TRANSPORTS = {"chat_completions", "anthropic_messages", "codex_responses", "bedrock_converse",
-                          "cli_claude", "cli_agy"}
+IMPLEMENTED_TRANSPORTS = {"chat_completions", "anthropic_messages", "codex_responses", "responses",
+                          "bedrock_converse", "cli_claude", "cli_agy"}
 # Auth kinds we deliberately do or do not support.
 SUPPORTED_AUTH = {"api_key", "none", "aws_sdk", "vertex", "cli"}
 
@@ -30,6 +30,12 @@ REMOVED_PROVIDERS = frozenset({
 
 # Providers that work without an API key (local servers).
 KEYLESS_OK = {"custom", "lmstudio"}
+
+# Endpoints the owner added by name (backlog 31): each its own provider "custom-<slug>" (OpenAI-compatible, the address typed in the
+# app). Kept in the database (meta "custom_endpoints"), registered here at start-up and on every change, so get_provider and the lists
+# see them like the built-in address-less providers.
+_USER_ENDPOINTS: dict[str, Provider] = {}
+USER_ENDPOINT_PREFIX = "custom-"
 
 # Base URLs the user typed in the app (stored in the database, loaded by the server at start-up and on every change).
 # They win over the environment and the data file. Only providers that take a URL (`Provider.takes_url`) get one.
@@ -80,7 +86,7 @@ class Provider:
     @property
     def takes_url(self) -> bool:
         """The user supplies the address: an OpenAI-compatible endpoint with no fixed base URL in the data file."""
-        return self.transport == "chat_completions" and not self.base_url and self.auth_type in ("api_key", "none")
+        return self.transport in ("chat_completions", "responses") and not self.base_url and self.auth_type in ("api_key", "none")
 
     @property
     def supported(self) -> bool:
@@ -147,13 +153,17 @@ _EXTRA = [
 
 
 @lru_cache(maxsize=1)
-def _load() -> dict[str, Provider]:
+def _load_base() -> dict[str, Provider]:
     raw = json.loads(resources.files("assistant.providers").joinpath("providers.json").read_text("utf-8"))
     table: dict[str, Provider] = {}
     for d in [*raw, *_EXTRA]:
         p = _from_dict(d)
         table[p.name] = p
     return table
+
+
+def _load() -> dict[str, Provider]:
+    return {**_load_base(), **_USER_ENDPOINTS}
 
 
 def list_providers() -> list[Provider]:
@@ -184,7 +194,7 @@ class Family:
     @property
     def takes_url(self) -> bool:
         """The user supplies the address: an OpenAI-compatible endpoint with no fixed base URL in the data file."""
-        return self.transport == "chat_completions" and not self.base_url and self.auth_type in ("api_key", "none")
+        return self.transport in ("chat_completions", "responses") and not self.base_url and self.auth_type in ("api_key", "none")
 
     @property
     def supported(self) -> bool:
@@ -238,6 +248,18 @@ def custom_provider(
         base_url=base_url.rstrip("/"),
         default_headers=headers or {},
     )
+
+
+def set_user_endpoints(items: list[dict[str, str]]) -> None:
+    """[{"id": "custom-<slug>", "name": "<display>", "transport": "chat_completions"}] -> registered providers (replaces the old set)."""
+    _USER_ENDPOINTS.clear()
+    for it in items:
+        pid = str(it.get("id") or "")
+        if not pid.startswith(USER_ENDPOINT_PREFIX):
+            continue
+        p = custom_provider("", transport=str(it.get("transport") or "chat_completions"), name=pid)
+        p.display_name = str(it.get("name") or pid)[:40]
+        _USER_ENDPOINTS[pid] = p
 
 
 MAX_BASE_URL = 300

@@ -272,6 +272,18 @@ class KeyGuard:
             self._enrolling.pop(enrollment_id, None)
             return self.view()
 
+    def pending_rotation(self, device_id: int, enrollment_id: str, alg: int, blob: str) -> tuple[bytes, bytes] | None:
+        """What finish_enroll would do to the key, checked but not done: (old key, new key) when turning Keyguard on changes it, else
+        None. Raises what finish_enroll would raise for the same input, so the caller can re-seal outside the key first."""
+        with self._lock:
+            e = self._enrolling.get(enrollment_id)
+            if e is None or e["device_id"] != device_id or e["until"] < self.clock():
+                raise KeyGuardError("this enrollment ran out or is not this phone's; start again", "enrollment", 404)
+            _check_blob(alg, blob)
+            if not e["enabling"] or self.locked:
+                return None
+            return (self.key(), e["key"]) if self.key() != e["key"] else None
+
     # ---- after a restart --------------------------------------------------------------------------------------------------------------
     def unlock(self, key_b64: str) -> bool:
         with self._lock:

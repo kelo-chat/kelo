@@ -1,9 +1,10 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.chat.AttachmentWords
+import chat.kelo.app.chat.AttachmentText
+
 import chat.kelo.app.core.SecureStore
 import chat.kelo.app.core.Session
-import chat.kelo.desktop.chat.AttachmentText
-import chat.kelo.desktop.chat.AttachmentWords
 import chat.kelo.desktop.core.Autostart
 import chat.kelo.desktop.core.FileKeyValueStore
 import chat.kelo.desktop.core.Settings

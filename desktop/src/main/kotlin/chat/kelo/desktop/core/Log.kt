@@ -4,12 +4,12 @@ import java.io.File
 import java.time.LocalDateTime
 
 /**
- * A short log in [Platform.dataDir]/kelo.log (what started, what failed), kept under 1 MB. Never a token, an address with a
+ * A short log in [DesktopPlatform.dataDir]/kelo.log (what started, what failed), kept under 1 MB. Never a token, an address with a
  * code, or anything the user typed.
  */
 object Log {
     private const val MAX = 1_000_000L
-    private val file: File by lazy { File(Platform.dataDir, "kelo.log") }
+    private val file: File by lazy { File(DesktopPlatform.dataDir, "kelo.log") }
 
     @Synchronized
     fun line(msg: String) {

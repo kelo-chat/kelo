@@ -298,7 +298,7 @@ private func cred(_ name: String, hasSecret: Bool = true, kind: String = "", las
         names += ConnectorGroup.allCases.compactMap { ConnectorLogic.sectionKey($0.labelKey) }
         names += ["connector.group.reconnect", "connectors.pinned", "connectors.popular"].compactMap(ConnectorLogic.sectionKey)
         names += PhoneDataRow.allCases.map(\.titleKey)
-        names += VaultSaveMode.allCases.flatMap { ["vault_mode_\($0.rawValue)", "vault_mode_\($0.rawValue)_help"] }
+        names += SecretLoginMode.allCases.flatMap { ["vault_mode_\($0.rawValue)", "vault_mode_\($0.rawValue)_help"] }
         for lang in ["en", "ko"] {
             let s = Strings(code: lang)
             for n in names { #expect(s.raw(n) != nil, "missing \(n) in \(lang)") }

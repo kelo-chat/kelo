@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import threading
@@ -351,13 +352,16 @@ class Handler(BaseHTTPRequestHandler):
                                   200 if b.get("code") == PAIR_CODE else 400)
         if path == "/healthz":
             return self.send_json({"ok": True})
-        if method == "PUT" and path.startswith("/api/uploads/"):
+        if method == "PUT" and path.startswith("/api/uploads/") and not path.startswith("/api/uploads/parts/"):
             n = int(self.headers.get("Content-Length") or 0)
             left = n
             while left > 0:
                 left -= len(self.rfile.read(min(left, 1 << 16)))
             if not self.authed():
                 return
+            limit = os.environ.get("MOCK_UPLOAD_SINGLE_MAX", "")   # a route with a per-request limit (tools/mock_parts/uploads.py)
+            if limit.isdigit() and n > int(limit):
+                return self.send_json({"detail": "Through this connection one request can be up to 100 MB; the app sends bigger files in parts."}, 413)
             return self.send_json({"path": "uploads/" + path.rsplit("/", 1)[-1]})
         if not self.authed():
             return
@@ -515,7 +519,19 @@ class Handler(BaseHTTPRequestHandler):
                                        {"group": "Gemini", "label": "Current week", "used_percent": 61}]},
                                    "jobs": {"today": usage_part(USAGE_TODAY), "month": usage_part(USAGE_MONTH)}, "background": usage_background(s)})
         if path == "/api/usage/summary":
-            return self.send_json({"since": "", "days": [], "kinds": [], "models": [], "total": usage_part([]), "background": usage_background(s)})
+            models = [
+                {"provider": "antigravity-oauth", "model": "gemini-3.8-flash", "calls": 420,
+                 "input_tokens": 11230000, "output_tokens": 90000, "cache_read_tokens": 9230000},
+                {"provider": "openai", "model": "gpt-5", "calls": 105,
+                 "input_tokens": 1800000, "output_tokens": 100000, "cache_read_tokens": 1000000},
+            ]
+            total = {
+                "calls": sum(m["calls"] for m in models),
+                "input_tokens": sum(m["input_tokens"] for m in models),
+                "output_tokens": sum(m["output_tokens"] for m in models),
+                "cache_read_tokens": sum(m["cache_read_tokens"] for m in models),
+            }
+            return self.send_json({"since": "", "days": [], "kinds": [], "models": models, "total": total, "background": usage_background(s)})
         if path == "/api/uploads":
             return self.send_json([{"path": "uploads/분기보고서-초안.docx" if t is TEXT["ko"] else "uploads/quarterly-draft.docx", "bytes": 48210, "modified": NOW - 7200, "kind": "document"},
                                    {"path": "uploads/receipt.jpg", "bytes": 1832000, "modified": NOW - 86400 * 2, "kind": "image"}])

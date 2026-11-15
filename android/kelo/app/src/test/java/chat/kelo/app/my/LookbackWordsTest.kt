@@ -11,7 +11,7 @@ import java.io.File
  * read either way, and the old "That's right" / "Not really" pair and the sureness words are gone.
  */
 class LookbackWordsTest {
-    private val res = File("src/main/res")
+    private val res = File("../../../shared/strings")   // the text of all apps (the unit tests run in android/kelo/app)
 
     private fun value(dir: String, name: String): String? =
         Regex("""<string name="$name"[^>]*>(.*?)</string>""").find(File(res, "$dir/strings.xml").readText())?.groupValues?.get(1)

@@ -56,17 +56,19 @@ public struct ConnectorInfo: Codable, Equatable, Hashable, Sendable, Identifiabl
     public var iconSmall: String
     /// The icon's main colour ("#RRGGBB"), the tile's colour while it loads.
     public var iconColor: String
+    /// Something about what Kelo may do with it differs from the defaults (GET /api/connectors/{id}/permissions).
+    public var limited: Bool
 
     public init(id: String, name: String = "", description: String = "", category: String = "", status: String = "",
                 connect: String? = nil, item: String = "", via: String = "", site: String = "", steps: [String] = [],
                 featured: Bool = false, rank: Int? = nil, featuredRegions: [String] = [], fallback: ConnectorFallback? = nil,
                 method: String = "", account: String = "", connectState: String = "", note: String = "", supportUrl: String = "",
-                icon: String = "", iconSmall: String = "", iconColor: String = "") {
+                icon: String = "", iconSmall: String = "", iconColor: String = "", limited: Bool = false) {
         self.id = id; self.name = name; self.description = description; self.category = category; self.status = status
         self.connect = connect; self.item = item; self.via = via; self.site = site; self.steps = steps; self.featured = featured
         self.rank = rank; self.featuredRegions = featuredRegions; self.fallback = fallback; self.method = method
         self.account = account; self.connectState = connectState; self.note = note; self.supportUrl = supportUrl
-        self.icon = icon; self.iconSmall = iconSmall; self.iconColor = iconColor
+        self.icon = icon; self.iconSmall = iconSmall; self.iconColor = iconColor; self.limited = limited
     }
 
     public init(from decoder: Decoder) throws {
@@ -79,7 +81,7 @@ public struct ConnectorInfo: Codable, Equatable, Hashable, Sendable, Identifiabl
         fallback = j.decode("fallback", as: ConnectorFallback.self)
         method = j.str("method"); account = j.str("account"); connectState = j.str("connect_state"); note = j.str("note")
         supportUrl = j.str("support_url")
-        icon = j.str("icon"); iconSmall = j.str("icon_small"); iconColor = j.str("icon_color")
+        icon = j.str("icon"); iconSmall = j.str("icon_small"); iconColor = j.str("icon_color"); limited = j.bool("limited")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -94,7 +96,7 @@ public struct ConnectorInfo: Codable, Equatable, Hashable, Sendable, Identifiabl
         try c.encode(account, forKey: AnyKey("account")); try c.encode(connectState, forKey: AnyKey("connect_state"))
         try c.encode(note, forKey: AnyKey("note")); try c.encode(supportUrl, forKey: AnyKey("support_url"))
         try c.encode(icon, forKey: AnyKey("icon")); try c.encode(iconSmall, forKey: AnyKey("icon_small"))
-        try c.encode(iconColor, forKey: AnyKey("icon_color"))
+        try c.encode(iconColor, forKey: AnyKey("icon_color")); try c.encode(limited, forKey: AnyKey("limited"))
     }
 
     /// KeloCore's connector (what ConnectorList's grouping, search and reconnect rules take).
@@ -160,20 +162,11 @@ public struct OperatorApp: Codable, Equatable, Sendable {
     /// Google only: new sign-ins are open to everyone.
     public var openToAll: Bool
 
-    public init(clientId: String = "", hasSecret: Bool = false, isBroker: Bool = false, callback: String = "", openToAll: Bool = false) {
-        self.clientId = clientId; self.hasSecret = hasSecret; self.isBroker = isBroker; self.callback = callback; self.openToAll = openToAll
-    }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         clientId = j.str("client_id"); hasSecret = j.bool("has_secret"); isBroker = j.bool("is_broker"); callback = j.str("callback")
         openToAll = j.bool("open_to_all")
     }
-}
-
-/// How a site login is kept (PUT /api/vault/{name}/login `mode`).
-public enum VaultSaveMode: String, CaseIterable, Sendable {
-    case afterSuccess = "after_success", now, once
 }
 
 /// The connector endpoints of server.py (Android ConnectorCalls). `baseUrl` is sent as the origin to come back to.
@@ -232,7 +225,7 @@ extension KeloApi {
         try await post("/api/vault/logins", body: ["site": .string(site), "label": .string(label)], as: NameAnswer.self).name
     }
 
-    public func putLogin(_ name: String, username: String, password: String, mode: VaultSaveMode) async throws {
+    public func putLogin(_ name: String, username: String, password: String, mode: SecretLoginMode) async throws {
         try await request("PUT", "/api/vault/\(KeloApi.segment(name))/login",
                           body: ["username": .string(username), "password": .string(password), "mode": .string(mode.rawValue)])
     }

@@ -56,21 +56,20 @@ public enum BriefingSourcesRules {
 /// and one quiet line offers to allow it); quiet days; the weather service and the owner's own keys; "Get one now".
 struct BriefingBlock: View {
     let settings: BriefingSettings
-    let onChanged: (BriefingSettings) -> Void
-    let toast: (String) -> Void
-    @Environment(AppModel.self) private var app
+    let model: BriefingSettingsModel
     @Environment(\.kelo) private var c
     @State private var picking = false
     @State private var pickTime = Date()
     @State private var keyFor: String?
-    @State private var sent: Bool?
-    @State private var granted = PhonePlace.granted
     @Environment(\.scenePhase) private var phase
+
+    private var sent: Bool? { model.sent }
+    private var granted: Bool { model.granted }
 
     var body: some View {
         let b = settings
         ToggleRow(L(R.string.briefing_switch), detail: L(R.string.briefing_about), isOn: Binding(get: { b.enabled }, set: { on in
-            Haptics.tick(); put(["enabled": .bool(on)])
+            Haptics.tick(); model.put(["enabled": .bool(on)])
         }))
         .accessibilityIdentifier("kelo.briefing.switch")
         if b.enabled {
@@ -78,16 +77,16 @@ struct BriefingBlock: View {
             SelectField(title: L(R.string.briefing_when),
                         options: [SelectOption(value: "auto", label: L(R.string.briefing_when_auto)),
                                   SelectOption(value: "fixed", label: L(R.string.briefing_when_fixed))],
-                        selected: b.timeMode) { v in put(["time_mode": .string(v)]) }
+                        selected: b.timeMode) { v in model.put(["time_mode": .string(v)]) }
             if b.timeMode == "fixed" {
                 SecondaryButton(L(R.string.briefing_fixed_at, timeWords(b.fixedTime)), fill: true) { openPicker(b.fixedTime) }
             } else {
                 MutedText(L(R.string.briefing_offset), small: true)
                 SelectField(title: L(R.string.briefing_offset),
                             options: BriefingSettingsRules.offsets(current: b.offsetMin).map { SelectOption(value: String($0), label: offsetLabel($0)) },
-                            selected: String(b.offsetMin)) { v in if let n = Int(v) { put(["offset_min": .number(Double(n))]) } }
+                            selected: String(b.offsetMin)) { v in if let n = Int(v) { model.put(["offset_min": .number(Double(n))]) } }
                 ToggleRow(L(R.string.briefing_early_open), detail: L(R.string.briefing_early_open_about),
-                          isOn: Binding(get: { b.earlyOpen }, set: { on in Haptics.tick(); put(["early_open": .bool(on)]) }))
+                          isOn: Binding(get: { b.earlyOpen }, set: { on in Haptics.tick(); model.put(["early_open": .bool(on)]) }))
             }
 
             // what
@@ -96,14 +95,14 @@ struct BriefingBlock: View {
                 ForEach(BriefingSettingsRules.sections, id: \.self) { id in
                     let words: StringKey = id == "weather" ? R.string.briefing_weather : (id == "calendar" ? R.string.briefing_today : R.string.briefing_missed)
                     CheckLine(text: L(words), on: BriefingSettingsRules.sectionOn(b, id)) { on in
-                        put(["sections": [id: .bool(on)]])
-                        if id == "weather" && on && !PhonePlace.granted { allowPlace() }   // the weather needs to know where the phone is
+                        model.put(["sections": [id: .bool(on)]])
+                        if id == "weather" && on && !PhonePlace.granted { model.allowPlace() }   // the weather needs to know where the phone is
                     }
                     if id == "weather" && BriefingSettingsRules.sectionOn(b, id) {
                         VStack(alignment: .leading, spacing: 6) {
                             if BriefingSettingsRules.needsLocation(b, granted: granted) {
-                                MutedText(L(R.string.briefing_weather_needs_location), small: true)
-                                SecondaryButton(L(R.string.briefing_location_allow)) { allowPlace() }
+                                MutedText(L(model.servicesOn ? R.string.briefing_weather_needs_location : R.string.ios_location_services_off), small: true)
+                                SecondaryButton(L(R.string.briefing_location_allow)) { model.allowPlace() }
                                     .accessibilityIdentifier("kelo.briefing.location")
                             }
                             MutedText(L(R.string.briefing_location_privacy), small: true)
@@ -111,14 +110,14 @@ struct BriefingBlock: View {
                         .padding(.leading, 34).padding(.bottom, 4)
                     }
                 }
-                CheckLine(text: L(R.string.briefing_quiet_skip), on: b.quietDays == "skip") { on in put(["quiet_days": .string(on ? "skip" : "short")]) }
+                CheckLine(text: L(R.string.briefing_quiet_skip), on: b.quietDays == "skip") { on in model.put(["quiet_days": .string(on ? "skip" : "short")]) }
             }
 
             // the weather service
             label(L(R.string.briefing_provider)).padding(.top, 8)
             SelectField(title: L(R.string.briefing_provider),
                         options: BriefingSettingsRules.providers.map { SelectOption(value: $0, label: providerLabel($0)) },
-                        selected: b.weather.provider) { v in put(["provider": .string(v)]) }
+                        selected: b.weather.provider) { v in model.put(["provider": .string(v)]) }
             MutedText(L(R.string.briefing_provider_about), small: true)
             ForEach(BriefingSettingsRules.keyed, id: \.self) { id in
                 let saved = b.weather.keys[id] == true
@@ -131,7 +130,7 @@ struct BriefingBlock: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     if saved {
                         SecondaryButton(L(R.string.briefing_key_delete)) {
-                            call { try await $0.request("DELETE", "/api/briefing/keys/\(id)") }
+                            model.deleteKey(id)
                         }
                     } else {
                         SecondaryButton(L(R.string.briefing_key_add)) { keyFor = id }
@@ -141,20 +140,13 @@ struct BriefingBlock: View {
             // the data's licence (CC BY 4.0) asks for this credit
             MutedText(b.weather.providers.first { $0.id == "open_meteo" }?.attribution ?? "Weather data by Open-Meteo.com", small: true)
             SecondaryButton(L(sent == true ? R.string.briefing_sent : R.string.briefing_try), enabled: sent == nil, fill: true) {
-                sent = false
-                Task {
-                    do { _ = try await app.requireApi().request("POST", "/api/briefing/run"); sent = true } catch { sent = nil; toast(app.message(for: error)) }
-                }
+                model.sendNow()
             }
             .accessibilityIdentifier("kelo.briefing.try")
         }
         Color.clear.frame(height: 0)
             // back from iOS Settings: location may be allowed now
-            .onChange(of: phase) { _, now in
-                guard now == .active else { return }
-                let allowed = PhonePlace.granted
-                if allowed && !granted { granted = true; allowPlace() } else { granted = allowed }
-            }
+            .onChange(of: phase) { _, now in if now == .active { model.becameActive() } }
             .keloSheet(isPresented: $picking, detents: [.medium]) {
                 VStack(spacing: 12) {
                     SheetHeader(L(R.string.briefing_when_fixed)) { picking = false }
@@ -164,14 +156,14 @@ struct BriefingBlock: View {
                         #endif
                     PrimaryButton(L(R.string.ok)) {
                         let comps = Calendar.current.dateComponents([.hour, .minute], from: pickTime)
-                        put(["fixed_time": .string(NotifySettingsRules.formatTime(comps.hour ?? 7, comps.minute ?? 30))])
+                        model.put(["fixed_time": .string(NotifySettingsRules.formatTime(comps.hour ?? 7, comps.minute ?? 30))])
                         picking = false
                     }
                 }
                 .padding(.horizontal, 20).padding(.bottom, 24)
             }
             .keloSheet(item: Binding(get: { keyFor.map(KeyFor.init) }, set: { keyFor = $0?.id }), detents: [.medium, .large]) { k in
-                BriefingKeySheet(id: k.id, name: providerLabel(k.id), onClose: { keyFor = nil }) { got in keyFor = nil; onChanged(got) }
+                BriefingKeySheet(id: k.id, name: providerLabel(k.id), model: model, onClose: { keyFor = nil })
             }
     }
 
@@ -198,31 +190,6 @@ struct BriefingBlock: View {
         let t = NotifySettingsRules.parseTime(value) ?? (7, 30)
         pickTime = Calendar.current.date(bySettingHour: t.hour, minute: t.minute, second: 0, of: Date()) ?? Date()
         picking = true
-    }
-
-    private func put(_ body: JSON) { call { try await $0.put("/api/briefing", body: body, as: BriefingSettings.self) } }
-
-    private func call(_ block: @escaping (KeloApi) async throws -> Any) {
-        Task {
-            do {
-                let api = try app.requireApi()
-                let got = try await block(api)
-                if let s = got as? BriefingSettings { onChanged(s) }
-                else if let s = try? await api.get("/api/briefing", as: BriefingSettings.self) { onChanged(s) }
-            } catch { toast(app.message(for: error)) }
-        }
-    }
-
-    /// Location "while using the app" (iOS lets the owner pick precise or approximate), asked right here; once allowed the place goes
-    /// now and then whenever the app is opened. After a "no" only iOS Settings can allow it.
-    private func allowPlace() {
-        Task {
-            if PhonePlace.refused { DeviceInfo.openAppSettings(); return }
-            granted = await PhonePlace.ask()
-            guard granted, let api = app.api else { return }
-            await PhonePlace.maybeSend(api: api, force: true)
-            if let s = try? await api.get("/api/briefing", as: BriefingSettings.self) { onChanged(s) }
-        }
     }
 }
 
@@ -251,60 +218,45 @@ private struct CheckLine: View {
 private struct BriefingKeySheet: View {
     let id: String
     let name: String
+    let model: BriefingSettingsModel
     let onClose: () -> Void
-    let onSaved: (BriefingSettings) -> Void
-    @Environment(AppModel.self) private var app
     @State private var key = ""
-    @State private var error = ""
-    @State private var busy = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             SheetHeader(name, onClose: onClose)
             MutedText(L(id == "kma" ? R.string.briefing_key_help_kma : R.string.briefing_key_help_weatherapi), small: true)
             KeloTextField(L(R.string.briefing_key_placeholder), text: $key, secure: true, keyboard: .ascii, maxLength: 512)
-            if !error.isEmpty { ErrorText(error, small: true) }
-            PrimaryButton(L(R.string.briefing_key_save), enabled: !busy && BriefingSettingsRules.keyOK(key), busy: busy) {
-                busy = true
-                Task {
-                    defer { busy = false }
-                    do {
-                        onSaved(try await app.requireApi().post("/api/briefing/keys/\(id)", body: ["key": .string(key.trimmingCharacters(in: .whitespacesAndNewlines))],
-                                                                  as: BriefingSettings.self))
-                    } catch { self.error = app.message(for: error) }
-                }
+            if !model.keyError.isEmpty { ErrorText(model.keyError, small: true) }
+            PrimaryButton(L(R.string.briefing_key_save), enabled: !model.keyBusy && BriefingSettingsRules.keyOK(key), busy: model.keyBusy) {
+                model.saveKey(id, key: key)
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16).padding(.bottom, 24)
         .keloSensitive()
+        .onAppear { model.keySheetOpened() }
+        .onChange(of: model.keySaved) { _, _ in onClose() }
     }
 }
 
 /// "What it reads": every connected calendar and mailbox, each with one switch, in two groups. All are on by default and a newly
 /// connected account starts on. An account that could not be read shows one quiet line with what to do.
 struct BriefingSourcesBlock: View {
-    let toast: (String) -> Void
-    @Environment(AppModel.self) private var app
+    let model: BriefingSourcesModel
     @Environment(\.kelo) private var c
-    @State private var sources: BriefingSources?
-    @State private var checking = false
 
     var body: some View {
+        let checking = model.checking
         Group {
-            if let s = sources, !BriefingSourcesRules.shown(s).isEmpty {
+            if let s = model.sources, !BriefingSourcesRules.shown(s).isEmpty {
                 SectionLabel(L(R.string.briefing_sources_title)).padding(.horizontal, -16)
                 VStack(alignment: .leading, spacing: 8) {
                     MutedText(L(R.string.briefing_sources_about), small: true)
                     ForEach(BriefingSourcesRules.shown(s), id: \.self) { kind in group(s, kind) }
                     MutedText(L(R.string.briefing_sources_chat), small: true)
                     SecondaryButton(L(checking ? R.string.briefing_sources_checking : R.string.briefing_sources_check), enabled: !checking, fill: true) {
-                        checking = true
-                        Task {
-                            defer { checking = false }
-                            do { sources = try await app.requireApi().post("/api/briefing/sources/check", as: BriefingSources.self) }
-                            catch { toast(app.message(for: error)) }
-                        }
+                        model.check()
                     }
                 }
                 .accessibilityIdentifier("kelo.briefing.sources")
@@ -313,7 +265,7 @@ struct BriefingSourcesBlock: View {
                 Color.clear.frame(height: 0)
             }
         }
-        .task { sources = try? await app.api?.get("/api/briefing/sources", as: BriefingSources.self) }
+        .task { await model.load() }
     }
 
     @ViewBuilder private func group(_ s: BriefingSources, _ kind: String) -> some View {
@@ -333,20 +285,12 @@ struct BriefingSourcesBlock: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Toggle("", isOn: Binding(get: { a.on }, set: { on in
                     Haptics.tick()
-                    sources = BriefingSourcesRules.flipped(s, kind, a.id, on)
-                    send(BriefingSourcesRules.toggleBody(kind, a.id, on))
+                    model.toggle(kind, a.id, on)
                 }))
                 .labelsHidden().tint(c.accent)
                 .accessibilityLabel(BriefingSourcesRules.title(a))
             }
             .padding(.vertical, 4)
-        }
-    }
-
-    private func send(_ body: JSON) {
-        Task {
-            do { sources = try await app.requireApi().put("/api/briefing/sources", body: body, as: BriefingSources.self) }
-            catch { toast(app.message(for: error)) }
         }
     }
 }

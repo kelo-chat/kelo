@@ -16,20 +16,10 @@ extension KeloApi {
     }
 
     public func devices() async throws -> DeviceList { try await get("/api/devices") }
-    /// POST /api/devices/pair: a one-time link (and the same text as a QR code) for another phone.
-    public func startPairing() async throws -> PairStart { try await post("/api/devices/pair") }
     public func removeDevice(_ id: Int64) async throws { try await request("DELETE", "/api/devices/\(id)") }
     public func about() async throws -> About { try await get("/api/about") }
 
-    // ---- chat ------------------------------------------------------------------------------------------------------------------
-    /// GET /api/messages?limit=&before_id= (oldest first; 1...500).
-    public func messages(limit: Int = 100, beforeId: Int64? = nil) async throws -> [StoredMessage] {
-        try await get("/api/messages?limit=\(limit)" + (beforeId.map { "&before_id=\($0)" } ?? ""))
-    }
     public func clearMessages() async throws { try await request("DELETE", "/api/messages") }
-    public func conversationSummary() async throws -> ConversationSummary { try await get("/api/conversation/summary") }
-    public func providers() async throws -> [ProviderDetail] { try await get("/api/providers") }
-    public func models(provider: String) async throws -> ModelList { try await get("/api/models?provider=\(KeloApi.query(provider))") }
 
     /// POST /api/approvals/{id} {approve, remember?: "site" | "schedule"}.
     public func answerApproval(_ id: String, approve: Bool, remember: String? = nil) async throws -> ApprovalAnswer {
@@ -63,11 +53,6 @@ extension KeloApi {
     public func approvalRules() async throws -> RuleList { try await get("/api/approvals/rules") }
     public func deleteApprovalRule(_ id: Int64) async throws { try await request("DELETE", "/api/approvals/rules/\(id)") }
 
-    // ---- schedules -------------------------------------------------------------------------------------------------------------
-    public func schedules(goalId: Int64? = nil) async throws -> ScheduleList {
-        try await get(goalId.map { "/api/schedules?goal_id=\($0)" } ?? "/api/schedules")
-    }
-    public func schedule(_ id: Int64) async throws -> Schedule { try await get("/api/schedules/\(id)") }
     /// POST /api/schedules {name, prompt, one of cron (+ window_minutes) | run_at | every_minutes, timezone?, enabled?, goal_id?}.
     public func createSchedule(_ body: JSON) async throws -> Schedule { try await post("/api/schedules", body: body) }
     public func updateSchedule(_ id: Int64, _ body: JSON) async throws -> Schedule { try await patch("/api/schedules/\(id)", body: body) }
@@ -78,15 +63,10 @@ extension KeloApi {
     /// DELETE /api/schedules/archive/{id}: an archived schedule deleted for good.
     public func eraseArchivedSchedule(_ id: Int64) async throws { try await request("DELETE", "/api/schedules/archive/\(id)") }
     public func runSchedule(_ id: Int64) async throws -> RunStarted { try await post("/api/schedules/\(id)/run") }
-    public func pauseSchedule(_ id: Int64, reason: String? = nil) async throws -> Schedule {
-        try await post("/api/schedules/\(id)/pause", body: reason.map { ["reason": .string($0)] })
-    }
     public func resumeSchedule(_ id: Int64) async throws -> Schedule { try await post("/api/schedules/\(id)/resume") }
     public func scheduleRuns(_ id: Int64, limit: Int = 20) async throws -> ScheduleRuns { try await get("/api/schedules/\(id)/runs?limit=\(limit)") }
     public func scheduleArchive() async throws -> ScheduleArchive { try await get("/api/schedules/archive") }
     public func restoreSchedule(_ id: Int64) async throws -> Schedule { try await post("/api/schedules/\(id)/restore") }
-    public func scheduleRules(_ id: Int64) async throws -> ScheduleRules { try await get("/api/schedules/\(id)/rules") }
-    public func deleteScheduleRule(_ id: Int64, rule: Int64) async throws { try await request("DELETE", "/api/schedules/\(id)/rules/\(rule)") }
     /// What a schedule may do without asking (a login, a purchase up to a cap), allowed once at setup.
     public func scheduleGrants(_ id: Int64) async throws -> ScheduleGrantList { try await get("/api/schedules/\(id)/grants") }
     /// Takes one back: its runs ask again.
@@ -100,8 +80,6 @@ extension KeloApi {
 
     // ---- watchers --------------------------------------------------------------------------------------------------------------
     public func watchers() async throws -> WatcherList { try await get("/api/watchers") }
-    public func watcher(_ id: Int64) async throws -> Watcher { try await get("/api/watchers/\(id)") }
-    public func updateWatcher(_ id: Int64, _ body: JSON) async throws -> Watcher { try await patch("/api/watchers/\(id)", body: body) }
     public func deleteWatcher(_ id: Int64) async throws { try await request("DELETE", "/api/watchers/\(id)") }
     public func dryRunWatcher(_ id: Int64) async throws -> DryRunAnswer { try await post("/api/watchers/\(id)/dry-run") }
     /// 409 without a fresh successful dry run.
@@ -109,6 +87,7 @@ extension KeloApi {
         try await post("/api/watchers/\(id)/enable", body: ["enabled": .bool(enabled)])
     }
     public func watcherEvents(_ id: Int64) async throws -> WatcherEvents { try await get("/api/watchers/\(id)/events") }
+    public func buyCheck(_ id: Int64) async throws -> BuyReady { try await post("/api/watchers/\(id)/buy-check") }
 
     // ---- workers ---------------------------------------------------------------------------------------------------------------
     public func workers(limit: Int = 50, status: String? = nil, parentTaskId: Int64? = nil) async throws -> WorkerList {
@@ -128,11 +107,6 @@ extension KeloApi {
 
     // ---- browser tabs ----------------------------------------------------------------------------------------------------------
     public func browserTabs(thumbnails: Bool = true) async throws -> BrowserTabs { try await get("/api/browser/sessions?thumbnails=\(thumbnails)") }
-    public func startBrowserJob(prompt: String, url: String? = nil) async throws -> BrowserJobStarted {
-        var body: [String: JSON] = ["prompt": .string(prompt)]
-        if let url { body["url"] = .string(url) }
-        return try await post("/api/browser/sessions", body: .object(body))
-    }
     public func closeBrowserTab(_ id: String) async throws { try await request("DELETE", "/api/browser/sessions/\(KeloApi.seg(id))") }
     /// 409: another device holds the tab.
     public func browserControl(_ id: String, take: Bool) async throws -> ControlAnswer {
@@ -144,13 +118,10 @@ extension KeloApi {
     public func notifications(after: Int64? = nil, limit: Int = 50) async throws -> NotificationPage {
         try await get("/api/notifications?" + (after.map { "after=\($0)&" } ?? "") + "limit=\(limit)")
     }
-    public func notificationsSeen(upTo id: Int64) async throws -> SeenAnswer { try await post("/api/notifications/seen", body: ["up_to": KeloApi.num(id)]) }
     public func journal(month: String) async throws -> JournalMonth { try await get("/api/journal?month=\(KeloApi.query(month))") }
-    public func reflection() async throws -> Lookback { try await get("/api/reflection") }
     public func setRuleStatus(_ id: Int64, status: String) async throws -> LearnedRule {
         try await patch("/api/reflection/rules/\(id)", body: ["status": .string(status)])
     }
-    public func setReflection(enabled: Bool) async throws -> Lookback { try await put("/api/reflection/enabled", body: ["enabled": .bool(enabled)]) }
     public func avatar() async throws -> Data { try await download("/api/agent/avatar") }
 
     // ---- connectors and keychain -------------------------------------------------------------------------------------------------
@@ -169,12 +140,10 @@ extension KeloApi {
     public func keyForm(_ via: String) async throws -> KeyForm { try await get("/api/keys/\(KeloApi.seg(via))") }
     public func disconnect(item: String) async throws { try await request("DELETE", "/api/credentials/\(KeloApi.seg(item))") }
     public func vault() async throws -> VaultState { try await get("/api/vault") }
-    public func vaultLog() async throws -> [VaultLogRow] { try await get("/api/vault/log") }
 
     // ---- wallet metadata (never card numbers) -------------------------------------------------------------------------------------
     public func wallet() async throws -> WalletInfo { try await get("/api/wallet") }
     public func walletLimits() async throws -> WalletLimits { try await get("/api/wallet/limits") }
-    public func walletPayments() async throws -> WalletPayments { try await get("/api/wallet/payments") }
     public func walletNotifications() async throws -> WalletNotifications { try await get("/api/wallet/notifications") }
     public func setWalletPaused(_ paused: Bool) async throws -> PauseState { try await put("/api/wallet/pause", body: ["paused": .bool(paused)]) }
 
@@ -189,7 +158,6 @@ extension KeloApi {
     public func shippingProfiles() async throws -> [ShippingProfile] {
         try await get("/api/wallet/shipping", as: ShippingProfiles.self).profiles
     }
-    public func shippingProfile(_ id: String) async throws -> ShippingProfile { try await get("/api/wallet/shipping/\(KeloApi.seg(id))") }
     /// POST /api/wallet/shipping {country, field keys, phone, note?, label?, default?} (201). 422 {"detail"} names the field.
     public func addShippingProfile(_ body: JSON) async throws -> ShippingProfile { try await post("/api/wallet/shipping", body: body) }
     /// PATCH /api/wallet/shipping/{id} with any of the fields; {"default": true} makes it the default (never "default": false).
@@ -208,8 +176,6 @@ extension KeloApi {
         try await request("POST", "/api/shipping-forms/\(KeloApi.seg(formId))", body: ["cancel": .bool(true)])
     }
 
-    // ---- my page ---------------------------------------------------------------------------------------------------------------
-    public func usage() async throws -> Usage { try await get("/api/usage") }
     public func resources() async throws -> Resources { try await get("/api/resources") }
     /// GET /api/storage/cleanup (owner only): what can safely be removed, grouped.
     public func cleanupList() async throws -> CleanupList { try await get("/api/storage/cleanup") }
@@ -217,11 +183,7 @@ extension KeloApi {
     public func cleanup(_ ids: [String]) async throws -> CleanupResult {
         try await post("/api/storage/cleanup", body: ["items": .array(ids.map { .string($0) }), "confirm": .bool(true)])
     }
-    public func uploads() async throws -> [Upload] { try await get("/api/uploads") }
-    public func goals() async throws -> [Goal] { try await get("/api/goals") }
 
-    // ---- push ------------------------------------------------------------------------------------------------------------------
-    public func pushStatus() async throws -> PushStatus { try await get("/api/push/status") }
     /// POST /api/push/register {token, platform, environment?}. Android sends its FCM token; the iPhone its APNs device token
     /// (hex) with platform "ios-apns" and the app's aps-environment ("production" | "development"); see ios/README.md "Push".
     public func registerPush(token: String, platform: String, environment: String? = nil) async throws -> PushRegistered {

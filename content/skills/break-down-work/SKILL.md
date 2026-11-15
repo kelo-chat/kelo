@@ -1,6 +1,6 @@
 ---
 name: Break down work
-description: Split a job or routine into steps: what a person must do, what Kelo or a tool can do, what to drop, and the time saved.
+description: Split a job or routine into steps: who does what, what to drop, time saved.
 ---
 
 # Break down work

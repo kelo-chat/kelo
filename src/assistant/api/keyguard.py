@@ -22,12 +22,14 @@ Locked: every endpoint that needs a secret answers 423 {"code": "locked"}; the a
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..keyguard import KeyGuardError
+from ..keyring_client import KeyringError, ring_of, start_up as keyring_up
 from .context import AppContext
 
 
@@ -49,6 +51,7 @@ def router(ctx: AppContext) -> APIRouter:
     router = APIRouter()
     store = ctx.store
     guard = store.keyguard
+    keyring = ctx.keyring
     require_owner = ctx.require_owner
 
     def phone_over_e2e(request: Request) -> int:
@@ -90,11 +93,32 @@ def router(ctx: AppContext) -> APIRouter:
 
     @router.post("/api/keyguard/enroll/finish", dependencies=[Depends(require_owner)])
     async def keyguard_enroll_finish(body: FinishIn, request: Request) -> dict[str, Any]:
+        device_id = phone_over_e2e(request)
+        rotation = None
         try:
-            guard.finish_enroll(store, phone_over_e2e(request), body.enrollment_id, body.alg, body.blob)
+            if keyring.enabled:
+                # Turning Keyguard on changes the key the key container's ring key comes from: re-seal its entries first, and put
+                # them back if the rest of the step is refused (so the keys are never under a key the server does not hold).
+                rotation = guard.pending_rotation(device_id, body.enrollment_id, body.alg, body.blob)
+                if rotation:
+                    await keyring.rekey(ring_of(rotation[0]), ring_of(rotation[1]))
+            guard.finish_enroll(store, device_id, body.enrollment_id, body.alg, body.blob)
+        except KeyringError as e:
+            raise HTTPException(503, {"code": "keyring", "message": "the key store could not re-seal the keys; Keyguard was not turned on"}) from None
         except KeyGuardError as e:
+            await undo_rekey(rotation)
             raise refused(e) from None
+        except Exception:
+            await undo_rekey(rotation)
+            raise
         return view()
+
+    async def undo_rekey(rotation: tuple[bytes, bytes] | None) -> None:
+        if rotation:
+            try:
+                await keyring.rekey(ring_of(rotation[1]), ring_of(rotation[0]))
+            except KeyringError:
+                pass
 
     @router.get("/api/keyguard/blob", dependencies=[Depends(require_owner)])
     async def keyguard_blob(request: Request) -> dict[str, Any]:
@@ -110,6 +134,7 @@ def router(ctx: AppContext) -> APIRouter:
             guard.unlock(body.key)
         except KeyGuardError as e:
             raise refused(e) from None
+        asyncio.ensure_future(keyring_up(store, keyring))   # the key container opens with it; the old keys move
         return {"ok": True, "locked": guard.locked}
 
     @router.post("/api/keyguard/recover", dependencies=[Depends(require_owner)])
@@ -119,6 +144,7 @@ def router(ctx: AppContext) -> APIRouter:
             guard.recover(body.code)
         except KeyGuardError as e:
             raise refused(e) from None
+        asyncio.ensure_future(keyring_up(store, keyring))
         return {"ok": True, "locked": guard.locked}
 
     @router.delete("/api/keyguard/phones/{device_id}", dependencies=[Depends(require_owner)])

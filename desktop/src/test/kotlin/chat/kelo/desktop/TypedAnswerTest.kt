@@ -1,5 +1,8 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.chat.QuickReplies
+
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,15 +19,12 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.chat.ReplyQuestion
 import chat.kelo.app.chat.ReplySet
 import chat.kelo.app.ui.theme.Kelo
-import chat.kelo.desktop.chat.QuickReplies
 import chat.kelo.desktop.core.AppContainer
 import chat.kelo.desktop.core.FileKeyValueStore
 import chat.kelo.desktop.core.StoreKey
-import chat.kelo.desktop.i18n.Strings
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -42,7 +42,7 @@ import java.io.File
 class TypedAnswerTest {
     @get:Rule val compose = createComposeRule()
     @get:Rule val tmp = TemporaryFolder()
-    private val ko = Strings.of("ko")
+    private val ko = Words.of("ko")
 
     private val form = ReplySet(listOf(
         ReplyQuestion("체중 (현재 → 목표)", listOf("직접 입력할게요", "말하고 싶지 않아요"), typed = listOf("직접 입력할게요"), hint = "현재 체중과 목표 체중"),
@@ -64,7 +64,7 @@ class TypedAnswerTest {
                 Box(Modifier.size(640.dp, 620.dp).background(Kelo.colors.bg).padding(16.dp)) { QuickReplies(form, onSend = { text, _ -> sent += text }) }
             }
         }
-        val send = ko.get(R.string.reply_send)
+        val send = ko.get(Res.string.reply_send)
         fun sendButton() = compose.onAllNodes(hasText(send) and hasClickAction()).onFirst()
         fun boxes() = compose.onAllNodes(hasSetTextAction())
 
@@ -91,6 +91,6 @@ class TypedAnswerTest {
         sendButton().assertIsEnabled().performClick()
         ui.settle()
         assertEquals(listOf("체중 (현재 → 목표): 현재 80 목표 70\n기간: 3개월\n식단 제한: 유당불내증"), sent)
-        assertTrue(ko.get(R.string.reply_type_hint).isNotBlank())
+        assertTrue(ko.get(Res.string.reply_type_hint).isNotBlank())
     }
 }

@@ -1,6 +1,8 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloShared
+import KeloTestSupport
 @testable import KeloWork
 
 /// Ports of the Android app's GoalMetaTest, GoalsStateTest and GoalWorkspaceTest.
@@ -129,14 +131,14 @@ import KeloCore
         #expect(g.schedulesOn == 2 && GoalsRules.asksAboutSchedules(g))
         let old = try JSONDecoder().decode(GoalItem.self, from: Data(#"{"id":7,"title":"a"}"#.utf8))
         #expect(old.schedulesOn == 0 && !GoalsRules.asksAboutSchedules(old))
-        #expect(GoalsRules.deletePath(7, pauseSchedules: true) == "/api/goals/7?schedules=pause")
-        #expect(GoalsRules.deletePath(7, pauseSchedules: false) == "/api/goals/7?schedules=keep")
+        #expect(GoalsRules.deletePath(7, deleteSchedules: true) == "/api/goals/7?schedules=delete")
+        #expect(GoalsRules.deletePath(7, deleteSchedules: false) == "/api/goals/7?schedules=keep")
         let back = try JSONDecoder().decode(GoalItem.self, from: JSONEncoder().encode(g))
         #expect(back.schedulesOn == 2)
     }
 
     @Test @MainActor func theChoiceStaysWithTheGoalUntilItIsDeletedOrUndone() {
-        let m = GoalsModel()
+        let m = GoalsModel(api: { nil }, cache: memoryCache())
         let a = GoalItem(id: 1, title: "a", schedulesOn: 1), b = GoalItem(id: 2, title: "b")
         m.state.goals = [a, b]
         m.startRemove(a, pauseSchedules: true)

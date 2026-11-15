@@ -8,14 +8,34 @@ import KeloShared
 /// tabs while the stack is not empty). The vault opens only after the phone's own check (Face ID, Touch ID or the passcode).
 public struct MyScreen: View {
     @Environment(AppModel.self) private var app
+    /// The sync of the phone's calendar and contacts: one for the app, handed down to the pages that show it.
+    @Environment(\.phoneDataSync) private var phoneData
     public init() {}
 
     public var body: some View {
+        // a new API (the language changed) builds the stack again, so every model speaks to the current one
+        if let api = app.api { MyStack(api: api, app: app, phoneData: phoneData).id(ObjectIdentifier(api)) }
+    }
+}
+
+/// The My tab's navigation stack: the home page and its pages, built from one API; the vault's model is shared by the vault's pages.
+private struct MyStack: View {
+    let api: KeloApi
+    let app: AppModel
+    let phoneData: PhoneDataSync
+    @State private var vault: VaultModel
+
+    init(api: KeloApi, app: AppModel, phoneData: PhoneDataSync) {
+        self.api = api; self.app = app; self.phoneData = phoneData
+        _vault = State(initialValue: VaultModel(api: api))
+    }
+
+    var body: some View {
         NavigationStack(path: app.router.path(.my)) {
-            MyHome()
+            MyHome(api: api, app: app)
                 .keloShellInsets()
                 .navigationDestination(for: MyRoute.self) { route in
-                    MyDestination(route: route)
+                    MyDestination(route: route, api: api, vault: vault, phoneData: phoneData)
                 }
         }
     }
@@ -25,11 +45,6 @@ public struct MyScreen: View {
 @MainActor struct MyNav {
     let app: AppModel
     func push(_ r: MyRoute) { app.router.paths[.my, default: NavigationPath()].append(r) }
-    func pop() {
-        guard var p = app.router.paths[.my], !p.isEmpty else { return }
-        p.removeLast()
-        app.router.paths[.my] = p
-    }
     /// The vault, after the phone's own check.
     func openVault() {
         Task { @MainActor in
@@ -41,111 +56,42 @@ public struct MyScreen: View {
 
 struct MyDestination: View {
     let route: MyRoute
+    let api: KeloApi
+    let vault: VaultModel
+    let phoneData: PhoneDataSync
+    @Environment(AppModel.self) private var app
+
     var body: some View {
         Group {
             switch route {
-            case .profile: ProfilePage()
-            case .agent: AgentPage()
-            case .permissions: PermissionsPage()
-            case .records: RecordsPage()
-            case .notify: NotifyPage()
-            case .model: ModelPage()
-            case .modelCli(let p): ModelPage(cliProvider: p)
-            case .usage: UsagePage()
-            case .devices: DevicesPage()
-            case .vault(let noLock): VaultPage(noLock: noLock)
-            case .vaultItem(let name): VaultItemPage(name: name)
-            case .vaultAi(let name): AiKeyPage(name: name)
-            case .vaultAddLogin: AddLoginPage()
-            case .vaultLog: VaultLogPage()
-            case .resources: ResourcesPage()
-            case .cleanup: CleanupPage()
-            case .documents: DocumentsPage()
-            case .document(let name): FileViewer(name: name)
+            case .profile: ProfilePage(api: api, host: app)
+            case .agent: AgentPage(api: api, host: app)
+            case .permissions: PermissionsPage(api: api, phoneData: phoneData)
+            case .records: RecordsPage(api: api)
+            case .notify: NotifyPage(api: api)
+            case .model: ModelPage(api: api, cache: app.cache, prefs: app.prefs, host: app)
+            case .modelCli(let p): ModelPage(api: api, cache: app.cache, prefs: app.prefs, host: app, cliProvider: p)
+            case .usage: UsagePage(api: api)
+            case .devices: DevicesPage(api: api, onThisDeviceRemoved: { app.signOut() })
+            case .vault(let noLock): VaultPage(noLock: noLock, api: api, vault: vault)
+            case .vaultItem(let name): VaultItemPage(name: name, vault: vault)
+            case .vaultAi(let name): AiKeyPage(name: name, vault: vault)
+            case .vaultAddLogin: AddLoginPage(vault: vault)
+            case .vaultLog: VaultLogPage(vault: vault)
+            case .resources: ResourcesPage(api: api)
+            case .cleanup: CleanupPage(api: api)
+            case .documents: DocumentsPage(api: api)
+            case .files: KeloFilesPage(api: api)
+            case .document(let name): FileViewer(api: api, name: name)
             case .privacy: PrivacyPage()
             case .language: LanguagePage()
-            case .wallet: WalletPage()
-            case .operator: OperatorPage()
-            case .serverUpdate: ServerUpdatePage()
-            case .keyguard(let code): KeyguardPage(startWithCode: code)
+            case .wallet: WalletPage(api: api)
+            case .operator: OperatorPage(api: api)
+            case .serverUpdate: ServerUpdatePage(api: api, cache: app.cache)
+            case .keyguard(let code): KeyguardPage(app: app, startWithCode: code)
             }
         }
         .keloHideNavigationBar()
-    }
-}
-
-/// The numbers kept from last time show at once; each part replaces its old value when it arrives.
-@MainActor @Observable final class MyOverviewModel {
-    var o = MyOverview()
-    var offline = false
-
-    func load(app: AppModel) async {
-        if let kept: MyOverview = app.cache.get("my") { o = kept }
-        guard let api = app.api else { return }
-        let usage = Task { try await api.get("/api/usage", as: MyUsage.self) }
-        let devices = Task { try await api.devices() }
-        let vault = Task { try await api.vault() }
-        let uploads = Task { try await api.request("GET", "/api/uploads") }
-        let resources = Task { try await api.resources() }
-        let about = Task { try await api.about() }
-        let walletN = Task { try await api.get("/api/wallet/notifications?limit=1", as: WalletNotifications.self) }
-        let wallet = Task { try await api.get("/api/wallet/cards", as: WalletInfo.self) }
-        let op = Task { try await api.get("/api/operator/status", as: OperatorStatus.self) }
-        let serverUpdate = Task { await ServerUpdateRules.load(api) }
-        var failures: [Error?] = []
-        func step<T>(_ t: Task<T, Error>, _ apply: (T) -> Void) async {
-            switch await t.result {
-            case .success(let v): apply(v); failures.append(nil)
-            case .failure(let e): failures.append(e)
-            }
-        }
-        await step(usage) { o.usage = $0 }
-        await step(devices) { o.devices = $0.devices.count }
-        await step(vault) { o.creds = $0.items; o.locked = $0.locked }
-        await step(uploads) { o.documents = $0.arrayValue?.count }
-        await step(resources) {
-            o.sizes = $0.profile
-            o.storage = StorageRules.key(StorageRules.state($0.alert))
-            o.storagePercent = $0.alert.percent
-        }
-        await step(about) { o.version = $0.version }
-        await step(walletN) { o.walletUnseen = $0.unseen }
-        await step(wallet) { o.cards = $0.cards.count }
-        // the Operator section only for the server that runs the shared services (Android MyScreen: /api/operator/status)
-        switch await op.result {
-        case .success(let st): o.operator = OperatorRules.operatorFrom(nil, st.isOperator)
-        case .failure(let e):
-            if let a = e as? ApiError, a.status == 403 || a.status == 404 {
-                var older: Int? = -1
-                if a.status == 404 {   // an older server: the owner's own token can read the operator settings
-                    do { _ = try await api.request("GET", "/api/operator/firebase"); older = nil }
-                    catch let f as ApiError where f.status == 403 { older = 403 } catch {}
-                }
-                if let shown = OperatorRules.operatorFrom(a.status, nil, fallback: { OperatorRules.ownerFrom(older) }) { o.operator = shown }
-            }
-        }
-        // the server update: only the owner's device, only a server that has it (403 / 404 / unavailable: nothing)
-        switch await serverUpdate.value {
-        case .shown(let st): o.serverUpdate = st
-        case .hidden: o.serverUpdate = nil
-        case .failed: break   // not reached: keep what was shown
-        }
-        offline = MyOverview.offline(failures)
-        if failures.contains(where: { $0 == nil }) { app.cache.put("my", o) }
-    }
-
-    /// While a server update runs, its card's progress moves: asked every few seconds while 마이 shows (failures pass: the server
-    /// restarts on the way).
-    func followServerUpdate(app: AppModel) async {
-        while o.serverUpdate?.isRunning == true, !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            guard let api = app.api, !Task.isCancelled else { return }
-            switch await ServerUpdateRules.load(api) {
-            case .shown(let st): o.serverUpdate = st
-            case .hidden: o.serverUpdate = nil
-            case .failed: break
-            }
-        }
     }
 }
 
@@ -163,11 +109,16 @@ struct MyDestination: View {
 struct MyHome: View {
     @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
-    @State private var model = MyOverviewModel()
+    @Environment(\.nestSurfaceView) private var nestSurface
+    @State private var model: MyOverviewModel
     @State private var confirmClear = false
     @State private var confirmLogout = false
-    @State private var toast: String?
-    @State private var notifyOn = NotifyPermission.cached
+    @State private var notifyOn = NotifyPermission.cached()
+
+    init(api: KeloApi, app: AppModel) {
+        _model = State(initialValue: MyOverviewModel(api: api, cache: app.cache, onSignedOut: { app.signOut() },
+                                                      onHistoryCleared: { app.historyWasCleared(); NotificationCheck.clearShown() }))
+    }
 
     private var nav: MyNav { MyNav(app: app) }
 
@@ -233,6 +184,7 @@ struct MyHome: View {
 
                     SectionLabel(L(R.string.my_section_data))
                     MenuRow(.file, L(R.string.docs_title), value: o.documents.map { L(R.string.count_items, $0) }) { nav.push(.documents) }
+                    MenuRow(.file, L(R.string.files_title)) { nav.push(.files) }
                     MenuRow(.book, L(R.string.my_records_title), value: L(R.string.my_records_value)) { nav.push(.records) }
                     MenuRow(.trash, L(R.string.my_clear_chat), danger: true) { confirmClear = true }
 
@@ -247,14 +199,21 @@ struct MyHome: View {
                         MenuRow(.cloud, L(R.string.operator_page_title)) { nav.push(.operator) }
                     }
 
+                    // tabs the layout hides stay reachable from here
+                    ForEach(KeloTab.allCases.filter { app.tabLayout.hides($0.rawValue) }, id: \.self) { tab in
+                        MenuRow(tab.icon, tab.label) { app.router.hiddenOpen = tab }
+                    }
+                    // Nest sections: only while the app has a renderer (nothing otherwise)
+                    if let surface = nestSurface {
+                        ForEach(app.nest?.state.entries(NestPlace.mySection, surface: surface) ?? []) { e in
+                            SectionLabel(e.packageName.isEmpty ? e.title : e.packageName)
+                            surface.view(for: e)
+                        }
+                    }
+
                     Color.clear.frame(height: 16)
                     MenuRow(.arrowRight, L(R.string.my_logout), danger: true) { confirmLogout = true }
-                    let versionLine = [AppInfo.version.isEmpty ? nil : L(R.string.my_version, AppInfo.version),
-                                       (o.version ?? "").isEmpty ? nil : L(R.string.my_server_version, o.version!)].compactMap { $0 }.joined(separator: "\n")
-                    if !versionLine.isEmpty {
-                        Text(versionLine).font(KeloFont.small).foregroundStyle(c.muted).padding(.leading, 16).padding(.top, 12)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    AppVersionLines(appVersion: AppInfo.version, serverVersion: o.version, source: AppInfo.source)
                     Color.clear.frame(height: 24)
                 }
                 .keloPageWidth()
@@ -263,15 +222,17 @@ struct MyHome: View {
             .onTabReselect(.my) { withAnimation { proxy.scrollTo("top", anchor: .top) } }
         }
         .background(c.bg.ignoresSafeArea())
-        .overlay(alignment: .bottom) { StaleHint(visible: model.offline) { Task { await model.load(app: app) } }.padding(.bottom, 12) }
-        .task { await model.load(app: app) }
-        .task(id: model.o.serverUpdate?.isRunning == true) { await model.followServerUpdate(app: app) }
+        .overlay(alignment: .bottom) { StaleHint(visible: model.offline) { model.reload() }.padding(.bottom, 12) }
+        .task { await model.load() }
+        .task(id: model.o.serverUpdate?.isRunning == true && app.router.shows(.my)) {
+            if app.router.shows(.my) { await model.followServerUpdate() }
+        }
         .task { notifyOn = await NotifyPermission.isOn() }
         .onAppear { handleRequest() }
         .onChange(of: app.router.myPageRequest) { _, _ in handleRequest() }
-        .keloConfirm(L(R.string.my_logout_confirm), isPresented: $confirmLogout, yes: L(R.string.my_logout)) { app.signOut() }
-        .keloConfirm(L(R.string.my_clear_chat_confirm), isPresented: $confirmClear, yes: L(R.string.delete)) { clearChat() }
-        .toast($toast)
+        .keloConfirm(L(R.string.my_logout_confirm), isPresented: $confirmLogout, yes: L(R.string.my_logout)) { model.signOut() }
+        .keloConfirm(L(R.string.my_clear_chat_confirm), isPresented: $confirmClear, yes: L(R.string.delete)) { model.clearChat() }
+        .toast(model.notice, clear: model.clearNotice)
     }
 
     private func handleRequest() {
@@ -294,25 +255,44 @@ struct MyHome: View {
         }
         if let route = MyRoute.of(r) { nav.push(route) }
     }
-
-    private func clearChat() {
-        Task {
-            do {
-                try await app.requireApi().clearMessages()   // the chat and what came of it (the server stops running work first)
-                app.historyWasCleared()                      // the kept chat is emptied and the screens drop what they hold
-                NotificationCheck.clearShown()               // shown notifications name tasks that are gone
-                toast = L(R.string.my_clear_chat_done)
-            } catch {
-                toast = app.message(for: error)
-            }
-        }
-    }
 }
 
 /// The app's own version: Kelo's release (version.json) and the App Store build number ("0.9.0 (26111011)"). No update check here:
 /// iPhone updates come from the App Store / TestFlight (the Android sideload and desktop apps check https://kelo.chat/download/latest.json).
 enum AppInfo {
     static var version: String { AppInfoLine.current }
+    /// The commit this build's source came from (Info.plist; see AppSource)
+    static var source: AppSource { AppSource.current }
+}
 
-    static func line(short: String?, build: String?) -> String { AppInfoLine.line(version: short ?? "", build: build) }
+/// The version lines at the bottom of My: "App version: 0.9.3 (26111011) · a1b2c3d" and the server's version. The short hash is the commit
+/// the app was built from: a link to that source on GitHub for a clean build (it opens in the browser), plain "a1b2c3d (modified)" for a
+/// build from changed files, nothing when the build did not say (`SourceLink`, docs/versioning.md).
+struct AppVersionLines: View {
+    let appVersion: String
+    let serverVersion: String?
+    let source: AppSource
+    @Environment(\.kelo) private var c
+
+    var body: some View {
+        let label = SourceLink.label(commit: source.commit, dirty: source.dirty, modified: L(R.string.my_source_modified))
+        VStack(alignment: .leading, spacing: 0) {
+            if !appVersion.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(L(R.string.my_version, appVersion) + (label == nil ? "" : " · ")).foregroundStyle(c.muted)
+                    if let label {
+                        if let url = source.url {
+                            Link(label, destination: url).foregroundStyle(c.accent).underline()
+                                .accessibilityLabel(L(R.string.my_source_link))
+                        } else {
+                            Text(label).foregroundStyle(c.muted)
+                        }
+                    }
+                }
+            }
+            if let server = serverVersion, !server.isEmpty { Text(L(R.string.my_server_version, server)).foregroundStyle(c.muted) }
+        }
+        .font(KeloFont.small).padding(.leading, 16).padding(.top, 12)
+        .fixedSize(horizontal: false, vertical: true)
+    }
 }

@@ -10,10 +10,11 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 //   ./gradlew packageMsi packageExe    Windows installers (only on Windows; see .github/workflows/desktop-windows.yml)
 //   ./gradlew createDistributable      the app folder the MSIX for the Microsoft Store is packed from (packaging/windows/)
 //
-// The Android app (android/kelo) is the reference. Its plain Kotlin files (the API client, the models, the rules) and the
-// Compose files that need nothing from Android (the character, the icons) are not copied by hand: [syncShared] takes them
-// from android/kelo at build time, so both apps always use the same code. Nothing in android/kelo is changed by this build.
-// The text comes from the Android strings too (tools/sync_strings.py writes src/main/resources/i18n and src/generated).
+// The Android app (android/kelo) is the reference. Its plain Kotlin files (the API client, the models, the rules) and the Compose
+// files that need nothing from Android (the character, the icons) are the Kotlin Multiplatform module shared/ (package
+// chat.kelo.app), which both apps use as a composite build (settings.gradle.kts: includeBuild); its unit tests run here too
+// (`./gradlew test` also runs shared's desktopTest). Nothing in android/kelo is changed by this build.
+// The text is shared/strings (Android format), converted at build time into Compose resources (chat.kelo.app.res.Res; shared/build.gradle.kts).
 
 plugins {
     kotlin("jvm") version "2.0.21"
@@ -38,76 +39,62 @@ val releaseInfo: Map<String, Any?> = run {
 val releaseVersion = releaseInfo["version"] as String
 val releaseBuild = (releaseInfo["build"] as Number).toInt()
 val minServer = releaseInfo["min_server"] as String
+/**
+ * Which commit this build's source came from, for the version line in My (it links to that commit on GitHub; docs/versioning.md):
+ * the full sha and whether tracked files under the app's inputs differ from it. The build scripts pass them (-PkeloCommit=<sha>
+ * -PkeloDirty=true|false; the reproducible build has no .git inside its container); without them git answers, and with no git (a
+ * source tarball) the commit is "" and nothing is shown. Never fails the build.
+ */
+fun gitAnswer(vararg args: String): String {
+    val root = rootProject.file("..")
+    if (!File(root, ".git").exists()) return ""
+    return try {
+        providers.exec { commandLine("git", *args); workingDir = root; isIgnoreExitValue = true }.standardOutput.asText.get().trim()
+    } catch (e: Exception) {
+        ""
+    }
+}
+val sourceCommit: String = ((project.findProperty("keloCommit") as String?) ?: gitAnswer("rev-parse", "HEAD")).filter { it.isLetterOrDigit() }
+val sourceDirty: Boolean = (project.findProperty("keloDirty") as String?)?.trim()?.lowercase()?.let { it == "true" }
+    ?: gitAnswer("status", "--porcelain", "--untracked-files=no", "--", "desktop", "shared", "version.json").isNotEmpty()
+
 val packageProps = Properties().apply { rootProject.file("version.properties").inputStream().use { load(it) } }
 val keloVersion = (findProperty("keloVersion") as String?) ?: packageProps.getProperty("packageVersion")
 version = keloVersion
 
-val androidSrc = rootProject.file("../android/kelo/app/src/main/java")
-val androidTest = rootProject.file("../android/kelo/app/src/test/java")
-
-/** Android files used exactly as they are (relative to android/kelo/app/src/main/java/chat/kelo/app). */
-val sharedFiles = listOf(
-    "core/AcceptLanguage.kt", "core/ApiError.kt", "core/KeloApi.kt", "core/Languages.kt", "core/Models.kt", "core/Pairing.kt",
-    "core/SecureStore.kt", "core/Sessions.kt", "core/ScreenCache.kt", "core/WholeNumbers.kt",
-    "chat/ChatModels.kt", "chat/TurnEvents.kt", "chat/TurnFollower.kt", "chat/ChatItems.kt", "chat/Markdown.kt",
-    "chat/MessageActions.kt", "chat/AgentActivity.kt", "chat/QuickReplyRules.kt", "chat/ReplyFields.kt", "chat/ModelChooserRules.kt", "chat/vault/VaultModels.kt",
-    "ui/character/KeloCharacter.kt", "ui/character/KeloArt.kt", "ui/icons/KeloIcons.kt",
-    "followup/FollowupModels.kt",
-    "connectors/ConnectorModels.kt", "goals/GoalModels.kt", "goals/GoalMeta.kt",
-    "my/MyModels.kt", "my/UsageLogic.kt", "my/NumberText.kt", "my/CliUpdate.kt", "my/ServerUpdate.kt", "my/ContactHours.kt",
-    "agent/AgentModels.kt", "agent/AgentRules.kt", "agent/LiveRules.kt", "agent/SkillModels.kt", "agent/TaskGrantModels.kt", "agent/ScheduleGrantModels.kt",
-    "work/WorkRules.kt", "notify/NotifyRules.kt",
-    "chat/ChatAsks.kt", "chat/ChatScroll.kt", "chat/TimeLabels.kt", "chat/Reactions.kt", "ui/components/TokenText.kt",
-    "wallet/CardBlob.kt", "wallet/CardRules.kt", "wallet/Money.kt", "wallet/WalletLock.kt", "wallet/WalletModels.kt", "wallet/ShippingModels.kt",
-    "chat/SecretGuard.kt", "core/e2e/Ke2e.kt", "core/e2e/Ke2eRequest.kt", "core/e2e/Ke2eFrames.kt",
-    "core/e2e/Ke2eHttp.kt", "core/e2e/Ke2eWebSocket.kt", "core/AppVersion.kt", "keyguard/KeyguardModels.kt", "chat/AiConsent.kt", "my/StorageRules.kt", "my/ToneRules.kt", "chat/PaymentStepCalls.kt", "chat/ChatOverlayClear.kt",
+/**
+ * Android unit tests that run here too, against this app's own copies of the Android code (desktop/COPIES.md: app/chat/SignOutRules.kt
+ * ...) and the strings: they stay in android/kelo, because shared/ has neither. Relative to android/kelo/app/src/test/java/chat/kelo/app.
+ */
+val androidTestsRunHere = listOf(
+    "chat/ChatScrollTest.kt",
+    "chat/ModelChooserRulesTest.kt",
+    "chat/ReportRulesTest.kt",
+    "core/PairingLinksTest.kt",
+    "my/BriefingSettingsRulesTest.kt",
+    "my/BriefingSourcesRulesTest.kt",
+    "my/OperatorRulesTest.kt",
 )
 
-/** Android unit tests of those files, run here too (they need nothing from Android). */
-val sharedTests = listOf(
-    "core/PairingLinksTest.kt", "core/LanguagesTest.kt", "core/AcceptLanguageTest.kt", "core/KeloApiTest.kt", "core/SecureStoreTest.kt",
-    "chat/TurnEventParseTest.kt", "chat/TurnFollowerTest.kt", "chat/ChatReducerTest.kt", "chat/MarkdownTest.kt",
-    "chat/MessageActionsTest.kt", "chat/ModelChooserRulesTest.kt", "chat/PurchaseEventsTest.kt",
-    "my/UsageLogicTest.kt", "my/NumberTextTest.kt", "my/ResourcesModelsTest.kt", "my/CliUpdateTest.kt", "my/ServerUpdateTest.kt", "my/ContactHoursRulesTest.kt", "goals/GoalMetaTest.kt",
-    "work/WorkRulesTest.kt", "ui/character/KeloMotionTest.kt", "agent/LiveRulesTest.kt", "agent/MemoryPassRulesTest.kt",
-    "agent/SkillModelsTest.kt",
-    "chat/ChatAsksTest.kt", "chat/ChatScrollTest.kt",
-    "chat/SignOutRulesTest.kt", "chat/SignInRulesTest.kt", "chat/ModelRulesTest.kt", "chat/ReportRulesTest.kt",
-    "my/OperatorRulesTest.kt", "wallet/CardRulesTest.kt", "wallet/CardBlobTest.kt", "connectors/BetaRulesTest.kt",
-    "goals/GoalsStateTest.kt", "connectors/ConnectorRulesTest.kt", "connectors/ConnectorListTest.kt", "connectors/GoogleReviewRulesTest.kt",
-    "connectors/ConnectorIconRulesTest.kt", "chat/QuickReplyRulesTest.kt", "chat/ReplyFieldsTest.kt", "goals/GoalActivityTest.kt", "chat/TimeLabelsTest.kt", "chat/ReactionsTest.kt",
-    "wallet/AutoStateTest.kt", "wallet/ShippingModelsTest.kt", "chat/ShippingEventsTest.kt", "chat/SecretGuardTest.kt", "chat/SecretRequestsTest.kt", "chat/HandoverTest.kt",
-    "core/e2e/Ke2eEnvelopeTest.kt", "core/e2e/Ke2eRfc9180Test.kt", "core/e2e/Ke2eVectorsFileTest.kt", "core/e2e/Ke2eStreamingTest.kt",
-    "core/AppVersionTest.kt", "core/e2e/Ke2eHttpTest.kt", "core/e2e/Ke2eLocalServerTest.kt", "keyguard/KeyguardRulesTest.kt", "chat/AiConsentTest.kt", "chat/AgentActivityTest.kt", "my/StorageRulesTest.kt",
-    "agent/TaskGrantCardTest.kt", "chat/PaymentStepTest.kt", "chat/ToolFoldTest.kt", "chat/BriefingCardTest.kt",
-    "my/BriefingSettingsRulesTest.kt", "my/BriefingSourcesRulesTest.kt", "chat/ChatOverlayRulesTest.kt",
-    "my/ToneRulesTest.kt", "ui/components/FieldWrapScan.kt",
-)
-
-val sharedDir = layout.buildDirectory.dir("generated/shared/kotlin")
-val sharedTestDir = layout.buildDirectory.dir("generated/sharedTest/kotlin")
-
-val syncShared by tasks.registering(Sync::class) {
-    description = "Copies the Android app's plain Kotlin files the desktop app shares (see sharedFiles)."
-    from(androidSrc) { sharedFiles.forEach { include("chat/kelo/app/$it") } }
-    into(sharedDir)
-    doLast {
-        val missing = sharedFiles.filterNot { File(androidSrc, "chat/kelo/app/$it").exists() }
-        check(missing.isEmpty()) { "android/kelo no longer has: $missing (update sharedFiles in desktop/build.gradle.kts)" }
+/** FieldWrapScan (the helper that scans source files for fields that can wrap) is shared/'s test file, used by SingleLineFieldsTest here too. */
+val appTestsDir = layout.buildDirectory.dir("generated/appTests/kotlin")
+val syncAppTests by tasks.registering(Sync::class) {
+    from(rootProject.file("../shared/src/desktopTest/kotlin")) { include("chat/kelo/app/ui/components/FieldWrapScan.kt") }
+    from(rootProject.file("../android/kelo/app/src/test/java")) {
+        androidTestsRunHere.forEach { include("chat/kelo/app/$it") }
+        // these tests name text as R.string.x (a number on Android); here it is chat.kelo.app.res.Res.string.x (Compose resources)
+        val androidText = Regex("(?<![\\w.])R\\.(string|plurals|array)\\.")
+        filter { line -> if (line.trim() == "import chat.kelo.app.R") "import chat.kelo.app.res.*" else line.replace(androidText, "Res.$1.") }
     }
-}
-
-val syncSharedTests by tasks.registering(Sync::class) {
-    description = "Copies the Android unit tests of the shared files (see sharedTests); the ones that are missing are skipped."
-    from(androidTest) { sharedTests.forEach { include("chat/kelo/app/$it") } }
-    into(sharedTestDir)
+    inputs.property("androidTextRename", "R.string -> Res.string v1")   // the copy is changed by the filter above: a new rule re-copies
+    into(appTestsDir)
 }
 
 val appVersionDir = layout.buildDirectory.dir("generated/appVersion/kotlin")
 val generateAppVersion by tasks.registering {
     description = "Writes chat.kelo.desktop.core.ReleaseInfo from ../version.json and version.properties."
     val out = appVersionDir
-    val values = listOf(releaseVersion, releaseBuild.toString(), minServer, keloVersion)
+    val values = listOf(releaseVersion, releaseBuild.toString(), minServer, keloVersion, sourceCommit, sourceDirty.toString())
     inputs.property("values", values)
     outputs.dir(out)
     doLast {
@@ -127,6 +114,9 @@ val generateAppVersion by tasks.registering {
             |    const val MIN_SERVER = "${values[2]}"
             |    /** The installers' package number (desktop/version.properties), what /download/latest.json compares */
             |    const val PACKAGE = "${values[3]}"
+            |    /** The commit the source came from (40 hex, "" = the build did not say) and whether files differed from it (SourceLink) */
+            |    const val SOURCE_COMMIT = "${values[4]}"
+            |    const val SOURCE_DIRTY = ${values[5]}
             |}
             |""".trimMargin(),
         )
@@ -135,17 +125,21 @@ val generateAppVersion by tasks.registering {
 
 sourceSets {
     main {
-        kotlin.srcDir(sharedDir)
         kotlin.srcDir(appVersionDir)
-        kotlin.srcDir("src/generated/kotlin")
     }
     test {
-        kotlin.srcDir(sharedTestDir)
+        kotlin.srcDir(appTestsDir)
     }
 }
 
-tasks.named("compileKotlin") { dependsOn(syncShared, generateAppVersion) }
-tasks.named("compileTestKotlin") { dependsOn(syncSharedTests) }
+tasks.named("compileKotlin") { dependsOn(generateAppVersion) }
+tasks.named("compileTestKotlin") { dependsOn(syncAppTests) }
+
+// jars, zips and AARs of this build: no file times, a fixed file order, so the same source gives the same bytes (docs/verify-builds.md)
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
 
 kotlin {
     compilerOptions {
@@ -159,6 +153,7 @@ java {
 }
 
 dependencies {
+    implementation("chat.kelo:shared")
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(compose.foundation)
@@ -182,16 +177,26 @@ dependencies {
 
 tasks.test {
     useJUnit()
+    // the unit tests of shared/ (the code both apps use) run with the desktop's
+    dependsOn(gradle.includedBuild("shared").task(":desktopTest"))
+    // CopiesTest (COPIES.md) reads the Android / shared originals listed there, and the names of all Android and shared .kt files (a new same-name file
+    // on the desktop must be listed): only those make it run again, not every Android change
+    val copies = layout.projectDirectory.file("COPIES.md")
+    inputs.file(copies).withPropertyName("copiesList")
+    val repo = rootProject.layout.projectDirectory.dir("..")
+    val originals = providers.fileContents(copies).asText.map { md ->
+        md.lines().filter { it.startsWith("| desktop/") }
+            .flatMap { it.trim().trim('|').split("|").getOrElse(1) { "" }.split(",") }
+            .map { it.trim() }.filter { it.startsWith("android/") || it.startsWith("shared/") }.distinct()
+            .map { repo.file(it).asFile }
+    }
+    inputs.files(originals).withPropertyName("androidOriginals").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.property("androidKtNames", provider {
+        (fileTree(repo.dir("android/kelo/app/src")) { include("main/java/**/*.kt", "test/java/**/*.kt") } +
+            fileTree(repo.dir("shared/src")) { include("**/*.kt") }).map { it.name }.sorted().joinToString(",")
+    })
     // headless: the tests draw with Skia off screen (no window)
     systemProperty("java.awt.headless", "true")
-}
-
-/** Re-reads the Android strings into src/main/resources/i18n and src/generated/kotlin/chat/kelo/app/R.kt. */
-tasks.register<Exec>("syncStrings") {
-    group = "kelo"
-    description = "Regenerates the desktop text from android/kelo/app/src/main/res/values*/strings*.xml and strings/."
-    workingDir = rootProject.projectDir
-    commandLine(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3", "tools/sync_strings.py")
 }
 
 /** Renders the app icons (PNG, ICO, ICNS source PNGs, MSIX tiles) from Kelo's character into packaging/icons. */
@@ -244,4 +249,14 @@ compose.desktop {
             }
         }
     }
+}
+
+/** Draws the Microsoft Store's optional images (box art, app tile, poster art) from the character into store/logos. */
+tasks.register<JavaExec>("renderStoreLogos") {
+    group = "kelo"
+    description = "Draws the Store logo images from the character (store/logos)."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("chat.kelo.desktop.tools.StoreLogosKt")
+    args(rootProject.file("store/logos").absolutePath)
+    systemProperty("java.awt.headless", "true")
 }

@@ -71,9 +71,6 @@ public final class SecretCardWait {
     /// The outcome for `requestId`, once (nil when there is none).
     public func take(_ requestId: String) -> Outcome? { outcomes.removeValue(forKey: requestId) }
 
-    /// Whether an outcome waits for `requestId` (without taking it).
-    public func has(_ requestId: String) -> Bool { outcomes[requestId] != nil }
-
     func leave(_ o: Outcome) {
         outcomes[o.requestId] = o
         tick += 1
@@ -82,7 +79,6 @@ public final class SecretCardWait {
     /// The card a POST /api/wallet/cards answered (its id, nickname, brand and last four digits).
     public nonisolated static func card(from e: JSON) -> SecretCard {
         let o = e["card"]?.objectValue != nil ? e["card"]! : e
-        return SecretCard(id: o["id"]?.text ?? "", label: o["label"]?.text ?? "", brand: o["brand"]?.text ?? "",
-                          last4: o["last4"]?.text ?? "", isDefault: o["default"]?.boolValue ?? false)
+        return SecretCard(id: o["id"]?.text ?? "", label: o["label"]?.text ?? "")
     }
 }

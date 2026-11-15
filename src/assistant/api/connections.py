@@ -11,6 +11,7 @@ from .. import i18n
 from ..oauth_connect import PROVIDERS as DEVICE_PROVIDERS, OAuthError
 from ..mcp_oauth import (McpOAuthError)
 from ..github_web import GitHubWebError
+from ..cred_keyring import spawn_sync
 from .. import credentials as cred_clean
 from ..netguard import NetGuardError
 from ..netguard import fetch as netguard_fetch
@@ -91,6 +92,7 @@ def router(ctx: AppContext) -> APIRouter:
                                             detail=detail))
         had = item["has_secret"]
         store.set_credential_secret(name, secret)
+        spawn_sync(store, getattr(ctx, "keyring", None))
         if outcome == "ok":
             store.set_credential_result(name, "ok", "checked when it was added")
         store.add_vault_log(name, "replaced" if had else "saved", "service key" + (", checked with a real request" if outcome == "ok" else ""))
@@ -102,6 +104,7 @@ def router(ctx: AppContext) -> APIRouter:
     async def remove_credential(name: str) -> dict[str, bool]:
         if not store.delete_credential(name):
             raise HTTPException(404, "no such connection")
+        spawn_sync(store, getattr(ctx, "keyring", None))
         schedule_grants.drop_login(name)   # schedules that were allowed to use it ask again (or stop at the missing login)
         transient.discard(name)
         store.add_vault_log(name, "deleted", "removed by the user")

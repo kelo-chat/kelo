@@ -15,14 +15,16 @@ public enum KeloTab: String, CaseIterable, Hashable, Sendable {
         }
     }
 
-    @MainActor public var label: String {
+    public var labelKey: StringKey {
         switch self {
-        case .chat: L(R.string.tab_chat)
-        case .goals: L(R.string.tab_goals)
-        case .connectors: L(R.string.tab_connectors)
-        case .my: L(R.string.tab_my)
+        case .chat: R.string.tab_chat
+        case .goals: R.string.tab_goals
+        case .connectors: R.string.tab_connectors
+        case .my: R.string.tab_my
         }
     }
+
+    @MainActor public var label: String { L(labelKey) }
 }
 
 /// Where the work page should open (a tapped notification; Android notify/OpenTarget).
@@ -137,6 +139,10 @@ public enum TabTap: Equatable, Sendable {
 @MainActor @Observable
 public final class Router {
     public var tab: KeloTab = .chat
+    /// A Nest tab ("nest/<key>") shown instead of the built-in `tab` (which stays the last built-in one); nil = a built-in tab.
+    public private(set) var nestTab: String?
+    /// A built-in tab the layout hides, opened from its row in 마이 (full screen over the pages); nil = none.
+    public var hiddenOpen: KeloTab?
     /// Each tab's NavigationStack path; a non-empty path hides the floating header and the tab bar (sub pages are full screen).
     public var paths: [KeloTab: NavigationPath] = [:]
     /// The work page over whatever tab is showing (opened from the header).
@@ -157,6 +163,8 @@ public final class Router {
     public var chatFocus: Int64?
     /// A secure entry's card to scroll to and mark for a moment (a row in 답이 필요해요).
     public var chatEntryFocus: String?
+    /// A reply started outside the chat (an offer card on the Work page): the chat follows it, then clears this.
+    public var chatFollowTurn: String?
     /// Counts taps on the tab that is already open at its start (pages watch their own entry to scroll to the top).
     public private(set) var reselects: [KeloTab: Int] = [:]
     /// Who asked the header and tab bar to step aside (a full-screen page, the keyboard on the chat).
@@ -166,14 +174,17 @@ public final class Router {
 
     public static let keyboardAsker = "keyboard"
 
+    /// The tab's page is the one on screen (every tab keeps its page built once visited, so a poll asks this before it runs).
+    public func shows(_ t: KeloTab) -> Bool { nestTab == nil && tab == t }
+
     public func path(_ t: KeloTab) -> Binding<NavigationPath> {
         Binding(get: { self.paths[t] ?? NavigationPath() }, set: { self.paths[t] = $0 })
     }
 
     public func depth(_ t: KeloTab) -> Int { paths[t]?.count ?? 0 }
 
-    public var headerHidden: Bool { depth(tab) > 0 || chromeAskers.contains { $0 != Self.keyboardAsker } }
-    public var barHidden: Bool { depth(tab) > 0 || !chromeAskers.isEmpty }
+    public var headerHidden: Bool { (nestTab == nil && depth(tab) > 0) || chromeAskers.contains { $0 != Self.keyboardAsker } }
+    public var barHidden: Bool { (nestTab == nil && depth(tab) > 0) || !chromeAskers.isEmpty }
 
     public func hideChrome(_ key: String, _ hidden: Bool) {
         if hidden { chromeAskers.insert(key) } else { chromeAskers.remove(key) }
@@ -181,11 +192,12 @@ public final class Router {
 
     /// A bottom tab tapped.
     public func tap(_ t: KeloTab) {
+        if nestTab != nil { go(t); return }   // coming back from a Nest tab
         switch TabTap.of(current: tab, depth: depth(tab), tapped: t) {
         case .switchTo:
             var tx = Transaction()
             tx.disablesAnimations = true
-            withTransaction(tx) { tab = t }
+            withTransaction(tx) { tab = t; nestTab = nil }
         case .toRoot:
             paths[t] = NavigationPath()
             if t == .connectors { connectorOpen = nil }
@@ -197,7 +209,14 @@ public final class Router {
     public func go(_ t: KeloTab) {
         var tx = Transaction()
         tx.disablesAnimations = true
-        withTransaction(tx) { tab = t }
+        withTransaction(tx) { tab = t; nestTab = nil }
+    }
+
+    /// A Nest tab tapped: it has no sub pages, so tapping it again does nothing.
+    public func tapNest(_ id: String) {
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        withTransaction(tx) { nestTab = id }
     }
 
     public func openConnector(_ id: String) {
@@ -250,6 +269,8 @@ public final class Router {
 
     public func reset() {
         tab = .chat
+        nestTab = nil
+        hiddenOpen = nil
         paths = [:]
         workOpen = false
         workStart = nil
@@ -259,29 +280,15 @@ public final class Router {
         myPageRequest = nil
         chatFocus = nil
         chatEntryFocus = nil
+        chatFollowTurn = nil
         chromeAskers = []
     }
 }
 
 public extension View {
-    /// Hides the floating header and the tab bar while this view is on screen and `hidden` is true (Android HideShellChrome).
-    func hidesShellChrome(_ key: String, _ hidden: Bool = true) -> some View { modifier(HideChromeModifier(key: key, hidden: hidden)) }
-
     /// Runs `action` when the user taps `tab` while already at its start (Android OnTabReselect).
     func onTabReselect(_ tab: KeloTab, perform action: @escaping () -> Void) -> some View {
         modifier(TabReselectModifier(tab: tab, action: action))
-    }
-}
-
-private struct HideChromeModifier: ViewModifier {
-    let key: String
-    let hidden: Bool
-    @Environment(AppModel.self) private var app
-    func body(content: Content) -> some View {
-        content
-            .onAppear { app.router.hideChrome(key, hidden) }
-            .onChange(of: hidden) { _, h in app.router.hideChrome(key, h) }
-            .onDisappear { app.router.hideChrome(key, false) }
     }
 }
 

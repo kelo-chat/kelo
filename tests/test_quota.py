@@ -140,7 +140,7 @@ def app_for(tmp_path, **kw):
 
 
 async def test_the_app_refuses_writes_past_the_cap_with_507_and_shows_usage(tmp_path):
-    limit = 700_000   # an empty assistant's database (every module's tables) is about 0.5 MB
+    limit = 900_000   # an empty assistant's database (every module's tables) is about 0.6 MB and grows with new modules
     async with Running(app_for(tmp_path, disk_limit=limit)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH, timeout=20) as c:
         base = (await c.get("/api/resources")).json()["disk"]
         assert base["limit"] == limit and 0 < base["used"] < limit - 100_000          # an empty assistant (database, notes) is far below the cap

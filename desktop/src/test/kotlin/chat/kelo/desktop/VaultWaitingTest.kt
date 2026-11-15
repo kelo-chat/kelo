@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -10,9 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.my.VaultPage
+import chat.kelo.app.my.VaultPage
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.After
 import org.junit.Rule
@@ -38,13 +37,13 @@ class VaultWaitingTest {
     @Test fun german320() = flow("de", 320)
 
     private fun flow(lang: String, width: Int) {
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val m = MockServer("--lang", if (lang == "ko") "ko" else "en", "--secret-entries").also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
-            KeloFrame(app) { Box(Modifier.size(width.dp, 1100.dp)) { VaultPage(app, onBack = {}, onGoModel = {}) } }
+            KeloFrame(app) { Box(Modifier.size(width.dp, 1100.dp)) { VaultPage(onBack = {}, onGoModel = {}) } }
         }
         val name = "vault-waiting-$lang-$width"
         fun buttons(text: String) = compose.onAllNodes(hasText(text) and hasClickAction()).fetchSemanticsNodes().size
@@ -59,18 +58,18 @@ class VaultWaitingTest {
             ui.settle(4)
         }
         try {
-            ui.waitText(words.get(R.string.secret_waiting_title))
+            ui.waitText(words.get(Res.string.secret_waiting_title))
             ui.waitText("OpenWeather")
-            ui.waitText(words.get(R.string.secret_kind_card) + " · tickets.interpark.com")
-            ui.waitUntil("three entries waiting") { buttons(words.get(R.string.secret_fill)) == 3 }
+            ui.waitText(words.get(Res.string.secret_kind_card) + " · tickets.interpark.com")
+            ui.waitUntil("three entries waiting") { buttons(words.get(Res.string.secret_fill)) == 3 }
             shots("list")
-            click(words.get(R.string.secret_fill))                      // the newest: the OpenWeather key
-            ui.waitText(words.get(R.string.secret_title_key, "OpenWeather"))
-            ui.waitText(words.get(R.string.secret_never_chat))
-            ui.waitUntil("the other two still closed") { buttons(words.get(R.string.secret_fill)) == 2 }
+            click(words.get(Res.string.secret_fill))                      // the newest: the OpenWeather key
+            ui.waitText(words.get(Res.string.secret_title_key, "OpenWeather"))
+            ui.waitText(words.get(Res.string.secret_never_chat))
+            ui.waitUntil("the other two still closed") { buttons(words.get(Res.string.secret_fill)) == 2 }
             shots("open")
-            click(words.get(R.string.delete))                           // the first closed one left
-            ui.waitUntil("one entry left closed") { buttons(words.get(R.string.secret_fill)) == 1 }
+            click(words.get(Res.string.delete))                           // the first closed one left
+            ui.waitUntil("one entry left closed") { buttons(words.get(Res.string.secret_fill)) == 1 }
         } catch (e: Throwable) {
             runCatching { ui.shot("$name-zz-failed") }
             throw e

@@ -72,7 +72,7 @@ struct GoalItem: Codable, Equatable, Hashable, Identifiable, Sendable {
     }
 }
 
-struct GoalFact: Equatable, Sendable { var key: String; var value: String; var skipped: Bool; var source: String }
+struct GoalFact: Equatable, Sendable { var key: String; var value: String; var skipped: Bool }
 
 struct GoalStep: Equatable, Identifiable, Sendable {
     var id: Int64
@@ -99,7 +99,7 @@ struct GoalMetric: Equatable, Identifiable, Sendable {
     var values: [GoalMetricValue] = []
 }
 
-struct GoalLogEntry: Equatable, Identifiable, Sendable { var id: Int64; var at: Double; var text: String; var kind: String; var by: String }
+struct GoalLogEntry: Equatable, Identifiable, Sendable { var id: Int64; var at: Double; var text: String }
 struct GoalDocument: Equatable, Identifiable, Sendable { var id: Int64; var path: String; var title: String; var exists: Bool }
 struct GoalScheduleBrief: Equatable, Identifiable, Sendable { var id: Int64; var name: String; var description: String; var enabled: Bool }
 
@@ -113,15 +113,13 @@ struct GoalWorkspace: Decodable, Equatable, Sendable {
     var documents: [GoalDocument] = []
     var schedules: [GoalScheduleBrief] = []
 
-    init(goal: GoalItem) { self.goal = goal }
-
     init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         guard let g = j.decode("goal", as: GoalItem.self) else { throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "goal")) }
         goal = g
         func list(_ k: String) -> [Lenient] { (j.has(k) ? (Lenient.items(j, k)) : []) }
         facts = list("facts").compactMap { o in
-            let key = o.str("key"); return key.isEmpty ? nil : GoalFact(key: key, value: o.str("value"), skipped: o.bool("skipped"), source: o.str("source", "agent"))
+            let key = o.str("key"); return key.isEmpty ? nil : GoalFact(key: key, value: o.str("value"), skipped: o.bool("skipped"))
         }
         steps = list("steps").compactMap { o in
             guard let id = o.optInt64("id") else { return nil }
@@ -138,7 +136,7 @@ struct GoalWorkspace: Decodable, Equatable, Sendable {
         }
         log = list("log").compactMap { o in
             guard let id = o.optInt64("id") else { return nil }
-            return GoalLogEntry(id: id, at: o.double("at"), text: o.str("text"), kind: o.str("kind", "note"), by: o.str("by", "agent"))
+            return GoalLogEntry(id: id, at: o.double("at"), text: o.str("text"))
         }
         documents = list("documents").compactMap { o in
             guard let id = o.optInt64("id") else { return nil }
@@ -261,9 +259,9 @@ enum GoalsRules {
     /// Deleting a goal with schedules on asks first whether to turn them off too; without any, no question.
     static func asksAboutSchedules(_ g: GoalItem) -> Bool { g.schedulesOn > 0 }
 
-    /// DELETE /api/goals/{id}?schedules=pause|keep: what the user chose (keep when nothing was asked, as older apps do).
-    static func deletePath(_ id: Int64, pauseSchedules: Bool) -> String {
-        "/api/goals/\(id)?schedules=\(pauseSchedules ? "pause" : "keep")"
+    /// DELETE /api/goals/{id}?schedules=delete|keep: what the user chose (keep when nothing was asked, as older apps do).
+    static func deletePath(_ id: Int64, deleteSchedules: Bool) -> String {
+        "/api/goals/\(id)?schedules=\(deleteSchedules ? "delete" : "keep")"
     }
 
     static let workingRefreshMs = 3_000

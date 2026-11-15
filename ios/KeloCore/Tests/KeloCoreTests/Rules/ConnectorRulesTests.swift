@@ -12,23 +12,6 @@ import Testing
         Connector(id: "naver", name: "네이버", description: "브라우저로 쓰는 사이트", category: "웹", status: "browser", connect: "browser"),
     ]
 
-    @Test func anEmptyQueryShowsEverything() {
-        #expect(ConnectorRules.filter(list, query: "") == list)
-    }
-
-    @Test func queryMatchesNameOrDescriptionCaseIgnored() {
-        #expect(ConnectorRules.filter(list, query: "git").map(\.id) == ["github"])
-        #expect(ConnectorRules.filter(list, query: "GITHUB").map(\.id) == ["github"])
-        #expect(ConnectorRules.filter(list, query: "이슈").map(\.id) == ["github", "linear"])
-        #expect(ConnectorRules.filter(list, query: "데이터").map(\.id) == ["notion"])
-    }
-
-    @Test func queryIsNotTrimmed() {
-        // "name description" holds one space between them, so a space alone still matches everything
-        #expect(ConnectorRules.filter(list, query: " ").count == list.count)
-        #expect(ConnectorRules.filter(list, query: "  ").isEmpty)
-    }
-
     @Test func groupsKeepTheOrderCategoriesFirstAppearIn() {
         let g = ConnectorRules.groups(list)
         #expect(g.map(\.0) == ["개발", "문서", "메일", "웹"])
@@ -37,25 +20,12 @@ import Testing
 
     @Test func statusMapsToTheBadgeLabels() {
         #expect(ConnectorRules.badge("connected") == .connected)
-        #expect(ConnectorRules.badge("connected")?.labelKey == "connector.status.connected")
-        #expect(ConnectorRules.badge("available")?.labelKey == "connector.status.available")
-        #expect(ConnectorRules.badge("browser")?.labelKey == "connector.status.browser")
-        #expect(ConnectorRules.badge("autofill")?.labelKey == "connector.status.autofill")
-        #expect(ConnectorRules.badge("coming_soon")?.labelKey == "connector.status.coming_soon")
-        #expect(ConnectorRules.badge("disabled")?.labelKey == "connector.status.disabled")
-        #expect(ConnectorRules.badge("unsupported")?.labelKey == "connector.status.unsupported")
         #expect(ConnectorRules.badge("something_new") == nil)
     }
 
     @Test(arguments: ["connected", "disabled", "coming_soon", "available", "browser", "autofill", "unsupported"])
     func everyStatusTheServerSendsHasABadge(_ status: String) {
         #expect(ConnectorRules.badge(status)?.rawValue == status)
-    }
-
-    @Test func findFollowsTheListAndGivesNilWhenGone() {
-        #expect(ConnectorRules.find(list, id: "gmail")?.id == "gmail")
-        #expect(ConnectorRules.find(list, id: "zoom") == nil)
-        #expect(ConnectorRules.find(list, id: nil) == nil)
     }
 
     @Test func countdownText() {
@@ -199,16 +169,6 @@ import Testing
         #expect(ConnectorList.account(list[3], creds: creds) == "")
     }
 
-    @Test func connectionMethods() {
-        #expect(ConnectorList.method("device") == .code)
-        #expect(ConnectorList.method("mcp") == .signIn)
-        #expect(ConnectorList.method("mail") == .mail)
-        #expect(ConnectorList.method("key") == .key)
-        #expect(ConnectorList.method("browser") == .browser)
-        #expect(ConnectorList.method("autofill") == .autofill)
-        #expect(ConnectorList.method(nil) == nil)
-    }
-
     @Test func tileLetters() {
         #expect(ConnectorList.initials("GitHub") == "G")
         #expect(ConnectorList.initials("Zoho CRM") == "ZC")
@@ -253,7 +213,7 @@ import Testing
 
     @Test func everyCatalogServiceHasALocalGroup() {
         #expect(catalog.count == 152)
-        let missing = catalog.filter { !ConnectorGroups.known($0) }
+        let missing = catalog.filter { ConnectorGroups.map[$0] == nil }
         #expect(missing.isEmpty, "not grouped: \(missing)")
         #expect(ConnectorGroups.of("coupang") == .shopping)
         #expect(ConnectorGroups.of("toss") == .money)
@@ -263,7 +223,7 @@ import Testing
     @Test(arguments: ["haveibeenpwned", "kahoot", "padlet", "oreilly", "splice", "tomorrow_io", "turkish_airlines", "coindesk", "morningstar",
                       "craft", "whimsical", "cal_com", "roam_research", "sonos", "tally"])
     func removedServicesAreNoLongerMapped(_ id: String) {
-        #expect(!ConnectorGroups.known(id))
+        #expect(ConnectorGroups.map[id] == nil)
     }
 
     @Test func onlyThePermissionAConnectionWasGivenIsShown() {

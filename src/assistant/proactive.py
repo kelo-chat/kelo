@@ -7,22 +7,58 @@ the model, so they stay as they are. The "don't tell me" heading is "Do not tell
 
 One pass (an internal job; every `every_minutes`, default 120, inside wake_start..wake_end of the profile's time zone, default
 07:00–22:00; the first pass of the day runs at wake_start):
-1. Candidates are gathered in code from what is connected today: unread mail (mail.py, every connected mailbox unless briefing_sources.py leaves it out), calendar events in the
+1. Candidates are gathered in code from what is connected today: mail (every connected mailbox unless briefing_sources.py leaves it out; see
+   "Mail" below), calendar events in the
    next 24 hours (when a calendar source is wired in; it is read big_events.AHEAD_DAYS ahead in the same one read per pass), big
    events (big_events.py: trips, flights, stays, several days; found in code) once at each lead time in "ahead_days" (default 7 days
    and 1 day before; key "ahead:<event>:<days>" in the ledger so a lead time is never told twice; the model writes the message with
    what to prepare, within the same daily limits), schedule runs and watcher hits since the last pass (already told by their own
    notifications: logged as dropped), tracked goals with a date within 3 days (a "deadline" field, or a date in the title or note), and
-   dated lines under "## Commitments" in MEMORY.md within 2 days.
+   dated lines under "## Commitments" in MEMORY.md within 2 days, and whatever else is in `Proactive.sources` (CandidateSource: today
+   the rechecks, recheck.py, which are told by their own message through the main agent, so they are logged here as already told).
+   Rechecks (config "rechecks", on by default, and "recheck_per_day", 4 research runs a day at most) run on their own tick, not in a pass.
+   Mail can be switched off as a whole (config "mail_check", on by default): no mailbox is opened, so no new-mail candidates, no spam /
+   promotions skim, no change alerts, no cursor moves and no mail line for the calendar cross-check; calendar, checklist and the other
+   sources run as before. Turned on again, the first pass moves every mailbox cursor to "now" without candidates (meta
+   "proactive:mail_resume" holds the switch-on time until that pass is through): old unread mail is never replayed. The morning
+   briefing chooses its mailboxes in briefing_sources.py and is not affected.
+   Mail: per mailbox EVERY unread, non-bulk message that arrived since the last successful look is a candidate (no count limit): the
+   cursor per mailbox is in meta "proactive:mail:<account>" (IMAP: UIDVALIDITY + last UID + time, the UID range is read in pages of
+   mail.FETCH_CHUNK; Outlook: receivedDateTime, paged; a Nest mail package has no received time, so the ledger keeps a message from
+   being judged twice). A mailbox seen for the first time starts at "now" (no backlog). The cursor is saved only when the pass got
+   through (every mail it read judged and logged): a mailbox that failed to read, a model that gave no usable answer or a delivery that
+   failed leaves it where it was and the same mail is looked at again next pass. Mail already read, and promotions / bulk mail (Gmail's
+   categories, Outlook's Other inbox, list/bulk headers: mail.is_bulk) are left out. Once per local day (config "spam_skim") the
+   spam folder (its \\Junk mark, else a usual name; Outlook Junk Email) and the provider's promotions sorting (Gmail's categories,
+   Outlook's Other inbox) are skimmed from their own cursors; the model drops them unless one is clearly important and misfiled (a
+   bill, a booking, a security alert, a person writing personally), and a kept one says "Found in the spam folder / promotions".
+   Booking, payment and travel confirmations are compared by the model with the calendar lines it is given (config
+   "calendar_check"): a mismatch of date, time, people or place is a candidate of at least 오늘 that says what differs.
+   Mail that reports a change (a flight or train changed or cancelled, a booking changed, a security alert from the real service) is
+   flagged "change" by the model (config "change_alerts"): the change class, see 4.
 2. Anything already in the ledger (told or dropped, not yet expired) is left out. Nothing new -> the pass ends without a model call.
 3. Short entries under the "don't tell me" heading (one keyword per "- " line, at most 20 characters) drop matching items in code; the rest go to the
    user's main model in one compact request that classifies each: drop / 보통 / 오늘 / 지금 and writes a one- or two-sentence message.
    Rules: wording alone never makes something urgent; when unsure between levels the model picks 오늘. In code: 지금 needs a concrete
-   time within NOW_WINDOW (the item's own, or a "due" time the model read from it), else it becomes 오늘.
+   time within NOW_WINDOW (the item's own, or a "due" time the model read from it), else it becomes 오늘. The model is asked for a
+   reason on every item, drop too; when it gives none, a short code-side reason is stored. More than BATCH (40) items go in as several
+   requests of at most BATCH (nothing is left out).
 4. Per local day at most `daily_regular` (2) 보통 items and `daily_total` (3) 보통 + 오늘 items go out; 지금 items go out at once (at most
    `daily_now`, 3; over that they count as 오늘). What does not fit is dropped until the next day.
-5. Each delivered item is its own chat message from the agent, a task (source "proactive") and a notification (type "proactive",
-   pushed). Every decision is logged with its reason (GET /api/proactive/log).
+   The change class (mail flagged "change", urgency stored as 지금, log kind "change") is outside all of that: it goes out at once in the
+   pass that finds it (so at most `every_minutes` after the mail arrived; waking hours only, like 지금), is not counted in
+   daily_regular / daily_total / daily_now, and is not held back by the unanswered guard nor counted by it (when the guard holds, the
+   pass still reads the mailboxes but only change alerts go out; the other mail it read is logged as held back). Its own generous
+   limit `daily_change` (10 a day, 0..50) only stops a flood: over it, a change is an ordinary 오늘 item.
+5. What one pass tells goes out as ONE message per mailbox (all mail of one mailbox together; everything that is not mail together), not
+   one per item: the pass collects the accepted items (limits and the unanswered guard still count per item), folds duplicates (the same
+   message text, or the same sender and subject: one line with "(2 mails)") and delivers each group once as a chat message from the
+   agent, a task (source "proactive") and a notification (type "proactive", pushed). One item is told exactly as its message; several
+   are one "• " line each; with more than one mailbox connected a mail group starts with the mailbox's name. Every item of a group is
+   logged as sent with the group's task id. The notification title of one mail says what it is ("New mail · <sender> · <subject>",
+   localized, at most 60 characters), of several "New mail · <count>"; any other group's title is the agent's name. A group whose
+   delivery failed is not logged as sent and the pass fails without moving the mailbox cursors. Every decision, drop included, is
+   logged with its reason (GET /api/proactive/log).
 
 The checklist (CHECKLIST.md, checklist.py) is part of this: it runs at the same pace, only while this is on, in waking hours and
 while today's daily_total has room; a run that said something counts as one 오늘 message (log source "checklist").
@@ -53,7 +89,9 @@ up (model_limits.py) the pass is skipped quietly (reason_code "model_limit"): no
 
 PROACTIVE API (also next to serialize() in server.py):
 GET  /api/proactive        {"enabled", "ahead_days": [7, 1], "wake_start": "HH:MM", "wake_end": "HH:MM", "every_minutes", "daily_regular", "daily_total",
-                            "daily_now", "timezone", "prefs_file": "NOTIFY_PREFS.md", "today": {"보통": n, "오늘": n, "지금": n},
+                            "daily_now", "daily_change", "spam_skim", "calendar_check", "change_alerts", "mail_check" (the last four: true = on, the default), "rechecks" (true; recheck.py), "recheck_per_day" (4; 0..20), "offers" (true; offers.py: the ready-to-run cards),
+                            "timezone", "prefs_file": "NOTIFY_PREFS.md", "today": {"보통": n, "오늘": n, "지금": n} (change alerts not
+                            counted), "today_changes": n,
                             "unanswered_limit", "pause_hours", "pause_max_days",
                             "last_pass": {"at", "status": done|nothing_new|skipped|failed, "reason", "reason_code", "candidates", "sent",
                                           "dropped", "backoff_level", "next_allowed_at"|null}|null,
@@ -70,12 +108,15 @@ GET  /api/proactive        {"enabled", "ahead_days": [7, 1], "wake_start": "HH:M
                             from the hours in effect; computed, no model)}
 PUT  /api/proactive        any of enabled, wake_start, wake_end, weekend_start, weekend_end ("" for both: weekends follow weekdays
                            again), every_minutes (30..1440), daily_regular (0..10), daily_total (0..20),
-                           daily_now (0..10), unanswered_limit (1..10), pause_hours (1..168), pause_max_days (1..30), auto_hours,
+                           daily_now (0..10), daily_change (0..50), recheck_per_day (0..20), rechecks (boolean), offers (boolean), spam_skim, calendar_check, change_alerts, mail_check (booleans: the owner can switch a part
+                           off; mail_check false = the 2-hourly check does not read mail at all, only calendar, checklist and the other sources;
+                           turned on again it starts from "now", no old mail is alerted; the morning briefing is not affected),
+                           unanswered_limit (1..10), pause_hours (1..168), pause_max_days (1..30), auto_hours,
                            ahead_days (lead times for big events: up to 4 whole days 1..14, [] = off; the agent's big_event_notice tool)
                            -> the same as GET (a changed wake_start / wake_end makes hours_source "manual"); 422 {"detail"} for a bad value
 GET  /api/proactive/log?limit=50&before=<id>   {"items": [{"id", "key", "source": mail|calendar|schedule|watcher|goal|memory|checklist, "title",
                             "urgency": 보통|오늘|지금|null, "status": sent|dropped, "reason", "message", "decided_at", "expires_at",
-                            "task_id"|null}] newest first, "next_before": id|null}
+                            "task_id"|null, "kind": ""|change}] newest first, "next_before": id|null}
 POST /api/proactive/hours/{id}/accept   the suggested contact hours become the setting of its day type (source "learned") -> as GET
 POST /api/proactive/hours/{id}/keep     keep the current hours; no new suggestion for 14 days -> the same as GET; 404 unknown id
 POST /api/proactive/hours/learned/{weekday|weekend}/apply   that day type's learned window becomes its hours ("learned") -> as GET;
@@ -94,7 +135,8 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from email.utils import parseaddr
+from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -116,13 +158,14 @@ URGENCIES = ("보통", "오늘", "지금")
 DEFAULTS: dict[str, Any] = {"enabled": False, "wake_start": "07:00", "wake_end": "22:00", "every_minutes": 120, "daily_regular": 2,
                             "daily_total": 3, "daily_now": 3, "unanswered_limit": 3, "pause_hours": 18, "pause_max_days": 7,
                             "auto_hours": False, "hours_source": "default", "weekend_start": "", "weekend_end": "",
-                            "weekend_source": "default", "ahead_days": [7, 1]}
+                            "weekend_source": "default", "ahead_days": [7, 1], "daily_change": 10, "spam_skim": True,
+                            "calendar_check": True, "change_alerts": True, "mail_check": True, "rechecks": True, "recheck_per_day": 4, "offers": True}
 HOURS_SOURCES = ("default", "manual", "learned")   # where the contact hours (wake_start..wake_end) came from
 # per day type: the config keys of its window and where it came from (weekend "" = not set: weekends follow the weekday window)
 WINDOW_KEYS = {WEEKDAY: ("wake_start", "wake_end", "hours_source"), WEEKEND: ("weekend_start", "weekend_end", "weekend_source")}
 SUGGESTION_KEYS = {WEEKDAY: ("hours_suggestion", "hours_kept_at"), WEEKEND: ("weekend_suggestion", "weekend_kept_at")}
-LIMITS = {"every_minutes": (30, 1440), "daily_regular": (0, 10), "daily_total": (0, 20), "daily_now": (0, 10),
-          "unanswered_limit": (1, 10), "pause_hours": (1, 168), "pause_max_days": (1, 30)}
+LIMITS = {"every_minutes": (30, 1440), "daily_regular": (0, 10), "daily_total": (0, 20), "daily_now": (0, 10), "daily_change": (0, 50),
+          "unanswered_limit": (1, 10), "pause_hours": (1, 168), "pause_max_days": (1, 30), "recheck_per_day": (0, 20)}
 AHEAD_LEADS_MAX = 4           # ahead_days: at most this many lead times, each 1..big_events.AHEAD_DAYS days before
 MAX_LEVEL = 32                 # the backoff level stops growing here (the pause is long capped well before)
 
@@ -140,13 +183,19 @@ SKIP_REASONS = {
 }
 NOW_WINDOW = 3 * 3600          # 지금 needs something that starts or closes within this many seconds
 NEVER_HEADINGS = ("Do not tell me", "알리지 마")   # NOTIFY_PREFS.md heading: English in new files (home.py), Korean in older ones
-MAX_CANDIDATES = 20
+BATCH = 40                    # items per model request: a pass with more is sent in as few requests as this allows (nothing is left out)
+MAIL_NOTICE_CHARS = 60        # the notification title of a mail (what it is, who, which subject)
+CALENDAR_LINES = 150          # calendar lines shown to the model next to mail, for the booking cross-check
 PREFS_CHARS = 2_000
 SENT_KEEP = 30 * 86400         # a told item is not told again for this long
 DROPPED_KEEP = 7 * 86400       # an item judged not worth telling is not looked at again for this long
-KEEP_LOG = 2000
-UNREAD_PER_ACCOUNT = 5        # the newest unread messages looked at in each mailbox per pass (every chosen mailbox is read)
-MAIL_ACCOUNT_TIMEOUT = 45.0   # one mailbox's read; longer is skipped this time (and shown in the settings, briefing_sources.py)
+KEEP_LOG = 4000
+UNREAD_PER_ACCOUNT = 5        # the briefing's newest unread per mailbox (briefing.py); the proactive pass reads everything since its last look
+MAIL_ACCOUNT_TIMEOUT = 45.0   # one mailbox's read for the briefing; longer is skipped this time (and shown in the settings, briefing_sources.py)
+ARRIVALS_TIMEOUT = 330.0      # one mailbox's look at everything that arrived since the last pass (a long gap is read in pages)
+MAIL_CURSOR = "proactive:mail:"   # + account name: where the last look ended (meta; see Proactive.mail_state)
+MAIL_RESUME = "proactive:mail_resume"   # meta: when "mail_check" was turned back on, until the pass that moved every mailbox cursor to "now" is through
+SKIM_KINDS = (("junk", "spam"), ("promo", "promotions"))   # the folders skimmed once a day: (mail kind, the tag the model sees)
 
 
 async def unread_by_account(mail: Any, accounts: list[dict[str, Any]], limit: int = UNREAD_PER_ACCOUNT) -> list[tuple[dict[str, Any], Any]]:
@@ -170,12 +219,12 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS proactive_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, source TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', urgency TEXT,
     status TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '', decided_at REAL NOT NULL,
-    expires_at REAL NOT NULL, day TEXT NOT NULL, task_id INTEGER);
+    expires_at REAL NOT NULL, day TEXT NOT NULL, task_id INTEGER, kind TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS proactive_log_key ON proactive_log(key, expires_at);
 """
 
 PROMPT = """You decide which of the items below deserve a short message to the user that they did not ask for. Reply with JSON only:
-{"items": [{"n": 1, "urgency": "drop", "due": null, "reason": "...", "message": ""}]}
+{"items": [{"n": 1, "urgency": "drop", "due": null, "reason": "...", "message": "", "change": false, "mismatch": false}]}
 One entry per item, by its number n. urgency is one of: drop, 보통, 오늘, 지금.
 - 지금: waiting a few hours would be too late: it starts, closes or must be answered within about 3 hours. Put its local time (HH:MM) in "due".
 - 오늘: it matters today (something due, happening or to be answered today).
@@ -186,8 +235,11 @@ The user's preferences come first: anything under "Do not tell me" (or 알리지
 An item marked "coming up" is a big event still days away (a trip, a flight, a stay, several days): tell it (보통; 오늘 when it is
 tomorrow) unless the preferences say not to, and in the message say when it is and what to prepare now (bookings, documents, packing,
 time off), briefly.
+- Mail only. "change": true for a mail that reports a CHANGE to something the user already has: a flight or train changed, delayed or cancelled, a booking, reservation or appointment changed or cancelled, or a security alert about the user's account from the real service (new sign-in, password changed, suspicious activity). Such a mail is told at once and does not use up the daily limits, so set "change" only for a real change or alert, never for marketing, receipts, "your order shipped", newsletters or a mail that looks like phishing; set urgency 지금 for it.
+- Mail only. A confirmation of a booking, payment or trip (flight, train, hotel, restaurant, appointment): when "Calendar" lines are given, compare it with the matching calendar entry. If the date, time, people or place differ, set "mismatch": true, urgency at least 오늘, and say in the message exactly what differs. No matching entry, or everything agrees: "mismatch": false.
+- An item tagged "found in spam" or "found in promotions" comes from a folder that is normally junk: drop it unless it is clearly important and misfiled (a bill or payment notice, a booking or travel confirmation, a security alert from a real service, a real person writing to the user personally). Marketing stays drop. For one you keep, the message says it was found there.
 message (not for drop): one or two short sentences in the user's language, from you to the user: what it is and why it matters now. No greeting, no headings, no markdown.
-reason: a few words on why."""
+reason: REQUIRED for every item, drop too: one short sentence in the user's language saying what the item is and why you chose that level. Never leave it empty."""
 
 
 @dataclass
@@ -203,7 +255,16 @@ class Candidate:
 
     def line(self, tz: ZoneInfo) -> str:
         when = f" (at {datetime.fromtimestamp(self.due, tz).strftime('%m-%d %H:%M')})" if self.due else (f" (on {self.day})" if self.day else "")
-        return f"[{self.source}] {self.title[:160]}{when}" + (f" — {self.detail[:240]}" if self.detail else "")
+        found = self.extra.get("found")
+        tag = f"{self.source}, found in {found}" if found else self.source
+        return f"[{tag}] {self.title[:160]}{when}" + (f" — {self.detail[:240]}" if self.detail else "")
+
+
+class CandidateSource(Protocol):
+    """Where a pass gets more candidates from: `Proactive.sources` lists them and gather() asks each one. (Mail, calendar, schedules,
+    watchers, goals and commitments are gathered inline above and are not moved here.) The first user is recheck.RecheckSource."""
+
+    def candidates(self, now: float) -> list[Candidate]: ...
 
 
 # ---------------------------------------------------------------------------------------------------------------- helpers
@@ -327,7 +388,14 @@ class Proactive:
             home.ensure_side_files()
         with store._lock:
             store._db.executescript(SCHEMA)
+            if "kind" not in {r[1] for r in store._db.execute("PRAGMA table_info(proactive_log)")}:   # a log from before change alerts
+                store._db.execute("ALTER TABLE proactive_log ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
             store._db.commit()
+        self.sources: list[CandidateSource] = []           # more candidate sources, asked by gather() (see CandidateSource)
+        self._events: list[dict[str, Any]] = []            # the calendar events read in this pass (the booking cross-check)
+        self._cursors: dict[str, dict[str, Any]] = {}      # mailbox -> where this pass's look ended: saved when the pass is through
+        self._mailbox_count = 0                            # mailboxes this pass looked at (a mail message names its mailbox when > 1)
+        self._mailbox_names: dict[str, str] = {}           # mailbox -> the name shown in a message
 
     # ------------------------------------------------------------------ settings
     def tz(self) -> ZoneInfo:
@@ -348,7 +416,11 @@ class Proactive:
         for k, v in changes.items():
             if v is None or k not in DEFAULTS:
                 continue
-            if k in ("enabled", "auto_hours"):
+            if k in ("enabled", "auto_hours", "spam_skim", "calendar_check", "change_alerts", "mail_check", "rechecks", "offers"):
+                if k == "mail_check" and bool(v) and not cfg[k]:   # mail is back on: the first pass starts every mailbox at "now" (no backlog)
+                    self.store.set_meta(MAIL_RESUME, str(self.clock()))
+                elif k == "mail_check" and not bool(v):
+                    self.store.set_meta(MAIL_RESUME, "")
                 cfg[k] = bool(v)
             elif k == "ahead_days":
                 cfg[k] = clean_leads(v)
@@ -544,12 +616,19 @@ class Proactive:
 
     def today_counts(self) -> dict[str, int]:
         day = _day(self.clock(), self.tz())
-        rows = self.store._all("SELECT urgency, COUNT(*) AS n FROM proactive_log WHERE status = 'sent' AND day = ? GROUP BY urgency", (day,))
+        rows = self.store._all("SELECT urgency, COUNT(*) AS n FROM proactive_log WHERE status = 'sent' AND kind != 'change' AND day = ? "
+                               "GROUP BY urgency", (day,))
         out = {u: 0 for u in URGENCIES}
         for r in rows:
             if r["urgency"] in out:
                 out[r["urgency"]] = r["n"]
         return out
+
+    def today_changes(self) -> int:
+        """Change alerts (mail about a changed flight, booking or a security alert) sent today: told at once, outside every daily limit
+        except their own daily_change."""
+        day = _day(self.clock(), self.tz())
+        return int(self.store._all("SELECT COUNT(*) AS n FROM proactive_log WHERE status = 'sent' AND kind = 'change' AND day = ?", (day,))[0]["n"])
 
     def room_today(self) -> bool:
         """Whether today's cap (daily_total: 보통 + 오늘) still has room: the checklist (checklist.py) asks before it runs."""
@@ -657,7 +736,7 @@ class Proactive:
         start, end, kind = self.window_at(now)
         country = self.country()
         return {**cfg, "weekend_start": wk_start, "weekend_end": wk_end, "weekend_source": wk_src,
-                "timezone": self.tz().key, "prefs_file": NOTIFY_PREFS, "today": self.today_counts(),
+                "timezone": self.tz().key, "prefs_file": NOTIFY_PREFS, "today": self.today_counts(), "today_changes": self.today_changes(),
                 "last_pass": self.state().get("last_pass"), "awake": self.awake(), "guard": g,
                 "hours_suggestion": self.hours_suggestion(), "weekend_suggestion": self.suggestion(WEEKEND),
                 "day_type": kind, "today_start": start, "today_end": end, "holiday_country": country,
@@ -689,18 +768,18 @@ class Proactive:
                                (before, before, max(1, min(int(limit), 200))))
         return [{"id": r["id"], "key": r["key"], "source": r["source"], "title": r["title"], "urgency": r["urgency"], "status": r["status"],
                  "reason": r["reason"], "message": r["message"], "decided_at": r["decided_at"], "expires_at": r["expires_at"],
-                 "task_id": r["task_id"]} for r in rows]
+                 "task_id": r["task_id"], "kind": r["kind"]} for r in rows]
 
     def _ledgered(self, key: str, now: float) -> bool:
         return bool(self.store._all("SELECT 1 FROM proactive_log WHERE key = ? AND expires_at > ? LIMIT 1", (key, now)))
 
     def _record(self, c: Candidate, status: str, reason: str, *, urgency: str | None = None, message: str = "", keep: float,
-                task_id: int | None = None) -> None:
+                task_id: int | None = None, kind: str = "") -> None:
         now = self.clock()
         lid = int(self.store._run("INSERT INTO proactive_log(key, source, title, urgency, status, reason, message, decided_at, expires_at, day, "
-                                  "task_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                                  "task_id, kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                                   (c.key, c.source, c.title[:200], urgency, status, reason[:300], message[:1000], now, now + keep,
-                                   _day(now, self.tz()), task_id)).lastrowid or 0)
+                                   _day(now, self.tz()), task_id, kind)).lastrowid or 0)
         self.store._run("DELETE FROM proactive_log WHERE id <= ? - ?", (lid, KEEP_LOG))
 
     def prefs(self) -> str:
@@ -710,27 +789,26 @@ class Proactive:
         return p.read_text(encoding="utf-8", errors="replace") if p.is_file() and not p.is_symlink() else ""
 
     # ------------------------------------------------------------------ candidates
-    async def gather(self, since: float) -> tuple[list[Candidate], dict[str, str]]:
-        """Everything worth a look from the connected sources. Returns (candidates, per-source notes such as an error)."""
+    async def gather(self, since: float, *, mail_only: bool = False) -> tuple[list[Candidate], dict[str, str]]:
+        """Everything worth a look from the connected sources (`mail_only`: just the mailboxes, for a pass held back by the unanswered
+        guard, which only lets change alerts through). Returns (candidates, per-source notes such as an error)."""
         now, tz = self.clock(), self.tz()
         out: list[Candidate] = []
         notes: dict[str, str] = {}
-        if self.mail is not None:
-            try:
-                accounts = self.mail.accounts()
-            except Exception as e:  # noqa: BLE001 - one source failing never stops the pass
-                accounts = []
-                notes["mail"] = f"{type(e).__name__}: {str(e)[:120]}"
-            for acct, rows in await unread_by_account(self.mail, accounts):
-                if isinstance(rows, BaseException):   # a mailbox that fails (expired password, IMAP off, too slow) is skipped
-                    notes["mail"] = f"{type(rows).__name__}: {str(rows)[:120]}"
-                    continue
-                for m in rows:
-                    out.append(Candidate(f"mail:{acct['name']}:{m['uid']}", "mail", m.get("subject") or t("(no subject)"),
-                                         f"from {m.get('from', '')} · {m.get('date', '')}"))
+        self._cursors = {}
+        self._mailbox_count, self._mailbox_names = 0, {}
+        self._events = []
+        if self.mail is not None and self.config()["mail_check"]:   # off: no mailbox is opened, no cursor moves, no mail line anywhere
+            cands, mail_note = await self.gather_mail(now)
+            out += cands
+            if mail_note:
+                notes["mail"] = mail_note
+        if mail_only:
+            return out, notes
         if self.calendar is not None:
             try:
                 evs = await self.calendar()
+                self._events = evs
                 big = big_events.ahead(evs, now, tz)
                 later = {(str(e.get("title") or "").strip().casefold(), e["first"]) for e in big}
                 for ev in evs:
@@ -772,12 +850,117 @@ class Proactive:
                 if -3600 <= ((found[1] or start + 86399) - now) and start - now <= 2 * 86400:
                     key = "memory:" + hashlib.sha256(line.encode()).hexdigest()[:12] + f":{found[0]}"
                     out.append(Candidate(key, "memory", line[:160], "", due=found[1], day=found[0]))
+        for src in self.sources:
+            try:
+                out += src.candidates(now)
+            except Exception as e:  # noqa: BLE001 - one source failing never stops the pass
+                notes[type(src).__name__] = f"{type(e).__name__}: {str(e)[:120]}"
         seen, unique = set(), []
         for c in out:
             if c.key not in seen:
                 seen.add(c.key)
                 unique.append(c)
         return unique, notes
+
+    # ------------------------------------------------------------------ mail: everything since the last look
+    def mail_state(self, name: str) -> dict[str, Any]:
+        """Where the last look at one mailbox ended: {"inbox": cursor, "junk": cursor, "promo": cursor, "skim_day": "YYYY-MM-DD"}. A
+        cursor is what the mailbox's arrivals() gave back (IMAP: {"v": UIDVALIDITY, "uid": last UID, "t": time}; Graph and others:
+        {"t": ...}); a kind with none starts at "now" the first time (no backlog)."""
+        try:
+            v = json.loads(self.store.meta(MAIL_CURSOR + name) or "{}")
+        except ValueError:
+            v = {}
+        return v if isinstance(v, dict) else {}
+
+    def commit_mail(self) -> None:
+        """Save the cursors this pass ended at. Called only once the pass got through (every mail it read has been judged and logged), so
+        a pass that failed on the model or on delivery looks at the same mail again; a mailbox that could not be read has none here and
+        keeps its old cursor."""
+        for name, st in self._cursors.items():
+            self.store.set_meta(MAIL_CURSOR + name, json.dumps(st))
+        if self._cursors and self.store.meta(MAIL_RESUME):
+            self.store.set_meta(MAIL_RESUME, "")   # the catch-up after switching mail back on is done
+        self._cursors = {}
+
+    async def gather_mail(self, now: float) -> tuple[list[Candidate], str]:
+        """Candidates from every connected mailbox: ALL unread, non-bulk mail that arrived after the mailbox's cursor (no count limit),
+        plus, once per local day (config "spam_skim"), what arrived since its own cursor in the spam folder and in the provider's
+        promotions sorting, tagged "found in spam" / "found in promotions". One mailbox failing never stops the others."""
+        try:
+            accounts = self.mail.accounts()
+        except Exception as e:  # noqa: BLE001 - one source failing never stops the pass
+            return [], f"{type(e).__name__}: {str(e)[:120]}"
+        self._mailbox_count, self._mailbox_names = len(accounts), mailbox_names(accounts)
+        today = _day(now, self.tz())
+        skim = bool(self.config()["spam_skim"])
+        resume = bool(self.store.meta(MAIL_RESUME))
+        notes: list[str] = []
+
+        async def catch_up(name: str) -> tuple[list[Candidate], dict[str, Any] | None, str]:
+            """Mail was switched off and is on again: no cursor means "start at now", so what came in meanwhile is not alerted."""
+            new: dict[str, Any] = {}
+            try:
+                for kind, _tag in (("inbox", ""), *SKIM_KINDS):
+                    try:
+                        got = await self.mail.arrivals(name, None, kind)
+                    except Exception:  # noqa: BLE001 - the spam/promo folder missing or unreadable: it starts from nothing next time
+                        if kind == "inbox":
+                            raise
+                        continue
+                    if got is not None:
+                        new[kind] = got["cursor"]
+                return [], new, ""
+            except Exception as e:  # noqa: BLE001
+                return [], None, f"{type(e).__name__}: {str(e)[:120]}"
+
+        async def one(acct: dict[str, Any]) -> tuple[list[Candidate], dict[str, Any] | None, str]:
+            name = acct["name"]
+            if resume:
+                return await catch_up(name)
+            st, found = self.mail_state(name), []
+            new = dict(st)
+            try:
+                if skim and st.get("skim_day") != today:
+                    done = True
+                    for kind, tag in SKIM_KINDS:
+                        try:
+                            got = await self.mail.arrivals(name, st.get(kind), kind)
+                        except Exception as e:  # noqa: BLE001 - the skim is retried next pass; the inbox below is still read
+                            done = False
+                            notes.append(f"{name} ({tag}): {type(e).__name__}: {str(e)[:100]}")
+                            continue
+                        if got is None:
+                            continue   # this provider has no such folder
+                        new[kind] = got["cursor"]
+                        found += [self._mail_candidate(name, m, tag, kind) for m in got["rows"]]
+                    if done:
+                        new["skim_day"] = today
+                got = await self.mail.arrivals(name, st.get("inbox"), "inbox")
+                if got is None:
+                    return found, None, ""
+                new["inbox"] = got["cursor"]
+                return found + [self._mail_candidate(name, m) for m in got["rows"]], new, ""
+            except Exception as e:  # noqa: BLE001 - a mailbox that fails (expired password, IMAP off, too slow) keeps its old cursor
+                return [], None, f"{type(e).__name__}: {str(e)[:120]}"
+
+        out: list[Candidate] = []
+        for acct, (cands, new, note) in zip(accounts, await asyncio.gather(*(one(a) for a in accounts))):
+            out += cands
+            if note:
+                notes.append(note)
+            if new is not None:
+                self._cursors[acct["name"]] = new
+        return out, "; ".join(notes)
+
+    @staticmethod
+    def _mail_candidate(name: str, m: dict[str, Any], tag: str = "", kind: str = "") -> Candidate:
+        sender = str(m.get("from") or "")
+        snippet = " ".join(str(m.get("snippet") or "").split())[:160]
+        key = f"mail:{name}:{kind}:{m['uid']}" if kind else f"mail:{name}:{m['uid']}"
+        detail = f"from {sender[:70]}" + (f" — {snippet}" if snippet else "")
+        return Candidate(key, "mail", m.get("subject") or t("(no subject)"), detail,
+                         extra={"from": sender, "account": name, **({"found": tag} if tag else {})})
 
     def ahead_candidates(self, big: list[dict[str, Any]], cfg_leads: list[int]) -> list[Candidate]:
         """Big events (big_events.ahead) at one of the owner's lead times: one candidate per event and lead time, keyed so the ledger
@@ -844,6 +1027,8 @@ class Proactive:
             return None
         hold = self.hold_reason(now)
         if hold:
+            if hold == "waiting_for_reply" and cfg["change_alerts"] and cfg["mail_check"] and self.mail is not None and not self.busy():
+                return await self.run(guarded=True, held=hold)   # only change alerts may go out; the rest of the mail is logged as held
             self._skip(hold)
             return None
         if self.busy():
@@ -851,14 +1036,18 @@ class Proactive:
             return None
         return await self.run(guarded=True)
 
-    async def run(self, *, guarded: bool = False) -> dict[str, Any]:
+    async def run(self, *, guarded: bool = False, held: str = "") -> dict[str, Any]:
         """One pass. `guarded` (the internal job): the unanswered guard limits how many go out. A pass the owner starts by hand
         (POST /api/proactive/run) is not held back, but what it sends still counts as unanswered."""
         if self.lock.locked():
             return self._skip("already_running", force=True)
         async with self.lock:
             try:
-                return await self._run(guarded)
+                out = await self._run(guarded, held)
+                if held and not out["sent"] and out["status"] in ("done", "nothing_new"):   # nothing got through: still "held back" to the app
+                    out = {**out, "status": "skipped", "reason": t(SKIP_REASONS[held]), "reason_code": held}
+                    self._save_state(last_pass=out)
+                return out
             except Exception as e:  # noqa: BLE001
                 if limit_of(e) is not None:   # the usage is used up (or nearly): a quiet skip, the items are looked at next time
                     log.info("proactive pass skipped: %s", str(e)[:160])
@@ -873,10 +1062,10 @@ class Proactive:
         self._save_state(last_pass=out, last_pass_at=out["at"])
         return out
 
-    async def _run(self, guarded: bool = False) -> dict[str, Any]:
+    async def _run(self, guarded: bool = False, held: str = "") -> dict[str, Any]:
         now, tz, cfg = self.clock(), self.tz(), self.config()
         since = float(self.state().get("last_pass_at") or now - 86400)
-        found, notes = await self.gather(since)
+        found, notes = await self.gather(since, mail_only=bool(held))
         fresh = [c for c in found if not self._ledgered(c.key, now)]
         dropped = 0
         for c in [c for c in fresh if c.told]:
@@ -891,9 +1080,9 @@ class Proactive:
                 dropped += 1
                 fresh.remove(c)
         if not fresh:
+            self.commit_mail()
             note = "; ".join(f"{k}: {v}" for k, v in notes.items())
             return self._finish("nothing_new", note or t(SKIP_REASONS["nothing_new"]), code="nothing_new", candidates=len(found), dropped=dropped)
-        fresh = fresh[:MAX_CANDIDATES]
         chosen = self.model()
         if not chosen:
             return self._finish("skipped", t(SKIP_REASONS["no_model"]), code="no_model", candidates=len(found), dropped=dropped)
@@ -902,10 +1091,13 @@ class Proactive:
             return self._finish("failed", "the model did not answer in the expected form", code="bad_answer", candidates=len(found),
                                 dropped=dropped)
         counts = self.today_counts()
+        changes = self.today_changes()
         rank = {"지금": 0, "오늘": 1, "보통": 2}
-        order = sorted(range(len(fresh)), key=lambda i: (rank.get(decisions.get(i, {}).get("urgency", ""), 9), i))
-        sent = 0
-        room = self.guard(now)["room"] if guarded else None   # proactive messages the unanswered guard still lets out
+        order = sorted(range(len(fresh)), key=lambda i: (0 if decisions.get(i, {}).get("change") else 1,
+                                                         rank.get(decisions.get(i, {}).get("urgency", ""), 9), i))
+        outbox: list[Outgoing] = []
+        sent = counted = 0   # counted: the ones the unanswered guard counts (a change alert is not one)
+        room = 0 if held else (self.guard(now)["room"] if guarded else None)   # proactive messages the unanswered guard still lets out
         tomorrow = (datetime.fromtimestamp(now, tz).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).timestamp()
         for i in order:
             c, d = fresh[i], decisions.get(i)
@@ -914,11 +1106,21 @@ class Proactive:
                 dropped += 1
                 continue
             urgency, reason, message = d["urgency"], d["reason"], d["message"]
+            change = bool(d.get("change")) and c.source == "mail" and bool(cfg["change_alerts"])
+            if change and changes >= cfg["daily_change"]:   # a flood of "changes" (or a misjudging model): over the limit they are 오늘
+                change, urgency = False, ("오늘" if urgency in ("drop", "보통") else urgency)
+                reason = (reason + t(" (over the limit for changes, so moved to 'today')")).strip()
+            if change:
+                urgency = "지금"   # told at once: outside daily_regular / daily_total / daily_now and not held by the unanswered guard
+                message = message or c.title + (f" — {c.detail[:120]}" if c.detail else "")
             if urgency == "drop":
                 self._record(c, "dropped", reason or t("Not worth telling you"), keep=DROPPED_KEEP)
                 dropped += 1
                 continue
-            if urgency == "지금" and counts["지금"] >= cfg["daily_now"]:
+            if c.extra.get("found"):
+                message = t("Found in {where}: {message}", where=t("the spam folder") if c.extra["found"] == "spam" else t("promotions"),
+                            message=message)
+            if urgency == "지금" and not change and counts["지금"] >= cfg["daily_now"]:
                 urgency, reason = "오늘", reason + t(" (over the limit for 'now', so moved to 'today')")
             if urgency == "지금":
                 ok = True
@@ -926,7 +1128,7 @@ class Proactive:
                 ok = counts["보통"] + counts["오늘"] < cfg["daily_total"]
             else:
                 ok = counts["보통"] < cfg["daily_regular"] and counts["보통"] + counts["오늘"] < cfg["daily_total"]
-            if ok and room is not None and sent >= room:
+            if ok and not change and room is not None and counted >= room:
                 self._record(c, "dropped", t(SKIP_REASONS["waiting_for_reply"]), urgency=urgency, keep=max(3600.0, tomorrow - now))
                 dropped += 1
                 continue
@@ -934,17 +1136,77 @@ class Proactive:
                 self._record(c, "dropped", t("Over the number that can be sent today ({urgency})", urgency=urgency), urgency=urgency, keep=max(3600.0, tomorrow - now))
                 dropped += 1
                 continue
-            task_id = None
-            if self.deliver is not None:
-                task_id = await self.deliver({"key": c.key, "source": c.source, "title": c.title, "urgency": urgency, "message": message})
-            self._record(c, "sent", reason, urgency=urgency, message=message, keep=SENT_KEEP, task_id=task_id)
-            self._count_unanswered(self.clock())
-            counts[urgency] += 1
+            outbox.append(Outgoing(c, urgency, reason, message, change))
+            if change:
+                changes += 1   # not counted as unanswered either: like what the owner asked for, it is never held back
+            else:
+                counts[urgency] += 1
+                counted += 1
             sent += 1
+        failure: BaseException | None = None
+        for g in group_outbox(outbox):   # one message per group; a group that fails to go out is not logged and keeps the cursors where they are
+            try:
+                task_id = await self._deliver_group(g)
+            except Exception as e:  # noqa: BLE001 - the other groups still go out; the pass then fails as a whole (below)
+                log.warning("proactive delivery failed: %s", str(e)[:160])
+                failure = failure or e
+                continue
+            for o in g.items:
+                self._record(o.c, "sent", o.reason, urgency=o.urgency, message=o.message, keep=SENT_KEEP, task_id=task_id,
+                             kind="change" if o.change else "")
+                if not o.change:
+                    self._count_unanswered(self.clock())
+        if failure is not None:
+            raise failure
+        self.commit_mail()
         return self._finish("done", "", candidates=len(found), sent=sent, dropped=dropped)
+
+    async def _deliver_group(self, g: Group) -> int | None:
+        """Tell one group as one message (see the module docstring, 5); returns its task id."""
+        first = g.entries[0].item
+        name = self._mailbox_names.get(g.key[1], g.key[1]) if g.is_mail and self._mailbox_count > 1 else ""
+        many = len(g.entries) > 1
+        urgency = min((o.urgency for o in g.items), key=lambda u: {"지금": 0, "오늘": 1}.get(u, 2))
+        if not g.is_mail:
+            notice = ""
+        elif not many:
+            notice = mail_notice(str(first.c.extra.get("from") or ""), first.c.title)
+        elif name:
+            notice = t("New mail · {mailbox} · {count}", mailbox=name, count=len(g.entries))[:MAIL_NOTICE_CHARS]
+        else:
+            notice = t("New mail · {count}", count=len(g.entries))[:MAIL_NOTICE_CHARS]
+        if self.deliver is None:
+            return None
+        return await self.deliver({"key": first.c.key, "source": "mail" if g.is_mail else first.c.source,
+                                   "title": t("{n} things to tell you", n=len(g.entries)) if many else first.c.title,
+                                   "urgency": urgency, "message": group_text(g.entries, t("{mailbox}:", mailbox=name) if name else ""),
+                                   "kind": "change" if any(o.change for o in g.items) else "", "notice": notice})
 
     async def _classify(self, chosen: tuple[str, str], items: list[Candidate], prefs: str, cfg: dict[str, Any], now: float,
                         tz: ZoneInfo) -> dict[int, dict[str, Any]] | None:
+        """Every item judged, BATCH at a time (as few requests as that allows; none is left out). None when one batch gets no answer in
+        the expected form: the pass then fails as a whole and looks at the same items next time."""
+        out: dict[int, dict[str, Any]] = {}
+        for at in range(0, len(items), BATCH):
+            got = await self._classify_batch(chosen, items[at:at + BATCH], prefs, cfg, now, tz)
+            if got is None:
+                return None
+            out.update({at + i: d for i, d in got.items()})
+        return out
+
+    def _calendar_block(self, tz: ZoneInfo) -> str:
+        """The calendar lines the model compares booking mails with ("" when off or nothing is read)."""
+        if not self._events:
+            return ""
+        lines = []
+        for e in sorted(self._events, key=lambda e: float(e.get("start") or 0))[:CALENDAR_LINES]:
+            start = float(e.get("start") or 0)
+            when = datetime.fromtimestamp(start, tz).strftime("%Y-%m-%d" if e.get("all_day") else "%Y-%m-%d %H:%M")
+            lines.append(f"- {when} {str(e.get('title') or '')[:80]}" + (f" @ {str(e['where'])[:60]}" if e.get("where") else ""))
+        return "\n".join(lines)
+
+    async def _classify_batch(self, chosen: tuple[str, str], items: list[Candidate], prefs: str, cfg: dict[str, Any], now: float,
+                              tz: ZoneInfo) -> dict[int, dict[str, Any]] | None:
         provider, model = chosen
         counts = self.today_counts()
         left_regular = max(0, cfg["daily_regular"] - counts["보통"])
@@ -952,6 +1214,9 @@ class Proactive:
         head = (f"Now: {datetime.fromtimestamp(now, tz).strftime('%a %Y-%m-%d %H:%M')} ({tz.key}). Still allowed today: {left_regular} 보통, "
                 f"{left_total} 보통+오늘 together.\n{tone_line(self.tone(), switch=False)}\n\nThe user's preferences (NOTIFY_PREFS.md):\n{(prefs.strip() or '(none)')[:PREFS_CHARS]}\n\nItems:\n")
         body = "\n".join(f"{n}. {c.line(tz)}" for n, c in enumerate(items, 1))
+        cal = self._calendar_block(tz) if cfg["calendar_check"] and any(c.source == "mail" for c in items) else ""
+        if cal:
+            head = head.replace("Items:\n", f"Calendar (to compare booking mails with):\n{cal}\n\nItems:\n")
         req = ChatRequest(model=model, messages=[{"role": "system", "content": PROMPT}, {"role": "user", "content": head + body}], tools=[],
                           extra={})
         parts: list[str] = []
@@ -978,6 +1243,8 @@ class Proactive:
             elif urgency not in URGENCIES:
                 urgency = "오늘"   # unclear: 오늘, as the rules say
             reason = str(it.get("reason") or "").strip()[:200]
+            if not reason:   # the log always says why (the model was asked for a reason on every item and gave none)
+                reason = t("No reason given; judged not worth telling you") if urgency == "drop" else t("No reason given; judged worth telling you")
             message = re.sub(r"\s+\n", "\n", str(it.get("message") or "")).strip()[:600]
             if urgency != "drop" and not message:
                 message = f"{c.title}" + (f" — {c.detail[:120]}" if c.detail else "")
@@ -985,8 +1252,119 @@ class Proactive:
                 due = c.due or _due_from(str(it.get("due") or ""), now, tz)
                 if due is None or not (now - 900 <= due <= now + NOW_WINDOW):
                     urgency, reason = "오늘", (reason + t(" (no sign of a time soon, so moved to 'today')")).strip()
-            out[i] = {"urgency": urgency, "reason": reason, "message": message}
+            mismatch = it.get("mismatch") is True and c.source == "mail" and bool(cfg["calendar_check"])
+            if mismatch and urgency in ("drop", "보통"):   # a booking that disagrees with the calendar matters at least today
+                urgency = "오늘"
+                if not message:
+                    message = f"{c.title}" + (f" — {c.detail[:120]}" if c.detail else "")
+            out[i] = {"urgency": urgency, "reason": reason, "message": message, "mismatch": mismatch,
+                      "change": it.get("change") is True and c.source == "mail"}
         return out
+
+
+@dataclass
+class Outgoing:
+    """One accepted item waiting to be told in this pass (delivery happens per group, after the loop)."""
+    c: Candidate
+    urgency: str
+    reason: str
+    message: str
+    change: bool
+
+
+@dataclass
+class Entry:
+    """One line of a group: the first of several duplicates and how many there were (`items`: all of them, for the log)."""
+    item: Outgoing
+    items: list[Outgoing] = field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        return len(self.items)
+
+
+@dataclass
+class Group:
+    key: tuple[str, str]             # ("mail", account) | ("other", "")
+    entries: list[Entry] = field(default_factory=list)
+
+    @property
+    def is_mail(self) -> bool:
+        return self.key[0] == "mail"
+
+    @property
+    def items(self) -> list[Outgoing]:
+        return [o for e in self.entries for o in e.items]
+
+
+def mailbox_names(accounts: list[dict[str, Any]]) -> dict[str, str]:
+    """How a message names each mailbox, as the briefing does: the provider's name, or the address when two mailboxes share a provider
+    (else the account name)."""
+    from .briefing_sources import BRAND   # not at the top: briefing_sources imports this module
+
+    out: dict[str, str] = {}
+    for a in accounts:
+        provider = str(a.get("provider") or "")
+        shared = sum(1 for b in accounts if b.get("provider") == a.get("provider")) > 1
+        out[a["name"]] = (str(a.get("address") or "") if shared else "") or BRAND.get(provider) or str(a.get("title") or "") or a["name"]
+    return out
+
+
+def _norm(text: str) -> str:
+    return " ".join((text or "").split()).casefold()
+
+
+def _same(a: Outgoing, b: Outgoing) -> bool:
+    """The same thing told twice: equal message text, or (mail) equal sender and subject."""
+    if _norm(a.message) == _norm(b.message):
+        return True
+    if a.c.source == "mail" and b.c.source == "mail":
+        sender = _norm(str(a.c.extra.get("from") or ""))
+        return bool(sender) and sender == _norm(str(b.c.extra.get("from") or "")) and _norm(a.c.title) == _norm(b.c.title)
+    return False
+
+
+def group_outbox(outbox: list[Outgoing]) -> list[Group]:
+    """The accepted items of one pass as the messages that go out: one group per mailbox for mail, one for everything else, in the
+    order each group's first item appears; inside a group the order is kept and duplicates are folded into one entry with a count."""
+    groups: dict[tuple[str, str], Group] = {}
+    for o in outbox:
+        key = ("mail", str(o.c.extra.get("account") or "")) if o.c.source == "mail" else ("other", "")
+        g = groups.setdefault(key, Group(key))
+        for e in g.entries:
+            if _same(e.item, o):
+                e.items.append(o)
+                break
+        else:
+            g.entries.append(Entry(o, [o]))
+    return list(groups.values())
+
+
+def _line(e: Entry) -> str:
+    m = e.item.message
+    if e.count <= 1:
+        return m
+    return m + (t(" ({n} mails)", n=e.count) if e.item.c.source == "mail" else t(" ({n} times)", n=e.count))
+
+
+def group_text(entries: list[Entry], header: str = "") -> str:
+    """The message of one group: the item's own words when it is alone, else one "• " line per entry; `header` (a mailbox's name) is a
+    first line of its own."""
+    body = _line(entries[0]) if len(entries) == 1 else "\n".join("• " + _line(e) for e in entries)
+    return f"{header}\n{body}" if header else body
+
+
+def mail_notice(sender: str, subject: str, limit: int = MAIL_NOTICE_CHARS) -> str:
+    """The notification title of a mail: "New mail · <sender> · <subject>" (in the owner's language), at most `limit` characters: the
+    sender by its name (else the address before the @) up to 24 characters, the subject cut with "…" to what is left."""
+    name, addr = parseaddr(sender or "")
+    who = " ".join((name or addr.split("@")[0] or addr or "?").split())
+    who = who if len(who) <= 24 else who[:23].rstrip() + "…"
+    subj = " ".join((subject or "").split()) or t("(no subject)")
+    room = limit - len(t("New mail · {sender} · {subject}", sender=who, subject=""))
+    if len(subj) > room:
+        subj = subj[:max(room - 1, 1)].rstrip() + "…"
+    return t("New mail · {sender} · {subject}", sender=who, subject=subj)[:limit]
 
 
 def _due_from(text: str, now: float, tz: ZoneInfo) -> float | None:
@@ -1014,6 +1392,14 @@ class ProactiveIn(BaseModel):
     weekend_start: str | None = None
     weekend_end: str | None = None
     ahead_days: list[int] | None = None
+    daily_change: int | None = None
+    spam_skim: bool | None = None
+    calendar_check: bool | None = None
+    change_alerts: bool | None = None
+    mail_check: bool | None = None
+    rechecks: bool | None = None
+    recheck_per_day: int | None = None
+    offers: bool | None = None
 
 
 def proactive_routes(app: FastAPI, proactive: Proactive, auth: Callable[..., Any]) -> None:

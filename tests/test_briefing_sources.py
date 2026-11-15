@@ -81,6 +81,16 @@ class FakeMail(Mail):
             raise MailError("the mail server refused the sign-in; ask the user to connect the mailbox again in the Connectors tab")
         return self.unread.get(account, [])
 
+    async def arrivals(self, account: str, cursor, kind: str = "inbox"):
+        """What the proactive pass reads: whatever is scripted counts as arrived since the cursor (the cursor logic: test_mail_arrivals.py)."""
+        self.asked.append(account)
+        if kind != "inbox":
+            return None
+        if account in self.failing:
+            from assistant.mail import MailError
+            raise MailError("the mail server refused the sign-in; ask the user to connect the mailbox again in the Connectors tab")
+        return {"rows": self.unread.get(account, []), "cursor": {"t": 1}}
+
 
 def mailbox(store: Store, provider: str, address: str, password: str = "app-pass-123") -> str:
     name = f"mail-{provider}"
@@ -506,21 +516,22 @@ async def test_every_chosen_mailbox_is_read_and_a_slow_one_is_skipped_and_shown(
         def accounts(self):
             return [{"name": n, "provider": "naver", "label": f"Naver Mail · u{i}@mail.test", "address": f"u{i}@mail.test"} for i, n in enumerate(names)]
 
-        async def list(self, account="", folder="INBOX", query="", limit=10, unread=False, skip_bulk=False):
-            self.asked.append((account, limit))
+        async def arrivals(self, account, cursor, kind="inbox"):
+            if kind != "inbox":
+                return None
+            self.asked.append(account)
             if account == "mail-p3":
                 await asyncio.sleep(5)                           # far past the per-account limit below
-            return [{"uid": "1", "subject": f"Hello from {account}", "from": "x", "date": ""}]
+            return {"rows": [{"uid": "1", "subject": f"Hello from {account}", "from": "x", "date": ""}], "cursor": {"t": 1}}
 
-    monkeypatch.setattr(briefing_sources, "MAIL_ACCOUNT_TIMEOUT", 0.2)
-    monkeypatch.setattr(proactive, "MAIL_ACCOUNT_TIMEOUT", 0.5)
+    monkeypatch.setattr(briefing_sources, "ARRIVALS_TIMEOUT", 0.2)
     mail = ManyMail(store)
     src, _, _ = build(store, mail=mail)
     p = proactive.Proactive(store, Home(tmp_path / "home"), stream_fn=None, model=lambda: None, clock=lambda: NOW, mail=src.mail_view(), calendar=None)
     got, _ = await p.gather(NOW - 3600)
     titles = {c.title for c in got if c.source == "mail"}
     assert len(titles) == 9 and "Hello from mail-p3" not in titles
-    assert all(limit == proactive.UNREAD_PER_ACCOUNT for _, limit in mail.asked)      # a few newest unread per mailbox
+    assert sorted(mail.asked) == sorted(names) and p._cursors.keys() == set(names) - {"mail-p3"}   # the slow one keeps its old cursor
     row = next(a for a in src.public()["mail"]["accounts"] if a["id"] == "mail:mail-p3")
     assert row["problem"] and "took too long" in row["problem"]
 

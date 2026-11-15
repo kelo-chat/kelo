@@ -32,6 +32,31 @@ A copy sends a push for each notification nobody saw arrive:
 
 Each push goes to every phone paired with that copy that registered a token. A device removed from the app gets no more pushes.
 
+## Rechecks
+
+Kelo looks again, by itself, at what it told you that may change and that you may act on (rules, prices, availability, the result of a
+review, opening times). When a check finds a change that two independent sources (or one official source) support, and Kelo has
+confirmed it a second time itself, the correction arrives as an ordinary Kelo message in the chat and a normal `task_done` push
+(ids only, as above), in your waking hours only. A check that finds nothing, or finds too little to be sure, sends nothing.
+`GET /api/rechecks?days=` lists what is being checked; `PUT /api/proactive` takes `rechecks` (on/off) and `recheck_per_day`
+(research runs a day, default 4). The design is in `src/assistant/recheck.py`.
+
+## Offers
+
+Kelo keeps up to 6 ready-to-run cards: one sentence, what it still needs from you, a start button and a dismiss button. A task that
+paused for your answer (a question in the chat, a login, a fill-in card) is a `resume` card, made without a model from the open
+follow-ups. The nightly look-back adds at most 3 `wish`, `routine` or `deadline` cards from your own words (it quotes them and never
+states a price or number: it cannot look anything up), and during a chat Kelo may post a `chat` card with `offer_post`; only that card
+may carry numbers, and then only with sources that pass the recheck rule, and it is dropped after 7 days. Order: resume, deadline (a
+date within 7 days), chat (today), wish, routine; newer first. Cards you keep ignoring move down (after 5 views) and are retired at 12
+views; a dismissed kind and topic go down 2 places for 30 days, and three dismissals of one kind pause it for 14 days; "not now" hides
+a card for 3 days with no mark against it.
+
+`GET /api/offers` lists the cards (counted as seen once per local day), `POST /api/offers/{id}/start` sends the card's request as your
+message (409 while Kelo is answering) and gives the model its prepared steps as a hidden note that is never stored or shown, and
+`POST /api/offers/{id}/dismiss {"reason"?: "not_interested"|"done_already"|"not_now"}` removes it. `PUT /api/proactive` takes `offers`
+(on/off, on by default). The design is in `src/assistant/offers.py`.
+
 ## For the operator
 
 1. **Download the key.** Open Firebase console → your project → Project settings → Service accounts. Click

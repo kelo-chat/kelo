@@ -31,6 +31,10 @@ public final class AppModel {
     public let router = Router()
     public let activity = AgentActivityModel()
     public let avatar = AgentAvatarModel()
+    /// What Nest offers the app's surfaces (nil while signed out). Nothing shows until the app root gives a renderer.
+    public private(set) var nest: NestModel?
+    /// Which built-in tabs are hidden (none today: nothing sets it yet).
+    public var tabLayout = TabLayout.default
     /// A card number from a message the chat held back (`SecretGuard`), on its way to the wallet's card form. Memory only.
     @ObservationIgnored public let secretHandoff = SecretHandoff()
     /// Goes up when the card form kept such a card, so the chat puts its reference in the composer (`secretCardKept`).
@@ -95,12 +99,6 @@ public final class AppModel {
         return nil
     }
 
-    /// The signed-in API, or a 401 error (screens call it inside their tasks).
-    public func requireApi() throws -> KeloApi {
-        guard let api else { throw ApiError(status: 401, detail: "signed out") }
-        return api
-    }
-
     /// What this phone is called in 마이 → 내 기기 ("iPhone · Kelo", at most 40 characters).
     public var deviceName: String { String(L(R.string.device_name_format, DeviceInfo.model).prefix(40)) }
 
@@ -155,6 +153,7 @@ public final class AppModel {
         serverTooOld = nil
         appTooOld = false
         profileState = .signedOut
+        nest = nil
         activity.reset()
         avatar.reset()
         router.reset()
@@ -179,6 +178,7 @@ public final class AppModel {
             Task { @MainActor in self?.serverVersion(v) }
         })
         cache.use(server: s.serverUrl)
+        if let api { nest = NestModel(api: api) }
         loadProfile()
     }
 
@@ -255,6 +255,8 @@ public final class AppModel {
     public func statusPolled(_ s: AgentStatus) {
         setLocked(s.locked)   // Keyguard: "Kelo is locked" comes and goes with the server's own word
         if let p = profile, let next = ToneRules.synced(p, polled: s.tone) { setProfile(next) }
+        // the agent was renamed elsewhere (or by the agent itself): the header follows the poll
+        if let p = profile, let n = s.agentName, !n.isEmpty, n != p.agentName { var q = p; q.agentName = n; setProfile(q) }
     }
 
     /// The profile kept from last time shows the main screens at once; the server's answer then replaces it in place.
@@ -288,7 +290,12 @@ public final class AppModel {
         secretCardKeptTick += 1
     }
 
-    public func message(for error: Error) -> String {
+}
+
+/// An error in words for the person: the server's own detail, or "could not connect" when it was not reached or said nothing.
+/// Page models use this instead of reaching into the AppModel.
+public enum ApiMessage {
+    @MainActor public static func text(_ error: Error) -> String {
         if let e = error as? ApiError { return e.isNetwork || e.detail.isEmpty ? L(R.string.connect_failed) : e.detail }
         return L(R.string.connect_failed)
     }

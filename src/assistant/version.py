@@ -123,14 +123,16 @@ def parse_app_header(value: str | None) -> tuple[str, str, int | None] | None:
     return m.group(1), m.group(2), int(m.group(3)) if m.group(3) else None
 
 
-def app_too_old(header: str | None, release: Release, min_builds: dict[str, int]) -> dict[str, Any] | None:
+def app_too_old(header: str | None, release: Release, min_builds: dict[str, int],
+                skip_version: frozenset[str] = frozenset()) -> dict[str, Any] | None:
     """The 426 body for an app older than this server accepts, or None. Two rules, either one refuses:
-    its release is older than `min_app`, or the operator's per-platform minimum build (ASSISTANT_MIN_APP_*) is above its build."""
+    its release is older than `min_app`, or the operator's per-platform minimum build (ASSISTANT_MIN_APP_*) is above its build.
+    `skip_version`: platforms whose `min_app` is above every released app (app_releases.py): that rule is not applied to them."""
     got = parse_app_header(header)
     if got is None:
         return None
     platform, ver, build = got
-    old = parse(ver) < parse(release.min_app)
+    old = platform not in skip_version and parse(ver) < parse(release.min_app)
     floor = min_builds.get(platform)
     if floor and build is not None and platform != "desktop" and build < floor:
         old = True

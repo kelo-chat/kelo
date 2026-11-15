@@ -28,10 +28,15 @@ class ReplyService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {   // the notification's Stop: stop the reply; the watch then ends this service
+            appContainer.replyWatch.stopNow()
+            if (!watching) stopSelf()
+            return START_NOT_STICKY
+        }
         val container = appContainer
         try {
             ServiceCompat.startForeground(
-                this, Notifier.WORKING_ID, container.notifier.working(),
+                this, Notifier.WORKING_ID, container.notifier.working(container.replyWatch.live),
                 if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
             )
         } catch (e: Exception) {
@@ -68,5 +73,6 @@ class ReplyService : Service() {
 
     companion object {
         const val MAX_MS = 10 * 60 * 1000L
+        const val ACTION_STOP = "chat.kelo.app.notify.STOP_REPLY"
     }
 }

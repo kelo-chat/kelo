@@ -106,6 +106,10 @@ _ASK_ABOUT = re.compile(r"(?:신청|응모|가입|지원|참여|참가)\s*(?:내
                         r"하지\s*마|하지\s*말|\bdon'?t\b|\bdo not\b|\bnever\b", re.I)
 INTENT_SECONDS = 60 * 60.0   # the owner's ongoing request: user messages this recent...
 INTENT_MESSAGES = 5          # ...and at most this many of them, newest first
+# A request that already let steps through on a site stays the owner's word there for this long after its last use, through
+# chat about the same work in between ("브라우저 하는애 자는거같은데", "하나 직접 해봐"; 2026-11-12 those voided "카카오 체험단
+# 신청해" and the next apply asked). A stop / cancel said since ends it at once.
+STANDING_SECONDS = 6 * 3600.0
 # A follow-up that carries the request on without naming it again ("다시 해봐", "pc웹으로", "계속해", "try again")
 _GO_ON = re.compile(r"다시|계속|알아서|마저|이어서|또|한번 더|한 번 더|해\s*봐|해\s*줘|하자|진행|pc|모바일|웹|앱으로|"
                     r"\b(?:again|retry|try|continue|go on|keep going|carry on|do it|desktop|mobile|web)\b|"
@@ -117,8 +121,16 @@ _STOP = re.compile(r"하지\s*마|하지\s*말|그만|멈춰|중지|취소|됐�
 _QUESTION = re.compile(r"\?|어때|뭐야|뭐지|알려\s*줘|인가요|일까|나요\b|\b(?:what|how|when|where|why|who|which)\b", re.I)
 
 
+# a whole message the server writes into the conversation in the user's place (a job's handoff, a watcher, goal work): none of it is
+# the owner's words (2026-11-11: a handoff saying "Do not ..." read as the owner's stop and voided "카카오 체험단 신청해" for the job)
+_NOT_OWNER = re.compile(r"^\s*\[[^\]\n]{0,80}not from the user\]", re.I)
+
+
 def _own_words(text: str) -> str:
-    """The user's own words of a stored message: the app's notes appended to it ("[Not from the user: ...]") left out."""
+    """The user's own words of a stored message: the app's notes appended to it ("[Not from the user: ...]") left out, and nothing
+    at all of a message the server wrote in the user's place ("[Handoff from a background job, not from the user] ...")."""
+    if _NOT_OWNER.match(text or ""):
+        return ""
     return re.sub(r"\[Not from the user[^\]]*\]", " ", text or "").strip()
 
 
@@ -199,6 +211,8 @@ class Orders:
         self.request: Callable[[], str] | None = None
         self.on_request_use: Callable[[str, str, str, str], None] | None = None   # (tool, kind, host, request): the server may log it
         self._requested: dict[tuple[str, str], list[Any]] = {}                    # (tab, task) -> [site, count]
+        self._standing: dict[str, tuple[str, float]] = {}                          # site -> (request, last use)
+        self.stopped_since: Callable[[float], bool] | None = None                 # (ts) -> the owner said stop since ts (order_tools)
 
     def start(self, site: str, what: str, *, grant: dict[str, Any] | None = None) -> Order:
         now = self.clock()
@@ -206,6 +220,12 @@ class Orders:
                   now + ORDER_MINUTES * 60, grant=grant)
         self._orders[o.owner] = o
         return o
+
+    def open_now(self) -> bool:
+        """An order is open on any tab (not run out, its task still going): a purchase may be in progress. The VPN connector never changes
+        the route in the middle of one (vpn.py)."""
+        now = self.clock()
+        return any(now < o.until and self._alive(o.scope) for o in list(self._orders.values()))
 
     def current(self) -> Order | None:
         """The order of this tab in the task running now (None when there is none, it ran out or its task is over)."""
@@ -259,8 +279,8 @@ class Orders:
         """True = this committing step only prepares the order going on here, so it needs no card (it is counted and logged).
         False = ask as usual."""
         o = self.current()
-        if o is None or o.paid or secret or o.steps >= MAX_STEPS or not host or site_key(host.lower()) != o.site:
-            return False
+        if kind == "unknown" or o is None or o.paid or secret or o.steps >= MAX_STEPS or not host or site_key(host.lower()) != o.site:
+            return False   # (unknown: a step whose target could not be read is never covered)
         if _SIGN_UP.search(_page(info, url)) and not re.search(r"order|checkout|cart|주문|결제|장바구니", _page(info, url), re.I):
             return False   # a sign-up page: its steps ask
         if tool == "browser_click":
@@ -287,7 +307,9 @@ class Orders:
         except Exception:  # noqa: BLE001 - when in doubt each step asks as usual
             return False
         if kind not in requested_kinds(request):
-            return False
+            request = self._standing_request(site_key(host.lower()), kind)
+            if not request:
+                return False
         if kind == "account" and not _SIGN_UP.search(f"{(info or {}).get('text') or ''} {(info or {}).get('words') or ''} {selector}"):
             return False   # an account change that is not the sign-up the user asked for
         if (info or {}).get("pay_page") or _EN_FINAL.search(_norm_words(info, selector)) or _KO_FINAL.search(_norm_words(info, selector)):
@@ -301,12 +323,32 @@ class Orders:
         got[1] += 1
         if len(self._requested) > 200:
             self._requested.pop(next(iter(self._requested)))
+        self._standing[site] = (request, self.clock())
+        if len(self._standing) > 100:
+            self._standing.pop(next(iter(self._standing)))
         if self.on_request_use is not None:
             try:
                 self.on_request_use(tool, kind, host, request)
             except Exception:  # noqa: BLE001 - the log never blocks the step
                 pass
         return True
+
+    def _standing_request(self, site: str, kind: str) -> str:
+        """The owner's request that already let this kind of step through on this site, while it stands (STANDING_SECONDS since its
+        last use, and no stop said since), else ""."""
+        got = self._standing.get(site)
+        if got is None:
+            return ""
+        request, used = got
+        if self.clock() - used > STANDING_SECONDS or kind not in requested_kinds(request):
+            return ""
+        try:
+            if self.stopped_since is not None and self.stopped_since(used):
+                self._standing.pop(site, None)
+                return ""
+        except Exception:  # noqa: BLE001 - when in doubt it asks
+            return ""
+        return request
 
     def count(self, o: Order, tool: str, kind: str, host: str) -> None:
         o.steps += 1
@@ -583,6 +625,16 @@ def order_tools(orders: Orders, session: Any, book: Any, forms: ShippingForms | 
         return ongoing_request(recent[:INTENT_MESSAGES + 1])
 
     orders.request = request_words
+
+    def stopped_since(ts: float) -> bool:
+        """The owner said stop / cancel / don't in a message after ts (their own words only)."""
+        store = getattr(book, "store", None)
+        if store is None:
+            return False
+        rows = store._all("SELECT content FROM messages WHERE role = 'user' AND created_at > ?", (ts,))
+        return any(_STOP.search(_own_words(str(r["content"] or ""))) for r in rows)
+
+    orders.stopped_since = stopped_since
 
     # ---------------------------------------------------------------- the profiles
     async def list_profiles(_args: dict[str, Any]) -> str:

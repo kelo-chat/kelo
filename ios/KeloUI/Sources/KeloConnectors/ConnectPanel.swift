@@ -6,17 +6,18 @@ import KeloShared
 /// The right way to connect this service, whichever it is (Android connectors/ConnectPanel.kt).
 struct ConnectPanel: View {
     let connector: ConnectorInfo
+    let api: KeloApi
     let onChanged: () -> Void
 
     var body: some View {
         switch PanelKind.of(connector) {
-        case .device(let provider): DeviceConnectPanel(provider: provider, onChanged: onChanged)
-        case .key: KeyConnectPanel(c: connector, onChanged: onChanged)
-        case .browser: BrowserConnectPanel(c: connector)
-        case .mcp: McpConnectPanel(c: connector, onChanged: onChanged)
-        case .mail: MailConnectPanel(c: connector, onChanged: onChanged)
-        case .caldav: CalDavConnectPanel(c: connector, onChanged: onChanged)
-        case .google: GoogleConnectPanel(c: connector, onChanged: onChanged)
+        case .device(let provider): DeviceConnectPanel(provider: provider, api: api, onChanged: onChanged)
+        case .key: KeyConnectPanel(c: connector, api: api, onChanged: onChanged)
+        case .browser: BrowserConnectPanel(c: connector, api: api)
+        case .mcp: McpConnectPanel(c: connector, api: api, onChanged: onChanged)
+        case .mail: MailConnectPanel(c: connector, api: api, onChanged: onChanged)
+        case .caldav: CalDavConnectPanel(c: connector, api: api, onChanged: onChanged)
+        case .google: GoogleConnectPanel(c: connector, api: api, onChanged: onChanged)
         case .none(let unsupported):
             MutedText(unsupported ? connector.description : L(R.string.connector_not_yet), small: true)
         }
@@ -26,13 +27,17 @@ struct ConnectPanel: View {
 /// Sign in on the service's own page (hosted MCP servers), in the system browser. The service sends the user back to the server.
 struct McpConnectPanel: View {
     let c: ConnectorInfo
+    let api: KeloApi
     let onChanged: () -> Void
-    @Environment(AppModel.self) private var app
     @Environment(\.openURL) private var openURL
-    @State private var err = ""
-    @State private var busy = false
+    @State private var model: McpModel
     @State private var confirming = false
     @State private var other = false
+
+    init(c: ConnectorInfo, api: KeloApi, onChanged: @escaping () -> Void) {
+        self.c = c; self.api = api; self.onChanged = onChanged
+        _model = State(initialValue: McpModel(api: api, id: c.id))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -45,22 +50,14 @@ struct McpConnectPanel: View {
                 MutedText(L(R.string.mcp_help, c.name), small: true)
                 // the service may accept only apps it approved, which shows only after the login: said before the sign-in opens
                 if !c.note.isEmpty { MutedText(c.note, small: true) }
-                PrimaryButton(busy ? L(R.string.connector_opening) : L(R.string.mcp_sign_in, c.name), enabled: !busy) {
-                    err = ""; busy = true
-                    Task {
-                        do {
-                            let url = try await app.requireApi().mcpSignInURL(c.id)
-                            if !(await SystemBrowser.signIn(url, openURL: openURL)) { err = L(R.string.connector_browser_failed) }
-                            onChanged()
-                        } catch { err = app.message(for: error) }
-                        busy = false
-                    }
+                PrimaryButton(model.busy ? L(R.string.connector_opening) : L(R.string.mcp_sign_in, c.name), enabled: !model.busy) {
+                    model.signIn(browser: { await SystemBrowser.signIn($0, openURL: openURL) }, changed: onChanged)
                 }
-                if !err.isEmpty { ErrorText(err, small: true) }
+                if !model.err.isEmpty { ErrorText(model.err, small: true) }
                 if let fb = c.fallback, fb.connect == "key", !fb.title.isEmpty {
                     if other {
                         BoldLine(text: fb.title)
-                        KeyConnectPanel(c: c.with(connect: "key", via: fb.via, item: fb.item, description: fb.blurb), onChanged: onChanged)
+                        KeyConnectPanel(c: c.with(connect: "key", via: fb.via, item: fb.item, description: fb.blurb), api: api, onChanged: onChanged)
                     } else {
                         LinkButton("\(fb.title) ›") { other = true }
                     }
@@ -68,7 +65,7 @@ struct McpConnectPanel: View {
             }
         }
         .keloConfirm(L(R.string.mcp_disconnect_confirm, c.name), isPresented: $confirming, yes: L(R.string.connector_disconnect)) {
-            Task { try? await app.requireApi().disconnect(item: c.item); onChanged() }
+            model.disconnect(item: c.item, changed: onChanged)
         }
     }
 }
@@ -77,39 +74,27 @@ struct McpConnectPanel: View {
 /// it in is saved.
 struct MailConnectPanel: View {
     let c: ConnectorInfo
+    let api: KeloApi
     let onChanged: () -> Void
-    @Environment(AppModel.self) private var app
     @Environment(\.openURL) private var openURL
-    @State private var data: MailProviders?
-    @State private var provider = ""
+    @State private var model: MailModel
     @State private var address = ""
     @State private var password = ""
-    @State private var err = ""
-    @State private var busy = false
     @State private var adding = false
     @State private var byPassword = false
     @State private var removing: MailAccount?
 
-    var body: some View {
-        Group {
-            if let data { content(data) } else { SkeletonRows(rows: 2) }
-        }
-        .reloadOnReturn(c.id) { await load(); busy = false }
-        .alert(removing.map { L(R.string.mail_disconnect_confirm, $0.label) } ?? "", isPresented: Binding(
-            get: { removing != nil }, set: { if !$0 { removing = nil } })) {
-            Button(L(R.string.connector_disconnect), role: .destructive) {
-                guard let a = removing else { return }
-                Task { try? await app.requireApi().disconnect(item: a.name); await load(); onChanged() }
-            }
-            Button(L(R.string.cancel), role: .cancel) {}
-        }
+    init(c: ConnectorInfo, api: KeloApi, onChanged: @escaping () -> Void) {
+        self.c = c; self.api = api; self.onChanged = onChanged
+        _model = State(initialValue: MailModel(api: api, connectorId: c.id))
     }
 
-    private func load() async {
-        if let d = try? await app.requireApi().mailProviders() {
-            data = d
-            if provider.isEmpty { provider = MailPanelForm.defaultProvider(connectorId: c.id, providers: d.providers) }
+    var body: some View {
+        Group {
+            if let data = model.data { content(data) } else { SkeletonRows(rows: 2) }
         }
+        .reloadOnReturn(c.id) { await model.returned() }
+        .removeAlert($removing, title: { L(R.string.mail_disconnect_confirm, $0.label) }) { model.remove($0, changed: onChanged) }
     }
 
     @ViewBuilder private func content(_ d: MailProviders) -> some View {
@@ -128,51 +113,35 @@ struct MailConnectPanel: View {
             case .accountsOnly:
                 if !gmail { LinkButton(L(R.string.mail_add_other)) { adding = true } }
             case .reviewNote:
-                ReviewNote(c: c) { Task { await load() }; onChanged() }
+                ReviewNote(c: c, api: api) { Task { await model.load() }; onChanged() }
                 LinkButton(L(R.string.mail_by_password)) { byPassword = true }
             case .googleSignIn:
-                PrimaryButton(busy ? L(R.string.connector_opening) : L(R.string.mail_google_sign_in), enabled: !busy) {
-                    err = ""; busy = true
-                    Task {
-                        do {
-                            let url = try await app.requireApi().googleWebStart()
-                            if !(await SystemBrowser.signIn(url, openURL: openURL)) { err = L(R.string.connector_browser_failed) }
-                            await load(); onChanged()
-                        } catch { err = app.message(for: error) }
-                        busy = false
-                    }
+                PrimaryButton(model.busy ? L(R.string.connector_opening) : L(R.string.mail_google_sign_in), enabled: !model.busy) {
+                    model.googleSignIn(browser: { await SystemBrowser.signIn($0, openURL: openURL) }, changed: onChanged)
                 }
                 MutedText(L(R.string.mail_google_help), small: true)
                 LinkButton(L(R.string.mail_by_password)) { byPassword = true }
             case .passwordForm:
                 if choices.count > 1 {
                     FieldLabel(L(R.string.mail_provider))
-                    SelectField(label: L(R.string.mail_provider), options: choices.map { ($0.id, $0.name) }, value: $provider)
+                    SelectField(title: L(R.string.mail_provider), options: choices.map { SelectOption(value: $0.id, label: $0.name) },
+                                selected: model.provider) { model.choose($0) }
                 }
-                if let p = d.providers.first(where: { $0.id == provider }) { StepsView(lines: p.help) }
+                if let p = d.providers.first(where: { $0.id == model.provider }) { StepsView(lines: p.help) }
                 KeloTextField(L(R.string.mail_address), text: $address, keyboard: .email, maxLength: 200)
                     .textContentType(.username)
                 KeloTextField(L(R.string.mail_password), text: $password, secure: true, maxLength: 200)
                     .textContentType(.password)
                     .keloSensitive()
-                PrimaryButton(L(busy ? R.string.mail_checking : R.string.check_and_connect),
-                              enabled: !busy && ConnectorLogic.mailReady(address: address, password: password)) {
-                    err = ""; busy = true
-                    Task {
-                        do {
-                            try await app.requireApi().addMail(provider: provider, address: address.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                               password: password)
-                            password = ""; address = ""; adding = false
-                            await load(); onChanged()
-                        } catch { err = app.message(for: error) }
-                        busy = false
-                    }
+                PrimaryButton(L(model.busy ? R.string.mail_checking : R.string.check_and_connect),
+                              enabled: !model.busy && ConnectorLogic.mailReady(address: address, password: password)) {
+                    model.add(address: address, password: password, added: { password = ""; address = ""; adding = false }, changed: onChanged)
                 }
                 MutedText(L(R.string.mail_check_note), small: true)
                 if adding { LinkButton(L(R.string.cancel)) { adding = false } }
             }
-            if !err.isEmpty { ErrorText(err, small: true) }
-            if gmail { OperatorSettings(provider: "google", onSaved: { Task { await load() } }) }
+            if !model.err.isEmpty { ErrorText(model.err, small: true) }
+            if gmail { OperatorSettings(provider: "google", api: api, onSaved: { Task { await model.load() } }) }
         }
     }
 }
@@ -183,33 +152,24 @@ struct MailConnectPanel: View {
 struct CalDavConnectPanel: View {
     let c: ConnectorInfo
     let onChanged: () -> Void
-    @Environment(AppModel.self) private var app
-    @State private var accounts: [CalDavAccount]?
+    @State private var model: CalDavModel
     @State private var url = ""
     @State private var user = ""
     @State private var password = ""
-    @State private var err = ""
-    @State private var busy = false
     @State private var adding = false
     @State private var removing: CalDavAccount?
 
-    var body: some View {
-        Group {
-            if let shown = accounts { content(shown) } else { SkeletonRows(rows: 2) }
-        }
-        .reloadOnReturn(c.id) { await load(); busy = false }
-        .alert(removing.map { L(R.string.caldav_disconnect_confirm, $0.address) } ?? "", isPresented: Binding(
-            get: { removing != nil }, set: { if !$0 { removing = nil } })) {
-            Button(L(R.string.connector_disconnect), role: .destructive) {
-                guard let a = removing else { return }
-                Task { try? await app.requireApi().disconnect(item: a.name); await load(); onChanged() }
-            }
-            Button(L(R.string.cancel), role: .cancel) {}
-        }
+    init(c: ConnectorInfo, api: KeloApi, onChanged: @escaping () -> Void) {
+        self.c = c; self.onChanged = onChanged
+        _model = State(initialValue: CalDavModel(api: api))
     }
 
-    private func load() async {
-        if let got = try? await app.requireApi().get("/api/caldav", as: CalDavAccounts.self) { accounts = got.accounts }
+    var body: some View {
+        Group {
+            if let shown = model.accounts { content(shown) } else { SkeletonRows(rows: 2) }
+        }
+        .reloadOnReturn(c.id) { await model.returned() }
+        .removeAlert($removing, title: { L(R.string.caldav_disconnect_confirm, $0.address) }) { model.remove($0, changed: onChanged) }
     }
 
     @ViewBuilder private func content(_ shown: [CalDavAccount]) -> some View {
@@ -231,26 +191,17 @@ struct CalDavConnectPanel: View {
                 KeloTextField(L(R.string.mail_password), text: $password, secure: true, maxLength: 200)
                     .textContentType(.password)
                     .keloSensitive()
-                PrimaryButton(L(busy ? R.string.mail_checking : R.string.check_and_connect),
-                              enabled: !busy && !url.isBlank && !user.isBlank && !password.isEmpty) {
-                    err = ""; busy = true
-                    Task {
-                        do {
-                            _ = try await app.requireApi().request("POST", "/api/caldav/accounts", body: [
-                                "url": .string(url.trimmingCharacters(in: .whitespaces)), "username": .string(user.trimmingCharacters(in: .whitespaces)),
-                                "password": .string(password)])
-                            password = ""; user = ""; url = ""; adding = false
-                            await load(); onChanged()
-                        } catch { err = app.message(for: error) }
-                        busy = false
-                    }
+                PrimaryButton(L(model.busy ? R.string.mail_checking : R.string.check_and_connect),
+                              enabled: !model.busy && !url.isBlank && !user.isBlank && !password.isEmpty) {
+                    model.add(url: url, user: user, password: password, added: { password = ""; user = ""; url = ""; adding = false },
+                              changed: onChanged)
                 }
                 MutedText(L(R.string.mail_check_note), small: true)
                 if adding { LinkButton(L(R.string.cancel)) { adding = false } }
             } else {
                 LinkButton(L(R.string.caldav_add_other)) { adding = true }
             }
-            if !err.isEmpty { ErrorText(err, small: true) }
+            if !model.err.isEmpty { ErrorText(model.err, small: true) }
         }
     }
 }
@@ -259,20 +210,22 @@ struct CalDavConnectPanel: View {
 struct KeyConnectPanel: View {
     let c: ConnectorInfo
     let onChanged: () -> Void
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var colors
-    @State private var form: KeyForm?
+    @State private var model: KeyModel
     @State private var values: [String: String] = [:]
-    @State private var err = ""
-    @State private var busy = false
     @State private var confirming = false
     @State private var picking = false
 
+    init(c: ConnectorInfo, api: KeloApi, onChanged: @escaping () -> Void) {
+        self.c = c; self.onChanged = onChanged
+        _model = State(initialValue: KeyModel(api: api, via: c.via))
+    }
+
     var body: some View {
         Group {
-            if let form { content(form) } else { SkeletonRows(rows: 2) }
+            if let form = model.form { content(form) } else { SkeletonRows(rows: 2) }
         }
-        .reloadOnReturn(c.via) { await load() }
+        .reloadOnReturn(c.via) { await model.load() }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.json, .plainText, .data]) { result in
             guard case .success(let url) = result else { return }
             let scoped = url.startAccessingSecurityScopedResource()
@@ -280,13 +233,9 @@ struct KeyConnectPanel: View {
             if let data = try? Data(contentsOf: url), let text = ConnectorLogic.keyFileText(data) {
                 values["key"] = text
             } else {
-                err = L(R.string.key_file_failed)
+                model.setError(L(R.string.key_file_failed))
             }
         }
-    }
-
-    private func load() async {
-        if let f = try? await app.requireApi().keyForm(c.via) { form = f }
     }
 
     private func binding(_ id: String) -> Binding<String> {
@@ -321,25 +270,17 @@ struct KeyConnectPanel: View {
                                       keyboard: .ascii)
                     }
                 }
-                PrimaryButton(L(busy ? R.string.key_checking : (f.checked ? R.string.check_and_connect : R.string.save)),
-                              enabled: !busy && ConnectorRules.keyReady(f, values: values)) {
-                    err = ""; busy = true
-                    Task {
-                        do {
-                            try await app.requireApi().saveKey(f.id, values: values)
-                            values = [:]
-                            await load(); onChanged()
-                        } catch { err = app.message(for: error) }
-                        busy = false
-                    }
+                PrimaryButton(L(model.busy ? R.string.key_checking : (f.checked ? R.string.check_and_connect : R.string.save)),
+                              enabled: !model.busy && ConnectorRules.keyReady(f, values: values)) {
+                    model.save(f, values: values, saved: { values = [:] }, changed: onChanged)
                 }
                 MutedText(L(f.checked ? R.string.key_note_checked : R.string.key_note_unchecked), small: true)
-                if !err.isEmpty { ErrorText(err, small: true) }
+                if !model.err.isEmpty { ErrorText(model.err, small: true) }
             }
         }
         .keloSensitive()
         .keloConfirm(L(R.string.key_disconnect_confirm, f.name), isPresented: $confirming, yes: L(R.string.connector_disconnect)) {
-            Task { try? await app.requireApi().disconnect(item: f.item); await load(); onChanged() }
+            model.disconnect(f, changed: onChanged)
         }
     }
 }
@@ -347,68 +288,51 @@ struct KeyConnectPanel: View {
 /// A site the agent uses with its own browser. A login, if the site needs one, is kept in the keychain and typed by the server.
 struct BrowserConnectPanel: View {
     let c: ConnectorInfo
-    @Environment(AppModel.self) private var app
+    let api: KeloApi
     @Environment(\.openURL) private var openURL
-    /// nil: loading; "": nothing kept.
-    @State private var saved: String?
-    /// The keychain item made for this site's login, while its form is open.
-    @State private var asking: String?
-    @State private var err = ""
+    @State private var model: BrowserConnectModel
+
+    init(c: ConnectorInfo, api: KeloApi) {
+        self.c = c; self.api = api
+        _model = State(initialValue: BrowserConnectModel(api: api, site: c.site, name: c.name))
+    }
 
     var body: some View {
         let host = ConnectorRules.host(c.site)
         VStack(alignment: .leading, spacing: 10) {
             if !c.site.isEmpty {
                 LinkButton(L(R.string.browser_site_link, host.isEmpty ? c.site : host)) {
-                    if !SystemBrowser.open(c.site, openURL: openURL) { err = L(R.string.connector_browser_failed) }
+                    if !SystemBrowser.open(c.site, openURL: openURL) { model.setError(L(R.string.connector_browser_failed)) }
                 }
             }
-            if let s = saved, !s.isEmpty {
+            if let s = model.saved, !s.isEmpty {
                 ShieldTitle(text: L(R.string.browser_saved, s), small: true)
-            } else if let name = asking {
-                SiteLoginForm(name: name, site: host, onSaved: { Task { await load(host) } }, onCancel: {
-                    Task { try? await app.requireApi().cancelLoginDraft(name) }
-                    asking = nil
-                })
-            } else if saved == "" {
-                SecondaryButton(L(R.string.browser_ask)) {
-                    err = ""
-                    Task {
-                        do { asking = try await app.requireApi().addLogin(site: c.site, label: c.name) } catch { err = app.message(for: error) }
-                    }
-                }
+            } else if let name = model.asking {
+                SiteLoginForm(name: name, api: api, onSaved: { Task { await model.load(host: host) } }, onCancel: { model.cancelAsk() })
+            } else if model.saved == "" {
+                SecondaryButton(L(R.string.browser_ask)) { model.ask() }
             }
             MutedText(L(R.string.browser_note), small: true)
-            if !err.isEmpty { ErrorText(err, small: true) }
+            if !model.err.isEmpty { ErrorText(model.err, small: true) }
         }
-        .reloadOnReturn(host) { await load(host) }
-    }
-
-    private func load(_ host: String) async {
-        do {
-            let items = try await app.requireApi().vault().items
-            saved = ConnectorLogic.savedLogin(host: host, items: items, defaultText: L(R.string.browser_saved_default)) ?? ""
-            if saved?.isEmpty == false { asking = nil }
-        } catch {
-            saved = ""
-        }
+        .reloadOnReturn(host) { await model.load(host: host) }
     }
 }
 
 /// The secure form for a site's login: user name, password and how it is kept. iOS offers saved passwords on the fields
 /// itself (text content types); no app is named here.
 struct SiteLoginForm: View {
-    let name: String
-    let site: String
     let onSaved: () -> Void
     let onCancel: () -> Void
-    @Environment(AppModel.self) private var app
-    @Environment(\.kelo) private var c
+    @State private var model: SiteLoginModel
     @State private var user = ""
     @State private var pass = ""
-    @State private var mode: VaultSaveMode = .afterSuccess
-    @State private var msg = ""
-    @State private var busy = false
+    @State private var mode: SecretLoginMode = .afterSuccess
+
+    init(name: String, api: KeloApi, onSaved: @escaping () -> Void, onCancel: @escaping () -> Void) {
+        self.onSaved = onSaved; self.onCancel = onCancel
+        _model = State(initialValue: SiteLoginModel(api: api, name: name))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -420,24 +344,16 @@ struct SiteLoginForm: View {
                 .textContentType(.password)
             FieldLabel(L(R.string.vault_mode))
             VStack(spacing: 0) {
-                ForEach(VaultSaveMode.allCases, id: \.self) { m in
+                ForEach(SecretLoginMode.allCases, id: \.self) { m in
                     RadioRow(LS("vault_mode_\(m.rawValue)"), detail: LS("vault_mode_\(m.rawValue)_help"), selected: mode == m) { mode = m }
                 }
             }
-            PrimaryButton(L(busy ? R.string.vault_saving : R.string.vault_save),
-                          enabled: !busy && ConnectorLogic.loginReady(user: user, password: pass)) {
-                busy = true; msg = ""
-                Task {
-                    do {
-                        try await app.requireApi().putLogin(name, username: user.trimmingCharacters(in: .whitespacesAndNewlines), password: pass, mode: mode)
-                        user = ""; pass = ""
-                        onSaved()
-                    } catch { msg = app.message(for: error) }
-                    busy = false
-                }
+            PrimaryButton(L(model.busy ? R.string.vault_saving : R.string.vault_save),
+                          enabled: !model.busy && ConnectorLogic.loginReady(user: user, password: pass)) {
+                model.save(user: user, password: pass, mode: mode, saved: { user = ""; pass = ""; onSaved() })
             }
             LinkButton(L(R.string.cancel), action: onCancel)
-            if !msg.isEmpty { ErrorText(msg, small: true) }
+            if !model.msg.isEmpty { ErrorText(model.msg, small: true) }
         }
         .keloSensitive()
     }

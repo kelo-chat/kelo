@@ -7,48 +7,17 @@ import KeloCore
 /// The skills waiting for the owner on the Records page: loads GET /api/skills/proposals, answers them, and looks again every few
 /// seconds while Kelo writes a draft. `onMessage` shows a short message (the page's toast).
 public struct SkillReviewSection: View {
-    let onMessage: (String) -> Void
-    @Environment(AppModel.self) private var app
-    @State private var data: SkillProposals?
-    @State private var tick = 0
+    @State private var model: SkillProposalsModel
 
-    public init(onMessage: @escaping (String) -> Void) { self.onMessage = onMessage }
+    public init(api: @escaping () -> KeloApi?, onMessage: @escaping (String) -> Void) {
+        _model = State(initialValue: SkillProposalsModel(api: api, say: onMessage))
+    }
 
     public var body: some View {
         // a stack that is there even while nothing shows, so the load below runs
-        VStack(alignment: .leading, spacing: 12) { SkillProposalsBlock(data: data, onAnswer: answer) }
+        VStack(alignment: .leading, spacing: 12) { SkillProposalsBlock(data: model.data, onAnswer: model.answer) }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .task(id: tick) {
-                await load()
-                // a draft lands in the list by itself: look again while one is being written
-                while !Task.isCancelled, data?.drafting.isEmpty == false {
-                    try? await Task.sleep(nanoseconds: 4_000_000_000)
-                    if Task.isCancelled { break }
-                    await load()
-                }
-            }
-    }
-
-    private func load() async {
-        guard let api = try? app.requireApi() else { return }
-        if let got = try? await api.skillProposals() { data = got }
-    }
-
-    /// Approve (written as shown and used from now on) or discard; `done` runs with true on success. The card says what happened
-    /// for a moment and then leaves the list; on a failure the list loads again and the reason is shown.
-    private func answer(_ p: SkillProposal, _ approve: Bool, _ done: @escaping (Bool) -> Void) {
-        Task {
-            do {
-                try await app.requireApi().answerSkill(p, approve: approve)
-                done(true)
-                try? await Task.sleep(nanoseconds: UInt64(SkillRules.doneSeconds * 1_000_000_000))
-                if let d = data { data = SkillRules.without(d, id: p.id) }
-            } catch {
-                done(false)
-                if (error as? ApiError)?.status != 404 { onMessage(app.message(for: error)) }
-                tick += 1
-            }
-        }
+            .task(id: model.tick) { await model.follow() }
     }
 }
 
@@ -240,58 +209,15 @@ struct SkillDiffRow: View {
 /// draft waits for approval on 마이 → 기록. Shows "Kelo가 스킬 초안을 쓰는 중…" (disabled) while that run's draft is being written.
 /// `onMessage` shows a short message (the page's toast).
 public struct SaveAsSkillSection: View {
-    let taskId: Int64?
-    let workerId: String?
-    let onMessage: (String) -> Void
-    @Environment(AppModel.self) private var app
-    @State private var data: SkillProposals?
-    @State private var posting = false
-    @State private var tick = 0
+    @State private var model: SaveAsSkillModel
 
-    public init(taskId: Int64? = nil, workerId: String? = nil, onMessage: @escaping (String) -> Void) {
-        self.taskId = taskId; self.workerId = workerId; self.onMessage = onMessage
+    public init(api: @escaping () -> KeloApi?, taskId: Int64? = nil, workerId: String? = nil, onMessage: @escaping (String) -> Void) {
+        _model = State(initialValue: SaveAsSkillModel(taskId: taskId, workerId: workerId, api: api, say: onMessage))
     }
-
-    private var drafting: Bool { posting || SkillRules.drafting(data, taskId: taskId, workerId: workerId) }
 
     public var body: some View {
-        SaveAsSkillButton(drafting: drafting) { save() }
-            .task(id: tick) {
-                await load()
-                while !Task.isCancelled, SkillRules.drafting(data, taskId: taskId, workerId: workerId) {
-                    try? await Task.sleep(nanoseconds: 4_000_000_000)
-                    if Task.isCancelled { break }
-                    await load()
-                }
-            }
-    }
-
-    private func load() async {
-        guard let api = try? app.requireApi() else { return }
-        if let got = try? await api.skillProposals() { data = got }
-    }
-
-    private func save() {
-        guard !drafting else { return }
-        Haptics.tick()
-        posting = true
-        Task {
-            do {
-                try await app.requireApi().draftSkill(taskId: workerId == nil ? taskId : nil, workerId: workerId)
-                onMessage(L(R.string.skill_save_started, L(R.string.tab_my), L(R.string.my_records_title)))
-            } catch let e as ApiError where e.status == 409 {
-                onMessage(L(R.string.skill_save_busy))
-            } catch let e as ApiError where e.status == 404 {
-                onMessage(L(R.string.skill_save_unavailable))
-            } catch let e as ApiError where e.status == 503 {
-                onMessage(L(R.string.skill_save_no_model))
-            } catch {
-                onMessage(app.message(for: error))
-            }
-            await load()
-            posting = false
-            tick += 1
-        }
+        SaveAsSkillButton(drafting: model.drafting) { model.save() }
+            .task(id: model.tick) { await model.follow() }
     }
 }
 

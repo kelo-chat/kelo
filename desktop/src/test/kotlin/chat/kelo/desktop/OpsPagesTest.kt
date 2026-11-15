@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -14,18 +15,13 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performSemanticsAction
-import chat.kelo.app.R
 import chat.kelo.desktop.core.AppContainer
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.my.DesktopCardRules
-import chat.kelo.desktop.pages.my.DesktopCardStatus
-import chat.kelo.desktop.pages.my.OperatorPage
-import chat.kelo.desktop.pages.my.PermissionsPage
-import chat.kelo.desktop.pages.my.VaultPage
-import chat.kelo.desktop.pages.my.WalletPage
+import chat.kelo.app.my.OperatorPage
+import chat.kelo.app.my.VaultPage
+import chat.kelo.app.wallet.WalletPage
+import chat.kelo.app.my.PermissionsPage
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Rule
 import org.junit.Test
@@ -41,7 +37,7 @@ class OpsPagesTest {
     @get:Rule val compose = createComposeRule()
     @get:Rule val tmp = TemporaryFolder()
     private var mock: MockServer? = null
-    private val ko = Strings.of("ko")
+    private val ko = Words.of("ko")
 
     @After fun stop() { mock?.stop() }
 
@@ -67,51 +63,41 @@ class OpsPagesTest {
         compose.onNode(hasText(text) and hasClickAction(), useUnmergedTree = false).also { it.performSemanticsAction(SemanticsActions.OnClick) }
 
     @Test fun operatorPageApprovesABetaRequest() {
-        val (_, ui) = open("operator", "minji@example.com") { app -> OperatorPage(app, onBack = {}) }
-        ui.waitText(ko.get(R.string.operator_title_github))
-        ui.waitText(ko.get(R.string.operator_title_google))
+        val (_, ui) = open("operator", "minji@example.com") { _ -> OperatorPage(onBack = {}) }
+        ui.waitText(ko.get(Res.string.operator_title_github))
+        ui.waitText(ko.get(Res.string.operator_title_google))
         ui.waitText("kelo-push")
-        ui.waitText(ko.get(R.string.operator_reports_open, 1))
-        click(ko.get(R.string.operator_beta_approve))
-        ui.waitText(ko.get(R.string.operator_beta_mailed, "minji@example.com"))
-        ui.waitUntil("no request waiting") { compose.onAllNodes(hasText(ko.get(R.string.operator_beta_approve)) and hasClickAction()).fetchSemanticsNodes().isEmpty() }
+        ui.waitText(ko.get(Res.string.operator_reports_open, 1))
+        click(ko.get(Res.string.operator_beta_approve))
+        ui.waitText(ko.get(Res.string.operator_beta_mailed, "minji@example.com"))
+        ui.waitUntil("no request waiting") { compose.onAllNodes(hasText(ko.get(Res.string.operator_beta_approve)) and hasClickAction()).fetchSemanticsNodes().isEmpty() }
     }
 
     @Test fun keychainListsLoginsKeysAndMailboxes() {
-        val (_, ui) = open("vault", "OpenWeather") { app -> VaultPage(app, onBack = {}, onGoModel = {}) }
-        ui.waitText(ko.get(R.string.vault_logins))
-        ui.waitText(ko.get(R.string.vault_mailboxes))
+        val (_, ui) = open("vault", "OpenWeather") { app -> VaultPage(onBack = {}, onGoModel = {}) }
+        ui.waitText(ko.get(Res.string.vault_logins))
+        ui.waitText(ko.get(Res.string.vault_mailboxes))
         click("쿠팡")
-        ui.waitText(ko.get(R.string.vault_when_login))
+        ui.waitText(ko.get(Res.string.vault_when_login))
         ui.shot("parity-ops-vault-item-light")
     }
 
     @Test fun cardsShowWhereTheyPayFrom() {
-        val (_, ui) = open("wallet", "생활비 카드") { app -> WalletPage(app, onBack = {}, onSeen = {}) }
-        ui.waitText(ko.get(R.string.desktop_ops_tag_phone))
-        ui.waitText(ko.get(R.string.wallet_tag_expired))
-        click(ko.get(R.string.wallet_limits_title))
+        val (_, ui) = open("wallet", "생활비 카드") { app -> WalletPage(onBack = {}, onSeen = {}) }
+        ui.waitText(ko.get(Res.string.wallet_tag_expired))
+        click(ko.get(Res.string.wallet_limits_title))
         ui.waitText("KRW")
         ui.settle(10)
         ui.shot("parity-ops-wallet-limits-light")
     }
 
     @Test fun permissionsTakeARuleBack() {
-        val (_, ui) = open("permissions", "naver.com") { app -> PermissionsPage(app, onBack = {}, onOpenWork = {}) }
-        ui.waitText(ko.get(R.string.agent_perm_history))
-        compose.onNode(hasContentDescription(ko.get(R.string.agent_rule_revoke, "naver.com"))).performSemanticsAction(SemanticsActions.OnClick)
-        ui.waitText(ko.get(R.string.agent_rule_revoke_yes))
-        compose.onNode(hasText(ko.get(R.string.agent_rule_revoke_yes))).performSemanticsAction(SemanticsActions.OnClick)
-        ui.waitText(ko.get(R.string.agent_rule_revoked, "naver.com"))
-        assertFalse(ui.has(ko.get(R.string.agent_rule_revoke, "naver.com")))
-    }
-
-    @Test fun aDesktopCardIsReadFromItsCopies() {
-        fun card(e2e: Boolean, server: Boolean, expired: Boolean = false) =
-            chat.kelo.app.wallet.WalletCard("x", e2e = e2e, serverCopy = server, expired = expired)
-        assertEquals(DesktopCardStatus.ON_PHONE, DesktopCardRules.of(card(e2e = true, server = true)))
-        assertEquals(DesktopCardStatus.AUTO_ONLY, DesktopCardRules.of(card(e2e = false, server = true)))
-        assertEquals(DesktopCardStatus.UNFINISHED, DesktopCardRules.of(card(e2e = false, server = false)))
-        assertEquals(DesktopCardStatus.EXPIRED, DesktopCardRules.of(card(e2e = true, server = true, expired = true)))
+        val (_, ui) = open("permissions", "naver.com") { app -> PermissionsPage(onBack = {}, onOpenWork = {}) }
+        ui.waitText(ko.get(Res.string.agent_perm_history))
+        compose.onNode(hasContentDescription(ko.get(Res.string.agent_rule_revoke, "naver.com"))).performSemanticsAction(SemanticsActions.OnClick)
+        ui.waitText(ko.get(Res.string.agent_rule_revoke_yes))
+        compose.onNode(hasText(ko.get(Res.string.agent_rule_revoke_yes))).performSemanticsAction(SemanticsActions.OnClick)
+        ui.waitText(ko.get(Res.string.agent_rule_revoked, "naver.com"))
+        assertFalse(ui.has(ko.get(Res.string.agent_rule_revoke, "naver.com")))
     }
 }

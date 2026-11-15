@@ -25,7 +25,7 @@ private final class CardAnswerTransport: HTTPTransport, @unchecked Sendable {
 }
 
 struct SecretEntryWordsTests {
-    private let key = SecretRequest(id: "r1", kind: SecretRequest.kindKey, name: "openweather", label: "OpenWeather",
+    private let key = SecretRequest(id: "r1", kind: "key", name: "openweather", label: "OpenWeather",
                                     hosts: ["api.openweathermap.org"], reason: "To check the forecast", check: true)
     private let login = SecretRequest(id: "r2", kind: SecretRequest.kindLogin, name: "shop", hosts: ["shop.example.com", "id.example.com"])
     private let card = SecretRequest(id: "r3", kind: SecretRequest.kindCard, label: "Concert tickets", hosts: [], reason: "Concert tickets")
@@ -67,7 +67,7 @@ struct SecretEntryWordsTests {
         var l = login; l.state = SecretRequest.stateSaved
         #expect(SecretEntryWords.folded(l).key == R.string.secret_done_login)
         #expect(SecretEntryWords.folded(l).arg == "shop")
-        var c = card; c.state = SecretRequest.stateSaved; c.result = SecretResult(card: SecretCard(id: "c1", label: "Blue card", last4: "4242"))
+        var c = card; c.state = SecretRequest.stateSaved; c.result = SecretResult(card: SecretCard(id: "c1", label: "Blue card"))
         #expect(SecretEntryWords.folded(c).key == R.string.secret_done_card)
         #expect(SecretEntryWords.folded(c).arg == "Blue card")
         c.result = SecretResult(card: SecretCard(id: "c1"))
@@ -95,7 +95,7 @@ struct SecretEntryWordsTests {
         // the keys the entry uses exist in every language the app ships (a missing one would show its raw name)
         let keys: [StringKey] = [R.string.secret_title_key, R.string.secret_title_login, R.string.secret_title_card, R.string.secret_hosts_only,
                                  R.string.secret_card_site, R.string.secret_card_wallet, R.string.secret_check_note, R.string.secret_field_key,
-                                 R.string.secret_paste, R.string.secret_checking, R.string.secret_never_chat, R.string.secret_done_key,
+                                 R.string.secret_checking, R.string.secret_never_chat, R.string.secret_done_key,
                                  R.string.secret_done_checked, R.string.secret_done_login, R.string.secret_done_card, R.string.secret_cancelled,
                                  R.string.secret_gone, R.string.secret_waiting_title, R.string.secret_waiting_help, R.string.secret_kind_key,
                                  R.string.secret_kind_login, R.string.secret_kind_card, R.string.secret_fill, R.string.secret_card_next,
@@ -119,7 +119,7 @@ struct SecretEntryWordsTests {
         let w = SecretCardWait()
         w.start("r3", returnTo: .chat)
         #expect(w.waiting == "r3")
-        let back = await w.cardAdded(SecretCard(id: "c1", label: "Blue", brand: "visa", last4: "4242"), api: api(t))
+        let back = await w.cardAdded(SecretCard(id: "c1", label: "Blue"), api: api(t))
         #expect(back == .chat)
         #expect(w.waiting == nil)
         #expect(w.tick == 1)
@@ -130,7 +130,6 @@ struct SecretEntryWordsTests {
         let o = w.take("r3")
         #expect(o?.kind == .saved)
         #expect(o?.turnId == "t9")
-        #expect(o?.result?.card?.last4 == "4242")
         #expect(w.take("r3") == nil)   // once
     }
 
@@ -165,7 +164,7 @@ struct SecretEntryWordsTests {
     @Test func theAddedCardIsReadFromTheWalletAnswer() {
         let j = JSON.object(["id": .string("c7"), "label": .string("Blue"), "brand": .string("visa"), "last4": .string("4242"), "default": .bool(true)])
         let c = SecretCardWait.card(from: j)
-        #expect(c == SecretCard(id: "c7", label: "Blue", brand: "visa", last4: "4242", isDefault: true))
+        #expect(c == SecretCard(id: "c7", label: "Blue"))
         let wrapped = SecretCardWait.card(from: .object(["card": j]))
         #expect(wrapped.id == "c7")
     }

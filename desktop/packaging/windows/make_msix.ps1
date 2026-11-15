@@ -17,6 +17,7 @@ param(
   [string] $IdentityName = "KeloPlaceholder.Kelo",
   [string] $Publisher = "CN=Kelo Placeholder",
   [string] $PublisherDisplayName = "Kelo",
+  [string] $DisplayName = "Kelo",
   [string] $Out = "Kelo.msix",
   [string] $Pfx = "",
   [string] $PfxPassword = ""
@@ -37,7 +38,8 @@ Copy-Item -Path (Join-Path $desktop "packaging\icons\msix\*") -Destination (Join
 $manifest = Get-Content -Raw -Encoding UTF8 (Join-Path $here "AppxManifest.xml")
 function Esc([string] $s) { [System.Security.SecurityElement]::Escape($s) }
 $manifest = $manifest.Replace('${IDENTITY_NAME}', (Esc $IdentityName)).Replace('${PUBLISHER}', (Esc $Publisher)).
-  Replace('${PUBLISHER_DISPLAY_NAME}', (Esc $PublisherDisplayName)).Replace('${VERSION}', $Version)
+  Replace('${PUBLISHER_DISPLAY_NAME}', (Esc $PublisherDisplayName)).Replace('${DISPLAY_NAME}', (Esc $DisplayName)).
+  Replace('${VERSION}', $Version)
 [System.IO.File]::WriteAllText((Join-Path $stage "AppxManifest.xml"), $manifest, (New-Object System.Text.UTF8Encoding $false))
 
 $kits = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"

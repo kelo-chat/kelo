@@ -56,7 +56,7 @@ private fun Context.deviceSecure(): Boolean = (getSystemService(Context.KEYGUARD
  * runs when the prompt went away without opening (backed out of, or an error).
  */
 @Composable
-fun rememberVaultGate(
+fun rememberAndroidVaultGate(
     onNoLock: (() -> Unit)? = null, title: String? = null, onNotOpened: (() -> Unit)? = null, onOpen: (noLock: Boolean) -> Unit,
 ): () -> Unit {
     val context = LocalContext.current

@@ -24,7 +24,7 @@ SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 def render(v: dict) -> str:
-    version, build, min_server = str(v["version"]), int(v["build"]), str(v["min_server"])
+    version, min_server = str(v["version"]), str(v["min_server"])
     for name, value in (("version", version), ("min_server", min_server)):
         if not SEMVER.match(value):
             raise SystemExit(f"version.json: {name} {value!r} is not MAJOR.MINOR.PATCH")
@@ -34,8 +34,6 @@ def render(v: dict) -> str:
 public enum KeloVersion {{
     /// The release people see ("0.9.0"), also in `X-Kelo-App`.
     public static let version = "{version}"
-    /// The release's build number in version.json (not the App Store's CFBundleVersion).
-    public static let releaseBuild = {build}
     /// The oldest Kelo server release this app works with.
     public static let minServer = "{min_server}"
 }}

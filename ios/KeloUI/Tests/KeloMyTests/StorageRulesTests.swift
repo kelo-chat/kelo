@@ -80,7 +80,6 @@ import KeloShared
 
     @Test func aFullDiskIsNotRetriedLikeAPassingServerError() {
         #expect(!ApiError(status: 507, detail: "full").isTransient)
-        #expect(ApiError(status: 507, detail: "full").isStorageFull)
         #expect(ApiError(status: 503, detail: "busy").isTransient)
     }
 

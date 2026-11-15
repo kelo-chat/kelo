@@ -5,7 +5,7 @@ import chat.kelo.app.core.PairingLinks
 import chat.kelo.app.core.Profile
 import chat.kelo.desktop.core.AppContainer
 import chat.kelo.desktop.core.FileKeyValueStore
-import chat.kelo.desktop.core.KeySignIn
+import chat.kelo.app.start.KeySignIn
 import chat.kelo.desktop.core.LinkVerify
 import chat.kelo.desktop.core.StoreKey
 import kotlinx.coroutines.runBlocking
@@ -49,7 +49,7 @@ class DesktopKe2eLocalTest {
 
         // the owner's computer signs in with the access key typed in: the key is pinned trust-on-first-use (not verified)
         val first = app()
-        val (session, profile) = KeySignIn.connect(first.pairingClient(), url, owner, "Desktop KE2E")
+        val (session, profile) = KeySignIn.connect(first.pairing, url, owner, "Desktop KE2E")
         assertNotNull(profile)
         first.sessions.signIn(session)
         val pin = first.sessions.pin ?: error("no key pinned")
@@ -67,7 +67,7 @@ class DesktopKe2eLocalTest {
         // the second computer pairs with the link: the key from the link (verified), the pairing call itself sealed
         val second = app()
         val link = PairingLinks.parse(linkText) ?: error("not a pairing link")
-        val joined = second.pairingClient().pair(link, "Desktop KE2E 2")
+        val joined = second.pairing.pair(link, "Desktop KE2E 2")
         second.sessions.signIn(joined)
         assertTrue(second.sessions.pin!!.verified)
         second.sessions.requireApi().post<JsonElement>("/api/goals", buildJsonObject { put("title", "kelo-e2e-goal-7f3a") })

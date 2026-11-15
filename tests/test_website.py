@@ -114,8 +114,8 @@ def test_mascots_are_scoped_and_every_page_renders():
 
 
 def test_the_run_it_for_free_tip_is_on_the_home_page_in_every_language():
-    marks = {"ko": ("무료로 운영하기", "기본 제공 도메인", "Pay As You Go", "README.ko.md#팁-kelo를-무료로-운영하기"),
-             "en": ("Run it for free", "default domain we provide", "Pay As You Go", "#tip-run-kelo-for-free")}
+    marks = {"ko": ("무료로 운영하기", "Kelo 주소(현재 한정 제공)", "Pay As You Go", "README.ko.md#팁-kelo를-무료로-운영하기"),
+             "en": ("Run it for free", "Kelo address (offered for now)", "Pay As You Go", "#tip-run-kelo-for-free")}
     assert set(marks) == set(website.LANGS)   # a new site language needs its own tip
     for lang in website.LANGS:
         html = website.render("index", lang)
@@ -152,7 +152,7 @@ def test_both_v2_designs_render_every_page_with_their_own_stylesheet():
             ids = set(re.findall(r'\sid="([\w-]+)"', home))
             for anchor in set(re.findall(r'href="#([\w-]+)"', home)) - {"pair"}:
                 assert anchor in ids, (design, lang, anchor)
-            assert "기본 제공 도메인" in home if lang == "ko" else "Default domain" in home
+            assert "Kelo 주소 (현재 한정 제공)" in home if lang == "ko" else "Kelo address (offered for now)" in home
 
 
 async def test_v2_stylesheets_are_served_with_the_mascot_animations_on_base():
@@ -181,7 +181,7 @@ def test_the_privacy_policy_opens_with_a_summary_that_links_to_its_sections():
             assert {"model", "operator", "third", "app", "keep"} <= set(links) <= ids, (design, lang, links)
             for text in ("Cloudflare", "ML Kit", "Google", "GitHub"):
                 assert text in summary, (lang, text)
-            assert ("기본 제공 도메인" if lang == "ko" else "default domain") in summary
+            assert ("Kelo 주소" if lang == "ko" else "Kelo address") in summary
             assert html.index('class="summary"') < html.index('id="scope"')   # before section 1
 
 

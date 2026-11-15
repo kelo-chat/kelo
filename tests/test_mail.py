@@ -161,3 +161,24 @@ async def test_a_locked_vault_stops_the_mail_tools(tmp_path):
     out = await {t.name: t for t in mail_tools(mail)}["email_list"].handler({})
     assert out.startswith("error:") and "locked" in out
     assert json.loads(st.credential("mail-gmail")["secret"])["u"] == ADDRESS
+
+
+def test_a_google_signed_in_mailbox_greets_the_smtp_server_before_xoauth2():
+    """Gmail answers AUTH XOAUTH2 with 503 until the client said EHLO (the tester and beta mails failed on it)."""
+    from assistant.mail import XOAuth2, _smtp_signin
+
+    class Conn:
+        def __init__(self):
+            self.greeted, self.calls = False, []
+
+        def ehlo_or_helo_if_needed(self):
+            self.greeted = True
+            self.calls.append("ehlo")
+
+        def docmd(self, cmd, arg=""):
+            self.calls.append(cmd)
+            return (235, b"ok") if self.greeted else (503, b"5.5.1 EHLO/HELO first")
+
+    c = Conn()
+    _smtp_signin(c, "me@example.com", XOAuth2("t"))
+    assert c.calls == ["ehlo", "AUTH"]

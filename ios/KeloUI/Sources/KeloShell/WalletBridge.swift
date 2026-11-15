@@ -7,12 +7,10 @@ import KeloMy
 /// Lets the chat's payment card send a card kept only on this phone: KeloChat cannot depend on KeloMy (the wallet and its
 /// end-to-end key), so the shell joins them here.
 @MainActor final class WalletCardSender: ChatCardSender {
-    private weak var app: AppModel?
-    init(app: AppModel) { self.app = app }
+    init() {}
 
     func deliver(api: KeloApi, approvalId: String, cardId: String) async -> KeloChat.CardSendError? {
-        guard let app else { return .other }
-        guard let err = await WalletDelivery.deliver(app: app, approvalId: approvalId, cardId: cardId) else { return nil }
+        guard let err = await WalletDelivery.deliver(api: api, approvalId: approvalId, cardId: cardId) else { return nil }
         switch err {
         case .notWaiting: return .notWaiting
         case .mismatch: return .mismatch

@@ -11,8 +11,16 @@ struct GoalRoute: Hashable { let id: Int64 }
 /// few seconds before it is deleted on the server. Entry point the shell uses.
 public struct GoalsScreen: View {
     @Environment(AppModel.self) private var app
+
+    public init() {}
+
+    public var body: some View { GoalsPage(app: app) }
+}
+
+private struct GoalsPage: View {
+    @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var phase
-    @State private var model = GoalsModel()
+    @State private var model: GoalsModel
     @State private var editing: GoalItem?
     @State private var adding = false
     @State private var showDone = false
@@ -27,15 +35,17 @@ public struct GoalsScreen: View {
         let goal: GoalItem
     }
 
-    public init() {}
+    init(app: AppModel) {
+        _model = State(initialValue: GoalsModel(api: { [weak app] in app?.api }, cache: app.cache))
+    }
 
-    public var body: some View {
+    var body: some View {
         NavigationStack(path: app.router.path(.goals)) {
             list
                 .keloShellInsets()
                 .navigationDestination(for: GoalRoute.self) { r in
                     if let g = model.state.goals.first(where: { $0.id == r.id }) {
-                        GoalDetailPage(goal: g, onBack: { pop() }, onEdit: { editing = $0 }, onOpenChat: {
+                        GoalDetailPage(goal: g, api: { [weak app] in app?.api }, onBack: { pop() }, onEdit: { editing = $0 }, onOpenChat: {
                             pop()
                             app.router.open(.chat)
                         })
@@ -46,13 +56,10 @@ public struct GoalsScreen: View {
                 }
                 .keloHideNavigationBar()
         }
-        .onAppear {
-            model.app = app
-            model.load()
-        }
+        .onAppear { model.load() }
         .onChange(of: phase) { _, p in if p == .active { model.load() } else if p == .background { model.commitAll() } }
         .onDisappear { model.commitAll() }
-        .goalRefresh(every: GoalsRules.refreshMs(model.state.goals)) { model.load() }
+        .goalRefresh(every: app.router.shows(.goals) ? GoalsRules.refreshMs(model.state.goals) : nil) { model.load() }
         .confirmationDialog(askSchedules.map { P(R.plurals.goals_delete_schedules_q, $0.schedulesOn, $0.schedulesOn) } ?? "",
                             isPresented: Binding(get: { askSchedules != nil }, set: { if !$0 { askSchedules = nil } }),
                             titleVisibility: .visible, presenting: askSchedules) { g in
@@ -375,7 +382,7 @@ private struct GoalSheet: View {
                     DatePicker("", selection: Binding(get: { (due ?? LocalDay.today().adding(days: 7)).date() },
                                                       set: { due = LocalDay(date: $0) }), displayedComponents: .date)
                         .labelsHidden().datePickerStyle(.graphical)
-                        .environment(\.locale, Strings.shared.locale)
+                        .environment(\.locale, appLocale())
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     FlowLayout(spacing: 8, lineSpacing: 4) {

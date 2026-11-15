@@ -21,7 +21,7 @@ def table(browser=True):
 
 def test_every_catalog_service_has_a_way_to_connect_or_a_reason_and_an_english_line():
     t = table()
-    assert set(BY_ID) == set(t) and len(CATALOG) == len(BY_ID) == 157
+    assert set(BY_ID) == set(t) and len(CATALOG) == len(BY_ID) == 184
     assert not REMOVED & set(BY_ID) and KOREAN <= set(BY_ID) and KOREAN <= set(BROWSER)
     assert all(s.description and len(s.description) <= 80 and not s.description.endswith(".") for s in CATALOG)
     assert len(FEATURED) == 38 and set(FEATURED) <= set(BY_ID)

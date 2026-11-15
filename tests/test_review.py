@@ -266,7 +266,7 @@ def make(tmp_path, **kw):
     (tmp_path / "compose.yml").write_text("services: {}\n")
     (tmp_path / ".env").write_text("BROWSER=chromium\nASSISTANT_TOKEN=owner-token-owner-token-1234\n")
     (tmp_path / "docs" / "review").mkdir(parents=True)
-    for s in ("apple", "google", "ms"):
+    for s in ("apple", "google", "ms", "testflight"):
         (tmp_path / "docs" / "review" / f"notes-{s}.txt").write_text("Address: {address}\nCode: {code}\nLink: {link}\n"
                                                                        "Until {expires}, {uses} devices, {store}\n")
     out, run = [], FakeRun(**kw)

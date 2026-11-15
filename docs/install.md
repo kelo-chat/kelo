@@ -39,7 +39,7 @@ Options: `--yes` (no questions; defaults everywhere, never deletes data), `--dir
 
 - **Update:** run the same command again. Your data, keys and signed-in phones stay; the containers are rebuilt and restarted.
 - **Uninstall:** `bash install.sh --uninstall`. It stops every copy, removes the main containers and the `kelo` command, gives
-  a default address back, and keeps your data (Docker volumes, `.env` and `instances/`) unless you add `--delete-data` (then
+  a Kelo address back, and keeps your data (Docker volumes, `.env` and `instances/`) unless you add `--delete-data` (then
   every copy is deleted with `kelo instance delete`).
 
 ## The guided setup
@@ -55,7 +55,7 @@ Options: `--yes` (no questions; defaults everywhere, never deletes data), `--dir
    smaller than Recommended and warns if a choice is above what it has. Change it later with `assistant limits --choose`
    (or `--profile recommended|minimum|unlimited`; single sizes such as `--memory` still work).
 3. **Start Kelo** – `docker compose up -d --build` with a spinner and the last few log lines, then waits until Kelo answers.
-4. **Phone** – a free address `<name>.kelo.chat` (`assistant connect kelo`), Tailscale or your own domain (prints the
+4. **Phone** – a `<name>.kelo.chat` address (offered for now; availability and terms may change) (`assistant connect kelo`), Tailscale or your own domain (prints the
    commands to run), or skip for now (the phone app needs an https address, so it cannot sign in until one is set). Then it
    shows a compact QR code (about 20 lines) to scan with the phone, and the link.
 

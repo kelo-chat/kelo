@@ -111,16 +111,23 @@ async def test_the_reply_after_a_saved_login_continues_the_original_request_in_t
         assert got["state"] == "saved" and got["sign_in"] == "checking"         # saved, not yet signed in
 
 
-def test_the_prompt_asks_to_remember_the_browser_on_the_owners_own_sign_ins():
+def test_the_prompt_asks_to_remember_the_browser_on_the_owners_own_sign_ins(tmp_path):
     """(e) Remember this browser / device on the owner's own sign-ins: described by its effect (any wording, any language), with
-    what it must not be taken for, and never on someone else's account; in the keychain paragraph next to browser_login."""
+    what it must not be taken for, and never on someone else's account. Since the prompt diet (2026-11-11) the rule is said once, on
+    browser_login (always shown, and the only way the owner's sign-in is made); the keychain paragraph only points to browser_login."""
     from pathlib import Path
-    text = (Path(__file__).resolve().parents[1] / "content" / "prompts" / "system.md").read_text(encoding="utf-8")
+    from assistant.server import Settings, create_app
+    from test_server import TOKEN
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "content" / "prompts" / "system.md").read_text(encoding="utf-8")
     para = next(p for p in text.split("\n\n") if p.startswith("**Logins and keys"))
-    assert "browser_login" in para and "remember this browser or device" in para and "any wording, any language" in para
-    for not_this in ("saving the password in the browser", "marketing or cookie consent", "recovery phone", "security settings",
-                     "someone else's account", "skip verification next time"):
-        assert not_this in para
+    assert "browser_login" in para and "remember this browser" not in text
+    app = create_app(Settings(token=TOKEN, provider="p", model="m", cdp_host="127.0.0.1", home_dir=str(tmp_path / "home"),
+                              content_dir=str(root / "content")))
+    desc = next(t.description for t in app.state.tools if t.name == "browser_login")
+    for must in ("keep this browser signed in", "any wording, any language", "marketing or cookie consent", "recovery phone",
+                 "security settings", "never someone else's", "skip verification next time", "not saving the password"):
+        assert must in desc, must
 
 
 def test_the_browser_profile_lives_on_a_kept_volume():

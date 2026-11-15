@@ -1,0 +1,33 @@
+<div class="doc">
+  <header class="doc-hero">
+    <div class="wrap doc-hero-in">
+      <div class="doc-hero-copy">
+        <p class="kicker"><span class="num">/tester</span>Become a tester</p>
+        <h1>Become a tester</h1>
+        <p class="lead">Join the Google Play closed test of the Kelo app.</p>
+      </div>
+      <div class="doc-hero-art" aria-hidden="true">{{svg:working}}</div>
+    </div>
+  </header>
+
+  <div class="wrap doc-grid">
+    <article class="prose">
+      <h2 id="what">Help us test Kelo</h2>
+      <p>Before the Kelo Android app goes live on Google Play, we are looking for testers to use it for 14 days. Sign up and we will send you the link to join from the Play Store.</p>
+      <p>Kelo works with a Kelo server you install yourself. If you don't have one, reply to our email and we'll set up a test server for you.</p>
+      <h2 id="form">Sign up</h2>
+      {{tester_notice}}
+      <form class="tester-form" method="post" action="/tester">
+        <label for="email">The Google account email you use on Google Play</label>
+        <input id="email" name="email" type="email" required autocomplete="email" maxlength="254">
+        <label for="model">Phone model (optional)</label>
+        <input id="model" name="model" type="text" maxlength="60" placeholder="e.g. Pixel 8">
+        <div class="hp" aria-hidden="true"><label for="website">Website</label><input id="website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+        <label class="consent"><input type="checkbox" name="consent" value="yes" required> I agree that this email is used only to send me the test link and to contact me about the test. The sign-up is deleted when the test ends or on request, and after 180 days at the latest.</label>
+        <input type="hidden" name="lang" value="en">
+        <button type="submit" class="btn">Sign up as a tester</button>
+      </form>
+      <p class="muted">Details are in the privacy policy, section '<a href="{{href:privacy}}#operator">What the operator server handles</a>'.</p>
+    </article>
+  </div>
+</div>

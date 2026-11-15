@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from ..activity import title_from
 from .. import i18n
 from ..tools.browser import (
-    CHAT_TAB_IDLE_SECONDS, TAB_SWEEP_SECONDS, one_run_tab,
+    CHAT_TAB_IDLE_SECONDS, SITE_TAB_IDLE_SECONDS, TAB_SWEEP_SECONDS, is_site_tab, one_run_tab,
 )
 from ..tools.live import Frame, LiveEnded, LiveError, LiveHub, TICKET_SECONDS, pump_frames
 from ..browser_history import history_routes
@@ -199,7 +199,11 @@ def router(ctx: AppContext) -> APIRouter:
                 if why in ("viewer", "control"):
                     session.touch(key)                       # the user looking at or holding a tab is using it
                 continue
-            if one_run_tab(key):
+            if is_site_tab(key):                          # a watcher's site tab: stays between checks, closes when unused for a while
+                if session.idle_for(key) >= SITE_TAB_IDLE_SECONDS:
+                    await session.close_tab(key)
+                    closed.append(key)
+            elif one_run_tab(key):
                 if await retire_tab(key):
                     closed.append(key)
             elif session.idle_for(key) >= CHAT_TAB_IDLE_SECONDS:

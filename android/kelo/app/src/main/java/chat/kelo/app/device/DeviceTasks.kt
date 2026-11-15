@@ -20,6 +20,7 @@ import chat.kelo.app.BuildConfig
 import chat.kelo.app.R
 import chat.kelo.app.appContainer
 import chat.kelo.app.notify.Channel
+import chat.kelo.app.notify.Notifier
 import chat.kelo.app.notify.NotifyRules
 import chat.kelo.app.phonecal.PhoneCalendarSync
 import kotlinx.coroutines.CompletableDeferred
@@ -153,8 +154,13 @@ object DeviceTasks {
         val who = t.s("name").ifBlank { t.s("number") }
         val n = NotificationCompat.Builder(ctx, Channel.APPROVALS.id)
             .setSmallIcon(R.drawable.ic_notification).setContentTitle(ctx.getString(R.string.device_sms_failed_title))
-            .setContentText("$who · $error").setAutoCancel(true).build()
-        runCatching { NotificationManagerCompat.from(ctx).notify(NotifyRules.idFor("sms", t.id.toString()), n) }
+            .setContentText("$who · $error").setAutoCancel(true)
+            .setGroup(NotifyRules.GROUP)
+            .build()
+        runCatching {
+            NotificationManagerCompat.from(ctx).notify(NotifyRules.idFor("sms", t.id.toString()), n)
+            Notifier(ctx).refreshSummary()
+        }
     }
 
     // ---- the dialer
@@ -173,8 +179,13 @@ object DeviceTasks {
                 val n = NotificationCompat.Builder(ctx, Channel.APPROVALS.id)
                     .setSmallIcon(R.drawable.ic_notification).setContentTitle(ctx.getString(R.string.device_dial_title, who))
                     .setContentText(ctx.getString(R.string.device_dial_body)).setContentIntent(pi).setAutoCancel(true)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH).setTimeoutAfter(10 * 60_000L).build()
-                runCatching { NotificationManagerCompat.from(ctx).notify(NotifyRules.idFor("dial", t.id.toString()), n) }
+                    .setPriority(NotificationCompat.PRIORITY_HIGH).setTimeoutAfter(10 * 60_000L)
+                    .setGroup(NotifyRules.GROUP)
+                    .build()
+                runCatching {
+                    NotificationManagerCompat.from(ctx).notify(NotifyRules.idFor("dial", t.id.toString()), n)
+                    Notifier(ctx).refreshSummary()
+                }
                     .fold({ Triple(true, "notified", "") }, { Triple(false, "", "the notification could not be shown") })
             }
         }

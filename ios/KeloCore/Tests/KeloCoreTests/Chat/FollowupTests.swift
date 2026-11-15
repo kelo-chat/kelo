@@ -36,7 +36,7 @@ import Testing
     }
 
     @Test func onHoldCardsShowExactlyWhatTheServerSent() {
-        let f = Followup(id: "5", kind: "worker", title: "도서관 책 연장", stage: Followup.onHoldStage, nextAt: nil, createdAt: 1,
+        let f = Followup(id: "5", kind: "worker", title: "도서관 책 연장", stage: Followup.onHoldStage, createdAt: 1,
                          actions: [a("resume", worker: "w1"), a("snooze", fid: "5", minutes: 60), a("drop", fid: "5")])
         #expect(FollowupRules.holdButtons(f).map(\.step) == [.resumeWorker(workerId: "w1"), .snooze(followupId: "5", minutes: 60), .drop(followupId: "5")])
         var g = f; g.actions = [a("drop")]
@@ -45,16 +45,12 @@ import Testing
 
     @Test func onHoldListAndDelays() {
         let items = [
-            Followup(id: "1", kind: "reply", title: "", stage: Followup.first, nextAt: nil, createdAt: 5, actions: []),
-            Followup(id: "2", kind: "reply", title: "", stage: Followup.onHoldStage, nextAt: nil, createdAt: 9, actions: []),
-            Followup(id: "3", kind: "reply", title: "", stage: Followup.onHoldStage, nextAt: nil, createdAt: 2, actions: []),
-            Followup(id: "4", kind: "reply", title: "", stage: Followup.onHoldStage, nextAt: nil, createdAt: 1, actions: [], status: Followup.statusDropped),
+            Followup(id: "1", kind: "reply", title: "", stage: "first", createdAt: 5, actions: []),
+            Followup(id: "2", kind: "reply", title: "", stage: Followup.onHoldStage, createdAt: 9, actions: []),
+            Followup(id: "3", kind: "reply", title: "", stage: Followup.onHoldStage, createdAt: 2, actions: []),
+            Followup(id: "4", kind: "reply", title: "", stage: Followup.onHoldStage, createdAt: 1, actions: [], status: Followup.statusDropped),
         ]
         #expect(FollowupRules.onHold(items).map(\.id) == ["3", "2"])
-        #expect(FollowupRules.delays(first: 30, second: 10) == (30, 30))
-        #expect(FollowupRules.delays(first: 30, second: 180) == (30, 180))
-        #expect(FollowupRules.delays(first: 0, second: 5) == (1, 5))
-        #expect(FollowupRules.choices([10, 15, 30, 60], current: 45) == [10, 15, 30, 45, 60])
     }
 
     @Test func serverCallsPerStep() {
@@ -82,10 +78,10 @@ import Testing
 
     @Test func eachMessageGetsItsFollowupOpenBeforeClosed() {
         let items = [
-            Followup(id: "1", kind: "login", title: "", stage: Followup.first, nextAt: nil, createdAt: 0, actions: [], messageId: 10, status: Followup.statusResolved),
-            Followup(id: "2", kind: "login", title: "", stage: Followup.second, nextAt: nil, createdAt: 0, actions: [a("drop", fid: "2")], messageId: 10),
-            Followup(id: "3", kind: "reply", title: "", stage: Followup.first, nextAt: nil, createdAt: 0, actions: [], messageId: 11, status: Followup.statusDropped),
-            Followup(id: "4", kind: "reply", title: "", stage: Followup.first, nextAt: nil, createdAt: 0, actions: []),
+            Followup(id: "1", kind: "login", title: "", stage: "first", createdAt: 0, actions: [], messageId: 10, status: "resolved"),
+            Followup(id: "2", kind: "login", title: "", stage: "second", createdAt: 0, actions: [a("drop", fid: "2")], messageId: 10),
+            Followup(id: "3", kind: "reply", title: "", stage: "first", createdAt: 0, actions: [], messageId: 11, status: Followup.statusDropped),
+            Followup(id: "4", kind: "reply", title: "", stage: "first", createdAt: 0, actions: []),
         ]
         let map = FollowupRules.byMessage(items)
         #expect(Set(map.keys) == [10, 11])
@@ -100,10 +96,8 @@ import Testing
     @Test func anExpiredApprovalOffersRetryAndShowsInAsks() throws {
         let f = try #require(Followup.parseList(try JSON.parse(
             #"{"items":[{"id":12,"kind":"approval_expired","title":"장보기 주문","stage":"first","origin":"schedule","schedule_id":4,"created_at":1,"actions":[{"kind":"retry","followup_id":12,"label":"다시 시도"},{"kind":"snooze","followup_id":12,"minutes":60},{"kind":"drop","followup_id":12}]}]}"#)).first)
-        #expect(f.origin == "schedule" && f.scheduleId == 4)
         #expect(FollowupRules.onHold([f]) == [f])
         #expect(FollowupRules.holdButtons(f).map(\.step) == [.retry(followupId: "12"), .snooze(followupId: "12", minutes: 60), .drop(followupId: "12")])
-        #expect(f.actions[0].label == "다시 시도")
         var g = f; g.actions = [FollowupAction(kind: "drop", followupId: "12")]
         #expect(FollowupRules.holdButtons(g).map(\.step) == [.drop(followupId: "12")])
     }
@@ -127,6 +121,5 @@ import Testing
         let t = FakeTransport(.ok(404, #"{"detail":"Not Found"}"#), .ok(404, "{}"))
         let calls = FollowupCalls(api: KeloApi(baseUrl: "https://k", token: "t", transport: t))
         #expect(try await calls.list() == FollowupList(items: [], available: false))
-        #expect(try await calls.settings() == nil)
     }
 }

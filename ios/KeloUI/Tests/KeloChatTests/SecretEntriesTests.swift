@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 @testable import KeloChat
 
@@ -38,7 +39,7 @@ private func secretRows(_ items: [ChatItem]) -> [SecretRequest] {
 }
 
 struct SecretEntriesTests {
-    private let req = SecretRequest(id: "r1", kind: SecretRequest.kindKey, name: "k", messageId: 7)
+    private let req = SecretRequest(id: "r1", kind: "key", name: "k", messageId: 7)
 
     @Test func anEntryShownFromTheListJoinsTheRowsWhenAnswered() {
         let items: [ChatItem] = [.msg(.init(key: "m7", mine: false, text: "I need a key", id: 7))]
@@ -64,7 +65,7 @@ struct SecretEntriesTests {
         items = ChatReducer.endTurn(items)                      // the open entry stays: the server still waits for it
         #expect(!secretRows(items).isEmpty)
         // the PUT answer comes now: no reply runs here any more
-        let answer = SecretSaveAnswer(ok: true, reply: "live")
+        let answer = SecretSaveAnswer(reply: "live")
         var saved = login
         saved.state = SecretRequest.stateSaved
         items = ChatReducer.afterAnswer(items, saved, followsHere: SecretRules.followsHere(answer, busy: false))
@@ -229,8 +230,8 @@ struct SecretEntriesTests {
             }
         }
         let m = ChatModel(app: app, uploader: FakeUploader())
-        let r = SecretRequest(id: "r1", kind: SecretRequest.kindKey, name: "openweather")
-        m.secretSaved(r, answer: SecretSaveAnswer(ok: true, checked: true, turnId: "t9"), result: SecretResult(checked: "ok"))
+        let r = SecretRequest(id: "r1", kind: "key", name: "openweather")
+        m.secretSaved(r, answer: SecretSaveAnswer(checked: true, turnId: "t9"), result: SecretResult(checked: "ok"))
         #expect(m.busy)
         #expect(secretRows(m.items).first?.state == SecretRequest.stateSaved)   // folded while the reply runs
         await m.waitForTurn()
@@ -245,7 +246,7 @@ struct SecretEntriesTests {
         let (app, t) = secretApp { _, _, _ in (200, "[]") }
         let m = ChatModel(app: app, uploader: FakeUploader())
         let r = SecretRequest(id: "r2", kind: SecretRequest.kindLogin, name: "shop")
-        m.secretSaved(r, answer: SecretSaveAnswer(ok: true), result: SecretResult(mode: "after_success"))
+        m.secretSaved(r, answer: SecretSaveAnswer(), result: SecretResult())
         #expect(!m.busy)
         #expect(secretRows(m.rows).isEmpty)   // nothing here would clear it later, so it goes now
         #expect(!t.requests.contains { $0.url?.path.hasPrefix("/api/turns") == true })
@@ -254,7 +255,7 @@ struct SecretEntriesTests {
     @MainActor @Test func aGoneEntryFolds() {
         let (app, _) = secretApp { _, _, _ in (200, "[]") }
         let m = ChatModel(app: app, uploader: FakeUploader())
-        let r = SecretRequest(id: "r5", kind: SecretRequest.kindKey, name: "x")
+        let r = SecretRequest(id: "r5", kind: "key", name: "x")
         m.secretGone(r)
         #expect(secretRows(m.rows).isEmpty)   // no reply runs here
     }
@@ -269,7 +270,7 @@ struct SecretEntriesTests {
             }
         }
         let m = ChatModel(app: app, uploader: FakeUploader())
-        m.secretCancelled(SecretRequest(id: "r1", kind: SecretRequest.kindKey, name: "k"))
+        m.secretCancelled(SecretRequest(id: "r1", kind: "key", name: "k"))
         await waitFor { t.requests.contains { $0.url?.path.hasPrefix("/api/turns/t4") == true } && !m.busy }
         #expect(m.items.contains { $0.asMsg?.text == "OK, without it." })
     }

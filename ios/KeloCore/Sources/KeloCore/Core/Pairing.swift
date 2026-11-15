@@ -140,12 +140,10 @@ public struct Session: Equatable, Sendable, Codable {
 /// POST /api/pair answer.
 public struct PairResult: Decodable, Equatable, Sendable {
     public let token: String
-    public let deviceId: Int64?
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         token = j.str("token")
-        deviceId = j.optInt64("device_id")
     }
 }
 

@@ -29,8 +29,6 @@ public struct ApiError: Error, Equatable, Sendable, CustomStringConvertible {
     /// Worth trying again (a network failure, a server error, a timeout or a rate limit). Not a 507: storage is full (the cap, or the
     /// server's own disk, `"code": "disk_full"`), which trying again does not fix; its words say what to do.
     public var isTransient: Bool { isNetwork || (status >= 500 && status != ApiError.insufficientStorage) || status == 408 || status == 429 }
-    /// Storage is full: the cap, or the Kelo server's own disk (`detail` says which, in the user's language).
-    public var isStorageFull: Bool { status == ApiError.insufficientStorage }
     public static let insufficientStorage = 507
 
     public var description: String { "ApiError(\(status), \(detail))" }
@@ -44,8 +42,6 @@ public struct ApiError: Error, Equatable, Sendable, CustomStringConvertible {
                         code: json?["code"]?.stringValue ?? raw?["code"]?.stringValue)
     }
 
-    /// The server is locked (Keyguard: no master key in memory) and the call needed a secret: show the unlock prompt.
-    public var isLocked: Bool { status == 423 && code == "locked" }
     /// The server's KE2E key changed: pair again.
     public var isKeyChanged: Bool { code == KE2E.keyChangedCode }
 }

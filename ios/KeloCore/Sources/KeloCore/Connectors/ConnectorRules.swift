@@ -6,16 +6,9 @@ import Foundation
 /// A connector's badge by status; nil for a status this app does not know (nothing is shown).
 public enum Badge: String, CaseIterable, Sendable {
     case connected, disabled, comingSoon = "coming_soon", available, browser, autofill, unsupported
-    public var labelKey: String { "connector.status.\(rawValue)" }
 }
 
 public enum ConnectorRules {
-    /// `name description` containing the query (case ignored).
-    public static func filter(_ list: [Connector], query: String) -> [Connector] {
-        let q = query.lowercased()
-        return list.filter { "\($0.name) \($0.description)".lowercased().contains(q) || q.isEmpty }
-    }
-
     /// The shown connectors grouped by category, in the order each category first appears.
     public static func groups(_ shown: [Connector]) -> [(String, [Connector])] {
         var order: [String] = []
@@ -28,9 +21,6 @@ public enum ConnectorRules {
     }
 
     public static func badge(_ status: String) -> Badge? { Badge(rawValue: status) }
-
-    /// The connector with this id in a fresh list (the open detail follows reloads; gone means back to the list).
-    public static func find(_ list: [Connector], id: String?) -> Connector? { id.flatMap { i in list.first { $0.id == i } } }
 
     /// Seconds as m:ss.
     public static func mmss(_ seconds: Int64) -> String {
@@ -93,12 +83,6 @@ public struct ConnectorSection: Equatable, Sendable {
     public var items: [Connector]
 }
 
-/// How a connector is connected, in the app's words.
-public enum ConnectMethod: String, Sendable {
-    case code, signIn = "sign_in", mail, key, browser, autofill
-    public var labelKey: String { "connector.method.\(rawValue)" }
-}
-
 /// Why a connection needs doing again.
 public enum Reconnect: String, Sendable {
     /// The stored token is gone.
@@ -107,7 +91,6 @@ public enum Reconnect: String, Sendable {
     case refused
     /// The server itself says so.
     case server
-    public var textKey: String { "connector.reconnect.\(rawValue)" }
 }
 
 public enum ConnectorGroups {
@@ -133,7 +116,6 @@ public enum ConnectorGroups {
         return m
     }()
 
-    public static func known(_ id: String) -> Bool { map[id] != nil }
     public static func of(_ id: String) -> ConnectorGroup { map[id] ?? .other }
 }
 
@@ -213,18 +195,6 @@ public enum ConnectorList {
     /// How many services the full list holds beyond what the opening view shows.
     public static func hiddenCount(_ list: [Connector], creds: [VaultEntry] = []) -> Int {
         list.filter { !$0.featured && !pinned($0, creds: creds) }.count
-    }
-
-    public static func method(_ connect: String?) -> ConnectMethod? {
-        switch connect {
-        case "device": return .code
-        case "mcp": return .signIn
-        case "mail": return .mail
-        case "key": return .key
-        case "browser": return .browser
-        case "autofill": return .autofill
-        default: return nil
-        }
     }
 
     /// Who is connected, when the keychain item's label says (e.g. "GitHub · @someone" -> "@someone").

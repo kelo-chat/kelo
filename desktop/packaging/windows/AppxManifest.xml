@@ -8,6 +8,7 @@
     ${IDENTITY_NAME}            Package/Identity/Name                e.g. 12345YourName.Kelo
     ${PUBLISHER}                Package/Identity/Publisher           e.g. CN=1A2B3C4D-5E6F-7A8B-9C0D-112233445566
     ${PUBLISHER_DISPLAY_NAME}   Package/Properties/PublisherDisplayName
+    ${DISPLAY_NAME}             Package/Properties/DisplayName and the tile's name: a name reserved for the product (e.g. Kelo AI)
   ${VERSION} is four numbers with the last one 0 (the Store's rule), e.g. 1.0.0.0.
 
   runFullTrust: Kelo is a regular desktop program (a Java runtime and Kelo.exe from jpackage) packaged as it is.
@@ -24,7 +25,7 @@
   <Identity Name="${IDENTITY_NAME}" Publisher="${PUBLISHER}" Version="${VERSION}" ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>Kelo</DisplayName>
+    <DisplayName>${DISPLAY_NAME}</DisplayName>
     <PublisherDisplayName>${PUBLISHER_DISPLAY_NAME}</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <Description>Kelo, your own AI agent, on your Windows PC. Connects to your Kelo server.</Description>
@@ -35,32 +36,16 @@
   </Dependencies>
 
   <Resources>
+    <!-- The Store asks for a listing (text and screenshots) per language named here; the app itself carries all its languages and
+         follows Windows' language either way. Add a language here only together with its Store listing. -->
     <Resource Language="en-us" />
     <Resource Language="ko-kr" />
-    <Resource Language="ja-jp" />
-    <Resource Language="zh-cn" />
-    <Resource Language="zh-tw" />
-    <Resource Language="es-es" />
-    <Resource Language="fr-fr" />
-    <Resource Language="de-de" />
-    <Resource Language="pt-br" />
-    <Resource Language="it-it" />
-    <Resource Language="ru-ru" />
-    <Resource Language="id-id" />
-    <Resource Language="vi-vn" />
-    <Resource Language="th-th" />
-    <Resource Language="tr-tr" />
-    <Resource Language="ar-sa" />
-    <Resource Language="hi-in" />
-    <Resource Language="pl-pl" />
-    <Resource Language="nl-nl" />
-    <Resource Language="uk-ua" />
   </Resources>
 
   <Applications>
     <Application Id="Kelo" Executable="Kelo.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="Kelo"
+        DisplayName="${DISPLAY_NAME}"
         Description="Kelo, your own AI agent"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"

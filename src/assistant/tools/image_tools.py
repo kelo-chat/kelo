@@ -90,7 +90,7 @@ def process(data: bytes, crop_percent: int) -> tuple[bytes, str]:
         raise ValueError("not a readable JPG, PNG or WebP image") from e
 
 
-def image_tools(store: ImageStore, fetcher: Any = fetch, creds: Store | None = None) -> list[Tool]:
+def image_tools(store: ImageStore, fetcher: Any = fetch, creds: Store | None = None, keyring: Any = None) -> list[Tool]:
     async def save_product_image(args: dict[str, Any]) -> str:
         url = str(args.get("url", ""))
         try:
@@ -144,7 +144,8 @@ def image_tools(store: ImageStore, fetcher: Any = fetch, creds: Store | None = N
             if not re.fullmatch(r"\d{3,4}x\d{3,4}", size):
                 return "error: size looks like 1024x1024"
             url, auth = apply_secret(f"https://{cred['hosts'][0]}{path}", cred["placement"], cred["secret"])
-            reply = await fetcher("POST", url, allowed_hosts=cred["hosts"], headers={"Content-Type": "application/json", **auth},
+            from ..cred_keyring import via
+            reply = await via(cred, fetcher, keyring)("POST", url, allowed_hosts=cred["hosts"], headers={"Content-Type": "application/json", **auth},
                                   content=json.dumps({"model": str(args.get("model") or "gpt-image-1"), "prompt": prompt, "size": size, "n": 1}).encode(),
                                   timeout=180.0, max_body=MAX_BYTES)
             hint = record_http(creds, cred["name"], reply.status, "generate_image")

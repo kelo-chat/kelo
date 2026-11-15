@@ -31,8 +31,8 @@ public enum PushRules {
     /// The device token as lowercase hex (APNs wants it so in the request path; the server keeps it in that form).
     public static func hex(_ token: Data) -> String { token.map { String(format: "%02x", $0) }.joined() }
 
-    /// The app's `aps-environment`: "development" for an Xcode run (its provisioning profile says so), "production" for TestFlight
-    /// and the App Store (their builds carry no embedded profile). `provision` is the file embedded.mobileprovision, if any.
+    /// The APNs environment a provisioning profile grants ("development" | "production"; no profile = an App Store build = production).
+    /// Used only by Release builds (currentEnvironment below): a dead-code scan of Debug builds does not see it, keep it.
     public static func environment(provision: Data?) -> String {
         guard let provision else { return "production" }
         let text = String(decoding: provision, as: UTF8.self)
@@ -80,7 +80,6 @@ public enum PushRules {
 /// Sends this phone's APNs token to its own server and takes it back (POST / DELETE /api/push/register). One token per device: a
 /// newer one replaces the older on the server, so a token refresh is just another register call.
 @MainActor public final class PushRegistrar {
-    public static let shared = PushRegistrar()
     private static let registeredKey = "push.registered"
     weak var app: AppModel?
     private let prefs: Prefs

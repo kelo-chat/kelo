@@ -1,12 +1,11 @@
 import SwiftUI
-import KeloCore
 import KeloShared
 #if os(iOS)
 import UIKit
 import UniformTypeIdentifiers
 #endif
 
-/// The chat's text field (Android chat/ChatScreen.kt Composer). On the iPhone a text view of its own, so that a long-press Paste
+/// The chat's text field (Android chat/ChatComposer.kt Composer). On the iPhone a text view of its own, so that a long-press Paste
 /// of a picture on the clipboard (a screenshot, a photo copied in Photos) attaches it like one picked with "+" (`onImages`: the
 /// tray, the size limit, removable before sending). The system asks whether Kelo may paste, as for any paste. Text pastes as text.
 struct ComposerField: View {

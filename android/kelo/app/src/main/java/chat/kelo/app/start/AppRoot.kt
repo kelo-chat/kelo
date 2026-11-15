@@ -21,7 +21,7 @@ import chat.kelo.app.ui.components.PrimaryButton
 @Composable
 fun AppRoot(onSettled: () -> Unit = {}) {
     val container = LocalAppContainer.current
-    val vm: AppViewModel = viewModel { AppViewModel(container) }
+    val vm: AppStateViewModel = viewModel { AppStateViewModel(container.sessions) }
     val api by container.sessions.api.collectAsStateWithLifecycle()
     val profile by vm.profile.collectAsStateWithLifecycle()
     val settled = ProfileRules.settled(api != null, profile)

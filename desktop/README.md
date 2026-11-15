@@ -41,18 +41,20 @@ closed. Packaged as **MSI / EXE** (direct download) and **MSIX** (Microsoft Stor
 
 The Android app is the reference and is **not changed** by this project:
 
-- `build.gradle.kts` → `syncShared` copies the Android app's plain Kotlin files (API client, models, pairing, the chat reducer and
-  turn follower, Markdown parser, usage/work/goal rules, notification rules, and the Compose character and icons) from
-  `android/kelo/app/src/main/java` into `build/generated/shared` at every build, and `syncSharedTests` runs their Android unit
-  tests here too. The list is `sharedFiles` / `sharedTests` in `build.gradle.kts`.
+- The `shared/` module (package `chat.kelo.app`: API client, models, pairing, the chat reducer and turn follower, Markdown parser,
+  usage/work/goal rules, notification rules, and the Compose character and icons) is a composite build both apps include
+  (`settings.gradle.kts`: `includeBuild("../shared")`, `implementation("chat.kelo:shared")`). Its unit tests run once, in
+  `shared/` (`./gradlew desktopTest` there); `./gradlew test` here runs them first. A few Android tests of code that has a desktop
+  copy (COPIES.md) stay in `android/kelo` and are also run here (`androidTestsRunHere` in `build.gradle.kts`).
 - A few small pieces whose Android file also holds Android-only code are copied by hand under
-  `src/main/kotlin/chat/kelo/app/` (theme, motion, consent rules, the card-error enum, `PendingApproval`), each saying where it
+  `src/main/kotlin/chat/kelo/app/` (theme, motion, the rules of files that also hold UI), each saying where it
   comes from.
-- **Text**: `tools/sync_strings.py` reads `android/kelo/app/src/main/res/values*/strings*.xml` (with the Android tool
-  `android/tools/strings_res.py`, so aapt escapes are undone) plus the desktop-only lines in `strings/values*/strings_desktop.xml`,
-  and writes `src/main/resources/i18n/<code>.json` and `src/generated/kotlin/chat/kelo/app/R.kt`. Run it after changing any
-  strings (`python3 desktop/tools/sync_strings.py` or `./gradlew syncStrings`); the tests and the Windows workflow fail when the
-  files are out of step.
+- **Text**: all apps' text is `shared/strings/values*/strings*.xml` (Android format; the desktop-only lines are the
+  `strings_desktop*.xml` files). `shared/gradle/strings-to-compose.gradle.kts` converts it at build time into Compose resources
+  (`chat.kelo.app.res.Res`), so there is nothing to run after changing a string. Screens write `string(Res.string.x, args)`,
+  `plural(Res.plurals.x, n, n)`, `stringArray(Res.array.x)` (`chat.kelo.app.ui.text`; Android's `%d`/`%1$s` formatting); outside
+  composition (tray, notifications, coroutines) `loadString(Res.string.x, args)`. The app root sets the default locale and
+  `LocalTextLocale` to the language shown (`i18n/DesktopLocale.kt`). Check the strings with `python3 android/tools/strings_check.py`.
 
 ## Build and run (any OS, JDK 17)
 
@@ -77,6 +79,11 @@ folder (tests, screenshots).
 KELO_HOME=/tmp/kelo-shots ./gradlew run --args="--snapshot screens --pair 'https://host/#pair=CODE' --lang ko"
 ```
 
+- `--size 1920x1080` draws only the main pages (`02-chat`, `03-goals`, `04-work`, `05-connectors`, `06-my`) at that exact pixel size, and
+  `--open schedules,model,task:ID,tab:ID` adds screens a click away (`20-open-*`: My -> Model, a task's page, a browser tab live;
+  `schedules` just scrolls Work to "Coming up"). These make the Microsoft Store's screenshots (`store/screenshots/{en,ko}`, 1920x1080,
+  against a real server with real chat content; the app keeps a local copy of the chat, so delete `cache/*.messages.cache` in `KELO_HOME`
+  after clearing a test server's chat). `./gradlew renderStoreLogos` draws the Store's box art, app tile and poster art into `store/logos`.
 - `test1-*`: against a real Kelo server (a fresh test instance: no model chosen yet, so the chat shows "choose a model").
 - `mock-*`: against `tools/mock_server.py`, a pretend server with sample data and a scripted reply (streaming text, tool chips,
   an approval, answer buttons) — no model is ever called. `python3 tools/mock_server.py --e2e` and pair with the link it prints
@@ -149,15 +156,18 @@ pwsh packaging\windows\make_msix.ps1 -AppDir build\compose\binaries\main\app\Kel
    needs the user's own self-hosted Kelo server, with a short video).
 7. Submit. Later versions: raise the version (`1.0.1` → MSIX `1.0.1.0`), run the workflow, upload the new package.
 
+Automatic uploads (a draft submission, or `--commit` to send it to certification) from the maintainer's Mac: `store/msstore.py`, set up as
+described in [`store/MSSTORE.md`](store/MSSTORE.md) (Korean). The first submission must still be made by hand in Partner Center.
+
 ## Files
 
 - `build.gradle.kts` — build, shared-source sync, packaging (`compose.desktop.application.nativeDistributions`)
 - `src/main/kotlin/chat/kelo/desktop/` — `Main.kt` (window, tray, notifications, shortcuts), `Snapshots.kt`,
   `core/` (data folder, sealed store, settings, start at sign-in, single instance, notification polling, log),
   `chat/` (chat model, chat page, cards, Markdown, model chooser), `pages/` (Goals, Work, Connectors, My),
-  `ui/` (shell with rail and floating header, connect screen, components), `i18n/` (text and plural rules),
+  `ui/` (shell with rail and floating header, connect screen, components), `i18n/` (language -> locale),
   `tools/RenderIcons.kt`
 - `src/main/kotlin/chat/kelo/app/` — desktop copies of a few Android pieces (see above)
-- `strings/` — desktop-only text in 20 languages; `tools/sync_strings.py`; `tools/mock_server.py`
+- `tools/mock_server.py` — a pretend server (the desktop-only text is `../shared/strings/*/strings_desktop*.xml`)
 - `packaging/icons/` — icons drawn from the character; `packaging/windows/` — `AppxManifest.xml`, `make_msix.ps1`
 - `../.github/workflows/desktop-windows.yml` — Windows build

@@ -1,5 +1,8 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.chat.ModelChooser
+
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.collectAsState
@@ -14,12 +17,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.core.Profile
-import chat.kelo.desktop.chat.ModelChooser
 import chat.kelo.desktop.core.AppContainer
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.my.ModelPage
+import chat.kelo.app.my.ModelPage
 import chat.kelo.desktop.ui.KeloFrame
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonElement
@@ -45,7 +45,7 @@ class ModelPageTest {
     @get:Rule val compose = createComposeRule()
     @get:Rule val tmp = TemporaryFolder()
     private var mock: MockServer? = null
-    private val ko = Strings.of("ko")
+    private val ko = Words.of("ko")
     private val claude = "claude-subscription-directsdk-experimental"
 
     @After fun stop() { mock?.stop() }
@@ -70,40 +70,6 @@ class ModelPageTest {
         return app
     }
 
-    private fun signouts(app: AppContainer): List<String> = runBlocking {
-        app.sessions.requireApi().get<JsonObject>("/api/_mock/signouts")["items"]!!.jsonArray.map { it.jsonPrimitive.content }
-    }
-
-    @Test fun aSignedInServiceSignsOutFromTheModelPage() {
-        val app = setUp()
-        val ui = UiSteps(compose, parityShots())
-        compose.mainClock.autoAdvance = false
-        compose.setContent { KeloFrame(app) { Box(Modifier.size(1000.dp, 1500.dp)) { ModelPage(app, onBack = {}) } } }
-
-        ui.waitText(ko.get(R.string.model_signin_account, "me@example.com"))
-        ui.waitText(ko.get(R.string.model_signout))
-        ui.shot("parity-model-page-light")
-        app.settings.setTheme("dark")
-        ui.shot("parity-model-page-dark")
-        app.settings.setTheme("light")
-
-        // the fallback's sign-out box sits below the thinking level field, out of the window: its click action, not a touch
-        compose.onAllNodesWithText(ko.get(R.string.model_signout)).onLast().performSemanticsAction(SemanticsActions.OnClick)
-        ui.waitText(ko.get(R.string.model_signout_confirm, "Claude subscription"))
-        ui.shot("parity-model-signout-dialog-light")
-        app.settings.setTheme("dark")
-        ui.shot("parity-model-signout-dialog-dark")
-        app.settings.setTheme("light")
-        compose.onAllNodesWithText(ko.get(R.string.model_signout)).onLast().performClick()
-
-        ui.waitText(ko.get(R.string.model_signout_fallback_cleared))
-        assertEquals(listOf(claude), signouts(app))
-        ui.waitUntil("the profile reloaded") { app.profile.value?.fallbackProvider == "" }
-        // the account line is gone: the service is not signed in any more
-        ui.waitUntil("the account line gone") { !ui.has(ko.get(R.string.model_signin_account, "me@example.com")) }
-        ui.shot("parity-model-signed-out-light")
-    }
-
     @Test fun theChooserFoldsEverySectionIncludingTheCurrentOne() {
         val app = setUp()
         val ui = UiSteps(compose, parityShots())
@@ -113,17 +79,17 @@ class ModelPageTest {
                 val p by app.profile.collectAsState()
                 val providers = androidx.compose.runtime.remember { runBlocking { app.sessions.requireApi().get<List<chat.kelo.app.chat.ProviderInfo>>("/api/providers") } }
                 Box(Modifier.size(900.dp, 900.dp)) {
-                    ModelChooser(app.sessions, p ?: Profile(), providers, onProfile = app::setProfile, onEffort = {}, onSetup = {}, onClose = {})
+                    ModelChooser(p ?: Profile(), providers, null, onProfile = app::setProfile, onEffort = {}, onMore = {}, onClose = {})
                 }
             }
         }
         // folded at first (a model is chosen): the "모델" row with the model in use, no model rows
-        ui.waitText(ko.get(R.string.model_picker_model))
+        ui.waitText(ko.get(Res.string.model_picker_model))
         ui.waitText("GPT-5.5")
         assertFalse(ui.has("GPT-5.5 Mini"))
-        assertTrue("the thinking level under the folded list", ui.has(ko.get(R.string.chat_effort)))
+        assertTrue("the thinking level under the folded list", ui.has(ko.get(Res.string.chat_effort)))
         ui.shot("parity-model-chooser-folded-light")
-        compose.onAllNodesWithText(ko.get(R.string.model_picker_model)).onLast().performClick()
+        compose.onAllNodesWithText(ko.get(Res.string.model_picker_model)).onLast().performClick()
         ui.waitText("GPT-5.5 Mini")
         ui.settle()   // the list grows in: its headers can be clicked once they are in place
         // the current provider's section folds with its arrow too
@@ -133,7 +99,7 @@ class ModelPageTest {
         ui.waitText("GPT-5.5 Mini")
         ui.settle()   // the rows below move down while it grows: click them where they end up
         // another ready provider opens on a click
-        val claudeLabel = ko.get(R.string.consent_service_claude)
+        val claudeLabel = ko.get(Res.string.consent_service_claude)
         compose.onAllNodesWithText(claudeLabel).onLast().performClick()
         ui.waitText("Claude Opus 5.5")
         ui.settle()
@@ -144,7 +110,7 @@ class ModelPageTest {
 
     /** Where the "자세한 설정" row (below the list) sits right now: it moves with the list as the list grows or shrinks. */
     private fun moreTop(): Float =
-        compose.onAllNodesWithText(ko.get(R.string.chooser_more)).onLast().fetchSemanticsNode().boundsInRoot.top
+        compose.onAllNodesWithText(ko.get(Res.string.chooser_more)).onLast().fetchSemanticsNode().boundsInRoot.top
 
     /** [n] frames of the test clock, one at a time (a single long jump would start an animation and skip what it does). */
     private fun frames(n: Int) = repeat(n) { compose.mainClock.advanceTimeBy(16) }
@@ -156,7 +122,7 @@ class ModelPageTest {
                 val p by app.profile.collectAsState()
                 val providers = androidx.compose.runtime.remember { runBlocking { app.sessions.requireApi().get<List<chat.kelo.app.chat.ProviderInfo>>("/api/providers") } }
                 Box(Modifier.size(900.dp, 900.dp)) {
-                    ModelChooser(app.sessions, p ?: Profile(), providers, onProfile = app::setProfile, onEffort = {}, onSetup = {}, onClose = {})
+                    ModelChooser(p ?: Profile(), providers, null, onProfile = app::setProfile, onEffort = {}, onMore = {}, onClose = {})
                 }
             }
         }
@@ -167,12 +133,12 @@ class ModelPageTest {
         val app = setUp()
         val ui = UiSteps(compose, parityShots())
         showChooser(app)
-        ui.waitText(ko.get(R.string.model_picker_model))
+        ui.waitText(ko.get(Res.string.model_picker_model))
         ui.waitText("GPT-5.5")
-        compose.onAllNodesWithText(ko.get(R.string.model_picker_model)).onLast().performClick()
+        compose.onAllNodesWithText(ko.get(Res.string.model_picker_model)).onLast().performClick()
         ui.waitText("GPT-5.5 Mini")
         ui.settle(12)
-        val claudeLabel = ko.get(R.string.consent_service_claude)
+        val claudeLabel = ko.get(Res.string.consent_service_claude)
         val closed = moreTop()
 
         compose.onAllNodesWithText(claudeLabel).onLast().performClick()

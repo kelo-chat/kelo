@@ -60,7 +60,6 @@ private struct SecretSaveStep: View {
     let onSaved: (String, String) -> Void
     let onCard: () -> Void
     let onBack: () -> Void
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
     // memory only (@State, never @SceneStorage/@AppStorage): the value goes when the sheet goes
     @State private var original = ""
@@ -71,10 +70,12 @@ private struct SecretSaveStep: View {
     @State private var host = ""
     @State private var site = ""
     @State private var user = ""
-    @State private var form: KeyForm?
+    @State private var model = SecretSaveModel()
+    private var form: KeyForm? { model.form }
     @State private var others: [String: String] = [:]
-    @State private var err = ""
+    private var err: String { model.err }
     @State private var ready = false
+    @Environment(\.keloApi) private var api
 
     private var found: SecretFound { ask.found }
 
@@ -113,7 +114,7 @@ private struct SecretSaveStep: View {
                 FieldLabel(L(R.string.secret_for))
                 FlowLayout(spacing: 8, lineSpacing: 8) {
                     ForEach(uses, id: \.self) { u in
-                        ChoiceChip(L(useText(u)), selected: use == u) { use = u; err = "" }
+                        ChoiceChip(L(useText(u)), selected: use == u) { use = u; model.clearError() }
                     }
                 }
             }
@@ -141,9 +142,10 @@ private struct SecretSaveStep: View {
             host = SecretGuard.hostGuess(found.label)
         }
         .onDisappear { value = ""; original = "" }
+        .onChange(of: model.busy) { _, b in busy = b }
         .task(id: use) {
-            guard use == .connectorKey, form == nil, let api = app.api else { return }
-            form = try? await SecretSave.connectorForm(api, connector: found.target.id)
+            guard use == .connectorKey else { return }
+            await model.loadForm(connector: found.target.id, api: api)
         }
     }
 
@@ -190,33 +192,12 @@ private struct SecretSaveStep: View {
     }
 
     private func save() {
-        busy = true; err = ""
-        let v = value, chosen = use, connector = form, extra = others
-        let site = site, label = label, user = user, host = host, ref = name
-        let target = found.target.id
-        Task {
-            defer { busy = false }
-            do {
-                let api = try app.requireApi()
-                switch chosen {
-                case .aiKey: try await SecretSave.aiKey(api, provider: target, value: v)
-                case .connectorKey:
-                    guard let connector else { return }
-                    try await SecretSave.connectorKey(api, form: connector, value: v, others: extra)
-                case .login: try await SecretSave.login(api, site: site, label: label, username: user, password: v)
-                case .serviceKey: try await SecretSave.serviceKey(api, host: host, label: label, value: v)
-                case .card: return
-                }
-                value = ""
-                let shownName = ref.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? L(useText(chosen)) : ref
-                Haptics.success()
-                onSaved(original, L(R.string.secret_saved_ref, shownName))
-            } catch let e as ApiError {
-                // as Android: a network failure reads "Can't reach the server", never the transport's own text
-                err = e.isNetwork ? L(R.string.agent_offline) : (e.detail.isEmpty ? app.message(for: e) : e.detail)
-            } catch {
-                err = app.message(for: error)
-            }
+        let chosen = use, ref = name
+        model.save(use: chosen, target: found.target.id, value: value, others: others, site: site, label: label, user: user, host: host, api: api) {
+            value = ""
+            let shownName = ref.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? L(useText(chosen)) : ref
+            Haptics.success()
+            onSaved(original, L(R.string.secret_saved_ref, shownName))
         }
     }
 }

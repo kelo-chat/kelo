@@ -179,9 +179,11 @@ def grant_label(store: Store, item: str) -> str:
 class DeviceFlows:
     """Starts and follows device-flow connections. One background task per connection polls the service until the user has typed the code."""
 
-    def __init__(self, store: Store, *, post_form: PostForm = _post_form, get_json: GetJson = _get_json, env: dict[str, str] | None = None):
+    def __init__(self, store: Store, *, post_form: PostForm = _post_form, get_json: GetJson = _get_json, env: dict[str, str] | None = None,
+                 keyring: Any = None):
         self.store, self.post_form, self.get_json = store, post_form, get_json
         self.env = env if env is not None else {}
+        self.keyring = keyring
         self.flows: dict[str, Flow] = {}
 
     # ---- the client id: public, entered once in the app (or set for the whole copy in the environment)
@@ -316,6 +318,8 @@ class DeviceFlows:
             self.store.set_credential_secret(p.item, token)
         self.store.set_credential_result(p.item, None)
         self.store.add_vault_log(p.item, "saved", f"OAuth connection ({scope_id})")
+        from .cred_keyring import spawn_sync
+        spawn_sync(self.store, self.keyring)
         self.store.set_meta(f"oauth_scope.{provider}", scope_id)
         return account
 

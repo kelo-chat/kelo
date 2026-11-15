@@ -36,14 +36,20 @@ class Clock:
 
 class FakeMail:
     def __init__(self, items):
-        self.items, self.calls = items, 0
+        self.items, self.calls, self.asked, self.fail = items, 0, [], False
 
     def accounts(self):
         return [{"name": "mail-gmail", "provider": "gmail", "label": "Gmail · me@example.org", "address": "me@example.org"}]
 
-    async def list(self, account="", folder="INBOX", query="", limit=10, unread=False, skip_bulk=False):
+    async def arrivals(self, account, cursor, kind="inbox"):
+        """Whatever is in `items` counts as arrived since the last look (the real cursor logic is tested in test_mail_arrivals.py)."""
         self.calls += 1
-        return [dict(m) for m in self.items]
+        self.asked.append((account, cursor, kind))
+        if kind != "inbox":
+            return None
+        if self.fail:
+            raise OSError("server down")
+        return {"rows": [dict(m) for m in self.items], "cursor": {"t": self.calls}}
 
 
 def mails(*subjects):
@@ -145,8 +151,9 @@ async def test_daily_caps_two_regular_three_with_today_and_now_goes_out_at_once(
     mail = FakeMail(mails("m1", "m2", "m3", "m4", "m5"))
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
     r = await p.run()
-    assert r["sent"] == 2 and r["dropped"] == 3 and [s["urgency"] for s in sent] == ["보통", "보통"]
+    assert r["sent"] == 2 and r["dropped"] == 3 and [s["urgency"] for s in sent] == ["보통"]   # the two items are one message
     log = p.log()
+    assert [x["urgency"] for x in log if x["status"] == "sent"] == ["보통", "보통"]                 # limits count per item
     assert sum(x["status"] == "dropped" and "Over the number that can be sent today" in x["reason"] for x in log) == 3
     # an 오늘 item still fits (3 together), a second one does not
     mail.items = mails("m1", "m2", "m3", "m4", "m5") + [{"uid": "9", "from": "x", "subject": "오늘 답장", "date": "", "unread": True},
@@ -174,7 +181,7 @@ async def test_wording_alone_never_makes_it_urgent_and_unclear_levels_become_tod
                                  {"n": 2, "urgency": "매우 중요", "reason": "?", "message": "확인해 보세요."}])
     store, home, clock, p, sent = setup(tmp_path, judge, mail)
     await p.run()
-    assert [s["urgency"] for s in sent] == ["오늘", "오늘"]
+    assert [s["urgency"] for s in sent] == ["오늘"] and [x["urgency"] for x in p.log() if x["status"] == "sent"] == ["오늘", "오늘"]
     first = next(x for x in p.log() if "긴급" in x["title"])
     assert first["urgency"] == "오늘" and "no sign of a time soon" in first["reason"]
     rules = judge.requests[0].messages[0]["content"]
@@ -191,7 +198,7 @@ async def test_a_late_due_time_is_not_now_and_now_has_its_own_cap(tmp_path):
     store, home, clock, p, sent = setup(tmp_path, judge, mail)
     p.update(daily_now=1)
     await p.run()
-    by = {s["message"]: s["urgency"] for s in sent}
+    by = {x["message"]: x["urgency"] for x in p.log() if x["status"] == "sent"}   # the message is one, the log has every item
     assert by["30분 뒤"] == "지금" and by["6시간 뒤"] == "오늘" and by.get("또 30분 뒤") == "오늘"
 
 
@@ -251,7 +258,7 @@ async def test_goals_commitments_and_already_told_runs_are_candidates(tmp_path):
     assert by["memory"].due == ts(2026, 11, 7, 13, 0) and by["goal"].title == "자격증 시험" and by["goal"].day == "2026-11-09"
     assert by["schedule"].told
     await p.run()
-    assert {s["source"] for s in sent} == {"memory", "goal"}
+    assert {x["source"] for x in p.log() if x["status"] == "sent"} == {"memory", "goal"} and len(sent) == 1   # one message for both
     told = next(x for x in p.log() if x["source"] == "schedule")
     assert told["status"] == "dropped" and "already told you" in told["reason"]
     assert "[schedule]" not in judge.requests[0].messages[-1]["content"]
@@ -295,7 +302,7 @@ async def test_api_switch_log_and_delivery_as_a_chat_message_with_a_notification
         msgs = (await c.get("/api/messages")).json()
         assert msgs[-1]["role"] == "assistant" and msgs[-1]["content"].startswith("알림 1")
         note = (await c.get("/api/notifications")).json()["items"][0]
-        assert note["type"] == "proactive" and note["title"] == "켈로" and note["body"].startswith("알림 1") and note["task_id"]
+        assert note["type"] == "proactive" and note["title"] == "New mail · 보낸이 · 계약서 회신 요청" and note["body"].startswith("알림 1") and note["task_id"]
         task = (await c.get(f"/api/tasks/{note['task_id']}")).json()
         assert task["source"] == "proactive" and task["status"] == "done"
         log = (await c.get("/api/proactive/log")).json()["items"]
@@ -352,7 +359,8 @@ async def test_every_skip_leaves_one_record_with_a_code_and_a_time(tmp_path):
 async def test_unanswered_messages_stop_then_back_off_doubling_up_to_a_week(tmp_path):
     mail = FakeMail([])
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
-    p.update(wake_start="00:00", wake_end="00:00", every_minutes=30, daily_regular=10, daily_total=20)   # awake all day, caps aside
+    p.update(wake_start="00:00", wake_end="00:00", every_minutes=30, daily_regular=10, daily_total=20,   # awake all day, caps aside
+             change_alerts=False)                                  # (with change alerts on, a held pass still reads mail: test_proactive_mail.py)
     n = 0
 
     async def pass_with_new_mail():

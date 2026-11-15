@@ -9,16 +9,15 @@ import KeloShared
 
 @MainActor enum PinVault {
     /// Seals a typed PIN with this phone's key (after the owner's check) and saves it for `site`.
-    static func save(app: AppModel, site: String, label: String, secret: PinSecret, requestId: String?) async -> (PinSaved?, CardSendError?) {
+    static func save(api: KeloApi, site: String, label: String, secret: PinSecret, requestId: String?) async -> (PinSaved?, CardSendError?) {
         defer { secret.wipe() }
         let key: SymmetricKey
         do { key = try await WalletKey.key(reason: L(R.string.pin_auth_save_subtitle)) }
         catch WalletKey.Failure.noLock { return (nil, .noLock) }
         catch WalletKey.Failure.cancelled { return (nil, .cancelled) }
         catch { return (nil, .notOnPhone) }
-        guard let keyId = WalletKey.keyId, let blob = try? PinBlob.seal(secret, key: key, keyId: keyId) else { return (nil, .notOnPhone) }
+        guard let keyId = WalletKey.keyId(), let blob = try? PinBlob.seal(secret, key: key, keyId: keyId) else { return (nil, .notOnPhone) }
         do {
-            let api = try app.requireApi()
             return (try await PinCalls(api: api).save(site: site, label: label, digits: secret.length, e2e: blob, requestId: requestId), nil)
         } catch let e as ApiError {
             return (nil, CardSendError.fromStatus(e.status) ?? .other)
@@ -28,15 +27,14 @@ import KeloShared
     }
 
     /// The PIN `pinId` opened here (Face ID) and sent once to the payment's slot. A PIN saved on another phone says so.
-    static func release(app: AppModel, slotId: String, pinId: String) async -> CardSendError? {
-        guard let api = app.api else { return .other }
+    static func release(api: KeloApi, slotId: String, pinId: String) async -> CardSendError? {
         let calls = PinCalls(api: api)
         let pin: PaymentPin
         do {
             guard let p = try await calls.list().first(where: { $0.id == pinId }) else { return .notWaiting }
             pin = p
         } catch let e as ApiError { return CardSendError.fromStatus(e.status) ?? .other } catch { return .other }
-        return await PinRelease.run(pin: pin, keyId: WalletKey.keyId, blob: { try await calls.blob(pin.id) }, unlock: {
+        return await PinRelease.run(pin: pin, keyId: WalletKey.keyId(), blob: { try await calls.blob(pin.id) }, unlock: {
             do { return .key(try await WalletKey.key(reason: L(R.string.pin_auth_subtitle))) }
             catch WalletKey.Failure.noLock { return .noLock }
             catch WalletKey.Failure.cancelled { return .cancelled }
@@ -67,15 +65,18 @@ struct PinForm: View {
     var siteFixed = false
     var requestId: String? = nil
     let onSaved: (PinSaved) -> Void
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
+    @State private var model: PinFormModel
     // memory only: the PIN goes when the form goes
     @State private var whereTo = ""
     @State private var name = ""
     @State private var pin = ""
     @State private var again = ""
-    @State private var busy = false
-    @State private var problem: CardSendError?
+
+    init(api: KeloApi, site: String = "", siteFixed: Bool = false, requestId: String? = nil, onSaved: @escaping (PinSaved) -> Void) {
+        self.site = site; self.siteFixed = siteFixed; self.requestId = requestId; self.onSaved = onSaved
+        _model = State(initialValue: PinFormModel(api: api))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -97,8 +98,8 @@ struct PinForm: View {
                           keyboard: .number, maxLength: PinSecret.max)
                 .accessibilityIdentifier("kelo.pin.again")
             if PinRules.mismatch(pin: pin, again: again) { ErrorText(L(R.string.pin_form_mismatch), small: true) }
-            if let problem { ErrorText(pinErrorText(problem), small: true) }
-            PrimaryButton(L(busy ? R.string.vault_saving : R.string.save), enabled: !busy && PinRules.ready(pin: pin, again: again, site: whereTo)) {
+            if let problem = model.problem { ErrorText(pinErrorText(problem), small: true) }
+            PrimaryButton(L(model.busy ? R.string.vault_saving : R.string.save), enabled: !model.busy && PinRules.ready(pin: pin, again: again, site: whereTo)) {
                 save()
             }
             .accessibilityIdentifier("kelo.pin.save")
@@ -115,18 +116,9 @@ struct PinForm: View {
 
     private func save() {
         guard let secret = PinSecret.of(pin) else { return }
-        busy = true; problem = nil
-        Task {
-            let (saved, err) = await PinVault.save(app: app, site: whereTo, label: name, secret: secret, requestId: requestId)
-            busy = false
-            if let saved {
-                pin = ""; again = ""
-                Haptics.success()
-                onSaved(saved)
-            } else {
-                problem = err
-                Haptics.warning()
-            }
+        model.save(site: whereTo, label: name, secret: secret, requestId: requestId) { saved in
+            pin = ""; again = ""
+            onSaved(saved)
         }
     }
 }
@@ -134,43 +126,41 @@ struct PinForm: View {
 /// "결제 비밀번호" in the Keychain: the payment PINs saved for sites (name, site, how many digits; never the PIN), adding one, and
 /// deleting one. A PIN saved on another phone is marked: only that phone can release it.
 struct PaymentPinSection: View {
+    let api: KeloApi
     let locked: Bool
-    @Environment(AppModel.self) private var app
-    @State private var pins: [PaymentPin] = []
+    @State private var model: PaymentPinsModel
     @State private var adding = false
     @State private var deleting: PaymentPin?
-    @State private var reload = 0
+
+    init(api: KeloApi, locked: Bool) {
+        self.api = api; self.locked = locked
+        _model = State(initialValue: PaymentPinsModel(api: api))
+    }
 
     var body: some View {
         Group {
             SectionLabel(L(R.string.pin_section))
             MutedText(L(R.string.pin_section_help), small: true).padding(.horizontal, 16)
-            ForEach(pins, id: \.id) { p in
+            ForEach(model.pins, id: \.id) { p in
                 MenuRow(.lock, p.label.isEmpty ? p.site : p.label,
-                        value: PinBlob.ours(p, keyId: WalletKey.keyId) ? L(R.string.pin_row_value, p.site, p.digits)
+                        value: PinBlob.ours(p, keyId: WalletKey.keyId()) ? L(R.string.pin_row_value, p.site, p.digits)
                             : L(R.string.pin_row_other_phone, p.site)) { deleting = p }
                     .accessibilityIdentifier("kelo.pin.row.\(p.id)")
             }
             if adding {
-                MyCard { PinForm { _ in adding = false; reload += 1 } }
+                MyCard { PinForm(api: api) { _ in adding = false; model.reload() } }
                     .padding(.horizontal, 16)
             } else if !locked {
                 MenuRow(.plus, L(R.string.pin_add)) { adding = true }
                     .accessibilityIdentifier("kelo.pin.add")
             }
         }
-        .task(id: reload) {
-            guard let api = app.api, let list = try? await PinCalls(api: api).list() else { return }
-            pins = list
-        }
+        .task { await model.load() }
         .alert(deleting.map { $0.label.isEmpty ? $0.site : $0.label } ?? "", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button(L(R.string.pin_delete), role: .destructive) {
                 guard let p = deleting else { return }
                 deleting = nil
-                Task {
-                    if let api = app.api { try? await PinCalls(api: api).delete(p.id) }
-                    reload += 1
-                }
+                model.delete(p)
             }
             Button(L(R.string.cancel), role: .cancel) { deleting = nil }
         } message: {
@@ -184,12 +174,16 @@ public enum KeloWalletHook {
     @MainActor public static func make(app: AppModel) -> WalletHook {
         WalletHook(
             pinForm: { site, fixed, requestId, onSaved in
-                AnyView(PinForm(site: site, siteFixed: fixed, requestId: requestId) { saved in onSaved(saved.turnId) })
+                guard let api = app.api else { return AnyView(EmptyView()) }
+                return AnyView(PinForm(api: api, site: site, siteFixed: fixed, requestId: requestId) { saved in onSaved(saved.turnId) })
             },
-            cardForm: { onSaved in AnyView(InlineCardForm(onSaved: onSaved)) },
+            cardForm: { onSaved in
+                guard let api = app.api else { return AnyView(EmptyView()) }
+                return AnyView(InlineCardForm(api: api, onSaved: onSaved))
+            },
             releasePin: { [weak app] slotId, pinId in
-                guard let app else { return .other }
-                return await PinVault.release(app: app, slotId: slotId, pinId: pinId).map(WalletSendProblem.init)
+                guard let api = app?.api else { return .other }
+                return await PinVault.release(api: api, slotId: slotId, pinId: pinId).map(WalletSendProblem.init)
             })
     }
 }

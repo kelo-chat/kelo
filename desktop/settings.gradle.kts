@@ -14,3 +14,6 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "kelo-desktop"
+
+// the code Android and the desktop app share (see shared/build.gradle.kts)
+includeBuild("../shared")

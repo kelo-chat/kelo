@@ -9,6 +9,15 @@ case "${ROLE:-}" in
     # The browser's only way out (assistant/egress.py): forwards public addresses only, refuses the LAN, the host and metadata.
     exec python -m assistant.egress
     ;;
+  vpn)
+    # The owner's VPN or proxy (assistant/vpn_sidecar.py): WireGuard in user space (wireproxy) or a forwarder to the owner's proxy,
+    # as SOCKS5 on :1080 of the private network vpn-net. Idle until the server writes the configuration into /run/kelo-vpn.
+    exec python -m assistant.vpn_sidecar
+    ;;
+  keyring)
+    # The AI providers' keys (assistant/keyring_service.py, docs/keyring.md): locked until the server sends the ring key.
+    exec python -m assistant.keyring_service
+    ;;
   browser)
     umask 022   # downloads must stay readable by the server, which mounts the download folder read-only
     # A restarted container keeps /tmp: a lock left by the last Xvfb would stop the display (and the browser) from ever starting.
@@ -76,7 +85,7 @@ case "${ROLE:-}" in
       about:blank
     ;;
   *)
-    echo "ROLE must be 'server', 'browser' or 'egress' (got '${ROLE:-}')" >&2
+    echo "ROLE must be 'server', 'browser', 'egress', 'vpn' or 'keyring' (got '${ROLE:-}')" >&2
     exit 64
     ;;
 esac

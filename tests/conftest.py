@@ -91,3 +91,10 @@ def keyguard_on_for_auto_pay(request, monkeypatch):
         return
     from assistant.wallet import Wallet
     monkeypatch.setattr(Wallet, "keyguard_on", lambda self: True)
+
+
+@pytest.fixture(autouse=True)
+def _no_agy_spawn_gap(monkeypatch):
+    """agy starts wait SPAWN_GAP_SECONDS for each other in production (agy_pool.guard_token); tests start fake agy only."""
+    from assistant.providers import agy_pool
+    monkeypatch.setattr(agy_pool, "SPAWN_GAP_SECONDS", 0.0)

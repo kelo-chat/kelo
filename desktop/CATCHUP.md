@@ -17,7 +17,7 @@ Screenshots of the new screens: `CatchupShotsTest` writes `catchup-*.png` to `$K
 
 - [x] **Compile fix**: the shared `chat/ChatItems.kt` and `chat/TurnEvents.kt` use `agent.TaskGrantAsk`, which lived in the Android
       screen file `agent/TaskGrantCard.kt`. Its plain part (the model, `CardLimitLine`, `TaskGrantRules`) moved unchanged to the new
-      Android file `agent/TaskGrantModels.kt` (no Android imports), which is in `sharedFiles`. Same split for
+      Android file `agent/TaskGrantModels.kt` (no Android imports), which is in the `shared/` module. Same split for
       `agent/ScheduleGrants.kt` → `agent/ScheduleGrantModels.kt` (the desktop's hand copy `chat/kelo/app/agent/ScheduleGrant.kt` is
       gone). Android behaviour unchanged (a pure move).
 - [x] **MyPagesTest on Mondays**: the mock's journal is dated yesterday and Records opens on this week (Monday to Sunday); on a Monday
@@ -33,12 +33,12 @@ Screenshots of the new screens: `CatchupShotsTest` writes `catchup-*.png` to `$K
 
 ## Chat (priority 1)
 
-- [x] **Tool chips fold** — `chat/ChatScreen.kt` `ToolChip`/`FoldedToolChip`, `ChatReducer.foldTools` (shared). Calls of one kind in a
+- [x] **Tool chips fold** — `chat/ChatStatusRows.kt` `ToolChip`/`FoldedToolChip`, `ChatReducer.foldTools` (shared). Calls of one kind in a
       row are one chip that updates in place ("⏳ 메일 읽기 · 2/3", "✓ 메일 2개 읽음 · ✗ 1"); a click lists each call.
       Desktop: `chat/ChatCards.kt`, rows folded in `chat/ChatPane.kt`. Shot: `catchup-cards-*`.
 - [x] **One browser card per reply and tab** — reducer shared; the card says how many sites ("… · 7 sites", `chat_browser_step_sites`).
       Desktop: `BrowserCard` in `chat/ChatCards.kt`. Shot: `catchup-cards-*`.
-- [x] **Permission for many items** (`items` on approval_request) — `ApprovalItems` in `chat/ChatScreen.kt`, `agent/ApprovalParts.kt`.
+- [x] **Permission for many items** (`items` on approval_request) — `ApprovalItems` in `chat/ChatCards.kt`, `agent/ApprovalParts.kt`.
       "See the list (37)" opens the numbered list (scrolls, with a scrollbar on the desktop) in the chat card, the waiting-card list
       and the Work page. Shot: `catchup-chat-*-list`.
 - [x] **step_limit** — reducer (`TurnEvent.StepLimit` with `next`) shared; `chat_error_step_limit` shown as on the phone. Nothing

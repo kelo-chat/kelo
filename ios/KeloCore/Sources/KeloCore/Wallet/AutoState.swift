@@ -67,8 +67,6 @@ extension CardMask {
 
 /// The default card: the one the agent pays with unless the owner or the task names another (server wallet.py).
 public enum DefaultCardRules {
-    public static func defaultCard(_ cards: [WalletCard]) -> WalletCard? { cards.first(where: \.isDefault) }
-
     /// Deleting `card`: nil when nothing needs choosing (not the default, or at most one card left, which the server then makes the
     /// default); otherwise the cards the owner picks the new default from.
     public static func choicesOnDelete(_ card: WalletCard, _ cards: [WalletCard]) -> [WalletCard]? {
@@ -137,9 +135,4 @@ extension CardBrand {
 }
 
 extension CardBrief {
-    /// The line under the card's nickname on an approval card: brand and last 4 (nil when the nickname already is exactly that).
-    public var subtitle: String? {
-        let b = CardBrand.of(brand)
-        return CardMask.subtitle(label: label, brandWord: b.displayName ?? b.shortName, last4: last4)
-    }
 }

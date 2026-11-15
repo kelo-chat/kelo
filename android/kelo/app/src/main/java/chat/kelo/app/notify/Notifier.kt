@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -15,6 +16,7 @@ import androidx.core.content.ContextCompat
 import chat.kelo.app.MainActivity
 import chat.kelo.app.R
 import chat.kelo.app.agent.ServerNotification
+import chat.kelo.app.chat.ReplyLive
 
 /**
  * Kelo's phone notifications: the channels (made once, named in the app's language), and posting one that opens the right place in
@@ -78,7 +80,7 @@ class Notifier(private val context: Context) {
                     .setContentTitle(context.getString(R.string.app_name)).setContentText(title).build(),
             )
             .setContentIntent(openIntent(id, target, noteId))
-            .setGroup(NotifyRules.group(channel))
+            .setGroup(NotifyRules.GROUP)
             .apply {
                 actions.forEachIndexed { i, (label, to) ->
                     addAction(0, label, openIntent(NotifyRules.idFor("action$i", id.toString()), to, noteId))
@@ -87,47 +89,42 @@ class Notifier(private val context: Context) {
             .build()
         try {
             manager.notify(id, n)
-            postSummary(channel)
+            postSummary()
         } catch (e: SecurityException) {
             // the permission was taken away between the check and now
         }
     }
 
     /**
-     * The bundle of one channel: shown once two or more of its notifications are up, and tapping it opens that channel's list
-     * (활동, 권한, 결제 카드, 예약) instead of wherever the system's own mixed bundle would go.
+     * The one bundle: shown once two or more Kelo notifications are up; lists the newest titles (the lock screen keeps them private).
+     * Tapping it opens the chat. It never makes a sound of its own (GROUP_ALERT_CHILDREN).
      */
-    private fun postSummary(channel: Channel) {
+    private fun postSummary() {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
-        val key = NotifyRules.group(channel)
-        val summaryId = NotifyRules.summaryId(channel)
-        val count = runCatching { nm.activeNotifications.count { it.notification.group == key && it.id != summaryId } }.getOrDefault(0)
-        if (count < 2) { manager.cancel(summaryId); return }
-        val name = context.getString(channelName(channel))
-        val text = context.resources.getQuantityString(R.plurals.notify_group_count, count, count)
-        val n = NotificationCompat.Builder(context, channel.id)
+        val up = runCatching {
+            nm.activeNotifications.filter { it.notification.group == NotifyRules.GROUP && it.id != NotifyRules.SUMMARY_ID }
+                .sortedByDescending { it.postTime }
+        }.getOrDefault(emptyList())
+        if (up.size < 2) { manager.cancel(NotifyRules.SUMMARY_ID); return }
+        val text = context.resources.getQuantityString(R.plurals.notify_group_count, up.size, up.size)
+        val style = NotificationCompat.InboxStyle().setSummaryText(text)
+        up.take(NotifyRules.SUMMARY_LINES).forEach { sbn ->
+            sbn.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.let { style.addLine(it) }
+        }
+        val n = NotificationCompat.Builder(context, Channel.REPLIES.id)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(ACCENT)
-            .setContentTitle(name)
+            .setContentTitle(context.getString(R.string.app_name))
             .setContentText(text)
-            .setStyle(NotificationCompat.InboxStyle().setSummaryText(text))
-            .setGroup(key)
+            .setStyle(style)
+            .setGroup(NotifyRules.GROUP)
             .setGroupSummary(true)
             .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
             .setAutoCancel(true)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setContentIntent(openIntent(summaryId, NotifyRules.summaryTarget(channel), null))
+            .setContentIntent(openIntent(NotifyRules.SUMMARY_ID, NotifyRules.SUMMARY_TARGET, null))
             .build()
-        manager.notify(summaryId, n)
-    }
-
-    private fun channelName(channel: Channel): Int = when (channel) {
-        Channel.REPLIES -> R.string.notify_channel_replies
-        Channel.APPROVALS -> R.string.notify_channel_approvals
-        Channel.PAYMENTS -> R.string.notify_channel_payments
-        Channel.SCHEDULES -> R.string.notify_channel_schedules
-        Channel.URGENT -> R.string.notify_channel_urgent
-        Channel.WORKING -> R.string.notify_channel_working
+        manager.notify(NotifyRules.SUMMARY_ID, n)
     }
 
     /** A server notification (from the 15-minute check or a push), in the app's own words. */
@@ -159,28 +156,66 @@ class Notifier(private val context: Context) {
     private val OWN_TITLES = setOf(NoteTypes.WATCH_FIRED, NoteTypes.WATCH_DISABLED, NoteTypes.PROACTIVE, NoteTypes.BETA_REQUEST, NoteTypes.CLI_UPDATE, NoteTypes.SERVER_UPDATE,
         NoteTypes.STORAGE)
 
-    /** The quiet ongoing line while a reply is followed in the background (the foreground service's notification). */
-    fun working(): Notification {
+    /**
+     * The quiet ongoing line while a reply is followed in the background (the foreground service's notification): the step it is
+     * on as the title, the site as the text, the newest browser picture, and a Stop button. Without [live] data: the fixed words.
+     */
+    fun working(live: ReplyLive = ReplyLive()): Notification {
         ensureChannels()
-        return NotificationCompat.Builder(context, Channel.WORKING.id)
+        val bmp = NotifyPictures.bitmap(live.image)
+        val b = NotificationCompat.Builder(context, Channel.WORKING.id)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(ACCENT)
-            .setContentTitle(context.getString(R.string.notify_working_title))
-            .setContentText(context.getString(R.string.notify_working_body))
+            .setContentTitle(live.step.ifEmpty { context.getString(R.string.notify_working_title) })
+            .setContentText(if (live.site.isNotEmpty()) context.getString(R.string.notify_working_site, live.site) else context.getString(R.string.notify_working_body))
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)
-            .setProgress(0, 0, true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(openIntent(WORKING_ID, OpenTarget.Chat, null))
-            .build()
+            .addAction(
+                0, context.getString(R.string.notify_stop),
+                PendingIntent.getService(
+                    context, WORKING_ID, Intent(context, ReplyService::class.java).setAction(ReplyService.ACTION_STOP),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                ),
+            )
+        if (bmp != null) b.setLargeIcon(bmp).setStyle(NotificationCompat.BigPictureStyle().bigPicture(bmp).bigLargeIcon(null as Bitmap?))
+        else b.setProgress(0, 0, true)
+        return b.build()
+    }
+
+    /** A newer step or picture for the ongoing line (the same id as the service's notification). */
+    fun updateWorking(live: ReplyLive) {
+        if (!enabled()) return
+        try {
+            manager.notify(WORKING_ID, working(live))
+        } catch (e: SecurityException) {
+            // the permission was taken away between the check and now
+        }
     }
 
     fun cancel(id: Int) = manager.cancel(id)
 
     /** Takes down every notification the app has up (after the chat history was cleared: they name tasks that are gone). */
     fun cancelAll() = manager.cancelAll()
+
+    /**
+     * The app came to the front (any way: a tapped notification, the launcher, the recent apps): the notifications that only told
+     * something are taken down; the ones still waiting for an answer stay. The bundle is then redrawn (or removed).
+     */
+    fun clearNews() {
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        val up = runCatching { nm.activeNotifications.toList() }.getOrDefault(emptyList())
+        up.filter { it.id != NotifyRules.SUMMARY_ID && it.id != WORKING_ID }
+            .filter { sbn -> NotifyRules.channelOfId(sbn.notification.channelId)?.let(NotifyRules::isNews) == true }
+            .forEach { manager.cancel(it.tag, it.id) }
+        postSummary()
+    }
+
+    /** Redraws the bundle after one notification went away by itself (DeviceTasks posts outside [post]). */
+    fun refreshSummary() = postSummary()
 
     private fun openIntent(requestCode: Int, target: OpenTarget, noteId: Long?): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {

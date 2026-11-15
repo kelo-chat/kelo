@@ -34,6 +34,11 @@ from .types import TURN_NOTE
 log = logging.getLogger(__name__)
 
 IDLE_CLOSE_SECONDS = 20 * 60   # a session unused this long is closed (its agy process ends); the most recently used one stays
+# Kinds of call whose next call continues the same conversation (usage.kind_of_source names). Every other kind (memory upkeep, briefing,
+# reflection, follow-ups ... and an unknown one) is "one-off": it never takes a conversation session's place and its own session is
+# closed soon, since the next call rarely continues it.
+CONVERSATION_PURPOSES = frozenset({"chat", "worker", "schedule", "task", "checklist"})
+ONE_OFF_IDLE_SECONDS = 120
 # A live session keeps every tool result in full, while a fresh start shortens old ones (the plugin's whole prompt is at most 150,000
 # characters, old tool results 300 each). Past this much the session starts over from the server's own (compacted) conversation.
 SESSION_MAX_CHARS = 300_000
@@ -167,10 +172,69 @@ def tools_note(tools: list[dict[str, Any]] | None) -> dict[str, Any]:
 
 # ---------------------------------------------------------------- the plugin client, with a warm replacement worker
 
+# ---------------------------------------------------------------- the sign-in token, kept safe from two agy starts at once
+
+# 2026-11-11 22:30: two agy processes started 0.3 s apart (the warm at start-up and one more) and the sign-in token file was left
+# EMPTY (0 bytes): every session links the one real token file into its own home, and a start refreshes it in place, so two
+# starts writing it together can truncate it. Then nothing works until the owner signs in again. So: starts are one at a time,
+# with a short gap for the start's own token refresh, and a good token is kept as a private copy that puts it back if it is ever
+# found empty.
+SPAWN_GAP_SECONDS = 3.0
+TOKEN_MIN_BYTES = 11          # agy's own "is there a token" test: more than 10 bytes
+BACKUP_SUFFIX = ".kelo-keep"
+_spawn_lock = threading.Lock()
+
+
+def _token_path() -> Any:
+    from .vendor.antigravity.process import _TOKEN_FILENAMES, resolve_real_token_path
+    real = resolve_real_token_path()
+    if real is not None:
+        return real
+    from pathlib import Path   # an emptied token is not "existing" for the vendor's scan: look for the file itself
+    base = Path(os.getenv("ANTIGRAVITY_CONFIG_DIR", "").strip() or (Path.home() / ".gemini" / "antigravity-cli"))
+    return next((base / n for n in _TOKEN_FILENAMES if (base / n).is_file()), None)
+
+
+def guard_token() -> str:
+    """Keep a private copy of a good token; put it back when the token is found empty or missing its contents.
+    Returns "kept" / "restored" / "" (nothing to do). Never reads the token into logs."""
+    import shutil
+    try:
+        path = _token_path()
+        if path is None:
+            return ""
+        keep = path.with_name(path.name + BACKUP_SUFFIX)
+        size = path.stat().st_size if path.is_file() else 0
+        if size >= TOKEN_MIN_BYTES:
+            if not keep.is_file() or keep.read_bytes() != path.read_bytes():
+                tmp = keep.with_name(keep.name + ".tmp")
+                shutil.copyfile(path, tmp)
+                os.chmod(tmp, 0o600)
+                os.replace(tmp, keep)
+                return "kept"
+            return ""
+        if keep.is_file() and keep.stat().st_size >= TOKEN_MIN_BYTES:
+            tmp = path.with_name(path.name + ".kelo-restore")
+            shutil.copyfile(keep, tmp)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+            log.warning("agy: the sign-in token was found empty; put back the last good copy")
+            return "restored"
+    except OSError as e:
+        log.warning("agy: could not check the sign-in token (%s)", type(e).__name__)
+    return ""
+
+
 def client_class() -> type:
     """The vendored AntigravityClient (left unmodified) with two additions: it counts its process starts, and when its worker ends
     while the client is still in use it starts the replacement at once (agy needs ~5 s before it can take a message)."""
     from .vendor.antigravity.client import AntigravityClient
+
+    def kelo_alive_now(c: Any, model: str, effort: str | None) -> bool:
+        try:
+            return bool(c.kelo_alive(model, effort))
+        except Exception:  # noqa: BLE001
+            return False
 
     class KeloAgyClient(AntigravityClient):
         def __init__(self, *args: Any, **kwargs: Any):
@@ -182,6 +246,7 @@ def client_class() -> type:
             self.kelo_req: list[dict[str, Any]] | None = None    # the last request this session answered, as the server sent it
             self.kelo_sent: list[dict[str, Any]] | None = None   # the same, as handed to the plugin (what the session has seen)
             self.kelo_tools: str | None = None                  # tools_key of the tools the session was told about
+            self.kelo_purpose = ""                              # what the call that made or last used it was for (CONVERSATION_PURPOSES)
             self.kelo_said = ""                                 # the text the session wrote in its current turn
             self._kelo_spawning = False
 
@@ -190,7 +255,15 @@ def client_class() -> type:
                 before = self._worker_proc
                 self._kelo_spawning = True
                 try:
-                    proc = super()._get_or_spawn_worker(model, effort)
+                    if kelo_alive_now(self, model, effort):
+                        proc = super()._get_or_spawn_worker(model, effort)   # the live worker: no new start
+                    else:
+                        with _spawn_lock:   # one agy start at a time (see guard_token)
+                            guard_token()
+                            proc = super()._get_or_spawn_worker(model, effort)
+                            if proc is not before:
+                                time.sleep(SPAWN_GAP_SECONDS)   # its own token refresh happens now; the next start waits
+                            guard_token()
                 finally:
                     self._kelo_spawning = False
                 if proc is not before:
@@ -219,11 +292,13 @@ class Lease:
     """One model call's hold on a session: `messages` is what to hand the client; `release` records how it went."""
 
     def __init__(self, pool: AgyPool, client: Any, request: list[dict[str, Any]], messages: list[dict[str, Any]], tools: str,
-                 mode: str, reserved: bool, transient: bool = False):
+                 mode: str, reserved: bool, transient: bool = False, reason: str = "", purpose: str = ""):
         self.pool, self.client, self.request, self.messages, self.tools = pool, client, request, messages, tools
         self.mode = mode            # "round" (same turn goes on), "turn" (next turn goes on), "new" (session starts over)
         self.reserved = reserved    # False: every session was busy; the plugin answers with a one-off process
         self.transient = transient  # a client made for this one call (the pool was full): closed when it ends
+        self.reason = reason        # why a "new" session was needed (for the log)
+        self.purpose = purpose
         self._done = False
 
     def release(self, ok: bool, text: str = "") -> None:
@@ -252,59 +327,95 @@ class AgyPool:
         return list(self._clients)
 
     def lease(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None, model: str | None = None,
-              effort: str | None = None) -> Lease:
+              effort: str | None = None, purpose: str = "") -> Lease:
         if self.closed:
             raise RuntimeError("agy sessions are closed")
         key, tkey = rules_key(messages), tools_key(tools)
+        conversation = purpose in CONVERSATION_PURPOSES
         drop: list[Any] = []
         with self._lock:
             now = self._clock()
-            newest = max(self._clients, key=lambda c: c.kelo_used, default=None)
+            newest = max((c for c in self._clients if _is_conversation(c)), key=lambda c: c.kelo_used, default=None)
             for c in list(self._clients):   # sessions nobody used for a while: their agy process ends
-                if c.is_closed or (c is not newest and not c.kelo_busy and now - c.kelo_used > self._idle_close):
+                if c.is_closed:
+                    stale = True
+                elif c.kelo_busy:
+                    stale = False
+                elif not _is_conversation(c):
+                    stale = now - c.kelo_used > ONE_OFF_IDLE_SECONDS
+                else:
+                    stale = c is not newest and now - c.kelo_used > self._idle_close
+                if stale:
                     self._clients.remove(c)
                     drop.append(c)
             mine = [c for c in self._clients if c.kelo_key == key]
             free = sorted((c for c in mine if not c.kelo_busy), key=lambda c: -c.kelo_used)
-            pick, plan = None, None
+            pick, plan, reason = None, None, "no session for this prompt"
             for c in free:
-                if c.kelo_alive(model, effort) and (plan := continuation(c.kelo_req, c.kelo_sent, messages, c.kelo_said)) is not None:
-                    if session_chars(plan[0]) > SESSION_MAX_CHARS:
-                        plan = None   # grown too long: this one starts over below
-                        continue
-                    pick = c
+                if not c.kelo_alive(model, effort):
+                    why = "worker not alive"
+                elif (got := continuation(c.kelo_req, c.kelo_sent, messages, c.kelo_said)) is None:
+                    why = "conversation changed"
+                elif session_chars(got[0]) > SESSION_MAX_CHARS:
+                    why = "session too long"   # grown too long: this one starts over below
+                else:
+                    pick, plan = c, got
                     break
-            if pick is None:
-                plan = None
+                if reason == "no session for this prompt":
+                    reason = why
             if pick is None and free:
                 pick = free[0]   # its workspace already holds this prompt's GEMINI.md
             if pick is None:
                 if len(self._clients) >= self._max:
                     idle = [c for c in self._clients if not c.kelo_busy]
-                    if idle:
-                        victim = min(idle, key=lambda c: c.kelo_used)
+                    one_off = [c for c in idle if not _is_conversation(c)]
+                    pool_ = one_off or (idle if conversation else [])   # a one-off call never takes a conversation's place
+                    if pool_:
+                        victim = min(pool_, key=lambda c: c.kelo_used)
                         self._clients.remove(victim)
                         drop.append(victim)
                 if len(self._clients) < self._max:
                     pick = self._factory()
                     pick.kelo_key = key
+                    pick.kelo_purpose = purpose
                     self._clients.append(pick)
+            elif conversation:
+                pick.kelo_purpose = purpose
             if pick is None and mine:   # every session is answering something: the plugin's one-off process in one of this prompt
-                lease = Lease(self, mine[0], messages, messages, tkey, "new", reserved=False)
+                lease = Lease(self, mine[0], messages, messages, tkey, "new", reserved=False,
+                              reason="all sessions busy (one-off process)", purpose=purpose)
             elif pick is None:   # never in another prompt's client: its GEMINI.md would be rewritten under a running reply
-                lease = Lease(self, self._factory(), messages, messages, tkey, "new", reserved=False, transient=True)
+                lease = Lease(self, self._factory(), messages, messages, tkey, "new", reserved=False, transient=True, purpose=purpose,
+                              reason=("pool full, one-off kept off the chat session (transient)" if not conversation
+                                      else "all sessions busy (one-off process)"))
             else:
                 pick.kelo_busy, pick.kelo_used = True, now
                 if plan is None:
-                    lease = Lease(self, pick, messages, messages, tkey, "new", reserved=True)
+                    lease = Lease(self, pick, messages, messages, tkey, "new", reserved=True, reason=reason, purpose=purpose)
                 else:
                     sent, new_turn = plan
                     if pick.kelo_tools != tkey:   # the tool list changed since the session was told: tell it before the new messages
                         sent = [*sent[:len(pick.kelo_sent)], tools_note(tools), *sent[len(pick.kelo_sent):]]
-                    lease = Lease(self, pick, messages, sent, tkey, "turn" if new_turn else "round", reserved=True)
+                    lease = Lease(self, pick, messages, sent, tkey, "turn" if new_turn else "round", reserved=True, purpose=purpose)
+        log.info("agy session %s: %s", purpose or "unknown", lease.mode if lease.mode != "new" else f"new ({lease.reason})")
         for c in drop:
             _close_soon(c)
         return lease
+
+    def warm(self, messages: list[dict[str, Any]], model: str | None = None, effort: str | None = None) -> bool:
+        """Start the chat's agy process for this system prompt without sending the model anything (no tokens): the workspace rules
+        are written the way a call writes them and the worker is spawned, so the first real chat call finds it up and only pays for
+        its own prompt. True when a live worker for this prompt is there afterwards. Blocking (the spawn takes a moment)."""
+        lease = self.lease(messages, None, model, effort, purpose="chat")
+        try:
+            if not lease.reserved or lease.transient:
+                return False   # every session is busy: warming is never worth a one-off process
+            c = lease.client
+            c._sync_workspace_rules(messages)
+            c._get_or_spawn_worker(*c._resolve_model_and_effort(model, effort))
+            return bool(c.kelo_alive(model, effort))
+        finally:
+            lease.release(False)   # nothing was said: the session carries no conversation state, the next call starts it as "new"
 
     def _release(self, lease: Lease, ok: bool, text: str) -> None:
         c = lease.client
@@ -334,6 +445,10 @@ class AgyPool:
                 c.close()
             except Exception:  # noqa: BLE001
                 pass
+
+
+def _is_conversation(client: Any) -> bool:
+    return getattr(client, "kelo_purpose", "") in CONVERSATION_PURPOSES
 
 
 def _close_soon(client: Any) -> None:

@@ -11,8 +11,6 @@ public struct SkillDiffLine: Codable, Equatable, Hashable, Sendable {
     public var op: String
     public var text: String
 
-    public init(op: String = "same", text: String = "") { self.op = op; self.text = text }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         op = j.str("op", "same"); text = j.str("text")
@@ -116,8 +114,6 @@ public struct SkillProposal: Codable, Equatable, Hashable, Sendable, Identifiabl
 public struct SkillDrafting: Codable, Equatable, Hashable, Sendable {
     public var taskId: Int64?
     public var workerId: String?
-
-    public init(taskId: Int64? = nil, workerId: String? = nil) { self.taskId = taskId; self.workerId = workerId }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)

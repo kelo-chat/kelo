@@ -38,6 +38,7 @@ def goals_of_turn(ctx: Any, source: str, text: str) -> set[int]:
     S = _server()   # read at each call (tests tune some of these on assistant.server)
     GOAL_MARK = S.GOAL_MARK
     HANDOFF_MARK = S.HANDOFF_MARK
+    RECHECK_MARK = S.RECHECK_MARK
     SCHEDULE_MARK = S.SCHEDULE_MARK
     WATCH_MARK = S.WATCH_MARK
     re = S.re
@@ -45,7 +46,7 @@ def goals_of_turn(ctx: Any, source: str, text: str) -> set[int]:
     if text.startswith(GOAL_MARK):
         m = re.search(r"#(\d+)", text)
         return {int(m.group(1))} if m else set()
-    if source in ("chat", "api") and not text.startswith((HANDOFF_MARK, WATCH_MARK, SCHEDULE_MARK)):
+    if source in ("chat", "api") and not text.startswith((HANDOFF_MARK, WATCH_MARK, SCHEDULE_MARK, RECHECK_MARK)):
         return goal_book.answering()
     return set()
 

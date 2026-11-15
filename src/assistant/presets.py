@@ -35,6 +35,13 @@ class KeyPreset:
     mint: str = ""                            # "zoom" / "google": the secret is exchanged for short tokens at each use
     store_host: bool = False                  # Shopify: the host is the user's own store
     endpoint: str = ""                         # an MCP address on one of `hosts` the key also opens (installed key packages)
+    # ---- apps on the owner's own network (selfhosted.py): the address is typed in the app's form and kept with the connection
+    local: bool = False                        # fields has an "address" (or `endpoint_field`); `verify` and `endpoint` are paths on it
+    device: bool = False                       # controls devices: a request in the user's own chat needs no approval card (connect_tools)
+    login: str = ""                            # pihole / beszel / freshrss / wallabag: user name + password are traded for a session token
+    endpoint_field: str = ""                   # n8n: the field that holds the full MCP URL (the address is taken from it)
+    sends: bool = False                        # posts to people (a messenger): a change through it is a "send" for the owner's limits (effects.py)
+    route: str = ""                            # "wireguard" / "proxy": the VPN connectors (vpn.py): they set the route of Kelo's web browsing
 
 
 TOKEN = (Field("token", N_("API key / token")),)
@@ -55,10 +62,21 @@ KEYS: dict[str, KeyPreset] = {p.id: p for p in [
               verify="https://api.calendly.com/users/me"),
     KeyPreset("slack", "Slack", "slack-api", ("slack.com",), {"type": "bearer_header"},
               (N_("Make an app at api.slack.com/apps → Create New App → From scratch."),
-               N_("Under OAuth & Permissions, add search:read, channels:history, channels:read, groups:history, im:history, users:read, chat:write to User Token Scopes."),
-               N_("Press Install to Workspace and paste the User OAuth Token it shows (it starts with xoxp-).")),
-              N_("Finds and reads messages, and sends them when you allow it."), "Web API at https://slack.com/api/<method> (docs: api.slack.com/methods).",
-              verify="https://slack.com/api/auth.test", verify_json_ok=True),
+               N_("Under Socket Mode, turn it on and make an app-level token with the scope connections:write (it starts with xapp-)."),
+               N_("Under OAuth & Permissions, add search:read, channels:history, channels:read, groups:history, im:history, users:read, chat:write to User Token Scopes, "
+                  "and chat:write, im:history, channels:history, groups:history, channels:read, groups:read, reactions:write, files:read to Bot Token Scopes."),
+               N_("Under Event Subscriptions, turn it on and subscribe to the bot events message.im, message.channels, message.groups and member_joined_channel. "
+                  "Turn on Interactivity & Shortcuts, and under App Home allow messages in the Messages tab."),
+               N_("Press Install to Workspace and paste the three tokens here: the User OAuth Token (xoxp-), the Bot User OAuth Token (xoxb-) and the app-level token (xapp-).")),
+              N_("Finds and reads messages, sends them when you allow it, and lets you talk to Kelo from Slack."),
+              "Web API at https://slack.com/api/<method> (docs: api.slack.com/methods); calls through this connector act as the owner (their user token). "
+              "Kelo's own Slack chat with the owner (its bot) is run by the server itself (never open Socket Mode or post as the bot yourself). After the "
+              "tokens are saved the server posts a code (10 minutes); the owner sends it to the bot in a direct message, and from then on only that Slack "
+              "account talks to Kelo there. In channels the owner invited the bot to, it answers only when mentioned or replied to in its thread, with no "
+              "access to the owner's private things. Check the chat with the messenger tool (status), new_code for a fresh code.",
+              fields=(Field("token", N_("User OAuth Token (xoxp-…)")), Field("bot", N_("Bot User OAuth Token (xoxb-…)")),
+                      Field("app", N_("App-level token (xapp-…)"))),
+              verify="https://slack.com/api/auth.test", verify_json_ok=True, mint="slack", sends=True),
     KeyPreset("ticketmaster", "Ticketmaster", "ticketmaster-api", ("app.ticketmaster.com",), {"type": "query_param", "param": "apikey"},
               (N_("Make an app at developer.ticketmaster.com → My Apps and paste its Consumer Key."),),
               N_("Finds concert and game dates and tickets."), "Discovery API at https://app.ticketmaster.com/discovery/v2 (docs: developer.ticketmaster.com).",
@@ -79,6 +97,30 @@ KEYS: dict[str, KeyPreset] = {p.id: p for p in [
               N_("Sets up and changes meetings, and sees recordings."), "REST API at https://api.zoom.us/v2 (docs: developers.zoom.us).",
               fields=(Field("account_id", "Account ID", secret=False), Field("client_id", "Client ID", secret=False), Field("client_secret", "Client secret")),
               verify="https://api.zoom.us/v2/users/me", mint="zoom"),
+    KeyPreset("telegram", "Telegram", "telegram-bot", ("api.telegram.org",), {"type": "url_path_segment"},
+              (N_("In Telegram, open @BotFather and send /newbot; pick a name and a user name ending in 'bot'."),
+               N_("Copy the token it gives you (it looks like 123456:ABC-...) and paste it here.")),
+              N_("Talk to Kelo from your Telegram, with answer buttons for its questions."),
+              "Bot API at https://api.telegram.org/bot{secret}/<method> (docs: core.telegram.org/bots/api). "
+              "This is Kelo's own Telegram chat with the owner, run by the server itself (never call getUpdates). After the token is "
+              "saved the server posts a link and a code (10 minutes); the owner opens the link or sends the code to the bot, and from "
+              "then on only that account talks to Kelo, in a private chat with the bot; in groups the owner added it to, it answers "
+              "only when mentioned or replied to, with no access to the owner's private things (it reads the rest of the group's talk as "
+              "context only when the owner made the bot a group admin or turned Group Privacy off in BotFather); messages arrive "
+              "within seconds. The token alone does not finish it: check with the messenger tool (status), new_code for a fresh code.",
+              fields=(Field("token", N_("Bot token")),), verify="https://api.telegram.org/bot{secret}/getMe", sends=True),
+    KeyPreset("discord", "Discord", "discord-bot", ("discord.com",), {"type": "custom_header", "header": "Authorization", "prefix": "Bot "},
+              (N_("Open discord.com/developers/applications → New Application → Bot → Reset Token, and copy the token."),
+               N_("On the same Bot page, turn ON \"Message Content Intent\"."),
+               N_("Open OAuth2 → URL Generator: tick the scope bot and the permissions Send Messages, Read Message History and Add Reactions, "
+                  "open the URL it makes and add the bot to a server you own (a private one just for you is fine). Then paste the token here.")),
+              N_("Talk to Kelo from Discord, with answer buttons for its questions."),
+              "Bot API at https://discord.com/api/v10 (docs: discord.com/developers/docs). This is Kelo's own Discord chat with the owner, "
+              "run by the server itself (never open the gateway). After the token is saved the server posts a code (10 minutes); the owner "
+              "sends the code to the bot in a direct message, and from then on only that account talks to Kelo there. In servers the owner "
+              "owns and added the bot to, it answers only when mentioned or replied to, with no access to the owner's private things. The "
+              "token alone does not finish it: check with the messenger tool (status), new_code for a fresh code.",
+              fields=(Field("token", N_("Bot token")),), verify="https://discord.com/api/v10/users/@me", sends=True),
     # Wise's MCP sign-in accepts only client domains it trusts (it refused this app after the login), so it is a personal token here.
     KeyPreset("wise", "Wise", "wise-api", ("api.wise.com",), {"type": "bearer_header"},
               (N_("In Wise, open Settings → Integrations and tools → API tokens."),
@@ -119,7 +161,34 @@ KEYS: dict[str, KeyPreset] = {p.id: p for p in [
               (N_("In ClickUp, open your avatar → Settings → Apps."), N_("Press Generate under API Token and paste the token (it starts with pk_) here.")),
               N_("Finds and makes tasks, docs and projects."), "REST API at https://api.clickup.com/api/v2 (docs: developer.clickup.com).",
               verify="https://api.clickup.com/api/v2/user"),
+    # ---- Kelo's web browsing through the owner's VPN or proxy (vpn.py). Not an API: the connection sets the route of the agent's browser and of
+    # web_fetch / web_search. At most one is on; connecting one turns the other off. The vault items are the ones vpn.py names (WG_ITEM, PROXY_ITEM).
+    KeyPreset("vpn_wireguard", "VPN (WireGuard)", "vpn-wireguard", (), {"type": "none"},
+              (N_("Get a WireGuard configuration file from your VPN provider (Mullvad, Proton VPN, IVPN and others offer one; or use your own server)."),
+               N_("Open the file in a text editor, copy everything in it and paste it here."),
+               N_("Only Kelo's web browsing goes through the VPN. AI model calls, your other connections, mail and your phone connection stay direct."),
+               N_("After a switch, sites that tie a session to the address may ask you to sign in again or show a check. Cookies and sign-ins are kept.")),
+              N_("Kelo's browser and its web reads go out through your VPN. If the VPN is down, browsing stops; it never goes around it."),
+              "Not an API. This connection only sets the route of Kelo's own web browsing (its browser and web_fetch / web_search); there is nothing to call "
+              "and nothing to use it for. If browsing fails with 'The VPN is not connected right now', tell the user.",
+              fields=(Field("config", N_("WireGuard configuration (paste the whole file)")),), route="wireguard"),
+    KeyPreset("vpn_proxy", "Proxy", "vpn-proxy", (), {"type": "none"},
+              (N_("Enter the address of a SOCKS5 or HTTP proxy outside your home network, like socks5://host:1080."),
+               N_("If the proxy needs a user name and password, enter them too."),
+               N_("Only Kelo's web browsing goes through the proxy. AI model calls, your other connections, mail and your phone connection stay direct."),
+               N_("After a switch, sites that tie a session to the address may ask you to sign in again or show a check. Cookies and sign-ins are kept.")),
+              N_("Kelo's browser and its web reads go out through your proxy. If the proxy is down, browsing stops; it never goes around it."),
+              "Not an API. This connection only sets the route of Kelo's own web browsing (its browser and web_fetch / web_search); there is nothing to call "
+              "and nothing to use it for. If browsing fails with 'The VPN is not connected right now', tell the user.",
+              fields=(Field("address", N_("Proxy address"), secret=False, placeholder="socks5://host:1080"),
+                      Field("user", N_("User name (if it needs one)"), secret=False), Field("password", N_("Password (if it needs one)"))), route="proxy"),
 ]}
+
+from .selfhosted import SELF_HOSTED  # noqa: E402  (needs Field and KeyPreset above)
+
+KEYS.update({p.id: p for p in SELF_HOSTED})
+SELF_HOSTED_IDS = frozenset(p.id for p in SELF_HOSTED)
+NETWORK_IDS = frozenset(p.id for p in KEYS.values() if p.route)   # shown under the category "Network"
 
 GOOGLE_HOSTS = ("www.googleapis.com", "sheets.googleapis.com", "docs.googleapis.com", "slides.googleapis.com", "forms.googleapis.com")
 GOOGLE_SCOPES = ("https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/documents",
@@ -169,8 +238,8 @@ def secret_fields(p: KeyPreset) -> list[str]:
 
 
 def public(p: KeyPreset) -> dict[str, Any]:
-    return {"id": p.id, "name": p.name, "item": p.item, "help": [t(h) for h in p.help], "checked": bool(p.verify) or bool(p.mint),
+    return {"id": p.id, "name": p.name, "item": p.item, "help": [t(h) for h in p.help], "checked": bool(p.verify) or bool(p.mint) or bool(p.endpoint_field), "local": p.local,
             "fields": [{"id": f.id, "label": t(f.label), "secret": f.secret, "placeholder": f.placeholder} for f in p.fields]}
 
 
-__all__ = ["BROWSER", "GOOGLE", "GOOGLE_CONNECTORS", "KEYS", "UNSUPPORTED", "Field", "KeyPreset", "browser_hint", "field", "public", "secret_fields"]
+__all__ = ["SELF_HOSTED_IDS", "NETWORK_IDS", "BROWSER", "GOOGLE", "GOOGLE_CONNECTORS", "KEYS", "UNSUPPORTED", "Field", "KeyPreset", "browser_hint", "field", "public", "secret_fields"]

@@ -3,13 +3,8 @@ package chat.kelo.app.ui
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalView
-
-/** The feedback kinds the app uses. */
-enum class Haptic { CONFIRM, REJECT, LONG_PRESS, TICK }
+import chat.kelo.app.ui.platform.Haptic
+import chat.kelo.app.ui.platform.Haptics
 
 /** Which HapticFeedbackConstants value a kind maps to on [sdk] (CONFIRM / REJECT exist from API 30; older phones get the nearest). */
 object HapticMap {
@@ -21,20 +16,9 @@ object HapticMap {
     }
 }
 
-/** Plays haptic feedback on [view]; it follows the user's system touch-feedback setting. */
-@Immutable
-class Haptics(private val view: View) {
-    fun perform(kind: Haptic) {
+/** Plays haptic feedback on [view]; it follows the user's system touch-feedback setting. The Android root provides it as LocalHaptics. */
+class AndroidHaptics(private val view: View) : Haptics {
+    override fun perform(kind: Haptic) {
         view.performHapticFeedback(HapticMap.constant(kind, Build.VERSION.SDK_INT))
     }
-    fun confirm() = perform(Haptic.CONFIRM)
-    fun reject() = perform(Haptic.REJECT)
-    fun longPress() = perform(Haptic.LONG_PRESS)
-    fun tick() = perform(Haptic.TICK)
-}
-
-@Composable
-fun rememberHaptics(): Haptics {
-    val view = LocalView.current
-    return remember(view) { Haptics(view) }
 }

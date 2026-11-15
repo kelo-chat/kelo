@@ -11,8 +11,8 @@ import KeloCore
 /// What asked, for the small line on top of the card.
 public enum AskOrigin: Sendable { case job, schedule, auto, chat }
 
-/// How a question answered from the chat ended. solved / skipped: a human check (solved in the live view, or the site skipped).
-public enum AskEnd: Sendable { case allowed, always, keptForSchedule, denied, gone, solved, skipped }
+/// How a question answered from the chat ended. solved / skipped: a human check (solved in the live view, or the site skipped). progressed: a sign-in's step done, the sign-in goes on.
+public enum AskEnd: Sendable { case allowed, always, keptForSchedule, denied, gone, solved, skipped, progressed }
 
 /// One waiting question in the chat. `working`: the answer (or the card for a payment) is on its way. `end`: answered here; its short
 /// line stays while `endedAfter` (the chat's newest row then) is still the newest row, so it goes once the conversation moves on.
@@ -97,13 +97,19 @@ public enum ChatAsks {
         switch outcome {
         case "solved": .solved
         case "skipped": .skipped
+        case "progressed": .progressed
         default: .gone
         }
     }
 
     /// How an answer given here ended: a human check's "skip" is skipped (its "done" from an older card, solved).
     public static func answerEnd(_ a: PendingApproval, approve: Bool, rememberSite: Bool, rememberSchedule: Bool) -> AskEnd {
-        if a.isHumanCheck { return approve ? .solved : .skipped }
+        if a.isHumanCheck {
+            if approve {
+                return a.isVerification ? .progressed : .solved
+            }
+            return .skipped
+        }
         if !approve { return .denied }
         return allowEnd(a, rememberSite: rememberSite, rememberSchedule: rememberSchedule)
     }

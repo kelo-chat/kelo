@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import CryptoKit
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 
 @Suite struct StringsTests {
@@ -191,6 +192,11 @@ enum NavigationPathBox { static func make() -> NavigationPath { NavigationPath()
 }
 
 @Suite struct ActivityModelTests {
+    @MainActor @Test func workChangedStartsAtZero() {
+        let m = AgentActivityModel()
+        #expect(m.workChanged == 0)
+    }
+
     @MainActor @Test func moodFollowsTheReply() {
         let m = AgentActivityModel()
         m.night = false

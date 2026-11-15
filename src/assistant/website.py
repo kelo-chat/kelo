@@ -39,12 +39,12 @@ SITE = Path(__file__).with_name("site")
 LANGS = ("ko", "en")
 PRIMARY = "en"
 CANONICAL = "https://kelo.chat"
-PAGES = ("index", "install", "privacy", "support")
+PAGES = ("index", "install", "privacy", "support", "tester")
 # the two v2 designs (site/v2/<design>.css, site/pages/index-<design>.<lang>.html). Both are previews until one is chosen:
 # set LIVE_DESIGN to "a" or "b" and "/", "/install" and "/privacy" all use that design. None keeps the current pages.
 DESIGNS = ("a", "b")
 LIVE_DESIGN: str | None = "b"
-PATHS = {"index": "/", "install": "/install", "privacy": "/privacy", "support": "/support"}
+PATHS = {"index": "/", "install": "/install", "privacy": "/privacy", "support": "/support", "tester": "/tester"}
 CHARACTERS = ("idle", "working", "browser", "approval", "done", "sleeping", "reading", "thinking", "listening")
 # the one-line installers (scripts/install.sh, install.ps1). Not served yet: the pages mark them "opens soon".
 GITHUB = "https://github.com/kelo-chat/kelo"   # the project on GitHub (header and footer)
@@ -54,6 +54,7 @@ _SHOT = re.compile(r"[a-z0-9-]+\.webp")
 
 CSP = ("default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; "
        "frame-ancestors 'none'")
+CSP_FORM = CSP.replace("form-action 'none'", "form-action 'self'")
 
 
 def _weights(accept_language: str) -> dict[str, float]:
@@ -225,12 +226,23 @@ TEXT = {
                "mac": "macOS용 내려받기 (.dmg)"},
         "dl_meta": "버전 {version} · {size}", "dl_off": "아직 올라오지 않았어요. 곧 이곳에서 받을 수 있어요.",
         "copyright": "Kelo",
-        "titles": {"index": "Kelo · 직접 설치한 서버에서 돌아가는 AI 비서", "install": "서버 설치하기 · Kelo", "privacy": "개인정보 처리방침 · Kelo", "support": "고객 지원 · Kelo"},
+        "titles": {"index": "Kelo · 직접 설치한 서버에서 돌아가는 AI 비서", "install": "서버 설치하기 · Kelo", "privacy": "개인정보 처리방침 · Kelo", "support": "고객 지원 · Kelo",
+                   "tester": "테스터 모집 · Kelo"},
         "desc": {
             "index": "Kelo는 직접 설치한 Kelo 서버에서 돌아가는 AI 비서예요. 휴대폰 앱으로 대화하고, 맡긴 일은 비서가 브라우저와 연결한 서비스로 처리해요. 데이터는 Kelo 서버에 남아요.",
             "install": "Kelo 서버를 설치하고 휴대폰을 연결하는 방법.",
             "privacy": "Kelo 앱과 서버가 어떤 정보를 어디에 두는지 설명하는 개인정보 처리방침.",
             "support": "Kelo 문의처, 시작하는 방법, 자주 묻는 질문.",
+            "tester": "Google Play 비공개 테스트에 참여할 테스터를 모집해요.",
+        },
+        "tester_notice": {
+            "sent": "신청을 받았어요. 참여 링크를 메일로 보내 드릴게요.",
+            "again": "이미 신청하셨어요. 곧 메일로 연락드릴게요.",
+            "invalid": "이메일 주소를 다시 확인해 주세요.",
+            "consent": "동의 체크가 필요해요.",
+            "limited": "잠시 뒤에 다시 시도해 주세요.",
+            "full": "지금은 신청을 받지 않아요.",
+            "off": "이 서버에서는 신청을 받지 않아요.",
         },
     },
     "en": {
@@ -248,12 +260,23 @@ TEXT = {
         "dl_meta": "Version {version} · {size}", "dl_off": "Not published yet. It will be here soon.",
         "copyright": "Kelo",
         "titles": {"index": "Kelo · an AI assistant on a server you run", "install": "Install the server · Kelo",
-                   "privacy": "Privacy policy · Kelo", "support": "Support · Kelo"},
+                   "privacy": "Privacy policy · Kelo", "support": "Support · Kelo",
+                   "tester": "Become a tester · Kelo"},
         "desc": {
             "index": "Kelo is an AI assistant that runs on a Kelo server you set up. Talk to it from the phone app; it gets things done in its own browser and the services you connect. Your data stays with you.",
             "install": "How to install the Kelo server and connect your phone.",
             "privacy": "Privacy policy: what the Kelo app and server keep, and where.",
             "support": "Kelo support: how to reach us, getting started and common questions.",
+            "tester": "Join the Google Play closed test of the Kelo app.",
+        },
+        "tester_notice": {
+            "sent": "Thanks! We'll email you the link to join.",
+            "again": "You're already on the list. We'll email you soon.",
+            "invalid": "Please check the email address.",
+            "consent": "Please tick the consent box.",
+            "limited": "Please try again in a little while.",
+            "full": "Sign-ups are closed for now.",
+            "off": "This server does not take sign-ups.",
         },
     },
 }
@@ -306,13 +329,19 @@ def download_button(platform: str, lang: str, row: dict | None) -> str:
             f'<p class="dl-meta">{meta}</p>')
 
 
-def render(page: str, lang: str, apps: dict | None = None, design: str | None = None) -> str:
+def render(page: str, lang: str, apps: dict | None = None, design: str | None = None, notice: str | None = None) -> str:
     """One whole page: the frame is built once per page and language; the download buttons are filled from `apps` (the
     published builds, downloads.Downloads.latest()) every time. `design` ("a" or "b") renders that v2 design instead of the
     current one; without it, LIVE_DESIGN decides."""
     design = design or LIVE_DESIGN
     frame = _frame_v2(page, lang, design) if design else _frame(page, lang)
-    return _DL.sub(lambda m: download_button(m.group(1), lang, (apps or {}).get(m.group(1))), frame)
+    html = _DL.sub(lambda m: download_button(m.group(1), lang, (apps or {}).get(m.group(1))), frame)
+    if "{{tester_notice}}" in html:
+        kind = "sent" if notice == "1" else (notice or "")
+        msg = TEXT.get(lang, {}).get("tester_notice", {}).get(kind)
+        tag = f'<p class="notice notice-{escape(kind)}">{escape(msg)}</p>' if msg else ""
+        html = html.replace("{{tester_notice}}", tag)
+    return html
 
 
 # the photographs on the home page (site/photos), as the footer's credits list names them: (subject en, subject ko, by, licence,

@@ -1,5 +1,7 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.chat.BubbleWithReaction
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -20,9 +22,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.chat.Reactions
-import chat.kelo.desktop.chat.BubbleWithReaction
-import chat.kelo.desktop.chat.ReactionEndInset
-import chat.kelo.desktop.chat.ReactionOverhang
+import chat.kelo.app.chat.ReactionEndInset
+import chat.kelo.app.chat.ReactionOverhang
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule

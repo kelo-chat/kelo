@@ -42,13 +42,6 @@ private func words(_ at: String, now: String, _ lang: String, _ today: String, _
         #expect(TimeLabels.day(ms("2026-11-07T23:59"), now: ms("2026-11-08T00:00"), zone: seoul) == .yesterday)
         #expect(TimeLabels.day(ms("2026-11-08T00:00"), now: ms("2026-11-08T00:01"), zone: seoul) == .today)
         #expect(TimeLabels.day(ms("2026-11-06T23:59"), now: ms("2026-11-08T00:00"), zone: seoul) == .thisYear)
-        #expect(TimeLabels.startsStretch(prev: ms("2026-11-07T23:59"), at: ms("2026-11-08T00:00"), zone: seoul))
-    }
-
-    @Test func thirtyMinutesStartsAStretch() {
-        #expect(!TimeLabels.startsStretch(prev: ms("2026-11-08T10:00"), at: ms("2026-11-08T10:29:59"), zone: seoul))
-        #expect(TimeLabels.startsStretch(prev: ms("2026-11-08T10:00"), at: ms("2026-11-08T10:30"), zone: seoul))
-        #expect(TimeLabels.startsStretch(prev: nil, at: ms("2026-11-08T10:00"), zone: seoul))
     }
 
     @Test func newYear() {
@@ -59,8 +52,6 @@ private func words(_ at: String, now: String, _ lang: String, _ today: String, _
     }
 
     @Test func daylightSaving() {
-        // 2026-03-08 in New York: 01:59 EST is followed by 03:00 EDT; 01:50 -> 03:10 is 20 real minutes
-        #expect(!TimeLabels.startsStretch(prev: ms("2026-03-08T01:50", newYork), at: ms("2026-03-08T03:10", newYork), zone: newYork))
         #expect(TimeLabels.day(ms("2026-03-08T00:30", newYork), now: ms("2026-03-09T00:10", newYork), zone: newYork) == .yesterday)
     }
 

@@ -27,6 +27,35 @@ val keystoreProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+/**
+ * Which commit this build's source came from, for the version line in My (it links to that commit on GitHub; docs/versioning.md):
+ * the full sha and whether tracked files under the app's inputs differ from it. The build scripts pass them (-PkeloCommit=<sha>
+ * -PkeloDirty=true|false; the reproducible build has no .git inside its container); without them git answers, and with no git (a
+ * source tarball) the commit is "" and nothing is shown. Never fails the build.
+ */
+fun gitAnswer(vararg args: String): String {
+    val root = rootProject.file("../..")
+    if (!File(root, ".git").exists()) return ""
+    return try {
+        providers.exec { commandLine("git", *args); workingDir = root; isIgnoreExitValue = true }.standardOutput.asText.get().trim()
+    } catch (e: Exception) {
+        ""
+    }
+}
+val sourceCommit: String = ((project.findProperty("keloCommit") as String?) ?: gitAnswer("rev-parse", "HEAD")).filter { it.isLetterOrDigit() }
+val sourceDirty: Boolean = (project.findProperty("keloDirty") as String?)?.trim()?.lowercase()?.let { it == "true" }
+    ?: gitAnswer("status", "--porcelain", "--untracked-files=no", "--", "android/kelo", "shared", "version.json").isNotEmpty()
+
+/**
+ * shared/strings, without the lines only the desktop app has (strings_desktop*.xml): the Android resources stay what they were.
+ * (The repository-shaped source copy of the reproducible build has shared/ next to android/.)
+ */
+val sharedStringsForAndroid = tasks.register<Sync>("sharedStringsForAndroid") {
+    from(rootProject.file("../../shared/strings")) { exclude("**/strings_desktop*.xml") }
+    into(layout.buildDirectory.dir("generated/sharedStrings/res"))
+}
+tasks.named("preBuild") { dependsOn(sharedStringsForAndroid) }   // before anything reads the resource folders
+
 android {
     namespace = "chat.kelo.app"
     compileSdk = 36
@@ -54,6 +83,9 @@ android {
         val release = groovy.json.JsonSlurper().parse(rootProject.file("../../version.json")) as Map<*, *>
         versionName = release["version"] as String
         buildConfigField("String", "MIN_SERVER", "\"${release["min_server"]}\"")
+        // the commit the source came from, and whether files differed from it (the version line in My links to it; see sourceCommit above)
+        buildConfigField("String", "SOURCE_COMMIT", "\"$sourceCommit\"")
+        buildConfigField("boolean", "SOURCE_DIRTY", sourceDirty.toString())
         // where the builds handed out as a file look for a newer version (update/UpdateRules.kt); a Play build never looks
         buildConfigField("String", "UPDATE_BASE", "\"https://kelo.chat\"")
         // Google Pay's card recognition (wallet/CardScan.kt): the test environment on debug builds, production on release builds
@@ -150,6 +182,8 @@ android {
     sourceSets {
         getByName("sideload").java.srcDir("src/fileBuilds/java")
         getByName("full").java.srcDir("src/fileBuilds/java")
+        // the text lives in shared/strings (one home for Android, iOS and desktop); R.string.x is unchanged
+        getByName("main").res.srcDir(sharedStringsForAndroid.map { it.destinationDir })
     }
 }
 
@@ -183,6 +217,8 @@ composeCompiler {
 }
 
 dependencies {
+    // the code both apps share: the API client, models, rules, character and icons (shared/, a composite build)
+    implementation("chat.kelo:shared")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -244,4 +280,9 @@ tasks.register("testDebugUnitTest") {
     group = "verification"
     description = "Runs the unit tests of the sideload and full debug builds."
     dependsOn("testSideloadDebugUnitTest", "testFullDebugUnitTest")
+}
+
+// The unit tests of shared/ (the code both apps use) run on the desktop JVM; the Android unit tests of both builds run them first.
+tasks.configureEach {
+    if (name.startsWith("test") && name.endsWith("DebugUnitTest")) dependsOn(gradle.includedBuild("shared").task(":desktopTest"))
 }

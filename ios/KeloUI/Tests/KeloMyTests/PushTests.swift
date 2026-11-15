@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
 import KeloShared
 @testable import KeloMy
 
@@ -83,14 +84,6 @@ private final class PushTransport: HTTPTransport, @unchecked Sendable {
         #expect(t.requests.contains { $0.method == "DELETE" && $0.path == "/api/push/register" })
     }
 
-    @Test func theEnvironmentComesFromTheProfileEmbeddedInTheBuild() {
-        func profile(_ env: String) -> Data { Data("\u{1}junk<key>Entitlements</key><dict><key>aps-environment</key>\n\t<string>\(env)</string></dict>\u{2}".utf8) }
-        #expect(PushRules.environment(provision: profile("development")) == "development")
-        #expect(PushRules.environment(provision: profile("production")) == "production")
-        #expect(PushRules.environment(provision: nil) == "production")                 // TestFlight and the App Store: no profile
-        #expect(PushRules.environment(provision: Data("no entitlement here".utf8)) == "production")
-    }
-
     @Test func aPushIsRecognisedByItsKindAndIdsOnly() {
         let info: [AnyHashable: Any] = ["aps": ["alert": ["loc-key": "kelo_push_update"]], "type": "task_done", "id": "41", "task_id": "9"]
         #expect(PushRules.payload(info) == PushPayload(type: "task_done", id: 41, taskId: 9))
@@ -120,5 +113,14 @@ private final class PushTransport: HTTPTransport, @unchecked Sendable {
         #expect(PushRules.openText(userInfo: ["open": "chat:5", "type": "followup", "id": "7"]) == "chat:5")
         #expect(PushRules.openText(userInfo: ["something": "else"]) == nil)
         for text in ["task:9", "wallet", "schedule:3", "watchers", "storage", "chat"] { #expect(OpenTarget.decode(text) != nil) }
+    }
+
+    /// Release builds read the APNs environment from the provisioning profile (PushRules.currentEnvironment); Debug never does.
+    @Test func theProfileTellsTheApnsEnvironmentOfAReleaseBuild() {
+        let dev = Data("<key>aps-environment</key>\n\t<string>development</string>".utf8)
+        let prod = Data("<key>aps-environment</key><string>production</string>".utf8)
+        #expect(PushRules.environment(provision: dev) == "development")
+        #expect(PushRules.environment(provision: prod) == "production")
+        #expect(PushRules.environment(provision: nil) == "production")
     }
 }

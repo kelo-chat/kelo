@@ -13,8 +13,9 @@ from dataclasses import dataclass, field
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from .injection_watch import current as injection_watch_var
 from .reply_text import ReplyText
-from .schedule_grants import APPLIED_TITLE
+from .schedule_grants import APPLIED_TITLE, PROGRESS_TITLE
 
 if TYPE_CHECKING:   # only for annotations: TurnContext is create_app's own class (the conversation of a turn)
     from .agent import Tool
@@ -96,16 +97,21 @@ class Turn:
         self.cond = ""                     # the conditional task a watcher's hit started it for ("watcher:<id>"; schedule_grants.py)
         self.reacted = False               # the end reaction was sent (right before "done", or at the end of a failed reply)
         self.read_pending = False          # 👀 is due once the model starts answering (its first thinking, text or tool event)
+        self.log: Any = None               # the turn log that writes its events down (turn_log.py), set by run_turn
 
     async def emit(self, item: dict[str, Any]) -> None:
         async with self._cond:
             self.events.append(item)
+            if self.log is not None:
+                self.log.add(self.id, len(self.events) - 1, item)
             self._cond.notify_all()
 
     async def close(self) -> None:
         async with self._cond:
             if not self.done:
                 self.done, self.finished = True, time.monotonic()
+                if self.log is not None:
+                    self.log.finished(self.id, self.final_status or "stopped")
             self._cond.notify_all()
 
     async def wait(self, after: int, timeout: float) -> tuple[list[dict[str, Any]], bool]:
@@ -188,13 +194,15 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                observe: Callable[[dict[str, Any] | None], None] | None = None,
                effort: str | None = None, fallback: bool = True, *, source: str = "chat", title: str = "",
                unattended: bool = False, owner: str | None = None, context: TurnContext | None = None,
-               tools_: list[Tool] | None = None, max_steps: int | None = None, tool_scope: str | None = None, cond: str = "") -> Turn:
+               tools_: list[Tool] | None = None, max_steps: int | None = None, tool_scope: str | None = None, cond: str = "",
+               stream_wrap: Callable[[Any], Any] | None = None) -> Turn:
     """Begin a reply in the background. Whoever is watching (a stream, or a phone asking again and again) reads it from the Turn.
     `context`: the stored conversation, built (and compacted when needed) for each model that runs the turn; `messages` is then
     only this turn's own message(s). Without it `messages` is sent as it is.
     `tools_` / `max_steps`: another tool list and step budget than a chat turn's (a background job's run, workers.py).
     `tool_scope`: whose loaded tools this run shows and adds to (tools on demand, agent/toolbox.py): default "chat" for the
     conversation's own turns (chat, api, handoff, background), else the source ("schedule:<id>", "checklist", ...).
+    `stream_wrap`: wraps this turn's stream function (the remembered checkout steps answer the model's requests themselves, buy_replay.py).
     Every reply is also a task in the task log (`source`: chat | api | schedule:<id> | background | worker | handoff). `unattended`: nobody watches it
     (it is never stopped for want of a reader, and approvals wait UNATTENDED_APPROVAL_SECONDS and leave a notification)."""
     S = _server()   # constants tests tune are read at each call, as they were when this lived in create_app
@@ -281,6 +289,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     chat_images = ctx.chat_images
     compactor = ctx.compactor
     covered_calls = ctx.covered_calls
+    run_progress = ctx.run_progress
     deliveries = ctx.deliveries
     entries = ctx.entries
     fallback_model = ctx.fallback_model
@@ -294,12 +303,16 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     learn_window = ctx.learn_window
     meta_json = ctx.meta_json
     orders = ctx.orders
+    payment_ledger = getattr(ctx, "payment_ledger", None)   # the approved payments (purchase_result closes the receipt check of each)
     owner_tasks = ctx.owner_tasks
     pending_approvals = ctx.pending_approvals
     pending_replies = ctx.pending_replies
+    pending_comparisons = ctx.pending_comparisons
+    comparisons = ctx.comparisons
     persona = ctx.persona
     pin_deliveries = ctx.pin_deliveries
     provider_key = ctx.provider_key
+    provider_identity = getattr(ctx, "provider_identity", provider_key)   # a custom endpoint is its host
     reactions = ctx.reactions
     resolved_checks = ctx.resolved_checks
     retire_tab = ctx.retire_tab
@@ -310,7 +323,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     stopping = ctx.stopping
     storage_watch = ctx.storage_watch
     store = ctx.store
-    stream_fn = ctx.stream_fn
+    stream_fn = stream_wrap(ctx.stream_fn) if stream_wrap is not None else ctx.stream_fn
     sweep = ctx.sweep
     tab_failed = ctx.tab_failed
     task_closed = ctx.task_closed
@@ -318,6 +331,9 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     tools = ctx.tools
     turn_scopes = ctx.turn_scopes
     turn_toolbox = ctx.turn_toolbox
+    permission_gate = getattr(ctx, "permission_gate", None)   # the owner's per-connector limits and the privacy guard (permissions.py)
+    done_once = getattr(ctx, "done_once", None)   # a step that sends, changes or deletes is done once (done_once.py)
+    watch = getattr(ctx, "injection_watch", None)   # notices instructions aimed at the assistant in outside text (injection_watch.py)
     turns = ctx.turns
     window_for = ctx.window_for
     workers = ctx.workers
@@ -339,6 +355,11 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             goal_task_ids.setdefault(gid, set()).add(turn.task_id)
     owner_tasks[turn.owner] = turn.task_id
     turns[turn.id] = turn
+    turn.log = getattr(ctx, "turn_log", None)
+    if turn.log is not None:
+        turn.log.started(turn.id)
+    run_key = run_progress.key(turn.id, turn.worker_id)
+    run_progress.begin(run_key)
     answer: list[str] = []
     said = ReplyText()   # what the task's record keeps as the reply: a stopped reply's line that led into a tool step is not its answer
     outcome = {"status": "", "error": ""}
@@ -420,6 +441,15 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         except Exception:  # noqa: BLE001 - never break the end of a reply
             log.exception("reaction update failed")
 
+    def tell_progress(count: int) -> None:
+        """Backlog 66: a long run says once how far it got. Not while the owner watches the reply live (they see it there)."""
+        if not turn.unattended and time.monotonic() - turn.touched < WATCHED_SECONDS:
+            return
+        name = applied[0][0].get("task_name") or turn.title if applied else turn.title
+        items = "; ".join(dict.fromkeys(w for _, w in applied if w))
+        activity.notify("task_done", i18n.t(PROGRESS_TITLE, count=count)[:120],
+                        (f"{name} · {items}" if name else items)[:400], task_id=turn.task_id)
+
     async def finish() -> None:
         if turn.done:
             return
@@ -440,6 +470,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             applied.clear()
         if not turn.worker_id:
             handover_seen.pop(turn.id, None)          # a chat reply's skipped sites count for that reply only
+            run_progress.end(run_key)
         task_grants.end(f"turn:{turn.id}")            # what was allowed for this reply ends with it (a job it started keeps it)
         for key in [k for k in covered_calls if k[0] == turn.id]:
             covered_calls.pop(key, None)
@@ -447,11 +478,28 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             schedule_grants.settle(turn_scopes(turn))   # a one-shot task that used its count: its grants go with this run
             if turn.worker_id and (row := workers._row(turn.worker_id)) is not None and row["status"] in ("done", "failed", "stopped"):
                 schedule_grants.drop_job(turn.worker_id)   # a job's own grants end with the job
+                run_progress.end(run_key)
         except Exception:  # noqa: BLE001
             log.exception("task grants could not be settled")
         orders.end_scope(f"turn:{turn.id}")           # and so does the order it was preparing
         if repeats.end():
             log.info("a repeated reply text was left out (turn %s)", turn.id)
+        if payment_ledger is not None:
+            try:   # a payment of this task whose receipt was never checked against the approval: one plain line in the report
+                for paid in payment_ledger.unchecked(turn.task_id):
+                    paid.warned = True
+                    line = i18n.t("Kelo did not check the order after paying at {site}; please look at the order yourself.", site=paid.host)
+                    await deliver({"type": "text", "text": "\n\n" + line})
+                    if turn.quiet_end:   # no closing notice will carry it
+                        activity.notify("purchase_unchecked", line[:120], paid.summary, task_id=turn.task_id, urgent=True)
+            except Exception:  # noqa: BLE001 - never break the end of a reply
+                log.exception("could not tell that a receipt was not checked")
+        if done_once is not None and turn.unattended:
+            try:   # a step of this run whose result is still unknown: one follow-up asks the owner to check (followups.py)
+                if done_once.run_ended({"task_id": turn.task_id, "turn_id": turn.id, "unattended": True}):
+                    asyncio.ensure_future(followups.tick())
+            except Exception:  # noqa: BLE001 - never break the end of a run
+                log.exception("could not tell about an unknown result")
         if observe:
             observe(None)   # finished or stopped: keep whatever was said
         try:   # screenshots shown during the reply go with the message it ended with
@@ -470,6 +518,13 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                         activity.add_offer(int(row), turn.task_id, turn.offer, asked[0][0]["options"][0])
             except Exception:  # noqa: BLE001
                 log.exception("quick replies could not be attached")
+        if (card := pending_comparisons.pop(turn.id, None)) is not None:   # the comparison card under the message this reply ended with
+            try:
+                row = store._all("SELECT MAX(id) AS m FROM messages WHERE role = 'assistant' AND id > ?", (turn.msg_floor,))[0]["m"]
+                if row:
+                    comparisons.attach(int(row), card)
+            except Exception:  # noqa: BLE001
+                log.exception("the comparison card could not be attached")
         turn.final_status, turn.final_error = outcome["status"] or "stopped", outcome["error"] or turn.down_error
         await react_end(turn.final_status)   # a reply that ended without "done" or "error" (stopped, cut off)
         try:
@@ -514,24 +569,33 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     async def approve(req: ApprovalRequest) -> bool:
         label = tool_labels.label(req.name)
         site = approval_site(req.name, req.arguments)
-        sel = str(req.arguments.get("selector", ""))
-        final_click = req.name == "browser_click" and (looks_final(sel) or (session is not None and session.judged(sel) == "pay"))
-        if not final_click and (rule := activity.matching_rule(req.name, site)):
+        from .tools.browser import POINT_TOOLS, step_key
+        clicks = ("browser_click", *POINT_TOOLS)
+        sel = step_key(req.name, req.arguments)   # the selector, or "point:x,y" of a browser_click_at / browser_drag
+        # a ref (e12) is judged by the words the page reading gave it, never by the ref itself
+        words = session.selector_words(sel) if session is not None and hasattr(session, "selector_words") else sel
+        final_click = req.name in clicks and ((req.name == "browser_click" and looks_final(words))
+                                              or (session is not None and session.judged(sel) == "pay"))
+        # a step whose target Kelo could not read at all (commit kind "unknown"): like a final click, no rule ever allows it
+        final_click = final_click or (session is not None and req.name in (*clicks, "browser_type")
+                                      and session.judged(sel) == "unknown")
+        if not final_click and not req.force and (rule := activity.matching_rule(req.name, site)):
             # the user allowed this kind of step on this site before ("allow on this site"); payments never get here
             activity.log_approval(uuid.uuid4().hex, task_id=turn.task_id, tool=req.name, label=label, site=site, detail=req.detail,
                                   decision="allowed_by_rule", rule_id=rule["id"], unattended=turn.unattended)
             return True
         sched_id = int(turn.source[9:]) if turn.source.startswith("schedule:") and turn.source[9:].isdigit() else None
-        if not final_click and sched_id and activity.matching_schedule_rule(sched_id, req.name, site):
+        if not final_click and not req.force and sched_id and activity.matching_schedule_rule(sched_id, req.name, site):
             # "keep allowing in this scheduled job": the same step on the same site in this schedule's runs; never payments
             activity.log_approval(uuid.uuid4().hex, task_id=turn.task_id, tool=req.name, label=label, site=site, detail=req.detail,
                                   decision="allowed_by_rule", unattended=turn.unattended)
             return True
         # a "when X happens, do Y" task the user allowed at setup (task_allow, schedule_grants.py): a message or a change inside
         # its permission goes ahead without a card (logged, and the user is told right after it ran); one outside it asks
-        commit = session.judged(sel) if session is not None and req.name in ("browser_click", "browser_type") else ""
+        commit = session.judged(sel) if session is not None and req.name in (*clicks, "browser_type") else ""
         secret = session is not None and req.name == "browser_type" and session.judged_secret(sel)
-        grant_check = schedule_grants.action_check(req.name, req.arguments, site, commit) if not secret and not final_click else None
+        # (a card the owner's own setting or the privacy guard asked for is never skipped by a task's permission either)
+        grant_check = schedule_grants.action_check(req.name, req.arguments, site, commit) if not secret and not final_click and not req.force else None
         if grant_check is not None and grant_check.grant is not None:
             g = grant_check.grant
             if schedule_grants.use_action(g, req.name, site, commit):
@@ -551,6 +615,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             except Exception:  # noqa: BLE001 - the card still works without the extra fields
                 extra = {}
         timeout = UNATTENDED_APPROVAL_SECONDS if turn.unattended else APPROVAL_TIMEOUT_SECONDS
+        notice_title = str(extra.pop("notice_title", "") or "")   # a card with its own notice title (purchase_result's wrong charge)
         if grant_check is not None and grant_check.reason:   # the task has a permission of this kind, but this step is outside it
             extra["lines"] = [{"label": i18n.t("Why it asks"), "value": i18n.t(GRANT_REASONS.get(grant_check.reason, grant_check.reason))},
                               *(extra.get("lines") or arg_lines(req.arguments))][:4]
@@ -559,18 +624,20 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             extra.update(urgent=True, missed=missed)
         event = {"type": "approval_request", "approval_id": approval_id, "id": req.id, "name": req.name, "arguments": req.arguments,
                  "detail": req.detail or readable_args(req.arguments), "lines": arg_lines(req.arguments), "label": label,
-                 "ask": tool_labels.ask(req.name, req.arguments), "site": site, "can_remember": bool(rule_kind(req.name) and site and not final_click),
-                 "can_remember_schedule": bool(sched_id and schedule_rule_ok(req.name) and not final_click and not extra.get("payment")),
+                 "ask": tool_labels.ask(req.name, req.arguments), "site": site, "commit": commit,
+                 "can_remember": bool(rule_kind(req.name) and site and not final_click and not req.force),
+                 "can_remember_schedule": bool(sched_id and schedule_rule_ok(req.name) and not final_click and not req.force
+                                               and not extra.get("payment")),
                  "schedule_id": sched_id, "task_id": turn.task_id, "expires_at": int(time.time() + timeout), **extra}
         # source / worker_id / title: what asked (a chat reply, a background job, a scheduled run), so the chat can show the card too
         pending_approvals[approval_id] = {**event, "turn_id": turn.id, "asked_at": time.time(), "unattended": turn.unattended,
                                           "source": turn.source, "worker_id": turn.worker_id or None, "title": turn.title}
         activity.log_approval(approval_id, task_id=turn.task_id, tool=req.name, label=label, site=site, detail=req.detail,
                               unattended=turn.unattended)
-        if turn.unattended and urgent:   # time matters: an urgent notice that says what is missed without an answer
+        if turn.unattended and (urgent or extra.get("urgent")):   # time matters: an urgent notice that says what is missed without an answer
             until = datetime.fromtimestamp(time.time() + timeout, sched_zone(store.profile()["timezone"])).strftime("%H:%M")
             body = i18n.t("Answer by {time}, or {missed}", time=until, missed=missed) if missed else i18n.t("Answer by {time}", time=until)
-            activity.notify("approval_waiting", i18n.t("Urgent: please confirm {label}", label=label),
+            activity.notify("approval_waiting", notice_title[:120] or i18n.t("Urgent: please confirm {label}", label=label),
                             f"{body} · {req.detail or turn.title}"[:400], task_id=turn.task_id, approval_id=approval_id, urgent=True)
         elif turn.unattended:
             activity.notify("approval_waiting", i18n.t("Please confirm: {label}", label=label), req.detail or turn.title, task_id=turn.task_id,
@@ -791,7 +858,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                          request_extra=effort_args(prov_, model_), measure=measured,
                          context_window=window_for(prov_, model_).context, compact_at=settings.compact_at,
                          compact=context.compact_in_turn if built else None, toolbox=toolbox,
-                         extra_steps=task_grants.step_bonus, wrap_up=not turn.worker_id, **key_args(prov_))
+                         extra_steps=task_grants.step_bonus, wrap_up=not turn.worker_id, gate=permission_gate, done_once=done_once, **key_args(prov_))
         try:
             async for ev in agen:
                 if isinstance(ev, AgentDone):
@@ -824,6 +891,12 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                 if isinstance(ev, ToolResult) and (hit := covered_calls.pop((turn.id, ev.id), None)) is not None and not ev.is_error:
                     if hit[0].get("kind") == "apply":   # applications: one notice after the run (finish), not one per click
                         applied.append((hit[0], hit[2]))
+                        so_far = run_progress.add(run_key)
+                        if run_progress.due(run_key):
+                            try:
+                                tell_progress(so_far)
+                            except Exception:  # noqa: BLE001 - a notification never breaks the reply
+                                log.exception("could not tell how far the run got")
                         await put(serialize(ev))
                         continue
                     try:   # a message or change a task's setup permission covered: the user hears right after
@@ -840,6 +913,8 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     def short_thread(thread: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """The same conversation under the app's own short rules (no long rules, skills list or files).
         The summary block of the earlier conversation stays."""
+        if turn.source.startswith(("group:", "recheck")):   # a messenger group's turn has its own short prompt: never the owner's rules, names and goals
+            return thread
         noted = any(isinstance(m.get("content"), str) and m["content"].startswith(TURN_NOTE) for m in thread)   # the turn's lines are there
         return [{"role": "system", "content": settings.system_prompt + ("" if noted else persona())},
                 *(m for i, m in enumerate(thread) if not (i == 0 and m.get("role") == "system"))]
@@ -871,13 +946,14 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         current_turn.set({"task_id": turn.task_id, "turn_id": turn.id, "source": turn.source, "unattended": turn.unattended,
                           "cond": turn.cond, "request": turn.request})
         browser_owner.set(turn.owner)
+        injection_watch_var.set(watch)
         approval_timeout.set(UNATTENDED_APPROVAL_SECONDS if turn.unattended else APPROVAL_TIMEOUT_SECONDS)
         handover.set(hand_over)   # a human check on this reply's tab is handed to the user (BrowserSession.snapshot)
         entry_context.set((entries, None if turn.unattended else wait_entry))   # fill-in cards: a followed reply waits for the answer
         location_ask.set(None if turn.unattended else ask_location)   # my_location may ask the phone with a card (location.py)
         attempts = [(provider, model)]
         fb = fallback_model() if fallback else None
-        if fb and provider_key(fb[0]) != provider_key(provider):   # a fallback on the same provider is no way out of its trouble
+        if fb and provider_identity(fb[0]) != provider_identity(provider):   # a fallback on the same provider is no way out of its trouble
             attempts.append(fb)
         try:
             for i, (prov_, model_) in enumerate(attempts):
@@ -1014,6 +1090,7 @@ def start_background(ctx: Any, prompt: str, *, title: str, source: str, owner: s
     resolve_model = ctx.resolve_model
     start_turn = ctx.start_turn
     store = ctx.store
+    retried = getattr(getattr(ctx, "schedules", None), "retried_tasks", {})   # tasks of runs that asked to be tried again later
     provider, model = resolve_model(None, None)
     tz = store.profile()["timezone"]
     text = f"{note}\n\n{prompt}" + (f"\n\n{extra_note}" if extra_note else "")
@@ -1022,7 +1099,7 @@ def start_background(ctx: Any, prompt: str, *, title: str, source: str, owner: s
 
     def observe(item: dict[str, Any] | None) -> None:
         if item is None:
-            if said and said.text().strip() != NO_REPLY:   # NO_REPLY: nothing worth telling, nothing joins the chat
+            if said and said.text().strip() != NO_REPLY and turn.task_id not in retried:   # NO_REPLY (or a retry asked for): nothing joins the chat
                 store.add_message("assistant", f"{saved_as}\n" + collapse_repeat(said.text()))
             said.clear()
         else:

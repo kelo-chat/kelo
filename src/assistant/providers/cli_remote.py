@@ -72,7 +72,7 @@ def encode_event(ev: Event) -> dict[str, Any]:
             return {"type": "tool_call", "id": ev.id, "name": ev.name, "arguments": ev.arguments}
         case Usage():
             return {"type": "usage", "input_tokens": ev.input_tokens, "output_tokens": ev.output_tokens,
-                    "cache_read_tokens": ev.cache_read_tokens, "cache_write_tokens": ev.cache_write_tokens}
+                    "cache_read_tokens": ev.cache_read_tokens, "cache_write_tokens": ev.cache_write_tokens, "session": ev.session}
         case Done():
             return {"type": "done", "finish_reason": ev.finish_reason}
     raise TypeError(type(ev))
@@ -88,7 +88,7 @@ def decode_event(d: dict[str, Any]) -> Event:
             return ToolCall(str(d["id"]), str(d["name"]), str(d["arguments"]))
         case "usage":
             return Usage(int(d.get("input_tokens", 0)), int(d.get("output_tokens", 0)), int(d.get("cache_read_tokens", 0) or 0),
-                         int(d.get("cache_write_tokens", 0) or 0))   # an older sidecar sends no cache fields
+                         int(d.get("cache_write_tokens", 0) or 0), session=str(d.get("session") or "")[:120])   # an older sidecar sends no cache fields
         case "done":
             return Done(d.get("finish_reason", "stop"))
         case "error":
@@ -103,11 +103,26 @@ def request_to_json(req: ChatRequest) -> dict[str, Any]:
 def request_from_json(d: dict[str, Any]) -> ChatRequest:
     return ChatRequest(
         model=str(d.get("model", "")), messages=list(d.get("messages") or []), tools=list(d.get("tools") or []),
-        max_tokens=d.get("max_tokens"), temperature=d.get("temperature"), extra=dict(d.get("extra") or {}))
+        max_tokens=d.get("max_tokens"), temperature=d.get("temperature"), extra=dict(d.get("extra") or {}),
+        purpose=str(d.get("purpose") or ""))
 
 
 def _auth() -> dict[str, str]:
     return {"authorization": f"Bearer {runner_token()}"}
+
+
+async def warm(provider: str, req: ChatRequest, *, client: httpx.AsyncClient | None = None) -> bool:
+    """Ask the sidecar to start its agy session for this request's system prompt (POST /warm); no model request is made."""
+    url = remote_url(provider)
+    if not url:
+        from . import cli_agents   # no sidecar: the CLI runs in this process
+        return await cli_agents.warm(provider, req)
+    http = client or await _shared()
+    try:
+        r = await http.post(f"{url}/warm", headers=_auth(), json={"request": request_to_json(req)}, timeout=httpx.Timeout(60.0, connect=5.0))
+    except httpx.HTTPError:
+        return False
+    return r.status_code == 200 and bool(r.json().get("warm"))
 
 
 async def stream(provider: str, req: ChatRequest, *, client: httpx.AsyncClient | None = None) -> AsyncIterator[Event]:

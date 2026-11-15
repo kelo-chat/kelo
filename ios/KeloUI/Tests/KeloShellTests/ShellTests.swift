@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 @testable import KeloShell
 
@@ -79,5 +80,69 @@ import KeloCore
         let p = try JSONDecoder().decode(Profile.self, from: Data(#"{"agent_name":"K","min_app_version":{"android":402400,"ios":12,"desktop":100000003}}"#.utf8))
         #expect(p.minAppVersion["ios"] == 12)
         #expect(try JSONDecoder().decode(Profile.self, from: Data(#"{"agent_name":"K"}"#.utf8)).minAppVersion.isEmpty)
+    }
+}
+
+@MainActor @Suite struct ConnectPairingTests {
+    private final class Box { var sessions: [Session] = [] }
+
+    @Test func aConfirmedLinkSignsTheSessionIn() async {
+        Strings.shared.use("en")
+        let t = RoutedTransport()
+        t.on("GET /api/e2e/info", 404, "{}")
+        let box = Box()
+        let m = ConnectModel(client: PairingClient(transport: t), deviceName: { "iPhone" }, signIn: { box.sessions.append($0) })
+        m.useLink("https://kelo.example.com/#pair=" + String(repeating: "a", count: 24))
+        m.confirmPair()
+        await m.jobs.settled()
+        // the fake server has no KE2E: the phone says to update the server, and nothing signs in
+        #expect(box.sessions.isEmpty && !m.pairing && m.notice != nil)
+    }
+
+    @Test func anInvalidAddressNeverReachesTheServer() async {
+        Strings.shared.use("en")
+        let t = RoutedTransport()
+        let m = ConnectModel(client: PairingClient(transport: t))
+        m.connectWithKey(address: "", key: "k")
+        #expect(m.keyError == L(R.string.connect_server_invalid) && t.calls.isEmpty)
+    }
+}
+
+@MainActor @Suite struct OnboardingAndShellModelTests {
+    @Test func onboardingSavesTheNamesAndHandsTheProfileOver() async {
+        let t = RoutedTransport()
+        t.on("PUT /api/profile", #"{"user_name":"Ann","agent_name":"Bo"}"#)
+        var got: Profile?
+        let m = OnboardingModel(api: { t.api() }, onSaved: { got = $0 })
+        m.finish(user: " Ann ", agent: "Bo")
+        await m.jobs.settled()
+        #expect(got?.userName == "Ann" && !m.busy && m.error == nil)
+    }
+
+    @Test func onboardingFailureShowsTheReason() async {
+        let t = RoutedTransport()
+        t.on("PUT /api/profile", 400, #"{"detail":"too long"}"#)
+        var got: Profile?
+        let m = OnboardingModel(api: { t.api() }, onSaved: { got = $0 })
+        m.finish(user: "a", agent: "b")
+        await m.jobs.settled()
+        #expect(got == nil && m.error != nil)
+    }
+
+    @Test func theHeaderNameFallsBackToKeloAndFollowsTheProfile() {
+        #expect(HeaderName.of(nil) == "Kelo")
+        #expect(HeaderName.of(Profile(agentName: "  ")) == "Kelo")
+        #expect(HeaderName.of(Profile(agentName: "Bo")) == "Bo")
+    }
+
+    @Test func theShellSyncsTheAvatarFromThePollsVersionFirst() async {
+        let t = RoutedTransport()
+        t.on("GET /api/agent/avatar", "avatar")
+        let activity = AgentActivityModel()
+        let avatar = AgentAvatarModel()
+        let profile = Profile(agentName: "Bo", avatarVersion: 0)
+        let shell = ShellModel(activity: activity, avatar: avatar, cache: memoryCache(), api: { t.api() }, profile: { profile })
+        await shell.syncAvatar()   // version 0: no picture, no call
+        #expect(t.calls.isEmpty)
     }
 }

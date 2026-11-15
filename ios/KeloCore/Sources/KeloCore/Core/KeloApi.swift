@@ -170,6 +170,8 @@ public final class KeloApi: Sendable {
     let onServerVersion: @Sendable (String?) -> Void
     /// `X-Kelo-App` sent with every request ("" sends none).
     let appHeader: String
+    /// Holds this session's upload limits answer (see `uploadLimits`).
+    let uploadLimitsBox = UploadLimitsBox()
 
     public init(
         baseUrl: String,
@@ -303,12 +305,6 @@ public final class KeloApi: Sendable {
         try KeloApi.decode(T.self, try await request("DELETE", path, body: body))
     }
 
-    /// Hand the agent a file: PUT /api/uploads/{name} with the raw bytes as the body. Returns the stored path the server reports.
-    /// (Upload progress comes from a URLSession upload task delegate in the app; see README.)
-    public func upload(name: String, data: Data, contentType: String? = nil) async throws -> String {
-        try await upload(name: name, body: .data(data), contentType: contentType)
-    }
-
     /// The same with progress; a file goes up from disk (through KE2E as a streamed 0x02 request).
     public func upload(name: String, body: HTTPUploadBody, contentType: String?, progress: (@Sendable (Int64, Int64) -> Void)? = nil) async throws -> String {
         var r = try makeRequest("/api/uploads/\(KeloApi.segment(name))", method: "PUT")
@@ -340,10 +336,4 @@ public final class KeloApi: Sendable {
 
     /// A query value, encoded the same way.
     public static func query(_ s: String) -> String { segment(s) }
-}
-
-/// An empty answer for calls whose answer does not matter.
-public struct Ignored: Decodable, Sendable {
-    public init() {}
-    public init(from decoder: Decoder) throws {}
 }

@@ -1,5 +1,15 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.chat.ToolChip
+import chat.kelo.app.chat.BrowserCard
+
+import chat.kelo.desktop.chat.DesktopChat
+import chat.kelo.app.chat.ChatViewModel
+
+import chat.kelo.app.chat.PaymentStepActions
+import chat.kelo.app.chat.PaymentStepCard
+
+import chat.kelo.app.res.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Row
 import androidx.compose.ui.semantics.SemanticsActions
@@ -20,7 +30,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.agent.ScheduleGrantList
 import chat.kelo.app.my.BriefingSettings
 import chat.kelo.app.my.BriefingSettingsRules
@@ -30,16 +39,8 @@ import chat.kelo.app.chat.PaymentStep
 import chat.kelo.app.chat.PinNeed
 import chat.kelo.app.chat.ToolState
 import chat.kelo.app.notify.OpenTarget
-import chat.kelo.desktop.chat.BrowserCard
-import chat.kelo.desktop.chat.ChatModel
-import chat.kelo.desktop.chat.PaymentStepActions
-import chat.kelo.desktop.chat.PaymentStepCard
 import chat.kelo.desktop.chat.PinNeedCard
-import chat.kelo.desktop.chat.ToolChip
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.MyPane
-import chat.kelo.desktop.pages.MyView
-import chat.kelo.desktop.pages.work.WorkScreen
+import chat.kelo.desktop.pages.WorkPane
 import chat.kelo.desktop.ui.KeloFrame
 import chat.kelo.desktop.ui.Page
 import chat.kelo.desktop.ui.Shell
@@ -73,31 +74,32 @@ class CatchupShotsTest {
     @Test fun chatEnglishNarrow() = chatFlow("en", wide = false)
 
     @Test fun keypad() {
-        val words = Strings.of("ko")
+        val words = Words.of("ko")
         val m = MockServer("--lang", "ko", env = mapOf("KELO_MOCK_CATCHUP" to "pad")).also { mock = it }
         val app = m.app(tmp.newFolder(), lang = "ko")
-        val chat = ChatModel(app)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
-            KeloFrame(app) { Box(Modifier.size(1024.dp, 768.dp)) { Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}) } }
+            KeloFrame(app) { Box(Modifier.size(1024.dp, 768.dp)) { Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side) } }
         }
         try {
             ui.waitUntil("the chat loaded", timeout = 15_000) { chat.state.value.loaded && chat.state.value.asks.size == 2 }
             chat.refreshPaymentSteps()
             ui.waitUntil("the keypad step", timeout = 15_000) { chat.state.value.paymentSteps.isNotEmpty() }
             scrollTo(ui, "step:st-pad")
-            ui.waitText(words.get(R.string.pay_step_title_pin))
+            ui.waitText(words.get(Res.string.pay_step_title_pin))
             // the keypad picture comes from the page; a click on it is a tap at the same spot there
-            ui.waitUntil("the keypad picture") { !ui.has(words.get(R.string.pay_step_pad_loading)) }
+            ui.waitUntil("the keypad picture") { !ui.has(words.get(Res.string.pay_step_pad_loading)) }
             repeat(3) {
-                compose.onNode(hasContentDescription(words.get(R.string.pay_step_pad))).performClick()
+                compose.onNode(hasContentDescription(words.get(Res.string.pay_step_pad))).performClick()
                 ui.settle(12)
             }
             ui.waitText("●●●")
             shots(ui, app, "catchup-chat-ko-keypad")
-            compose.onNode(hasText(words.get(R.string.pay_step_clear))).performClick()
-            ui.waitText(words.get(R.string.pay_step_pad_none))
+            compose.onNode(hasText(words.get(Res.string.pay_step_clear))).performClick()
+            ui.waitText(words.get(Res.string.pay_step_pad_none))
         } catch (e: Throwable) {
             runCatching { ui.shot("catchup-chat-ko-keypad-zz-failed") }
             throw e
@@ -121,15 +123,16 @@ class CatchupShotsTest {
     /** The chat at 520 dp in [lang] (the mock's sample data in English): the waiting cards, the setup card, the payment step, the
      *  list of many items and the morning briefing; nothing is drawn under the floating agent or the "↓" pill. */
     private fun chatNarrow(lang: String) {
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val m = MockServer("--lang", "en", env = mapOf("KELO_MOCK_CATCHUP" to "1")).also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
-        val chat = ChatModel(app)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             KeloFrame(app) {
-                Box(Modifier.size(520.dp, 768.dp)) { Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}) }
+                Box(Modifier.size(520.dp, 768.dp)) { Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side) }
             }
         }
         val name = "catchup-narrow-$lang-chat"
@@ -137,22 +140,22 @@ class CatchupShotsTest {
             ui.waitUntil("the chat loaded", timeout = 15_000) {
                 chat.state.value.items.any { it is ChatItem.Msg && it.briefing != null } && chat.state.value.asks.size == 2
             }
-            ui.waitText(words.get(R.string.chat_approval_list_show, 37))
+            ui.waitText(words.get(Res.string.chat_approval_list_show, 37))
             ui.shot("$name-asks-light")
             scrollTo(ui, "ask:ap-grant")
-            ui.waitText(words.get(R.string.task_grant_question))
+            ui.waitText(words.get(Res.string.task_grant_question))
             ui.shot("$name-grant-light")
             chat.refreshPaymentSteps()
             ui.waitUntil("the payment step", timeout = 15_000) { chat.state.value.paymentSteps.isNotEmpty() }
             scrollTo(ui, "step:st-app")
-            ui.waitText(words.get(R.string.desktop_pay_step_on_phone))
+            ui.waitText(words.get(Res.string.desktop_pay_step_on_phone))
             ui.shot("$name-step-light")
             scrollTo(ui, "ask:ap-bulk")
-            compose.onNode(hasText(words.get(R.string.chat_approval_list_show, 37))).performSemanticsAction(SemanticsActions.OnClick)
+            compose.onNode(hasText(words.get(Res.string.chat_approval_list_show, 37))).performSemanticsAction(SemanticsActions.OnClick)
             ui.waitText("1. deals1.example.com")
             ui.shot("$name-list-light")
             scrollTo(ui, "m3")
-            ui.waitText(words.get(R.string.briefing_title))
+            ui.waitText(words.get(Res.string.briefing_title))
             ui.shot("$name-briefing-light")
         } catch (e: Throwable) {
             runCatching { ui.shot("$name-zz-failed") }
@@ -162,7 +165,7 @@ class CatchupShotsTest {
 
     /** My → Notifications at 520 dp in [lang]: the hours by day type, the briefing's settings and "what it reads". */
     private fun notifyNarrow(lang: String) {
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val m = MockServer("--lang", "en", env = mapOf("KELO_MOCK_CATCHUP" to "1")).also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
         val ui = UiSteps(compose, parityShots())
@@ -170,20 +173,20 @@ class CatchupShotsTest {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             KeloFrame(app) {
-                Box(Modifier.size(520.dp, 768.dp).background(Kelo.colors.bg)) { MyPane(app, topInset = 0.dp, start = start.value, onStartUsed = { start.value = null }, onSignedOut = {}) }
+                Box(Modifier.size(520.dp, 768.dp).background(Kelo.colors.bg)) { MyPaneAt(app, start) }
             }
         }
         val name = "catchup-narrow-$lang-notify"
         try {
-            ui.waitText(words.get(R.string.hours_weekend), timeout = 15_000)
-            showText(ui, words.get(R.string.hours_section))
+            ui.waitText(words.get(Res.string.hours_weekend), timeout = 15_000)
+            showText(ui, words.get(Res.string.hours_section))
             ui.shot("$name-hours-light")
-            showText(ui, words.get(R.string.hours_suggest_heading_weekend))
+            showText(ui, words.get(Res.string.hours_suggest_heading_weekend))
             ui.shot("$name-weekend-light")
-            showText(ui, words.get(R.string.briefing_switch))
+            showText(ui, words.get(Res.string.briefing_switch))
             ui.shot("$name-briefing-light")
-            ui.waitText(words.get(R.string.briefing_sources_title), timeout = 10_000)
-            showText(ui, words.get(R.string.briefing_sources_title))
+            ui.waitText(words.get(Res.string.briefing_sources_title), timeout = 10_000)
+            showText(ui, words.get(Res.string.briefing_sources_title))
             ui.shot("$name-sources-light")
         } catch (e: Throwable) {
             runCatching { ui.shot("$name-zz-failed") }
@@ -198,17 +201,18 @@ class CatchupShotsTest {
     }
 
     private fun chatFlow(lang: String, wide: Boolean) {
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val m = MockServer("--lang", lang, env = mapOf("KELO_MOCK_CATCHUP" to "1")).also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
-        val chat = ChatModel(app)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         val ui = UiSteps(compose, parityShots())
         val size = if (wide) "wide" else "narrow"
         compose.mainClock.autoAdvance = false
         compose.setContent {
             KeloFrame(app) {
                 Box(Modifier.size(if (wide) 1024.dp else 520.dp, 768.dp)) {
-                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {})
+                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side)
                 }
             }
         }
@@ -218,26 +222,26 @@ class CatchupShotsTest {
                 chat.state.value.items.any { it is ChatItem.Msg && it.briefing != null } && chat.state.value.asks.size == 2
             }
             // the setup card of a task (urgent), and a permission for many items, at the bottom
-            ui.waitText(words.get(R.string.chat_approval_list_show, 37))
+            ui.waitText(words.get(Res.string.chat_approval_list_show, 37))
             shots(ui, app, "catchup-chat-$lang-$size-asks")
             scrollTo(ui, "ask:ap-grant")
-            ui.waitText(words.get(R.string.task_grant_question))
-            ui.waitText(words.get(R.string.task_grant_once))
+            ui.waitText(words.get(Res.string.task_grant_question))
+            ui.waitText(words.get(Res.string.task_grant_once))
             shots(ui, app, "catchup-chat-$lang-$size-grant")
 
             // a payment step that needs the user: approved on the phone, the code and its time
             chat.refreshPaymentSteps()
             ui.waitUntil("the payment step", timeout = 15_000) { chat.state.value.paymentSteps.isNotEmpty() }
             scrollTo(ui, "step:st-app")
-            ui.waitText(words.get(R.string.pay_step_title_app))
+            ui.waitText(words.get(Res.string.pay_step_title_app))
             ui.waitText("482 913")
-            ui.waitText(words.get(R.string.desktop_pay_step_on_phone))
+            ui.waitText(words.get(Res.string.desktop_pay_step_on_phone))
             shots(ui, app, "catchup-chat-$lang-$size-step")
 
             // the morning briefing, higher up
             scrollTo(ui, "m3")
-            ui.waitText(words.get(R.string.briefing_title))
-            ui.waitText(words.get(R.string.briefing_weather))
+            ui.waitText(words.get(Res.string.briefing_title))
+            ui.waitText(words.get(Res.string.briefing_weather))
             shots(ui, app, "catchup-chat-$lang-$size-briefing")
             // a briefing's mail item writes a question into the composer (nothing is sent)
             val subject = if (lang == "ko") "계약서 검토 요청" else "Contract review request"
@@ -246,24 +250,24 @@ class CatchupShotsTest {
 
             // the list behind "see the list (37)"
             scrollTo(ui, "ask:ap-bulk")
-            compose.onNode(hasText(words.get(R.string.chat_approval_list_show, 37))).performSemanticsAction(SemanticsActions.OnClick)
-            ui.waitText(words.get(R.string.chat_approval_list_hide, 37))
+            compose.onNode(hasText(words.get(Res.string.chat_approval_list_show, 37))).performSemanticsAction(SemanticsActions.OnClick)
+            ui.waitText(words.get(Res.string.chat_approval_list_hide, 37))
             ui.waitText("1. deals1.example.com")
             shots(ui, app, "catchup-chat-$lang-$size-list")
 
             // Allow on the setup card: the server hears it and the card leaves the waiting list
             scrollTo(ui, "ask:ap-grant")
-            compose.onAllNodes(hasText(words.get(R.string.chat_approval_allow))).onFirst().performSemanticsAction(SemanticsActions.OnClick)
+            compose.onAllNodes(hasText(words.get(Res.string.chat_approval_allow))).onFirst().performSemanticsAction(SemanticsActions.OnClick)
             ui.waitUntil("a card answered", timeout = 10_000) { chat.state.value.asks.count { it.open } < 2 }
 
             // "I approved it": the step goes on to the finishing click
             scrollTo(ui, "step:st-app")
-            compose.onNode(hasText(words.get(R.string.pay_step_approved))).performSemanticsAction(SemanticsActions.OnClick)
+            compose.onNode(hasText(words.get(Res.string.pay_step_approved))).performSemanticsAction(SemanticsActions.OnClick)
             ui.waitUntil("the step answered", timeout = 10_000) {
                 chat.refreshPaymentSteps(); ui.settle(4); chat.state.value.paymentSteps.any { it.state == "finishing" }
             }
             scrollTo(ui, "step:st-app")
-            ui.waitText(words.get(R.string.pay_step_finishing))
+            ui.waitText(words.get(Res.string.pay_step_finishing))
             if (wide) shots(ui, app, "catchup-chat-$lang-$size-finishing")
         } catch (e: Throwable) {
             runCatching { ui.shot("catchup-chat-$lang-$size-zz-failed") }
@@ -308,16 +312,16 @@ class CatchupShotsTest {
                             ToolChip(folded)
                             BrowserCard(browser, onOpenLive = {})
                             PinNeedCard(pin, nowS = now)
-                            PaymentStepCard(ended, actions, nowS = now)
+                            PaymentStepCard(ended, actions, preview = true)
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            PaymentStepCard(otp, actions, nowS = now)
+                            PaymentStepCard(otp, actions, preview = true)
                         }
                     }
                 }
             }
-            val words = Strings.of(lang)
-            ui.waitText(words.get(R.string.pin_need_title))
+            val words = Words.of(lang)
+            ui.waitText(words.get(Res.string.pin_need_title))
             compose.onAllNodes(hasText("▾", substring = true)).onFirst().performClick()
             ui.settle()
             shots(ui, app, "catchup-cards-$lang")
@@ -332,7 +336,7 @@ class CatchupShotsTest {
 
     private fun notifyPage(lang: String) {
         run {
-            val words = Strings.of(lang)
+            val words = Words.of(lang)
             val m = MockServer("--lang", lang, env = mapOf("KELO_MOCK_CATCHUP" to "1")).also { mock = it }
             val app = m.app(tmp.newFolder(), lang = lang)
             val ui = UiSteps(compose, parityShots())
@@ -340,39 +344,39 @@ class CatchupShotsTest {
             compose.mainClock.autoAdvance = false
             compose.setContent {
                 KeloFrame(app) {
-                    Box(Modifier.size(1024.dp, 768.dp).background(Kelo.colors.bg)) { MyPane(app, topInset = 0.dp, start = start.value, onStartUsed = { start.value = null }, onSignedOut = {}) }
+                    Box(Modifier.size(1024.dp, 768.dp).background(Kelo.colors.bg)) { MyPaneAt(app, start) }
                 }
             }
-            ui.waitText(words.get(R.string.hours_weekend), timeout = 15_000)
-            ui.waitText(words.get(R.string.briefing_switch))
-            showText(ui, words.get(R.string.hours_section))
+            ui.waitText(words.get(Res.string.hours_weekend), timeout = 15_000)
+            ui.waitText(words.get(Res.string.briefing_switch))
+            showText(ui, words.get(Res.string.hours_section))
             shots(ui, app, "catchup-notify-$lang-hours")
-            showText(ui, words.get(R.string.hours_suggest_heading_weekend))
+            showText(ui, words.get(Res.string.hours_suggest_heading_weekend))
             shots(ui, app, "catchup-notify-$lang-weekend")
-            showText(ui, words.get(R.string.briefing_switch))
+            showText(ui, words.get(Res.string.briefing_switch))
             shots(ui, app, "catchup-notify-$lang-briefing")
-            showText(ui, words.get(R.string.briefing_sources_title))
+            showText(ui, words.get(Res.string.briefing_sources_title))
             shots(ui, app, "catchup-notify-$lang-sources")
             if (lang == "ko") {
                 // apply the learned weekday window: the page reads the hours again
-                compose.onAllNodes(hasText(words.get(R.string.hours_learned_apply))).onFirst().performSemanticsAction(SemanticsActions.OnClick)
+                compose.onAllNodes(hasText(words.get(Res.string.hours_learned_apply))).onFirst().performSemanticsAction(SemanticsActions.OnClick)
                 ui.waitUntil("the learned hours applied") {
                     runBlocking { app.sessions.requireApi().get<JsonObject>("/api/proactive") }["wake_start"]?.jsonPrimitive?.content == "08:00"
                 }
                 // a section switched off reaches the server
-                compose.onAllNodes(hasText(words.get(R.string.briefing_missed))).onFirst().performSemanticsAction(SemanticsActions.OnClick)
+                compose.onAllNodes(hasText(words.get(Res.string.briefing_missed))).onFirst().performSemanticsAction(SemanticsActions.OnClick)
                 ui.waitUntil("the section off") {
                     val b = runBlocking { app.sessions.requireApi().get<BriefingSettings>("/api/briefing") }
                     !BriefingSettingsRules.sectionOn(b, "missed")
                 }
                 // the briefing off: "what it reads" stays (the heads-ups read the same accounts)
-                compose.onNode(hasContentDescription(words.get(R.string.briefing_switch))).performSemanticsAction(SemanticsActions.OnClick)
+                compose.onNode(hasContentDescription(words.get(Res.string.briefing_switch))).performSemanticsAction(SemanticsActions.OnClick)
                 ui.waitUntil("the briefing off") {
                     !runBlocking { app.sessions.requireApi().get<BriefingSettings>("/api/briefing") }.enabled
                 }
-                ui.waitUntil("the briefing's settings folded") { !ui.has(words.get(R.string.briefing_provider)) }
-                showText(ui, words.get(R.string.briefing_sources_title))
-                ui.waitText(words.get(R.string.briefing_sources_about))
+                ui.waitUntil("the briefing's settings folded") { !ui.has(words.get(Res.string.briefing_provider)) }
+                showText(ui, words.get(Res.string.briefing_sources_title))
+                ui.waitText(words.get(Res.string.briefing_sources_about))
                 shots(ui, app, "catchup-notify-$lang-sources-briefing-off")
             }
             m.stop()
@@ -381,38 +385,38 @@ class CatchupShotsTest {
 
     /** A watcher's and a background job's page list what the task may do without asking (a purchase, a message, a change). */
     @Test fun taskGrants() {
-        val words = Strings.of("ko")
+        val words = Words.of("ko")
         val m = MockServer("--lang", "ko", env = mapOf("KELO_MOCK_CATCHUP" to "1")).also { mock = it }
         val app = m.app(tmp.newFolder(), lang = "ko")
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
-        compose.setContent { KeloFrame(app) { Box(Modifier.size(1100.dp, 1400.dp)) { WorkScreen(app, topInset = 16.dp) } } }
-        ui.waitText(words.get(R.string.work_asks), timeout = 15_000)   // questions wait: their section is at the top
+        compose.setContent { KeloFrame(app) { Box(Modifier.size(1100.dp, 1400.dp)) { WorkPane(app, topInset = 16.dp) } } }
+        ui.waitText(words.get(Res.string.work_asks), timeout = 15_000)   // questions wait: their section is at the top
         compose.onNode(hasScrollToKeyAction()).performScrollToKey("sec:now")
-        ui.waitText(words.get(R.string.work_now), timeout = 15_000)
+        ui.waitText(words.get(Res.string.work_now), timeout = 15_000)
         // a background job, from the running task's card: a message and a change it may make without asking
         ui.waitText("항공사 세 곳 가격 확인")
         compose.onNode(hasText("항공사 세 곳 가격 확인")).performClick()
-        ui.waitText(words.get(R.string.grant_section_title), timeout = 10_000)
-        ui.waitText(words.get(R.string.task_grant_row_send, "slack, #travel"))
+        ui.waitText(words.get(Res.string.grant_section_title), timeout = 10_000)
+        ui.waitText(words.get(Res.string.task_grant_row_send, "slack, #travel"))
         shots(ui, app, "catchup-grants-job-ko")
         // revoke one: asks first, then it is gone on the server
-        compose.onAllNodes(hasText(words.get(R.string.grant_revoke))).onFirst().performClick()
+        compose.onAllNodes(hasText(words.get(Res.string.grant_revoke))).onFirst().performClick()
         ui.settle()
-        val buttons = compose.onAllNodes(hasText(words.get(R.string.grant_revoke)))
+        val buttons = compose.onAllNodes(hasText(words.get(Res.string.grant_revoke)))
         buttons[buttons.fetchSemanticsNodes().size - 1].performClick()
         ui.waitUntil("the grant revoked") {
             runBlocking { app.sessions.requireApi().get<ScheduleGrantList>("/api/workers/w-fares/grants") }.items.size == 1
         }
-        compose.onAllNodes(hasContentDescription(words.get(R.string.back))).onFirst().performClick()
+        compose.onAllNodes(hasContentDescription(words.get(Res.string.back))).onFirst().performClick()
         compose.mainClock.advanceTimeBy(200)
         // a watcher, from a notification: a purchase it may make once
         app.workRequests.value = OpenTarget.Watchers
         ui.waitText("제주 항공권 가격")
         ui.settle(30)
         compose.onNode(hasText("제주 항공권 가격")).performClick()
-        ui.waitText(words.get(R.string.grant_section_title), timeout = 10_000)
-        ui.waitText(words.get(R.string.task_grant_row_once), timeout = 10_000)
+        ui.waitText(words.get(Res.string.grant_section_title), timeout = 10_000)
+        ui.waitText(words.get(Res.string.task_grant_row_once), timeout = 10_000)
         shots(ui, app, "catchup-grants-watcher-ko")
     }
 

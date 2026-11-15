@@ -6,22 +6,24 @@ import KeloShared
 /// without asking (each can be taken back), and every question it asked before with the answer it got. Questions still waiting are
 /// answered on the work page.
 struct PermissionsPage: View {
+    let phoneData: PhoneDataSync
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
-    @State private var pending: [PendingApproval]?
-    @State private var rules: [ApprovalRule] = []
-    @State private var history: [ApprovalRecord] = []
-    @State private var next: Double?
-    @State private var failed = false
+    @State private var model: PermissionsModel
     @State private var revoking: ApprovalRule?
-    @State private var toast: String?
+
+    init(api: KeloApi, phoneData: PhoneDataSync) {
+        self.phoneData = phoneData
+        _model = State(initialValue: PermissionsModel(api: api))
+    }
 
     var body: some View {
+        let rules = model.rules, history = model.history
         SubPage(L(R.string.agent_tab_permissions), onBack: { dismiss() }) {
             MutedText(L(R.string.my_perm_intro), small: true)
-            DeviceSection()
-            if let pending {
+            DeviceSection(sync: phoneData, source: app)
+            if let pending = model.pending {
                 if !pending.isEmpty {
                     MyCard(action: { app.router.openWork(.approvals) }) {
                         Text(P(R.plurals.my_perm_waiting, pending.count, pending.count)).font(KeloFont.body).foregroundStyle(c.accent)
@@ -46,24 +48,24 @@ struct PermissionsPage: View {
                     MenuCard {
                         ForEach(Array(history.enumerated()), id: \.offset) { i, a in
                             if i > 0 { Hairline() }
-                            recordRow(a)
+                            ApprovalRecordRow(a: a, when: a.askedAt > 0 ? MyFormat.dayTime(a.askedAt) : "")
                         }
                     }
                 }
-                if next != nil { LinkButton(L(R.string.agent_more)) { Task { await more() } } }
-            } else if failed {
+                if model.next != nil { LinkButton(L(R.string.agent_more)) { model.more() } }
+            } else if model.failed {
                 ErrorText(L(R.string.connect_failed), small: true)
             } else {
                 SkeletonRows(rows: 4)
             }
         }
-        .task { await load() }
+        .task { await model.load() }
         .alert(revoking.map { L(R.string.agent_rule_revoke_confirm, $0.site) } ?? "",
                isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } })) {
-            Button(L(R.string.agent_rule_revoke_yes), role: .destructive) { if let r = revoking { revoke(r) } }
+            Button(L(R.string.agent_rule_revoke_yes), role: .destructive) { if let r = revoking { model.revoke(r) } }
             Button(L(R.string.cancel), role: .cancel) {}
         }
-        .toast($toast)
+        .toast(model.notice, clear: model.clearNotice)
     }
 
     private func ruleRow(_ r: ApprovalRule) -> some View {
@@ -81,56 +83,6 @@ struct PermissionsPage: View {
         }
         .padding(.vertical, 10)
     }
-
-    private func recordRow(_ a: ApprovalRecord) -> some View {
-        let word: StringKey = switch a.decision {
-        case "allowed_once": R.string.agent_decision_once
-        case "allowed_always": R.string.agent_decision_always
-        case "allowed_by_rule": R.string.agent_decision_rule
-        case "denied": R.string.agent_decision_denied
-        case "expired": R.string.agent_decision_expired
-        case "cancelled": R.string.agent_decision_cancelled
-        default: R.string.agent_decision_pending
-        }
-        return HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(a.label.isEmpty ? a.tool : a.label).font(KeloFont.body).foregroundStyle(c.ink).lineLimit(3)
-                let sub = [a.site, a.detail].filter { !$0.isEmpty }.joined(separator: " · ")
-                if !sub.isEmpty { Text(sub).font(KeloFont.small).foregroundStyle(c.muted).lineLimit(3) }
-                if a.askedAt > 0 { Text(MyFormat.dayTime(a.askedAt)).font(KeloFont.label).foregroundStyle(c.muted) }
-            }
-            Spacer(minLength: 8)
-            KeloBadge(L(word), denied: a.decision == "denied")
-        }
-        .padding(.vertical, 10)
-    }
-
-    private func load() async {
-        do {
-            let api = try app.requireApi()
-            let p = try await api.pendingApprovals()
-            rules = try await api.approvalRules().items
-            let h = try await api.approvalHistory()
-            history = h.items; next = h.nextBefore
-            pending = p
-        } catch {
-            failed = true
-        }
-    }
-
-    private func more() async {
-        guard let before = next, let h = try? await app.requireApi().approvalHistory(before: before) else { return }
-        history += h.items; next = h.nextBefore
-    }
-
-    private func revoke(_ r: ApprovalRule) {
-        Task {
-            do {
-                try await app.requireApi().deleteApprovalRule(r.id)
-                rules.removeAll { $0.id == r.id }
-            } catch { toast = app.message(for: error) }
-        }
-    }
 }
 
 /// 이 기기에서: one row per thing this iPhone can share with or do for the user's own server: the calendar (read, and if allowed
@@ -138,12 +90,12 @@ struct PermissionsPage: View {
 /// rows have no iOS equivalent and are not shown.
 /// A row opens a sheet with what Kelo can do, what is sent, the switch and the last send.
 struct DeviceSection: View {
-    @Environment(AppModel.self) private var app
+    let sync: PhoneDataSync
+    let source: any PhoneSource
     @Environment(\.kelo) private var c
     @Environment(\.scenePhase) private var phase
     @State private var open: PhoneFeature?
     @State private var version = 0
-    private var sync: PhoneDataSync { PhoneDataSync.shared }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -161,7 +113,7 @@ struct DeviceSection: View {
         }
         .onChange(of: phase) { _, p in if p == .active { version += 1 } }   // back from iPhone Settings
         .keloSheet(item: $open, detents: [.medium, .large]) { f in
-            DeviceSheet(feature: f) { open = nil; version += 1 }
+            DeviceSheet(model: DeviceFeatureModel(feature: f, sync: sync, source: source)) { open = nil; version += 1 }
         }
     }
 }
@@ -226,16 +178,18 @@ struct DeviceRow: View {
 
 /// One row's sheet: what it does, what goes to the server, the switch, the last send (it keeps sending by itself), 지금 보내기.
 struct DeviceSheet: View {
-    let feature: PhoneFeature
     let onClose: () -> Void
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
-    @State private var on = false
-    @State private var offFailed = false
-    @State private var isDenied = false
-    private var sync: PhoneDataSync { PhoneDataSync.shared }
+    @State private var model: DeviceFeatureModel
+
+    init(model: DeviceFeatureModel, onClose: @escaping () -> Void) {
+        _model = State(initialValue: model)
+        self.onClose = onClose
+    }
 
     var body: some View {
+        let feature = model.feature, sync = model.sync
+        let on = model.on, isDenied = model.isDenied
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 SheetHeader(L(feature.title), onClose: onClose)
@@ -246,7 +200,7 @@ struct DeviceSheet: View {
                         MutedText(L(feature.sends), small: true)
                     }
                 }
-                ToggleRow(L(R.string.device_switch), isOn: Binding(get: { on }, set: { v in toggle(v) }))
+                ToggleRow(L(R.string.device_switch), isOn: Binding(get: { on }, set: { v in Haptics.tick(); model.toggle(v) }))
                 if isDenied {
                     ErrorText(L(R.string.device_denied), small: true)
                     SecondaryButton(L(R.string.device_open_settings), fill: true) { DeviceInfo.openAppSettings() }
@@ -260,74 +214,48 @@ struct DeviceSheet: View {
                                   small: true)
                         Spacer(minLength: 8)
                         LinkButton(st.busy ? L(R.string.device_sending) : L(R.string.device_send_now)) {
-                            Task { await sync.sync(feature, app: app, force: true) }
+                            model.sendNow()
                         }
                         .disabled(st.busy)
                     }
                     if st.failed && !st.busy { ErrorText(L(R.string.device_send_failed), small: true) }
-                    if feature == .calendar { CalendarWriteOptions() }
+                    if feature == .calendar { CalendarWriteOptions(model: CalendarWriteModel(sync: sync, source: model.source)) }
                 }
-                if offFailed { ErrorText(L(R.string.device_off_failed), small: true) }
+                if model.offFailed { ErrorText(L(R.string.device_off_failed), small: true) }
             }
             .padding(.horizontal, 20).padding(.bottom, 24)
         }
-        .onAppear {
-            on = sync.on(feature) && sync.permitted(feature)
-            isDenied = sync.on(feature) && sync.denied(feature)
-        }
-    }
-
-    private func toggle(_ v: Bool) {
-        Haptics.tick()
-        offFailed = false
-        Task {
-            if v {
-                let ok = await sync.turnOn(feature, app: app)
-                on = ok
-                isDenied = !ok && sync.denied(feature)
-            } else {
-                on = false
-                isDenied = false
-                offFailed = !(await sync.turnOff(feature, app: app))
-            }
-        }
+        .onAppear { model.refresh() }
     }
 }
 
 /// The calendar row's own options once it is on (Android DeviceUi Extras CALENDAR): "also allow adding and editing events" (each one
 /// asks first on an approval card) and which calendar Kelo adds to.
 struct CalendarWriteOptions: View {
-    @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
-    @State private var write = false
-    @State private var pick: String?
-    private var sync: PhoneDataSync { PhoneDataSync.shared }
+    @State private var model: CalendarWriteModel
+
+    init(model: CalendarWriteModel) { _model = State(initialValue: model) }
 
     var body: some View {
+        let write = model.write, sync = model.sync
         VStack(alignment: .leading, spacing: 10) {
             Hairline()
-            ToggleRow(L(R.string.device_cal_write), detail: L(R.string.device_cal_write_line), isOn: Binding(get: { write }, set: { v in
-                Haptics.tick()
-                write = v
-                sync.writeAllowed = v
-                Task { await sync.sync(.calendar, app: app, force: true) }
-            }))
+            ToggleRow(L(R.string.device_cal_write), detail: L(R.string.device_cal_write_line), isOn: Binding(get: { write }, set: { v in Haptics.tick(); model.setWrite(v) }))
             if write {
                 let cals = sync.writableCalendars()
                 Text(L(R.string.device_cal_write_to)).font(KeloFont.titleSmall).foregroundStyle(c.muted)
                 if cals.isEmpty { MutedText(L(R.string.device_cal_none), small: true) }
-                let chosen = cals.first { $0.calendarIdentifier == pick }?.calendarIdentifier ?? cals.first?.calendarIdentifier
+                let chosen = cals.first { $0.calendarIdentifier == model.pick }?.calendarIdentifier ?? cals.first?.calendarIdentifier
                 ForEach(cals, id: \.calendarIdentifier) { k in
                     let account = k.source?.title ?? ""
                     ChoiceRow(k.title + (account.isEmpty || account == k.title ? "" : " · \(account)"), selected: k.calendarIdentifier == chosen) {
-                        pick = k.calendarIdentifier
-                        sync.writeCalendarId = k.calendarIdentifier
-                        Task { await sync.sync(.calendar, app: app, force: true) }
+                        model.choose(k.calendarIdentifier)
                     }
                 }
             }
         }
-        .onAppear { write = sync.writeAllowed; pick = sync.writeCalendarId }
+        .onAppear { model.refresh() }
     }
 }
 

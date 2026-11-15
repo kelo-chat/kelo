@@ -2,7 +2,6 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 import ImageIO
-import KeloCore
 import KeloShared
 #if os(iOS)
 import UIKit
@@ -13,6 +12,9 @@ enum AttachSource { case photo, camera, file }
 
 /// "+": 사진 (the system photo picker, photos and videos, no permission), 카메라, 파일.
 struct AttachSheet: View {
+    /// Nest's chat cards: a row each (none while the app has no Nest renderer)
+    var nestEntries: [NestEntry] = []
+    var onNest: (NestEntry) -> Void = { _ in }
     let onPick: (AttachSource) -> Void
     @Environment(\.kelo) private var c
 
@@ -25,6 +27,9 @@ struct AttachSheet: View {
                     row(.camera, L(R.string.attach_camera), L(R.string.attach_camera_hint)) { onPick(.camera) }
                 }
                 row(.file, L(R.string.attach_file), L(R.string.attach_file_hint)) { onPick(.file) }
+                ForEach(nestEntries) { e in
+                    row(.spark, e.title.isEmpty ? e.packageName : e.title, e.packageName) { onNest(e) }
+                }
             }
             .padding(.horizontal, 20).padding(.bottom, 16)
         }
@@ -179,8 +184,6 @@ final class AttachmentPickers {
             // a picked document is read only while it goes up (copied out of its sandbox first, then deleted)
             let scoped = url.startAccessingSecurityScopedResource()
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? -1
-            if UploadRules.tooLarge(size) { throw UploadTooLarge() }
             let copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + url.lastPathComponent)
             try FileManager.default.copyItem(at: url, to: copy)
             return try FilePrep.prepare(copy, temporary: true, display: url.lastPathComponent)
@@ -233,14 +236,10 @@ struct PickedMovie: Transferable {
     }
 }
 
-/// A file as it is: its size checked against the limit before anything is sent.
+/// A file as it is (any size: the uploader checks it against this route's limits before anything is sent).
 enum FilePrep {
     static func prepare(_ url: URL, temporary: Bool, display: String? = nil) throws -> PreparedUpload {
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? -1
-        if UploadRules.tooLarge(size) {
-            if temporary { try? FileManager.default.removeItem(at: url) }
-            throw UploadTooLarge()
-        }
         let type = UTType(filenameExtension: url.pathExtension)
         var name = display ?? url.lastPathComponent
         if temporary, display == nil, let dash = name.firstIndex(of: "-"), name.count > 37 { name = String(name[name.index(after: dash)...]) }
@@ -267,7 +266,6 @@ enum PhotoPrep {
         CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: UploadRules.jpegQuality] as CFDictionary)
         guard CGImageDestinationFinalize(dest) else { throw AttachmentReadError() }
         let bytes = out as Data
-        if UploadRules.tooLarge(Int64(bytes.count)) { throw UploadTooLarge() }
         var thumb: Data?
         if let t = scaled(160) {
             let td = NSMutableData()

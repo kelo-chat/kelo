@@ -11,38 +11,11 @@ import XCTest
 /// The wallet opens behind the owner's check: enroll Face ID in the simulator and send matches from the Mac while this runs
 /// (`xcrun simctl spawn <device> notifyutil -p com.apple.BiometricKit_Sim.pearl.match`). Other variables as KeloScreensTests:
 /// KELO_SERVER, KELO_KEY, KELO_LANG (ko | en | de), KELO_TAG, KELO_SHOTS. Files: `<name>-<tag>.png`, e.g. shipping-list-ko-light.png.
-final class KeloShippingShotsTests: XCTestCase {
-    private let env = ProcessInfo.processInfo.environment
-    private var lang: String { env["KELO_LANG"] ?? "en" }
-    private var tag: String { env["KELO_TAG"] ?? lang }
-    private var app: XCUIApplication!
+final class KeloShippingShotsTests: KeloShotCase {
 
     /// The app's own words for the few labels the walk taps (en, ko, de).
-    private func w(_ en: String, _ ko: String, _ de: String? = nil) -> String {
-        switch lang {
-        case "ko": ko
-        case "de": de ?? en
-        default: en
-        }
-    }
 
-    override func setUp() { continueAfterFailure = true }
-
-    private func shot(_ name: String) {
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        let a = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-        a.name = "\(name)-\(tag)"
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = env["KELO_SHOTS"] {
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name)-\(tag).png"))
-        }
-    }
-
-    private func element(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", label, label)).firstMatch
-    }
+    override func shotName(_ screen: String) -> String { "\(screen)-\(tag)" }
 
     private func id(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@", identifier)).firstMatch
@@ -53,7 +26,7 @@ final class KeloShippingShotsTests: XCTestCase {
     }
 
     @discardableResult
-    private func tap(_ e: XCUIElement, _ what: String, timeout: TimeInterval = 10) -> Bool {
+    override func tap(_ e: XCUIElement, _ what: String, timeout: TimeInterval = 10) -> Bool {
         guard e.waitForExistence(timeout: timeout) else { XCTFail("not found: \(what)\n\(app.debugDescription)"); return false }
         reveal(e)
         e.tap()
@@ -72,8 +45,6 @@ final class KeloShippingShotsTests: XCTestCase {
             app.swipeDown(velocity: .slow); n += 1
         }
     }
-
-    private func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
 
     private func back() {
         let b = element(w("Back", "뒤로", "Zurück"))
@@ -112,26 +83,6 @@ final class KeloShippingShotsTests: XCTestCase {
         pause(0.3)
     }
 
-    private func signIn(_ key: String) {
-        let connect = element(w("Connect with access key", "접속 키로 연결하기", "Mit Zugangsschlüssel verbinden"))
-        if connect.waitForExistence(timeout: 10) {
-            connect.tap()
-            let server = app.textFields.firstMatch
-            server.tap()
-            let cur = (server.value as? String) ?? ""
-            if !cur.isEmpty && cur != server.placeholderValue {
-                server.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: cur.count))
-            }
-            server.typeText(env["KELO_SERVER"]!)
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("Connect", "연결", "Verbinden"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
-        }
-        XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 25), "chat did not open\n\(app.debugDescription)")
-    }
 
     // ---- the wallet ------------------------------------------------------------------------------------------------------------
 

@@ -157,10 +157,22 @@
         <li><img src="{{asset:logo-todoist.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async">Todoist</li>
         <li><img src="{{asset:logo-zapier.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async">Zapier</li>
       </ul>
-      <p class="reach">기본 제공 도메인, Tailscale, 가진 도메인 중 하나로 어디서든 서버에 닿아요.</p>
+      <p class="reach">현재 한정 제공 중인 Kelo 주소, Tailscale, 가진 도메인 중 하나로 어디서든 서버에 닿아요.</p>
     </div>
     <div class="frame frame--tall span-6 start-7">
       <figure class="shot"><img src="{{shot:ko-connectors}}" srcset="{{shot:ko-connectors-half}} 270w, {{shot:ko-connectors}} 540w" sizes="(min-width: 1024px) 280px, 240px" width="540" height="1200" alt="커넥터 화면: Gmail과 GitHub이 연결돼 있고, Notion, Linear, Todoist, Zapier를 연결할 수 있어요." loading="lazy" decoding="async"></figure>
+    </div>
+  </div>
+</section>
+
+<section id="selfhosted" class="h2m" aria-labelledby="selfhosted-h">
+  <div class="wrap grid">
+    <div class="split-copy span-8">
+      <h2 id="selfhosted-h">직접 돌리는 다른 앱과도 이어져요</h2>
+      <p>집에서 쓰는 앱을 네트워크나 Tailscale의 주소(예: <code>http://192.168.0.10:8123</code>)로 Kelo에 연결해요. Kelo가 그 앱에 직접 물어보니 우리 서버를 거치지 않고, 아무것도 네트워크 밖으로 나가지 않아요.</p>
+      <p>Home Assistant, Frigate, Immich, Paperless-ngx, Mealie, Tandoor, Grocy, Actual Budget, Firefly III, Linkwarden, Karakeep, Wallabag, Miniflux, FreshRSS, n8n, Uptime Kuma, Beszel, AdGuard Home, Pi-hole, Nextcloud, Gitea, Forgejo.</p>
+      <p>“현관문 열어 줘”, “보일러 꺼 줘”처럼 직접 말하면 Kelo가 바로 해요. Kelo가 스스로 하려는 일이나 웹페이지·메일·메시지의 글에서 비롯된 요청은 먼저 물어봐요.</p>
+      <p class="reach">Kelo는 자기 자신이나 클라우드 서버의 관리 정보에는 연결하지 않아요. Kelo 서버 자신을 가리키는 주소(127.0.0.1)와 클라우드 메타데이터 주소(169.254.x.x)는 거절해요. 추후 예정: 자체 서명 인증서를 쓰는 https 주소 (예: Frigate의 로그인 포트 8971).</p>
     </div>
   </div>
 </section>
@@ -173,8 +185,8 @@
         <div><dt>내 Kelo 서버</dt><dd>대화, 기억, 파일, 키체인, 카드. 비밀 값은 잠가 둬요.</dd></div>
         <div><dt>내가 고른 AI 회사</dt><dd>답을 쓰기 위한 대화 내용.</dd></div>
         <div><dt>내가 연결한 서비스</dt><dd>연결한 곳과만 주고받아요.</dd></div>
-        <div><dt>Kelo 운영 서버</dt><dd>내용 없는 푸시 알림, 기본 제공 도메인, 서비스 로그인 중계(저장하지 않음).</dd></div>
-        <div><dt>Cloudflare</dt><dd>기본 제공 도메인을 쓸 때만 거쳐요. Tailscale이나 내 도메인은 거치지 않아요.</dd></div>
+        <div><dt>Kelo 운영 서버</dt><dd>내용 없는 푸시 알림, Kelo 주소, 서비스 로그인 중계(저장하지 않음).</dd></div>
+        <div><dt>Cloudflare</dt><dd>Kelo 주소를 쓸 때만 거쳐요. Tailscale이나 내 도메인은 거치지 않아요.</dd></div>
       </dl>
       <a class="link" href="{{href:privacy}}">개인정보 처리방침 읽기<svg class="m-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
     </div>
@@ -203,7 +215,7 @@
         <ol class="steps-row">
           <li><b>서버 설치</b><span>명령 몇 줄로 Kelo를 띄워요. AI 모델은 직접 골라 내 키로 연결해요.</span></li>
           <li><b>QR로 휴대폰 연결</b><span>서버가 보여 주는 QR 코드를 Kelo 앱으로 스캔해요. 휴대폰은 몇 대든 돼요.</span></li>
-          <li><b>어디서든 대화</b><span>기본 제공 도메인, Tailscale, 내 도메인 중 하나를 써요.</span></li>
+          <li><b>어디서든 대화</b><span>현재 한정 제공 중인 Kelo 주소, Tailscale, 내 도메인 중 하나를 써요.</span></li>
         </ol>
         <div class="term" data-tabs>
           <div class="term-bar">
@@ -237,7 +249,7 @@
       <aside class="tip" id="free" aria-labelledby="free-title">
         <p class="tag">팁 · 무료로 운영하기</p>
         <h3 id="free-title">Kelo를 위한 Oracle Cloud Always Free</h3>
-        <p>Oracle Cloud의 Always Free에는 계속 무료인 Arm 서버(2 OCPU · 메모리 12 GB)가 들어 있고, Kelo를 돌리기에 충분해요. 여기에 Kelo를 설치하고 기본 제공 도메인으로 연결하세요. 옆에 <strong>FreeLLMAPI</strong>를 함께 띄우면 여러 AI 회사의 무료 사용량을 OpenAI 호환 주소 하나로 쓸 수 있어요. 그 주소는 앱의 마이 → 모델 → Custom endpoint에 넣어요.</p>
+        <p>Oracle Cloud의 Always Free에는 계속 무료인 Arm 서버(2 OCPU · 메모리 12 GB)가 들어 있고, Kelo를 돌리기에 충분해요. 여기에 Kelo를 설치하고 Kelo 주소(현재 한정 제공)로 연결하세요. 옆에 <strong>FreeLLMAPI</strong>를 함께 띄우면 여러 AI 회사의 무료 사용량을 OpenAI 호환 주소 하나로 쓸 수 있어요. 그 주소는 앱의 마이 → 모델 → Custom endpoint에 넣어요.</p>
         <ul>
           <li>7일 동안 거의 쓰지 않은 무료 서버(CPU, 네트워크, 메모리 모두 20% 미만)는 Oracle이 회수할 수 있어요. 계정을 Pay As You Go로 업그레이드해도 Always Free 자원은 계속 무료이고, 업그레이드하면 회수되지 않는다는 경험담이 많아요.</li>
           <li>무료 모델은 유료 모델보다 느리고, 도구를 쓰는 일이 덜 안정적이에요.</li>

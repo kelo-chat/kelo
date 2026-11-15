@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
@@ -7,10 +8,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.MyPane
-import chat.kelo.desktop.pages.MyView
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.After
 import org.junit.Rule
@@ -30,7 +27,7 @@ class ResourcesShotsTest {
     @get:Rule val tmp = TemporaryFolder()
     private val mocks = mutableListOf<MockServer>()
     private val start = androidx.compose.runtime.mutableStateOf<String?>(null)
-    private val ko = Strings.of("ko")
+    private val ko = Words.of("ko")
 
     @After fun stop() { mocks.forEach { it.stop() } }
 
@@ -51,14 +48,14 @@ class ResourcesShotsTest {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             Box(Modifier.size(1000.dp, 760.dp)) {
-                KeloFrame(app) { MyPane(app, topInset = 0.dp, start = start.value, onStartUsed = { start.value = null }, onSignedOut = {}) }
+                KeloFrame(app) { MyPaneAt(app, start) }
             }
         }
-        val failed = ko.get(R.string.resources_load_failed)
-        val retry = ko.get(R.string.retry)
+        val failed = ko.get(Res.string.resources_load_failed)
+        val retry = ko.get(Res.string.retry)
         val host = "assistant limits --choose"
         try {
-            ui.waitText(ko.get(R.string.my_section_account))
+            ui.waitText(ko.get(Res.string.my_section_account))
             // the first read fails: the error and "try again", in light and dark
             start.value = MyView.RESOURCES
             ui.settle()
@@ -75,7 +72,7 @@ class ResourcesShotsTest {
             compose.onNodeWithText(retry).performClick()
             ui.waitText(host, timeout = 15_000)
             check(!ui.has(failed)) { "the error is gone" }
-            check(ui.has(ko.get(R.string.resources_unlimited_long))) { "the profile is shown" }
+            check(ui.has(ko.get(Res.string.resources_unlimited_long))) { "the profile is shown" }
             check(ui.has("512MB")) { "the minimum memory (536870912.0) reads as 512MB" }
             ui.shot("resources-phone-ko-light")
             app.settings.setTheme("dark")

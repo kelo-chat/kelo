@@ -6,26 +6,31 @@ import KeloShared
 /// agent may write first: on or off, at most N times a day, only between the hours set) with its optional list of things to keep
 /// an eye on (Android my/NotifyPage.kt).
 struct NotifyPage: View {
-    @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kelo) private var c
+    @Environment(\.keloBackground) private var background
     @Environment(\.scenePhase) private var phase
-    @State private var phoneOn = NotifyPermission.cached
-    @State private var proactive: ProactiveSettings?
-    @State private var checklist: ChecklistSettings?
-    @State private var followups: FollowupSettings?
-    @State private var followupsMissing = false
-    @State private var proactiveMissing = false
-    @State private var checklistMissing = false
-    @State private var error = ""
-    @State private var toast: String?
+    @State private var model: NotifySettingsModel
+    @State private var briefing: BriefingSettingsModel
+    @State private var sources: BriefingSourcesModel
+    @State private var phoneOn = NotifyPermission.cached()
     @State private var picking: String?
     @State private var pickTime = Date()
     @State private var draft = ""
-    @State private var briefing: BriefingSettings?
-    @State private var briefingMissing = false
     /// The hours suggestion just answered here (its id, and true = changed)
     @State private var hoursDone: (String, Bool)?
+
+    init(api: KeloApi) {
+        _model = State(initialValue: NotifySettingsModel(api: api))
+        _briefing = State(initialValue: BriefingSettingsModel(api: api))
+        _sources = State(initialValue: BriefingSourcesModel(api: api))
+    }
+
+    private var proactive: ProactiveSettings? { model.proactive }
+    private var checklist: ChecklistSettings? { model.checklist }
+    private var followups: FollowupSettings? { model.followups }
+    private var toastText: String? { model.notice ?? briefing.notice ?? sources.notice }
+    private func clearToast() { model.clearNotice(); briefing.clearNotice(); sources.clearNotice() }
 
     var body: some View {
         SubPage(L(R.string.notify_my_row), onBack: { dismiss() }) {
@@ -33,45 +38,50 @@ struct NotifyPage: View {
                 SectionLabel(L(R.string.notify_page_phone))
                 MenuRow(.bell, L(R.string.notify_page_phone_row), value: phoneOn ? L(R.string.notify_state_on) : L(R.string.notify_state_off),
                         valueColor: phoneOn ? nil : c.danger) {
-                    Task { if phoneOn { DeviceInfo.openAppSettings() } else { phoneOn = await NotifyPermission.request() } }
+                    Task { if phoneOn { DeviceInfo.openAppSettings() } else { phoneOn = await NotifyPermission.request(); if phoneOn { await background?.syncPush() } } }
                 }
             }
             .padding(.horizontal, -16)
             if !phoneOn { MutedText(L(R.string.my_ios_notify_background_note), small: true) }
-            if !error.isEmpty { ErrorText(error, small: true) }
+            if !model.error.isEmpty { ErrorText(model.error, small: true) }
 
             SectionLabel(L(R.string.followup_settings_title)).padding(.horizontal, -16)
-            if followupsMissing { MutedText(L(R.string.notify_page_unavailable), small: true) }
+            if model.followupsMissing { MutedText(L(R.string.notify_page_unavailable), small: true) }
             else if let f = followups { followupBlock(f) }
             else { SkeletonRows(rows: 1) }
 
             SectionLabel(L(R.string.hours_section)).padding(.horizontal, -16)
-            if proactiveMissing { MutedText(L(R.string.notify_page_unavailable), small: true) }
+            if model.proactiveMissing { MutedText(L(R.string.notify_page_unavailable), small: true) }
             else if let p = proactive { hoursBlock(p) }
             else { SkeletonRows(rows: 2) }
 
-            if !briefingMissing {
+            if !briefing.missing {
                 SectionLabel(L(R.string.briefing_title)).padding(.horizontal, -16)
-                if let b = briefing {
-                    BriefingBlock(settings: b, onChanged: { briefing = $0 }, toast: { toast = $0 })
+                if let b = briefing.settings {
+                    BriefingBlock(settings: b, model: briefing)
                 } else {
                     SkeletonRows(rows: 2)
                 }
             }
 
             SectionLabel(L(R.string.heads_section)).padding(.horizontal, -16)
-            if proactiveMissing { MutedText(L(R.string.notify_page_unavailable), small: true) }
+            if model.proactiveMissing { MutedText(L(R.string.notify_page_unavailable), small: true) }
             else if let p = proactive { headsUp(p) }
             else { SkeletonRows(rows: 2) }
-            if proactive?.enabled == true && !checklistMissing {
+            if proactive?.enabled == true && !model.checklistMissing {
                 if let k = checklist { watchList(k.list) } else { SkeletonRows(rows: 1) }
             }
 
             // which calendars and mailboxes the briefing and the heads-ups read: one choice for both, shown whether the briefing is
             // on or not (Android my/NotifyPage.kt, my/BriefingSources.kt); nothing when no calendar or mailbox is connected
-            BriefingSourcesBlock(toast: { toast = $0 })
+            BriefingSourcesBlock(model: sources)
         }
-        .task { await load() }
+        .task {
+            async let phone: Void = { phoneOn = await NotifyPermission.isOn() }()
+            await model.load()
+            await briefing.load()
+            await phone
+        }
         .onChange(of: phase) { _, p in if p == .active { Task { phoneOn = await NotifyPermission.isOn() } } }
         .keloSheet(isPresented: Binding(get: { picking != nil }, set: { if !$0 { picking = nil } }), detents: [.medium]) {
             VStack(spacing: 12) {
@@ -83,14 +93,14 @@ struct NotifyPage: View {
                 PrimaryButton(L(R.string.ok)) {
                     let comps = Calendar.current.dateComponents([.hour, .minute], from: pickTime)
                     if let field = picking {
-                        putProactive([field: .string(NotifySettingsRules.formatTime(comps.hour ?? 7, comps.minute ?? 0))])
+                        model.putProactive([field: .string(NotifySettingsRules.formatTime(comps.hour ?? 7, comps.minute ?? 0))])
                     }
                     picking = nil
                 }
             }
             .padding(.horizontal, 20).padding(.bottom, 24)
         }
-        .toast($toast)
+        .toast(toastText, clear: clearToast)
     }
 
     // ---- blocks ------------------------------------------------------------------------------------------------------------------
@@ -105,12 +115,15 @@ struct NotifyPage: View {
         let every = NotifySettingsRules.every(p.everyMinutes)
         let often = every.hours ? P(R.plurals.agent_repeat_every_hours, every.n, every.n) : P(R.plurals.work_every_minutes, every.n, every.n)
         toggleLine(L(R.string.heads_switch), L(R.string.heads_about, often, L(R.string.followup_settings_title)), on: p.enabled) {
-            putProactive(["enabled": .bool($0)])
+            model.putProactive(["enabled": .bool($0)])
         }
         if p.enabled {
             stepper(L(R.string.heads_per_day), value: p.dailyTotal, text: P(R.plurals.heads_times, p.dailyTotal, p.dailyTotal), min: 1) { v in
                 let caps = NotifySettingsRules.perDay(v, regular: p.dailyRegular, now: p.dailyNow)
-                putProactive(["daily_regular": .number(Double(caps.regular)), "daily_total": .number(Double(caps.total)), "daily_now": .number(Double(caps.now))])
+                model.putProactive(["daily_regular": .number(Double(caps.regular)), "daily_total": .number(Double(caps.total)), "daily_now": .number(Double(caps.now))])
+            }
+            toggleLine(L(R.string.heads_mail), L(R.string.heads_mail_about), on: p.mailCheck) {
+                model.putProactive(["mail_check": .bool($0)])
             }
             let sent = p.today.values.reduce(0, +)
             if sent > 0 { MutedText(P(R.plurals.heads_sent_today, sent, sent), small: true) }
@@ -142,26 +155,26 @@ struct NotifyPage: View {
                     MutedText(L(R.string.hours_manual), small: true)
                 }
                 if kind == ContactHoursRules.weekend && w.source == "manual" {
-                    LinkButton(L(R.string.hours_weekend_reset)) { putProactive(["weekend_start": .string(""), "weekend_end": .string("")]) }
+                    LinkButton(L(R.string.hours_weekend_reset)) { model.putProactive(["weekend_start": .string(""), "weekend_end": .string("")]) }
                 }
                 if let l = ContactHoursRules.learnedFor(h, kind) {
                     HStack(spacing: 8) {
                         Text(L(R.string.hours_learned_value, hoursSpanText(l.wakeStart, l.wakeEnd))).font(KeloFont.small).foregroundStyle(c.ink)
                             .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                        SecondaryButton(L(R.string.hours_learned_apply)) { postHours(ContactHoursRules.applyPath(kind)) }
+                        SecondaryButton(L(R.string.hours_learned_apply)) { model.postHours(ContactHoursRules.applyPath(kind)) }
                             .accessibilityIdentifier("kelo.hours.apply.\(kind)")
                     }
                 }
                 if let s = suggestion(h, kind) {
                     HoursSuggestionCard(suggestion: s, done: hoursDone.flatMap { $0.0 == s.id ? $0.1 : nil }) { accept in
                         hoursDone = (s.id, accept)
-                        postHours(accept ? ContactHoursRules.acceptPath(s.id) : ContactHoursRules.keepPath(s.id))
+                        model.postHours(accept ? ContactHoursRules.acceptPath(s.id) : ContactHoursRules.keepPath(s.id))
                     }
                 }
             }
             .padding(.vertical, 4)
         }
-        toggleLine(L(R.string.hours_auto_switch), L(R.string.hours_auto_about_manual), on: p.autoHours) { putProactive(["auto_hours": .bool($0)]) }
+        toggleLine(L(R.string.hours_auto_switch), L(R.string.hours_auto_about_manual), on: p.autoHours) { model.putProactive(["auto_hours": .bool($0)]) }
     }
 
     private func suggestion(_ h: ContactHours, _ kind: String) -> HoursSuggestion? {
@@ -209,7 +222,7 @@ struct NotifyPage: View {
                     HStack {
                         Text(item).font(KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true).padding(.vertical, 10)
                         Spacer(minLength: 8)
-                        Button { putChecklist(items.filter { $0 != item }) } label: { KeloIconView(.close, size: 18, tint: c.muted).frame(width: 40, height: 40) }
+                        Button { model.putChecklist(items.filter { $0 != item }) } label: { KeloIconView(.close, size: 18, tint: c.muted).frame(width: 40, height: 40) }
                             .buttonStyle(.plain).accessibilityLabel(L(R.string.heads_list_remove, item))
                     }
                     .padding(.leading, 14)
@@ -221,14 +234,14 @@ struct NotifyPage: View {
             KeloTextField(L(R.string.heads_list_hint), text: $draft, maxLength: NotifySettingsRules.maxItem)
             SecondaryButton(L(R.string.heads_list_add), enabled: !draft.trimmingCharacters(in: .whitespaces).isEmpty) {
                 let next = NotifySettingsRules.added(items, draft)
-                if next != items { putChecklist(next) }
+                if next != items { model.putChecklist(next) }
                 draft = ""
             }
         }
     }
 
     @ViewBuilder private func followupBlock(_ f: FollowupSettings) -> some View {
-        toggleLine(L(R.string.followup_settings_switch), L(R.string.followup_settings_about), on: f.enabled) { putFollowups(["enabled": .bool($0)]) }
+        toggleLine(L(R.string.followup_settings_switch), L(R.string.followup_settings_about), on: f.enabled) { model.putFollowups(["enabled": .bool($0)]) }
         if f.enabled {
             FieldLabel(L(R.string.followup_settings_first))
             SelectField(title: L(R.string.followup_settings_first),
@@ -238,7 +251,7 @@ struct NotifyPage: View {
                 let (a, b) = FollowupDelayRules.delays(first, f.secondMinutes)
                 var body: [String: JSON] = ["first_delay_min": .number(Double(a))]
                 if b != f.secondMinutes { body["second_delay_min"] = .number(Double(b)) }
-                putFollowups(body)
+                model.putFollowups(body)
             }
             FieldLabel(L(R.string.followup_settings_second))
             SelectField(title: L(R.string.followup_settings_second),
@@ -246,37 +259,10 @@ struct NotifyPage: View {
                             .map { SelectOption(value: String($0), label: MyFormat.later($0)) },
                         selected: String(f.secondMinutes)) { v in
                 guard let second = Int(v) else { return }
-                putFollowups(["second_delay_min": .number(Double(FollowupDelayRules.delays(f.firstMinutes, second).1))])
+                model.putFollowups(["second_delay_min": .number(Double(FollowupDelayRules.delays(f.firstMinutes, second).1))])
             }
             MutedText(L(R.string.followup_settings_hold_note), small: true)
         }
-    }
-
-    // ---- calls -------------------------------------------------------------------------------------------------------------------
-
-    private func load() async {
-        phoneOn = await NotifyPermission.isOn()
-        guard let api = try? app.requireApi() else { return }
-        do { proactive = try await api.get("/api/proactive") } catch let e as ApiError { if e.status == 404 { proactiveMissing = true } else { error = app.message(for: e) } } catch {}
-        do { checklist = try await api.get("/api/checklist") } catch let e as ApiError { if e.status == 404 { checklistMissing = true } else { error = app.message(for: e) } } catch {}
-        do { briefing = try await api.get("/api/briefing", as: BriefingSettings.self) } catch let e as ApiError { if e.status == 404 { briefingMissing = true } } catch {}
-        do { followups = try await api.get("/api/followups/settings") } catch let e as ApiError { if e.status == 404 { followupsMissing = true } else { error = app.message(for: e) } } catch {}
-    }
-
-    private func putProactive(_ b: [String: JSON]) {
-        Task { do { proactive = try await app.requireApi().put("/api/proactive", body: .object(b)) } catch { toast = app.message(for: error) } }
-    }
-
-    private func postHours(_ path: String) {
-        Task { do { proactive = try await app.requireApi().post(path, as: ProactiveSettings.self) } catch { toast = app.message(for: error) } }
-    }
-
-    private func putChecklist(_ items: [String]) {
-        Task { do { checklist = try await app.requireApi().put("/api/checklist", body: ["items": .array(items.map { .string($0) })]) } catch { toast = app.message(for: error) } }
-    }
-
-    private func putFollowups(_ b: [String: JSON]) {
-        Task { do { followups = try await app.requireApi().put("/api/followups/settings", body: .object(b)) } catch { toast = app.message(for: error) } }
     }
 }
 

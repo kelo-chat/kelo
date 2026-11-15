@@ -51,21 +51,33 @@ from ..i18n import N_, t
 from ..signin_state import CLEAN_READINGS, still_signing_in
 from .challenge import CHECK_TRIES, PROBE_JS, Challenge, check_boxes, detect, handover_note, note_for, try_note
 from . import humanize as human
-from .commits import TARGET_JS, continue_only, judge_click, judge_type, label_of, money_page, pressable
+from .commits import TARGET_JS, cancel_words, continue_only, judge_click, judge_type, label_of, money_page, pressable
 from .downloads import DownloadArea
 from .sites import registrable, same_site
 from .verification import SIGN_IN_SECONDS, Verification, options_note, verification_note, verification_step, waiting_note
 from .page_notes import (OVERLAY_JS, OVERLAY_ROUNDS, click_js, closed_note, masked_note, masked_values, not_found_note, open_note,
                          overlays, signature)
+from .page_tree import controls_only, for_reading, frame_hosts, frame_of, interactive_refs, ref_boxes, ref_name, ref_of, ref_selector, ref_words
 
 BLOCKED_HOSTNAMES = {"localhost", "host.docker.internal", "gateway.docker.internal", "metadata.google.internal"}
 MAX_TEXT_CHARS = 12_000
+MAX_TREE_CHARS = 20_000           # a page reading as its accessibility tree with refs (page_tree.py): longer than plain text
+SNAPSHOT_MS = 4_000               # how long reading that tree may take before the page's plain text is shown instead
+LOOK_WIDTH = 1024                 # browser_look: a picture of the visible page with a box and its ref on each control
+LOOK_BYTES = 400_000
+LOOK_MAX_LABELS = 80
+STALE_REF = "ref {ref} is not on the page any more: read the page again (browser_read) and use a ref from that reading"
 NAV_TIMEOUT_MS = 30_000
 CHAT_TAB_IDLE_SECONDS = 3600.0   # a phone's (or the owner's) tab is closed after an hour unused, counted from the end of its last turn
 TAB_IDLE_SECONDS = CHAT_TAB_IDLE_SECONDS   # older name
+SITE_TAB_PREFIX = "task:watch-site:"   # a watcher's background tab for one site (site_fetch): <prefix><registrable domain>
+SITE_TAB_IDLE_SECONDS = 600.0    # a site tab unused this long is closed
+SITE_TABS_MAX = 3                # at most this many site tabs at a time (the least recently used one makes room)
+SITE_FETCH_TIMEOUT_MS = 20_000
 TAB_SWEEP_SECONDS = 60.0         # how often the server's sweeper looks for tabs to close (the count of tabs is not limited)
 PURCHASE_WINDOW_SECONDS = 180.0   # after an allowed purchase: how long the clicks that finish it need no second card...
 PURCHASE_WINDOW_ACTIONS = 4       # ...and how many of them
+CANCEL_WINDOW_ACTIONS = 4         # a free cancel of a wrong charge (purchase_result): how many cancel clicks it covers, for PURCHASE_WINDOW_SECONDS
 CARD_MIN_INTERVAL = 2.0           # seconds between two browser cards of one tab
 CARD_MAX_BYTES = 120_000          # the JPEG in a browser card is never bigger than this (else the card goes without a picture)
 CARD_MAX_WIDTH = 720              # pixels; screenshots are scaled down to this width
@@ -93,7 +105,7 @@ POPUP_NOTE = "[The click opened a new window ({url}); you are in it now (same si
 POPUP_BACK_NOTE = "[The window you were in closed; you are back on the page that opened it.]"
 NO_CHANGE_NOTE = ("[The click went through, but nothing changed: same address, same page content and form values, no new window, no "
                   "pop-up. Do not click the same element again. Look at the page below for what holds it (a message, an unticked box, "
-                  "a choice still to make, a frame or window it belongs to), try another way (another element, browser_view), or tell "
+                  "a choice still to make, a frame or window it belongs to), try another way (another element; the other desktop / phone view: load browser_view with find_tools), or tell "
                   "the user what you see.]")
 # After a click or typing on the same page, only what changed is returned (the whole page again is mostly repeated words): the changed
 # lines with CHANGE_CONTEXT lines around them, and what left the page. A change bigger than CHANGE_MAX_SHARE of the page: all of it.
@@ -111,6 +123,35 @@ FINGERPRINT_JS = """() => { const b = document.body; if (!b) return location.hre
   for (const e of document.querySelectorAll('input,select,textarea')) s += '|' + (e.checked ? 1 : 0) + String(e.value || '').slice(0, 40);
   return s; }"""
 FRAME_TEXT_JS = """() => document.body ? [innerWidth * innerHeight, document.body.innerText || ''] : [0, '']"""
+
+
+# browser_look's labels: ONE host element with a closed shadow root over the whole viewport (never takes a click), a 2px outline and
+# the ref for each box. Removed right after the picture (LOOK_CLEAR_JS).
+LOOK_OVERLAY_JS = r"""(boxes) => {
+  document.querySelectorAll('[data-kelo-look]').forEach((e) => e.remove());
+  const host = document.createElement('div');
+  host.setAttribute('data-kelo-look', '');
+  host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;margin:0;padding:0;border:0;background:none';
+  const root = host.attachShadow({mode: 'closed'});
+  const colors = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#008080', '#9a6324', '#800000'];
+  boxes.forEach((b, i) => {
+    const c = colors[i % colors.length];
+    const box = document.createElement('div');
+    box.style.cssText = `position:fixed;left:${b.x}px;top:${b.y}px;width:${b.w}px;height:${b.h}px;outline:2px solid ${c};` +
+      'outline-offset:0;box-sizing:border-box;pointer-events:none';
+    const tag = document.createElement('div');
+    tag.textContent = b.ref;
+    tag.style.cssText = `position:fixed;left:${Math.max(0, b.x)}px;top:${Math.max(0, b.y - 14)}px;background:${c};color:#fff;` +
+      'font:bold 11px/14px monospace;padding:0 3px;border-radius:2px;pointer-events:none;white-space:nowrap';
+    root.append(box, tag);
+  });
+  (document.body || document.documentElement).appendChild(host);
+  return boxes.length;
+}"""
+LOOK_CLEAR_JS = "() => document.querySelectorAll('[data-kelo-look]').forEach((e) => e.remove())"
+# where a frame's own viewport starts inside the frame that holds its iframe element (border and padding included)
+FRAME_ORIGIN_JS = """(e) => { const r = e.getBoundingClientRect(), s = getComputedStyle(e);
+  return [r.left + e.clientLeft + (parseFloat(s.paddingLeft) || 0), r.top + e.clientTop + (parseFloat(s.paddingTop) || 0)]; }"""
 
 
 def mobile_identity(full_version: str) -> dict[str, Any]:
@@ -149,9 +190,72 @@ _FINAL_WORDS = ("pay", "buy", "purchase", "checkout", "check out", "place order"
 browser_owner: ContextVar[str] = ContextVar("browser_owner", default="owner")
 
 
+POINT_TOOLS = ("browser_click_at", "browser_drag")   # steps at a point of the last browser_look picture (no element named)
+LOOK_FIRST = "look at the page first (browser_look)"
+DRAG_POINTS = (2, 20)
+
+
+def _point_arg(p: Any) -> tuple[float, float]:
+    if not isinstance(p, dict):
+        raise ValueError("a point is {x, y}")
+    x, y = float(p.get("x")), float(p.get("y"))
+    if not (0 <= x <= 10_000 and 0 <= y <= 10_000):
+        raise ValueError("x and y are pixels of the picture")
+    return x, y
+
+
+def step_points(tool: str, args: dict[str, Any]) -> list[tuple[float, float]]:
+    """The picture points of a browser_click_at (one) or browser_drag (its path) step; ValueError when they are not usable."""
+    if tool == "browser_click_at":
+        return [_point_arg(args)]
+    path = args.get("path")
+    if not isinstance(path, list) or not DRAG_POINTS[0] <= len(path) <= DRAG_POINTS[1]:
+        raise ValueError(f"path must list {DRAG_POINTS[0]} to {DRAG_POINTS[1]} points")
+    return [_point_arg(p) for p in path]
+
+
+def step_key(tool: str, args: dict[str, Any]) -> str:
+    """What a judged step is remembered under (judged, judged_info): the selector, or "point:x,y" (picture pixels) for a point
+    step (a drag: its first point)."""
+    if tool not in POINT_TOOLS:
+        return str(args.get("selector", ""))
+    try:
+        x, y = step_points(tool, args)[0]
+    except (TypeError, ValueError):
+        return "point:?"
+    return f"point:{round(x)},{round(y)}"
+
+
 def one_run_tab(key: str) -> bool:
     """A tab that belongs to one run (an automatic run or a task handed over): closed as soon as that run is over."""
-    return key.startswith(("schedule:", "task:"))
+    return key.startswith(("schedule:", "task:")) and not is_site_tab(key)
+
+
+def is_site_tab(key: str) -> bool:
+    """A watcher's site tab (site_fetch): it stays open between checks and closes after SITE_TAB_IDLE_SECONDS unused."""
+    return key.startswith(SITE_TAB_PREFIX)
+
+
+def site_tab_key(url: str) -> str:
+    return SITE_TAB_PREFIX + (_site_of(url) or "site")
+
+
+def _origin_of(url: str) -> str:
+    p = urlsplit(url or "")
+    return f"{p.scheme.lower()}://{(p.hostname or '').lower()}" + (f":{p.port}" if p.port and p.port not in (80, 443) else "")
+
+
+# A request made inside the page, as the page itself would make it: the tab's cookies and sign-ins ride along, nothing is read out of them.
+SITE_FETCH_JS = r"""async (a) => {
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), a.timeout);
+  try {
+    const r = await fetch(a.url, { method: a.method, headers: a.headers, body: a.method === 'GET' ? undefined : a.body,
+                                   credentials: 'include', redirect: 'follow', signal: ctl.signal });
+    const text = await r.text(); const h = {};
+    for (const [k, v] of r.headers.entries()) if (/^(server|cf-mitigated|x-amzn-waf-action|x-datadome|x-dd-|x-px)/i.test(k)) h[k.toLowerCase()] = String(v).slice(0, 200);
+    return { status: r.status, contentType: r.headers.get('content-type') || '', text: text.slice(0, a.cap), headers: h, url: r.url };
+  } finally { clearTimeout(timer); }
+}"""
 
 
 class BrowserPolicyError(Exception):
@@ -496,7 +600,10 @@ async def check_url(
     allow_private: bool = False,
     resolver: Callable[..., list] = socket.getaddrinfo,
     internal_names: frozenset[str] = frozenset(),
+    lookup: bool = True,
 ) -> None:
+    """`lookup=False`: a name is not looked up here (the VPN connector is on: the VPN resolves it, and a lookup here would tell the local
+    resolver every site visited). The checks that need no lookup stay: scheme, internal names, IP literals."""
     parts = urlsplit(url.strip())
     if parts.scheme not in ("http", "https"):
         raise BrowserPolicyError(f"only http and https URLs are allowed (got {parts.scheme or 'none'!r})")
@@ -507,6 +614,8 @@ async def check_url(
         return
     if host in BLOCKED_HOSTNAMES or host in internal_names or "." not in host and not _is_ip(host):
         raise BrowserPolicyError(f"host {host!r} is internal and not allowed")
+    if not lookup and not _is_ip(host):
+        return
     try:
         infos = await asyncio.to_thread(resolver, host, parts.port or (443 if parts.scheme == "https" else 80))
     except OSError:
@@ -680,8 +789,12 @@ class BrowserSession:
         self._pages: dict[str, Any] = {}       # device -> its tab
         self._used: dict[str, float] = {}      # device -> when it last used the tab (self.clock), or its last turn ended
         self.clock = clock
+        self.remote_dns: Callable[[], bool] = lambda: False   # the VPN connector is on: names are resolved by the VPN, not here (vpn.py)
+        self.vpn_note: Callable[[], Awaitable[str]] | None = None   # -> the text saying the VPN is down, or "" (server.py wires vpn.down_note)
         self._lock = asyncio.Lock()
         self._purchase: dict[str, tuple[str, float, int]] = {}   # device -> (host, until, clicks left) after an allowed purchase
+        self._cancel: dict[str, tuple[str, float, int, str]] = {}   # device -> (host, until, clicks left, order no) to cancel a wrong charge
+        self.on_cancel_click: Callable[[str, str, str], None] | None = None   # (host, the click's words, order no): logged by the server
         self._last_card: dict[str, float] = {}                   # device -> when its last browser card went out
         self._dialogs: dict[str, list[str]] = {}                 # device -> pop-up messages since the last page reading
         self._status: dict[str, tuple[str, float]] = {}          # device -> (last status line of its card, wall time)
@@ -694,6 +807,7 @@ class BrowserSession:
         self._doc: dict[str, tuple[int, dict[str, str]]] = {}   # tab -> (status, headers) of its main document's last response
         self._notes: dict[str, list[str]] = {}                   # tab -> lines for its next page reading (e.g. what the user did by hand)
         self._view_cdp: dict[str, Any] = {}                      # tab -> the DevTools session holding its phone view (absent = desktop)
+        self._site_locks: dict[str, asyncio.Lock] = {}           # site tab -> one request at a time (site_fetch)
         self._site_views: dict[str, str] = {}                    # site -> the view that last worked there ("desktop" | "mobile")
         self._checks: dict[str, tuple[str, float]] = {}          # tab -> (bot check vendor, when it was announced)
         self.check_listeners: list[Callable[[str, Challenge, str], Any]] = []   # (tab, check, host) when a check is first seen
@@ -712,6 +826,7 @@ class BrowserSession:
         self.sign_ins: dict[str, dict[str, Any]] = {}            # tab -> the sign-in the agent started there: {"site", "at", "task"}
         self.auto_code: Callable[[str], Awaitable[str | None]] = _no_auto_code   # types a code from the site's own mail (browser_more)
         self._judged: dict[str, tuple[str, str, bool]] = {}      # device -> (selector, commit kind, password field) of its last judged step
+        self._carried: dict[str, tuple[str, str, str, float]] = {}   # device -> a step judge_ahead judged for the next judge() of it
         self._judged_info: dict[str, dict[str, Any] | None] = {}  # device -> what was read of that step's element (commits.TARGET_JS)
         # device -> {(page, label): commit kind}: the first judgement of an element stays its judgement on that page (a retry with
         # another selector for the same button gets the same card words)
@@ -728,6 +843,7 @@ class BrowserSession:
         self._handed: dict[str, str] = {}                        # tab -> how its last human check hand-over ended (for fill_login)
         self._tries: dict[str, dict[str, Any]] = {}              # tab -> the agent's own tries at the human check on it (see snapshot)
         self._shot_scale: dict[str, float] = {}                  # tab -> page CSS px per pixel of the last check picture the agent saw
+        self._look_url: dict[str, str] = {}                      # tab -> the page address of its last browser_look picture
         self._check_clicked: dict[str, bool] = {}                # tab -> the agent clicked into the check (keys may follow)
         self.check_tries = CHECK_TRIES                           # readings of one check the agent may try before it goes to the user
         self.check_poll = CHECK_POLL_SECONDS
@@ -742,6 +858,7 @@ class BrowserSession:
         self._popup_setup: dict[str, asyncio.Future] = {}      # tab -> the setup of the window it just moved into (watch, view)
         self._unchanged: dict[str, bool] = {}                    # tab -> its last click changed nothing (NO_CHANGE_NOTE)
         self._last_text: dict[str, tuple[str, str]] = {}         # tab -> (page address, its text) of the last reading the agent got
+        self._ref_words: dict[str, dict[str, str]] = {}          # tab -> {ref: 'role "name"'} of its last reading with refs (page_tree)
         self.changes_only = True                                 # after a step on the same page: only what changed (CHANGES_HEAD)
         self._probes: dict[str, Any] = {}                        # tab -> the last structure reading of its page (challenge.PROBE_JS)
         # tab -> (page address, how its sign-in verification went: "mail" = the mailbox was pointed to first, or a hand-over outcome)
@@ -847,25 +964,13 @@ class BrowserSession:
             if page.is_closed():
                 return None
             owner = await asyncio.wait_for(self.frame_for(page, selector), TARGET_READ_MS / 1000)
-            got = await asyncio.wait_for(owner.locator(selector).first.evaluate(TARGET_JS, timeout=TARGET_READ_MS),
+            got = await asyncio.wait_for(owner.locator(ref_selector(selector)).first.evaluate(TARGET_JS, timeout=TARGET_READ_MS),
                                          TARGET_READ_MS / 1000 + 0.5)
         except Exception:  # noqa: BLE001 - when the element cannot be read, the selector's own words decide
             return None
         if not isinstance(got, dict):
             return None
-        if got.get("structure_read"):
-            try:
-                # a frame of another process has its own DevTools target; one in the page's process cannot be read this way (None)
-                more = await asyncio.wait_for(self._listener_code(page if owner is page else owner), LISTENER_READ_MS / 1000)
-            except Exception:  # noqa: BLE001 - the inline handlers alone are judged
-                more = None
-            if more is None:
-                got["listeners_read"] = False
-            else:
-                got["listeners_read"] = True
-                if more:
-                    got["handler_src"] = (str(got.get("handler_src") or "") + "\n;\n" + more)[:24000]
-        return got
+        return await self._with_listeners(got, page, owner)
 
     async def _listener_code(self, page: Any) -> str | None:
         """The source of the click-like listeners added with addEventListener on the element TARGET_JS just read (it leaves it in
@@ -906,16 +1011,37 @@ class BrowserSession:
             except Exception:  # noqa: BLE001
                 pass
 
+    async def judge_ahead(self, tool: str, args: dict[str, Any]) -> str:
+        """judge() for a check that runs before the step's own (the privacy guard in the tool gate): the answer is kept for that one
+        next judge() of the same step, so the page is read once."""
+        kind = await self.judge(tool, args)
+        self._carried[browser_owner.get()] = (tool, repr(sorted(args.items(), key=str)), kind, time.monotonic())
+        return kind
+
     async def judge(self, tool: str, args: dict[str, Any]) -> str:
         """The commit kind of a browser_click / browser_type step ("" = only looking), remembered for the card and the server's rules."""
+        carried = self._carried.pop(browser_owner.get(), None)   # judged a moment ago by judge_ahead for the same step: not read twice
+        if carried is not None and carried[0] == tool and carried[1] == repr(sorted(args.items(), key=str)) and time.monotonic() - carried[3] < 5:
+            return carried[2]
+        if tool in POINT_TOOLS:
+            return await self._judge_point(tool, args)
         selector = str(args.get("selector", ""))
         info = await self.read_target(selector)
-        if tool == "browser_type":
-            kind = judge_type(info, selector, str(args.get("text", "")), bool(args.get("submit", False)))
+        # a ref that could not be read is judged by the words the page's reading gave it (never by "e12"); none known: "unknown",
+        # which always asks (no_card)
+        words = self.selector_words(selector) if info is None else selector
+        if info is None and ref_of(selector) and words == selector:
+            # the last reading did not carry it (the page changed after a click, 2026-11-12: the same apply button clicked again
+            # asked "press a button?" though the owner had asked for it): ask the element itself for its role and name
+            words = await self._ref_name_now(selector) or selector
+        if info is None and ref_of(selector) and words == selector:
+            kind = "unknown"
+        elif tool == "browser_type":
+            kind = judge_type(info, words, str(args.get("text", "")), bool(args.get("submit", False)))
         else:
-            kind = judge_click(info, selector, url=self.current_url())
+            kind = judge_click(info, words, url=self.current_url())
         secret = (bool(info) and (str(info.get("type") or "") == "password" or "password" in str(info.get("autocomplete") or ""))) or (
-            info is None and bool(re.search(r"passw|\bpw\b|비밀번호", selector, re.I)))
+            info is None and bool(re.search(r"passw|\bpw\b|비밀번호", words, re.I)))
         target = self._target_key(info, selector)
         if kind and target[1]:
             seen = self._kinds_seen.setdefault(browser_owner.get(), {})
@@ -925,6 +1051,112 @@ class BrowserSession:
         self._judged[browser_owner.get()] = (selector, kind, tool == "browser_type" and secret)
         self._judged_info[browser_owner.get()] = info
         return kind
+
+    async def _judge_point(self, tool: str, args: dict[str, Any]) -> str:
+        """A point step is judged by the element at its point, as a click on it; a drag by the elements where it starts AND where it
+        lets go (a "slide to pay" handle may say nothing, its end may): the weightier of the two counts. "unknown" when nothing
+        ordinary is at one of them (a frame, nothing, no look picture, a page that moved on): then the user always gets a card."""
+        key = step_key(tool, args)
+        try:
+            pts = step_points(tool, args)
+            ends = [pts[0]] if len(pts) == 1 else [pts[0], pts[-1]]
+            infos = [await asyncio.wait_for(self.read_point(*self.page_point(*p)), TARGET_READ_MS / 1000 + LISTENER_READ_MS / 1000 + 1)
+                     for p in ends]
+        except Exception:  # noqa: BLE001
+            infos = [None]
+        judged = [("unknown" if i is None else judge_click(i, "", url=self.current_url()), i) for i in infos]
+        # the weightiest: "unknown" (always asks), then any commit kind, then "" (only looking)
+        kind, info = max(judged, key=lambda ki: 2 if ki[0] == "unknown" else 1 if ki[0] else 0)
+        target = self._target_key(info, "")
+        if kind not in ("", "unknown") and target[1]:
+            seen = self._kinds_seen.setdefault(browser_owner.get(), {})
+            kind = seen.setdefault(target, kind)
+        self._judged[browser_owner.get()] = (key, kind, False)
+        self._judged_info[browser_owner.get()] = info
+        return kind
+
+    def page_point(self, x: float, y: float) -> tuple[float, float]:
+        """A point of this tab's last browser_look picture in page CSS px. BrowserPolicyError when there was no look, or the page's
+        address changed since (the picture no longer shows it)."""
+        key = browser_owner.get()
+        scale, url = self._shot_scale.get(key), self._look_url.get(key)
+        if scale is None or url is None or url != self.current_url():
+            raise BrowserPolicyError(LOOK_FIRST)
+        return float(x) * scale, float(y) * scale
+
+    def point_ready(self) -> bool:
+        """There is a browser_look picture of the page this tab shows now."""
+        try:
+            self.page_point(0, 0)
+        except BrowserPolicyError:
+            return False
+        return True
+
+    async def read_point(self, x: float, y: float) -> dict[str, Any] | None:
+        """What is at (x, y) of the page (CSS px), read like a click target (commits.TARGET_JS, its listeners too); None when it is a
+        frame (what is inside it is not read), nothing, or cannot be read."""
+        page = self._pages.get(browser_owner.get())
+        if page is None:
+            return None
+        try:
+            if page.is_closed():
+                return None
+            handle = await asyncio.wait_for(page.evaluate_handle(
+                "([x, y]) => { const e = document.elementFromPoint(x, y); return e && !['IFRAME', 'FRAME'].includes(e.tagName) ? e : null; }",
+                [x, y]), TARGET_READ_MS / 1000)
+            el = handle.as_element()
+            if el is None:
+                return None
+            got = await asyncio.wait_for(el.evaluate(TARGET_JS), TARGET_READ_MS / 1000 + 0.5)
+        except Exception:  # noqa: BLE001
+            return None
+        if not isinstance(got, dict):
+            return None
+        return await self._with_listeners(got, page, page)
+
+    async def _with_listeners(self, got: dict[str, Any], page: Any, owner: Any) -> dict[str, Any]:
+        if got.get("structure_read"):
+            try:
+                # a frame of another process has its own DevTools target; one in the page's process cannot be read this way (None)
+                more = await asyncio.wait_for(self._listener_code(page if owner is page else owner), LISTENER_READ_MS / 1000)
+            except Exception:  # noqa: BLE001 - the inline handlers alone are judged
+                more = None
+            if more is None:
+                got["listeners_read"] = False
+            else:
+                got["listeners_read"] = True
+                if more:
+                    got["handler_src"] = (str(got.get("handler_src") or "") + "\n;\n" + more)[:24000]
+        return got
+
+    async def _ref_name_now(self, selector: str) -> str:
+        """`role "name"` of a ref's element on the page now (its own accessibility line), or "" when it cannot be read in time."""
+        page = self._pages.get(browser_owner.get())
+        if page is None:
+            return ""
+        try:
+            line = await asyncio.wait_for(page.locator(ref_selector(selector)).first.aria_snapshot(timeout=TARGET_READ_MS),
+                                          TARGET_READ_MS / 1000 + 0.5)
+        except Exception:  # noqa: BLE001 - unknown, and so it asks
+            return ""
+        first = next((x.strip() for x in str(line or "").splitlines() if x.strip()), "")
+        return first.lstrip("- ").split(" [ref=")[0].rstrip(":").strip()
+
+    def selector_words(self, selector: str) -> str:
+        """What a selector names for judging and cards: for a ref of the last reading its words there (`button "Pay now"`), else the
+        selector itself (also for a ref that reading did not have)."""
+        ref = ref_of(selector)
+        if ref is None:
+            return selector
+        return self._ref_words.get(browser_owner.get(), {}).get(ref, selector)
+
+    def ref_words_of(self, key: str) -> dict[str, str]:
+        """The refs of that tab's latest reading and their words (`button "Pay now"`); empty before any reading."""
+        return dict(self._ref_words.get(key, {}))
+
+    def ref_label(self, selector: str) -> str:
+        """The page's own name for a ref of the last reading ("" for a selector, or a ref without one): what a card shows."""
+        return ref_name(self.selector_words(selector)) if ref_of(selector) else ""
 
     def _target_key(self, info: dict[str, Any] | None, selector: str) -> tuple[str, str]:
         """Which element this is, for "the same button again": the page (without its #fragment) and the element's own words."""
@@ -999,6 +1231,40 @@ class BrowserSession:
 
     def end_purchase(self) -> None:
         self._purchase.pop(browser_owner.get(), None)
+
+    # The cancel window (purchase_result): after a payment turned out to differ from what the owner approved while cancelling is free,
+    # the cancel clicks of THAT order on THAT site go through without a card, for a few minutes. Nothing else is covered.
+    def allow_cancel(self, host: str, order_no: str = "", seconds: float = PURCHASE_WINDOW_SECONDS,
+                     actions: int = CANCEL_WINDOW_ACTIONS) -> None:
+        self._cancel[browser_owner.get()] = (host.lower(), time.monotonic() + seconds, actions, order_no)
+
+    def cancel_active(self, host: str | None = None) -> bool:
+        got = self._cancel.get(browser_owner.get())
+        if not got:
+            return False
+        h, until, left, _no = got
+        host = (self.current_host() if host is None else host).lower()
+        return left > 0 and time.monotonic() < until and bool(host) and (host == h or same_site(host, h))
+
+    def use_cancel_action(self, selector: str) -> bool:
+        """One click that cancels an order (words like "cancel order" / "주문 취소", never "delete account") inside the open cancel window
+        on its site. False = ask the user as usual."""
+        if not self.cancel_active() or self.judged(selector) != "delete":
+            return False
+        words = self.selector_words(selector)
+        if not cancel_words(words):
+            return False
+        h, until, left, no = self._cancel[browser_owner.get()]
+        self._cancel[browser_owner.get()] = (h, until, left - 1, no)
+        if self.on_cancel_click is not None:
+            try:
+                self.on_cancel_click(self.current_host(), ref_name(words) if ref_of(selector) else words, no)
+            except Exception:  # noqa: BLE001 - the log never stops the cancel
+                pass
+        return True
+
+    def end_cancel(self) -> None:
+        self._cancel.pop(browser_owner.get(), None)
 
     async def page(self) -> Any:
         key = browser_owner.get()
@@ -1103,13 +1369,14 @@ class BrowserSession:
             self._browser = await self._pw.chromium.connect_over_cdp(f"http://{ip}:{self.cdp_port}")
             self._ctx = self._browser.contexts[0] if self._browser.contexts else await self._browser.new_context()
             self._pages.clear()
-            for d in (self._private, self._tab_cdp, self._targets, self._doc):
+            for d in (self._private, self._tab_cdp, self._targets, self._doc, self._ref_words, self._look_url, self._shot_scale):
                 d.clear()
             self._dl_cdp, self._dl_contexts = None, set()
 
     async def _prepare(self, page: Any, key: str) -> None:
-        """A new tab gets the user's time zone and language (Emulation overrides, kept for the tab's life by its own CDP session), and
-        its downloads go to the download area. Nothing here fakes the browser: the time zone and language are the user's own."""
+        """A new tab gets the user's time zone and language (Emulation overrides, kept for the tab's life by its own CDP session), is
+        kept active and focused as if in front (Page.setWebLifecycleState, Emulation.setFocusEmulationEnabled), and its downloads go
+        to the download area. Nothing here fakes the browser: the time zone and language are the user's own."""
         try:
             cdp = await self.cdp_session(page)
         except Exception:  # noqa: BLE001 - a tab without DevTools access works, just without these
@@ -1123,6 +1390,14 @@ class BrowserSession:
                     await cdp.send(method, params)
                 except Exception:  # noqa: BLE001 - an unknown zone name: the browser's own stays
                     pass
+        # a tab the agent works in is often not the one in front (the user's live view, another phone's tab): pages that pause in a
+        # hidden or unfocused tab (timers, animations, "you left the page" checks) keep working as in a tab in front
+        for method, params in (("Page.setWebLifecycleState", {"state": "active"}),
+                               ("Emulation.setFocusEmulationEnabled", {"enabled": True})):
+            try:
+                await cdp.send(method, params)
+            except Exception:  # noqa: BLE001 - an older browser: the tab works as it is
+                pass
         try:
             info = (await cdp.send("Target.getTargetInfo", {})).get("targetInfo") or {}
             self._targets[key] = (str(info.get("targetId") or ""), str(info.get("browserContextId") or ""))
@@ -1193,7 +1468,7 @@ class BrowserSession:
             token = browser_owner.set(key)
             try:
                 by_user = key in self._control   # the user is at the controls: a pop-up their tap caused is theirs to accept
-                accept = by_user or self.purchase_active(host)
+                accept = by_user or self.purchase_active(host) or self.cancel_active(host)
                 in_order = not accept and self.order_dialog is not None and self.order_dialog(key, host, str(getattr(dialog, "message", "") or ""))
                 accept = accept or in_order
             finally:
@@ -1227,16 +1502,68 @@ class BrowserSession:
 
     async def _guard(self, url: str) -> None:
         await check_url(url, allow_private=self.allow_private, resolver=self._resolver,
-                        internal_names=frozenset({self.cdp_host, "server"}))
+                        internal_names=frozenset({self.cdp_host, "server"}), lookup=not self.remote_dns())
 
-    async def snapshot(self, *, handing: bool = True, clear: bool = False, changes: bool = False) -> str:
+    async def _vpn_down(self, error: Exception) -> str:
+        """The page failed to load through a proxy tunnel: when the VPN connector is on and not connected, that is the reason (fail closed)."""
+        if self.vpn_note is None or not re.search(r"ERR_(TUNNEL_CONNECTION_FAILED|PROXY_CONNECTION_FAILED|EMPTY_RESPONSE|CONNECTION_(CLOSED|RESET|REFUSED)|"
+                                                  r"TIMED_OUT|NAME_NOT_RESOLVED)|Timeout", str(error)):
+            return ""
+        try:
+            return await self.vpn_note()
+        except Exception:  # noqa: BLE001 - the original error is shown instead
+            return ""
+
+    def busy(self, within: float = 120.0) -> bool:
+        """A tab was used by a tool (or watched, or held) in the last `within` seconds: a turn or job is browsing. The VPN connector
+        waits for it to be quiet before it changes the route (vpn.py)."""
+        now = self.clock()
+        return any(now - at < within for key, at in list(self._used.items()) if self.has_tab(key))
+
+    def purchase_open(self) -> bool:
+        """A purchase window is open on any tab (an allowed purchase that is being finished): a route change waits for it."""
+        now = time.monotonic()
+        return any(left > 0 and now < until for _h, until, left in list(self._purchase.values()))
+
+    async def _tree(self, page: Any) -> str | None:
+        """The page as its accessibility tree with refs (page_tree.py), frames inside it included; None when it cannot be read
+        (an old driver, a page that is changing, SNAPSHOT_MS): then the page's plain text is shown."""
+        try:
+            tree = await page.aria_snapshot(mode="ai", timeout=SNAPSHOT_MS)
+        except Exception:  # noqa: BLE001
+            return None
+        return tree if isinstance(tree, str) and tree.strip() else None
+
+    async def _frame_hosts_note(self, page: Any, tree: str) -> str:
+        """The iframe lines of a reading get the host the frame comes from (the words in it are that host's, not the page's)."""
+        lines = tree.splitlines()
+        n = 0
+        for i, line in enumerate(lines):
+            m = re.match(r"^(\s*)- iframe\b.*\[ref=((?:f\d+)?e\d+)\]", line)
+            if not m or n >= 12:
+                continue
+            n += 1
+            try:
+                handle = await asyncio.wait_for(page.locator(f"aria-ref={m.group(2)}").element_handle(timeout=1_000), 1.5)
+                frame = await handle.content_frame() if handle is not None else None
+                if frame is None:
+                    continue
+                host = urlsplit(str(frame.url or "")).hostname or "this page"
+            except Exception:  # noqa: BLE001
+                continue
+            lines[i] = line + f"\n{m.group(1)}  [A frame inside the page, from {host}:]"
+        return "\n".join(lines)
+
+    async def snapshot(self, *, handing: bool = True, clear: bool = False, changes: bool = False, only_controls: bool = False) -> str:
         """The page as text for the agent. A human check on it: the agent may first try it itself (`check_tries` readings that still
         show it, `try_note`); then it is handed to the user (when the app set `handover` for this turn and `handing`): the step waits
         until it is solved, skipped or runs out, and the note says which.
         A window covering the page is closed with its own close button first, or reported when it has none (page_notes.py), on a
         page (address) not read before or with `clear` (opened, or read again). Otherwise a step on the same page opened it (a date
         picker or menu the agent's click opened): it is the agent's own and left alone from then on. Values that look masked or
-        not loaded get a note. `changes` (a click or typing): on the same page as the last reading, only what changed is shown."""
+        not loaded get a note. `changes` (a click or typing): on the same page as the last reading, only what changed is shown.
+        The page is shown as its accessibility tree with refs (`button "Go" [ref=e5]`; `only_controls`: only what can be clicked or
+        typed into, plus headings); when that cannot be read, as its plain text with the frames' text after it."""
         page = await self.page()
         await self.keep_view(browser_owner.get())
         layers = await self._layers(page, browser_owner.get(), close=clear)
@@ -1247,7 +1574,6 @@ class BrowserSession:
         if len(text) > MAX_TEXT_CHARS:
             cut = f"\n[page text truncated, {len(text) - MAX_TEXT_CHARS} more chars]"
             text = text[:MAX_TEXT_CHARS]
-        frames = await self._frames_text(page)
         key = browser_owner.get()
         popups = self._dialogs.pop(key, [])
         # the page's own words (title, text, pop-ups) are marked as external data: the loop fences them, and keeps these lines of
@@ -1293,7 +1619,18 @@ class BrowserSession:
                 said += note + "\n"
             elif otp and self.has_mailbox():
                 said += OTP_NOTE + "\n"
-        body = text + "".join(f"\n\n[A frame inside the page, from {h}:]\n{ft}{more}" for h, ft, more in frames)
+        tree = await self._tree(page)
+        if tree is not None:   # the frames are inside the tree
+            self._ref_words[key] = ref_words(tree)
+            tree = await self._frame_hosts_note(page, for_reading(controls_only(tree) if only_controls else tree))
+            cut = ""
+            if len(tree) > MAX_TREE_CHARS:
+                cut = f"\n[page text truncated, {len(tree) - MAX_TREE_CHARS} more chars]"
+                tree = tree[:MAX_TREE_CHARS]
+            body, frames, text = tree, [], tree
+        else:
+            frames = await self._frames_text(page)
+            body = text + "".join(f"\n\n[A frame inside the page, from {h}:]\n{ft}{more}" for h, ft, more in frames)
         url = str(page.url or "").split("#", 1)[0]
         before = self._last_text.get(key)
         self._last_text[key] = (url, body)
@@ -1472,6 +1809,73 @@ class BrowserSession:
         await asyncio.sleep(self.settle_seconds)
         await self._guard(page.url)
         return await self.snapshot()
+
+    # ---- browser_look: a picture of the visible page with a box and a ref on each control (the refs browser_click takes)
+    async def look(self) -> tuple[bytes | None, int, int, int]:
+        """(JPEG, width, height, how many controls carry a label). The boxes come from the accessibility tree with boxes (viewport
+        CSS px; an element in a frame is moved by where that frame sits). The labels are drawn into the page only for the picture and
+        always taken out again. Remembers the picture's scale and the page address for browser_click_at / browser_drag."""
+        page = await self.page()
+        key = browser_owner.get()
+        await self._guard(page.url)
+        try:
+            tree = await page.aria_snapshot(mode="ai", boxes=True, timeout=SNAPSHOT_MS)
+        except Exception:  # noqa: BLE001 - a picture without labels
+            tree = None
+        boxes: list[dict[str, Any]] = []
+        if isinstance(tree, str) and tree.strip():
+            self._ref_words[key] = ref_words(tree)
+            try:
+                vw, vh = await page.evaluate("() => [innerWidth, innerHeight]")
+            except Exception:  # noqa: BLE001
+                vw, vh = 1e9, 1e9
+            found, hosts = ref_boxes(tree), frame_hosts(tree)
+            origins: dict[str, tuple[float, float] | None] = {"": (0.0, 0.0)}
+            for ref in interactive_refs(tree):
+                b = found.get(ref)
+                if b is None or b[2] < 1 or b[3] < 1:
+                    continue
+                off = await self._frame_origin(page, frame_of(ref), hosts, origins)
+                if off is None:
+                    continue
+                x, y = b[0] + off[0], b[1] + off[1]
+                if x + b[2] <= 0 or y + b[3] <= 0 or x >= vw or y >= vh:
+                    continue   # not in the visible part of the page
+                boxes.append({"ref": ref, "x": round(x, 1), "y": round(y, 1), "w": round(b[2], 1), "h": round(b[3], 1)})
+                if len(boxes) >= LOOK_MAX_LABELS:
+                    break
+        try:
+            if boxes:
+                try:
+                    await page.evaluate(LOOK_OVERLAY_JS, boxes)
+                except Exception:  # noqa: BLE001 - a page that refuses it: the picture without labels
+                    boxes = []
+            jpeg, w, h = await self.screenshot(key, LOOK_WIDTH, LOOK_BYTES)
+        finally:
+            await self._quietly(lambda: page.evaluate(LOOK_CLEAR_JS))
+        if not jpeg or not w:
+            return None, 0, 0, 0
+        vw_css = await _viewport_width(page)
+        self._shot_scale[key] = vw_css / w if vw_css else 1.0
+        self._look_url[key] = str(page.url or "")
+        return jpeg, w, h, len(boxes)
+
+    async def _frame_origin(self, page: Any, frame: str, hosts: dict[str, str],
+                            origins: dict[str, tuple[float, float] | None]) -> tuple[float, float] | None:
+        """Where the viewport of frame `frame` ("f1") starts in the page's viewport (frames inside frames added up); None when it
+        cannot be told."""
+        if frame in origins:
+            return origins[frame]
+        origins[frame] = None   # (a loop in a broken reading ends here)
+        iframe = hosts.get(frame)
+        parent = await self._frame_origin(page, frame_of(iframe), hosts, origins) if iframe else None
+        if parent is not None:
+            try:
+                dx, dy = await asyncio.wait_for(page.locator(f"aria-ref={iframe}").evaluate(FRAME_ORIGIN_JS, timeout=1_000), 1.5)
+                origins[frame] = (parent[0] + float(dx), parent[1] + float(dy))
+            except Exception:  # noqa: BLE001
+                pass
+        return origins[frame]
 
     async def wait_check_gone(self, key: str) -> bool:
         """Return True once the human check has left this tab's page (the user solved it, or it cleared by itself) and nobody holds the
@@ -1718,6 +2122,87 @@ class BrowserSession:
             except Exception:  # noqa: BLE001 - telling the user never breaks reading the page
                 pass
 
+    # ------------------------------------------------------------------ a watcher's reads (watchers.py)
+    async def chrome_version(self) -> str:
+        """The running browser's version ("130.0.6723.58"), or "" when it cannot be read (no browser, a test fake)."""
+        try:
+            if not self._connect:
+                await self._ensure_browser()
+            v = str(getattr(self._browser, "version", "") or "")
+        except Exception:  # noqa: BLE001
+            return ""
+        return v if v[:1].isdigit() else ""
+
+    async def page_state(self) -> tuple[int | None, dict[str, str], Challenge | None]:
+        """The current tab's main document status, the response headers that matter for bot checks, and the bot check on it, if any
+        (the reading the browser already does; nobody is told here)."""
+        key = browser_owner.get()
+        page = self._pages.get(key)
+        if page is None:
+            return None, {}, None
+        found, _probe = await self._read_check(page, key)
+        status, headers = self._doc.get(key, (None, {}))
+        return status, dict(headers), found
+
+    async def close_idle_site_tabs(self, keep: str = "") -> list[str]:
+        """Closes the watchers' site tabs unused for SITE_TAB_IDLE_SECONDS (and, with `keep`, the least recently used ones so that
+        `keep` fits within SITE_TABS_MAX)."""
+        closed = [k for k in self.open_keys() if is_site_tab(k) and k != keep and self.idle_for(k) >= SITE_TAB_IDLE_SECONDS]
+        live = [k for k in self.open_keys() if is_site_tab(k) and k not in closed and k != keep]
+        room = SITE_TABS_MAX - (1 if keep else 0)
+        if len(live) > room:
+            closed += sorted(live, key=self.idle_for, reverse=True)[:len(live) - room]
+        for k in closed:
+            await self.close_tab(k)
+        return closed
+
+    async def site_fetch(self, url: str, *, method: str = "GET", headers: dict[str, str] | None = None, body: str | None = None,
+                         key: str = "", cap: int = 2_000_000) -> dict[str, Any]:
+        """A request made INSIDE the agent's browser, from a background tab of the site (one per registrable domain, opened once at the
+        site's root, or at `url` for a GET): `fetch(url, {credentials: "include"})` there, so the owner's sign-ins ride along and the
+        request leaves through the browser's own route (egress / VPN). Cookies are never read out. Same origin only: the tab sits on the
+        url's origin, and an answer that came from another address is refused. Returns {"status", "content_type", "text", "headers", "url"}."""
+        await self._guard(url)
+        key = key or site_tab_key(url)
+        origin = _origin_of(url)
+        async with self._site_locks.setdefault(key, asyncio.Lock()):
+            await self.close_idle_site_tabs(keep=key)
+            token = browser_owner.set(key)
+            try:
+                page = await self.page()
+                if _origin_of(str(getattr(page, "url", "") or "")) != origin:
+                    try:
+                        await page.goto(url if method == "GET" else origin + "/", wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+                    except Exception as e:
+                        if (note := await self._vpn_down(e)):
+                            raise BrowserPolicyError(note) from None
+                        raise
+                    try:
+                        await self._guard(str(page.url))
+                    except BrowserPolicyError:
+                        await page.goto("about:blank")
+                        raise
+                    if _origin_of(str(page.url)) != origin:
+                        raise BrowserPolicyError(f"the site sent the tab to another address ({urlsplit(str(page.url)).hostname}); "
+                                                 "a signed-in check stays on one site")
+                try:
+                    got = await page.evaluate(SITE_FETCH_JS, {"url": url, "method": method, "headers": dict(headers or {}), "body": body,
+                                                              "cap": cap, "timeout": SITE_FETCH_TIMEOUT_MS})
+                except Exception as e:
+                    if (note := await self._vpn_down(e)):
+                        raise BrowserPolicyError(note) from None
+                    raise BrowserPolicyError(f"the request inside the browser failed ({type(e).__name__})") from None
+                self._used[key] = self.clock()
+            finally:
+                browser_owner.reset(token)
+        if not isinstance(got, dict) or not isinstance(got.get("status"), int):
+            raise BrowserPolicyError("the browser gave no answer to the request")
+        final = str(got.get("url") or url)
+        if _origin_of(final) != origin:
+            raise BrowserPolicyError(f"the answer came from another address ({urlsplit(final).hostname}); a signed-in check stays on one site")
+        return {"status": int(got["status"]), "content_type": str(got.get("contentType") or ""), "text": str(got.get("text") or "")[:cap],
+                "headers": {str(k).lower(): str(v) for k, v in dict(got.get("headers") or {}).items()}, "url": final}
+
     async def open(self, url: str, view: str = "") -> str:
         await self._guard(url)
         page = await self.page()
@@ -1729,7 +2214,12 @@ class BrowserSession:
         if want and want != self.view():
             await self.set_view(want)
             switched = want
-        resp = await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+        try:
+            resp = await page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+        except Exception as e:
+            if (note := await self._vpn_down(e)):
+                raise BrowserPolicyError(note) from None
+            raise
         status = getattr(resp, "status", None)
         if view in VIEWS and (status is None or status < 400):
             self.remember_view(site, view)
@@ -1873,6 +2363,15 @@ class BrowserSession:
     async def frame_for(self, page: Any, selector: str) -> Any:
         """Where `selector` is: the page itself, else the first frame inside it that has it (an embedded form or checkout, also
         from another host), else the page (whose error then says what is wrong)."""
+        if (ref := ref_of(selector)) is not None:
+            # a ref resolves from the page, frames included (f1e3): no search; one the page no longer has is said so
+            try:
+                n = await page.locator(ref_selector(selector)).count()
+            except Exception:  # noqa: BLE001 - "Invalid frame": the frame of that ref is gone
+                n = 0
+            if not n:
+                raise BrowserPolicyError(STALE_REF.format(ref=ref))
+            return page
         if not selector or not hasattr(page, "frames"):
             return page
         try:
@@ -1917,6 +2416,7 @@ class BrowserSession:
         before = str(getattr(page, "url", "") or "")
         self._unchanged.pop(key, None)
         owner = await self.frame_for(page, selector)
+        selector = ref_selector(selector)
         mark = await self._fingerprint(page)
         dialogs = len(self._dialogs.get(key, []))
         unroute = await self._phone_windows(key, page)   # a window this click opens asks for the phone page from its first request
@@ -2088,9 +2588,52 @@ class BrowserSession:
                 pass
         return self._pages.get(key)
 
+    async def click_at(self, x: float, y: float) -> str:
+        """browser_click_at: click a point of the last browser_look picture (its pixels). Returns the page after, like click()."""
+        return await self._at_points([(x, y)])
+
+    async def drag(self, path: list[tuple[float, float]]) -> str:
+        """browser_drag: press at the first point of the last browser_look picture, move through the others, let go there."""
+        return await self._at_points(path)
+
+    async def _at_points(self, pts: list[tuple[float, float]]) -> str:
+        page = await self.page()
+        key = browser_owner.get()
+        await self._guard(page.url)
+        where = [self.page_point(x, y) for x, y in pts]
+        before = str(getattr(page, "url", "") or "")
+        self._unchanged.pop(key, None)
+        mark = await self._fingerprint(page)
+        dialogs = len(self._dialogs.get(key, []))
+        try:
+            if len(where) == 1:
+                await human.click_at(page, *where[0])
+            else:
+                await human.drag(page, where)
+            await page.wait_for_load_state("domcontentloaded", timeout=NAV_TIMEOUT_MS)
+        except Exception as e:  # noqa: BLE001
+            raise BrowserPolicyError(f"could not {'click' if len(where) == 1 else 'drag'} there ({type(e).__name__})") from None
+        moved = await self._moved_to_window(key, page)
+        if moved is not None:
+            page = moved
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=NAV_TIMEOUT_MS)
+            except Exception:  # noqa: BLE001
+                pass
+        await self._guard(page.url)
+        await self._settle(page)
+        await (human.dwell(page) if str(getattr(page, "url", "") or "") != before else human.glance(page))
+        if moved is not None:
+            self._notes.setdefault(key, []).insert(0, POPUP_NOTE.format(url=str(page.url or "")[:200]))
+        elif len(self._dialogs.get(key, [])) == dialogs and await self._fingerprint(page) == mark:
+            self._unchanged[key] = True
+            self._notes.setdefault(key, []).insert(0, NO_CHANGE_NOTE)
+        return await self.snapshot(changes=True)
+
     async def type(self, selector: str, text: str, submit: bool = False) -> str:
         page = await self.page()
         owner = await self.frame_for(page, selector)
+        selector = ref_selector(selector)
         chose = await self._choose(page, owner, selector, text)
         if chose is not None:   # a list: the option was chosen (no typing)
             self._notes.setdefault(browser_owner.get(), []).insert(0, chose)
@@ -2497,7 +3040,7 @@ class BrowserSession:
             page = self._pages.pop(key, None)
             for d in (self._used, self._seen_at, self._status, self._last_card, self._purchase, self._dialogs, self._doc, self._notes,
                       self._checks, self._targets, self._tries, self._shot_scale, self._check_clicked, self.sign_ins, self._probes,
-                      self._verified, self._last_text):
+                      self._cancel, self._verified, self._last_text, self._ref_words, self._look_url):
                 d.pop(key, None)
             held = self._control.pop(key, None)
             private = self._private.pop(key, None)
@@ -2644,7 +3187,9 @@ class BrowserSession:
         total = sum(len(b) for _, _, b in files)
         if not files or total > UPLOAD_MAX_BYTES:
             raise BrowserPolicyError(f"between 1 file and {UPLOAD_MAX_BYTES // 1024**2} MB in all can be uploaded at once")
-        loc = page.locator(selector)
+        if ref_of(selector):
+            await self.frame_for(page, selector)   # a ref of an older reading: said so
+        loc = page.locator(ref_selector(selector))
         loc = getattr(loc, "first", loc)
         try:
             await loc.set_input_files([{"name": n, "mimeType": m, "buffer": b} for n, m, b in files], timeout=10_000)
@@ -2679,7 +3224,16 @@ class BrowserSession:
         the answer is the page afterwards with the code taken out."""
         page = await self.page()
         await self._guard(page.url)
-        found = await page.evaluate(_TAG_CODE_FIELDS, selector or None)
+        if ref_of(selector):   # a ref of the last reading: that element is marked for the code script (it reads only CSS selectors)
+            await self.frame_for(page, selector)
+            await page.locator(ref_selector(selector)).first.evaluate("(e) => e.setAttribute('data-kelo-refpick', '')")
+            selector = "[data-kelo-refpick]"
+        try:
+            found = await page.evaluate(_TAG_CODE_FIELDS, selector or None)
+        finally:
+            if selector == "[data-kelo-refpick]":
+                await self._quietly(lambda: page.evaluate(
+                    "() => document.querySelectorAll('[data-kelo-refpick]').forEach((e) => e.removeAttribute('data-kelo-refpick'))"))
         boxes = int(found.get("boxes") or 0) if isinstance(found, dict) else 0
         if not boxes:
             await self._quietly(lambda: page.evaluate(_UNTAG_CODE_FIELDS))
@@ -2783,6 +3337,8 @@ def target_label(info: dict[str, Any] | None, selector: str) -> str:
     return words[:60] + "…" if len(words) > 60 else words
 
 
+SELECTOR_ARG = "ref (e12) or Playwright selector"
+
 # What the approval card adds, by commit kind (commits.py).
 _COMMIT_WARNINGS = {
     "pay": N_("This may be the button that confirms a payment, order or booking."),
@@ -2790,10 +3346,61 @@ _COMMIT_WARNINGS = {
     "delete": N_("This may delete or cancel something."),
     "apply": N_("This may send an application or an entry in your name."),
     "account": N_("This may sign you up or change your account."),
+    "security": N_("This may change how your account is protected (an app password, 2-step verification, a device) or issue an official document in your name."),
     "form": N_("This may send a form with your details."),
     "personal": N_("This types personal details or a message."),
     "optout": N_("This may opt you out of something, such as messages or notifications. It can usually be turned back on."),
 }
+
+
+def step_decider(session: BrowserSession, tool: str, *, approve_actions: bool = False, grants: Any = None,
+                 orders: Any = None) -> Callable[[dict[str, Any]], Any]:
+    """The `auto_approve` of a click, typing or point step (browser_click, browser_type, browser_click_at, browser_drag): True =
+    no card. A point step whose element was read counts as a click on that element; one Kelo could not read ("unknown") always asks."""
+    as_tool = "browser_click" if tool in POINT_TOOLS else tool
+    async def decide(args: dict[str, Any]) -> bool:
+        """No card for a step that only looks (unless the owner set every step to ask), nor for one that finishes a purchase
+        the user just allowed on this site."""
+        kind = await session.judge(tool, args)
+        if not kind and not approve_actions:
+            return True
+        if kind == "unknown":
+            return False   # Kelo could not read what this step acts on: the user always sees it (no rule, grant or order covers it)
+        sel = step_key(tool, args)
+        if kind == "security":
+            # the account's protection or an official document: only the very element the user just allowed (a retry of its
+            # failed click) goes without a card; no rule, grant, order, purchase window or sign-in shortcut covers it
+            return as_tool == "browser_click" and session.retry_of_allowed(sel)
+        if kind and as_tool == "browser_click" and kind != "pay" and session.retry_of_allowed(sel):
+            return True   # the same element the user just allowed, whose click failed: another selector for it
+        if kind and as_tool == "browser_click" and not approve_actions and kind not in ("pay", "delete", "optout") \
+                and session.sign_in_continue(sel):
+            return True   # a plain "continue" of the owner's own sign-in (an OAuth step of the same site included)
+        if kind and grants is not None and grants.use(kind, session.current_host(), tool=as_tool, secret=session.judged_secret(sel)):
+            return True   # the user allowed this kind of step on this site for the task running now
+        if as_tool == "browser_click" and kind == "delete" and session.use_cancel_action(sel):
+            return True   # cancels the order whose charge was wrong, while cancelling is free (purchase_result's cancel window)
+        if session.use_purchase_action():
+            # finishes the purchase the user just allowed on this site (its window: a few clicks, a few minutes, on the pages that
+            # follow from where it was allowed; browser_open ends it). Checked before the "paid" rule below: the final button
+            # of an approved order is itself a "buy" that the paid order would otherwise ask about again
+            return True
+        if (kind == "pay" and orders is not None and orders.paid_here(session.current_host())
+                and not money_page(session.judged_info(sel), session.current_url())):
+            return False  # the order is paid and its purchase window is over: a "buy" on a product page or cart starts a new purchase
+        if kind and orders is not None and not approve_actions and orders.current() is None and orders.covers_request(
+                kind, session.current_host(), tool=as_tool, info=session.judged_info(sel), selector=sel, url=session.current_url()):
+            return True   # the user's request names this commit (apply / enter / sign up / send) on the site the task works on
+        if kind and orders is not None and not approve_actions and kind in ("pay", "apply", "form") \
+                and (o := orders.start_implicit(session.current_host())) is not None:
+            # buying without begin_order (a weaker model often skips it): the order the user asked for starts here, so its
+            # preparing steps don't each ask; the final payment still goes through confirm_purchase
+            from .order import IMPLICIT_NOTE
+            session.note(browser_owner.get(), IMPLICIT_NOTE.format(site=o.site, what=o.what))
+        return bool(kind and orders is not None and not approve_actions and orders.covers(
+            kind, session.current_host(), tool=as_tool, info=session.judged_info(sel), selector=sel, url=session.current_url(),
+            text=str(args.get("text", "")), secret=session.judged_secret(sel)))   # only prepares the order going on here
+    return decide
 
 
 def browser_tools(session: BrowserSession, *, approve_actions: bool = False, grants: Any = None, orders: Any = None) -> list[Tool]:
@@ -2816,7 +3423,7 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
         return None if args.get("view") in VIEWS else "view must be desktop or mobile"
 
     async def read(args: dict[str, Any]) -> str:
-        return await shown(await session.snapshot(clear=True), t("Checking the page"))
+        return await shown(await session.snapshot(clear=True, only_controls=args.get("only") == "controls"), t("Checking the page"))
 
     async def click(args: dict[str, Any]) -> str:
         target = session.note_allowed(str(args["selector"]))
@@ -2840,41 +3447,7 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
         return await shown(await session.type(str(args["selector"]), str(args["text"]), bool(args.get("submit", False))), t("Typing"))
 
     def no_card(tool: str) -> Callable[[dict[str, Any]], Any]:
-        async def decide(args: dict[str, Any]) -> bool:
-            """No card for a step that only looks (unless the owner set every step to ask), nor for one that finishes a purchase
-            the user just allowed on this site."""
-            kind = await session.judge(tool, args)
-            if not kind and not approve_actions:
-                return True
-            sel = str(args.get("selector", ""))
-            if kind and tool == "browser_click" and kind != "pay" and session.retry_of_allowed(sel):
-                return True   # the same element the user just allowed, whose click failed: another selector for it
-            if kind and tool == "browser_click" and not approve_actions and kind not in ("pay", "delete", "optout") \
-                    and session.sign_in_continue(sel):
-                return True   # a plain "continue" of the owner's own sign-in (an OAuth step of the same site included)
-            if kind and grants is not None and grants.use(kind, session.current_host(), tool=tool, secret=session.judged_secret(sel)):
-                return True   # the user allowed this kind of step on this site for the task running now
-            if session.use_purchase_action():
-                # finishes the purchase the user just allowed on this site (its window: a few clicks, a few minutes, on the pages that
-                # follow from where it was allowed; browser_open ends it). Checked before the "paid" rule below: the final button
-                # of an approved order is itself a "buy" that the paid order would otherwise ask about again
-                return True
-            if (kind == "pay" and orders is not None and orders.paid_here(session.current_host())
-                    and not money_page(session.judged_info(sel), session.current_url())):
-                return False  # the order is paid and its purchase window is over: a "buy" on a product page or cart starts a new purchase
-            if kind and orders is not None and not approve_actions and orders.current() is None and orders.covers_request(
-                    kind, session.current_host(), tool=tool, info=session.judged_info(sel), selector=sel, url=session.current_url()):
-                return True   # the user's request names this commit (apply / enter / sign up / send) on the site the task works on
-            if kind and orders is not None and not approve_actions and kind in ("pay", "apply", "form") \
-                    and (o := orders.start_implicit(session.current_host())) is not None:
-                # buying without begin_order (a weaker model often skips it): the order the user asked for starts here, so its
-                # preparing steps don't each ask; the final payment still goes through confirm_purchase
-                from .order import IMPLICIT_NOTE
-                session.note(browser_owner.get(), IMPLICIT_NOTE.format(site=o.site, what=o.what))
-            return bool(kind and orders is not None and not approve_actions and orders.covers(
-                kind, session.current_host(), tool=tool, info=session.judged_info(sel), selector=sel, url=session.current_url(),
-                text=str(args.get("text", "")), secret=session.judged_secret(sel)))   # only prepares the order going on here
-        return decide
+        return step_decider(session, tool, approve_actions=approve_actions, grants=grants, orders=orders)
 
     def warning(args: dict[str, Any]) -> str:
         kind = session.judged(str(args.get("selector", "")))
@@ -2883,7 +3456,8 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
     async def describe_click(args: dict[str, Any]) -> str:
         host = session.current_host() or t("blank page")
         sel = str(args.get("selector", ""))
-        label = target_label(session.judged_info(sel), sel)   # what the user sees on the page, never the selector
+        # what the user sees on the page, never the selector (for a ref the page's own name for it, never "aria-ref=…")
+        label = target_label(session.judged_info(sel), sel) or session.ref_label(sel)
         line = t("Click “{label}” on {host}.", host=host, label=label) if label else t("Click a button on {host}.", host=host)
         return line + warning(args)
 
@@ -2891,7 +3465,8 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
         host = session.current_host() or t("blank page")
         sel = str(args.get("selector", ""))
         info = session.judged_info(sel)
-        label = target_label({**info, "text": "", "words": info.get("words") or info.get("attrs") or ""} if info else None, sel)
+        label = target_label({**info, "text": "", "words": info.get("words") or info.get("attrs") or ""} if info else None, sel) \
+            or session.ref_label(sel)
         line = t("Type into “{label}” on {host}.", host=host, label=label) if label else t("Type into a field on {host}.", host=host)
         return line + warning(args)
 
@@ -2899,29 +3474,102 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
     return [
         Tool("browser_open", "Open a public http(s) address in your browser and return the page text. Only an address you were given "
              "(a search result, a link on a page, the user, a tool); never one you made up: for a page inside a site, open the site "
-             "and follow its links, menu or search.",
+             "and follow its links, menu or search. Its reading marks elements with [ref=e12]: click and type by the refs of your "
+             "last reading.",
              obj({"url": {"type": "string"},
                   "view": {"type": "string", "enum": list(VIEWS),
                            "description": "optional: open it as a desktop or a phone browser (default: the view that last worked on "
-                                          "that site, else desktop)"}}, ["url"]),
+                                          "that site, else desktop); to switch later, load browser_view with find_tools"}}, ["url"]),
              open_, untrusted=True, source="page", hold=session.hold_for_user),
         Tool("browser_view", "Switch this tab between the desktop and the mobile (phone) view of sites and load the page again in "
              "it; sign-ins and cookies stay. If a page or a step fails in one view (blocked, broken layout, a button that can't be "
              "clicked, a dead end), try the other view before giving up.",
              obj({"view": {"type": "string", "enum": list(VIEWS)}}, ["view"]), view_, untrusted=True, source="page",
              validate=view_ok, hold=session.hold_for_user),
-        Tool("browser_read", "Return the current page's title, URL and visible text. When the user questions a value you read, read "
-             "the page again (or where it shows in full) before you answer.",
-             obj({}, []), read, untrusted=True, source="page", hold=session.hold_for_user),
-        Tool("browser_click", "Click an element and return the page text after (also inside frames of the page; a window the click "
-             "opens becomes the page you are on). A click that commits something in the user's name shows them a card first.",
-             obj({"selector": {"type": "string", "description": "Playwright selector"}}, ["selector"]), click, requires_approval=True, untrusted=True, source="page",
+        Tool("browser_read", "Return the current page's title, URL and what it shows, one element per line. Readings mark elements "
+             "with [ref=e12]: pass e12 to browser_click and browser_type. When the user questions a value you read, read the page again (or where it shows in full) "
+             "before you answer.",
+             obj({"only": {"type": "string", "enum": ["controls"],
+                           "description": "controls: only what can be clicked or typed into, plus headings (shorter; use it when "
+                                          "you only need to act)"}}, []),
+             read, untrusted=True, source="page", hold=session.hold_for_user),
+        Tool("browser_click", "Click an element and return the page after (also inside frames of the page; a window the click "
+             "opens becomes the page you are on). A click that commits something in "
+             "the user's name shows them a card first.",
+             obj({"selector": {"type": "string", "description": SELECTOR_ARG}}, ["selector"]), click, requires_approval=True, untrusted=True, source="page",
              auto_approve=no_card("browser_click"), describe=describe_click, hold=session.hold_for_user),
         Tool("browser_type", "Type text into an input. On a list (a select or a dropdown) it chooses the option with that text instead: "
-             "the one way to set a list (quantity, size, date). Personal details or a message show the user a card first.",
-             obj({"selector": {"type": "string", "description": "Playwright selector"}, "text": {"type": "string"},
+             "the one way to set a list (quantity, size, date). Personal details or "
+             "a message show the user a card first.",
+             obj({"selector": {"type": "string", "description": SELECTOR_ARG}, "text": {"type": "string"},
                   "submit": {"type": "boolean", "description": "press Enter after"}},
                  ["selector", "text"]),
              type_, requires_approval=True, untrusted=True, source="page", auto_approve=no_card("browser_type"), describe=describe_type,
              hold=session.hold_for_user),
+    ]
+
+
+POINT_RULE = ("Only for things your page reading gives no ref for, or whose ref click failed twice: canvas pictures and editors, maps, "
+              "sliders, drawing, drag handles. Look first (browser_look), act, then look or read again to check. After two failed tries "
+              "at the same spot, try another way. Go back to refs as soon as you can.")
+
+
+def point_tools(session: BrowserSession, *, approve_actions: bool = False, grants: Any = None, orders: Any = None) -> list[Tool]:
+    """browser_click_at and browser_drag: a point (or a path) of the last browser_look picture, for what has no ref. Approval like
+    browser_click, judged by the element at the (first) point; a point Kelo cannot read (a frame, nothing there) always asks."""
+    async def shown(text: str, status: str) -> str:
+        await session.card(status)
+        return text
+
+    def ok(tool: str) -> Callable[[dict[str, Any]], str | None]:
+        def check(args: dict[str, Any]) -> str | None:
+            try:
+                step_points(tool, args)
+            except (TypeError, ValueError) as e:
+                return str(e)
+            return None if session.point_ready() else LOOK_FIRST
+        return check
+
+    async def click_at(args: dict[str, Any]) -> str:
+        x, y = step_points("browser_click_at", args)[0]
+        return await shown(await session.click_at(x, y), t("Working on the page"))
+
+    async def drag(args: dict[str, Any]) -> str:
+        return await shown(await session.drag(step_points("browser_drag", args)), t("Working on the page"))
+
+    def describe(tool: str) -> Callable[[dict[str, Any]], Awaitable[str]]:
+        async def words(args: dict[str, Any]) -> str:
+            host = session.current_host() or t("blank page")
+            label = target_label(session.judged_info(step_key(tool, args)), "")
+            if tool == "browser_click_at":
+                line = t("Click a point on {host}.", host=host)
+            else:
+                line = t("Drag on {host}.", host=host)
+            if label:
+                line += " " + t("It is on “{label}”.", label=label)
+            kind = session.judged(step_key(tool, args))
+            if kind == "unknown":
+                line += " " + t("Kelo could not read what is there.")
+            elif kind in _COMMIT_WARNINGS:
+                line += " " + t(_COMMIT_WARNINGS[kind])
+            return line
+        return words
+
+    point = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"]}
+    return [
+        Tool("browser_click_at", "Click a point of your last browser_look picture (x, y in its pixels). " + POINT_RULE,
+             {"type": "object", "properties": {"x": {"type": "number", "description": "pixels from the picture's left"},
+                                               "y": {"type": "number", "description": "pixels from the picture's top"}},
+              "required": ["x", "y"]},
+             click_at, requires_approval=True, untrusted=True, source="page", validate=ok("browser_click_at"),
+             auto_approve=step_decider(session, "browser_click_at", approve_actions=approve_actions, grants=grants, orders=orders),
+             describe=describe("browser_click_at"), hold=session.hold_for_user),
+        Tool("browser_drag", "Drag along a path of points (x, y) of your last browser_look picture: press at the first, move through "
+             "the others, let go at the last. Same rules as browser_click_at: canvas, map, slider or drag handle with no ref; look first, act, look again.",
+             {"type": "object", "properties": {"path": {"type": "array", "items": point, "minItems": DRAG_POINTS[0],
+                                                        "maxItems": DRAG_POINTS[1]}},
+              "required": ["path"]},
+             drag, requires_approval=True, untrusted=True, source="page", validate=ok("browser_drag"),
+             auto_approve=step_decider(session, "browser_drag", approve_actions=approve_actions, grants=grants, orders=orders),
+             describe=describe("browser_drag"), hold=session.hold_for_user),
     ]

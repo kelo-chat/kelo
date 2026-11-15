@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import CryptoKit
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 
 /// tests/fixtures/model_labels.json at the repo root: the cases the server (tests/test_model_labels.py), Android and desktop check.
@@ -85,18 +86,9 @@ func modelLabelCases(file: String = #filePath) throws -> [(String, String)] {
         #expect(ModelCatalog.shown(nil as ModelList?, nil) == nil)
         // nothing known at all: the chosen model by name (a select row), never the raw id in a text field
         #expect(ModelCatalog.placeholder(provider: "claude-cli", model: "sonnet", as: ModelList.self)?.models == ["sonnet"])
-        #expect(ModelCatalog.name("sonnet", fresh: nil as ModelList?, kept: nil) == "Sonnet (latest)")
         #expect(ModelCatalog.placeholder(provider: "claude-cli", model: "", as: ModelList.self) == nil)
         #expect(ModelCatalog.placeholder(provider: "", model: "sonnet", as: ModelList.self) == nil)
         #expect(ModelCatalog.slowMs == 1000)
-    }
-
-    @Test func theLabelComesFromTheFreshListThenTheKeptOneThenTheRule() {
-        var unlabeled = agy
-        unlabeled.labels = [:]
-        #expect(ModelCatalog.name("claude-sonnet-4-6", fresh: nil, kept: agy) == "Claude Sonnet 4.6 (Thinking)")
-        #expect(ModelCatalog.name("claude-sonnet-4-6", fresh: unlabeled, kept: agy) == "Claude Sonnet 4.6 (Thinking)")
-        #expect(ModelCatalog.name("claude-sonnet-4-6", fresh: nil as ModelList?, kept: nil) == "Claude Sonnet 4.6")
     }
 
     @Test func onlyGoodListsAreKeptNewestFirstAndCapped() throws {

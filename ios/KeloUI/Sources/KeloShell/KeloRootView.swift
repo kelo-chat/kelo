@@ -2,6 +2,10 @@ import SwiftUI
 import KeloCore
 import KeloShared
 import KeloMy
+import KeloChat
+#if canImport(ActivityKit) && os(iOS)
+import KeloLive
+#endif
 
 /// The whole app (Android start/AppRoot.kt): connect → (loading / failed) → onboarding (no agent name yet) → the
 /// signed-in shell. The Xcode app's @main puts this in its WindowGroup.
@@ -47,7 +51,7 @@ private struct RootGate: View {
 
     var body: some View {
         if app.api == nil {
-            ConnectFlow(incoming: incomingLink).id(incomingLink ?? "")
+            ConnectFlow(app: app, incoming: incomingLink).id(incomingLink ?? "")
         } else {
             switch app.profileState {
             case .signedOut, .loading:
@@ -59,9 +63,9 @@ private struct RootGate: View {
                 }
             case .ready(let p):
                 if p.agentName.trimmingCharacters(in: .whitespaces).isEmpty {
-                    OnboardingScreen(initial: p)
+                    OnboardingScreen(initial: p, app: app)
                 } else {
-                    MainShell()
+                    MainShell(app: app)
                 }
             }
         }
@@ -70,10 +74,19 @@ private struct RootGate: View {
 
 /// What the app's @main calls once at launch.
 public enum KeloLaunch {
+    /// The app's background work, made once here: the app delegate (push) and the shell (checks) both use it.
+    @MainActor public static let background = KeloBackground()
+
     @MainActor public static func makeApp() -> AppModel {
         let app = AppModel()
         app.wallet = KeloWalletHook.make(app: app)   // the chat's and the Keychain's fill-in cards use the wallet's forms and key
-        KeloBackground.register(app: app)
+        background.register(app: app)
+        #if canImport(ActivityKit) && os(iOS)
+        // the Live Activity of a running reply (backlog 64b): its Stop button reaches the chat's stop, its pushes name this build's environment
+        ReplyLiveActivity.environment = { PushRules.currentEnvironment }
+        LiveHooks.stop = { [weak app] turnId in await ReplyLiveActivity.stop(turnId: turnId, api: app?.api) }
+        ReplyLiveActivity.tidy()
+        #endif
         return app
     }
 }

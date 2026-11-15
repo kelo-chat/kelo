@@ -1,7 +1,6 @@
 package chat.kelo.app.update
 
 import androidx.activity.ComponentActivity
-import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The app's updates, the same for every build so the banner, the card in 마이, 업데이트 확인 and the "update required" screen are
@@ -11,20 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
  *  - play (src/play: PlayAppUpdates): Google Play's In-App Updates; never downloads an APK itself. The Play Core library is only in
  *    the play build.
  */
-interface AppUpdates {
-    val state: StateFlow<UpdateState>
-
+interface AppUpdates : chat.kelo.app.platform.AppUpdateSource {
     /** Called once from the activity's onCreate: follows its resume (a check when due) and, for Play, holds its result launcher. */
     fun attach(activity: ComponentActivity)
-
-    /** At start and then when due; [force]: the user tapped 업데이트 확인. */
-    fun check(force: Boolean = false)
-
-    /** The main button (banner, card, required screen): download / start the update flow, or apply one that is ready. */
-    fun get()
-
-    /** Applies a downloaded update: the installer (file builds) or Play's restart (completeUpdate). */
-    fun install()
 
     /** The banner was closed or used: it does not come back for this version. */
     fun bannerSeen()

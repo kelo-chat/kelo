@@ -1,5 +1,6 @@
 package chat.kelo.app.notify
 
+import android.content.ContextWrapper
 import chat.kelo.app.agent.ServerNotification
 import chat.kelo.app.chat.PaymentInfo
 import chat.kelo.app.chat.TurnEvent
@@ -177,5 +178,28 @@ class LauncherBadgeTest {
         // a channel's badge setting cannot change after it is made: the old ids (made with a badge) are deleted
         assertEquals(listOf("replies", "payments", "schedules"), Channel.RETIRED)
         assertTrue(Channel.entries.none { it.id in Channel.RETIRED })
+    }
+}
+
+class ReplyWatchStopTest {
+    private fun watch(): ReplyWatch {
+        val ctx = ContextWrapper(null)
+        return ReplyWatch(ctx, Notifier(ctx), AppVisibility())
+    }
+
+    @Test fun `a notification update is at most one a second`() {
+        assertEquals(1000L, ReplyRules.UPDATE_EVERY_MS)
+    }
+
+    @Test fun `stopNow calls the way to stop, and does nothing after the reply was cancelled`() {
+        // started() and finished() talk to the system's notification manager, which a plain unit test has not: not called here
+        val w = watch()
+        var stopped = 0
+        w.stopWith { stopped++ }
+        w.stopNow()
+        assertEquals(1, stopped)
+        w.cancelled()
+        w.stopNow()
+        assertEquals(1, stopped)
     }
 }

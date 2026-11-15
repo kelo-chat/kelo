@@ -57,7 +57,7 @@ public final class AddressEditor {
             list = fetched
         }
         if let list {
-            countries = AddressRules.shown(list.countries, locale: Strings.shared.locale)
+            countries = AddressRules.shown(list.countries, locale: appLocale())
             if draft.country.isEmpty { draft.country = list.defaultCountry.isEmpty ? (Locale.current.region?.identifier ?? "US") : list.defaultCountry }
         } else if draft.country.isEmpty {
             draft.country = Locale.current.region?.identifier ?? "US"
@@ -123,15 +123,15 @@ public final class AddressEditor {
 
     /// The country's name in the app's language.
     public func countryName(_ code: String) -> String {
-        countries.first { $0.code == code }?.name ?? AddressRules.countryName(code, locale: Strings.shared.locale)
+        countries.first { $0.code == code }?.name ?? AddressRules.countryName(code, locale: appLocale())
     }
 
-    /// Forget the kept forms (the app's language changed).
+    /// Forget the kept forms (the app's language changed; the tests start each case from nothing).
     public static func forget() { keptCountries = [:]; keptForms = [:] }
 }
 
 /// The words a problem shows under its row.
-@MainActor public func addressProblemText(_ p: AddressProblem, picked: Bool = false) -> String {
+@MainActor public func addressProblemText(_ p: AddressProblem) -> String {
     switch p {
     case .required: L(R.string.shipping_err_required)
     case .postal(let example): example.isEmpty ? L(R.string.shipping_err_format) : L(R.string.shipping_err_pattern, example)
@@ -219,7 +219,7 @@ public struct AddressFields: View {
 
     @ViewBuilder private func field(_ f: AddressField, form: AddressForm, problem: AddressProblem?) -> some View {
         let picked = !f.options.isEmpty
-        AddressRow(AddressRules.label(f, optional: form.labels.optional), error: problem.map { addressProblemText($0, picked: picked) }) {
+        AddressRow(AddressRules.label(f, optional: form.labels.optional), error: problem.map { addressProblemText($0) }) {
             if picked {
                 let name = AddressRules.optionName(f, editor.draft[f.key])
                 PickButton(text: name ?? L(R.string.shipping_pick), placeholder: name == nil, onCard: onCard) { picking = .option(f.key) }
@@ -296,7 +296,6 @@ public struct KeloPickSheet: View {
     var searchLabel: StringKey = R.string.select_search
     var noMatch: StringKey = R.string.select_no_match
     @State private var query = ""
-    @Environment(\.kelo) private var c
 
     public init(title: String, items: [(String, String)], selected: String?, searchLabel: StringKey = R.string.select_search,
                 noMatch: StringKey = R.string.select_no_match, onPick: @escaping (String) -> Void, onClose: @escaping () -> Void) {

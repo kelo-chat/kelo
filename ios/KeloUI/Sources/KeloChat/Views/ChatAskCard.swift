@@ -10,6 +10,7 @@ struct ChatAskCard: View {
     let onSolve: () -> Void
     let onAnswer: (Bool, Bool, Bool) -> Void
     @Environment(\.kelo) private var c
+    @State private var rememberSite = false
 
     var body: some View {
         let a = ask.approval
@@ -19,7 +20,8 @@ struct ChatAskCard: View {
                 let site = a.site.isEmpty ? L(R.string.handover_this_site) : a.site
                 ResultLine(
                     icon: end == .denied || end == .skipped ? .close : (end == .gone ? .clock : .check),
-                    text: end == .solved ? L(a.isVerification ? R.string.handover_verify_done : R.string.handover_solved)
+                    text: end == .progressed ? L(R.string.handover_progressed)
+                        : end == .solved ? L(a.isVerification ? R.string.handover_verify_done : R.string.handover_solved)
                         : end == .skipped ? L(R.string.handover_skipped, site)
                         : L(R.string.chat_ask_resolved, what, Self.endText(end)),
                     muted: end == .gone || end == .denied || end == .skipped)
@@ -37,7 +39,7 @@ struct ChatAskCard: View {
 
     static func endText(_ e: AskEnd) -> String {
         switch e {
-        case .allowed, .solved: L(R.string.agent_approval_allowed)
+        case .allowed, .solved, .progressed: L(R.string.agent_approval_allowed)
         case .always: L(R.string.agent_approval_always)
         case .keptForSchedule: L(R.string.approval_kept_for_schedule)
         case .denied, .skipped: L(R.string.agent_approval_denied)
@@ -65,14 +67,16 @@ struct ChatAskCard: View {
     }
 
     private func asked(_ a: PendingApproval) -> some View {
-        Text(L(R.string.agent_perm_asked, Self.rel(a.askedAt))).font(KeloFont.label).foregroundStyle(c.muted)
+        Text(L(R.string.agent_perm_asked, RelWords.of(a.askedAt))).font(KeloFont.label).foregroundStyle(c.muted)
     }
 
     /// A site's check whether a person is there: "Solve it" (the tab live with control taken) and "Skip this site", one under the other.
     /// A sign-in's second step (`isVerification`) has its own words, the server's step first, and a shield.
+    /// A sign-in approved on the phone (`isApproveStep`): "I approved it" first, the live view second.
     @ViewBuilder private func humanCheck(_ a: PendingApproval) -> some View {
         let site = a.site.isEmpty ? L(R.string.handover_this_site) : a.site
         let verify = a.isVerification
+        let approveStep = a.event.check?.isApproveStep == true
         HStack(alignment: .top, spacing: 8) {
             KeloIconView(verify ? .shield : .user, size: 22, tint: c.accent)
             Text(L(verify ? R.string.handover_verify_title : R.string.handover_title, site)).font(KeloFont.titleMedium).foregroundStyle(c.ink)
@@ -82,10 +86,15 @@ struct ChatAskCard: View {
         if verify && !step.isEmpty {
             Text(step).font(KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
         }
-        Text(L(verify ? R.string.handover_verify_body : R.string.handover_body)).font(KeloFont.body).foregroundStyle(c.muted)
+        Text(L(approveStep ? R.string.handover_verify_approve_body : (verify ? R.string.handover_verify_body : R.string.handover_body))).font(KeloFont.body).foregroundStyle(c.muted)
             .fixedSize(horizontal: false, vertical: true)
         if a.askedAt > 0 { asked(a) }
-        PrimaryButton(L(verify ? R.string.handover_verify_open : R.string.handover_solve), enabled: !ask.working, action: onSolve)
+        if approveStep {
+            PrimaryButton(L(R.string.handover_verify_approved), enabled: !ask.working) { onAnswer(true, false, false) }
+            SecondaryButton(L(R.string.handover_verify_open), enabled: !ask.working, fill: true, action: onSolve)
+        } else {
+            PrimaryButton(L(verify ? R.string.handover_verify_open : R.string.handover_solve), enabled: !ask.working, action: onSolve)
+        }
         SecondaryButton(L(R.string.handover_skip), enabled: !ask.working, fill: true) { onAnswer(false, false, false) }
     }
 
@@ -96,7 +105,7 @@ struct ChatAskCard: View {
             TaskGrantApproval(grant: grant, open: !ask.working) { ok in onAnswer(ok, false, false) }
         } else if let payment = a.event.payment {
             // the chat's own purchase card: where, what, how much, which card
-            let item = ChatItem.Approval(key: a.id, id: a.id, name: a.event.name, args: "", detail: a.event.detail, label: a.event.label,
+            let item = ChatItem.Approval(key: a.id, id: a.id, name: a.event.name, detail: a.event.detail, label: a.event.label,
                                          payment: payment, card: a.event.card,
                                          send: ask.working ? .working : (ask.cardError.map { .failed($0) } ?? .idle))
             PurchaseApproval(approval: item, payment: payment) { ok in onAnswer(ok, false, false) }
@@ -105,7 +114,7 @@ struct ChatAskCard: View {
                 KeloIconView(.shield, size: 22, tint: c.accent)
                 let w = a.event.label.isEmpty ? a.event.name : a.event.label
                 Text(TurnEvent.ApprovalRequest.question(a.event.ask) ?? L(R.string.chat_approval_ask,
-                       ProviderConsentRules.askWord(w, language: Strings.shared.code), ProviderConsentRules.objectParticle(w)))
+                       AskWords.askWord(w, language: appLanguageCode()), AskWords.objectParticle(w)))
                     .font(KeloFont.titleMedium).foregroundStyle(c.ink)
                     .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -113,34 +122,22 @@ struct ChatAskCard: View {
             ApprovalFacts(lines: a.event.lines, detail: a.event.detail)
             if !a.event.items.isEmpty { ApprovalItems(items: a.event.items) }
             if a.askedAt > 0 { asked(a) }
+            if a.canRemember && !a.site.isEmpty && a.event.payment == nil {
+                RememberSiteCheck(site: a.site, checked: rememberSite, enabled: !ask.working) { rememberSite = $0 }
+            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
                     SecondaryButton(L(R.string.chat_approval_deny), enabled: !ask.working, fill: true) { onAnswer(false, false, false) }
-                    PrimaryButton(L(R.string.chat_approval_allow), enabled: !ask.working) { onAnswer(true, false, false) }
+                    PrimaryButton(L(R.string.chat_approval_allow), enabled: !ask.working) { onAnswer(true, rememberSite, false) }
                 }
                 VStack(spacing: 8) {
-                    PrimaryButton(L(R.string.chat_approval_allow), enabled: !ask.working) { onAnswer(true, false, false) }
+                    PrimaryButton(L(R.string.chat_approval_allow), enabled: !ask.working) { onAnswer(true, rememberSite, false) }
                     SecondaryButton(L(R.string.chat_approval_deny), enabled: !ask.working, fill: true) { onAnswer(false, false, false) }
                 }
-            }
-            if a.canRemember && !a.site.isEmpty {
-                LinkButton(L(R.string.agent_perm_always, a.site)) { onAnswer(true, true, false) }
             }
             if a.canRememberSchedule {
                 LinkButton(L(R.string.approval_keep_for_schedule)) { onAnswer(true, false, true) }
             }
-        }
-    }
-
-    /// "3분 전" / "방금" (the work page's words).
-    static func rel(_ seconds: Double, now: Double = Date().timeIntervalSince1970) -> String {
-        let r = RelTime.of(seconds, now: now)
-        let n = Int(r.amount)
-        switch r.unit {
-        case .now: return L(r.future ? R.string.agent_rel_soon : R.string.agent_rel_now)
-        case .minutes: return P(r.future ? R.plurals.agent_rel_minutes_future : R.plurals.agent_rel_minutes_past, n, n)
-        case .hours: return P(r.future ? R.plurals.agent_rel_hours_future : R.plurals.agent_rel_hours_past, n, n)
-        case .days: return P(r.future ? R.plurals.agent_rel_days_future : R.plurals.agent_rel_days_past, n, n)
         }
     }
 }

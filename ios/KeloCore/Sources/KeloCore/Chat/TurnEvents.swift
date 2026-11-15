@@ -61,9 +61,9 @@ public enum TurnEvent: Equatable, Sendable {
     case unknown(String)
 
     public struct LocationRequest: Equatable, Sendable {
-        public var approvalId: String, state: String, reason: String, settings: Bool, expiresAt: Int64
-        public init(approvalId: String, state: String = "waiting", reason: String = "", settings: Bool = false, expiresAt: Int64 = 0) {
-            self.approvalId = approvalId; self.state = state; self.reason = reason; self.settings = settings; self.expiresAt = expiresAt
+        public var approvalId: String, state: String, reason: String, settings: Bool
+        public init(approvalId: String, state: String = "waiting", reason: String = "", settings: Bool = false) {
+            self.approvalId = approvalId; self.state = state; self.reason = reason; self.settings = settings
         }
     }
 
@@ -88,35 +88,23 @@ public enum TurnEvent: Equatable, Sendable {
     }
 
     public struct ToolResult: Equatable, Sendable {
-        public var id: String, name: String, output: String, isError: Bool, approved: Bool?, label: String, hidden: Bool
-        public var group: String, done: String
-        public init(id: String, name: String, output: String, isError: Bool, approved: Bool?, label: String = "", hidden: Bool = false,
-                    group: String = "", done: String = "") {
+        public var id: String, name: String, output: String, isError: Bool, approved: Bool?
+        public init(id: String, name: String, output: String, isError: Bool, approved: Bool?) {
             self.id = id; self.name = name; self.output = output; self.isError = isError; self.approved = approved
-            self.label = label; self.hidden = hidden; self.group = group; self.done = done
         }
     }
 
     public struct ApprovalRequest: Equatable, Sendable {
         public var approvalId: String
         public var name: String
-        public var arguments: JSONObject
         public var detail: String?
         public var label: String
         public var payment: PaymentInfo?
         public var card: ApprovalCardInfo?
-        /// The tool call it belongs to.
-        public var toolId: String
         /// The card may offer "keep allowing this in that scheduled job" (remember "schedule").
         public var canRememberSchedule: Bool
         /// Up to four readable label / value pairs (hosts rather than URLs); the raw arguments are never shown.
         public var lines: [ApprovalLine]
-        /// The host it acts on ("" when none); `canRemember`: the card may offer "allow on this site".
-        public var site: String
-        public var canRemember: Bool
-        public var expiresAt: Double?
-        public var scheduleId: Int64?
-        public var taskId: Int64?
         /// The card's title as a whole question in the user's language ("" from an older server: build it from the label).
         public var ask: String
         /// "human_check": a site's check whether a person is there, handed to the user (solve it in the live view, or skip the site).
@@ -134,19 +122,23 @@ public enum TurnEvent: Equatable, Sendable {
         public var pin: PinAsk?
         /// What a human check is (`kind` "human_check"): a person check, or a sign-in verification (`CheckInfo.isVerification`).
         public var check: CheckInfo?
+        /// The site the step is on and whether "don't ask again on this site" may be offered.
+        public var site: String = ""
+        public var canRemember: Bool = false
 
-        public init(approvalId: String, name: String, arguments: JSONObject = [:], detail: String? = nil, label: String = "",
-                    payment: PaymentInfo? = nil, card: ApprovalCardInfo? = nil, toolId: String = "", canRememberSchedule: Bool = false,
-                    lines: [ApprovalLine] = [], site: String = "", canRemember: Bool = false, expiresAt: Double? = nil,
-                    scheduleId: Int64? = nil, taskId: Int64? = nil, ask: String = "", kind: String = "", tab: String = "",
+        public init(approvalId: String, name: String, detail: String? = nil, label: String = "",
+                    payment: PaymentInfo? = nil, card: ApprovalCardInfo? = nil, canRememberSchedule: Bool = false,
+                    lines: [ApprovalLine] = [],
+                    ask: String = "", kind: String = "", tab: String = "",
                     grant: TaskGrantAsk? = nil, urgent: Bool = false, missed: String = "", items: [String] = [], pin: PinAsk? = nil,
-                    check: CheckInfo? = nil) {
-            self.approvalId = approvalId; self.name = name; self.arguments = arguments; self.detail = detail; self.label = label
-            self.payment = payment; self.card = card; self.toolId = toolId; self.canRememberSchedule = canRememberSchedule
-            self.lines = lines; self.site = site; self.canRemember = canRemember; self.expiresAt = expiresAt
-            self.scheduleId = scheduleId; self.taskId = taskId; self.ask = ask; self.kind = kind; self.tab = tab
+                    check: CheckInfo? = nil, site: String = "", canRemember: Bool = false) {
+            self.approvalId = approvalId; self.name = name; self.detail = detail; self.label = label
+            self.payment = payment; self.card = card; self.canRememberSchedule = canRememberSchedule
+            self.lines = lines
+            self.ask = ask; self.kind = kind; self.tab = tab
             self.grant = grant; self.urgent = urgent; self.missed = missed; self.items = items; self.pin = pin
             self.check = check
+            self.site = site; self.canRemember = canRemember
         }
 
         /// The server's whole question for the card's title, or nil (an older server: build it from the label).
@@ -168,15 +160,15 @@ public enum TurnEvent: Equatable, Sendable {
 
     public struct BrowserShot: Equatable, Sendable {
         /// `image` is a data:image/... URL or nil.
-        public var id: String, title: String, url: String, host: String, status: String, image: String?
-        public var width: Int, height: Int, at: Double
+        public var id: String, title: String, host: String, status: String, image: String?
+        public var width: Int, height: Int
         /// The tab the picture came from ("" = an older server: this phone's own tab).
         public var tab: String = ""
 
-        public init(id: String, title: String = "", url: String = "", host: String = "", status: String = "", image: String? = nil,
-                    width: Int = 0, height: Int = 0, at: Double = 0, tab: String = "") {
-            self.id = id; self.title = title; self.url = url; self.host = host; self.status = status; self.image = image
-            self.width = width; self.height = height; self.at = at; self.tab = tab
+        public init(id: String, title: String = "", host: String = "", status: String = "", image: String? = nil,
+                    width: Int = 0, height: Int = 0, tab: String = "") {
+            self.id = id; self.title = title; self.host = host; self.status = status; self.image = image
+            self.width = width; self.height = height; self.tab = tab
         }
     }
 
@@ -186,12 +178,13 @@ public enum TurnEvent: Equatable, Sendable {
     }
 
     public struct CardNeeded: Equatable, Sendable {
-        public var id: String, approvalId: String, card: CardBrief, site: String, amount: Double, currency: String
+        public var approvalId: String, card: CardBrief, site: String
         public var amountText: String, expiresAt: Int64
     }
 
     public struct PaymentAuto: Equatable, Sendable {
-        public var id: String, card: CardBrief?, site: String, amountText: String, summary: String
+        public var card: CardBrief?
+        public var site: String, amountText: String, summary: String
         /// What was bought and where it goes, when the server tells (an older server: empty / nil).
         public var items: [OrderItem] = []
         public var shipping: OrderShipping? = nil
@@ -237,21 +230,20 @@ public enum TurnEvent: Equatable, Sendable {
                                             hidden: o.optBool("hidden") == true, group: o.str("group"), done: o.str("done")))
         case "tool_result":
             return .toolResult(ToolResult(id: o.str("id"), name: o.str("name"), output: o.str("output"), isError: o.optBool("is_error") == true,
-                                          approved: o.optBool("approved"), label: o.str("label"), hidden: o.optBool("hidden") == true,
-                                          group: o.str("group"), done: o.str("done")))
+                                          approved: o.optBool("approved")))
         case "approval_request":
             let detail = o.str("detail")
             return .approvalRequest(ApprovalRequest(
-                approvalId: o.str("approval_id"), name: o.str("name"), arguments: obj("arguments"), detail: detail.isEmpty ? nil : detail,
+                approvalId: o.str("approval_id"), name: o.str("name"), detail: detail.isEmpty ? nil : detail,
                 label: o.str("label"), payment: o["payment"]?.objectValue.map { PaymentInfo.parse(Lenient(.object($0))) },
-                card: o["card"]?.objectValue.map { ApprovalCardInfo.parse(Lenient(.object($0))) }, toolId: o.str("id"),
+                card: o["card"]?.objectValue.map { ApprovalCardInfo.parse(Lenient(.object($0))) },
                 canRememberSchedule: o.optBool("can_remember_schedule") == true, lines: ApprovalLine.parseList(o["lines"]),
-                site: o["site"]?.stringValue ?? "", canRemember: o.optBool("can_remember") == true, expiresAt: o.optDouble("expires_at"),
-                scheduleId: o.optInt64("schedule_id"), taskId: o.optInt64("task_id"), ask: o.str("ask"), kind: o.str("kind"),
+                ask: o.str("ask"), kind: o.str("kind"),
                 tab: o.str("tab"), grant: TaskGrantRules.parse(o["grant"]), urgent: o.optBool("urgent") == true, missed: o.str("missed"),
                 items: (o["items"]?.arrayValue ?? []).compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty },
-                pin: PinAsk.parse(o["pin"]), check: CheckInfo.parse(o["check"])))
+                pin: PinAsk.parse(o["pin"]), check: CheckInfo.parse(o["check"]),
+                site: o.str("site"), canRemember: o.optBool("can_remember") == true))
         case "payment_step":
             guard let step = PaymentStep.parse(e) else { return .unknown("payment_step") }
             return .paymentStep(step)
@@ -261,8 +253,7 @@ public enum TurnEvent: Equatable, Sendable {
         case "location_request":
             let state = o.str("state")
             return .locationRequest(LocationRequest(approvalId: o.str("approval_id"), state: state.isEmpty ? "waiting" : state,
-                                                    reason: o.str("reason"), settings: o.optBool("settings") == true,
-                                                    expiresAt: o.int64("expires_at")))
+                                                    reason: o.str("reason"), settings: o.optBool("settings") == true))
         case "user_message":
             return .userMessage(UserMessage(messageId: o.int64("message_id"), attachments: MessageFile.parseList(o["attachments"]),
                                             autoText: o.optBool("auto_text") == true))
@@ -271,22 +262,22 @@ public enum TurnEvent: Equatable, Sendable {
                                           check: CheckInfo.parse(o["check"])))
         case "browser":
             let image = o.str("image")
-            return .browser(BrowserShot(id: o.str("id"), title: o.str("title"), url: o.str("url"), host: o.str("host"), status: o.str("status"),
+            return .browser(BrowserShot(id: o.str("id"), title: o.str("title"), host: o.str("host"), status: o.str("status"),
                                         image: image.hasPrefix("data:image/") ? image : nil, width: o.int("width"), height: o.int("height"),
-                                        at: o.double("at"), tab: o.str("tab")))
+                                        tab: o.str("tab")))
         case "browser_control":
             return .browserControl(id: o.str("id"), controller: o.str("controller"))
         case "browser_check":
             return .browserCheck(BrowserCheck(id: o.str("id"), tab: o.str("tab"), site: o.str("site"), vendor: o.str("vendor"),
                                               name: o.str("name"), kind: o.str("kind")))
         case "card_needed":
-            return .cardNeeded(CardNeeded(id: o.str("id"), approvalId: o.str("approval_id"), card: CardBrief.parse(o.obj("card")),
-                                          site: o.str("site"), amount: o.double("amount"), currency: o.str("currency"),
+            return .cardNeeded(CardNeeded(approvalId: o.str("approval_id"), card: CardBrief.parse(o.obj("card")),
+                                          site: o.str("site"),
                                           amountText: o.str("amount_text"), expiresAt: o.int64("expires_at")))
         case "payment_auto":
             let p = o.obj("payment")
             let site = p.str("site")
-            return .paymentAuto(PaymentAuto(id: o.str("id"), card: o["card"]?.objectValue.map { CardBrief.parse(Lenient(.object($0))) },
+            return .paymentAuto(PaymentAuto(card: o["card"]?.objectValue.map { CardBrief.parse(Lenient(.object($0))) },
                                             site: site.isEmpty ? p.str("host") : site, amountText: p.str("amount_text"), summary: p.str("summary"),
                                             items: OrderItem.parseList(p["items"]), shipping: OrderShipping.parse(p["shipping"])))
         case "shipping_form":
@@ -310,13 +301,6 @@ public enum TurnEvent: Equatable, Sendable {
             return .secretRequest(id: o.str("id"), request: r)
         case let other: return .unknown(other)
         }
-    }
-
-    /// JSON.stringify(args, null, 2) with sorted keys, for a "details" disclosure in debug builds only.
-    public static func prettyArgs(_ args: JSONObject) -> String {
-        let e = JSONEncoder()
-        e.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        return (try? e.encode(JSON.object(args))).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     }
 }
 
@@ -377,11 +361,11 @@ public struct OrderItem: Equatable, Sendable {
 /// "site" (the address the site account already had: name / phone may be empty and `formatted` is the page's text).
 /// `formatted` never holds the name.
 public struct OrderShipping: Equatable, Sendable {
-    public static let fromProfile = "profile", once = "once", fromSite = "site"
-    public var source: String, label: String, name: String, phone: String, formatted: String, country: String
+    public static let once = "once", fromSite = "site"
+    public var source: String, label: String, name: String, phone: String, formatted: String
 
-    public init(source: String, label: String = "", name: String = "", phone: String = "", formatted: String = "", country: String = "") {
-        self.source = source; self.label = label; self.name = name; self.phone = phone; self.formatted = formatted; self.country = country
+    public init(source: String, label: String = "", name: String = "", phone: String = "", formatted: String = "") {
+        self.source = source; self.label = label; self.name = name; self.phone = phone; self.formatted = formatted
     }
 
     /// The address lines, blank ones left out.
@@ -394,7 +378,7 @@ public struct OrderShipping: Equatable, Sendable {
         let o = Lenient(e)
         let s = OrderShipping(source: o.str("source"), label: o.str("label").trimmingCharacters(in: .whitespaces),
                               name: o.str("name").trimmingCharacters(in: .whitespaces), phone: o.str("phone").trimmingCharacters(in: .whitespaces),
-                              formatted: o.str("formatted"), country: o.str("country").uppercased())
+                              formatted: o.str("formatted"))
         return s.lines.isEmpty && s.name.isEmpty && s.label.isEmpty ? nil : s
     }
 }
@@ -415,11 +399,11 @@ public struct CardBrief: Equatable, Sendable {
 /// approval_request.card: the card named for a payment. `needsCard`: an end-to-end card, so Allow also asks for Face ID and sends
 /// the card from this phone. `reason` / `reasonText`: why it asks instead of paying automatically.
 public struct ApprovalCardInfo: Equatable, Sendable {
-    public var card: CardBrief, autoPay: Bool, needsCard: Bool, reason: String, reasonText: String
+    public var card: CardBrief, autoPay: Bool, needsCard: Bool, reasonText: String
 
     static func parse(_ o: Lenient) -> ApprovalCardInfo {
         ApprovalCardInfo(card: CardBrief.parse(o), autoPay: o.optBool("auto_pay") == true, needsCard: o.optBool("needs_card") == true,
-                         reason: o.str("reason"), reasonText: o.str("reason_text"))
+                         reasonText: o.str("reason_text"))
     }
 }
 
@@ -466,7 +450,6 @@ public struct PendingApproval: Equatable, Sendable {
     public var canRemember: Bool
     public var askedAt: Double
     public var unattended: Bool
-    public var taskId: Int64?
     /// "keep allowing this in that scheduled job" may be offered (never for a payment).
     public var canRememberSchedule: Bool
     /// What asked: the run's task source (chat, worker, schedule:<id>, background…); "" from an older server.
@@ -477,14 +460,13 @@ public struct PendingApproval: Equatable, Sendable {
     public var title: String
 
     public init(event: TurnEvent.ApprovalRequest, site: String = "", canRemember: Bool = false, askedAt: Double = 0, unattended: Bool = false,
-                taskId: Int64? = nil, canRememberSchedule: Bool = false, source: String = "", workerId: String? = nil, title: String = "") {
+                canRememberSchedule: Bool = false, source: String = "", workerId: String? = nil, title: String = "") {
         self.event = event; self.site = site; self.canRemember = canRemember; self.askedAt = askedAt; self.unattended = unattended
-        self.taskId = taskId; self.canRememberSchedule = canRememberSchedule
+        self.canRememberSchedule = canRememberSchedule
         self.source = source; self.workerId = workerId; self.title = title
     }
 
     public var id: String { event.approvalId }
-    public var isPayment: Bool { event.payment != nil }
     public static let humanCheck = "human_check"
     /// A site's check whether a person is there, handed to the user: "Solve it" opens `tab` live, "Skip this site" answers no.
     public var isHumanCheck: Bool { event.kind == PendingApproval.humanCheck }
@@ -497,7 +479,7 @@ public struct PendingApproval: Equatable, Sendable {
         guard case .approvalRequest(let ev) = TurnEvent.parse(e), !ev.approvalId.isEmpty else { return nil }
         let o = Lenient(e)
         return PendingApproval(event: ev, site: o["site"]?.stringValue ?? "", canRemember: o.optBool("can_remember") == true,
-                               askedAt: o.double("asked_at"), unattended: o.optBool("unattended") == true, taskId: o.optInt64("task_id"),
+                               askedAt: o.double("asked_at"), unattended: o.optBool("unattended") == true,
                                canRememberSchedule: ev.payment == nil && o.optBool("can_remember_schedule") == true,
                                source: o["source"]?.stringValue ?? "",
                                workerId: (o["worker_id"]?.stringValue).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 },
@@ -527,16 +509,21 @@ public struct PendingApproval: Equatable, Sendable {
 /// `name` is that step ("휴대폰에서 로그인을 승인해 주세요").
 public struct CheckInfo: Equatable, Sendable {
     public static let kindVerification = "verification"
-    public var vendor: String, name: String, kind: String
+    public static let stepApprove = "approve"
+    public var name: String, kind: String, step: String
 
-    public init(vendor: String = "", name: String = "", kind: String = "") { self.vendor = vendor; self.name = name; self.kind = kind }
+    public init(name: String = "", kind: String = "", step: String = "") {
+        self.name = name; self.kind = kind; self.step = step
+    }
 
     public var isVerification: Bool { kind == Self.kindVerification }
+    /// A sign-in verification the owner approves on the phone (an app's push), not a code typed in the page
+    public var isApproveStep: Bool { isVerification && step == Self.stepApprove }
 
     public static func parse(_ e: JSON?) -> CheckInfo? {
         guard let o = e?.objectValue else { return nil }
         func s(_ k: String) -> String { o[k]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
-        return CheckInfo(vendor: s("vendor"), name: s("name"), kind: s("kind"))
+        return CheckInfo(name: s("name"), kind: s("kind"), step: s("step"))
     }
 }
 

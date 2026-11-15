@@ -467,6 +467,51 @@ async def test_usage_shows_the_selected_cli_providers_limits(monkeypatch):
         assert u["subscription"]["windows"] == [] and "로그인" in u["subscription"]["error"]  # never a 5xx
 
 
+async def test_usage_subscriptions_roles_and_deduplication(tmp_path, monkeypatch):
+    from assistant.providers import cli_manage
+
+    async def fake_usage(name, local=False):
+        return [{"group": None, "label": "Session", "used_percent": 10, "resets_at": None, "resets_text": None}]
+
+    monkeypatch.setattr(cli_manage, "cli_usage", fake_usage)
+    st = settings(db_path=str(tmp_path / "s.db"), unofficial_providers=True)
+    async with Running(create_app(st, tools=[], stream_fn=scripted())) as srv, \
+            httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        # an API-key main: subscriptions is [] and subscription is null
+        u = (await c.get("/api/usage")).json()
+        assert u["subscription"] is None
+        assert u["subscriptions"] == []
+
+        await c.put("/api/providers/claude-subscription-directsdk-experimental/consent", json={"accepted": True})
+        await c.put("/api/providers/antigravity-oauth/consent", json={"accepted": True})
+
+        # main Claude + background agy -> two subscriptions with roles main and background
+        await c.put("/api/profile", json={
+            "provider": "claude-subscription-directsdk-experimental", "model": "sonnet",
+            "background_provider": "antigravity-oauth", "background_model": "flash",
+        })
+        u = (await c.get("/api/usage")).json()
+        assert u["subscription"] is not None
+        assert u["subscription"]["provider"] == "claude-subscription-directsdk-experimental"
+        assert len(u["subscriptions"]) == 2
+        assert u["subscriptions"][0]["provider"] == "claude-subscription-directsdk-experimental"
+        assert u["subscriptions"][0]["role"] == "main"
+        assert u["subscriptions"][1]["provider"] == "antigravity-oauth"
+        assert u["subscriptions"][1]["role"] == "background"
+
+        # main = fallback -> one entry (main role kept)
+        from assistant.store import Store
+        Store(st.db_path).set_profile(
+            provider="claude-subscription-directsdk-experimental", model="sonnet",
+            fallback_provider="claude-subscription-directsdk-experimental", fallback_model="opus",
+            background_provider="", background_model="",
+        )
+        u = (await c.get("/api/usage")).json()
+        assert len(u["subscriptions"]) == 1
+        assert u["subscriptions"][0]["provider"] == "claude-subscription-directsdk-experimental"
+        assert u["subscriptions"][0]["role"] == "main"
+
+
 async def test_fallback_model_takes_over_when_the_primary_fails_before_answering(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     tried = []

@@ -4,6 +4,7 @@ store, so a restart keeps it) and nothing but chat reaches it until then; nearly
 Then each job: proactive skips quietly, the memory pass waits for retry_at, a background job pauses and goes on after the reset with
 one notice inside the active hours, and the words the user sees in each language. Fake models only; no CLI is run (conftest)."""
 
+import re
 import asyncio
 import time
 import json
@@ -250,7 +251,7 @@ async def test_a_job_pauses_on_the_limit_tells_once_in_the_active_hours_and_goes
         row = workers._row(w["id"])
         wait = json.loads(row["wait_on"])
         assert wait["kind"] == "model_limit" and not wait["noted"] and guard.until("p") == wait["until"]
-        assert "usage limit is used up" in row["error"] and "It goes on by itself at" in row["error"]   # a known reset: says when
+        assert "usage limit is used up" in row["error"] and re.search(r"It goes on by itself (tomorrow )?at", row["error"])   # a known reset: says when
         assert not brain.calls["handoff"]                                # no report: answering it would need the model too
         # quiet time: no notice yet; inside the active hours: one, and only one
         app.state.proactive.awake = lambda ts=None: False
@@ -377,3 +378,24 @@ async def test_a_balance_that_ran_out_says_top_up_with_no_reset_time_and_nothing
                                                      "OpenRouter's site, then send your message again.")
     g.clear("openrouter")                                              # a call answered: held no more
     assert not g.balance_out("openrouter")
+
+
+async def test_a_job_pauses_while_the_model_is_busy_and_goes_on_by_itself(tmp_path):
+    """2026-11-11: Gemini's "high traffic … No capacity available (503)" ended a 130-step job twice; now it waits and goes on."""
+    def worker(req, n):
+        if n == 0:
+            raise ProviderError("antigravity-oauth: Antigravity model error: Our servers are experiencing high traffic right now, please "
+                                "try again in a minute. (UNAVAILABLE (code 503): No capacity available for model g")
+        return call("report", {"status": "done", "summary": "끝났어요."})
+    brain = Brain(chat=delegating({"task": "가격을 비교해줘", "kind": "general"}), worker=worker, handoff=lambda r, n: say("다 했어요."))
+    app = create_app(app_settings(tmp_path), tools=[], stream_fn=brain, with_worker_tools=True)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await follow(c, (await c.post("/api/turns", json={"text": "가격 비교해줘"})).json()["id"])
+        w = await one_worker(c, "interrupted")
+        workers = app.state.workers
+        wait = json.loads(workers._row(w["id"])["wait_on"])
+        assert wait["kind"] == "model_busy" and wait["n"] == 1 and not brain.calls["handoff"]   # paused, nothing told as failed
+        assert workers.limit_tick(now=wait["until"] - 1) == []
+        assert workers.limit_tick(now=wait["until"] + 1) == [w["id"]]
+        await one_worker(c, "done")
+        await until(lambda: brain.calls["handoff"])

@@ -51,6 +51,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>KeloLiveKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)chat.kelo.app.live</string>
+	<key>KeloSourceCommit</key>
+	<string>$(KELO_SOURCE_COMMIT)</string>
+	<key>KeloSourceDirty</key>
+	<string>$(KELO_SOURCE_DIRTY)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -76,6 +82,8 @@
 	<string>Kelo saves pictures and files you choose to keep to your photo library.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Your iPhone's speech recognition turns what you say into text for the chat.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

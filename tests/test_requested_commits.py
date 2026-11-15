@@ -89,6 +89,27 @@ async def test_the_request_to_apply_covers_the_apply_click_on_its_site_and_nothi
     assert await asks(click, "#apply")                             # another site than the one the task works on
 
 
+async def test_a_request_that_let_steps_through_stands_on_its_site_through_follow_up_chat_until_a_stop(ctx):
+    # 2026-11-12: "브라우저 하는애 자는거같은데" then "너가 하나 직접해보고 …" voided "카카오 체험단 신청해" and the next apply asked
+    said = ["카카오 체험단 신청해"]
+    stopped = [False]
+    s, _page, click, _used = await setup(ctx, "")
+    orders = Orders(scope=lambda: "turn:2")
+    orders.request = lambda: said[-1]
+    orders.stopped_since = lambda ts: stopped[0]
+    click = {t.name: t for t in browser_tools(s, orders=orders)}["browser_click"]
+    await s.open(TRIAL)
+    assert not await asks(click, "#apply")                         # the request itself
+    said.append("브라우저 하는애 자는거같은데")
+    said.append("너가 하나 직접해보고 지침 다시써봐")
+    assert not await asks(click, "#apply")                         # chat about the same work: the request still stands here
+    assert await asks(click, "#pay")                               # never a payment
+    stopped[0] = True                                              # "그만해"
+    assert await asks(click, "#apply")
+    stopped[0] = False
+    assert await asks(click, "#apply")                             # a stop ended it for good
+
+
 async def test_a_request_that_does_not_name_the_commit_keeps_the_card(ctx):
     for request in ("체험단 신청 방법 알려줘", "카카오 선물하기 페이지 열어줘", "don't apply, just look"):
         s, _page, click, _used = await setup(ctx, request)
@@ -220,6 +241,26 @@ async def test_a_job_whose_chat_never_asked_for_it_asks(ctx, tmp_path):
     try:
         await s.open(JOB_PAGE)
         assert await asks(click, "#apply")
+    finally:
+        current_worker.reset(t1)
+        current_turn.reset(t2)
+        PAGES.pop(JOB_PAGE, None)
+
+
+async def test_a_handoff_note_the_server_wrote_is_not_the_owners_stop(ctx, tmp_path):
+    # 2026-11-11: the job's own handoff ("... blocked. Do not ...", stored as a user-role message) voided "카카오 체험단 신청해" and
+    # every later click asked; then the owner's "ㅇㅇ" (go on) changes nothing
+    from assistant.workers import HANDOFF_MARK, current_turn, current_worker
+    s, click = await job_setup(ctx, tmp_path, ["카카오 체험단 신청해"])
+    t1, t2 = current_worker.set("wjob1"), current_turn.set({"request": "Apply to every trial on the list", "task_id": 9})
+    try:
+        await s.open(JOB_PAGE)
+        import time as _t
+        store = click_store[0]
+        store._run("INSERT INTO messages(role, content, created_at) VALUES('user', ?, ?)",
+                   (HANDOFF_MARK + "\nThe background job wjob1 reported: blocked. Do not start it again; ask the user.", _t.time() + 1))
+        store._run("INSERT INTO messages(role, content, created_at) VALUES('user', 'ㅇㅇ', ?)", (_t.time() + 2,))
+        assert not await asks(click, "#apply")
     finally:
         current_worker.reset(t1)
         current_turn.reset(t2)

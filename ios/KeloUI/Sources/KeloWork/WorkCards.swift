@@ -25,7 +25,11 @@ struct NowTaskCard: View {
             HStack(alignment: .top, spacing: 8) {
                 Text(t.title.isEmpty ? L(R.string.agent_task_untitled) : t.title).font(.system(.callout, weight: .semibold))
                     .foregroundStyle(c.ink).lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
-                StatusChip(WorkText.taskStatus(t.status), c.task(t.status))
+                if node.inBackground {
+                    StatusChip(L(R.string.work_task_in_background), c.accent)
+                } else {
+                    StatusChip(WorkText.taskStatus(t.status), c.task(t.status))
+                }
             }
             if t.running && (t.liveStatus != nil || t.status == AgentTask.statusRunning) {
                 HStack(spacing: 8) {
@@ -163,7 +167,12 @@ struct ApprovalAsk: View {
         VStack(alignment: .leading, spacing: 6) {
             if deliver { StatusChip(L(R.string.work_ask_card), c.warn) } else if approval.unattended { StatusChip(L(R.string.work_ask_unattended), c.warn) }
             if approval.isHumanCheck {
-                KeloCard { HumanCheckBody(model: model, a: approval, working: model.answering.contains(approval.id)) }
+                KeloCard {
+                    HumanCheckBody(model: model, a: approval, working: model.answering.contains(approval.id), onDone: {
+                        Haptics.success()
+                        model.answer(approval, approve: true)
+                    })
+                }
             } else {
                 PendingApprovalCard(model: model, a: approval, working: model.answering.contains(approval.id), onOpenChat: onOpenChat)
             }
@@ -173,10 +182,12 @@ struct ApprovalAsk: View {
 
 /// A site's check whether a person is there, handed to the user (Android agent/ApprovalParts.kt HumanCheckBody). "Solve it" opens
 /// that tab live and takes it over (the server ends the question by itself once the check is gone); "Skip this site" answers no.
+/// A sign-in approved on the phone (`isApproveStep`): "I approved it" first (`onDone`: done, go on), the live view second.
 struct HumanCheckBody: View {
     let model: WorkModel
     let a: PendingApproval
     let working: Bool
+    let onDone: () -> Void
     @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
 
@@ -184,6 +195,7 @@ struct HumanCheckBody: View {
         let site = a.site.isEmpty ? L(R.string.handover_this_site) : a.site
         // a sign-in's second step (approve on the phone, or a code) is not a person check: its own words, the server's step first
         let verify = a.isVerification
+        let approveStep = a.event.check?.isApproveStep == true
         let step = a.event.check?.name ?? ""
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
@@ -194,10 +206,15 @@ struct HumanCheckBody: View {
             if verify && !step.isEmpty {
                 Text(step).font(KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
             }
-            Text(L(verify ? R.string.handover_verify_body : R.string.handover_body)).font(KeloFont.body).foregroundStyle(c.muted)
+            Text(L(approveStep ? R.string.handover_verify_approve_body : (verify ? R.string.handover_verify_body : R.string.handover_body))).font(KeloFont.body).foregroundStyle(c.muted)
                 .fixedSize(horizontal: false, vertical: true)
             if a.askedAt > 0 { Text(L(R.string.agent_perm_asked, WorkText.rel(a.askedAt))).font(KeloFont.label).foregroundStyle(c.muted) }
-            PrimaryButton(L(verify ? R.string.handover_verify_open : R.string.handover_solve), enabled: !working) { Haptics.tick(); app.router.openLive(a.tab, takeControl: true) }
+            if approveStep {
+                PrimaryButton(L(R.string.handover_verify_approved), enabled: !working, action: onDone)
+                SecondaryButton(L(R.string.handover_verify_open), enabled: !working, fill: true) { Haptics.tick(); app.router.openLive(a.tab, takeControl: true) }
+            } else {
+                PrimaryButton(L(verify ? R.string.handover_verify_open : R.string.handover_solve), enabled: !working) { Haptics.tick(); app.router.openLive(a.tab, takeControl: true) }
+            }
             SecondaryButton(L(R.string.handover_skip), enabled: !working, fill: true) { Haptics.warning(); model.answer(a, approve: false) }
         }
     }
@@ -211,6 +228,7 @@ struct PendingApprovalCard: View {
     let working: Bool
     let onOpenChat: () -> Void
     @Environment(\.kelo) private var c
+    @State private var rememberSite = false
 
     var body: some View {
         KeloCard {
@@ -233,10 +251,10 @@ struct PendingApprovalCard: View {
                 ApprovalFactsView(lines: a.event.lines, detail: a.event.detail)
                 if !a.event.items.isEmpty { ApprovalItems(items: a.event.items) }
                 if a.askedAt > 0 { Text(L(R.string.agent_perm_asked, WorkText.rel(a.askedAt))).font(KeloFont.label).foregroundStyle(c.muted) }
-                answerButtons(allow: { Haptics.success(); model.answer(a, approve: true) })
-                if a.canRemember && !a.site.isEmpty {
-                    LinkButton(L(R.string.agent_perm_always, a.site)) { Haptics.success(); model.answer(a, approve: true, remember: true) }
+                if a.canRemember && !a.site.isEmpty && a.event.payment == nil {
+                    RememberSiteCheck(site: a.site, checked: rememberSite, enabled: !working) { rememberSite = $0 }
                 }
+                answerButtons(allow: { Haptics.success(); model.answer(a, approve: true, remember: rememberSite) })
                 if a.canRememberSchedule {
                     LinkButton(L(R.string.approval_keep_for_schedule)) { Haptics.success(); model.answer(a, approve: true, rememberSchedule: true) }
                 }
@@ -425,7 +443,6 @@ struct MessageSheet: View {
     let onSend: (String) -> Void
     let onClose: () -> Void
     @State private var text = ""
-    @Environment(\.kelo) private var c
 
     var body: some View {
         ScrollView {
@@ -561,6 +578,11 @@ struct WatcherRow: View {
                     StatusChip(WorkText.watch(w.state), c.watch(w.state))
                 }
                 if !w.description.isEmpty { Text(w.description).font(KeloFont.small).foregroundStyle(c.muted).lineLimit(3) }
+                if let b = w.buy, b.armed {
+                    Text(b.problems.isEmpty ? L(R.string.buy_ready_short) : L(R.string.buy_ready_problems_short, b.problems.count))
+                        .font(KeloFont.label)
+                        .foregroundStyle(b.problems.isEmpty ? c.success : c.danger)
+                }
                 if let v = w.lastValue, !v.isEmpty {
                     Text(L(R.string.work_watch_last_value, v)).font(KeloFont.label).foregroundStyle(c.ink).lineLimit(2)
                 }

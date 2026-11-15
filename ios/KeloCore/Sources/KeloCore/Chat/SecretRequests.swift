@@ -6,43 +6,43 @@ import Foundation
 
 /// A card a card entry added (secret_request result): its nickname and last four digits, never the number.
 public struct SecretCard: Equatable, Hashable, Sendable {
-    public var id: String, label: String, brand: String, last4: String, isDefault: Bool
+    public var id: String, label: String
 
-    public init(id: String = "", label: String = "", brand: String = "", last4: String = "", isDefault: Bool = false) {
-        self.id = id; self.label = label; self.brand = brand; self.last4 = last4; self.isDefault = isDefault
+    public init(id: String = "", label: String = "") {
+        self.id = id; self.label = label
     }
 
     static func parse(_ o: Lenient) -> SecretCard {
-        SecretCard(id: o.str("id"), label: o.str("label"), brand: o.str("brand"), last4: o.str("last4"), isDefault: o.bool("default"))
+        SecretCard(id: o.str("id"), label: o.str("label"))
     }
 }
 
 /// How an answered entry went: a key's test ("ok" / "unchecked"), how a login is kept, or the card that was added.
 public struct SecretResult: Equatable, Hashable, Sendable {
-    public var checked: String?, mode: String?, card: SecretCard?
+    public var checked: String?, card: SecretCard?
 
-    public init(checked: String? = nil, mode: String? = nil, card: SecretCard? = nil) {
-        self.checked = checked; self.mode = mode; self.card = card
+    public init(checked: String? = nil, card: SecretCard? = nil) {
+        self.checked = checked; self.card = card
     }
 
     static func parse(_ e: JSON?) -> SecretResult? {
         guard e?.objectValue != nil else { return nil }
         let o = Lenient(e)
-        return SecretResult(checked: o.optStr("checked"), mode: o.optStr("mode"),
+        return SecretResult(checked: o.optStr("checked"),
                             card: o["card"]?.objectValue != nil ? SecretCard.parse(o.obj("card")) : nil)
     }
 }
 
-/// A secure entry the agent asked for: a service key (`kindKey`, the vault item `name`), a website login (`kindLogin`) or a payment
+/// A secure entry the agent asked for: a service key (kind "key", the vault item `name`), a website login (`kindLogin`) or a payment
 /// card (`kindCard`, `name` empty). `hosts`: where the value may be sent (a card: where it will pay; may be empty). `state`: open,
 /// saved, cancelled, expired or replaced. `messageId`: the agent message it goes under (only from GET /api/secret-requests; nil while
 /// that reply is still being written). `source` "draft": a vault item waiting for its value that no agent request stands for; listed
 /// in the Keychain only, never in the chat.
 public struct SecretRequest: Equatable, Hashable, Sendable, Identifiable {
-    public static let kindKey = "key", kindLogin = "login", kindCard = "card", kindPin = "payment_pin"
+    public static let kindLogin = "login", kindCard = "card", kindPin = "payment_pin"
     public static let stateOpen = "open", stateSaved = "saved", stateCancelled = "cancelled", stateExpired = "expired",
                       stateReplaced = "replaced"
-    public static let sourceAgent = "agent", sourceDraft = "draft"
+    public static let sourceAgent = "agent"
 
     public var id: String
     public var kind: String
@@ -52,28 +52,22 @@ public struct SecretRequest: Equatable, Hashable, Sendable, Identifiable {
     public var reason: String
     public var check: Bool
     public var source: String
-    public var turnId: String?
-    public var taskId: Int64?
-    public var afterId: Int64
     public var state: String
     public var messageId: Int64?
     public var createdAt: Double
-    public var answeredAt: Double?
-    public var expiresAt: Double
     public var result: SecretResult?
 
     public init(id: String, kind: String = "", name: String = "", label: String = "", hosts: [String] = [], reason: String = "",
-                check: Bool = false, source: String = SecretRequest.sourceAgent, turnId: String? = nil, taskId: Int64? = nil,
-                afterId: Int64 = 0, state: String = SecretRequest.stateOpen, messageId: Int64? = nil, createdAt: Double = 0,
-                answeredAt: Double? = nil, expiresAt: Double = 0, result: SecretResult? = nil) {
+                check: Bool = false, source: String = SecretRequest.sourceAgent,
+                state: String = SecretRequest.stateOpen, messageId: Int64? = nil, createdAt: Double = 0,
+                result: SecretResult? = nil) {
         self.id = id; self.kind = kind; self.name = name; self.label = label; self.hosts = hosts; self.reason = reason
-        self.check = check; self.source = source; self.turnId = turnId; self.taskId = taskId; self.afterId = afterId
-        self.state = state; self.messageId = messageId; self.createdAt = createdAt; self.answeredAt = answeredAt
-        self.expiresAt = expiresAt; self.result = result
+        self.check = check; self.source = source
+        self.state = state; self.messageId = messageId; self.createdAt = createdAt
+        self.result = result
     }
 
     public var open: Bool { state == Self.stateOpen }
-    public var isKey: Bool { kind == Self.kindKey }
     public var isLogin: Bool { kind == Self.kindLogin }
     public var isCard: Bool { kind == Self.kindCard }
     /// A site's payment PIN (request_payment_pin): sealed on the phone like a card, never typed into the chat.
@@ -90,10 +84,10 @@ public struct SecretRequest: Equatable, Hashable, Sendable, Identifiable {
         let state = o.str("state")
         return SecretRequest(
             id: id, kind: o.str("kind"), name: o.str("name"), label: o.str("label"), hosts: o.strings("hosts"), reason: o.str("reason"),
-            check: o.bool("check"), source: source.isEmpty ? sourceAgent : source, turnId: o.optStr("turn_id"),
-            taskId: o.optInt64("task_id"), afterId: o.int64("after_id"), state: state.isEmpty ? stateOpen : state,
-            messageId: o.optInt64("message_id"), createdAt: o.double("created_at"), answeredAt: o.optDouble("answered_at"),
-            expiresAt: o.double("expires_at"), result: SecretResult.parse(o["result"]))
+            check: o.bool("check"), source: source.isEmpty ? sourceAgent : source,
+            state: state.isEmpty ? stateOpen : state,
+            messageId: o.optInt64("message_id"), createdAt: o.double("created_at"),
+            result: SecretResult.parse(o["result"]))
     }
 
     /// {"items": [...]} or a bare list; unreadable entries are left out.
@@ -107,13 +101,13 @@ public struct SecretRequest: Equatable, Hashable, Sendable, Identifiable {
 public struct SecretSaveAnswer: Equatable, Sendable {
     /// `reply` (newer servers): the reply that asked is still running and goes on by itself / a new reply started (`turnId`) / one
     /// will start later / no reply follows. nil from an older server.
-    public static let replyLive = "live", replyStarted = "started", replyQueued = "queued", replyNone = "none"
+    public static let replyNone = "none"
 
-    public var ok: Bool, checked: Bool, turnId: String?
+    public var checked: Bool, turnId: String?
     public var reply: String?
 
-    public init(ok: Bool = true, checked: Bool = false, turnId: String? = nil, reply: String? = nil) {
-        self.ok = ok; self.checked = checked; self.turnId = turnId; self.reply = reply
+    public init(checked: Bool = false, turnId: String? = nil, reply: String? = nil) {
+        self.checked = checked; self.turnId = turnId; self.reply = reply
     }
 
     /// The reply to follow here: `turnId` unless the server says none follows.
@@ -123,7 +117,7 @@ public struct SecretSaveAnswer: Equatable, Sendable {
         let o = Lenient(e)
         let turn = o.optStr("turn_id")?.trimmingCharacters(in: .whitespaces)
         let reply = o.optStr("reply")?.trimmingCharacters(in: .whitespaces)
-        return SecretSaveAnswer(ok: o.bool("ok", true), checked: o.bool("checked"), turnId: turn?.isEmpty == false ? turn : nil,
+        return SecretSaveAnswer(checked: o.bool("checked"), turnId: turn?.isEmpty == false ? turn : nil,
                                 reply: reply?.isEmpty == false ? reply : nil)
     }
 }
@@ -197,14 +191,6 @@ public enum SecretRules {
     /// At every end of a reply (done, failed, stopped) and on a reload: only the entries still open are kept (Android
     /// SecretRules.settled; spec 5.16).
     public static func settled(_ list: [SecretRequest]) -> [SecretRequest] { list.allSatisfy(\.open) ? list : list.filter(\.open) }
-
-    /// One request updated in `list` (added when new).
-    public static func upsert(_ list: [SecretRequest], _ req: SecretRequest) -> [SecretRequest] {
-        guard let i = list.firstIndex(where: { $0.id == req.id }) else { return list + [req] }
-        var out = list
-        out[i] = merge(list[i], req)
-        return out
-    }
 
     /// "api.telegram.org" / "a.com, b.com"; empty when there are none.
     public static func hostsText(_ hosts: [String]) -> String { hosts.joined(separator: ", ") }

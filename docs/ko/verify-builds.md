@@ -84,6 +84,7 @@ gh attestation verify kelo-0.1.N-play-release-unsigned.aab -R kelo-chat/kelo
 |---|---|
 | 빌드 시각으로 정한 버전 | 버전은 `android/kelo/version.properties`(`build=N`이면 versionCode N, versionName `0.1.N`)에서 읽고 릴리스마다 함께 커밋해요. `tools/build/android.sh version`이 써 줘요. "2026 후반부터의 분" 규칙은 운영자가 릴리스를 시작할 때 번호를 고르는 데만 써요 |
 | JDK, Gradle, Android SDK, 빌드 도구 | `android/reproducible/Dockerfile`: JDK 이미지는 digest로, Android 플랫폼 36(r02)과 빌드 도구 36.0.0은 SHA-256으로, Gradle 8.11.1은 wrapper의 `distributionSha256Sum`으로 고정 |
+| 마이에 보이는 커밋 | 마이의 버전 줄 끝에는 앱이 빌드된 커밋의 짧은 해시가 있고, 누르면 GitHub의 그 커밋으로 가요(`BuildConfig.SOURCE_COMMIT`, `ReleaseInfo.SOURCE_COMMIT`, Info.plist `KeloSourceCommit`). `tools/build/android-reproducible.sh`가 빌드하는 커밋의 sha를 컨테이너 안으로 넘겨서(`-PkeloCommit`) 같은 커밋이면 결과도 같아요. `--worktree` 빌드는 "수정됨"으로 표시되고 링크가 없어요. sha는 파일의 일부라서, `tools/build/android.sh`가 다른 커밋에서 만든 APK는 태그의 빌드와 바로 이 값만 달라요 |
 | 라이브러리와 플러그인 | `gradle/libs.versions.toml`에 정확한 버전, 내려받는 파일은 모두 `gradle/verification-metadata.xml`과 대조(재현 빌드에서는 엄격하게) |
 | 번들 안의 R8 시간 기록 | R8이 실행 시간과 스레드 수를 `BUNDLE-METADATA/com.android.tools/r8.json`에 적어요. 이 두 숫자를 비워요(`app/build.gradle.kts`). 번들을 두 번 빌드했을 때 다른 곳은 여기뿐이었어요 |
 | APK 안의 암호화된 의존성 목록 | `dependenciesInfo { includeInApk = false }`: 파일 APK에는 빌드마다 바뀌는 난수가 없어요(번들은 평문 목록을 그대로 둬요) |

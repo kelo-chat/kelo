@@ -12,9 +12,9 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.ui.components.FieldWrapScan
-import chat.kelo.desktop.ui.FieldWithAction
-import chat.kelo.desktop.ui.KeloTextField
-import chat.kelo.desktop.ui.PrimaryButton
+import chat.kelo.app.ui.components.FieldWithAction
+import chat.kelo.app.ui.components.KeloTextField
+import chat.kelo.app.ui.components.PrimaryButton
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -31,7 +31,7 @@ class SingleLineFieldsTest {
 
     @Test fun noOneValueFieldCanWrap() {
         val root = File("src/main/kotlin")
-        val problems = FieldWrapScan.scan(listOf(root), listOf(File(root, "chat/kelo/desktop/ui/Components.kt")))
+        val problems = FieldWrapScan.scan(listOf(root), emptyList())   // the components are in shared/ (its own test checks them)
         assertTrue("one-value fields that can wrap or are squeezed beside a button:\n" + problems.joinToString("\n"), problems.isEmpty())
     }
 
@@ -90,5 +90,7 @@ class SingleLineFieldsTest {
 
 @androidx.compose.runtime.Composable
 private fun KeloFrameForTest(content: @androidx.compose.runtime.Composable () -> Unit) {
-    chat.kelo.app.ui.theme.KeloTheme(dark = false) { content() }
+    androidx.compose.runtime.CompositionLocalProvider(chat.kelo.app.ui.platform.LocalFormFactor provides chat.kelo.app.ui.platform.FormFactor.Desktop) {
+        chat.kelo.app.ui.theme.KeloTheme(dark = false) { content() }
+    }
 }

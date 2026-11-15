@@ -10,7 +10,7 @@ import kotlin.concurrent.thread
 
 /**
  * One Kelo per user: a second start (the Start menu while it waits in the tray, or starting at sign-in twice) only asks the running
- * one to show its window, then quits. The first one holds a lock file in [Platform.dataDir] and listens on a loopback port it
+ * one to show its window, then quits. The first one holds a lock file in [DesktopPlatform.dataDir] and listens on a loopback port it
  * writes next to it (nothing outside this device can reach it; the request carries no data).
  */
 class SingleInstance(private val dir: File) {

@@ -3,7 +3,7 @@
     1/4  Check the server      Docker + Compose installed and running, CPUs / RAM / free disk
     2/4  Size                  minimum / recommended / no limit, checked against what the server's computer really has
     3/4  Start                 docker compose up -d --build with a spinner and a short live log, then a health check
-    4/4  Phone                 the default address (https://<name>.kelo.chat) or later, then a QR code to sign a phone in
+    4/4  Phone                 a Kelo address (https://<name>.kelo.chat, offered for now) or later, then a QR code to sign a phone in
 
 The AI model is not asked here: it is chosen in the phone app once the phone is connected (the app leads there while the
 server has none). Model settings already in .env are left exactly as they are.
@@ -35,6 +35,7 @@ from typing import Any, Protocol
 from . import i18n, profiles
 from .cli import (
     CLIS,
+    ensure_keyring_token,
     ensure_runner_token,
     ensure_secret_key,
     ensure_token,
@@ -95,7 +96,7 @@ def reach_rows(lang: str, inst: Any, cmd: str, *, funnel: bool = False) -> list[
         return translate(text, lang)
 
     flag = _flag(inst)
-    rows = [(t("Default address"), f"{cmd} connect kelo{flag} --name <name>"),
+    rows = [(t("Kelo address (offered for now)"), f"{cmd} connect kelo{flag} --name <name>"),
             ("Tailscale", f"{cmd} connect tailscale{flag}")]
     if funnel:
         rows.append(("Tailscale Funnel", f"{cmd} connect funnel{flag}"))
@@ -129,7 +130,7 @@ def closing_lines(lang: str, inst: Any, *, running: bool = True, paired: bool = 
 
 def phone_step(ui: Any, mgr: Any, name: str | None = None, *, cmd: str | None = None, post: Callable[..., Any] | None = None,
                start: bool = True, suggestion: str = "") -> bool:
-    """Where the phone reaches Kelo (the default address now, Tailscale / own domain later, or not now), then a QR code to
+    """Where the phone reaches Kelo (a Kelo address now, Tailscale / own domain later, or not now), then a QR code to
     sign a phone in. Shared by `assistant setup` (4/4) and `assistant instance create` in a terminal. True if a QR was shown. Every device that signs in has the same rights."""
     from . import connect
     from .instances import InstanceError
@@ -145,7 +146,7 @@ def phone_step(ui: Any, mgr: Any, name: str | None = None, *, cmd: str | None = 
         options.append(("k", t("Keep {url}", url=inst.connect_url), ""))
     shown_name = next((n for n in (read_env(inst.env, "KELO_NAME"), suggestion) if n and not name_problem(n)), "<name>")
     # the phone app talks to a server over https only, so without an address it cannot be signed in
-    options += [("1", t("Free address: {host}", host=f"{shown_name}.kelo.chat"), t("ready in a minute; works from anywhere")),
+    options += [("1", t("Kelo address (offered for now): {host}", host=f"{shown_name}.kelo.chat"), t("ready in a minute; works from anywhere")),
                 ("2", t("Tailscale or my own domain"), t("needs setup on your side; shows the commands to run")),
                 ("3", t("Skip for now"), t("the phone can't connect until an address is set"))]
     pick = ui.choose(t("Where should your phone reach Kelo?"), options, "k" if inst.connect_url else "1")
@@ -414,7 +415,7 @@ class Wizard:
         self.ui.ok(self.t("This computer: RAM {ram} · CPU {cpus} · {disk} free disk",
                           ram=profiles.gb(m.ram), cpus=m.cpus or "?", disk=profiles.gb(m.disk_free)))
         self.env_file.parent.mkdir(parents=True, exist_ok=True)
-        made = [ensure_token(self.env_file), ensure_secret_key(self.env_file), ensure_runner_token(self.env_file)]
+        made = [ensure_token(self.env_file), ensure_secret_key(self.env_file), ensure_runner_token(self.env_file), ensure_keyring_token(self.env_file)]
         if not read_env(self.env_file, "BROWSER") or self.browser:
             write_env(self.env_file, {"BROWSER": self.browser or "chromium"})
         if any(made):

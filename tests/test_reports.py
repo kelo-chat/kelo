@@ -90,6 +90,9 @@ async def test_the_operator_stores_its_own_reports_directly(tmp_path):
         r = await c.post("/api/reports", headers=AUTH, json={"reason": "inaccurate", "reply": "틀린 답"})
         assert r.json()["to"] == "here"
         assert (await c.get("/api/operator/reports", headers=AUTH)).json()["reports"][0]["reason"] == "inaccurate"
+        # the operator hears about it at once: a notification (and a push), with the reason but not the reported text
+        notes = [n for n in (await c.get("/api/notifications", headers=AUTH)).json()["items"] if n["type"] == "operator_report"]
+        assert [n["title"] for n in notes] == ["New report: not accurate"] and "틀린 답" not in notes[0]["body"]
 
 
 async def test_unreachable_broker_gives_a_readable_error(tmp_path):

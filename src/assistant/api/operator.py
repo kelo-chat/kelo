@@ -1,4 +1,4 @@
-"""The operator's services and settings: free <name>.kelo.chat addresses (kelo_names.py), push for every copy's phones (push.py), reports of bad AI replies (reports.py), Google sign-in beta requests (beta.py). /api/operator/* needs a signed-in device (not on a review copy); /broker/* is public and rate-limited."""
+"""The operator's services and settings: <name>.kelo.chat addresses (kelo_names.py), push for every copy's phones (push.py), reports of bad AI replies (reports.py), Google sign-in beta requests (beta.py). /api/operator/* needs a signed-in device (not on a review copy); /broker/* is public and rate-limited."""
 
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def router(ctx: AppContext) -> APIRouter:
     settings = ctx.settings
     store = ctx.store
 
-    # ---- free Kelo addresses. The operator's Cloudflare token goes in (any signed-in device), never out.
+    # ---- Kelo addresses. The operator's Cloudflare token goes in (any signed-in device), never out.
     @router.get("/api/operator/cloudflare", dependencies=[Depends(require_owner)])
     async def get_operator_cloudflare() -> dict[str, Any]:
         return kelo_names.config()
@@ -203,9 +203,9 @@ def router(ctx: AppContext) -> APIRouter:
         return fcm.disable()
 
     def is_operator() -> bool:
-        """The operator's server: the one other copies lean on (sign-in relay, pushes, free addresses, reports, beta requests).
+        """The operator's server: the one other copies lean on (sign-in relay, pushes, addresses, reports, beta requests).
         ASSISTANT_OPERATOR decides when set; otherwise it is the server whose own address is the broker in its settings, or one
-        already running the free-address or push service. Every self-hosted copy (its phones included) is not."""
+        already running the address or push service. Every self-hosted copy (its phones included) is not."""
         if settings.review_mode:   # a review copy never shows the operator's settings
             return False
         if settings.operator is not None:
@@ -238,6 +238,20 @@ def router(ctx: AppContext) -> APIRouter:
             body = None
         try:
             return await push_broker.handle(body, client_key(request))
+        except PushError as e:
+            raise push_refusal(e) from None
+
+    @router.post("/broker/push/live", include_in_schema=False)
+    async def broker_push_live(request: Request) -> dict[str, Any]:
+        raw = await request.body()
+        if len(raw) > 64_000:
+            raise HTTPException(413, "too large")
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            body = None
+        try:
+            return await push_broker.handle_live(body, client_key(request))
         except PushError as e:
             raise push_refusal(e) from None
 

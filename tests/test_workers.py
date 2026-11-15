@@ -130,6 +130,7 @@ async def test_delegate_answers_at_once_the_job_runs_to_done_and_the_main_agent_
         assert [m["content"] for m in msgs] == ["세 곳 가격 비교해줘", "맡겼어요. 끝나면 알려 드릴게요.", "비교 끝났어요: 가장 싼 곳은 1,000원이에요."]
         handoff = brain.calls["handoff"][0].messages[-1]["content"]
         assert HANDOFF_MARK in handoff and "가장 싼 곳은 1,000원이에요." in handoff and done["id"] in handoff
+        assert "Progress (server record): " in handoff and "no step that commits something went through" in handoff
         # 활동: the job's run and the handoff sit under the chat task; only the handoff speaks up with a notification
         tasks = (await c.get("/api/tasks")).json()["items"]
         kids = [t for t in tasks if t["parent_id"] == chat_task["id"]]
@@ -389,6 +390,34 @@ async def test_a_message_reaches_a_running_job_before_its_next_step_and_stop_end
         assert (await c.post("/api/workers/wnope00/resume", json={})).status_code == 404
 
 
+async def test_a_chat_turn_after_the_user_stopped_a_job_is_told_it_is_not_running(tmp_path):
+    """The chat still says "it runs in the background" and a stop sends no message: the turn's lines carry the job's state now."""
+    entered, hold = asyncio.Event(), asyncio.Event()
+
+    async def slow(args):
+        entered.set()
+        await hold.wait()
+        return "page"
+
+    def chat(req, n):
+        if req.messages[-1].get("role") == "tool":
+            return say("백그라운드에서 진행 중이에요.")
+        return call("delegate", {"task": "체험단 전부 신청해"}) if n == 0 else say("네.")
+
+    brain = Brain(chat=chat, worker=lambda req, n: call("slow_read", {}, cid=f"c-{n}"))
+    app = create_app(app_settings(tmp_path), tools=[Tool("slow_read", "x", {"type": "object"}, slow)], stream_fn=brain,
+                     with_worker_tools=True)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await follow(c, (await c.post("/api/turns", json={"text": "체험단 신청해"})).json()["id"])
+        await until(lambda: entered.is_set())
+        w = await one_worker(c)
+        assert (await c.post(f"/api/workers/{w['id']}/stop")).json()["worker"]["status"] == "stopped"
+        await follow(c, (await c.post("/api/turns", json={"text": "다른 얘기"})).json()["id"])
+        sent = "\n".join(str(m.get("content")) for m in brain.calls["chat"][-1].messages)
+        line = next(x for x in sent.splitlines() if x.startswith(f"- {w['id']} "))
+        assert "stopped" in line and "not running" in line
+
+
 async def test_the_main_agent_resumes_a_paused_job_with_the_users_answer_and_lists_it(tmp_path):
     def worker(req, n):
         if n == 0:
@@ -459,3 +488,51 @@ def test_no_site_specific_or_borrowed_words_in_the_jobs_code_tools_or_prompt():
         assert not re.search(r"\b[\w-]+\.(com|net|org|kr|co|io)\b", text)       # no web addresses
         assert not re.search(r"lotto|로또|복권|coupang|쿠팡|naver|네이버|amazon|subagent", text, re.I)
     assert len(para) < 600                                                      # a few short lines
+
+
+async def test_job_progress_shows_how_far_a_long_job_is_on_the_job_card(tmp_path):
+    steps = [call("job_progress", {"done": 300, "total": 1545, "label": "댓글 삭제"}),
+             call("echo_item", {}), call("report", {"status": "done", "summary": "끝났어요."})]
+
+    def worker(req, n):
+        return steps[n]
+
+    async def echo(args):
+        return "ok"
+    echo_tool = Tool("echo_item", "one item", {"type": "object", "properties": {}}, echo)
+    brain = Brain(chat=delegating({"task": "댓글을 전부 지워줘", "kind": "general"}), worker=worker)
+    app = create_app(app_settings(tmp_path), tools=[echo_tool], stream_fn=brain, with_worker_tools=True)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await follow(c, (await c.post("/api/turns", json={"text": "댓글 전부 지워줘"})).json()["id"])
+        done = await one_worker(c, "done")
+        assert done["status_text"] == "300 / 1,545 · 댓글 삭제"          # the next tool call did not overwrite it
+        assert (await worker_list(c))[0]["status_text"] == "300 / 1,545 · 댓글 삭제"
+        names = [t["function"]["name"] for t in brain.calls["worker"][0].tools]
+        assert "job_progress" in names
+        brief = next(m["content"] for m in brain.calls["worker"][0].messages if JOB_MARK in str(m.get("content")))
+        assert "job_progress(done, total, label)" in brief and "2-3 other ways" in brief
+
+
+def test_the_progress_line_counts_what_went_through_from_the_servers_own_records(tmp_path):
+    """2026-11-11: a job stopped by a model error after 30+ applications was told to the user as "only the first one was done"."""
+    import sqlite3
+    from assistant.workers import Workers
+
+    class S:
+        def __init__(self):
+            self.db = sqlite3.connect(":memory:")
+            self.db.row_factory = sqlite3.Row
+            self.db.executescript("CREATE TABLE tasks (id INTEGER PRIMARY KEY, worker_id TEXT);"
+                                  "CREATE TABLE approval_log (id TEXT, task_id INTEGER, site TEXT, decision TEXT);")
+
+        def _all(self, q, a=()):
+            return [dict(r) for r in self.db.execute(q, a)]
+    st = S()
+    st.db.execute("INSERT INTO tasks VALUES (220, 'wjob'), (221, 'other')")
+    st.db.executemany("INSERT INTO approval_log VALUES (?,?,?,?)", [(f"a{i}", 220, "gift.kakao.com", "allowed_by_rule") for i in range(14)]
+                      + [("d", 220, "gift.kakao.com", "denied"), ("o", 221, "x.example", "allowed_once")])
+    w = Workers.__new__(Workers)
+    w.store = st
+    line = w._progress_line({"id": "wjob", "steps": 123, "last_url": "https://gift.kakao.com/giftbox/trial-campaign/x"})
+    assert line.startswith("Progress (server record): 123 steps") and "14 on gift.kakao.com" in line and "trial-campaign" in line
+    assert "x.example" not in line

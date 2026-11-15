@@ -18,7 +18,7 @@ import KeloCore
     func ok(_ id: String, _ name: String) -> TurnEvent { .toolResult(.init(id: id, name: name, output: "ok", isError: false, approved: nil)) }
     func failed(_ id: String, _ name: String) -> TurnEvent { .toolResult(.init(id: id, name: name, output: "Error", isError: true, approved: nil)) }
     func browser(_ id: String, _ host: String, _ status: String, tab: String) -> TurnEvent {
-        .browser(.init(id: id, title: host, url: "https://\(host)/", host: host, status: status, image: nil, width: 0, height: 0, at: 0, tab: tab))
+        .browser(.init(id: id, title: host, host: host, status: status, image: nil, width: 0, height: 0, tab: tab))
     }
     func tools(_ rows: [ChatItem]) -> [ChatItem.Tool] { rows.compactMap { if case .tool(let t) = $0 { return t }; return nil } }
     func cards(_ rows: [ChatItem]) -> [ChatItem.Browser] { rows.compactMap { if case .browser(let b) = $0 { return b }; return nil } }
@@ -58,7 +58,6 @@ import KeloCore
         #expect(rows.count == 2)
         let chip = tools(rows)[1]
         #expect(chip.folded && chip.members.count == 6)
-        #expect(ChatReducer.foldedState(chip) == .running)
         items = run([ok("r1", "email_read"), ok("r2", "email_read"), ok("r3", "email_read")], start: items, keys: k)
         rows = ChatReducer.foldTools(items)
         let half = tools(rows)[1]
@@ -66,7 +65,6 @@ import KeloCore
         #expect(half.members.filter { $0.state == .ok }.count == 3)
         items = run([ok("r4", "email_read"), ok("r5", "email_read"), ok("r6", "email_read")], start: items, keys: k)
         let done = tools(ChatReducer.foldTools(items))[1]
-        #expect(ChatReducer.foldedState(done) == .ok)
         #expect(ChatReducer.foldedText(done, 6) == "메일 6개 읽음")
         #expect(done.members.map(\.detail) == ["1", "2", "3", "4", "5", "6"])
         #expect(items.count == 7)
@@ -87,7 +85,6 @@ import KeloCore
         #expect(chips.map(\.members.count) == [2, 2, 0])
         #expect(chips[1].members[0].detail == "example.org")
         #expect(ChatReducer.foldedText(chips[0], chips[0].members.filter { $0.state == .ok }.count) == "Searched the web 1 times")
-        #expect(ChatReducer.foldedState(chips[0]) == .ok)
         #expect(ChatReducer.foldedText(chips[1], 2) == "web_fetch… · 2")
         #expect(!chips[2].folded)
     }
@@ -161,7 +158,7 @@ import KeloCore
         #expect(PaymentStepRules.upsert([ended], s) == [ended])   // an older copy never reopens a step this phone saw end
         let need = TurnEvent.parse(try JSON.parse(#"{"type":"pin_needed","approval_id":"a9","site":"shop","pin":{"id":"pin_1","digits":6},"expires_at":5}"#))
         guard case .pinNeeded(let n) = need else { Issue.record("no pin"); return }
-        #expect(n.slotId == "a9" && n.pinId == "pin_1" && n.digits == 6)
+        #expect(n.slotId == "a9" && n.pinId == "pin_1")
         var rows = PinNeedRow.upsert([], n)
         rows = PinNeedRow.set(rows, "a9", .working)
         rows = PinNeedRow.upsert(rows, n)

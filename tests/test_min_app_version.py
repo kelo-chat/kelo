@@ -5,9 +5,16 @@ own update download; iPhone: the App Store / TestFlight). Every value on the wir
 import httpx
 import pytest
 
+from assistant.app_releases import AppReleases
 from assistant.server import Settings, create_app, desktop_version_code
 
 from test_server import AUTH, TOKEN, Running
+
+
+# every platform has a released app well above the minimums these tests use (the server ignores a minimum above the record)
+RELEASED = AppReleases.parse({"android": [{"version": "0.9.3", "build": 999999, "channel": "download", "date": "2026-11-13"}],
+                              "ios": [{"version": "0.9.3", "build": 999999, "channel": "appstore", "date": "2026-11-13"}],
+                              "desktop": [{"version": "1.0.9", "build": 100000009, "channel": "download", "date": "2026-11-13"}]})
 
 
 def settings_for(tmp_path, **env):
@@ -66,7 +73,7 @@ def test_a_bad_desktop_minimum_stops_the_start_with_a_clear_message(tmp_path, ba
 async def test_profile_and_about_carry_the_minimum(tmp_path):
     s = settings_for(tmp_path, ASSISTANT_MIN_APP_ANDROID="402400")
     s.db_path = str(tmp_path / "a.db")
-    async with Running(create_app(s, tools=[])) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+    async with Running(create_app(s, tools=[], app_releases=RELEASED)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
         assert (await c.get("/api/profile")).json()["min_app_version"] == {"android": 402400}
         put = await c.put("/api/profile", json={"user_name": "Mina"})
         assert put.status_code == 200 and put.json()["min_app_version"] == {"android": 402400}
@@ -77,7 +84,7 @@ async def test_profile_and_about_carry_the_minimum(tmp_path):
 async def test_without_a_minimum_the_field_is_empty(tmp_path):
     s = settings_for(tmp_path)
     s.db_path = str(tmp_path / "a.db")
-    async with Running(create_app(s, tools=[])) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+    async with Running(create_app(s, tools=[], app_releases=RELEASED)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
         assert (await c.get("/api/profile")).json()["min_app_version"] == {}
         assert (await c.get("/api/about")).json()["min_app_version"] == {}
 
@@ -85,7 +92,7 @@ async def test_without_a_minimum_the_field_is_empty(tmp_path):
 async def test_profile_and_about_carry_every_platform(tmp_path):
     s = settings_for(tmp_path, ASSISTANT_MIN_APP_IOS="12", ASSISTANT_MIN_APP_DESKTOP="1.0.3")
     s.db_path = str(tmp_path / "a.db")
-    async with Running(create_app(s, tools=[])) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+    async with Running(create_app(s, tools=[], app_releases=RELEASED)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
         want = {"ios": 12, "desktop": 100000003}
         assert (await c.get("/api/profile")).json()["min_app_version"] == want
         assert (await c.get("/api/about")).json()["min_app_version"] == want

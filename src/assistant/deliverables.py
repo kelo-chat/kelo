@@ -19,12 +19,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .home import Home, HomeError
+from .home import TRASH, TRASH_DAYS, Home, HomeError
 
 DIR = "files"
-TRASH = ".trash"
 SHARES = ".shares.json"
-TRASH_DAYS = 30
 SHARE_HOURS = 48
 MAX_FILE = 100 * 1024**2
 NAME = re.compile(r"[^A-Za-z0-9._\-가-힣 ()]+")

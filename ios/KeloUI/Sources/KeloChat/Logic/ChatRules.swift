@@ -130,12 +130,20 @@ public enum QuickReplyRules {
         }
     }
 
+    /// The whole sentence a picked option sends, or null (no sentence for it, a typed answer, or a field).
+    public static func sentence(_ q: ReplyQuestion, pick: String) -> String? {
+        guard let i = q.options.firstIndex(of: pick), i < q.says.count else { return nil }
+        let s = q.says[i].trimmingCharacters(in: .whitespacesAndNewlines)
+        return s.isEmpty ? nil : s
+    }
+
     /// The message sent: one line per answered question ("question: answer"; a lone question just the answer), typed words in place
     /// of an answer to write, a field's value in the user's words (`show`: `ReplyFields.display`).
     public static func compose(_ set: ReplySet, picks: [Int: String], typed: [Int: String] = [:], values: [Int: String] = [:],
                                show: (ReplyQuestion, String) -> String = { $1 }) -> String {
         answers(set, picks: picks, typed: typed, values: values).map { a in
             let q = set.questions[a.question]
+            if !ReplyFields.isField(q), let s = sentence(q, pick: a.value) { return s }
             let answer = ReplyFields.isField(q) ? show(q, a.value) : a.value
             let title = q.question.trimmingCharacters(in: .whitespaces)
             return title.isEmpty || set.questions.count == 1 ? answer : "\(title): \(answer)"
@@ -228,28 +236,17 @@ public enum AttachState: Sendable { case uploading, done, failed }
 
 public enum AttachError: Equatable, Sendable {
     case server(String)
-    case tooLarge
+    /// More than `limit` bytes: the most the server takes on this route, or for a photo
+    case tooLarge(Int64)
     case network
     case unreadable
 }
 
-/// Upload limits and naming (Android ChatViewModel.MAX_UPLOAD, ImageScale).
+/// Photo scaling and naming (Android ImageScale). The size limits are not here: they come from the server (`UploadLimits`).
 public enum UploadRules {
-    /// The server's MAX_UPLOAD ("up to 100 MB", under Cloudflare's 100 MB body limit).
-    public static let maxUpload: Int64 = 99_000_000
     public static let maxPhotos = 5
     public static let maxEdge = 2048
     public static let jpegQuality = 0.85
-
-    public static func tooLarge(_ size: Int64) -> Bool { size > maxUpload }
-
-    /// The size that fits `maxEdge` on the long edge, keeping the shape.
-    public static func target(w: Int, h: Int, maxEdge: Int = maxEdge) -> (Int, Int) {
-        let long = max(w, h)
-        if long <= maxEdge || long <= 0 { return (w, h) }
-        let f = Double(maxEdge) / Double(long)
-        return (max(1, Int((Double(w) * f).rounded())), max(1, Int((Double(h) * f).rounded())))
-    }
 
     /// The name a re-encoded photo is stored under: its own name with .jpg, or photo-<time>.jpg.
     public static func jpegName(_ display: String?, now: Int64) -> String {
@@ -266,11 +263,10 @@ public enum UploadRules {
         return s.isEmpty ? fallback : s
     }
 
-    /// The failure an upload error means.
+    /// The failure an upload error means: the server's own words (507 storage full, 409 too many large uploads open, 413 …).
     public static func error(_ e: Error) -> AttachError {
         guard let a = e as? ApiError else { return .unreadable }
         if a.isNetwork { return .network }
-        if a.status == 413 { return .tooLarge }
         return .server(a.detail)
     }
 }
@@ -349,12 +345,6 @@ public enum BrowserImage {
         guard dataUrl[..<comma].hasSuffix(";base64") else { return nil }
         return Data(base64Encoded: String(dataUrl[dataUrl.index(after: comma)...]), options: .ignoreUnknownCharacters)
     }
-
-    /// Width / height of the picture's frame: its own shape, no taller than square and no wider than 2.4:1.
-    public static func frameRatio(width: Int, height: Int) -> Double {
-        guard width > 0, height > 0 else { return 16.0 / 10.0 }
-        return min(max(Double(width) / Double(height), 1), 2.4)
-    }
 }
 
 /// Putting spoken words into a text at the cursor (Android voice/SpeechInput.kt SpeechMerge). iOS's TextField gives no cursor, so
@@ -393,8 +383,6 @@ public enum RevealPacing {
     }
 
     public static func speed(_ chars: Double) -> Double { max(readPerMs, chars / catchUpMs) }
-
-    public static func duration(_ chars: Double) -> Double { chars <= 0 ? 0 : chars / speed(chars) }
 
     public static func retarget(_ s: State, _ target: Int) -> State {
         if Double(target) <= s.shown { return State(shown: Double(target), target: target, perMs: 0) }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Android string resources -> the iPhone app's strings, so both apps show the same words in the same 20 languages.
 
-Reads android/kelo/app/src/main/res/values*/strings*.xml (with android/tools/strings_res.py, the same reader the Android checks
+Reads shared/strings/values*/strings*.xml (the text of all apps, Android format; strings_desktop*.xml, the desktop-only lines, are skipped) (with android/tools/strings_res.py, the same reader the Android checks
 use, so aapt's escapes and quoting are undone the same way) and writes, for each language of core/Languages.kt:
 
   ios/KeloUI/Sources/KeloShared/Resources/<lang>.lproj/Localizable.strings
@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "android" / "tools"))
 import strings_res as sr  # noqa: E402  (android/tools/strings_res.py)
 
-RES = ROOT / "android" / "kelo" / "app" / "src" / "main" / "res"
+RES = ROOT / "shared" / "strings"
 OUT = ROOT / "ios" / "KeloUI" / "Sources" / "KeloShared"
 SWIFT_KEYWORDS = {
     "associatedtype", "class", "deinit", "enum", "extension", "fileprivate", "func", "import", "init", "inout", "internal", "let",
@@ -54,6 +54,8 @@ def quote(s: str) -> str:
 def read_dir(values_dir: str) -> list[sr.Entry]:
     entries: list[sr.Entry] = []
     for f in sr.string_files(RES, values_dir):
+        if f.name.startswith("strings_desktop"):   # the desktop app's own lines: the iPhone has none of them
+            continue
         entries += sr.read(f)
     return entries
 
@@ -110,6 +112,40 @@ def render_swift(entries: list[sr.Entry]) -> str:
 
 
 IOS_ONLY_DIR = ROOT / "ios" / "tools"
+UNUSED_FILE = IOS_ONLY_DIR / "ios_unused_strings.txt"
+
+
+def unused_names() -> set[str]:
+    """The Android names the iPhone app never reads (ios_unused_strings.txt, written by --find-unused): left out of the iPhone's
+    R.swift and Localizable.strings only. The shared strings stay as they are: Android and the desktop app read them."""
+    if not UNUSED_FILE.exists():
+        return set()
+    return {l.strip() for l in UNUSED_FILE.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")}
+
+
+def find_unused() -> list[str]:
+    """Every name in the shared strings (and ios_strings*.json) that no Swift file of the app, its tests or its UI tests mentions as
+    a word, and that is not the start of a name built at run time (a literal like "vault_mode_\\(m.rawValue)" keeps all names that
+    begin with "vault_mode_"). The generated R.swift does not count."""
+    import re
+    token = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+    prefix = re.compile(r'"([a-z][a-z0-9_]*_)\\\(')
+    dotted = re.compile(r'"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)"')
+    dotted_prefix = re.compile(r'"([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)*\.)\\\(')
+    used: set[str] = set()
+    prefixes: set[str] = set()
+    for base in (ROOT / "ios" / "KeloUI", ROOT / "ios" / "KeloCore", ROOT / "ios" / "Kelo"):
+        for f in base.rglob("*.swift"):
+            if f.name == "R.swift" or ".build" in f.parts:
+                continue
+            text = f.read_text(encoding="utf-8")
+            used.update(token.findall(text))
+            prefixes.update(prefix.findall(text))
+            # a dotted literal ("connector.group.dev") is turned into a name at run time (dots to underscores)
+            used.update(d.replace(".", "_") for d in dotted.findall(text))
+            prefixes.update(d.replace(".", "_") for d in dotted_prefix.findall(text))
+    names = {e.name for e in read_dir("values")} | set(ios_only())
+    return sorted(n for n in names if n not in used and not any(n.startswith(p) for p in prefixes))
 
 
 def ios_only() -> dict[str, dict[str, str]]:
@@ -128,9 +164,10 @@ def ios_only() -> dict[str, dict[str, str]]:
 
 def build() -> dict[Path, str]:
     files: dict[Path, str] = {}
-    default = read_dir("values")
+    skip = unused_names()
+    default = [e for e in read_dir("values") if e.name not in skip]
     names = {e.name for e in default}
-    extra = ios_only()
+    extra = {n: t for n, t in ios_only().items() if n not in skip}
     clash = names & extra.keys()
     if clash:
         raise SystemExit(f"ios_strings.json repeats Android names: {sorted(clash)}")
@@ -155,6 +192,8 @@ INFOPLIST_FROM_ANDROID: dict[str, list[str]] = {
 INFOPLIST_JOIN: dict[str, str] = {}
 INFOPLIST_OUT = ROOT / "ios" / "Kelo" / "App" / "Resources"
 SHARE_OUT = ROOT / "ios" / "Kelo" / "Share" / "Resources"
+LIVE_NAMES = ["live_working", "live_waiting", "live_done", "live_failed", "live_stopped", "live_stop", "live_steps"]
+LIVE_OUT = ROOT / "ios" / "Kelo" / "Live" / "Resources"   # the Live Activity extension: exactly the live_* names
 
 
 def build_infoplist() -> dict[Path, str]:
@@ -177,13 +216,23 @@ def build_infoplist() -> dict[Path, str]:
         # the share extension's name in the share sheet: Android's own label for its share target
         files[SHARE_OUT / f"{lang}.lproj" / "InfoPlist.strings"] = render_strings(
             lang, [("CFBundleDisplayName", texts.get("share_label") or english["share_label"])])
+        # the Live Activity extension's words (strings_live.xml; English where a language lacks one)
+        files[LIVE_OUT / f"{lang}.lproj" / "Localizable.strings"] = render_strings(
+            lang, [(n, texts.get(n) or english[n]) for n in LIVE_NAMES])
     return files
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--check", action="store_true", help="only check that the generated files are up to date")
+    ap.add_argument("--find-unused", action="store_true", help="rewrite ios_unused_strings.txt: the names no Swift file mentions")
     args = ap.parse_args()
+    if args.find_unused:
+        found = find_unused()
+        UNUSED_FILE.write_text("# Names the iPhone app never reads, left out of its R.swift and Localizable.strings (gen_strings.py --find-unused).\n"
+                               + "".join(f"{n}\n" for n in found), encoding="utf-8")
+        print(f"{len(found)} names the iPhone app never reads")
+        return 0
     files = build()
     files.update(build_infoplist())
     stale = [p for p, text in files.items() if not p.exists() or p.read_text(encoding="utf-8") != text]

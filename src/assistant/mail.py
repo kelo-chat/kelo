@@ -2,6 +2,8 @@
 mail provider, no central server. The address and the app password are sealed in the vault as one item of kind "email"; the assistant
 reads and sends through the tools below and never sees the password.
 
+arrivals() reads what came in since a cursor (UIDVALIDITY + last UID) for the proactive pass: inbox, spam folder or Gmail promotions.
+
 Only the servers written here are ever contacted (the user cannot point the app at another host).
 """
 
@@ -38,6 +40,11 @@ ACTIONS = ("read", "unread", "flag", "unflag", "archive", "move", "trash")
 # folder names to fall back on when a server marks no special-use folders (RFC 6154): compared case-insensitively, last segment
 TRASH_NAMES = ("trash", "deleted messages", "deleted items", "deleted", "bin", "휴지통")
 ARCHIVE_NAMES = ("archive", "archives", "보관함")
+JUNK_NAMES = ("spam", "junk", "junk email", "junk e-mail", "bulk mail", "스팸", "스팸메일함", "스팸 메일함")
+ARRIVALS_WAIT = 300    # what arrived since the last look (a long gap can be thousands of messages, read in chunks)
+FETCH_CHUNK = 100      # UIDs per FETCH of those
+SNIPPET_BYTES = 2000   # how much of a body is fetched for the snippet
+SNIPPET_CHARS = 300
 
 
 @dataclass(frozen=True)
@@ -106,6 +113,7 @@ def _imap_signin(conn: Any, user: str, secret: str | XOAuth2) -> None:
 
 def _smtp_signin(conn: Any, user: str, secret: str | XOAuth2) -> None:
     if isinstance(secret, XOAuth2):
+        conn.ehlo_or_helo_if_needed()   # the server answers AUTH with 503 until it was greeted (login() does this itself, docmd does not)
         raw = base64.b64encode(f"user={user}\x01auth=Bearer {secret.token}\x01\x01".encode()).decode()
         code, reply = conn.docmd("AUTH", "XOAUTH2 " + raw)
         if code != 235:
@@ -317,6 +325,18 @@ def _caps(conn: Any) -> set[str]:
     except (AttributeError, imaplib.IMAP4.error):
         pass
     return {str(c).upper() for c in getattr(conn, "capabilities", ())}
+
+
+def _uid_state(conn: Any) -> tuple[Any, int | None]:
+    """(UIDVALIDITY, UIDNEXT) of the folder just selected; None for what the server did not say."""
+    def one(code: str) -> int | None:
+        try:
+            _typ, data = conn.response(code)
+            vals = [d for d in (data or []) if d]
+            return int(vals[-1]) if vals else None
+        except (AttributeError, TypeError, ValueError, IndexError, imaplib.IMAP4.error):
+            return None
+    return one("UIDVALIDITY"), one("UIDNEXT")
 
 
 def uid_sets(uids: list[int], size: int = CHUNK) -> list[tuple[str, int]]:
@@ -574,6 +594,109 @@ class Mail:
         (is_bulk) and, on Gmail, its promotions, social and forums categories (the briefing and the heads-ups)."""
         p, _, user, pw = await self._signin(account, "email_list", f"{folder} {query}".strip())
         return await self._run(self._list_sync, p, user, pw, folder or "INBOX", query, max(1, min(int(limit or 10), 30)), unread, skip_bulk)
+
+    # ---- what arrived since the last look (proactive.py)
+    def _arrivals_sync(self, p: MailProvider, user: str, pw: str | XOAuth2, kind: str, cursor: dict[str, Any] | None,
+                       now: float) -> dict[str, Any] | None:
+        """Every message that came in after `cursor` ({"v": UIDVALIDITY, "uid": the last UID looked at, "t": time}), oldest first, with a
+        short text snippet; the new cursor with them. kind "inbox": unread, not bulk (Gmail's promotions/social/forums left out);
+        "promo": Gmail's promotions/social/forums categories, unread; "junk": the spam folder (its \\Junk mark, else a usual name), read or
+        not. No cursor (a mailbox seen for the first time): nothing, and a cursor at "now". None when the provider has no such folder."""
+        conn = self.imap(p.imap)
+        try:
+            _imap_signin(conn, user, pw)
+            gmail = p.id == "gmail"
+            raw = "INBOX"
+            if kind == "junk":
+                found = _special(_folders(conn), "\\junk", JUNK_NAMES)
+                if found is None:
+                    return None
+                raw = found.raw
+            elif kind == "promo" and not gmail:
+                return None
+            typ, _ = conn.select(_quote(raw), readonly=True)
+            if typ != "OK":
+                if kind == "junk":
+                    return None
+                raise MailError("the inbox could not be opened")
+            validity, nxt = _uid_state(conn)
+            hi = nxt - 1 if nxt else None
+            if cursor is None or not isinstance(cursor.get("uid"), int):
+                top = hi if hi is not None else max([int(u) for u in _search(conn, False, "", [])] or [0])
+                return {"rows": [], "cursor": {"v": validity, "uid": top, "t": now}}
+            last, same = int(cursor["uid"]), cursor.get("v") == validity
+            query = {"inbox": GMAIL_NOT_PERSONAL if gmail else "", "promo": "{category:promotions category:social category:forums}",
+                     "junk": ""}[kind]
+            crit = ["UNSEEN"] if kind != "junk" else []
+            if same:
+                if hi is not None and hi <= last:
+                    return {"rows": [], "cursor": {**cursor, "t": now}}
+                crit += ["UID", f"{last + 1}:{hi if hi is not None else '*'}"]
+            else:   # the server renumbered the folder: by date instead (a day early; filtered below by when each one arrived)
+                crit += ["SINCE", time.strftime("%d-%b-%Y", time.gmtime(float(cursor.get("t") or now) - 86400))]
+            uids = sorted(int(u) for u in _search(conn, gmail, query, crit))
+            if same:
+                uids = [u for u in uids if u > last and (hi is None or u <= hi)]
+            rows = self._arrival_rows(conn, uids, kind)
+            if not same:
+                since = float(cursor.get("t") or 0)
+                rows = [r for r in rows if not r["arrived"] or r["arrived"] >= since]
+            new = hi if hi is not None else max([last, *uids])
+            if not same and hi is None:
+                new = max([int(u) for u in _search(conn, False, "", [])] or [0])
+            return {"rows": rows, "cursor": {"v": validity, "uid": new, "t": now}}
+        finally:
+            try:
+                conn.logout()
+            except Exception:  # noqa: BLE001
+                pass
+
+    @staticmethod
+    def _arrival_rows(conn: Any, uids: list[int], kind: str) -> list[dict[str, Any]]:
+        fields = " ".join(("FROM", "SUBJECT", "DATE", "CONTENT-TYPE", "CONTENT-TRANSFER-ENCODING", "MIME-VERSION", *BULK_HEADERS))
+        spec = f"(UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS ({fields})] BODY.PEEK[TEXT]<0.{SNIPPET_BYTES}>)"
+        out: dict[int, dict[str, Any]] = {}
+        for which, _n in uid_sets(uids, size=FETCH_CHUNK):
+            typ, rows = conn.uid("FETCH", which, spec)
+            if typ != "OK":
+                raise MailError("the mail server did not give the new messages")
+            cur: dict[str, Any] | None = None
+            for row in rows or []:
+                meta = (row[0] if isinstance(row, tuple) else row)
+                meta = meta.decode(errors="replace") if isinstance(meta, bytes) else str(meta or "")
+                m = re.search(r"UID (\d+)", meta)
+                if m and (isinstance(row, tuple) or cur is None or int(m.group(1)) != cur["uid"]):
+                    cur = {"uid": int(m.group(1)), "meta": "", "head": b"", "text": b""}
+                    out[cur["uid"]] = cur
+                if cur is None:
+                    continue
+                cur["meta"] += " " + meta
+                if isinstance(row, tuple):
+                    which_part = "head" if "HEADER.FIELDS" in meta else "text"
+                    cur[which_part] = row[1] if isinstance(row[1], bytes) else b""
+        result = []
+        for uid in sorted(out):
+            r = out[uid]
+            msg = email.message_from_bytes(r["head"].rstrip() + b"\r\n\r\n" + r["text"], policy=email.policy.default)
+            bulk = is_bulk(msg)
+            if kind == "inbox" and bulk:
+                continue
+            if kind != "junk" and "\\Seen" in r["meta"]:
+                continue
+            try:
+                snippet = " ".join(_text_of(msg).split())[:SNIPPET_CHARS]
+            except Exception:  # noqa: BLE001 - a body that does not decode gives no snippet, never an error
+                snippet = ""
+            result.append({"uid": str(uid), "from": str(msg.get("from", "")), "subject": str(msg.get("subject", "")),
+                           "date": str(msg.get("date", "")), "unread": "\\Seen" not in r["meta"], "bulk": bulk,
+                           "arrived": _arrived(r["meta"].encode()), "snippet": snippet})
+        return result
+
+    async def arrivals(self, account: str, cursor: dict[str, Any] | None, kind: str = "inbox") -> dict[str, Any] | None:
+        """{"rows": [...oldest first], "cursor": {...}} of what came in after `cursor` (see _arrivals_sync); raises MailError when the
+        mailbox can not be read (the caller keeps its old cursor)."""
+        p, _, user, pw = await self._signin(account, "proactive", f"new mail ({kind})")
+        return await self._run(self._arrivals_sync, p, user, pw, kind, cursor, time.time(), wait=ARRIVALS_WAIT)
 
     def _recent_sync(self, p: MailProvider, user: str, pw: str | XOAuth2, since: float, limit: int) -> list[dict[str, Any]]:
         """The newest messages of INBOX that arrived after `since` (unix time), with their text. Nothing is marked as read."""

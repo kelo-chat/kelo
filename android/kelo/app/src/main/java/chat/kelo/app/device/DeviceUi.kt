@@ -71,14 +71,14 @@ import androidx.compose.ui.unit.sp
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat.kelo.app.R
-import chat.kelo.app.connectors.ReloadOnReturn
+import chat.kelo.app.ui.platform.LocalReloadOnReturn
 import chat.kelo.app.my.agoText
 import chat.kelo.app.phonecal.PhoneCalendarSync
 import chat.kelo.app.ui.components.ErrorText
 import chat.kelo.app.ui.components.MutedText
 import chat.kelo.app.ui.components.SecondaryButton
 import chat.kelo.app.ui.icons.KeloIcons
-import chat.kelo.app.ui.rememberHaptics
+import chat.kelo.app.ui.platform.LocalHaptics
 import chat.kelo.app.ui.theme.Kelo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -155,7 +155,7 @@ fun DeviceSection(modifier: Modifier = Modifier, title: Boolean = true, request:
     var open by remember { mutableStateOf<DeviceFeature?>(null) }
     // another screen asked for one row's sheet (Google Calendar's "휴대폰 캘린더로 연결하기")
     LaunchedEffect(request) { if (request != null) { open = request; onRequestHandled() } }
-    ReloadOnReturn(Unit) { version++ }   // back from the system's settings: a permission may have changed
+    LocalReloadOnReturn.current(Unit) { version++ }   // back from the system's settings: a permission may have changed
     val rows = remember { DeviceSync.shown() }
     Column(modifier.fillMaxWidth()) {
         if (title) Text(
@@ -213,7 +213,7 @@ private fun DeviceRow(f: DeviceFeature, connected: Boolean, needsPermission: Boo
 private fun DeviceSheet(f: DeviceFeature, onClose: () -> Unit, onChanged: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val haptics = rememberHaptics()
+    val haptics = LocalHaptics.current
     val c = Kelo.colors
     val prefs = remember { DeviceSync.prefs(context) }
     var on by remember { mutableStateOf(DeviceSync.on(context, f)) }
@@ -243,7 +243,7 @@ private fun DeviceSheet(f: DeviceFeature, onClose: () -> Unit, onChanged: () -> 
         if (prefs.healthGranted) turnedOn() else { allowed = false; isDenied = true; setDenied(context, f, true); changed() }
     }
 
-    ReloadOnReturn(Unit) {
+    LocalReloadOnReturn.current(Unit) {
         if (f == DeviceFeature.HEALTH && HealthReader.available(context)) prefs.healthGranted = HealthReader.granted(context, prefs.healthTypes).isNotEmpty()
         allowed = DeviceSync.permitted(context, f)
         when {

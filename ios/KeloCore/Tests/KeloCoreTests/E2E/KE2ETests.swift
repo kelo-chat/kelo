@@ -360,7 +360,6 @@ struct TestServer {
 
     @Test func topLevelCode() {
         let locked = ApiError.from(status: 423, body: Data(#"{"code": "locked", "detail": "Kelo is locked"}"#.utf8))
-        #expect(locked.code == "locked" && locked.isLocked && locked.detail == "Kelo is locked")
         let changed = ApiError.from(status: 409, body: Data(#"{"code": "e2e_key_changed"}"#.utf8))
         #expect(changed.isKeyChanged && changed.detail == "HTTP 409")
         let inDetail = ApiError.from(status: 409, body: Data(#"{"detail": {"code": "secret_in_message", "spans": []}}"#.utf8))

@@ -246,3 +246,8 @@ public final class Strings {
 @MainActor public func P(_ key: PluralKey, _ count: Int, _ args: Any...) -> String { Strings.shared.plural(key, count, args) }
 /// `LA(R.array.x)`: Android's stringArrayResource.
 @MainActor public func LA(_ key: ArrayKey) -> [String] { Strings.shared.array(key) }
+/// The language the app speaks now (its locale and its code): the text API's other two answers, so no view reaches `Strings.shared`.
+@MainActor public func appLocale() -> Locale { Strings.shared.locale }
+@MainActor public func appLanguageCode() -> String { Strings.shared.code }
+/// A string by its name (the connector and vault rules return names; R.string holds the same ones).
+@MainActor public func LS(_ name: String, _ args: Any...) -> String { Strings.shared.string(StringKey(name), args) }

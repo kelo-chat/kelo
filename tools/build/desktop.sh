@@ -2,7 +2,8 @@
 # Kelo for the desktop (Compose Multiplatform, desktop/). See tools/build/README.md.
 #
 #   tools/build/desktop.sh test                 the desktop unit tests (Gradle, JDK 17)
-#   tools/build/desktop.sh mac                  the macOS disk image (jpackage via ./gradlew packageDmg) -> dist/
+#   tools/build/desktop.sh mac                  the macOS disk image (jpackage via ./gradlew packageDmg) -> dist/, built with the JDK
+#                                               pinned in desktop/packaging/macos/JDK (downloaded once to ~/.cache/kelo/jdk)
 #                                               signed + notarized only when a "Developer ID Application" certificate is in the
 #                                               keychain; else it is left unsigned and says so
 #   tools/build/desktop.sh windows              runs .github/workflows/desktop-windows.yml on GitHub (MSI, EXE, MSIX can only be
@@ -16,7 +17,7 @@
 #   --dry-run           print the commands (gh workflow run, gh run download, Gradle) and change nothing
 source "$(dirname "$0")/lib.sh"
 
-usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 MODE="${1:-}"; [ -n "$MODE" ] || usage 1; shift
 case "$MODE" in test|mac|windows) ;; -h|--help|help) usage 0 ;; *) die "unknown command '$MODE' (test, mac or windows)" ;; esac
@@ -45,9 +46,16 @@ case "$VERSION" in [1-9]*.*[0-9].*[0-9]) ;; *) die "--version must be MAJOR.MINO
 
 gradle_desktop() {   # gradle_desktop step|soft_step NAME TIMEOUT LOG tasks...
   local how="$1" name="$2" secs="$3" logf="$4"; shift 4
-  [ "$DRY_RUN" = 1 ] || { need_disk; use_jdk17; }
+  if [ "$DRY_RUN" != 1 ]; then
+    need_disk
+    # macOS app: the one pinned JDK (desktop/packaging/macos/JDK), and Gradle started with the zipclock agent (tools/build/zipclock/README.md)
+    if [ "${PIN_JDK:-0}" = 1 ]; then kelo_packaging_jdk; kelo_zip_clock "$REPO"; else use_jdk17; fi
+  fi
   cd "$DESKTOP"
-  "$how" "$name" "$secs" "$logf" ./gradlew --no-daemon --console=plain -Pkotlin.compiler.execution.strategy=in-process "$@"
+  source_commit desktop shared version.json   # the version line in My links to this commit (desktop/build.gradle.kts: ReleaseInfo.SOURCE_COMMIT)
+  "$how" "$name" "$secs" "$logf" ./gradlew --no-daemon --console=plain -PkeloCommit="$SOURCE_COMMIT" -PkeloDirty="$SOURCE_DIRTY" \
+    -Pkotlin.compiler.execution.strategy=in-process \
+    ${GRADLE_REPRO_ARGS[@]+"${GRADLE_REPRO_ARGS[@]}"} "$@"
   cd "$REPO"
 }
 
@@ -84,7 +92,14 @@ fi
 # ------------------------------------------------------------------------------------------------------------------------- mac
 if [ "$MODE" = mac ]; then
   [ "$(uname)" = Darwin ] || die "the disk image can only be made on a Mac"
+  PIN_JDK=1   # built with the pinned JDK, so anyone can rebuild the same app (tools/verify/mac-verify.sh)
   # signing: a "Developer ID Application" certificate in the keychain (none -> unsigned); notarizing: the App Store Connect key
+  # A dedicated signing keychain (kelo-signing.keychain-db, its random password in ~/.kelo-signing/keychain-pass, 0600) is
+  # unlocked first: it is locked again after a restart.
+  SIGN_KC="$HOME/Library/Keychains/kelo-signing.keychain-db"
+  if [ -f "$SIGN_KC" ] && [ -f "$HOME/.kelo-signing/keychain-pass" ]; then
+    security unlock-keychain -p "$(cat "$HOME/.kelo-signing/keychain-pass")" "$SIGN_KC" 2>/dev/null || warn "could not unlock $SIGN_KC"
+  fi
   IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
   SIGN_ARGS=()
   if [ -n "$IDENTITY" ]; then
@@ -96,7 +111,7 @@ if [ "$MODE" = mac ]; then
   gradle_desktop step "packageDmg $VERSION" "${KELO_GRADLE_TIMEOUT:-2700}" "$LOGS/desktop-dmg.log" \
     packageDmg "-PkeloVersion=$VERSION" ${SIGN_ARGS[@]+"${SIGN_ARGS[@]}"}
   DMG="$DESKTOP/build/compose/binaries/main/dmg/Kelo-$VERSION.dmg"
-  OUT="$DIST/Kelo-$VERSION$([ -z "$IDENTITY" ] && echo -unsigned).dmg"
+  OUT="$DIST/Kelo-$VERSION$([ -z "$IDENTITY" ] && echo -unsigned || true).dmg"
   if [ "$DRY_RUN" = 1 ]; then
     note "[dry-run] would copy $DMG -> $OUT"
     exit 0
@@ -109,6 +124,8 @@ if [ "$MODE" = mac ]; then
     ISSUER_ID="$(sed -n 's/^ISSUER_ID=//p' "$ASC_ENV" | tr -d "\"'")"
     KEY_PATH="$(sed -n 's/^KEY_PATH=//p' "$ASC_ENV" | tr -d "\"'")"; KEY_PATH="${KEY_PATH/#\~/$HOME}"
     REDACT_VALUES="$KEY_ID $ISSUER_ID"
+    # the app inside is signed by jpackage; the disk image itself is signed too, so Gatekeeper accepts the .dmg file as well
+    step "sign the disk image" 300 "$LOGS/desktop-dmg-sign.log" codesign --force --timestamp --sign "$IDENTITY" "$DMG"
     step "notarize (Apple notary service)" 3600 "$LOGS/desktop-notarize.log" \
       xcrun notarytool submit "$DMG" --key "$KEY_PATH" --key-id "$KEY_ID" --issuer "$ISSUER_ID" --wait --timeout 50m
     grep -q "status: Accepted" "$LOGS/desktop-notarize.log" || { tail -20 "$LOGS/desktop-notarize.log" | redact >&2; die "notarization was not accepted"; }
@@ -186,3 +203,4 @@ n="$(find "$OUTDIR" -type f | wc -l | tr -d ' ')"
 log "done: Kelo desktop $VERSION for Windows ($n files)"
 for f in "$OUTDIR"/*; do note "output: $f ($(human_size "$f"))"; done
 note "offer for download (main copy): uv run assistant publish-app windows <the .exe>  /  publish-app windows-msi <the .msi>"
+for f in "$OUTDIR"/*.msix; do [ -e "$f" ] && note "Microsoft Store draft (not run; see desktop/store/MSSTORE.md): python3 -I desktop/store/msstore.py submit --msix $f   (add --commit to send it to certification)"; done

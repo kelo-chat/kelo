@@ -13,10 +13,10 @@ object Browser {
         if (runCatching { Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE) }.getOrDefault(false)) {
             if (runCatching { Desktop.getDesktop().browse(uri) }.isSuccess) return true
         }
-        val cmd = when (Platform.os) {
-            Platform.Os.WINDOWS -> listOf("rundll32", "url.dll,FileProtocolHandler", uri.toString())
-            Platform.Os.MAC -> listOf("open", uri.toString())
-            Platform.Os.LINUX -> listOf("xdg-open", uri.toString())
+        val cmd = when (DesktopPlatform.os) {
+            DesktopPlatform.Os.WINDOWS -> listOf("rundll32", "url.dll,FileProtocolHandler", uri.toString())
+            DesktopPlatform.Os.MAC -> listOf("open", uri.toString())
+            DesktopPlatform.Os.LINUX -> listOf("xdg-open", uri.toString())
         }
         return runCatching { ProcessBuilder(cmd).start() }.isSuccess
     }

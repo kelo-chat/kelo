@@ -65,14 +65,14 @@ class Recorder:
         return b in self.seen
 
 
-def app_for(tmp_path, stream_fn=None):
+def app_for(tmp_path, stream_fn=None, **kw):
     async def reply(provider, request, **kw):
         yield TextDelta(SECRET_REPLY)
         yield Done("stop")
     home = tmp_path / "home"
     home.mkdir(exist_ok=True)
     return create_app(Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "state" / "s.db"),
-                               home_dir=str(home)), tools=[], stream_fn=stream_fn or reply)
+                               home_dir=str(home)), tools=[], stream_fn=stream_fn or reply, **kw)
 
 
 async def call(http, client: E2EClient, method, path, headers=None, body=b"", **kw):
@@ -157,8 +157,14 @@ async def test_a_streamed_upload_goes_through_in_frames(tmp_path):
     assert not proxy.holds(b"file-secret-c4e2") and not proxy.holds(b"report.pdf")
 
 
-async def test_errors_before_and_after_the_envelope_opens(tmp_path):
-    app = app_for(tmp_path)
+async def test_errors_before_and_after_the_envelope_opens(tmp_path, monkeypatch):
+    # a server that demands 0.9.0, with an android 0.9.x really released (the server ignores a minimum above the record)
+    from assistant import version as rv
+    from assistant.app_releases import AppReleases
+    monkeypatch.setattr(rv, "current", lambda: rv.Release("0.9.3", 15, "0.9.0", "0.9.0"))
+    released = AppReleases.parse({p: [{"version": "0.9.3", "build": 600, "channel": "download", "date": "2026-11-13"}]
+                                  for p in ("android", "ios", "desktop")})
+    app = app_for(tmp_path, app_releases=released)
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, timeout=30) as http:
         info = (await http.get("/api/e2e/info")).json()
         client = E2EClient(base64.urlsafe_b64decode(info["pk"] + "=" * (-len(info["pk"]) % 4)))
@@ -257,3 +263,26 @@ def test_the_websocket_gateway_seals_both_ways_and_sends_a_head_first(tmp_path):
                 ws.send_bytes(env)
                 msg = ws.receive()
                 assert msg["type"] == "websocket.close" and msg["code"] == code
+
+
+def test_the_inner_path_is_decoded_like_any_asgi_path():
+    """A path segment with an escaped character (a job's tab "task:w1" sent as task%3Aw1) reaches the route decoded, as it does
+    without KE2E (2026-11-11: the live view of a job's tab said "closed" because it looked for "task%3Aw1")."""
+    from assistant.api.e2e_gate import inner_scope
+    inner = e2e.InnerRequest(method="GET", path="/api/browser/sessions/task%3Aw1/frame?after=0", headers={}, ts=0, nonce=b"", body=b"")
+    for ws in (False, True):
+        scope = inner_scope({"type": "http", "headers": []}, inner, "kid", ws=ws)
+        assert scope["path"] == "/api/browser/sessions/task:w1/frame"
+        assert scope["raw_path"] == b"/api/browser/sessions/task%3Aw1/frame" and scope["query_string"] == b"after=0"
+
+
+def test_the_inner_request_keeps_the_outer_cf_ray():
+    """Through Cloudflare the outer POST /e2e carries CF-Ray, and Cloudflare's 100 MB limit applies to that envelope: the inner upload
+    must see CF-Ray too, or the server would allow one request of any size and Cloudflare would refuse it (#72). An inner request
+    cannot add CF-Ray of its own (only e2e.INNER_HEADERS pass), so a client cannot lower or raise its limit through KE2E."""
+    from assistant.api.e2e_gate import inner_scope
+    inner = e2e.InnerRequest(method="PUT", path="/api/uploads/a.mp4", headers={}, ts=0, nonce=b"", body=b"")
+    scope = inner_scope({"type": "http", "headers": [(b"cf-ray", b"8abc-ICN"), (b"x-other", b"no")]}, inner, "kid")
+    names = [k for k, _ in scope["headers"]]
+    assert b"cf-ray" in names and b"x-other" not in names
+    assert b"cf-ray" not in [k for k, _ in inner_scope({"type": "http", "headers": []}, inner, "kid")["headers"]]

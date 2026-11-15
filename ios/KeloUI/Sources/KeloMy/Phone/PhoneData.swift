@@ -1,3 +1,4 @@
+import SwiftUI
 import Foundation
 import EventKit
 import Contacts
@@ -12,12 +13,24 @@ struct FeatureStatus: Equatable {
     var failed = false
 }
 
+/// What the phone sync needs from the signed-in app: the API and this phone's name (the AppModel).
+@MainActor protocol PhoneSource: AnyObject {
+    var api: KeloApi? { get }
+    var deviceName: String { get }
+}
+
+extension AppModel: PhoneSource {}
+
 /// Reads the iPhone's calendar (EventKit) and contacts (Contacts) and keeps the user's server up to date with the same endpoints
 /// the Android app uses (PUT /api/phone-calendar, PUT /api/phone/contacts; DELETE when turned off). Only when the owner turns a row
 /// on here and iOS allows it. Sends on app open (at most every few minutes / hours), on a change in the phone's data while the app
 /// runs, in background refreshes, and on 지금 보내기.
 @MainActor @Observable final class PhoneDataSync {
-    static let shared = PhoneDataSync()
+    /// The app's one (the app root and the background refresh hand it on); views get it from the environment.
+    static let root = PhoneDataSync()
+    @ObservationIgnored private let prefs: Prefs
+
+    init(prefs: Prefs = .shared) { self.prefs = prefs }
 
     var status: [PhoneFeature: FeatureStatus] = [:]
     @ObservationIgnored private let eventStore = EKEventStore()
@@ -25,12 +38,12 @@ struct FeatureStatus: Equatable {
 
     // ---- the owner's switches (kept on this phone) ----------------------------------------------------------------------------------
 
-    func on(_ f: PhoneFeature) -> Bool { Prefs.shared.bool("phone.on.\(f.rawValue)", default: false) }
-    private func setOn(_ f: PhoneFeature, _ v: Bool) { Prefs.shared.set("phone.on.\(f.rawValue)", v) }
-    private func wipePending(_ f: PhoneFeature) -> Bool { Prefs.shared.bool("phone.wipe.\(f.rawValue)", default: false) }
-    private func setWipePending(_ f: PhoneFeature, _ v: Bool) { Prefs.shared.set("phone.wipe.\(f.rawValue)", v) }
-    func lastAt(_ f: PhoneFeature) -> Double { Double(Prefs.shared.int("phone.last.\(f.rawValue)", default: 0)) }
-    func lastCount(_ f: PhoneFeature) -> Int { Prefs.shared.int("phone.count.\(f.rawValue)", default: 0) }
+    func on(_ f: PhoneFeature) -> Bool { prefs.bool("phone.on.\(f.rawValue)", default: false) }
+    private func setOn(_ f: PhoneFeature, _ v: Bool) { prefs.set("phone.on.\(f.rawValue)", v) }
+    private func wipePending(_ f: PhoneFeature) -> Bool { prefs.bool("phone.wipe.\(f.rawValue)", default: false) }
+    private func setWipePending(_ f: PhoneFeature, _ v: Bool) { prefs.set("phone.wipe.\(f.rawValue)", v) }
+    func lastAt(_ f: PhoneFeature) -> Double { Double(prefs.int("phone.last.\(f.rawValue)", default: 0)) }
+    func lastCount(_ f: PhoneFeature) -> Int { prefs.int("phone.count.\(f.rawValue)", default: 0) }
 
     // ---- what iOS allows ----------------------------------------------------------------------------------------------------------------
 
@@ -66,7 +79,7 @@ struct FeatureStatus: Equatable {
     // ---- on / off / send -----------------------------------------------------------------------------------------------------------------
 
     /// Turns a row on: asks iOS when needed, then sends at once. False when iOS said no.
-    func turnOn(_ f: PhoneFeature, app: AppModel) async -> Bool {
+    func turnOn(_ f: PhoneFeature, app: any PhoneSource) async -> Bool {
         if !permitted(f) {
             guard await ask(f) else { return false }
         }
@@ -78,12 +91,13 @@ struct FeatureStatus: Equatable {
 
     /// Turns a row off and asks the server to forget what this phone sent. False when the server could not be reached (it is
     /// asked again on the next sync).
-    func turnOff(_ f: PhoneFeature, app: AppModel) async -> Bool {
+    func turnOff(_ f: PhoneFeature, app: any PhoneSource) async -> Bool {
         setOn(f, false)
-        Prefs.shared.set("phone.last.\(f.rawValue)", 0)
-        Prefs.shared.set("phone.count.\(f.rawValue)", 0)
+        prefs.set("phone.last.\(f.rawValue)", 0)
+        prefs.set("phone.count.\(f.rawValue)", 0)
         status[f] = FeatureStatus()
-        let ok = (try? await app.requireApi().request("DELETE", f.path)) != nil
+        let ok: Bool
+        if let api = app.api { ok = (try? await api.request("DELETE", f.path)) != nil } else { ok = false }
         setWipePending(f, !ok)
         return ok
     }
@@ -94,7 +108,7 @@ struct FeatureStatus: Equatable {
     }
 
     @discardableResult
-    func sync(_ f: PhoneFeature, app: AppModel, force: Bool) async -> Bool {
+    func sync(_ f: PhoneFeature, app: any PhoneSource, force: Bool) async -> Bool {
         guard let api = app.api else { return false }
         if !on(f) && wipePending(f) {
             if (try? await api.request("DELETE", f.path)) != nil { setWipePending(f, false) }
@@ -107,8 +121,8 @@ struct FeatureStatus: Equatable {
         status[f]?.failed = false
         do {
             let count = try await send(f, api: api, device: app.deviceName)
-            Prefs.shared.set("phone.last.\(f.rawValue)", Int(now))
-            Prefs.shared.set("phone.count.\(f.rawValue)", count)
+            prefs.set("phone.last.\(f.rawValue)", Int(now))
+            prefs.set("phone.count.\(f.rawValue)", count)
             status[f] = FeatureStatus(lastAt: now, count: count)
             return true
         } catch {
@@ -160,14 +174,14 @@ struct FeatureStatus: Equatable {
 
     /// "일정 추가·수정도 허용": Kelo may add and change events in `writeCalendarId`. Off by default.
     var writeAllowed: Bool {
-        get { Prefs.shared.bool("phone.cal.write", default: false) }
-        set { Prefs.shared.set("phone.cal.write", newValue) }
+        get { prefs.bool("phone.cal.write", default: false) }
+        set { prefs.set("phone.cal.write", newValue) }
     }
 
     /// The calendar Kelo writes to (EKCalendar.calendarIdentifier); nil = the phone's default one.
     var writeCalendarId: String? {
-        get { Prefs.shared.string("phone.cal.write.calendar") }
-        set { Prefs.shared.set("phone.cal.write.calendar", newValue) }
+        get { prefs.string("phone.cal.write.calendar") }
+        set { prefs.set("phone.cal.write.calendar", newValue) }
     }
 
     /// The calendars the owner may pick to write to (ones that can be changed), the default one first.
@@ -187,14 +201,14 @@ struct FeatureStatus: Equatable {
 
     private var idMap: PhoneIdMap {
         get {
-            guard let d = Prefs.shared.string("phone.cal.ids")?.data(using: .utf8),
+            guard let d = prefs.string("phone.cal.ids")?.data(using: .utf8),
                   let o = try? JSONDecoder().decode([String: Int64].self, from: d) else { return PhoneIdMap() }
             return PhoneIdMap(numbers: o.filter { $0.key != "#next" }, next: o["#next"] ?? 1)
         }
         set {
             var o = newValue.numbers
             o["#next"] = newValue.next
-            Prefs.shared.set("phone.cal.ids", (try? JSONEncoder().encode(o)).flatMap { String(data: $0, encoding: .utf8) })
+            prefs.set("phone.cal.ids", (try? JSONEncoder().encode(o)).flatMap { String(data: $0, encoding: .utf8) })
         }
     }
 
@@ -252,11 +266,11 @@ struct FeatureStatus: Equatable {
     func watch(app: AppModel) {
         guard observers.isEmpty else { return }
         let nc = NotificationCenter.default
-        observers.append(nc.addObserver(forName: .EKEventStoreChanged, object: eventStore, queue: .main) { [weak app] _ in
-            Task { @MainActor in if let app { await PhoneDataSync.shared.sync(.calendar, app: app, force: true) } }
+        observers.append(nc.addObserver(forName: .EKEventStoreChanged, object: eventStore, queue: .main) { [weak app, weak self] _ in
+            Task { @MainActor in if let app, let self { await self.sync(.calendar, app: app, force: true) } }
         })
-        observers.append(nc.addObserver(forName: .CNContactStoreDidChange, object: nil, queue: .main) { [weak app] _ in
-            Task { @MainActor in if let app { await PhoneDataSync.shared.sync(.contacts, app: app, force: true) } }
+        observers.append(nc.addObserver(forName: .CNContactStoreDidChange, object: nil, queue: .main) { [weak app, weak self] _ in
+            Task { @MainActor in if let app, let self { await self.sync(.contacts, app: app, force: true) } }
         })
     }
 
@@ -286,5 +300,17 @@ enum PhoneReaders {
             if rows.count >= ContactRules.maxContacts { stop.pointee = true }
         }
         return rows
+    }
+}
+
+private struct PhoneDataSyncKey: EnvironmentKey {
+    @MainActor static let defaultValue = PhoneDataSync.root
+}
+
+extension EnvironmentValues {
+    /// The phone-data sync (calendar, contacts, dialer) the My pages read; the app has one, a test or preview can give its own.
+    var phoneDataSync: PhoneDataSync {
+        get { self[PhoneDataSyncKey.self] }
+        set { self[PhoneDataSyncKey.self] = newValue }
     }
 }

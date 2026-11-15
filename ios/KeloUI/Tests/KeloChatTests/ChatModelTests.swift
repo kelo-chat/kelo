@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
 @testable import KeloShared
 @testable import KeloChat
 
@@ -35,6 +36,8 @@ final class FakeUploader: ChatUploader, @unchecked Sendable {
 
     func upload(api: KeloApi, name: String, source: UploadSource, type: String?,
                 progress: @escaping @Sendable (Int64, Int64) -> Void) async throws -> String {
+        // like the real uploader against an old server: one request carries up to 99 MB
+        if case .stream(let size, _) = source, size > 99_000_000 { throw UploadTooLarge(limit: 99_000_000) }
         lock.withLock { names.append(name) }
         progress(10, 10)
         return "uploads/" + name
@@ -116,19 +119,19 @@ private func until(_ cond: @MainActor () -> Bool) async {
         #expect(m.items.last == .error(key: m.items.last!.key, .message("that file is too big")))
     }
 
-    @MainActor @Test func overOneHundredMegabytesNeverGoesUp() async {
+    @MainActor @Test func aFileOverWhatTheRouteTakesNeverGoesUp() async {
         let (app, _) = makeApp { _, path, _ in (200, path == "/api/profile" ? "{}" : "[]") }
         let up = FakeUploader()
         let m = ChatModel(app: app, uploader: up)
         m.attach(image: false, label: "big.mov") {
-            PreparedUpload(name: "big.mov", source: .data(Data()), type: "video/quicktime", length: 150_000_000)
+            PreparedUpload(name: "big.mov", source: .stream(size: 150_000_000, open: { InputStream(data: Data()) }), type: "video/quicktime", length: 150_000_000)
         }
         m.attach(image: false, label: "a.pdf") {
             PreparedUpload(name: "a.pdf", source: .data(Data([1, 2])), type: "application/pdf", length: 2)
         }
         await until { m.attachments.allSatisfy { $0.state != .uploading } }
         #expect(m.attachments.first?.state == .failed)
-        #expect(m.attachments.first?.error == .tooLarge)
+        #expect(m.attachments.first?.error == .tooLarge(99_000_000))
         #expect(m.attachments.last?.state == .done)
         #expect(m.attachments.last?.stored == "a.pdf")
         #expect(up.uploaded == ["a.pdf"])

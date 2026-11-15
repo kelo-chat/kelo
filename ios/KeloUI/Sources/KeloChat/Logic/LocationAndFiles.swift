@@ -4,11 +4,14 @@ import KeloShared
 
 /// What the location card does for each tap (Android chat/LocationAsk.kt LocationAskRules; pure, so it is tested).
 public enum LocationAskRules {
-    public enum Step: Equatable, Sendable { case send, askSystem, openSettings }
+    public enum Step: Equatable, Sendable { case send, askSystem, openSettings, servicesOff }
 
     /// "Share my location": with the permission, read and send; without it, the system prompt, unless the server says the owner
     /// refused before (`settings`) or iOS will not ask again (`blocked`: denied or restricted): then Kelo's page in Settings.
-    public static func onShare(granted: Bool, settings: Bool, blocked: Bool) -> Step {
+    /// Location Services off for the whole phone come first (`servicesOff`): apps cannot open that page, so the
+    /// card shows the way there.
+    public static func onShare(granted: Bool, settings: Bool, blocked: Bool, servicesOn: Bool = true) -> Step {
+        if !servicesOn { return .servicesOff }
         if granted { return .send }
         if settings || blocked { return .openSettings }
         return .askSystem

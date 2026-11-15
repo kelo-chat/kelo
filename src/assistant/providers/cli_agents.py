@@ -174,6 +174,25 @@ def _status(e: BaseException) -> int | None:
     return s if isinstance(s, int) else None
 
 
+def session_note(lease: Any) -> str:
+    """How an agy call used the session pool, for the usage record: "turn" / "round" (the session went on) or "new: <why>"."""
+    if lease is None:
+        return ""
+    mode = str(getattr(lease, "mode", "") or "")
+    why = str(getattr(lease, "reason", "") or "")
+    return f"new: {why}" if mode == "new" and why else mode
+
+
+async def warm(provider: str, req: ChatRequest) -> bool:
+    """Start the chat's agy session for `req`'s system prompt without a model request (AgyPool.warm); False when it could not."""
+    client = await asyncio.to_thread(_get_client, provider)
+    if not hasattr(client, "warm"):
+        return False   # claude: no session to warm
+    req = replace(req, messages=late_notes_as_user(list(req.messages)))
+    return bool(await asyncio.to_thread(client.warm, req.messages, req.model,
+                                        req.extra.get("reasoning_effort") or req.extra.get("effort")))
+
+
 async def stream(provider: str, req: ChatRequest) -> AsyncIterator[Event]:
     loop = asyncio.get_running_loop()
     q: asyncio.Queue[Any] = asyncio.Queue()
@@ -185,7 +204,7 @@ async def stream(provider: str, req: ChatRequest) -> AsyncIterator[Event]:
     if hasattr(client, "lease"):   # agy: the session that goes on from this conversation, or a fresh one (agy_pool.py)
         try:
             lease = await asyncio.to_thread(client.lease, req.messages, req.tools, req.model,
-                                            req.extra.get("reasoning_effort") or req.extra.get("effort"))
+                                            req.extra.get("reasoning_effort") or req.extra.get("effort"), req.purpose)
         except Exception as e:
             raise ProviderError(f"{provider}: cannot start ({type(e).__name__}: {e})") from e
         client, kwargs["messages"] = lease.client, lease.messages
@@ -226,8 +245,12 @@ async def stream(provider: str, req: ChatRequest) -> AsyncIterator[Event]:
             u = _g(item, "usage")
             if u:
                 details = _g(u, "prompt_tokens_details")
-                usage = Usage(_g(u, "prompt_tokens", 0) or 0, _g(u, "completion_tokens", 0) or 0, _g(details, "cached_tokens", 0) or 0,
-                              _g(u, "cache_creation_input_tokens", 0) or 0)
+                cached = _g(details, "cached_tokens", 0) or 0
+                prompt = _g(u, "prompt_tokens", 0) or 0
+                if lease is not None:   # agy reports input WITHOUT the cached part (measured 2026-11-13): count the whole prompt, as for the API
+                    prompt += cached
+                usage = Usage(prompt, _g(u, "completion_tokens", 0) or 0, cached, _g(u, "cache_creation_input_tokens", 0) or 0,
+                              session=session_note(lease))
             for ch in _g(item, "choices", None) or []:
                 d = _g(ch, "delta")
                 if _g(d, "reasoning_content") and not thinking:

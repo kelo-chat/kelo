@@ -19,7 +19,9 @@ from ..google_web import GoogleWebError, email_of
 from ..google_calendar import CalendarError
 from ..keyconnect import KeyError_, preset as key_preset
 from ..packages import ICON_PREFIX as PACKAGE_ICON_PREFIX
-from ..presets import public as preset_public
+from ..presets import NETWORK_IDS, public as preset_public
+from ..permissions import Info, PermissionsError, family_of, flat_body
+from ..effects import preset_sends
 from .. import landing
 from fastapi import APIRouter
 from .context import AppContext
@@ -27,6 +29,11 @@ from .context import AppContext
 
 class KeyValuesIn(BaseModel):
     values: dict[str, str] = Field(default_factory=dict, max_length=6)
+    force: bool = False        # VPN / Proxy: change the route now even if the agent is browsing (an open purchase still waits)
+
+
+class VpnApplyIn(BaseModel):
+    force: bool = False
 
 
 class OriginIn(BaseModel):
@@ -42,20 +49,61 @@ def router(ctx: AppContext) -> APIRouter:
     keys = ctx.keys
     mail = ctx.mail
     mcp_conn = ctx.mcp_conn
+    permissions = ctx.permissions
+    ways_table = ctx.ways_table
     packages = ctx.packages
     require_auth = ctx.require_auth
     settings = ctx.settings
     store = ctx.store
     tools = ctx.tools
+    vpn = ctx.vpn
 
     @router.get("/api/connectors", dependencies=[Depends(require_auth)])
     async def get_connectors(request: Request) -> list[dict[str, Any]]:
         """Rows and the featured rules: connectors.py (worldwide FEATURED first, then services of the device's region)."""
         await google_web.client_id()   # a copy that leans on the broker reads the broker's switch with it (cached for an hour)
         await beta.refresh()           # and whether its beta request was approved (beta.py; cached a few minutes)
+        if vpn.active():
+            await vpn.status()         # "exit <ip>" on the VPN row (checked at most every 30 s)
         table = connect_ways(store, mail, browser=any(t.name.startswith("browser_") for t in tools), google_open=google_web.open_here(),
-                             registry=packages, relay=settings.oauth_relay)
-        return connector_rows(table, regions=regions_for(request.headers.get("accept-language")), registry=packages)
+                             registry=packages, relay=settings.oauth_relay, vpn=vpn)
+        rows = connector_rows(table, regions=regions_for(request.headers.get("accept-language")), registry=packages)
+        for r in rows:   # anything the owner limited for it (permissions.py)
+            r["limited"] = False if r["id"] in NETWORK_IDS else permissions.limited(r["id"], info_of(r["id"], table.get(r["id"])))
+        return rows
+
+    def info_of(cid: str, row: dict[str, Any] | None) -> Info:
+        pkg = next((p for p in packages.installed() if p.id == cid), None)
+        return Info(cid, permissions.names(cid), family_of(cid, row, package=pkg), preset_sends(cid))
+
+    def need_info(cid: str) -> Info:
+        if cid in NETWORK_IDS:   # the VPN / Proxy connectors set a route; there is nothing to allow or ask
+            raise HTTPException(404, "this connector has no permissions")
+        row = ways_table().get(cid)
+        pkg = next((p for p in packages.installed() if p.id == cid), None)
+        if cid != "phone" and row is None and not (pkg is not None and pkg.store):
+            raise HTTPException(404, "no such connector")
+        return info_of(cid, row)
+
+    @router.get("/api/connectors/{cid}/permissions", dependencies=[Depends(require_auth)])
+    async def get_permissions(cid: str) -> dict[str, Any]:
+        """What Kelo may do with this connector (permissions.py has the contract)."""
+        return permissions.describe(need_info(cid))
+
+    @router.put("/api/connectors/{cid}/permissions", dependencies=[Depends(require_auth)])
+    async def put_permissions(cid: str, body: dict[str, Any]) -> dict[str, Any]:
+        info = need_info(cid)
+        try:
+            permissions.put(info, flat_body(body, permissions.describe(info)))
+        except PermissionsError as e:
+            raise HTTPException(422, str(e)) from None
+        return permissions.describe(info)
+
+    @router.delete("/api/connectors/{cid}/permissions", dependencies=[Depends(require_auth)])
+    async def reset_permissions(cid: str) -> dict[str, Any]:
+        info = need_info(cid)
+        permissions.reset(cid)
+        return permissions.describe(info)
 
     @router.get("/api/connectors/icons/{name}.png", include_in_schema=False)
     async def connector_icon(name: str, request: Request) -> Response:
@@ -88,9 +136,23 @@ def router(ctx: AppContext) -> APIRouter:
         except KeyError_:
             raise HTTPException(404, "no such service") from None
         try:
-            return await keys.connect(preset_id, body.values)
+            return await keys.connect(preset_id, body.values, force=body.force)
         except KeyError_ as e:
             raise HTTPException(422, str(e)) from None
+
+    # ---- the VPN / Proxy connectors (vpn.py): how Kelo's web browsing goes out now, and "switch now" for a change that waits for the browser
+    @router.get("/api/vpn", dependencies=[Depends(require_auth)])
+    async def get_vpn() -> dict[str, Any]:
+        """{"available", "mode": direct|wireguard|proxy, "connected", "exit_ip"?, "pending"?: the kind of a change waiting for the browser}"""
+        return {"available": vpn.available, **(await vpn.status(fresh=True) if vpn.available else {"mode": "direct", "connected": False})}
+
+    @router.post("/api/vpn/apply", dependencies=[Depends(require_auth)])
+    async def apply_vpn(body: VpnApplyIn) -> dict[str, Any]:
+        """Makes the change the vault asks for (or the one waiting for the browser). `force`: even if the agent is browsing; an open purchase still waits."""
+        if not vpn.available:
+            raise HTTPException(404, "no VPN support in this installation")
+        got = await vpn.reconcile(force=body.force)
+        return got or {"state": "applied", "message": ""}
 
     # ---- hosted MCP servers signed in on the service's own page (OAuth with automatic registration). Tokens go into the vault.
     @router.post("/api/mcp-oauth/{service}/start", dependencies=[Depends(require_auth)])

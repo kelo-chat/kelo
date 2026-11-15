@@ -38,7 +38,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .cli import CLIS, read_env, remove_env, write_env
+from .cli import CLIS, ensure_keyring_token, read_env, remove_env, write_env
 from .instances import IMAGE_VARS, MAIN, Instance, InstanceError, Instances
 
 KEEP_BACKUPS = 3
@@ -263,7 +263,7 @@ class Updater:
 
     def services(self, inst: Instance) -> list[str]:
         """The containers of ours this copy runs, which must all be up after a restart."""
-        out = ["server", "workroom", *(["browser", "egress"] if inst.browser else [])]
+        out = ["server", "workroom", "vpn", *(["browser", "egress"] if inst.browser else [])]
         if inst.browser:                       # Instances.start leaves the sidecars out for a copy without a browser
             out += [svc for var in self.used_vars(inst) if var.startswith("KELO_CLI_") for svc in IMAGE_VARS[var][1]]
         return out
@@ -453,6 +453,8 @@ class Updater:
             self.out(f"Update stopped before changing anything: {e}.")
             self.result["problem"] = str(e)
             return 1
+        for inst in insts:   # a copy made before the key container existed gets its shared secret before it restarts
+            ensure_keyring_token(inst.env)
         shared_before = {v: self.image_id(self.m.shared_image(v)) for v in IMAGE_VARS}
         points: dict[str, dict[str, Any]] = {}
         self.step("backup")

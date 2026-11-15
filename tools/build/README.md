@@ -201,7 +201,7 @@ images already built. Extra copies: `uv run assistant instance update`.
   ones.
 - **Processing takes longer than 45 min:** the upload is done. Check later with `python3 -I tools/build/asc.py wait-build
   --version N --timeout 1800`.
-- **windows run fails:** `gh run view <id> --log-failed`. The usual cause is that the strings are out of step: run
-  `python3 desktop/tools/sync_strings.py` and commit.
+- **windows run fails:** `gh run view <id> --log-failed`. The usual cause is a text the string check does not like: run
+  `python3 android/tools/strings_check.py`.
 - **A step timed out:** the limits can be raised with `KELO_GRADLE_TIMEOUT`, `KELO_XCODE_TIMEOUT`,
   `KELO_ARCHIVE_TIMEOUT`, `KELO_EXPORT_TIMEOUT`, `KELO_DOCKER_TIMEOUT`, `KELO_PYTEST_TIMEOUT` (seconds).

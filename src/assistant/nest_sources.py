@@ -111,6 +111,18 @@ class NestMail:
             out = [m for m in out if m["unread"]]
         return ([m for m in out if not m["bulk"]] if skip_bulk else out)[:limit]
 
+    async def arrivals(self, account: str, cursor: dict[str, Any] | None, kind: str = "inbox") -> dict[str, Any] | None:
+        """What a package's mailbox shows as unread, not bulk, when asked (a package gives no received time to page by, so the ledger
+        of proactive.py keeps the same message from being judged twice); the first look only sets the cursor. Only kind "inbox"."""
+        import time
+        fresh = {"t": time.time()}
+        if kind != "inbox":
+            return None
+        if cursor is None:
+            return {"rows": [], "cursor": fresh}
+        rows = await self.list(account, unread=True, limit=30, skip_bulk=True)
+        return {"rows": [{**m, "arrived": 0.0, "snippet": ""} for m in reversed(rows)], "cursor": fresh}
+
     async def read(self, account: str, uid: str, folder: str = "INBOX") -> dict[str, Any]:
         p = self._pkg(account)
         mid = UidMap(self.store, PREFIX + p.id).ids([uid])[0]

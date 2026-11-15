@@ -51,7 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import chat.kelo.app.R
 import chat.kelo.app.ui.icons.KeloIcons
-import chat.kelo.app.ui.rememberHaptics
+import chat.kelo.app.ui.platform.LocalHaptics
 import chat.kelo.app.ui.theme.Kelo
 import chat.kelo.app.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.launch
@@ -67,7 +67,7 @@ import kotlinx.coroutines.launch
 fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val c = Kelo.colors
-    val haptics = rememberHaptics()
+    val haptics = LocalHaptics.current
     val reduce = LocalReduceMotion.current
     var anchor by remember { mutableStateOf<SpeechMerge.Anchor?>(null) }
     var explainDenied by remember { mutableStateOf(false) }

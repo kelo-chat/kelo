@@ -37,7 +37,7 @@ GOALS API (also next to serialize() in server.py):
 Goal (GET /api/goals items): {"id", "title", "category", "note", "status": tracking|done, "created_at", "updated_at", "origin":
   user|suggestion|agent, "plan": {"done", "total"}, "next_step": str|null, "asking": bool (the agent asked for this goal, nothing runs
   for it and the user has not written since: waiting for the user's answers), "working": bool (a reply or job on this goal is running),
-  "schedules_on": int (linked schedules that are on: the apps ask "turn them off too?" before deleting the goal; 0 = no question)}
+  "schedules_on": int (linked schedules that are on: the apps ask "delete them too?" before deleting the goal; 0 = no question)}
 POST /api/goals {"title", "category"?, "note"?, "kickoff"?: true}   201 Goal; with kickoff (default) the agent starts on it
 GET  /api/goals/{id}   {"goal": Goal, "facts": [Fact], "steps": [Step], "metrics": [Metric], "log": [Log], "documents": [Doc],
        "schedules": [Schedule]}   404 no such goal
@@ -50,7 +50,8 @@ PATCH /api/goals/{id}/steps/{step_id} {"status"}   Step   (the user ticks a step
 PUT  /api/goals/{id}/facts/{key} {"value"?, "skipped"?}   Fact;  DELETE /api/goals/{id}/facts/{key}   {"ok"}
 POST /api/goals/{id}/metrics/{metric_id}/values {"value", "note"?}   Metric
 POST /api/goals/{id}/work   {"ok": true}   the agent picks the goal up again (409 {"detail"} when no model is set)
-DELETE /api/goals/{id}?schedules=keep|pause   {"ok", "stopped_turns", "stopped_jobs", "paused_schedules": [id], "kept_schedules": [id]}
+DELETE /api/goals/{id}?schedules=keep|delete   {"ok", "stopped_turns", "stopped_jobs", "deleted_schedules": [id], "kept_schedules": [id]}
+  (older apps send pause for "turn them off too": the schedules are deleted all the same)
   the goal and what belongs to it go; the work started for it stops (its kickoff / resume turns, also one waiting its turn, and the
   jobs they started; their waiting approvals and hand-overs end as cancelled). Linked schedules: keep (default, older apps) = they keep
   running, taken off the goal; pause = paused like POST /api/schedules/{id}/pause (a run in progress stops). The apps ask first, and
@@ -86,6 +87,7 @@ SUGGEST_PER_NIGHT = 3
 SUGGEST_PROPOSED_MAX = 6        # proposed suggestions kept at once; the oldest go first
 PROMPT_GOALS, PROMPT_CHARS = 8, 2_200
 MAX_QUESTIONS, MAX_OPTIONS, OPTION_MAX, QUESTION_MAX = 4, 6, 60, 120
+SAYS_MAX = 200                   # an option's whole sentence (quick_replies "says")
 # what kind of answer a quick-reply question takes; the app shows the matching picker (choice: buttons, plus "Other" with a text box)
 QUESTION_KINDS = ("choice", "text", "number", "date", "time", "datetime", "weekdays", "weekdays_time")
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -594,6 +596,14 @@ class GoalBook:
                 raise GoalError(f"kind must be one of {', '.join(QUESTION_KINDS)}")
             opts = [o for o in (_clip(o, OPTION_MAX) for o in (q.get("options") or []) if isinstance(o, (str, int, float))) if o]
             opts = list(dict.fromkeys(opts))[:MAX_OPTIONS]
+            # "says": per option, the whole sentence the user sends by tapping it (the button keeps the short label); parallel to the
+            # options as given, matched by label after cleaning, so a duplicate or dropped option never shifts the others
+            said_by: dict[str, str] = {}
+            raw_says = q.get("says") if isinstance(q.get("says"), list) else []
+            for o, s in zip(q.get("options") or [], raw_says):
+                label, sentence = _clip(o, OPTION_MAX), _clip(s, SAYS_MAX)
+                if label and sentence and sentence != label:
+                    said_by.setdefault(label, sentence)
             if kind == "choice" and len(opts) < 2:
                 raise GoalError("a choice question needs at least two options (or give it another kind)")
             said = {_clip(o, OPTION_MAX) for o in (q.get("typed") or []) if isinstance(o, str)} if isinstance(q.get("typed"), list) else set()
@@ -618,6 +628,8 @@ class GoalBook:
                         raise GoalError(f"default: {e}") from None
             if typed := [o for o in opts if o in said or asks_typing(o)]:
                 item["typed"] = typed   # answers that open a text box in the app; the typed words are sent instead of the label
+            if kind == "choice" and said_by:
+                item["says"] = [("" if o in item.get("typed", []) else said_by.get(o, "")) for o in opts]   # a typed answer sends what is typed
             if (typed or kind == "text") and (hint := _clip(q.get("hint"), QUESTION_MAX)):
                 item["hint"] = hint
             out.append(item)
@@ -905,6 +917,10 @@ class GoalBook:
                      "kind": {"type": "string", "enum": list(QUESTION_KINDS),
                               "description": "default choice; any other kind opens the phone's own picker"},
                      "options": {"type": "array", "items": {"type": "string"}, "description": "choice: 2-6 short answers in the user's language"},
+                     "says": {"type": "array", "items": {"type": "string"},
+                              "description": "optional, one per option: the whole sentence the user sends by tapping it, in their "
+                                             "language (option 'Plan B' -> 'Let's go with Plan B, the 500M internet + TV bundle'); the "
+                                             "button keeps the short label"},
                      "typed": {"type": "array", "items": {"type": "string"}, "description": "options meaning the user will write it"},
                      "hint": {"type": "string", "description": "what to write in a text box, a few words"},
                      "default": {"type": "string", "description": "start value in the kind's format (YYYY-MM-DD, HH:MM, mon,wed ...)"},

@@ -13,7 +13,7 @@ from . import effort
 from .i18n import t
 from .providers import cli_manage, oauth, releases
 from .providers.client import ANTHROPIC_VERSION
-from .providers.registry import KEYLESS_OK, Provider
+from .providers.registry import KEYLESS_OK, USER_ENDPOINT_PREFIX, Provider
 from .providers.types import ListUnavailable, ProviderError
 from .windows import remember_provider_windows, window_from_listing
 
@@ -126,7 +126,7 @@ def is_configured(prov: Provider, stored_key: str | None = None) -> bool | None:
     if prov.takes_url and not prov.resolve_base_url():
         return False   # an endpoint the user must point somewhere: nothing works until it has an address
     if prov.auth_type == "api_key":
-        return prov.name in KEYLESS_OK or not prov.api_key_envs or prov.resolve_api_key(stored_key) is not None
+        return prov.name in KEYLESS_OK or prov.name.startswith(USER_ENDPOINT_PREFIX) or not prov.api_key_envs or prov.resolve_api_key(stored_key) is not None
     if prov.auth_type == "none":
         return True
     return None
@@ -196,7 +196,7 @@ async def list_models(prov: Provider, client: httpx.AsyncClient, *, refresh: boo
         headers |= {**extra, "authorization": f"Bearer {key}"}
     elif prov.auth_type in ("api_key", "none"):
         key = prov.resolve_api_key(api_key)
-        if key is None and prov.api_key_envs and prov.name not in KEYLESS_OK:
+        if key is None and prov.api_key_envs and prov.name not in KEYLESS_OK and not prov.name.startswith(USER_ENDPOINT_PREFIX):
             raise ProviderError(t("No API key ({names})", names=", ".join(prov.api_key_envs)))
         base = prov.resolve_base_url()
         if prov.transport == "anthropic_messages":

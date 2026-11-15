@@ -131,3 +131,26 @@ async def test_a_daily_run_applies_without_a_card_up_to_the_count_and_tells_once
         hist = (await c.get("/api/approvals/history", params={"limit": 50})).json()["items"]
         assert [(h["site"], h["decision"]) for h in hist[:2]] == [("other.example.net", "expired"), (SITE, "expired")]
         assert grants.list(scope=scope)[0]["used"] == 2
+
+
+async def test_a_long_run_tells_once_how_far_it_got(tmp_path, monkeypatch):
+    monkeypatch.setattr("assistant.run_progress.PROGRESS_AFTER", 0.0)
+    monkeypatch.setattr("assistant.server.UNATTENDED_APPROVAL_SECONDS", 0.3)
+    page = f"https://www.{SITE}/campaigns/"
+    plan = Plan(("browser_click", {"selector": "#apply-1", "url": page + "1"}),
+                ("browser_click", {"selector": "#submit", "url": page + "1"}),          # the application's form: part of it
+                ("browser_click", {"selector": "#apply-2", "url": page + "2"}),
+                ("browser_click", {"selector": "#apply-3", "url": page + "3"}))          # past the count: asks
+    kinds = {"#apply-1": "apply", "#apply-2": "apply", "#apply-3": "apply", "#apply-x": "apply", "#submit": "form", "#buy": "pay"}
+    ran: list = []
+    app = create_app(app_settings(tmp_path), tools=[approval_tool("browser_click", ran)], stream_fn=server_model(plan),
+                     browser=judging_session(kinds))
+    grants: ConditionalGrants = app.state.schedule_grants
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        scope, fire, ref = await start(c, app, "schedule")
+        grants.add_apply(scope, SITE, "선물 체험단", max_count=2, once=False, action="새 체험단 신청")
+        await fire()
+        notes = (await c.get("/api/notifications")).json()["items"]
+        assert len([n for n in notes if n["title"] == "1 application(s) sent so far, still going"]) == 1
+        assert len([n for n in notes if n["title"] == "2 application(s) sent"]) == 1
+        assert [n["title"] for n in notes if "so far" in n["title"]] == ["1 application(s) sent so far, still going"]

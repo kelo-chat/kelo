@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Set Kelo's release version and build (version.json), for a release commit. It never tags, commits or pushes.
 
-    python3 tools/release/bump.py 0.9.1                  # build = the current build + 1
+    python3 tools/release/bump.py patch                  # a fix of any size: 0.9.1 -> 0.9.2 (build = the current build + 1)
+    python3 tools/release/bump.py minor                  # a new feature or a new API the apps use: 0.9.2 -> 0.10.0
+    python3 tools/release/bump.py major                  # 1.0.0 at the public launch, then breaking changes
+    python3 tools/release/bump.py 0.9.1                  # an exact version
+    python3 tools/release/bump.py 0.9.1 --rebuild        # the same version built again with no change (build + 1 only)
     python3 tools/release/bump.py 0.9.1 --build 7        # an exact build number (must be higher than the current one)
     python3 tools/release/bump.py 0.9.1 --min-app 0.9.0 --min-server 0.9.0
     python3 tools/release/bump.py --check-tag v0.9.1     # exit 1 unless version.json says 0.9.1 (the release workflow runs this)
@@ -31,13 +35,29 @@ def key(v: str) -> tuple[int, int, int]:
     return int(m.group(1)), int(m.group(2)), int(m.group(3))
 
 
+LEVELS = ("major", "minor", "patch")
+
+
+def next_version(cur: str, level: str) -> str:
+    """The version after `cur` at `level` (major | minor | patch)."""
+    a, b, c = key(cur)
+    return {"major": f"{a + 1}.0.0", "minor": f"{a}.{b + 1}.0", "patch": f"{a}.{b}.{c + 1}"}[level]
+
+
 def bump(root: Path, version: str, build: int | None = None, min_app: str | None = None, min_server: str | None = None,
-         today: dt.date | None = None) -> dict:
+         today: dt.date | None = None, rebuild: bool = False) -> dict:
+    """Every release that changes anything gets a new version (the kind of change picks the part, not its size); `build` only
+    counts builds and goes up by itself. The same version again only with `rebuild` (an unchanged rebuild)."""
     vfile = root / "version.json"
     cur = json.loads(vfile.read_text())
+    if version in LEVELS:
+        version = next_version(cur["version"], version)
     key(version)
     if key(version) < key(cur["version"]):
         raise SystemExit(f"{version} is older than the current {cur['version']}")
+    if version == cur["version"] and not rebuild:
+        raise SystemExit(f"{version} is the current version: a change gets a new one (patch, minor or major); "
+                         "--rebuild only for the same code built again")
     new_build = cur["build"] + 1 if build is None else build
     if new_build <= cur["build"]:
         raise SystemExit(f"build {new_build} must be higher than the current {cur['build']}")
@@ -77,7 +97,8 @@ def bump(root: Path, version: str, build: int | None = None, min_app: str | None
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="bump.py", description=__doc__.split("\n\n")[0])
-    p.add_argument("version", nargs="?")
+    p.add_argument("version", nargs="?", help="patch | minor | major | MAJOR.MINOR.PATCH")
+    p.add_argument("--rebuild", action="store_true", help="the same version again (an unchanged rebuild)")
     p.add_argument("--build", type=int)
     p.add_argument("--min-app")
     p.add_argument("--min-server")
@@ -94,8 +115,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"tag {a.check_tag} matches version.json")
         return 0
     if not a.version:
-        p.error("give the new version (or --check-tag)")
-    data = bump(a.root, a.version, a.build, a.min_app, a.min_server)
+        p.error("give patch, minor, major or the new version (or --check-tag)")
+    data = bump(a.root, a.version, a.build, a.min_app, a.min_server, rebuild=a.rebuild)
     print(f"version.json: {data['version']} build {data['build']} (min_app {data['min_app']}, min_server {data['min_server']})")
     print("Commit these files, then create the tag yourself:")
     print(f"  git tag -a v{data['version']} -m 'Kelo {data['version']} (build {data['build']})'")

@@ -121,17 +121,16 @@ import KeloCore
         let notes = BriefingRules.notes(card)
         let first = BriefingRules.chips(notes[0], card, weatherLabel: "Weather", clock: { _ in "10:00" })
         // "zz" points at nothing, "e1" twice shows once, a blank ref is skipped
-        #expect(first == [BriefingChip(ref: "w", label: "Weather"), BriefingChip(ref: "e1", label: "10:00 Design review", tap: .event(1762736400))])
+        #expect(first == [BriefingChip(label: "Weather"), BriefingChip(label: "10:00 Design review", tap: .event(1762736400))])
         let second = BriefingRules.chips(notes[1], card, weatherLabel: "Weather", clock: { _ in "" })
-        #expect(second == [BriefingChip(ref: "m1", label: "Quote from Kim", tap: .mail("Quote")),
-                           BriefingChip(ref: "m2", label: "Call mum", tap: nil),    // no tap target: shown, not clickable
-                           BriefingChip(ref: "a1", label: "Shanghai trip", tap: nil)])
+        #expect(second == [BriefingChip(label: "Quote from Kim", tap: .mail("Quote")),
+                           BriefingChip(label: "Call mum", tap: nil),    // no tap target: shown, not clickable
+                           BriefingChip(label: "Shanghai trip", tap: nil)])
         #expect(first[0].tap == nil)   // the weather has no place of its own
     }
 
     @Test func aCardWithoutAWeatherHasNoWeatherChip() {
         let card = BriefingCard(events: [BriefingEvent(title: "Lunch", start: 5, id: "e1")])
         let chips = BriefingRules.chips(BriefingLink(text: "t", refs: ["w", "e1"]), card, weatherLabel: "Weather", clock: { _ in "12:00" })
-        #expect(chips.map(\.ref) == ["e1"])
     }
 }

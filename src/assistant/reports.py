@@ -109,6 +109,7 @@ class ReportBox:
     def __init__(self, store: Store, *, wall: Callable[[], float] = time.time):
         _schema(store)
         self.store, self.wall = store, wall
+        self.on_add: Callable[[dict[str, str]], Any] | None = None   # a new report: the operator is told (server.py: a notification)
 
     def purge(self) -> int:
         return self.store._run("DELETE FROM operator_reports WHERE created_at < ?", (self.wall() - KEEP_DAYS * 86400,)).rowcount
@@ -122,6 +123,11 @@ class ReportBox:
             "VALUES(?,?,?,?,?,?,?,?,?)",
             (self.wall(), report["reason"], report["comment"], report["reply"], report["asked"], report["provider"], report["model"],
              report["app_version"], install))
+        if self.on_add is not None:
+            try:
+                self.on_add(report)
+            except Exception:  # noqa: BLE001 - a report is never lost over its notice
+                log.exception("reports: telling the operator failed")
         return int(cur.lastrowid or 0)
 
     def list(self, *, limit: int = 100, handled: bool | None = None) -> dict[str, Any]:

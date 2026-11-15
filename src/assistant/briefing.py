@@ -24,8 +24,8 @@ exactly the scripted one):
 - connections: 0-4 short notes about what it sees across the sources that one item alone does not show (events that overlap or crowd
   each other, weather that affects a planned thing, a mail that relates to an event, something due today), each tied to the ids of the
   card items it comes from;
-- suggestions: 0-3 next steps Kelo can do on a yes, written as a question to the owner (the apps write it into the composer on a tap;
-  nothing is done before the owner sends it);
+- suggestions: 0-3 next steps Kelo can do, written as the owner's own request (the apps write it into the composer on a tap; nothing is
+  done before the owner sends it, and a sent step is a yes: server.py STEP_NOTE);
 - the important unread mail among those nobody judged yet (as before).
 What it gets (`_digest`): a compact digest of the day, one line per item with an id ([w] weather incl. by time of day, [e1] events with
 time and place, [a1] coming up, [m1] waiting / due / already judged important, [u1] unread mail not judged yet) plus the owner's language,
@@ -158,8 +158,9 @@ connections: 0 to 4 short notes (each at most 120 characters) about what you can
 events that overlap or follow each other too closely, weather that affects something planned, a mail that relates to an event or a
 waiting item, something due today. "refs" lists the ids of the items the note comes from. When there is nothing to connect, leave it empty.
 Fewer and concrete is better; do not repeat what the card already says item by item.
-suggestions: 0 to 3 things the assistant could do for the owner if they say yes (for example draft a reply, move a reminder, look
-something up), each written as a short question to the owner (at most 100 characters), never as something already done. "refs" as above.
+suggestions: 0 to 3 things the assistant could do for the owner (for example draft a reply, move a reminder, look something up), each
+written as the owner's own short request to the assistant (at most 100 characters), the way the owner would type it: a tap sends it
+as their message. Not a question, never as something already done. "refs" as above.
 important: numbers of the unread mail (if any) worth the owner's attention today: from a person or about something they must act on.
 Leave out newsletters, promotions, receipts, routine notices and automated mail. Wording alone (urgent, ASAP, many exclamation marks)
 is not evidence. When unsure, leave it out."""
@@ -575,6 +576,22 @@ class Briefing:
                     pass
             out.append(m)
         return out
+
+    def tapped_step(self, text: str, now: float | None = None) -> bool:
+        """True when the owner's message is, word for word, a next step from a recent card (the apps write a tapped step into the
+        composer): the owner said yes to it."""
+        said = " ".join((text or "").split())
+        if not said:
+            return False
+        since = (self.clock() if now is None else now) - 3 * 86400
+        for r in self.store._all("SELECT card FROM briefings WHERE created_at >= ? ORDER BY id DESC LIMIT 5", (since,)):
+            try:
+                steps = json.loads(r["card"]).get("suggestions") or []
+            except ValueError:
+                continue
+            if any(" ".join(str((s or {}).get("text") or "").split()) == said for s in steps):
+                return True
+        return False
 
     # ------------------------------------------------------------------ the card
     async def build(self, now: float, *, use_model: bool = False, force: bool = False) -> dict[str, Any] | None:

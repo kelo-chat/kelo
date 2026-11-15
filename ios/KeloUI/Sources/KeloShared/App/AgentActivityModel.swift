@@ -28,6 +28,9 @@ public final class AgentActivityModel {
     public var polledBrowsing = false
     public var offline = false
     public var stuck = false
+    /// Bumped when a screen learns that background work changed under it (the live view found its tab gone): the Work page and the
+    /// job page load again at once (Android AgentActivity.workChanged).
+    public var workChanged = 0
     /// The chat's microphone is listening.
     public var listening = false
     /// When work last finished (monotonic seconds; nil = not since launch): the character cheers for `AgentActivityRules.doneMs`.

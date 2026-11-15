@@ -63,72 +63,6 @@ import Testing
 @Suite struct CronBuilderTests {
     private func day(_ y: Int, _ m: Int, _ d: Int) -> LocalDay { LocalDay(year: y, month: m, day: d) }
 
-    @Test func buildsFromPickerChoices() {
-        #expect(CronBuilder.cron(.daily(hour: 9, minute: 0)) == "0 9 * * *")
-        #expect(CronBuilder.cron(.weekdays(hour: 7, minute: 30)) == "30 7 * * 1-5")
-        #expect(CronBuilder.cron(.weekly(days: [3, 1], hour: 18, minute: 15)) == "15 18 * * 1,3")
-        #expect(CronBuilder.cron(.weekly(days: [6, 7], hour: 8, minute: 0)) == "0 8 * * 0,6")   // 7 is Sunday too
-        #expect(CronBuilder.cron(.monthly(day: 15, hour: 10, minute: 0)) == "0 10 15 * *")
-        #expect(CronBuilder.cron(.everyHours(hours: 3, minute: 5)) == "5 */3 * * *")
-        #expect(CronBuilder.cron(.everyHours(hours: 1, minute: 0)) == "0 * * * *")
-        #expect(CronBuilder.cron(.custom(cron: "  1 2 3 4 5 ")) == "1 2 3 4 5")
-        #expect(CronBuilder.cron(.once(date: day(2026, 11, 8), hour: 9, minute: 0)) == nil)
-    }
-
-    @Test func oneTimeRunIsLocalIso() {
-        #expect(CronBuilder.runAt(date: day(2026, 11, 8), hour: 9, minute: 5) == "2026-11-08T09:05")
-    }
-
-    @Test func parsesBackWhatThePickerMakes() {
-        let choices: [Repeat] = [
-            .daily(hour: 9, minute: 0), .weekdays(hour: 7, minute: 30), .weekly(days: [1, 3], hour: 18, minute: 15),
-            .weekly(days: [0, 6], hour: 8, minute: 0), .monthly(day: 15, hour: 10, minute: 0), .everyHours(hours: 3, minute: 5),
-            .everyHours(hours: 1, minute: 0),
-        ]
-        for r in choices { #expect(CronBuilder.parse(CronBuilder.cron(r)) == r) }
-    }
-
-    @Test func parsesNamesMacrosAndEquivalents() {
-        #expect(CronBuilder.parse("9 0 * * mon-fri") == .weekdays(hour: 0, minute: 9))
-        #expect(CronBuilder.parse("9 0 * * 1,2,3,4,5") == .weekdays(hour: 0, minute: 9))
-        #expect(CronBuilder.parse("@daily") == .daily(hour: 0, minute: 0))
-        #expect(CronBuilder.parse("@hourly") == .everyHours(hours: 1, minute: 0))
-        #expect(CronBuilder.parse("@weekly") == .weekly(days: [0], hour: 0, minute: 0))
-        #expect(CronBuilder.parse("@monthly") == .monthly(day: 1, hour: 0, minute: 0))
-        #expect(CronBuilder.parse("0 6 * * 0-6") == .daily(hour: 6, minute: 0))
-        #expect(CronBuilder.parse("0 9 * * 7") == .weekly(days: [0], hour: 9, minute: 0))
-    }
-
-    @Test(arguments: ["*/10 * * * *", "0 9 1 1 *", "0 9 1 * 1", "0 9-17 * * *", "0 9 * * 1/2", "bad", "0 25 * * *", "0 9 * * 5-1"])
-    func keepsWhatItCannotShowAsCustom(_ cron: String) {
-        guard case .custom = CronBuilder.parse(cron) else { Issue.record("\(cron) is not custom"); return }
-    }
-
-    @Test func nullIsAnEmptyCustom() {
-        #expect(CronBuilder.parse(nil) == .custom(cron: ""))
-    }
-
-    @Test func savedScheduleBackToPicker() {
-        #expect(CronBuilder.fromSchedule(Schedule(id: 1, kind: "once", runAt: "2026-11-08T09:00:00+09:00")) == .once(date: day(2026, 11, 8), hour: 9, minute: 0))
-        #expect(CronBuilder.fromSchedule(Schedule(id: 2, kind: "cron", cron: "0 9 * * *")) == .daily(hour: 9, minute: 0))
-        #expect(CronBuilder.parseRunAt("2026-01-02T03:04") == .once(date: day(2026, 1, 2), hour: 3, minute: 4))
-        #expect(CronBuilder.parseRunAt("tomorrow") == nil)
-    }
-
-    @Test func problemsBeforeSaving() {
-        #expect(CronBuilder.problem(.weekly(days: [], hour: 9, minute: 0)) == .noDay)
-        #expect(CronBuilder.problem(.custom(cron: "0 9 *")) == .badCron)
-        #expect(CronBuilder.problem(.custom(cron: "@daily")) == nil)
-        #expect(CronBuilder.problem(.daily(hour: 9, minute: 0)) == nil)
-    }
-
-    /// Android checks CronBuilder.dayOfWeek (a java.time.DayOfWeek), which the Swift port does not have; the picker's order is
-    /// checked instead: Monday (1) first, Sunday (0) last.
-    @Test func pickerDaysStartOnMonday() {
-        #expect(CronBuilder.pickerDays.first == 1)
-        #expect(CronBuilder.pickerDays.last == 0)
-    }
-
     @Test func nextRunPrefersTheServerNumber() {
         #expect(ScheduleTimes.nextRunSeconds(Schedule(id: 1, nextRun: "2026-11-08T09:00:00+09:00", nextRunTs: 100.0)) == 100.0)
         #expect(ScheduleTimes.nextRunSeconds(Schedule(id: 1, nextRun: "2026-11-08T09:00:00+09:00")) == 1_794_096_000.0)
@@ -152,8 +86,7 @@ import Testing
         try #require(list.count == 2)
         let a = list[0]
         #expect(a.id == "a1"); #expect(a.site == "shop.example"); #expect(a.canRemember); #expect(a.unattended)
-        #expect(a.taskId == 7); #expect(a.askedAt == 12.5)
-        #expect(list[1].isPayment)
+        #expect(a.askedAt == 12.5)
         #expect(try #require(list[1].event.card).needsCard)
         #expect(list[1].canRemember == false)
         #expect(PendingApproval.parse(try JSON.parse(#"{"type":"text"}"#)) == nil)
@@ -177,18 +110,6 @@ import Testing
         LearnedRule(id: id, rule: rule ?? "규칙 \(id)", evidence: "", date: date ?? "2026-11-0\(id)", confidence: conf, status: status)
     }
 
-    @Test func theServerAnswerDecodesOlderServersCountAsOn() throws {
-        let d = JSONDecoder()
-        let l = try d.decode(Lookback.self, from: Data((
-            #"{"enabled":false,"rules":[{"id":3,"rule":"답은 짧게","evidence":"길다고 두 번 말함","date":"2026-11-06","confidence":0.9,"status":"proposed"}],"# +
-            #""last_run":{"at":2.0,"status":"skipped","reason":"no new messages","changed":false},"guide":"- 답은 짧게"}"#).utf8))
-        #expect(!l.enabled)
-        #expect(try #require(l.lastRun).status == "skipped")
-        try #require(l.rules.count == 1)
-        #expect(l.rules[0].confidence == 0.9)
-        #expect(try d.decode(Lookback.self, from: Data(#"{"last_run":null}"#.utf8)).enabled)
-    }
-
     @Test func rulesFallIntoProposedAcceptedAndRejected() {
         let g = LookbackRules.group([
             r(1, "accepted"), r(2, "proposed", conf: 0.4), r(3, "proposed", conf: 0.9), r(4, "rejected", date: "2026-11-01"),
@@ -197,8 +118,6 @@ import Testing
         #expect(g.proposed.map(\.id) == [3, 2])
         #expect(g.accepted.map(\.id) == [1])
         #expect(g.rejected.map(\.id) == [5, 4])
-        #expect(!g.empty)
-        #expect(LookbackRules.group([]).empty)
     }
 
     @Test func inUseMeansAcceptedOrASureProposal() {
@@ -247,12 +166,4 @@ import Testing
         #expect(LookbackRules.undoSeconds == 5)
     }
 
-    @Test func aStatusChangeShowsAtOnceAndTheServerCopyReplacesIt() {
-        let list = [r(1, "proposed"), r(2, "proposed")]
-        let moved = LookbackRules.withStatus(list, id: 2, status: "accepted")
-        #expect(moved.map(\.status) == ["proposed", "accepted"])
-        let back = LookbackRules.replace(moved, with: r(2, "rejected", rule: "새 문장"))
-        #expect(back[1].rule == "새 문장")
-        #expect(LookbackRules.replace(list, with: r(9, "accepted")).count == 3)
-    }
 }

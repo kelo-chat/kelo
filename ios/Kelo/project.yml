@@ -18,6 +18,10 @@ settings:
     CURRENT_PROJECT_VERSION: "26111024"   # build number (CFBundleVersion): whole number, must grow with every upload (YYMMDDHH)
     DEVELOPMENT_TEAM: P6GD4DM9C5     # Apple team id (App Store Connect team that owns chat.kelo.app)
     CODE_SIGN_STYLE: Automatic
+    # the commit the source came from (40 hex) and whether files differed from it (YES/NO); tools/build/ios.sh passes both to xcodebuild,
+    # they end up in Info.plist (KeloSourceCommit / KeloSourceDirty) and My links to that commit on GitHub (docs/versioning.md)
+    KELO_SOURCE_COMMIT: ""
+    KELO_SOURCE_DIRTY: "NO"
 packages:
   KeloUI:
     path: ../KeloUI
@@ -36,22 +40,30 @@ targets:
       - package: KeloUI
         product: KeloUI
       - target: KeloShare
+      - target: KeloLiveWidget
+      - package: KeloCore
+        product: KeloLive
     # aps-environment (remote notifications): "development" here; Xcode's distribution signing (TestFlight, App Store) swaps in
     # "production". The App ID chat.kelo.app needs the Push Notifications capability (Apple Developer → Identifiers).
     entitlements:
       path: App/Kelo.entitlements
       properties:
         aps-environment: development
+        keychain-access-groups: ["$(AppIdentifierPrefix)chat.kelo.app.live"]
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Kelo
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        KeloSourceCommit: $(KELO_SOURCE_COMMIT)
+        KeloSourceDirty: $(KELO_SOURCE_DIRTY)
         CFBundleDevelopmentRegion: en
         CFBundleLocalizations: [en, ko, ja, zh-Hans, zh-Hant, es, fr, de, pt-BR, it, ru, id, vi, th, tr, ar, hi, pl, nl, uk]
         CFBundleAllowMixedLocalizations: true
         ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
+        KeloLiveKeychainGroup: $(AppIdentifierPrefix)chat.kelo.app.live
         LSRequiresIPhoneOS: true
         UILaunchScreen:
           UIColorName: LaunchBackground
@@ -114,6 +126,39 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: chat.kelo.app.share
         PRODUCT_NAME: KeloShare
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.10"
+  # The Live Activity of a running reply (lock screen, Dynamic Island): its words arrive sealed and are opened here (KeloLive module).
+  KeloLiveWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Live
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: KeloCore
+        product: KeloLive
+    entitlements:
+      path: Live/KeloLive.entitlements
+      properties:
+        keychain-access-groups: ["$(AppIdentifierPrefix)chat.kelo.app.live"]
+    info:
+      path: Live/Info.plist
+      properties:
+        CFBundleDisplayName: Kelo
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: en
+        CFBundleAllowMixedLocalizations: true
+        KeloLiveKeychainGroup: $(AppIdentifierPrefix)chat.kelo.app.live
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: chat.kelo.app.live
+        PRODUCT_NAME: KeloLiveWidget
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.10"
   # Walks the app against a pretend server (desktop/tools/mock_server.py on another port) and saves screenshots; see

@@ -104,11 +104,6 @@ public struct KE2EResponseHead: Equatable, Sendable {
         for (k, v) in json["h"]?.objectValue ?? [:] { if let t = v.text { h[k.lowercased()] = t } }
         return KE2EResponseHead(status: s, headers: h)
     }
-
-    public func json() -> Data {
-        let obj: [String: Any] = ["s": status, "h": headers]
-        return (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys, .withoutEscapingSlashes])) ?? Data()
-    }
 }
 
 /// One piece of an answer as it comes in.
@@ -196,27 +191,6 @@ public struct KE2EResponseReader: Sendable {
         try r.finish()
         guard let h = r.head else { throw KE2EError.truncated }
         return (h, body)
-    }
-}
-
-/// Writes a KE2E answer (the server's side; here for tests and a local reference server): the head, the body in pieces of at most
-/// `KE2E.maxBodyFrame`, the last frame flagged.
-public struct KE2EResponseWriter: Sendable {
-    private var sealer: KE2EFrameSealer
-
-    public init(key: SymmetricKey) { sealer = KE2EFrameSealer(key: key, aad: KE2E.responseLabel) }
-
-    /// The whole answer: head (last when the body is empty), then body frames.
-    public mutating func whole(head: KE2EResponseHead, body: Data) throws -> Data {
-        var out = Data()
-        let pieces = KE2EBytes.chunks(body, size: KE2E.maxBodyFrame)
-        out += try sealer.sealPrefixed(head.json(), flag: pieces.isEmpty ? .last : .more)
-        for (i, p) in pieces.enumerated() { out += try sealer.sealPrefixed(p, flag: i == pieces.count - 1 ? .last : .more) }
-        return out
-    }
-
-    public mutating func frame(_ plaintext: Data, last: Bool) throws -> Data {
-        try sealer.sealPrefixed(plaintext, flag: last ? .last : .more)
     }
 }
 

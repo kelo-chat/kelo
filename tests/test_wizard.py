@@ -156,7 +156,7 @@ def test_every_wizard_template_is_translated_in_every_language():
     for f in sorted(i18n.LOCALES.glob("*.json")):
         have = json.loads(f.read_text(encoding="utf-8"))
         assert not [k for k in used if k not in have], f.name
-    assert translate("Default address", "ko") == "기본 제공 도메인"
+    assert translate("Kelo address (offered for now)", "ko") == "Kelo 주소 (현재 한정 제공)"   # "Default address" until d376eaa
 
 
 def test_sizes_are_checked_against_this_computer():

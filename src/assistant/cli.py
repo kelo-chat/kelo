@@ -84,6 +84,14 @@ def ensure_runner_token(path: Path) -> bool:
     return True
 
 
+def ensure_keyring_token(path: Path) -> bool:
+    """KEYRING_TOKEN: shared secret between the server and the key container (keyring_service.py). Created once."""
+    if len(read_env(path, "KEYRING_TOKEN")) >= 32:
+        return False
+    write_env(path, {"KEYRING_TOKEN": secrets.token_urlsafe(32)})
+    return True
+
+
 def ensure_updater_token(path: Path) -> bool:
     """UPDATER_TOKEN: shared secret between the main copy's server and the updater container (updater_service.py). Created once."""
     if len(read_env(path, "UPDATER_TOKEN")) >= 16:
@@ -186,6 +194,8 @@ def setup(
         out(f"Created ASSISTANT_SECRET_KEY in {env_file} (encrypts API keys saved in the app; losing it means re-entering them).")
     if ensure_runner_token(env_file):
         out(f"Created CLI_RUNNER_TOKEN in {env_file} (shared secret between the server and the CLI containers).")
+    if ensure_keyring_token(env_file):
+        out(f"Created KEYRING_TOKEN in {env_file} (shared secret between the server and the key container).")
     if clis is not None:   # the chosen CLI containers; other profiles (updater, kelo, cloudflare...) stay as they are
         keep = [p for p in read_env(env_file, "COMPOSE_PROFILES").split(",") if p and p not in CLIS]
         write_env(env_file, {"COMPOSE_PROFILES": ",".join([*keep, *clis])})
@@ -294,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     isub.add_parser("list", help="every copy, its address and whether it runs")
     con = sub.add_parser("connect", help="open a copy to your phone from anywhere (Kelo address, Tailscale, or your own domain)")
     csub = con.add_subparsers(dest="mode", required=True)
-    for mode, text in (("kelo", "easiest: a free address https://<name>.kelo.chat (through Cloudflare)"),
+    for mode, text in (("kelo", "easiest: a <name>.kelo.chat address, offered for now (through Cloudflare)"),
                        ("tailscale", "private, no domain: your phone needs the Tailscale app (--public: Funnel, open to everyone)"),
                        ("funnel", "public https on <computer>.<tailnet>.ts.net, no domain, encrypted to this computer"),
                        ("domain", "your own address (DuckDNS or a domain): --direct (this computer, ports 80/443) or --proxy (your proxy)"),
@@ -395,6 +405,14 @@ def main(argv: list[str] | None = None) -> int:
     pubs = sub.add_parser("publish-server", help="operator's server only: offer a server release (its release.json) in /download/latest.json")
     pubs.add_argument("manifest", help="release.json written by the release workflow (tools/release_manifest.py)")
     pubs.add_argument("--registry", help="the registry the release must name (default ghcr.io/kelo-chat)")
+    rec = sub.add_parser("release-record", help="record an app release that is live for people (releases/apps.json), so a minimum app "
+                                                "version may be as high as it")
+    rec.add_argument("platform", help="android, ios or desktop")
+    rec.add_argument("version", help="the release version the app reports, for example 0.9.3")
+    rec.add_argument("build", help="the platform's own build number (Android versionCode, iOS CFBundleVersion, desktop major*100000000+minor*100000+patch)")
+    rec.add_argument("channel", help="download (kelo.chat/download), play (Google Play), appstore (App Store) or msstore (Microsoft Store)")
+    rec.add_argument("--date", help="the day it went live, YYYY-MM-DD (default: today)")
+    rec.add_argument("--file", help="the record to change (default: releases/apps.json of this checkout)")
     ver = sub.add_parser("version", help="this Kelo's release version and build (version.json)")
     ver.add_argument("--json", action="store_true", help="print it as JSON")
     from .review_cli import add_parser as add_review_parser
@@ -409,6 +427,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "review":
         from .review_cli import run_command as run_review
         return run_review(args)
+    if args.cmd == "release-record":
+        from .app_releases import run_record
+        return run_record(args)
     if args.cmd == "publish-app":
         from .downloads import run_publish
         return run_publish(args)

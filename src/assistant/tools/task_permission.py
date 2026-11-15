@@ -10,7 +10,8 @@ kind on that site (its registrable domain) go through without a card, for this t
 - the count: each covered click of the step itself (an "apply" / "send" / "delete" click) counts once; when `max_count` is used up
   the next one asks again. Other covered steps (a "Continue" in the form, typing the applicant's details) do not count, but every
   grant stops after STEPS_PER_ITEM x max_count covered steps in all;
-- never covered: payments and anything that buys or books ("pay"), sign-ups and account or password changes ("account"), typing into
+- never covered: payments and anything that buys or books ("pay"), sign-ups and account or password changes ("account"), the
+  account's protection and official documents ("security": app passwords, 2-step verification, devices, 발급), typing into
   a password field, and deletions unless deleting was the permitted step. confirm_purchase is untouched.
 
 Many items on many sites ("opt out of all of these senders", "decline these invitations"): the agent first finds the items, then asks
@@ -58,7 +59,7 @@ KINDS: dict[str, frozenset[str]] = {
 }
 COUNTED: dict[str, frozenset[str]] = {"apply": frozenset({"apply", "send"}), "send": frozenset({"send"}), "delete": frozenset({"delete"}),
                                       "optout": frozenset({"optout"})}
-NEVER = frozenset({"pay", "account"})
+NEVER = frozenset({"pay", "account", "security"})
 LOW_RISK = frozenset({"optout"})   # spends nothing, sends nothing in the user's name, can be turned back on
 
 DESCRIBE = N_("On {site}: {action}, up to {count} times, only while this task runs. Payments and account changes still ask each time.")
@@ -317,7 +318,11 @@ def many(plan: dict[str, Any]) -> bool:
 
 
 def task_permission_tools(grants: TaskGrants, current_host: Callable[[], str] = lambda: "",
-                          task_id: Callable[[], int | None] = lambda: None) -> list[Tool]:
+                          task_id: Callable[[], int | None] = lambda: None,
+                          owner_request: Callable[[], str] = lambda: "") -> list[Tool]:
+    """`owner_request`: the owner's own ongoing request (Orders.request: their words in chat, also for a job the chat handed off).
+    When it already asks for this kind of step (apply / send), the permission is the owner's word and needs no card (2026-11-11:
+    "카카오 체험단 … 다 신청해" was asked again as "471개 모두 … 진행할까요?")."""
     def validate(args: dict[str, Any]) -> str | None:
         p = plan_of(args)
         site, kind, action, count = p["site"], p["kind"], p["action"], p["count"]
@@ -368,6 +373,18 @@ def task_permission_tools(grants: TaskGrants, current_host: Callable[[], str] = 
         lines = [{"label": t("Site"), "value": shown}] if shown else []
         return {"lines": lines, "items": p["targets"]}
 
+    async def asked_for(args: dict[str, Any]) -> bool:
+        """No card when the owner's own words already ask for this kind of step (never a payment: validate refuses those)."""
+        from .order import requested_kinds
+        p = plan_of(args)
+        if p["kind"] not in ("apply", "send"):
+            return False
+        try:
+            words = " ".join(str(owner_request() or "").split())
+        except Exception:  # noqa: BLE001 - when in doubt the card shows
+            return False
+        return bool(words) and p["kind"] in requested_kinds(words)
+
     async def handler(args: dict[str, Any]) -> str:
         p = plan_of(args)
         g = grants.add(site=p["site"], kind=p["kind"], action=p["action"], max_count=p["count"], task_id=task_id(),
@@ -407,7 +424,7 @@ def task_permission_tools(grants: TaskGrants, current_host: Callable[[], str] = 
             "what": {"type": "string", "description": "what the items are, in the user's language, plural (shown in the question)"},
             "reason": {"type": "string", "description": "what the user asked for, in a few words"},
         }, "required": ["kind", "action", "max_count"]},
-        handler, requires_approval=True, validate=validate, describe=describe, approval_extra=extra,
+        handler, requires_approval=True, validate=validate, describe=describe, approval_extra=extra, auto_approve=asked_for,
         declined=("The user did NOT allow these steps for the whole task. Each such step will ask on its own; do only a few, or ask the "
                   "user how they want to go on."),
     )]

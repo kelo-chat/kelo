@@ -15,3 +15,6 @@ dependencyResolutionManagement {
 rootProject.name = "kelo"
 include(":app")
 include(":baselineprofile")
+
+// the code Android and the desktop app share (see shared/build.gradle.kts)
+includeBuild("../../shared")

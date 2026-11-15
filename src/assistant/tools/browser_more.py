@@ -14,6 +14,7 @@ Tools (all act on the device's own tab; short labels in tool_labels.py):
                                                only after Allow; the model sees "Found the code (6 digits)", never the code. During a
                                                sign-in the agent started on that site, a code from that site's own mail is typed without
                                                the card (auto_code below; the owner's setting, default on)
+  browser_look()                               a picture of the visible page with a box and its ref (e12) on every control
   browser_human_check(action, x?, y?, text?)   the agent's own try at a human check on its page (challenge.py): a picture, a click or
                                                keys on the check itself, or hand it to the user now
 """
@@ -40,6 +41,9 @@ from .downloads import DownloadArea, DownloadError, blocked_name, clean_name
 from .login_code import AUTO_WINDOW_SECONDS, FoundCode, find_code, pick_auto_code
 from .takeover import TakeoverJournal
 
+NO_VISION_LOOK = "This model can't see pictures: use browser_read (only: controls)"
+LOOK_HEAD = ("A picture of the visible part of the page, {w}x{h} pixels. Boxes carry refs (e12): click those with browser_click "
+             "selector e12. For a point or a drag on this picture (things without a ref), load browser_click_at / browser_drag with find_tools.")
 NO_VISION_CHECK = ("[The model you are running on cannot look at pictures, so the picture was not seen. Try the check from the page "
                    "text with your browser steps, or hand it to the user with action hand_over.]")
 CODE_MINUTES = 15          # how far back find_login_code looks
@@ -47,7 +51,7 @@ CODE_HOLD_SECONDS = 600    # a found code waits this long for the user's answer,
 AUTO_CODE_WAIT_SECONDS = 40.0   # after a sign-in asks for a code, the site's own mail is waited for this long before asking the user
 AUTO_CODE_FIND_WAIT_SECONDS = 15.0   # ...and this long when the agent calls find_login_code later in that sign-in
 AUTO_CODE_POLL_SECONDS = 8.0    # the mailbox is looked at this often meanwhile
-ARCHIVED_TOOLS = ("browser_", "confirm_purchase", "find_login_code")
+ARCHIVED_TOOLS = ("browser_", "confirm_purchase", "purchase_result", "find_login_code")
 
 
 class BrowserExtras:
@@ -180,7 +184,7 @@ class BrowserExtras:
             url = str(page.url or "") if page is not None else ""
             title = str(await page.title())[:200] if page is not None and url.startswith(("http://", "https://")) else ""
             jpeg, w, h = await self.session.screenshot(key, FRAME_WIDTH, FRAME_BYTES)
-            self.archive.record(key, jpeg, url=url, title=title, action=action, detail=step_detail(action, args),
+            self.archive.record(key, jpeg, url=url, title=title, action=action, detail=step_detail(action, args, self.session),
                                 task_id=(current_turn.get() or {}).get("task_id"), width=w, height=h)
         except Exception:  # noqa: BLE001 - the archive never breaks a step
             pass
@@ -386,6 +390,18 @@ class BrowserExtras:
                 return Ours(f"error: {e}")
             return Ours("error: action must be look, click, type or hand_over")
 
+        async def look(args: dict[str, Any]) -> Any:
+            try:
+                jpeg, w, h, _n = await s.look()
+            except BrowserPolicyError as e:
+                return Ours(f"error: {e}")
+            if jpeg is None:
+                return Ours("Could not take a picture of the page. Read it with browser_read instead.")
+            page = await s.page()
+            return ToolOutput(f"URL: {page.url}\nTitle: {data(await page.title())}",
+                              ["data:image/jpeg;base64," + base64.b64encode(jpeg).decode()],
+                              head=LOOK_HEAD.format(w=w, h=h), no_vision=NO_VISION_LOOK)
+
         return [
             Tool("browser_downloads", "List what your browser tab downloaded (programs and scripts never are).", obj({}, []), downloads,
                  untrusted=True, source="page"),
@@ -416,6 +432,11 @@ class BrowserExtras:
                       "submit": {"type": "boolean", "description": "press Enter after (default true)"}}, []),
                  code_enter, requires_approval=True, untrusted=True, source="page", hold=code_hold, describe=code_describe, approval_extra=code_extra,
                  declined="The user did not want that code typed. Do not retry; ask them how to go on."),
+            Tool("browser_look", "A picture of the visible part of your page with a box and its ref (e12) on everything that can be "
+                 "clicked or typed into. For a page that is mostly pictures, a canvas or a map, or when a reading gives no ref for what "
+                 "you need; otherwise browser_read is cheaper. To click a point or drag on it (canvas, map, slider), load browser_click_at and "
+                 "browser_drag with find_tools.",
+                 obj({}, []), look, untrusted=True, source="page", hold=s.hold_for_user),
             Tool("browser_human_check", f"Try the human check on your page yourself, at most {CHECK_TRIES} tries: look (a picture of the page), "
                  "click (x, y in that picture, on the check only), type (into what you clicked), or hand_over (give it to the user now, "
                  "also for a kind you cannot do). No outside solving services, and never change the page's scripts.",
@@ -429,13 +450,22 @@ def human_size(n: int) -> str:
     return f"{n} bytes" if n < 1024 else f"{n / 1024:,.0f} KB" if n < 1024**2 else f"{n / 1024**2:,.1f} MB"
 
 
-def step_detail(action: str, args: dict[str, Any]) -> str:
-    """Where a step acted, for the archive: never typed text, codes or card data."""
+def step_detail(action: str, args: dict[str, Any], session: Any = None) -> str:
+    """Where a step acted, for the archive: never typed text, codes or card data. A ref (e12) is shown by the words the page reading
+    gave it when the session is at hand."""
     if action == "browser_open":
         return str(args.get("url") or "")[:200]
     if action in ("browser_click", "browser_type", "browser_upload"):
         files = args.get("files") if action == "browser_upload" else None
-        return str(args.get("selector") or "")[:120] + (f" ← {', '.join(str(f).rsplit('/', 1)[-1] for f in files)}"[:160] if files else "")
+        sel = str(args.get("selector") or "")
+        if session is not None and hasattr(session, "selector_words"):
+            sel = session.selector_words(sel)
+        return sel[:120] + (f" ← {', '.join(str(f).rsplit('/', 1)[-1] for f in files)}"[:160] if files else "")
+    if action == "browser_click_at":
+        return f"point {args.get('x')},{args.get('y')}"[:60]
+    if action == "browser_drag" and isinstance(args.get("path"), list) and args["path"]:
+        a, b = args["path"][0], args["path"][-1]
+        return (f"drag {a.get('x')},{a.get('y')} → {b.get('x')},{b.get('y')}" if isinstance(a, dict) and isinstance(b, dict) else "drag")[:60]
     if action in ("browser_save_download", "browser_save_pdf"):
         return str(args.get("name") or "")[:120]
     if action == "browser_login":

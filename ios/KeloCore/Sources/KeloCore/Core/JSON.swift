@@ -17,11 +17,6 @@ public enum JSON: Sendable, Equatable, Hashable {
         return nil
     }
 
-    public subscript(index: Int) -> JSON? {
-        if case .array(let a) = self, a.indices.contains(index) { return a[index] }
-        return nil
-    }
-
     public var isNull: Bool { if case .null = self { return true }; return false }
     public var objectValue: [String: JSON]? { if case .object(let o) = self { return o }; return nil }
     public var arrayValue: [JSON]? { if case .array(let a) = self { return a }; return nil }
@@ -153,7 +148,10 @@ public struct Lenient {
 
     public init(_ value: JSON?) { object = value?.objectValue ?? [:] }
 
-    public subscript(key: String) -> JSON? { object[key].flatMap { $0.isNull ? nil : $0 } }
+    public subscript(key: String) -> JSON? {
+        guard let v = object[key], !v.isNull else { return .none }
+        return v
+    }
     public func has(_ key: String) -> Bool { self[key] != nil }
 
     public func str(_ k: String, _ def: String = "") -> String { self[k]?.text ?? def }
@@ -194,11 +192,5 @@ extension JSON {
         if T.self == JSON.self { return value as! T }
         let data = try JSONEncoder().encode(value)
         return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    /// Any Encodable as a JSON value (request bodies).
-    public static func encode<T: Encodable>(_ value: T) throws -> JSON {
-        let data = try JSONEncoder.kelo.encode(value)
-        return try JSON.parse(data)
     }
 }

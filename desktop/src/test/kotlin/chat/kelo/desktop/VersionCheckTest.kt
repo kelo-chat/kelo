@@ -3,7 +3,6 @@ package chat.kelo.desktop
 import chat.kelo.app.core.ApiError
 import chat.kelo.app.core.AppVersion
 import chat.kelo.app.core.KeloApi
-import chat.kelo.app.core.e2e.Ke2eLink
 import chat.kelo.app.core.e2e.ServerKey
 import chat.kelo.app.core.e2e.X25519KeyPair
 import chat.kelo.desktop.core.DesktopVersion
@@ -74,8 +73,8 @@ class VersionCheckTest {
         val key = ServerKey(X25519KeyPair.generate().publicKey)
         val other = ServerKey(X25519KeyPair.generate().publicKey)
         val same = { k: ServerKey -> k == key }
-        assertEquals(LinkVerify.Result.DONE, LinkVerify.check(Ke2eLink.build("https://me.kelo.chat", "ABCD1234EFGH5678", key), same))
-        assertEquals(LinkVerify.Result.MISMATCH, LinkVerify.check(Ke2eLink.build("https://me.kelo.chat", "ABCD1234EFGH5678", other), same))
+        assertEquals(LinkVerify.Result.DONE, LinkVerify.check("https://me.kelo.chat/#pair=ABCD1234EFGH5678&k=${key.base64Url}", same))
+        assertEquals(LinkVerify.Result.MISMATCH, LinkVerify.check("https://me.kelo.chat/#pair=ABCD1234EFGH5678&k=${other.base64Url}", same))
         assertEquals(LinkVerify.Result.NO_KEY, LinkVerify.check("https://me.kelo.chat/#pair=ABCD1234EFGH5678", same))
         assertEquals(LinkVerify.Result.NOT_A_LINK, LinkVerify.check("hello", same))
     }

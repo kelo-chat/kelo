@@ -5,44 +5,14 @@ import XCTest
 ///   --only KeloUITests/KeloKeyboardDismissTests
 /// against desktop/tools/mock_server.py (the walk's variables: KELO_SERVER, KELO_KEY, KELO_LANG). Without a server the tests skip.
 /// The empty-chat tests delete the mock's history first, so they run after the short-chat ones (names sort that way).
-final class KeloKeyboardDismissTests: XCTestCase {
-    private let env = ProcessInfo.processInfo.environment
-    private var lang: String { env["KELO_LANG"] ?? "en" }
-    private var app: XCUIApplication!
-
-    private func w(_ en: String, _ ko: String) -> String { lang == "ko" ? ko : en }
+final class KeloKeyboardDismissTests: KeloShotCase {
 
     override func setUp() { continueAfterFailure = false }
 
-    private func element(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", label, label)).firstMatch
-    }
-
-    private func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
-
     private func launch() throws {
         guard env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no mock server given") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
-        let connect = element(w("Connect with access key", "접속 키로 연결하기"))
-        if connect.waitForExistence(timeout: 10) {
-            connect.tap()
-            let server = app.textFields.firstMatch
-            server.tap()
-            let cur = (server.value as? String) ?? ""
-            if !cur.isEmpty && cur != server.placeholderValue {
-                server.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: cur.count))
-            }
-            server.typeText(env["KELO_SERVER"]!)
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("Connect", "연결"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
-        }
-        XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 25), "chat did not open\n\(app.debugDescription)")
+        launchApp()
+        signIn(key)
         pause(2)
     }
 

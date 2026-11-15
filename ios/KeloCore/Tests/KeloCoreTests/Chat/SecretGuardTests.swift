@@ -16,7 +16,6 @@ import Testing
     @Test func parsesTheAnswer() {
         let f = SecretGuard.parse(detail(#"{"code":"secret_in_message","spans":[{"start":12,"end":63,"kind":"api_key"}],"placeholder":"[hidden key]","target":{"type":"provider","id":"anthropic"},"label":" Anthropic "}"#))
         #expect(f?.spans == [SecretSpan(12, 63, "api_key")])
-        #expect(f?.placeholder == "[hidden key]")
         #expect(f?.target == SecretTarget("provider", "anthropic"))
         #expect(f?.label == "Anthropic")
     }
@@ -29,7 +28,7 @@ import Testing
         let f = SecretGuard.of(ApiError(status: 409, detail: "HTTP 409", detailJson: detail(
             #"{"code":"secret_in_message","spans":[{"start":5,"end":2},{"start":"x"},{"start":30,"end":40}],"target":{"type":"spaceship"}}"#)))
         #expect(f?.spans == [SecretSpan(30, 40, "token")])   // bad spans dropped, a missing kind is a token
-        #expect(f?.target == SecretTarget.keychain)          // an unknown target is the Keychain
+        #expect(f?.target == SecretTarget(SecretTarget.vault, ""))          // an unknown target is the Keychain
         #expect(f?.label == "")
     }
 
@@ -79,7 +78,7 @@ import Testing
 
     @Test func usesStartWithTheServersTarget() {
         func found(_ type: String, _ id: String, _ kind: String) -> SecretFound {
-            SecretFound(spans: [SecretSpan(0, 10, kind)], placeholder: "", target: SecretTarget(type, id))
+            SecretFound(spans: [SecretSpan(0, 10, kind)], target: SecretTarget(type, id))
         }
         #expect(SecretGuard.uses(found("provider", "anthropic", "api_key")) == [.aiKey, .serviceKey, .login])
         #expect(SecretGuard.uses(found("connector", "slack", "token")).first == .connectorKey)

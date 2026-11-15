@@ -8,72 +8,24 @@ import UIKit
 /// the open secure entries in "답이 필요해요" at its top; a row leads to its card in the chat, marked, and its 취소 clears the badge.
 /// Shots: <tag>-batch-chips, -batch-replies, -batch-paste, -batch-work, -batch-entry, -batch-cancelled. Other variables as
 /// KeloScreensTests: KELO_SERVER, KELO_KEY, KELO_LANG, KELO_TAG, KELO_SHOTS.
-final class KeloBatchShotsTests: XCTestCase {
-    private let env = ProcessInfo.processInfo.environment
-    private var lang: String { env["KELO_LANG"] ?? "en" }
-    private var tag: String { env["KELO_TAG"] ?? lang }
-    private var app: XCUIApplication!
-
-    private func w(_ en: String, _ ko: String) -> String { lang == "ko" ? ko : en }
-
-    override func setUp() { continueAfterFailure = true }
-
-    private func shot(_ name: String) {
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        let a = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-        a.name = "\(tag)-\(name)"
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = env["KELO_SHOTS"] {
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(tag)-\(name).png"))
-        }
-    }
-
-    private func element(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", label, label)).firstMatch
-    }
+final class KeloBatchShotsTests: KeloShotCase {
 
     private func containing(_ text: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
     @discardableResult
-    private func tap(_ e: XCUIElement, _ what: String, timeout: TimeInterval = 10) -> Bool {
+    override func tap(_ e: XCUIElement, _ what: String, timeout: TimeInterval = 10) -> Bool {
         guard e.waitForExistence(timeout: timeout) else { XCTFail("not found: \(what)\n\(app.debugDescription)"); return false }
         e.tap()
         return true
-    }
-
-    private func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
-
-    private func signIn(_ key: String) {
-        if element(w("Connect with access key", "접속 키로 연결하기")).waitForExistence(timeout: 10) {
-            tap(element(w("Connect with access key", "접속 키로 연결하기")), "connect with key")
-            let server = app.textFields.firstMatch
-            server.tap()
-            let cur = (server.value as? String) ?? ""
-            if !cur.isEmpty && cur != server.placeholderValue {
-                server.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: cur.count))
-            }
-            server.typeText(env["KELO_SERVER"]!)
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("Connect", "연결"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
-        }
-        XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 25), "chat did not open\n\(app.debugDescription)")
     }
 
     func testBatch() throws {
         guard env["KELO_BATCH"] == "1", env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else {
             throw XCTSkip("no batch walk asked")
         }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
+        launchApp()
         signIn(key)
 
         // ---- items 1 and 2: one photo counted once; two events asked one after the other, one chip with both cards under it

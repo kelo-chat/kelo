@@ -13,13 +13,14 @@ import secrets
 import sqlite3
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
 from .keyguard import CARDS_INFO, VAULT_INFO, KeyGuard, Locked, is_system_key, load_server_key
+from .keyring_client import PLACEHOLDER
 from .vault import LOG_KEEP, Sealer, VaultError, aad_for, mask_username
 
 SCHEMA = """
@@ -35,7 +36,8 @@ CREATE TABLE IF NOT EXISTS credentials (
     name TEXT PRIMARY KEY, label TEXT NOT NULL, hosts TEXT NOT NULL, placement TEXT NOT NULL,
     endpoint TEXT NOT NULL DEFAULT '', secret TEXT, created_at REAL NOT NULL,
     kind TEXT NOT NULL DEFAULT 'api', auto_allow INTEGER NOT NULL DEFAULT 0, last_used REAL,
-    last_result TEXT, last_result_at REAL, last_result_detail TEXT NOT NULL DEFAULT '');
+    last_result TEXT, last_result_at REAL, last_result_detail TEXT NOT NULL DEFAULT '',
+    keyring INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS vault_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, item TEXT NOT NULL, action TEXT NOT NULL,
     detail TEXT NOT NULL DEFAULT '', ok INTEGER NOT NULL DEFAULT 1);
@@ -107,7 +109,8 @@ class Store:
             self._db.executescript(SCHEMA)
             have = {r[1] for r in self._db.execute("PRAGMA table_info(credentials)")}
             for col, ddl in (("kind", "TEXT NOT NULL DEFAULT 'api'"), ("auto_allow", "INTEGER NOT NULL DEFAULT 0"), ("last_used", "REAL"),
-                             ("last_result", "TEXT"), ("last_result_at", "REAL"), ("last_result_detail", "TEXT NOT NULL DEFAULT ''")):
+                             ("last_result", "TEXT"), ("last_result_at", "REAL"), ("last_result_detail", "TEXT NOT NULL DEFAULT ''"),
+                             ("keyring", "INTEGER NOT NULL DEFAULT 0")):
                 if col not in have:             # a database made before the vault existed
                     self._db.execute(f"ALTER TABLE credentials ADD COLUMN {col} {ddl}")
             for table in ("devices", "pairings"):   # old column, kept so an older server can open this database; nothing reads it any more
@@ -118,7 +121,7 @@ class Store:
             if "e2e_only" not in {r[1] for r in self._db.execute("PRAGMA table_info(devices)")}:   # before KE2E
                 self._db.execute("ALTER TABLE devices ADD COLUMN e2e_only INTEGER NOT NULL DEFAULT 0")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(messages)")}
-            for col in ("reaction", "reaction_hold", "reaction_next"):   # reactions on the owner's messages (reactions.py)
+            for col in ("reaction", "reaction_hold", "reaction_next", "via"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from
                 if col not in have:
                     self._db.execute(f"ALTER TABLE messages ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(usage)")}
@@ -127,6 +130,7 @@ class Store:
                     self._db.execute(f"ALTER TABLE usage ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
             self._db.commit()
         self._usage_writes = 0
+        self.credential_watchers: list[Callable[[str, bool], None]] = []
         self.prune_usage_events()
 
     # The sealers, asked of the KeyGuard at each use: while it is locked (phone mode after a restart) these raise keyguard.Locked.
@@ -182,32 +186,46 @@ class Store:
         return self.profile()
 
     # ---- conversation (one continuous chat)
-    def add_message(self, role: str, content: str) -> int:
-        return self._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)",
-                         (role, content, time.time())).lastrowid or 0
+    def add_message(self, role: str, content: str, via: str = "") -> int:
+        """`via`: the messenger the message came through ("telegram"); "" for the app."""
+        return self._run("INSERT INTO messages(role, content, created_at, via) VALUES(?,?,?,?)",
+                         (role, content, time.time(), via)).lastrowid or 0
 
     def messages(self, *, limit: int = 100, before_id: int | None = None) -> list[dict[str, Any]]:
         """Newest `limit` messages (before `before_id` if given), oldest first."""
         rows = self._all(
-            "SELECT id, role, content, created_at, reaction FROM messages WHERE (? IS NULL OR id < ?) "
+            "SELECT id, role, content, created_at, reaction, via FROM messages WHERE (? IS NULL OR id < ?) "
             "ORDER BY id DESC LIMIT ?", (before_id, before_id, limit))
         return rows[::-1]
 
     def messages_after(self, after_id: int, *, before_id: int | None = None, limit: int = 2000) -> list[dict[str, Any]]:
         """The newest `limit` messages with after_id < id (< before_id if given), oldest first."""
-        rows = self._all("SELECT id, role, content, created_at FROM messages WHERE id > ? AND (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?",
+        rows = self._all("SELECT id, role, content, created_at, via FROM messages WHERE id > ? AND (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?",
                          (after_id, before_id, before_id, limit))
         return rows[::-1]
 
-    def first_messages(self, n: int, *, before_id: int | None = None) -> list[dict[str, Any]]:
-        """The first `n` messages of the conversation (since it was last cleared), oldest first."""
-        return self._all("SELECT id, role, content, created_at FROM messages WHERE (? IS NULL OR id < ?) ORDER BY id LIMIT ?",
-                         (before_id, before_id, n))
+    def first_messages(self, n: int, *, before_id: int | None = None, after_id: int = 0) -> list[dict[str, Any]]:
+        """The first `n` messages of the conversation (since it was last cleared, or after `after_id`), oldest first."""
+        return self._all("SELECT id, role, content, created_at FROM messages WHERE id > ? AND (? IS NULL OR id < ?) ORDER BY id LIMIT ?",
+                         (after_id, before_id, before_id, n))
+
+    # ---- /new: the model's conversation starts again after this message id (the messages stay, the app still shows them)
+    def session_start(self) -> int:
+        try:
+            return int(self.meta("session_start_id") or 0)
+        except ValueError:
+            return 0
+
+    def start_session(self, after_id: int) -> None:
+        """A new conversation for the model: nothing up to `after_id` goes into its context, and the old summary is forgotten."""
+        self.set_meta("session_start_id", str(int(after_id)))
+        self.clear_conversation_summary()
 
     def clear_messages(self) -> None:
         """Clearing the chat also forgets the summary of it."""
         self._run("DELETE FROM messages")
         self.clear_conversation_summary()
+        self.set_meta("session_start_id", "0")
 
     # ---- the rolling summary of the conversation's older messages (compaction.py)
     def conversation_summary(self) -> dict[str, Any]:
@@ -291,13 +309,15 @@ class Store:
         old = self._credential_row(name)
         if old and old["kind"] != kind:
             raise VaultError(f"{name!r} is already used by a {'website login' if old['kind'] == 'login' else 'service key'}; pick another name")
-        keep = old["secret"] if old and json.loads(old["hosts"]) == hosts and json.loads(old["placement"]) == placement else None
-        self._run("INSERT INTO credentials(name,label,hosts,placement,endpoint,secret,created_at,kind) VALUES(?,?,?,?,?,?,?,?) "
+        same_hosts_placement = bool(old and json.loads(old["hosts"]) == hosts and json.loads(old["placement"]) == placement)
+        keep = old["secret"] if same_hosts_placement else None
+        keep_keyring = int(old["keyring"]) if same_hosts_placement and "keyring" in old.keys() else 0
+        self._run("INSERT INTO credentials(name,label,hosts,placement,endpoint,secret,created_at,kind,keyring) VALUES(?,?,?,?,?,?,?,?,?) "
                   "ON CONFLICT(name) DO UPDATE SET label=excluded.label,hosts=excluded.hosts,placement=excluded.placement,"
-                  "endpoint=excluded.endpoint,secret=excluded.secret,"
-                  "created_at=CASE WHEN excluded.secret IS NULL THEN excluded.created_at ELSE credentials.created_at END,"   # asked for again: a fresh request
-                  "last_result=CASE WHEN excluded.secret IS NULL THEN NULL ELSE credentials.last_result END",
-                  (name, label, json.dumps(hosts), json.dumps(placement), endpoint, keep, time.time(), kind))
+                  "endpoint=excluded.endpoint,secret=excluded.secret,keyring=excluded.keyring,"
+                  "created_at=CASE WHEN excluded.secret IS NULL AND excluded.keyring = 0 THEN excluded.created_at ELSE credentials.created_at END,"   # asked for again: a fresh request
+                  "last_result=CASE WHEN excluded.secret IS NULL AND excluded.keyring = 0 THEN NULL ELSE credentials.last_result END",
+                  (name, label, json.dumps(hosts), json.dumps(placement), endpoint, keep, time.time(), kind, keep_keyring))
 
     def _credential_row(self, name: str) -> dict[str, Any] | None:
         rows = self._all("SELECT * FROM credentials WHERE name = ?", (name,))
@@ -320,8 +340,9 @@ class Store:
         return plain
 
     def _public(self, r: dict[str, Any]) -> dict[str, Any]:
+        keyring = bool(r["keyring"]) if "keyring" in r.keys() else False
         out = {"name": r["name"], "label": r["label"], "kind": r["kind"], "hosts": json.loads(r["hosts"]), "placement": json.loads(r["placement"]),
-               "endpoint": r["endpoint"], "has_secret": bool(r["secret"]), "auto_allow": bool(r["auto_allow"]), "last_used": r["last_used"],
+               "endpoint": r["endpoint"], "has_secret": bool(r["secret"]) or keyring, "keyring": keyring, "auto_allow": bool(r["auto_allow"]), "last_used": r["last_used"],
                "last_result": r["last_result"], "last_result_at": r["last_result_at"], "last_result_detail": r["last_result_detail"] or ""}
         if r["kind"] in ("login", "email") and r["secret"]:
             try:
@@ -341,7 +362,11 @@ class Store:
         if not r:
             return None
         out = self._public(r)
-        plain = self._open(r)
+        if bool(r["keyring"]) if "keyring" in r.keys() else False:
+            _ = self._sealer
+            plain = PLACEHOLDER if not self.vault_locked() else None
+        else:
+            plain = self._open(r)
         out["username"] = ""
         if r["kind"] == "login" and plain:
             try:
@@ -352,15 +377,32 @@ class Store:
         out["secret"] = plain
         return out
 
+    def credential_to_keyring(self, name: str, moved: str) -> bool:
+        """The value `moved` is now in the key container: drop it here, unless the row holds another value by now (saved meanwhile)."""
+        r = self._credential_row(name)
+        if not r or not r["secret"] or self._open(r) != moved:
+            return False
+        return self._run("UPDATE credentials SET secret = NULL, keyring = 1 WHERE name = ? AND secret = ?", (name, r["secret"])).rowcount > 0
+
     def _seal_for(self, name: str, plain: str) -> str | None:
         r = self._credential_row(name)
         return self._sealer.seal(plain, aad_for(name, r["kind"], json.loads(r["hosts"]), json.loads(r["placement"]))) if r else None
 
+    def _credential_changed(self, name: str, removed: bool) -> None:
+        for fn in list(self.credential_watchers):   # e.g. a messenger channel starts, restarts or stops on its token (channels/manager.py)
+            try:
+                fn(name, removed)
+            except Exception:  # noqa: BLE001 - a watcher never breaks the vault
+                pass
+
     def set_credential_secret(self, name: str, secret: str) -> bool:
         sealed = self._seal_for(name, secret)
         # a new value has not been tried yet: what happened with the old one no longer applies
-        return sealed is not None and self._run("UPDATE credentials SET secret = ?, last_result = NULL, last_result_at = NULL, last_result_detail = '' "
+        done = sealed is not None and self._run("UPDATE credentials SET secret = ?, keyring = 0, last_result = NULL, last_result_at = NULL, last_result_detail = '' "
                                                 "WHERE name = ?", (sealed, name)).rowcount > 0
+        if done:
+            self._credential_changed(name, False)
+        return done
 
     def set_login(self, name: str, username: str, password: str) -> bool:
         sealed = self._seal_for(name, json.dumps({"u": username, "p": password}, ensure_ascii=False))
@@ -388,7 +430,10 @@ class Store:
         self._run("UPDATE credentials SET last_used = ? WHERE name = ?", (time.time(), name))
 
     def delete_credential(self, name: str) -> bool:
-        return self._run("DELETE FROM credentials WHERE name = ?", (name,)).rowcount > 0
+        gone = self._run("DELETE FROM credentials WHERE name = ?", (name,)).rowcount > 0
+        if gone:
+            self._credential_changed(name, True)
+        return gone
 
     # An entry that was set up (the assistant asked for a login, or the user started adding one) but never got a value is only a request,
     # not something in the vault. These helpers forget such requests; an entry that holds a value is never touched.
@@ -408,6 +453,11 @@ class Store:
     def meta(self, key: str) -> str:
         rows = self._all("SELECT value FROM meta WHERE key = ?", (key,))
         return rows[0]["value"] if rows else ""
+
+    def meta_prefix(self, prefix: str) -> dict[str, str]:
+        """Every meta row whose key starts with `prefix`, as {key without the prefix: value}."""
+        like = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        return {r["key"][len(prefix):]: r["value"] for r in self._all("SELECT key, value FROM meta WHERE key LIKE ? ESCAPE '\\'", (like,))}
 
     def set_meta(self, key: str, value: str) -> None:
         if value:

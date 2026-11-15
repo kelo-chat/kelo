@@ -1,5 +1,6 @@
 package chat.kelo.desktop
 
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.mutableStateOf
@@ -15,14 +16,10 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.agent.SkillProposals
 import chat.kelo.app.notify.OpenTarget
 import chat.kelo.desktop.core.AppContainer
-import chat.kelo.desktop.i18n.Strings
-import chat.kelo.desktop.pages.MyPane
-import chat.kelo.desktop.pages.MyView
-import chat.kelo.desktop.pages.work.WorkScreen
+import chat.kelo.desktop.pages.WorkPane
 import chat.kelo.desktop.ui.KeloFrame
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -108,32 +105,32 @@ class SkillsShotsTest {
 
     private fun review(lang: String, themes: List<String>, w: Int, h: Int, tag: String = "") {
         val start = mutableStateOf<String?>(null)
-        run(lang, w, h, { app -> MyPane(app, topInset = 0.dp, start = start.value, onStartUsed = { start.value = null }, onSignedOut = {}) }) { app ->
-            val s = Strings.of(lang)
+        run(lang, w, h, { app -> MyPaneAt(app, start) }) { app ->
+            val s = Words.of(lang)
             // the names in the owner's language as the mock sends them (SkillRules.name), never the ids
             val newName = if (lang == "ko") "도서관 책 연장" else "Renew library books"
             val changeName = if (lang == "ko") "주간 장보기 목록" else "Weekly grocery list"
-            val approve = s.get(R.string.skill_review_approve)
+            val approve = s.get(Res.string.skill_review_approve)
             try {
-                waitText(s.get(R.string.my_section_account), timeout = 15_000)
+                waitText(s.get(Res.string.my_section_account), timeout = 15_000)
                 start.value = MyView.RECORDS
                 settle()
-                waitText(s.get(R.string.skill_review_title), timeout = 15_000)
+                waitText(s.get(Res.string.skill_review_title), timeout = 15_000)
                 // both cards: kind, the name in words (never the raw id), where it came from, the note, the text or the changed lines
                 waitText(newName)
                 waitText(changeName)
                 check(!has("renew-library-book") && !has("weekly-grocery-list")) { "a raw skill id is shown" }
-                listOf(R.string.skill_review_about, R.string.skill_review_kind_new, R.string.skill_review_kind_change, R.string.skill_review_outside_note,
-                    R.string.skill_review_from_draft, R.string.skill_review_from_kelo, R.string.skill_review_show_all, R.string.skill_review_discard)
+                listOf(Res.string.skill_review_about, Res.string.skill_review_kind_new, Res.string.skill_review_kind_change, Res.string.skill_review_outside_note,
+                    Res.string.skill_review_from_draft, Res.string.skill_review_from_kelo, Res.string.skill_review_show_all, Res.string.skill_review_discard)
                     .forEach { check(has(s.get(it))) { "missing: ${s.get(it)}" } }
-                check(has(s.get(R.string.skill_review_diff_counts, 2, 1))) { "the change's counts line is missing" }
+                check(has(s.get(Res.string.skill_review_diff_counts, 2, 1))) { "the change's counts line is missing" }
                 check(has(if (lang == "ko") "냉장고 메모에서" else "fridge note")) { "the change's added line is missing" }
-                check(!has(s.get(R.string.skill_review_secrets_removed))) { "no secrets were removed in the samples" }
+                check(!has(s.get(Res.string.skill_review_secrets_removed))) { "no secrets were removed in the samples" }
                 for (theme in themes) {
                     app.settings.setTheme(theme)
                     settle()
                     // the section alone, from its heading to its last button (the window is tall enough for the whole page)
-                    val top = fromEnd(s.get(R.string.skill_review_title)).fetchSemanticsNode().boundsInRoot.top.toInt() - 24
+                    val top = fromEnd(s.get(Res.string.skill_review_title)).fetchSemanticsNode().boundsInRoot.top.toInt() - 24
                     val bottom = fromEnd(approve).fetchSemanticsNode().boundsInRoot.bottom.toInt() + 24
                     shot("skills-review-$tag$lang-$theme", top..bottom)
                 }
@@ -142,14 +139,14 @@ class SkillsShotsTest {
                 if (tag.isNotEmpty()) return@run
                 // Show all / Show less on the new skill's text (the skills are the page's last part, and only that text is longer
                 // than the preview: the last such link is its)
-                click(fromEnd(s.get(R.string.skill_review_show_all)))
-                waitText(s.get(R.string.skill_review_show_less))
-                click(fromEnd(s.get(R.string.skill_review_show_less)))
-                waitText(s.get(R.string.skill_review_show_all))
+                click(fromEnd(s.get(Res.string.skill_review_show_all)))
+                waitText(s.get(Res.string.skill_review_show_less))
+                click(fromEnd(s.get(Res.string.skill_review_show_less)))
+                waitText(s.get(Res.string.skill_review_show_all))
                 // approve the new one (the first of the two cards): the outcome shows for a moment, then the card leaves and the
                 // server has it no more
                 click(fromEnd(approve, 1))
-                waitText(s.get(R.string.skill_review_approved))
+                waitText(s.get(Res.string.skill_review_approved))
                 waitUntil("the approved card to leave", timeout = 15_000) { !has(newName) }
                 assertTrue("the change is still waiting", has(changeName))
                 val left = runBlocking { app.sessions.requireApi().get<SkillProposals>("/api/skills/proposals") }
@@ -162,16 +159,16 @@ class SkillsShotsTest {
     }
 
     private fun save(lang: String) {
-        run(lang, 1000, 800, { app -> WorkScreen(app, topInset = 16.dp) }) { app ->
-            val s = Strings.of(lang)
-            val saveLabel = s.get(R.string.skill_save)
-            val place = arrayOf(s.get(R.string.tab_my), s.get(R.string.my_records_title))
+        run(lang, 1000, 800, { app -> WorkPane(app, topInset = 16.dp) }) { app ->
+            val s = Words.of(lang)
+            val saveLabel = s.get(Res.string.skill_save)
+            val place = arrayOf(s.get(Res.string.tab_my), s.get(Res.string.my_records_title))
             try {
-                waitText(s.get(R.string.tab_work), timeout = 15_000)   // the page is up (답이 필요해요 may push 지금 하는 일 below)
+                waitText(s.get(Res.string.tab_work), timeout = 15_000)   // the page is up (답이 필요해요 may push 지금 하는 일 below)
                 app.workRequests.value = OpenTarget.Task(4)   // "Weekly shopping list", done
                 waitText(if (lang == "ko") "목록을 메모에 저장했어요." else "Saved the list to notes.", timeout = 15_000)
                 waitText(saveLabel)
-                waitText(s.get(R.string.skill_save_about, *place))
+                waitText(s.get(Res.string.skill_save_about, *place))
                 for (theme in listOf("light", "dark")) {
                     app.settings.setTheme(theme)
                     shot("skills-save-$lang-$theme")
@@ -179,12 +176,12 @@ class SkillsShotsTest {
                 app.settings.setTheme("light")
                 settle()
                 click(fromEnd(saveLabel))
-                waitText(s.get(R.string.skill_save_started, *place))
-                waitText(s.get(R.string.skill_review_drafting))
+                waitText(s.get(Res.string.skill_save_started, *place))
+                waitText(s.get(Res.string.skill_review_drafting))
                 check(!has(saveLabel)) { "the button still says Save as skill while drafting" }
                 shot("skills-save-drafting-$lang-light")
                 // the mock finishes the draft after 3 s; the page asks again and the button comes back
-                waitUntil("the button back after the draft", timeout = 30_000) { has(saveLabel) && !has(s.get(R.string.skill_review_drafting)) }
+                waitUntil("the button back after the draft", timeout = 30_000) { has(saveLabel) && !has(s.get(Res.string.skill_review_drafting)) }
                 val after = runBlocking { app.sessions.requireApi().get<SkillProposals>("/api/skills/proposals") }
                 assertTrue("the draft waits on the Records page", after.items.any { it.skill == "check-parcel" && it.origin.taskId == 4L })
             } catch (e: Throwable) {

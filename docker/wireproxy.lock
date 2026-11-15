@@ -1,0 +1,6 @@
+# wireproxy (WireGuard in user space, no tun device): the version the image installs and the SHA-256 of each release archive.
+# Source: https://github.com/pufferffish/wireproxy/releases/tag/v1.1.3 (checksums.txt of the release; both values checked by hand).
+# To update: change the version, take the two hashes from the new release's checksums.txt, rebuild.
+WIREPROXY_VERSION=1.1.3
+WIREPROXY_SHA256_AMD64=e88c1d090740373fc606c1bafd81d9a5eadc642cce5667616e20e9d7a444f51c
+WIREPROXY_SHA256_ARM64=370e00bd2167960d1ecd1c3c1439715bbaa94a0a110a2040468670c9af6021b6

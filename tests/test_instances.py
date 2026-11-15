@@ -118,7 +118,7 @@ def test_start_uses_the_copys_own_project_env_and_the_shared_image(tmp_path):
     a, b = [c for c in run.calls if "up" in c]
     assert a[:5] == ["docker", "compose", "-f", str(tmp_path / "compose.yml"), "-p"] and a[5] == "assistant-u-alice"
     assert a[a.index("--env-file") + 1] == str(tmp_path / "instances/alice/env") and a[-3:] == ["up", "-d", "--no-build"]
-    assert b[5] == "assistant-u-bob" and b[-6:] == ["up", "-d", "--no-build", "--no-deps", "server", "workroom"]   # no browser container for bob (the work room is his too)
+    assert b[5] == "assistant-u-bob" and b[-7:] == ["up", "-d", "--no-build", "--no-deps", "server", "workroom", "vpn"]   # no browser container for bob (the work room and the VPN sidecar are his too)
     assert not any("build" in c and "--no-build" not in c for c in run.calls)
 
 

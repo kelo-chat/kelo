@@ -143,10 +143,9 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         Tool("vault_status", "List the keychain: saved website logins and service keys, whether each holds a value, when last used. "
              "Never shows a value, user name or password.",
              {"type": "object", "properties": {}}, vault_status, read_only=True),
-        Tool("request_login", "Ask the user for a website's login when none is saved. A fill-in card (user name and password) "
-             "appears in the chat right below your message; they fill it there, never in chat, and you never see it. Before the call, "
-             "say in one short sentence that the entry is coming below. A service from the Connectors list goes through connect_service "
-             "instead.",
+        Tool("request_login", "Ask the user for a website's login when none is saved: a fill-in card (user name, password) appears "
+             "below your message; they fill it there and you never see it. A service from the Connectors list goes through "
+             "connect_service instead.",
              {"type": "object", "properties": {"site": {"type": "string", "description": "https address or host of the sign-in page"},
                                                "name": {"type": "string", "description": "short slug for this login"},
                                                "label": {"type": "string"},
@@ -304,8 +303,9 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
     tools.append(Tool("browser_login", "Type a saved login into the sign-in form of the page you are on and submit it; the user approves "
                       "unless they allowed that login. Works only on the site it was saved for; you never see the values. If the result "
                       "is failed, do not try again: tell the user. Signed in only when the result says success. On the user's own "
-                      "account, accept an offer to keep this browser signed in or skip verification next time (any wording); not saving "
-                      "the password, marketing, recovery contacts or security settings.",
+                      "account (never someone else's), accept an offer to keep this browser signed in or skip verification next time (any "
+                      "wording, any language); not saving the password, marketing or cookie consent, a recovery phone or email, or security "
+                      "settings.",
                       {"type": "object", "properties": {"name": {"type": "string"},
                                                         "step": {"type": "string", "enum": ["both", "username", "password"],
                                                                  "description": "username / password: a form split over two pages"},

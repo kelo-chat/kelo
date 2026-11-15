@@ -1,5 +1,9 @@
 package chat.kelo.desktop
 
+import chat.kelo.desktop.chat.DesktopChat
+import chat.kelo.app.chat.ChatViewModel
+
+import chat.kelo.app.res.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
@@ -16,10 +20,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
-import chat.kelo.app.R
 import chat.kelo.app.chat.ChatItem
-import chat.kelo.desktop.chat.ChatModel
-import chat.kelo.desktop.i18n.Strings
 import chat.kelo.desktop.ui.KeloFrame
 import chat.kelo.desktop.ui.Page
 import chat.kelo.desktop.ui.Shell
@@ -83,22 +84,23 @@ class AnswerFieldsTest {
     }
 
     private fun flow(lang: String, wide: Boolean) {
-        val words = Strings.of(lang)
+        val words = Words.of(lang)
         val m = MockServer("--lang", lang, "--form").also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
-        val chat = ChatModel(app)
+        val chatHandle = DesktopChat(app)
+        val chat = chatHandle.vm
         val ui = UiSteps(compose, parityShots())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             KeloFrame(app) {
                 Box(Modifier.size(if (wide) 1024.dp else 480.dp, 760.dp)) {   // within the test window (768 high)
-                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {})
+                    Shell(app, chat, Page.CHAT, onPage = {}, onSignedOut = {}, connectorToOpen = null, onConnectorOpened = {}, side = chatHandle.side)
                 }
             }
         }
         try {
-            ui.waitText(words.get(R.string.reply_other))
-            ui.waitText(words.get(R.string.reply_send))
+            ui.waitText(words.get(Res.string.reply_other))
+            ui.waitText(words.get(Res.string.reply_send))
             fun shots(name: String) {
                 ui.shot("form-fields-$lang-$name-light")
                 app.settings.setTheme("dark")
@@ -108,12 +110,12 @@ class AnswerFieldsTest {
             }
             val size = if (wide) "wide" else "narrow"
             // the form in view (a narrow window shows the bottom of the chat first)
-            bringIntoView(ui, hasText(words.get(R.string.reply_other)) and hasClickAction())
+            bringIntoView(ui, hasText(words.get(Res.string.reply_other)) and hasClickAction())
             shots(size)
             // the app's own "Other" opens a box under the choice (its hint is the question); a semantics click: the chip may sit
             // under the floating header at the top of the chat
             val ko = lang == "ko"
-            compose.onAllNodes(hasText(words.get(R.string.reply_other)) and hasClickAction()).onFirst()
+            compose.onAllNodes(hasText(words.get(Res.string.reply_other)) and hasClickAction()).onFirst()
                 .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
             ui.settle()
             val otherBox = compose.onAllNodes(hasSetTextAction() and hasText(if (ko) "어떤 파일로 받을까요?" else "Which file type?"))
@@ -122,7 +124,7 @@ class AnswerFieldsTest {
             compose.onAllNodes(hasSetTextAction() and hasText(if (ko) "개" else "tables")).onFirst().performTextInput("3")
             ui.settle()
             shots("$size-other")
-            compose.onAllNodes(hasText(words.get(R.string.reply_send)) and hasClickAction()).onFirst()
+            compose.onAllNodes(hasText(words.get(Res.string.reply_send)) and hasClickAction()).onFirst()
                 .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
             ui.waitUntil("the answer sent") { chat.state.value.items.any { it is ChatItem.Msg && it.mine && "Markdown" in it.text } }
             val sent = chat.state.value.items.filterIsInstance<ChatItem.Msg>().last { it.mine }.text

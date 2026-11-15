@@ -5,6 +5,7 @@
 #   KELO_MSIX_IDENTITY_NAME         e.g. 12345YourName.Kelo
 #   KELO_MSIX_PUBLISHER             e.g. CN=1A2B3C4D-5E6F-7A8B-9C0D-112233445566
 #   KELO_MSIX_PUBLISHER_DISPLAY_NAME
+#   KELO_MSIX_DISPLAY_NAME          the product name reserved in Partner Center (Package/Properties/DisplayName)
 # Without them the MSIX uses the Microsoft Store product's identity (Partner Center: Kelo AI, kelo-chat.KeloAI), so the Store accepts it.
 # Optional secrets to sign the MSIX for installing it outside the Store: KELO_MSIX_PFX_BASE64, KELO_MSIX_PFX_PASSWORD.
 #
@@ -38,12 +39,8 @@ on:
         type: boolean
         required: false
         default: false
-  push:
-    paths:
-      - "desktop/**"
-      - "android/kelo/app/src/main/java/**"
-      - "android/kelo/app/src/main/res/values*/strings*.xml"
-      - ".github/workflows/desktop-windows.yml"
+  # no push trigger (owner, 2026-11-11): a Windows run takes ~25 min and counts double against the private repo's Actions minutes;
+  # run it by hand (gh workflow run desktop-windows.yml) or from release-build.yml. The desktop tests also run on Linux in ci.yml.
 
 jobs:
   windows:
@@ -81,12 +78,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Text in step with the Android strings
-        shell: bash
-        run: |
-          python tools/sync_strings.py
-          git diff --exit-code -- src/main/resources/i18n src/generated || (echo "run: python3 desktop/tools/sync_strings.py and commit" && exit 1)
-
       - name: Fetch Gradle and the build tools (retried; falls back to the Gradle installed on the runner)
         shell: bash
         run: |
@@ -121,7 +112,8 @@ jobs:
           if-no-files-found: ignore
 
       - name: MSI and EXE
-        run: '& $env:GRADLE_CMD --no-daemon packageMsi packageExe createDistributable "-PkeloVersion=${{ env.VERSION }}"'
+        # -PkeloCommit: the commit this run built, shown in My as a link to its source on GitHub (a checkout is clean, so not modified)
+        run: '& $env:GRADLE_CMD --no-daemon packageMsi packageExe createDistributable "-PkeloVersion=${{ env.VERSION }}" "-PkeloCommit=${{ github.sha }}" "-PkeloDirty=false"'
 
       - name: MSIX
         shell: pwsh
@@ -129,6 +121,7 @@ jobs:
           IDENTITY_NAME: ${{ vars.KELO_MSIX_IDENTITY_NAME || 'kelo-chat.KeloAI' }}
           PUBLISHER: ${{ vars.KELO_MSIX_PUBLISHER || 'CN=B768A023-5EDD-4EA2-9CC8-14670F96502D' }}
           PUBLISHER_DISPLAY_NAME: ${{ vars.KELO_MSIX_PUBLISHER_DISPLAY_NAME || 'kelo-chat' }}
+          DISPLAY_NAME: ${{ vars.KELO_MSIX_DISPLAY_NAME || 'Kelo AI' }}
           PFX_BASE64: ${{ secrets.KELO_MSIX_PFX_BASE64 }}
           PFX_PASSWORD: ${{ secrets.KELO_MSIX_PFX_PASSWORD }}
         run: |
@@ -140,6 +133,7 @@ jobs:
           if ($env:IDENTITY_NAME) { $p.IdentityName = $env:IDENTITY_NAME }
           if ($env:PUBLISHER) { $p.Publisher = $env:PUBLISHER }
           if ($env:PUBLISHER_DISPLAY_NAME) { $p.PublisherDisplayName = $env:PUBLISHER_DISPLAY_NAME }
+          if ($env:DISPLAY_NAME) { $p.DisplayName = $env:DISPLAY_NAME }
           if ($env:PFX_BASE64) {
             $pfx = Join-Path $env:RUNNER_TEMP "kelo.pfx"
             [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))

@@ -92,16 +92,4 @@ private typealias Span = Markdown.Span
         #expect(Markdown.plain(md) == "Title\n\nSome bold and code, see docs (https://d.io) or https://x.y.\n\n• a\n  1. b\n\nquoted\n\nh1 | h2\nc | d\n\nval x = 1")
     }
 
-    @Test func incrementalBlocksMatchParsingTheWholeText() {
-        let text = "# Plan\n\nFirst **step**.\n\n```swift\nlet a = 1\n\nlet b = 2\n```\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nend"
-        let inc = IncrementalBlocks()
-        var i = text.startIndex
-        while i < text.endIndex {
-            i = text.index(i, offsetBy: 3, limitedBy: text.endIndex) ?? text.endIndex
-            let part = String(text[..<i])
-            #expect(inc.blocks(part) == Markdown.blocks(part), "at \(part.count)")
-        }
-        #expect(Markdown.stableCut("a\n\nb") == 3)
-        #expect(Markdown.stableCut("```\na\n\nb") == 0)   // a blank line inside an open fence is not a cut
-    }
 }

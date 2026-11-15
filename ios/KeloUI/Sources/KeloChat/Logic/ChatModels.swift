@@ -15,6 +15,8 @@ public struct ChatMessage: Codable, Equatable, Sendable {
     public var reaction: String
     /// On the morning briefing's message: its card (server briefing.py); the text is the same in plain words.
     public var briefing: BriefingCard?
+    /// A comparison card under an agent message (server comparison.py).
+    public var comparison: ComparisonCard?
     /// Screenshots Kelo showed with an agent reply (server chat_images.py); none on older servers.
     public var images: [ChatImage]
     /// The files the user sent with a message (server chat_attachments.py); none on older servers.
@@ -23,9 +25,9 @@ public struct ChatMessage: Codable, Equatable, Sendable {
     public var autoText: Bool
 
     public init(id: Int64, role: String = "", content: String = "", createdAt: Double = 0, replies: ReplySet? = nil, reaction: String = "",
-                briefing: BriefingCard? = nil, images: [ChatImage] = [], attachments: [MessageFile] = [], autoText: Bool = false) {
+                briefing: BriefingCard? = nil, comparison: ComparisonCard? = nil, images: [ChatImage] = [], attachments: [MessageFile] = [], autoText: Bool = false) {
         self.id = id; self.role = role; self.content = content; self.createdAt = createdAt; self.replies = replies; self.reaction = reaction
-        self.briefing = briefing; self.images = images; self.attachments = attachments; self.autoText = autoText
+        self.briefing = briefing; self.comparison = comparison; self.images = images; self.attachments = attachments; self.autoText = autoText
     }
 
     public init(from decoder: Decoder) throws {
@@ -37,6 +39,7 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         replies = j.decode("replies", as: ReplySet.self)
         reaction = j.str("reaction")
         briefing = j.decode("briefing", as: BriefingCard.self)
+        comparison = j.decode("comparison", as: ComparisonCard.self)
         images = j.list("images", of: ChatImage.self)
         attachments = MessageFile.parseList(j["attachments"])
         autoText = j.bool("auto_text")
@@ -51,6 +54,7 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         try c.encodeIfPresent(replies, forKey: AnyKey("replies"))
         if !reaction.isEmpty { try c.encode(reaction, forKey: AnyKey("reaction")) }
         try c.encodeIfPresent(briefing, forKey: AnyKey("briefing"))
+        try c.encodeIfPresent(comparison, forKey: AnyKey("comparison"))
         if !images.isEmpty { try c.encode(images, forKey: AnyKey("images")) }
         if !attachments.isEmpty { try c.encode(attachments, forKey: AnyKey("attachments")) }
         if autoText { try c.encode(true, forKey: AnyKey("auto_text")) }
@@ -82,12 +86,14 @@ public struct ReplySet: Codable, Equatable, Sendable {
     }
 }
 
+/// `says`: per option, the whole sentence a tap sends (the button shows the option); empty or "" = the option itself.
 /// `typed`: the options that mean the user writes the answer (a text box opens); `hint`: what to write there. Both may be missing
 /// (an older server): see `QuickReplyRules.isTyped`. `kind`: the kind of answer (empty = choice; `ReplyFields`); `defaultValue`: where
 /// its picker starts (plain form); `min`/`max`/`unit`: a number's.
 public struct ReplyQuestion: Codable, Equatable, Sendable {
     public var question: String
     public var options: [String]
+    public var says: [String]
     public var typed: [String]
     public var hint: String
     public var kind: String
@@ -96,9 +102,9 @@ public struct ReplyQuestion: Codable, Equatable, Sendable {
     public var max: Double?
     public var unit: String
 
-    public init(question: String = "", options: [String] = [], typed: [String] = [], hint: String = "", kind: String = "",
+    public init(question: String = "", options: [String] = [], says: [String] = [], typed: [String] = [], hint: String = "", kind: String = "",
                 defaultValue: String = "", min: Double? = nil, max: Double? = nil, unit: String = "") {
-        self.question = question; self.options = options; self.typed = typed; self.hint = hint
+        self.question = question; self.options = options; self.says = says; self.typed = typed; self.hint = hint
         self.kind = kind; self.defaultValue = defaultValue; self.min = min; self.max = max; self.unit = unit
     }
 
@@ -106,6 +112,7 @@ public struct ReplyQuestion: Codable, Equatable, Sendable {
         let j = try Lenient(decoder)
         question = j.str("question")
         options = j.strings("options")
+        says = j.strings("says")
         typed = j.strings("typed")
         hint = j.str("hint")
         kind = j.str("kind")
@@ -119,6 +126,7 @@ public struct ReplyQuestion: Codable, Equatable, Sendable {
         var c = encoder.container(keyedBy: AnyKey.self)
         try c.encode(question, forKey: AnyKey("question"))
         try c.encode(options, forKey: AnyKey("options"))
+        if !says.isEmpty { try c.encode(says, forKey: AnyKey("says")) }
         if !typed.isEmpty { try c.encode(typed, forKey: AnyKey("typed")) }
         if !hint.isEmpty { try c.encode(hint, forKey: AnyKey("hint")) }
         if !kind.isEmpty { try c.encode(kind, forKey: AnyKey("kind")) }
@@ -143,189 +151,12 @@ public enum ChatHistory {
     }
 }
 
-/// GET /api/providers items: what the chat, the chooser and the model sheet use.
-public struct ChatProvider: Codable, Equatable, Sendable {
-    public var name: String
-    public var displayName: String
-    /// true: ready; false: needs a key or a sign-in; nil: cannot be told
-    public var configured: Bool?
-    public var effortLevels: [String]
-    public var effortNote: String?
-    /// Signs in with a consumer account whose maker has not confirmed it allows this use
-    public var unofficial: Bool
-    public var vendor: String
-    public var consent: ProviderConsentRecord?
-    public var consentVersion: Int
-    /// Reached by signing in and signed in now: true; signed out: false; nil: not a sign-in provider or unknown
-    public var signedIn: Bool?
-    public var account: String?
-    /// The app can sign this provider in itself (POST /api/providers/{name}/login/start); absent on older servers
-    public var signin: Bool
-    /// Where chats go with this provider (the company), or nil for the owner's own network (`AiConsent`)
-    public var company: String? = nil
-
-    public init(name: String, displayName: String = "", configured: Bool? = nil, effortLevels: [String] = [], effortNote: String? = nil,
-                unofficial: Bool = false, vendor: String = "", consent: ProviderConsentRecord? = nil, consentVersion: Int = 0,
-                signedIn: Bool? = nil, account: String? = nil, signin: Bool = false) {
-        self.name = name; self.displayName = displayName; self.configured = configured; self.effortLevels = effortLevels
-        self.effortNote = effortNote; self.unofficial = unofficial; self.vendor = vendor; self.consent = consent
-        self.consentVersion = consentVersion; self.signedIn = signedIn; self.account = account; self.signin = signin
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        name = try j.require("name", j.optStr("name"))
-        displayName = j.str("display_name")
-        configured = j.optBool("configured")
-        effortLevels = j.strings("effort_levels")
-        effortNote = j.optStr("effort_note")
-        unofficial = j.bool("unofficial")
-        vendor = j.str("vendor")
-        consent = j.decode("consent", as: ProviderConsentRecord.self)
-        consentVersion = j.int("consent_version")
-        signedIn = j.optBool("signed_in")
-        account = j.optStr("account")
-        signin = j.bool("signin")
-        company = j.optStr("company")
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(name, forKey: AnyKey("name"))
-        try c.encodeIfPresent(company, forKey: AnyKey("company"))
-        try c.encode(displayName, forKey: AnyKey("display_name"))
-        try c.encodeIfPresent(configured, forKey: AnyKey("configured"))
-        try c.encode(effortLevels, forKey: AnyKey("effort_levels"))
-        try c.encodeIfPresent(effortNote, forKey: AnyKey("effort_note"))
-        try c.encode(unofficial, forKey: AnyKey("unofficial"))
-        try c.encode(vendor, forKey: AnyKey("vendor"))
-        try c.encodeIfPresent(consent, forKey: AnyKey("consent"))
-        try c.encode(consentVersion, forKey: AnyKey("consent_version"))
-        try c.encodeIfPresent(signedIn, forKey: AnyKey("signed_in"))
-        try c.encodeIfPresent(account, forKey: AnyKey("account"))
-        try c.encode(signin, forKey: AnyKey("signin"))
-    }
-
-    public static func parseList(_ e: JSON) -> [ChatProvider] {
-        (e.arrayValue ?? e["items"]?.arrayValue ?? []).compactMap { try? KeloApi.decode(ChatProvider.self, $0) }
-    }
-}
-
-/// One model's facts from GET /api/models: can it be shown pictures, its context window when known, and the thinking levels the
-/// provider's own list states for it (nil: the list does not say, the provider's levels apply; empty: none).
-public struct ModelFacts: Codable, Equatable, Sendable {
-    public var images: Bool
-    public var context: Int64?
-    public var effortLevels: [String]?
-    /// With empty `effortLevels`: why there are none (a custom server that turned the level away)
-    public var effortNote: String?
-    public init(images: Bool = false, context: Int64? = nil, effortLevels: [String]? = nil, effortNote: String? = nil) {
-        self.images = images; self.context = context; self.effortLevels = effortLevels; self.effortNote = effortNote
-    }
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        images = j.bool("images")
-        context = j.optInt64("context")
-        effortLevels = j.has("effort_levels") ? j.strings("effort_levels") : nil
-        effortNote = j.optStr("effort_note")
-    }
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: AnyKey.self)
-        try c.encode(images, forKey: AnyKey("images"))
-        try c.encodeIfPresent(context, forKey: AnyKey("context"))
-        try c.encodeIfPresent(effortLevels, forKey: AnyKey("effort_levels"))
-        try c.encodeIfPresent(effortNote, forKey: AnyKey("effort_note"))
-    }
-}
-
-/// GET /api/models?provider=
-public struct ChatModelList: Decodable, Equatable, Sendable {
-    public var provider: String
-    public var models: [String]
-    public var labels: [String: String]
-    public var info: [String: ModelFacts]
-    public var error: String?
-    /// The list could not be fetched just now: this is the last good one (fetched at `fetchedAt`, epoch seconds)
-    public var stale: Bool
-    public var fetchedAt: Int64?
-
-    public init(provider: String = "", models: [String] = [], labels: [String: String] = [:], info: [String: ModelFacts] = [:], error: String? = nil,
-                stale: Bool = false, fetchedAt: Int64? = nil) {
-        self.provider = provider; self.models = models; self.labels = labels; self.info = info; self.error = error
-        self.stale = stale; self.fetchedAt = fetchedAt
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        provider = j.str("provider")
-        models = j.strings("models")
-        var l: [String: String] = [:]
-        for (k, v) in j["labels"]?.objectValue ?? [:] { if let t = v.text { l[k] = t } }
-        labels = l
-        var f: [String: ModelFacts] = [:]
-        for (k, v) in j["info"]?.objectValue ?? [:] { if let facts = try? KeloApi.decode(ModelFacts.self, v) { f[k] = facts } }
-        info = f
-        error = j.optStr("error")
-        stale = j.bool("stale")
-        fetchedAt = j.optInt64("fetched_at")
-    }
-}
-
-/// POST /api/providers/{name}/login/start, GET …/login/status and POST …/login/finish answer with this.
-public struct SignInSession: Decodable, Equatable, Sendable {
-    public var session: String
-    /// "device_code": open `url`, type `userCode` there, the app notices by itself. "url_code": open `url`, paste back the code
-    public var kind: String
-    public var url: String
-    public var userCode: String?
-    public var expiresIn: Int64
-    /// pending | done | failed | expired
-    public var state: String
-    public var message: String?
-    public var account: String?
-
-    public init(session: String = "", kind: String = "", url: String = "", userCode: String? = nil, expiresIn: Int64 = 0,
-                state: String = "pending", message: String? = nil, account: String? = nil) {
-        self.session = session; self.kind = kind; self.url = url; self.userCode = userCode; self.expiresIn = expiresIn
-        self.state = state; self.message = message; self.account = account
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        session = j.str("session"); kind = j.str("kind"); url = j.str("url"); userCode = j.optStr("user_code")
-        expiresIn = j.int64("expires_in"); state = j.str("state", "pending"); message = j.optStr("message"); account = j.optStr("account")
-    }
-}
-
-/// DELETE /api/providers/{name}/login answer.
-public struct SignOutResult: Decodable, Equatable, Sendable {
-    public var ok: Bool
-    public var removed: Bool
-    /// A token the server's own settings hold: the app cannot take it away
-    public var stillSignedIn: Bool
-    /// The fallback model was on this provider and is now empty
-    public var fallbackCleared: Bool
-
-    public init(ok: Bool = false, removed: Bool = false, stillSignedIn: Bool = false, fallbackCleared: Bool = false) {
-        self.ok = ok; self.removed = removed; self.stillSignedIn = stillSignedIn; self.fallbackCleared = fallbackCleared
-    }
-
-    public init(from decoder: Decoder) throws {
-        let j = try Lenient(decoder)
-        ok = j.bool("ok"); removed = j.bool("removed"); stillSignedIn = j.bool("still_signed_in"); fallbackCleared = j.bool("fallback_cleared")
-    }
-}
-
 /// GET /api/vault items. kind is "api", "login" or "email". Values never come back from the server.
 public struct ChatVaultItem: Decodable, Equatable, Sendable {
     public var name: String
     public var label: String
     public var kind: String
     public var hosts: [String]
-
-    public init(name: String, label: String = "", kind: String = "", hosts: [String] = []) {
-        self.name = name; self.label = label; self.kind = kind; self.hosts = hosts
-    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -341,8 +172,6 @@ public struct ChatVaultInfo: Decodable, Equatable, Sendable {
     public var items: [ChatVaultItem]
     public var pending: [ChatVaultItem]
 
-    public init(items: [ChatVaultItem] = [], pending: [ChatVaultItem] = []) { self.items = items; self.pending = pending }
-
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: ChatVaultItem.self)
@@ -352,7 +181,65 @@ public struct ChatVaultInfo: Decodable, Equatable, Sendable {
     public func find(_ name: String) -> ChatVaultItem? { (items + pending).first { $0.name == name } }
 }
 
-/// How a typed login is kept (LoginIn.mode on the server).
-public enum VaultMode: String, CaseIterable, Sendable {
-    case afterSuccess = "after_success", now = "now", once = "once"
+/// A comparison card under an agent message (server comparison.py); `open`: the owner has not written since (the buttons show).
+public struct ComparisonCard: Codable, Equatable, Sendable {
+    public var title: String
+    public var basis: String
+    public var rows: [String]
+    public var options: [ComparisonOption]
+    public var note: String
+    public var open: Bool
+
+    public init(title: String = "", basis: String = "", rows: [String] = [], options: [ComparisonOption] = [], note: String = "", open: Bool = false) {
+        self.title = title; self.basis = basis; self.rows = rows; self.options = options; self.note = note; self.open = open
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        title = j.str("title")
+        basis = j.str("basis")
+        rows = j.strings("rows")
+        options = j.list("options", of: ComparisonOption.self)
+        note = j.str("note")
+        open = j.bool("open")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        if !title.isEmpty { try c.encode(title, forKey: AnyKey("title")) }
+        if !basis.isEmpty { try c.encode(basis, forKey: AnyKey("basis")) }
+        if !rows.isEmpty { try c.encode(rows, forKey: AnyKey("rows")) }
+        if !options.isEmpty { try c.encode(options, forKey: AnyKey("options")) }
+        if !note.isEmpty { try c.encode(note, forKey: AnyKey("note")) }
+        if open { try c.encode(open, forKey: AnyKey("open")) }
+    }
 }
+
+public struct ComparisonOption: Codable, Equatable, Sendable {
+    public var name: String
+    public var values: [String]
+    public var says: String
+    public var recommended: Bool
+
+    public init(name: String = "", values: [String] = [], says: String = "", recommended: Bool = false) {
+        self.name = name; self.values = values; self.says = says; self.recommended = recommended
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        name = j.str("name")
+        values = j.strings("values")
+        says = j.str("says")
+        recommended = j.bool("recommended")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(name, forKey: AnyKey("name"))
+        try c.encode(values, forKey: AnyKey("values"))
+        if !says.isEmpty { try c.encode(says, forKey: AnyKey("says")) }
+        if recommended { try c.encode(recommended, forKey: AnyKey("recommended")) }
+    }
+}
+
+public typealias StoredMessage = ChatMessage

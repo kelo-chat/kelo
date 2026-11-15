@@ -53,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
         text = Path(path).read_text(encoding="utf-8").strip() if path and Path(path).is_file() else ""
         if text:
             notes[lang] = text
+    from assistant.app_releases import AppReleases
+    problems = AppReleases.load().check_manifest(min_app)
+    if problems:   # a minimum app version may never be above an app people can install (docs/versioning.md)
+        print("error: min_app names an app version that was never released:\n  " + "\n  ".join(p.message for p in problems), file=sys.stderr)
+        return 1
     level = a.compose_level
     if level is None:
         from assistant.release import compose_level

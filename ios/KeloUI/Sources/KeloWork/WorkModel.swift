@@ -23,7 +23,7 @@ struct ScheduleBook: Sendable {
     var timezone = ""
 }
 
-/// The agent's work for the work page (Android agent/AgentViewModel.kt, the parts the work page shows: tasks, background jobs,
+/// The agent's work for the work page (Android agent/AgentViewModel.kt and its parts AgentTasks/AgentJobs/AgentFollowups/AgentSchedules/AgentPermissions/AgentBrowser, the parts the work page shows: tasks, background jobs,
 /// watchers, approvals waiting, follow-ups on hold, schedules and their archive, browser tabs). Each part refreshes on its own; a
 /// failed refresh keeps what is shown. Short results go to `toast`.
 @MainActor @Observable
@@ -46,6 +46,8 @@ final class WorkModel {
     var archive = Loadable<ScheduleArchive>()
     /// Deletes in 보관한 예약 waiting for the undo message, by schedule id (see `deleteArchived`)
     @ObservationIgnored var pendingErase: [Int64: Task<Void, Never>] = [:]
+    @ObservationIgnored var reads: [AnyKeyPath: Task<Void, Never>] = [:]
+    @ObservationIgnored private var polling = false
     var browser = Loadable<BrowserTabs>()
     /// The newest short message (snackbar).
     var toast: Toast?
@@ -93,15 +95,19 @@ final class WorkModel {
         if let a = e as? ApiError, !a.isNetwork, !a.detail.isEmpty { say(L(R.string.agent_error_detail, a.detail)) } else { say(L(R.string.connect_failed)) }
     }
 
-    /// Runs `block` into `path` unless that part is already loading; a failure keeps the data and marks it failed.
+    /// Runs `block` into `path`; a newer read of the same part cancels the older one, so an answer from before a change just made
+    /// never covers a newer one. A failure keeps the data and marks it failed.
     private func refresh<T>(_ path: ReferenceWritableKeyPath<WorkModel, Loadable<T>>, _ block: @escaping () async throws -> T) {
-        if self[keyPath: path].loading { return }
+        if polling && self[keyPath: path].loading { return }   // a poll never piles up behind a slow answer
+        reads[path]?.cancel()
         self[keyPath: path].loading = true
-        Task {
+        reads[path] = Task { @MainActor [self] in
             do {
                 let v = try await block()
+                if Task.isCancelled { return }
                 self[keyPath: path] = Loadable(data: v)
             } catch {
+                if Task.isCancelled { return }
                 self[keyPath: path].loading = false
                 self[keyPath: path].failed = true
             }
@@ -110,9 +116,14 @@ final class WorkModel {
 
     /// Everything the timeline shows (also what changes while the agent works).
     func loadWork() {
+        polling = true
+        defer { polling = false }
         loadTasks(); loadWorkers(); loadWatchers(); loadPending(); loadGrants(); loadSchedules(); loadBrowser(); loadFollowups()
         loadEntries()
     }
+
+    /// Android parity alias for loadWork.
+    func refreshLive() { loadWork() }
 
     // ---- secure entries waiting for a value (404: none)
     func loadEntries() {
@@ -190,20 +201,20 @@ final class WorkModel {
     func worker(_ id: String) async throws -> WorkerDetail { try await requireApi().worker(id) }
 
     func stopWorker(_ id: String, then: @escaping () -> Void = {}) {
-        workerCall(id, done: L(R.string.work_job_stopped), then: then) { try await $0.stopWorker(id) }
+        workerCall(done: L(R.string.work_job_stopped), then: then) { try await $0.stopWorker(id) }
     }
 
     func resumeWorker(_ id: String, note: String = "", then: @escaping () -> Void = {}) {
         let n = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        workerCall(id, done: L(R.string.work_job_resumed), then: then) { try await $0.resumeWorker(id, note: n.isEmpty ? nil : n) }
+        workerCall(done: L(R.string.work_job_resumed), then: then) { try await $0.resumeWorker(id, note: n.isEmpty ? nil : n) }
     }
 
     func messageWorker(_ id: String, text: String, then: @escaping () -> Void = {}) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        workerCall(id, done: L(R.string.work_job_message_sent), then: then) { try await $0.messageWorker(id, text: t) }
+        workerCall(done: L(R.string.work_job_message_sent), then: then) { try await $0.messageWorker(id, text: t) }
     }
 
-    private func workerCall(_ id: String, done: String, then: @escaping () -> Void, _ call: @escaping (KeloApi) async throws -> WorkerAnswer) {
+    private func workerCall(done: String, then: @escaping () -> Void, _ call: @escaping (KeloApi) async throws -> WorkerAnswer) {
         Task {
             do {
                 _ = try await call(requireApi())
@@ -230,6 +241,8 @@ final class WorkModel {
     }
 
     func watcherEvents(_ id: Int64) async throws -> [WatcherEvent] { try await requireApi().watcherEvents(id).items }
+    func buyCheck(id: Int64) async throws -> BuyReady { try await requireApi().buyCheck(id) }
+    func buyCheck(_ id: Int64) async throws -> BuyReady { try await buyCheck(id: id) }
 
     private func replaceWatcher(_ w: Watcher) {
         guard var d = watchers.data else { return }
@@ -536,19 +549,6 @@ final class WorkModel {
                 default: sayError(e)
                 }
             } catch { sayError(error) }
-        }
-    }
-
-    func startBrowserJob(prompt: String, url: String, onStarted: @escaping () -> Void) {
-        let u = url.trimmingCharacters(in: .whitespacesAndNewlines)
-        Task {
-            do {
-                _ = try await requireApi().startBrowserJob(prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines), url: u.isEmpty ? nil : u)
-                say(L(R.string.agent_browser_started))
-                onStarted()
-                try? await Task.sleep(nanoseconds: 800_000_000)
-                loadBrowser(); loadTasks()
-            } catch let e as ApiError where e.status == 404 { say(L(R.string.agent_browser_none)) } catch { sayError(error) }
         }
     }
 }

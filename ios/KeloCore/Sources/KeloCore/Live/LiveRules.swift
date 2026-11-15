@@ -7,7 +7,7 @@ import Foundation
  */
 
 /// Where a frame of frameW x frameH is drawn inside a view (aspect fit: the whole picture, centred, letterboxed).
-public struct FitBox: Equatable, Sendable { public let scale, left, top, width, height: Double }
+public struct FitBox: Equatable, Sendable { public let scale, left, top, width: Double }
 
 /// A point on the frame, in its own pixels (what tap / long_press send).
 public struct FramePoint: Equatable, Sendable {
@@ -24,7 +24,7 @@ public enum LiveGeometry {
         guard viewW > 0, viewH > 0, frameW > 0, frameH > 0 else { return nil }
         let s = min(viewW / Double(frameW), viewH / Double(frameH))
         let w = Double(frameW) * s, h = Double(frameH) * s
-        return FitBox(scale: s, left: (viewW - w) / 2, top: (viewH - h) / 2, width: w, height: h)
+        return FitBox(scale: s, left: (viewW - w) / 2, top: (viewH - h) / 2, width: w)
     }
 
     /// A touch at (x, y) in view points, as a frame pixel. The view is zoomed by `zoom` around its centre and then moved by
@@ -67,28 +67,23 @@ public struct LiveQuality: Equatable, Sendable {
     public static let metered = LiveQuality(maxWidth: 540, quality: 45, fps: 5)
     public static func pick(metered: Bool) -> LiveQuality { metered ? .metered : .wifi }
 
-    public func message() -> JSON {
-        ["type": "quality", "max_width": .number(Double(maxWidth)), "quality": .number(Double(quality)), "fps": .number(Double(fps))]
-    }
-
     public func query() -> String { "max_width=\(maxWidth)&quality=\(quality)&fps=\(fps)" }
 }
 
-/// {"type":"frame",...}: the JPEG that follows it is `bytes` long, w x h pixels; css_w x css_h is the viewport it shows.
+/// {"type":"frame",...}: the JPEG that follows it, w x h pixels.
 public struct FrameHeader: Equatable, Sendable {
-    public var seq: Int64, w: Int, h: Int, ts: Double, url: String, title: String, bytes: Int, cssW: Int, cssH: Int
+    public var seq: Int64, w: Int, h: Int, url: String, title: String
 
     init(_ o: Lenient) {
-        seq = o.int64("seq"); w = o.int("w"); h = o.int("h"); ts = o.double("ts"); url = o.str("url"); title = o.str("title")
-        bytes = o.int("bytes"); cssW = o.int("css_w"); cssH = o.int("css_h")
+        seq = o.int64("seq"); w = o.int("w"); h = o.int("h"); url = o.str("url"); title = o.str("title")
     }
 }
 
 public struct LiveAgent: Equatable, Sendable {
-    public var busy = false, status: String? = nil, taskId: Int64? = nil, title: String? = nil, waitingApproval = false
+    public var busy = false, status: String? = nil, waitingApproval = false
     public init() {}
     init(_ o: Lenient) {
-        busy = o.bool("busy"); status = o.optStr("status"); taskId = o.optInt64("task_id"); title = o.optStr("title")
+        busy = o.bool("busy"); status = o.optStr("status")
         waitingApproval = o.bool("waiting_approval")
     }
 }
@@ -96,7 +91,6 @@ public struct LiveAgent: Equatable, Sendable {
 /// {"type":"status"}: who controls the tab, what the agent is doing in it, how many are watching.
 public struct LiveStatus: Equatable, Sendable {
     public var controller = "agent"
-    public var controlledBy: String? = nil
     public var youControl = false
     public var label = ""
     public var agent = LiveAgent()
@@ -104,7 +98,7 @@ public struct LiveStatus: Equatable, Sendable {
 
     public init() {}
     init(_ o: Lenient) {
-        controller = o.str("controller", "agent"); controlledBy = o.optStr("controlled_by"); youControl = o.bool("you_control")
+        controller = o.str("controller", "agent"); youControl = o.bool("you_control")
         label = o.str("label"); agent = LiveAgent(o.obj("agent")); viewers = o.int("viewers")
     }
 
@@ -125,8 +119,6 @@ public enum LiveIn: Equatable, Sendable {
 /// The messages of the live view, both ways. Typed text is never part of anything but the one message that carries it.
 public enum LiveMessages {
     public static let maxText = 2000
-    /// The keys the server knows.
-    public static let keys = ["Enter", "Backspace", "Tab", "Escape", "ArrowLeft", "ArrowUp", "ArrowDown", "ArrowRight"]
 
     public static func parse(_ text: String) -> LiveIn {
         guard let v = try? JSON.parse(text), v.objectValue != nil else { return .other }
@@ -157,23 +149,10 @@ public enum LiveMessages {
     public static func nav(_ kind: String) -> JSON { ["type": .string(kind)] }
     /// The body of POST .../control.
     public static func control(take: Bool) -> JSON { ["take": .bool(take)] }
-    /// The same over the WebSocket.
-    public static func controlMessage(take: Bool) -> JSON { ["type": "control", "take": .bool(take)] }
 
     static func n(_ i: Int) -> JSON { .number(Double(i)) }
     static func point(_ type: String, _ p: FramePoint, _ w: Int, _ h: Int) -> JSON {
         ["type": .string(type), "x": n(p.x), "y": n(p.y), "frame_w": n(w), "frame_h": n(h)]
-    }
-
-    /// The control answer (POST .../control) or the X-You-Control / X-Controller headers, as a LiveStatus update.
-    public static func controlAnswer(_ o: JSON?, before: LiveStatus) -> LiveStatus {
-        guard let o, o.objectValue != nil else { return before }
-        let j = Lenient(o)
-        var s = before
-        s.controller = j.optStr("controller") ?? before.controller
-        s.controlledBy = j.optStr("controlled_by")
-        s.youControl = j.optBool("you_control") ?? before.youControl
-        return s
     }
 
     /// Text longer than the server takes in one message is sent in pieces of at most `max` characters.

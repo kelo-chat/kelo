@@ -9,6 +9,7 @@ briefing and the heads-ups read it like any other:
   update   PATCH /v1.0/me/messages/{id} isRead / flag; POST /v1.0/me/messages/{id}/move to "archive", "deleteditems" or a folder,
            20 at a time through /v1.0/$batch. Nothing is ever deleted for good: "trash" moves to Deleted Items.
   send     POST /v1.0/me/sendMail, or /v1.0/me/messages/{id}/reply for an answer in its thread
+  arrivals what was received after a cursor time (proactive.py): inbox / Other inbox / Junk Email, every page
   recent   the newest inbox messages of the last minutes with their text and sender headers (a sign-in code: tools/login_code.py)
 Graph names a message by a long id; the tools speak in short numbers like IMAP's uids, so each id gets a number (UidMap, kept in the
 store, the newest MAX_UIDS per mailbox).
@@ -51,6 +52,8 @@ WELL_KNOWN = {"inbox": "inbox", "archive": "archive", "deleted items": "deletedi
               "junk": "junkemail", "junkemail": "junkemail", "spam": "junkemail", "outbox": "outbox"}
 READ_ONLY = ("Outlook was connected with \"Read only\", so mail can be read but not changed or sent. Ask the user to connect Outlook again "
              "in the Connectors tab and choose \"Mail, calendar and contacts\".")
+ARRIVAL_PAGE = 50           # messages per request when reading what arrived since the last look
+ARRIVAL_MARGIN = 120        # seconds the next look starts before this one did
 SELECT = "id,subject,from,receivedDateTime,isRead,inferenceClassification,internetMessageHeaders"
 
 
@@ -89,6 +92,13 @@ class UidMap:
         if missing:
             raise MailError(f"uid {missing[0]} is not one email_list gave for this mailbox; list the messages again")
         return [known[n] for n in numbers]
+
+
+def _iso(v: Any) -> float:
+    try:
+        return datetime.fromisoformat(str(v or "").replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
 
 
 def _who(r: Any) -> str:
@@ -201,6 +211,43 @@ class GraphMail:
         nums = self.uids.numbers([str(r["id"]) for r in rows])
         out = [self._row(r, n) for r, n in zip(rows, nums)]
         return [m for m in out if not m["bulk"]][:want] if skip_bulk else out
+
+    # ---- what arrived since the last look (proactive.py)
+    async def arrivals(self, account: str, cursor: dict[str, Any] | None, kind: str = "inbox") -> dict[str, Any] | None:
+        """{"rows": [...oldest first], "cursor": {"t": ISO time}} of what was received after the cursor, paged through Graph's $skip, every
+        page of it. kind "inbox": unread, Outlook's Focused inbox, no bulk headers; "promo": the Other inbox, unread; "junk": Junk Email,
+        read or not. No cursor (first time): nothing, and a cursor at now. The cursor is the time this look started minus a safety margin
+        (mail Graph shows a little late); the margin's overlap is left to the ledger. Raises MailError when Outlook can not be read."""
+        start = datetime.now(timezone.utc)
+        fresh = {"t": (start - timedelta(seconds=ARRIVAL_MARGIN)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+        if cursor is None or not str(cursor.get("t") or ""):
+            return {"rows": [], "cursor": fresh}
+        folder = "junkemail" if kind == "junk" else "inbox"
+        cond = [f"receivedDateTime gt {cursor['t']}"]
+        if kind != "junk":
+            cond.append("isRead eq false")
+            cond.append("inferenceClassification eq '%s'" % ("other" if kind == "promo" else "focused"))
+        rows: list[dict[str, Any]] = []
+        skip = 0
+        while True:
+            st, data = await self._call("GET", f"/me/mailFolders/{folder}/messages?" + urlencode({
+                "$filter": " and ".join(cond), "$orderby": "receivedDateTime asc", "$top": str(ARRIVAL_PAGE), "$skip": str(skip),
+                "$select": SELECT + ",bodyPreview"}), "proactive", f"new mail ({kind})")
+            if st != 200:
+                raise MailError(f"Outlook answered HTTP {st} for the new messages")
+            page = [r for r in data.get("value") or [] if isinstance(r, dict) and r.get("id")]
+            rows += page
+            if len(page) < ARRIVAL_PAGE:
+                break
+            skip += ARRIVAL_PAGE
+        nums = self.uids.numbers([str(r["id"]) for r in rows])
+        out = []
+        for r, n in zip(rows, nums):
+            row = self._row(r, n)
+            if kind == "inbox" and row["bulk"]:
+                continue
+            out.append({**row, "arrived": _iso(r.get("receivedDateTime")), "snippet": " ".join(str(r.get("bodyPreview") or "").split())[:300]})
+        return {"rows": out, "cursor": fresh}
 
     async def read(self, account: str, uid: str, folder: str = "INBOX") -> dict[str, Any]:
         if not re.fullmatch(r"\d{1,12}", uid or ""):

@@ -32,7 +32,7 @@ class ChatCardsTest {
     }
 
     private fun p(name: String, unofficial: Boolean = false, consent: Int? = null, version: Int = 1, vendor: String = "") =
-        ProviderInfo(name, name, unofficial = unofficial, vendor = vendor, consent = consent?.let { ProviderConsentRecord(1.0, it) }, consentVersion = version)
+        ProviderInfo(name, name, unofficial = unofficial, vendor = vendor, consent = consent?.let { ProviderConsentRecord(it) }, consentVersion = version)
 
     @Test fun unofficialProvidersGoLastUnderADivider() {
         val opts = listOf(
@@ -58,7 +58,6 @@ class ChatCardsTest {
         assertTrue(ProviderConsentRules.needs(p("claude-subscription", unofficial = true)))
         assertFalse(ProviderConsentRules.needs(p("claude-subscription", unofficial = true, consent = 1)))
         assertTrue(ProviderConsentRules.needs(p("claude-subscription", unofficial = true, consent = 1, version = 2)))
-        assertFalse(ProviderConsentRules.needs(ProviderConsentRules.accepted(p("qwen-oauth", unofficial = true, version = 3), 5.0)))
         assertEquals(1, ProviderConsentRules.group(p("x", unofficial = true)))
         assertEquals(0, ProviderConsentRules.group(p("x")))
     }

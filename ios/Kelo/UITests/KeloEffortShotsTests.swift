@@ -4,64 +4,13 @@ import XCTest
 /// KELO_MOCK_CUSTOM_EFFORT=levels (mock_parts/custom_effort.py: the main model is K-EXAONE on a custom endpoint, level 높음).
 /// Screens: `<tag>-effort-chip.png` (the chat's model chip with the level), `<tag>-effort-sheet.png` (the model sheet, levels open),
 /// `<tag>-effort-model.png` (My → Model with the 생각 수준 field). Other variables as KeloScreensTests. Skipped without KELO_EFFORT.
-final class KeloEffortShotsTests: XCTestCase {
-    private let env = ProcessInfo.processInfo.environment
-    private var lang: String { env["KELO_LANG"] ?? "en" }
-    private var tag: String { env["KELO_TAG"] ?? lang }
-    private var app: XCUIApplication!
+final class KeloEffortShotsTests: KeloShotCase {
 
-    private func w(_ en: String, _ ko: String) -> String { lang == "ko" ? ko : en }
-
-    override func setUp() { continueAfterFailure = true }
-
-    private func shot(_ name: String) {
-        let png = XCUIScreen.main.screenshot().pngRepresentation
-        let a = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
-        a.name = "\(tag)-\(name)"
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = env["KELO_SHOTS"] {
-            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-            try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(tag)-\(name).png"))
-        }
-    }
-
-    private func element(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@ OR identifier == %@", label, label)).firstMatch
-    }
-
-    private func pause(_ s: Double) { Thread.sleep(forTimeInterval: s) }
-
-    private func signIn(_ key: String) {
-        if element(w("Connect with access key", "접속 키로 연결하기")).waitForExistence(timeout: 10) {
-            element(w("Connect with access key", "접속 키로 연결하기")).tap()
-            let server = app.textFields.firstMatch
-            server.tap()
-            let cur = (server.value as? String) ?? ""
-            if !cur.isEmpty && cur != server.placeholderValue {
-                server.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: cur.count))
-            }
-            server.typeText(env["KELO_SERVER"]!)
-            let secure = app.secureTextFields.firstMatch
-            secure.tap()
-            secure.typeText(key)
-            let submit = app.buttons.matching(NSPredicate(format: "label == %@", w("Connect", "연결"))).firstMatch
-            if !submit.isHittable { app.swipeUp() }
-            submit.tap()
-        }
-        XCTAssertTrue(element("kelo.composer").waitForExistence(timeout: 25), "chat did not open\n\(app.debugDescription)")
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for target in [app!, springboard] {
-            for label in ["Not Now", "지금 안 함"] where target.buttons[label].waitForExistence(timeout: 1) { target.buttons[label].tap(); pause(1) }
-        }
-    }
 
     func testCustomEffort() throws {
         guard env["KELO_EFFORT"] == "1", env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no effort walk asked") }
-        app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(\(lang))", "-AppleLocale", lang == "ko" ? "ko_KR" : "en_US"]
-        app.launch()
-        signIn(key)
+        launchApp()
+        signIn(key, dismissNotifications: true)
         pause(3)
 
         let chip = element("kelo.modelChip")

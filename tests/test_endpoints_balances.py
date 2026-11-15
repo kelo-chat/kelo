@@ -262,7 +262,7 @@ async def test_usage_accounts_only_for_the_main_provider(monkeypatch):
         rows = {a["provider"]: a for a in res.json()["accounts"]}
         assert list(rows) == ["openrouter"]                                # deepseek and groq have keys but are not the main model
         o = rows["openrouter"]
-        assert set(o) == FIELDS and o["display_name"] == "OpenRouter" and o["currency"] == "USD" and o["error"] is None
+        assert set(o) == FIELDS | {"role"} and o["role"] == "main" and o["display_name"] == "OpenRouter" and o["currency"] == "USD" and o["error"] is None
         assert (o["used_today"], o["used_week"], o["used_month"], o["limit"], o["limit_remaining"]) == (0.25, 1.75, 7.5, 20, 12.5)
         assert o["balance"] is None                                        # an ordinary key may not read /credits
         assert o["checked_at"].endswith("Z")
@@ -444,3 +444,120 @@ async def test_custom_endpoint_by_container_name_sends_tools_and_gets_tool_calls
     assert seen["body"]["model"] == "auto" and seen["body"]["stream"] is True and seen["body"]["tools"] == tools
     assert [e for e in events if isinstance(e, ToolCall)] == [ToolCall("call_1", "web_search", '{"query": "weather"}')]
     assert events[-1] == Done("tool_calls")
+
+
+async def test_named_custom_endpoints(tmp_path):
+    import re
+    from assistant.providers.registry import set_user_endpoints
+    set_user_endpoints([])
+    clear_stored_base_urls()
+
+    db = str(tmp_path / "endpoints.db")
+    app = create_app(settings(db_path=db), tools=[])
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        # POST two endpoints
+        r1 = await c.post("/api/providers/custom-endpoints", json={"name": "Home Ollama", "base_url": "http://192.168.0.10:11434/v1"})
+        assert r1.status_code == 201
+        d1 = r1.json()
+        assert d1["id"] == "custom-home-ollama" and d1["name"] == "Home Ollama"
+        assert d1["base_url"] == "http://192.168.0.10:11434/v1" and d1["transport"] == "chat_completions"
+
+        r2 = await c.post("/api/providers/custom-endpoints", json={"name": "Work vLLM", "base_url": "http://10.0.0.5:8000/v1"})
+        assert r2.status_code == 201
+        d2 = r2.json()
+        assert d2["id"] == "custom-work-vllm" and d2["name"] == "Work vLLM"
+
+        # Both are listed with their display names and user_endpoint true
+        provs = {p["name"]: p for p in (await c.get("/api/providers")).json()}
+        assert "custom-home-ollama" in provs
+        assert provs["custom-home-ollama"]["display_name"] == "Home Ollama"
+        assert provs["custom-home-ollama"]["user_endpoint"] is True
+        assert provs["custom-home-ollama"]["base_url"] == "http://192.168.0.10:11434/v1"
+
+        assert "custom-work-vllm" in provs
+        assert provs["custom-work-vllm"]["display_name"] == "Work vLLM"
+        assert provs["custom-work-vllm"]["user_endpoint"] is True
+        assert provs["custom-work-vllm"]["base_url"] == "http://10.0.0.5:8000/v1"
+
+        # get_provider("custom-home-ollama") resolves and its base URL is the stored one
+        p_home = get_provider("custom-home-ollama")
+        assert p_home.display_name == "Home Ollama"
+        assert p_home.resolve_base_url() == "http://192.168.0.10:11434/v1"
+
+        # Name taken -> 409
+        r_taken = await c.post("/api/providers/custom-endpoints", json={"name": "home ollama", "base_url": "http://1.2.3.4:8000/v1"})
+        assert r_taken.status_code == 409 and r_taken.json()["code"] == "name_taken"
+
+        # Built-in custom display name taken -> 409
+        r_taken_custom = await c.post("/api/providers/custom-endpoints", json={"name": "custom", "base_url": "http://1.2.3.4:8000/v1"})
+        assert r_taken_custom.status_code == 409 and r_taken_custom.json()["code"] == "name_taken"
+
+        # Korean-only name gets a hex id
+        r_ko = await c.post("/api/providers/custom-endpoints", json={"name": "집", "base_url": "http://192.168.0.20:11434/v1"})
+        assert r_ko.status_code == 201
+        d_ko = r_ko.json()
+        assert d_ko["id"].startswith("custom-") and len(d_ko["id"]) == len("custom-") + 6
+        assert re.fullmatch(r"custom-[0-9a-f]{6}", d_ko["id"])
+
+        # 21st -> 409 too_many
+        # Currently we have 3 (Home Ollama, Work vLLM, 집). Add 17 more to reach 20.
+        for i in range(4, 21):
+            res = await c.post("/api/providers/custom-endpoints", json={"name": f"EP {i}", "base_url": f"http://10.0.0.{i}:8000/v1"})
+            assert res.status_code == 201
+        r_21 = await c.post("/api/providers/custom-endpoints", json={"name": "EP 21", "base_url": "http://10.0.0.21:8000/v1"})
+        assert r_21.status_code == 409 and r_21.json()["code"] == "too_many"
+
+        # PATCH rename and address
+        r_patch = await c.patch("/api/providers/custom-endpoints/custom-home-ollama",
+                                json={"name": "Home Ollama Renamed", "base_url": "http://192.168.0.11:11434/v1"})
+        assert r_patch.status_code == 200
+        assert r_patch.json()["name"] == "Home Ollama Renamed"
+        assert r_patch.json()["base_url"] == "http://192.168.0.11:11434/v1"
+        assert get_provider("custom-home-ollama").display_name == "Home Ollama Renamed"
+        assert get_provider("custom-home-ollama").resolve_base_url() == "http://192.168.0.11:11434/v1"
+
+        # Set as main model
+        await c.put("/api/profile", json={"provider": "custom-home-ollama", "model": "llama3"})
+
+        # DELETE: 409 in_use while it is the main model
+        r_del_inuse = await c.delete("/api/providers/custom-endpoints/custom-home-ollama")
+        assert r_del_inuse.status_code == 409 and r_del_inuse.json()["code"] == "in_use"
+
+        # Main = one endpoint, fallback = another on a different host -> accepted
+        r_diff_host = await c.put("/api/profile", json={"fallback_provider": "custom-work-vllm", "fallback_model": "mistral"})
+        assert r_diff_host.status_code == 200
+        assert r_diff_host.json()["fallback_provider"] == "custom-work-vllm"
+
+        # Clear fallback first, then patch Work vLLM to have same host as Home Ollama (192.168.0.11)
+        await c.put("/api/profile", json={"fallback_provider": "", "fallback_model": ""})
+        await c.patch("/api/providers/custom-endpoints/custom-work-vllm", json={"base_url": "http://192.168.0.11:9000/v1"})
+        # Trying to set fallback to same host -> refused by the rule (422)
+        r_same_host = await c.put("/api/profile", json={"fallback_provider": "custom-work-vllm", "fallback_model": "mistral"})
+        assert r_same_host.status_code == 422
+        assert "different provider than the main model" in r_same_host.json()["detail"]
+
+        # Switch main model away from custom-home-ollama, then DELETE removes it
+        await c.put("/api/profile", json={"provider": "openai", "model": "gpt-4o", "fallback_provider": "", "fallback_model": ""})
+        r_del = await c.delete("/api/providers/custom-endpoints/custom-home-ollama")
+        assert r_del.status_code == 200
+        provs = {p["name"]: p for p in (await c.get("/api/providers")).json()}
+        assert "custom-home-ollama" not in provs
+
+        # Also test PUT /api/providers/custom/name
+        r_cname = await c.put("/api/providers/custom/name", json={"name": "My Ollama"})
+        assert r_cname.status_code == 200
+        provs = {p["name"]: p for p in (await c.get("/api/providers")).json()}
+        assert provs["custom"]["display_name"] == "My Ollama"
+
+    # After a restart (a new create_app on the same database), the endpoints and their addresses are back
+    set_user_endpoints([])
+    clear_stored_base_urls()
+    app2 = create_app(settings(db_path=db), tools=[])
+    async with Running(app2) as srv2, httpx.AsyncClient(base_url=srv2.url, headers=AUTH) as c2:
+        provs2 = {p["name"]: p for p in (await c2.get("/api/providers")).json()}
+        assert "custom-work-vllm" in provs2
+        assert provs2["custom-work-vllm"]["display_name"] == "Work vLLM"
+        assert provs2["custom-work-vllm"]["base_url"] == "http://192.168.0.11:9000/v1"
+        assert provs2["custom-work-vllm"]["user_endpoint"] is True
+        assert get_provider("custom-work-vllm").resolve_base_url() == "http://192.168.0.11:9000/v1"
+        assert provs2["custom"]["display_name"] == "My Ollama"

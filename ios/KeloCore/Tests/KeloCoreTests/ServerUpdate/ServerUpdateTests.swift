@@ -176,8 +176,6 @@ import Foundation
     @Test func stepsClockAndDate() {
         #expect(ServerUpdateRules.step(job("running", step: "self_update")) == "self_update")
         #expect(ServerUpdateRules.step(job("running", step: "warp")) == nil)
-        #expect(ServerUpdateRules.restarting(job("running", step: "restart")))
-        #expect(!ServerUpdateRules.restarting(job("running", step: "download")))
         #expect(ServerUpdateRules.fraction(job("running", progress: 25)) == 0.25)
         #expect(ServerUpdateRules.clock("03:50")! == (3, 50))
         #expect(ServerUpdateRules.clock("23:05:00")! == (23, 5))

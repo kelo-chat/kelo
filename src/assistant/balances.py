@@ -1,4 +1,4 @@
-"""Balance and spend reported by API-key providers, for GET /api/usage `accounts`.
+"""Balance and spend reported by API-key providers, for GET /api/usage `accounts` (each entry has a `role`: main, background, or fallback).
 
 Only providers with an official, documented endpoint that answers to the SAME key used for chat are asked (checked against
 each provider's docs, 2026-11):
@@ -20,7 +20,8 @@ each provider's docs, 2026-11):
               (the key needs the `billing:read` scope, which new keys do not have; without it the row says so)
 
 Every other API-key provider gets a row with `error` saying the service doesn't report its balance (some do report it, but only
-to an admin / management key, which Kelo does not ask for). Requests go through netguard (https, the provider's fixed host, public
+to an admin / management key). An admin key the owner adds (ADMIN below, kept in the key container) is read the same way and
+overlays the row. Requests go through netguard (https, the provider's fixed host, public
 addresses, no redirects), never to a user-set base URL, so a key only ever reaches its own provider. The answer never contains a
 key or a response body.
 
@@ -52,7 +53,11 @@ _ACCOUNT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
 
 
 class BalanceError(Exception):
-    """A short, safe sentence for the app."""
+    """A short, safe sentence for the app. `refused` is True when the provider turned the key away (HTTP 401 / 403)."""
+
+    def __init__(self, message: str = "", *, refused: bool = False):
+        super().__init__(message)
+        self.refused = refused
 
 
 def key_id(key: str | None) -> str:
@@ -88,13 +93,16 @@ def row(prov: Provider, **values: Any) -> dict[str, Any]:
 Get = Callable[[str, str], Awaitable[tuple[int, Any]]]
 
 
-def _getter(key: str, transport: httpx.AsyncBaseTransport | None, resolver: Callable[..., list] | None) -> Get:
+def _getter(key: str, transport: httpx.AsyncBaseTransport | None, resolver: Callable[..., list] | None, style: str = "") -> Get:
+    if style == "anthropic":
+        auth = {"x-api-key": key, "anthropic-version": "2023-06-01", "accept": "application/json"}
+    else:
+        auth = {"authorization": f"Bearer {key}", "accept": "application/json", "content-type": "application/json"}
+
     async def get(host: str, path: str) -> tuple[int, Any]:
         try:
             r = await fetch("GET", f"https://{host}{path}", allowed_hosts=[host], timeout=TIMEOUT,
-                            headers={"authorization": f"Bearer {key}", "accept": "application/json",
-                                     "content-type": "application/json"},
-                            transport=transport, resolver=resolver)
+                            headers=auth, transport=transport, resolver=resolver)
         except NetGuardError:
             raise BalanceError(t("Could not reach the provider")) from None
         try:
@@ -107,7 +115,7 @@ def _getter(key: str, transport: httpx.AsyncBaseTransport | None, resolver: Call
 
 def _http_error(status: int) -> BalanceError:
     if status in (401, 403):
-        return BalanceError(t("The key was refused (HTTP {status}). Check the key", status=status))
+        return BalanceError(t("The key was refused (HTTP {status}). Check the key", status=status), refused=True)
     if status == 429:
         return BalanceError(t("Too many requests (HTTP 429). Check again in a moment"))
     return BalanceError(t("Could not get the balance (HTTP {status})", status=status))
@@ -286,6 +294,88 @@ FETCHERS: dict[str, Callable[[Provider, Get, str], Awaitable[dict[str, Any]]]] =
     "fireworks": _fireworks,
     "deepinfra": _deepinfra,
 }
+
+# Admin (billing) keys (backlog 61b): kept in the key container as "admin:<provider>", which lets them through only as a GET on these
+# paths of this host. They report what the chat key cannot: spend (OpenAI, Anthropic) or the balance (OpenRouter).
+ADMIN: dict[str, dict[str, Any]] = {
+    "openai": {"host": "api.openai.com", "paths": ["/v1/organization/costs"]},
+    "anthropic": {"host": "api.anthropic.com", "paths": ["/v1/organizations/cost_report"]},
+    "openrouter": {"host": "openrouter.ai", "paths": ["/api/v1/credits"]},
+}
+
+
+def admin_name(provider: str) -> str:
+    return f"admin:{provider}"
+
+
+def _month_start() -> datetime:
+    now = _today()
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+async def _admin_openai(get: Get) -> dict[str, Any]:
+    start = _month_start()
+    status, body = await get("api.openai.com", f"/v1/organization/costs?start_time={int(start.timestamp())}&bucket_width=1d&limit=31")
+    if status != 200 or not isinstance(body, dict) or not isinstance(body.get("data"), list):
+        raise _http_error(status) if status != 200 else BalanceError(t("The provider answered in an unknown format"))
+    today_start = int(_today().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+    month: list[float | None] = []
+    today: list[float | None] = []
+    for b in body["data"]:
+        if not isinstance(b, dict):
+            continue
+        vals = [_num((r.get("amount") or {}).get("value")) for r in (b.get("results") or []) if isinstance(r, dict)]
+        month += vals
+        if isinstance(b.get("start_time"), (int, float)) and b["start_time"] >= today_start:
+            today += vals
+    return {"used_month": _sum(month) or 0.0, "used_today": _sum(today) or 0.0}
+
+
+async def _admin_anthropic(get: Get) -> dict[str, Any]:
+    start = _month_start().strftime("%Y-%m-%dT00:00:00Z")
+    status, body = await get("api.anthropic.com", f"/v1/organizations/cost_report?starting_at={start}&bucket_width=1d&limit=31")
+    if status != 200 or not isinstance(body, dict) or not isinstance(body.get("data"), list):
+        raise _http_error(status) if status != 200 else BalanceError(t("The provider answered in an unknown format"))
+    day = _today().strftime("%Y-%m-%d")
+    month: list[float | None] = []
+    today: list[float | None] = []
+    for b in body["data"]:
+        if not isinstance(b, dict):
+            continue
+        vals = [(_num(r.get("amount")) or 0.0) / 100 for r in (b.get("results") or []) if isinstance(r, dict)]   # cents
+        month += vals
+        if str(b.get("starting_at") or "").startswith(day):
+            today += vals
+    return {"used_month": round(_sum(month) or 0.0, 4), "used_today": round(_sum(today) or 0.0, 4)}
+
+
+async def _admin_openrouter(get: Get) -> dict[str, Any]:
+    status, body = await get("openrouter.ai", "/api/v1/credits")
+    c = body.get("data") if isinstance(body, dict) else None
+    if status != 200 or not isinstance(c, dict):
+        raise _http_error(status) if status != 200 else BalanceError(t("The provider answered in an unknown format"))
+    total, used = _num(c.get("total_credits")), _num(c.get("total_usage"))
+    if total is None or used is None:
+        raise BalanceError(t("The provider answered in an unknown format"))
+    return {"balance": round(total - used, 6)}
+
+
+ADMIN_FETCHERS = {"openai": _admin_openai, "anthropic": _admin_anthropic, "openrouter": _admin_openrouter}
+
+
+async def admin_values(prov: Provider, *, transport: httpx.AsyncBaseTransport | None = None,
+                       resolver: Callable[..., list] | None = None, placeholder: str = "KELO_KEYRING_SECRET") -> dict[str, Any]:
+    """What the admin key reports for this provider (balance / used_today / used_month), through the key container's transport.
+    Raises BalanceError."""
+    fn = ADMIN_FETCHERS.get(prov.name)
+    if fn is None:
+        raise BalanceError(t("This service doesn't report its balance."))
+    try:
+        return await fn(_getter(placeholder, transport, resolver, style=prov.name))
+    except BalanceError:
+        raise
+    except Exception:  # noqa: BLE001 - a surprise in the answer's shape must not break /api/usage or the key check
+        raise BalanceError(t("The provider answered in an unknown format")) from None
 
 
 async def account(prov: Provider, key: str | None, *, transport: httpx.AsyncBaseTransport | None = None,

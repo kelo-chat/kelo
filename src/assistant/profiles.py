@@ -64,7 +64,7 @@ MEASURED = {
                       "and a 768 MB browser starts losing pages when several phones browse at once",
     "browser_cpus": "four heavy sites, slowest page: 1.7 s at 2 CPUs, 2.0 s at 1 CPU, 13 s at 0.5 CPU",
     "cli_memory": "agy: 52 MB idle, 184 MB peak during a short answer (Claude's CLI was not measured; it is assumed similar)",
-    "disk": "an empty assistant is about 0.1 MB; one upload may be up to 100 MB (the per-file cap, under Cloudflare's body limit; a photo at most 15 MB, a document usually "
+    "disk": "an empty assistant is about 0.1 MB; an upload has no size limit of its own (big files go up in 90 MB parts, so Cloudflare's 100 MB request limit does not matter; a photo is at most 15 MB, a document usually "
             "under 25 MB) and is refused when it would pass this cap or the disk's free space; a generated image is about 1-3 MB; "
             "previews of photos and videos about 20-200 KB each",
     "browser_cache": "the browser's own page cache; only grows with browsing",

@@ -101,7 +101,7 @@ def test_kelo_main_copy_needs_a_name_and_a_new_name_gives_the_old_one_back(tmp_p
 
 
 @pytest.mark.parametrize("reply,text", [(Reply(409, {"detail": "alice.kelo.chat is taken; pick another name"}), "taken"),
-                                        (Reply(503, {"detail": "no free Kelo addresses are left right now."}), "no free"),
+                                        (Reply(503, {"detail": "no Kelo addresses are available right now."}), "no Kelo addresses"),
                                         (Reply(404, {"detail": "nope"}), "does not hand out"),
                                         (Reply(429, {"detail": "slow"}), "too many"),
                                         (Reply(200, {"hostname": "evil.example.com", "tunnel_token": TUNNEL_TOKEN}), "does not fit")])
@@ -290,7 +290,7 @@ def test_proxy_mode_expresses_the_owners_npm_setup_and_restores_the_old_binding(
     env.write_text(env.read_text() + "SERVER_BIND=10.0.0.2\n")
     url, settings, notes = connect.domain_proxy(m, m.load(), "kelo.me.duckdns.org", get=no_health)
     assert url == "https://kelo.me.duckdns.org"
-    assert "http://192.168.1.20:8080" in settings and "proxy_buffering off" in settings and "client_max_body_size 30m" in settings
+    assert "http://192.168.1.20:8080" in settings and "proxy_buffering off" in settings and "client_max_body_size 0;" in settings
     assert "300s" in settings and "websockets" in settings
     assert (read_env(env, "SERVER_BIND"), read_env(env, "CONNECT_MODE"), read_env(env, "ASSISTANT_PUBLIC_URL")) == ("0.0.0.0", "proxy", url)
     assert read_env(env, "CONNECT_HOST") == "kelo.me.duckdns.org"
@@ -374,7 +374,7 @@ def test_switching_from_kelo_to_own_domain_releases_the_name_first(tmp_path, mon
                           bind=None, duckdns=False), m) == 0
     assert broker.calls[-1][0].endswith("/release") and m.load().connect_mode == "proxy"
     text = "\n".join(msgs)
-    assert "Turning off free Kelo address" in text and "http://192.168.1.20:8080" in text and "is open at https://kelo.me.duckdns.org" in text
+    assert "Turning off Kelo address" in text and "http://192.168.1.20:8080" in text and "is open at https://kelo.me.duckdns.org" in text
     assert read_env(tmp_path / ".env", "COMPOSE_PROFILES") == "claude,agy"
 
 
@@ -396,7 +396,7 @@ def test_a_copy_without_a_browser_starts_its_kelo_tunnel(tmp_path):
     m.create("alice", browser=False)
     connect.kelo_connect(m, m.load("alice"), post=Broker())
     m.start("alice", build_if_missing=False)
-    assert [c for c in run.calls if "up" in c][-1][-4:] == ["--no-deps", "server", "kelo-tunnel", "workroom"]
+    assert [c for c in run.calls if "up" in c][-1][-5:] == ["--no-deps", "server", "kelo-tunnel", "workroom", "vpn"]
 
 
 def test_the_real_command_line_knows_the_new_ways(tmp_path, monkeypatch, capsys):
@@ -466,9 +466,9 @@ def test_create_in_a_terminal_not_now_prints_each_command_on_its_own_line(tmp_pa
     tail = msgs[msgs.index('Kelo "alice" is running: http://127.0.0.1:8100 (this Mac only)'):]
     assert tail == ['Kelo "alice" is running: http://127.0.0.1:8100 (this Mac only)', "",
                     "Reach it from your phone (pick one):",
-                    "    Default address   assistant connect kelo --instance alice --name <name>",
-                    "    Tailscale         assistant connect tailscale --instance alice",
-                    "    Own domain        assistant connect domain --instance alice --host <address> --proxy", "",
+                    "    Kelo address (offered for now)   assistant connect kelo --instance alice --name <name>",
+                    "    " + "Tailscale".ljust(33) + "assistant connect tailscale --instance alice",
+                    "    " + "Own domain".ljust(33) + "assistant connect domain --instance alice --host <address> --proxy", "",
                     "Then connect a phone (shows a QR code):",
                     "    assistant phone add --instance alice"]
     assert not any("Next:" in line for line in msgs)
@@ -502,8 +502,8 @@ def test_create_without_a_terminal_asks_nothing_and_speaks_the_system_language(t
     assert run_command(create(), m) == 0                   # no ui: a script, or --yes
     text = "\n".join(msgs)
     assert "휴대폰에서 접속할 방법 (하나 선택):" in text and "그다음 휴대폰 연결 (QR 코드 표시):" in text
-    assert "    기본 제공 도메인   assistant connect kelo --instance alice --name <name>" in msgs
-    assert "    Tailscale          assistant connect tailscale --instance alice" in msgs   # lined up: Korean letters take two cells
+    assert "    Kelo 주소 (현재 한정 제공)   assistant connect kelo --instance alice --name <name>" in msgs
+    assert "    Tailscale" + " " * 20 + "assistant connect tailscale --instance alice" in msgs   # lined up: Korean letters take two cells
     assert msgs[-1] == "    assistant phone add --instance alice"
     assert "내 컴퓨터" not in text and "your computer" not in text
 
@@ -543,7 +543,7 @@ def test_create_in_a_real_looking_terminal_renders_the_menu(tmp_path, monkeypatc
     assert run_command(create(), m, ui=ui) == 0
     screen = buf.getvalue()
     assert "Where should your phone reach Kelo?" in screen and "\x1b[" not in screen
-    assert "1) Free address: alice.kelo.chat  ready in a minute; works from anywhere" in screen
+    assert "1) Kelo address (offered for now): alice.kelo.chat ready in a minute; works from anywhere" in " ".join(screen.split())
     assert "2) Tailscale or my own domain  needs setup on your side" in screen
     assert "3) Skip for now  the phone can't connect until an address is set" in screen
     assert "Type 1-3 and press Enter (Enter alone = 1):" in screen

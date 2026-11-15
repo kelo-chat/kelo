@@ -12,6 +12,7 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
     case paymentAuto(PaymentAuto)
     case vault(Vault)
     case connect(Connect)
+    case keySaved(KeySaved)
     case shipping(Shipping)
     /// A secure entry the agent asked for (a key, a login or a card), right where it asked; it stays open after the reply ends
     /// (the server keeps it until it is answered) and folds into one line once answered.
@@ -31,6 +32,7 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         case .paymentAuto(let p): p.key
         case .vault(let v): v.key
         case .connect(let c): c.key
+        case .keySaved(let k): k.key
         case .shipping(let s): s.key
         case .secret(let s): s.key
         case .locationAsk(let l): l.key
@@ -58,6 +60,7 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         public var reaction: String
         /// The morning briefing's card: shown instead of the plain bubble.
         public var briefing: BriefingCard?
+        public var comparison: ComparisonCard?
         /// Screenshots Kelo showed with this reply, under its text (a reply of only pictures has no bubble).
         public var images: [ChatImage]
         /// The user's message: the files sent with it (pictures as thumbnails, other files as chips).
@@ -65,9 +68,9 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         /// The text is the app's own sentence ("read and summarise …"): only `files` show.
         public var autoText: Bool
         public init(key: String, mine: Bool, text: String, id: Int64? = nil, replies: ReplySet? = nil, at: Int64 = 0, reaction: String = "",
-                    briefing: BriefingCard? = nil, images: [ChatImage] = [], files: [MessageFile] = [], autoText: Bool = false) {
+                    briefing: BriefingCard? = nil, comparison: ComparisonCard? = nil, images: [ChatImage] = [], files: [MessageFile] = [], autoText: Bool = false) {
             self.key = key; self.mine = mine; self.text = text; self.id = id; self.replies = replies; self.at = at; self.reaction = reaction
-            self.briefing = briefing; self.images = images; self.files = files; self.autoText = autoText
+            self.briefing = briefing; self.comparison = comparison; self.images = images; self.files = files; self.autoText = autoText
         }
     }
 
@@ -101,7 +104,7 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
     /// A tool waiting for the user's yes or no. `answer`: what this phone said (true = allowed), or what the tool's result shows when
     /// answered elsewhere. `expired`: nobody answered and it can no longer be answered.
     public struct Approval: Equatable, Sendable {
-        public var key: String, id: String, name: String, args: String, detail: String?
+        public var key: String, id: String, name: String, detail: String?
         public var answer: Bool? = nil
         public var expired = false
         public var label = ""
@@ -109,6 +112,8 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         public var card: ApprovalCardInfo? = nil
         public var send: CardSend = .idle
         public var canRememberSchedule = false
+        public var site = ""
+        public var canRemember = false
         public var lines: [ApprovalLine] = []
         /// The server's whole question for the title ("" from an older server).
         public var ask = ""
@@ -122,7 +127,6 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         /// The site's saved payment PIN that Allow also releases from this phone.
         public var pin: PinAsk? = nil
 
-        public var answered: Bool { answer != nil }
         public var open: Bool { answer == nil && !expired }
         public var shown: String { label.isEmpty ? name : label }
         public var needsCard: Bool { card?.needsCard == true }
@@ -132,7 +136,7 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
     /// site and picture; `id` is the newest step's tool call). `recent`: the last few different pictures, oldest first. `hosts`: the
     /// sites it went through in this reply, in order.
     public struct Browser: Equatable, Sendable {
-        public var key: String, id: String, title: String, host: String, url: String, status: String
+        public var key: String, id: String, title: String, host: String, status: String
         public var image: String?
         public var width = 0
         public var height = 0
@@ -170,6 +174,18 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
     public struct Connect: Equatable, Sendable {
         public var key: String, service: String
         public var state: CardState = .open
+    }
+
+    public struct KeySaved: Equatable, Sendable {
+        public let key: String
+        public let name: String
+        public let hosts: [String]
+
+        public init(key: String, name: String, hosts: [String]) {
+            self.key = key
+            self.name = name
+            self.hosts = hosts
+        }
     }
 
     /// The agent asked where an order goes (shipping_form): the address form. OPEN takes input; DONE folds into one line
@@ -217,7 +233,6 @@ public enum ChatError: Equatable, Sendable {
     /// A 400 when starting a reply: no usable model
     case pickModel(String)
     case network
-    case tooLarge
     case unsupported(String)
     case shareFailed
     case cameraDenied
@@ -232,6 +247,22 @@ public struct Phase: Equatable, Sendable {
     public var label: String?
     public var since: Double
     public init(_ kind: PhaseKind, label: String? = nil, since: Double) { self.kind = kind; self.label = label; self.since = since }
+}
+
+/// The server's line after `save_found_secret` (connect_tools.py) as a card's facts; pure, so it is tested.
+public enum KeySavedRules {
+    private static let line = try? NSRegularExpression(pattern: "^Saved the key for '([^']+)' in the keychain \\(hosts: ([^)]*)\\)")
+
+    public static func parse(_ output: String) -> (name: String, hosts: [String])? {
+        guard let re = line else { return nil }
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ns = trimmed as NSString
+        guard let m = re.firstMatch(in: trimmed, range: NSRange(location: 0, length: ns.length)) else { return nil }
+        let name = ns.substring(with: m.range(at: 1))
+        let hostsRaw = ns.substring(with: m.range(at: 2))
+        let hosts = hostsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return (name, hosts)
+    }
 }
 
 /// Android ChatReducer: the list after each event, the status line, answers, the end of a reply.
@@ -304,6 +335,10 @@ public enum ChatReducer {
                 supersede(&next) { if case .connect(let c) = $0 { return c.service == service }; return false }
                 next.append(.connect(.init(key: newKey(), service: service)))
             }
+            if r.name == "save_found_secret" && !r.isError, let s = KeySavedRules.parse(r.output) {
+                supersede(&next) { if case .keySaved(let k) = $0 { return k.name == s.name }; return false }
+                next.append(.keySaved(.init(key: newKey(), name: s.name, hosts: s.hosts)))
+            }
             // a login or a key was asked for: the secure form appears right here (a refused request shows no form). A server that
             // shows secure entries sent a secret_request for it already: no second form.
             if (r.name == "request_login" || r.name == "request_api_access") && r.approved != false && !r.isError,
@@ -328,9 +363,11 @@ public enum ChatReducer {
             }
         case .approvalRequest(let a):
             next.append(.approval(.init(
-                key: newKey(), id: a.approvalId, name: a.name, args: TurnEvent.prettyArgs(a.arguments), detail: a.detail,
+                key: newKey(), id: a.approvalId, name: a.name, detail: a.detail,
                 label: a.label, payment: a.payment, card: a.card,
-                canRememberSchedule: a.canRememberSchedule && a.payment == nil, lines: a.lines, ask: a.ask,
+                canRememberSchedule: a.canRememberSchedule && a.payment == nil,
+                site: a.site, canRemember: a.canRemember && a.payment == nil && a.grant == nil,
+                lines: a.lines, ask: a.ask,
                 grant: a.grant, urgent: a.urgent, missed: a.missed, items: a.items, pin: a.pin)))
         case .browser(let b):
             // one live card per reply and tab: a new step, or another site in the same tab, updates it; only a new tab adds one
@@ -347,7 +384,7 @@ public enum ChatReducer {
             var hosts = old?.hosts ?? []
             if !b.host.isEmpty && !hosts.contains(b.host) { hosts.append(b.host) }
             let card = ChatItem.Browser(
-                key: old?.key ?? newKey(), id: b.id, title: b.title, host: b.host, url: b.url, status: b.status,
+                key: old?.key ?? newKey(), id: b.id, title: b.title, host: b.host, status: b.status,
                 image: b.image ?? old?.image,
                 width: b.image != nil ? b.width : (old?.width ?? 0), height: b.image != nil ? b.height : (old?.height ?? 0),
                 recent: filmstrip(old?.recent ?? [], b.image), tab: b.tab.isEmpty ? (old?.tab ?? "") : b.tab, hosts: hosts)
@@ -498,14 +535,6 @@ public enum ChatReducer {
             }
         }
         return out
-    }
-
-    /// A folded chip's state: running while any call runs; else OK when any call did its work; else the first call's state.
-    public static func foldedState(_ t: ChatItem.Tool) -> ToolState {
-        let m = t.members.isEmpty ? [t] : t.members
-        if m.contains(where: { $0.state == .running }) { return .running }
-        if m.contains(where: { $0.state == .ok }) { return .ok }
-        return m[0].state
     }
 
     /// How many things the calls of a folded chip that did their work were about: the same photo (or page, message, event) looked at
@@ -751,12 +780,13 @@ public enum ChatReducer {
     /// A stored message as a row.
     public static func item(_ m: ChatMessage) -> ChatItem {
         .msg(.init(key: "m\(m.id)", mine: m.role == "user", text: m.content, id: m.id, replies: m.replies, at: Int64(m.createdAt * 1000),
-                   reaction: m.reaction, briefing: m.briefing, images: m.images, files: m.attachments, autoText: m.autoText))
+                   reaction: m.reaction, briefing: m.briefing, comparison: m.comparison, images: m.images, files: m.attachments, autoText: m.autoText))
     }
 
-    /// The server's "replies" event (answer buttons on the stored message): KeloCore keeps it as an unknown type.
+    /// The server's "replies" or "comparison" event: answer buttons or a comparison card was attached, KeloCore keeps it as an unknown type.
     public static func isReplies(_ ev: TurnEvent) -> Bool {
         if case .unknown("replies") = ev { return true }
+        if case .unknown("comparison") = ev { return true }
         return false
     }
 }

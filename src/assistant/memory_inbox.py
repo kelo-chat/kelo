@@ -115,9 +115,8 @@ def inbox_tools(inbox: MemoryInbox, source_id: Callable[[], int | None] = lambda
 
     return [Tool(
         "remember",
-        "Note something worth keeping the moment it comes up: a lasting fact about the user or someone in their life, a preference or "
-        "standing instruction, a correction of something you had wrong, a commitment, or a lesson about how to work here. One short "
-        "line in the user's words; it is filed into your notes later. Only what the user said themselves, never your own reading of "
-        "their words or of connected data (mail, contacts, calendar, files); not for passing details of a task, and never secrets.",
+        "Note something worth keeping the moment it comes up, as one short line in the user's words (filed into your notes later). "
+        "Only what the user said themselves, never your reading of their words or of connected data; not passing task details; "
+        "never secrets.",
         {"type": "object", "properties": {"text": {"type": "string"}, "kind": {"type": "string", "enum": list(KINDS)}}, "required": ["text"]},
         remember)]

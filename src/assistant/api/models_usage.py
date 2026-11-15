@@ -18,6 +18,7 @@ from ..effort import refused_for as effort_refused, refused_note as effort_refus
 from ..models import label_all, model_list
 from ..providers import ProviderError, get_provider
 from .. import balances
+from ..keyring_client import PLACEHOLDER, KeyringTransport
 from fastapi import APIRouter
 from .context import AppContext
 
@@ -28,6 +29,7 @@ def router(ctx: AppContext) -> APIRouter:
     background_model = ctx.background_model
     balance_resolver = ctx.balance_resolver
     balance_transport = ctx.balance_transport
+    keyring = ctx.keyring
     limit_guard = ctx.limit_guard
     meta_json = ctx.meta_json
     models_client = ctx.models_client
@@ -53,24 +55,27 @@ def router(ctx: AppContext) -> APIRouter:
     def model_info(provider: str, found: list[str]) -> dict[str, dict[str, Any]]:
         """What the app's model list can say about each model without guessing: whether it can be shown pictures (per provider,
         providers/vision.py) and its context window when the provider's own list or the published table says (never the default)."""
-        pk = provider_key(provider)
-        stored = meta_json(f"model_windows:{pk}")
-        images = supports_images(pk)
+        try:
+            pname = get_provider(provider).name
+        except KeyError:
+            pname = provider
+        stored = meta_json(f"model_windows:{pname}")
+        images = supports_images(pname)
         out: dict[str, dict[str, Any]] = {}
-        stated = effort_listed(pk)
+        stated = effort_listed(pname)
         for m in found:
-            w = windows.lookup(pk, m, overrides=settings.context_overrides, stored=stored)
+            w = windows.lookup(pname, m, overrides=settings.context_overrides, stored=stored)
             out[m] = {"images": images, "context": w.context if w.source in ("override", "provider", "table") else None}
             if m in stated:   # the thinking levels the provider's list states for this model ([] = none); else the provider's
                 out[m]["effort_levels"] = list(stated[m])
         try:
-            base = get_provider(pk).resolve_base_url(None, None)
+            base = get_provider(pname).resolve_base_url(None, None)
         except KeyError:
             base = ""
         prof = store.profile()
-        mine = [prof["model"]] if provider_key(prof["provider"] or "") == pk and prof["model"] else []
+        mine = [prof["model"]] if provider_key(prof["provider"] or "") == provider_key(pname) and prof["model"] else []
         for m in dict.fromkeys([*found, *mine]):
-            if effort_refused(pk, base, m):   # the server turned the thinking level away: no levels, a quiet note instead
+            if effort_refused(pname, base, m):   # the server turned the thinking level away: no levels, a quiet note instead
                 out.setdefault(m, {"images": images, "context": None})
                 out[m]["effort_levels"] = []
                 out[m]["effort_note"] = effort_refused_note()
@@ -108,9 +113,10 @@ def router(ctx: AppContext) -> APIRouter:
             prov = get_provider(provider)
         except KeyError:
             raise HTTPException(404, f"unknown provider {provider!r}") from None
-        client = await models_http()
+        in_ring = keyring.has(prov.name)   # the key is in the key container: the list is asked through it, with a placeholder
+        client = keyring.client_for(prov.name, httpx.Timeout(10.0, connect=5.0)) if in_ring else await models_http()
         try:
-            res = await model_list(prov, client, refresh=refresh, api_key=store.key(prov.name),
+            res = await model_list(prov, client, refresh=refresh, api_key=PLACEHOLDER if in_ring else store.key(prov.name),
                                    load=lambda: meta_json(f"models_last:{prov.name}"),
                                    save=lambda good: store.set_meta(f"models_last:{prov.name}", json.dumps(good)))
             if not res["stale"] and res["models"] and (seen := windows.provider_windows(prov.name)):
@@ -125,15 +131,7 @@ def router(ctx: AppContext) -> APIRouter:
 
     usage_cache = ctx.usage_cache   # provider -> (when, answer); a sign-in or sign-out empties its entry (api/providers.py)
 
-    async def subscription_usage(refresh: bool) -> dict[str, Any] | None:
-        """What the selected CLI provider's own `/usage` reports (session/week limits), if it has one."""
-        provider = store.profile()["provider"] or settings.provider
-        try:
-            name = get_provider(provider).name if provider else ""
-        except KeyError:
-            return None
-        if name not in (cli_manage.CLAUDE, cli_manage.AGY):
-            return None
+    async def one_subscription(name: str, refresh: bool) -> dict[str, Any]:
         hit = usage_cache.get(name)
         if hit and not refresh and time.monotonic() - hit[0] < 60:
             return hit[1]
@@ -145,48 +143,121 @@ def router(ctx: AppContext) -> APIRouter:
         usage_cache[name] = (time.monotonic(), res)
         return res
 
-    account_cache: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+    async def subscriptions_usage(refresh: bool) -> list[dict[str, Any]]:
+        """Per-role subscription usage for each distinct CLI provider (CLAUDE or AGY) among main, background, and fallback."""
+        prof = store.profile()
+        candidates: list[tuple[str, str]] = []  # (name, role)
+        seen_names: set[str] = set()
+
+        def collect(raw_name: str | None, role: str) -> None:
+            if not raw_name:
+                return
+            try:
+                name = get_provider(raw_name).name
+            except KeyError:
+                return
+            if name in seen_names:
+                return
+            if name not in (cli_manage.CLAUDE, cli_manage.AGY):
+                return
+            seen_names.add(name)
+            candidates.append((name, role))
+
+        collect(prof["provider"] or settings.provider, "main")
+        bg = background_model()
+        if bg:
+            collect(bg[0], "background")
+        fp = prof.get("fallback_provider") or ""
+        if fp:
+            collect(fp, "fallback")
+
+        results: list[dict[str, Any]] = []
+        for name, role in candidates:
+            entry = await one_subscription(name, refresh)
+            results.append({**entry, "role": role})
+        return results
+
+    async def subscription_usage(refresh: bool) -> dict[str, Any] | None:
+        """What the selected CLI provider's own `/usage` reports (session/week limits), if it has one."""
+        provider = store.profile()["provider"] or settings.provider
+        try:
+            name = get_provider(provider).name if provider else ""
+        except KeyError:
+            return None
+        if name not in (cli_manage.CLAUDE, cli_manage.AGY):
+            return None
+        return await one_subscription(name, refresh)
+
+    account_cache = ctx.account_cache   # (provider, key id or "keyring", admin key set) -> (when, row); api/providers.py clears it
 
     async def provider_accounts(refresh: bool) -> list[dict[str, Any]]:
-        """Balance and spend of the main model's provider only (and only when it is an API-key provider). Other providers with
-        a stored key stay out of the usage screen. Cached a minute per provider and key; a key is never part of the answer."""
+        """Balance and spend of the main model's provider, background provider, and fallback provider (only API-key providers).
+        Other providers with a stored key stay out of the usage screen. Cached a minute per provider and key; a key is never
+        part of the answer. Each entry includes a `role` field (\"main\", \"background\", or \"fallback\"); with an admin key
+        (balances.ADMIN) it also has `admin: true` and this month's and today's spend (or the balance), and a refused or failed
+        admin read is shown as `admin_error`."""
         prof = store.profile()
         logins = oauth_status()
-        wanted: list[str] = []
+        wanted: list[tuple[str, str]] = []  # (name, role)
 
-        def add(name: str, only_with_balance: bool) -> None:
+        def add(name: str, only_with_balance: bool, role: str) -> None:
             try:
                 prov = get_provider(name)
             except KeyError:
                 return
-            if prov.name in wanted or prov.auth_type != "api_key" or prov.name in logins:
+            if any(prov.name == n for n, _ in wanted) or prov.auth_type != "api_key" or prov.name in logins:
                 return   # CLI and OAuth providers report through `subscription`, or not at all
             if only_with_balance and prov.name not in balances.FETCHERS:
                 return   # an extra stored key is only worth a row when there is something to show for it
-            wanted.append(prov.name)
+            wanted.append((prov.name, role))
 
         main = prof["provider"] or settings.provider
         if main:
-            add(main, False)
+            add(main, False, "main")
+        bg = background_model()
+        if bg:
+            add(bg[0], True, "background")
+        fp = prof.get("fallback_provider") or ""
+        if fp:
+            add(fp, True, "fallback")
 
         async def one(name: str) -> dict[str, Any]:
             prov = get_provider(name)
-            key = prov.resolve_api_key(store.key(name))
-            ck = (name, balances.key_id(key))
+            in_ring = keyring.has(name)
+            adm = balances.admin_name(prov.name)
+            has_admin = keyring.has(adm)   # the admin key reports what the chat key cannot (balances.ADMIN)
+            key = PLACEHOLDER if in_ring else prov.resolve_api_key(store.key(name))
+            ck = (name, "keyring" if in_ring else balances.key_id(key), has_admin)
             hit = account_cache.get(ck)
             if hit and not refresh and time.monotonic() - hit[0] < 60:
                 return hit[1]
-            res = await balances.account(prov, key, transport=balance_transport, resolver=balance_resolver)
+            res = await balances.account(prov, key, transport=KeyringTransport(keyring, name) if in_ring else balance_transport,
+                                         resolver=balance_resolver)
+            if has_admin:
+                try:
+                    res = {**res, **await balances.admin_values(prov, transport=KeyringTransport(keyring, adm), resolver=balance_resolver),
+                           "currency": "USD", "error": None, "admin": True}
+                except balances.BalanceError as e:
+                    res = {**res, "admin_error": str(e)}
             account_cache[ck] = (time.monotonic(), res)
             return res
 
-        return list(await asyncio.gather(*(one(n) for n in wanted)))
+        results = await asyncio.gather(*(one(name) for name, role in wanted))
+        return [{**res, "role": role} for res, (_, role) in zip(results, wanted)]
 
     @router.get("/api/usage", dependencies=[Depends(require_auth)])
     async def get_usage(refresh: bool = False) -> dict[str, Any]:
-        """`subscription`: the CLI's /usage windows (null for API-key providers); today/total: this app's own tokens;
-        `accounts`: balance / spend reported by the API-key providers in use (see balances.py for the shape)."""
-        return {**store.usage(), "subscription": await subscription_usage(refresh), "accounts": await provider_accounts(refresh),
+        """`subscription`: the CLI's /usage windows for the main provider (null for API-key providers);
+        `subscriptions`: per-role list of CLI subscription windows (main/background/fallback, CLAUDE or AGY providers only);
+        today/total: this app's own tokens;
+        `accounts`: balance / spend reported by the API-key providers in use (each entry has a `role` field;
+        see balances.py for the shape; an entry may carry `admin: true` when an admin key reported it, or `admin_error`)."""
+        subs = await subscriptions_usage(refresh)
+        main_sub = next((s for s in subs if s["role"] == "main"), None)
+        sub = {"provider": main_sub["provider"], "windows": main_sub["windows"], "error": main_sub["error"]} if main_sub else None
+        return {**store.usage(), "subscription": sub,
+                "subscriptions": subs,
+                "accounts": await provider_accounts(refresh),
                 "jobs": {"today": usage_part(time.strftime("%Y-%m-%d")), "month": usage_part(time.strftime("%Y-%m-01"))},
                 "background": background_state()}
 

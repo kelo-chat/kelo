@@ -13,7 +13,6 @@ import math
 import re
 import sys
 import xml.etree.ElementTree as ET
-from functools import reduce
 
 NS = "{http://www.w3.org/2000/svg}"
 INHERIT = ("fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin")
@@ -278,10 +277,6 @@ def shape(ctx, el, st):
                       f'group: {"nil" if group is None else group})')
 
 
-def lcm(a, b):
-    return a * b // math.gcd(a, b)
-
-
 def mood_code(name, ctx):
     shapes = ",\n".join("        " + s for s in ctx.shapes)
     groups = ",\n".join(
@@ -305,16 +300,14 @@ def main():
     if len(sys.argv) != 3:
         sys.exit("usage: python3 gen_kelo_art.py <svg dir> <out .swift>")
     src, dst = sys.argv[1], sys.argv[2]
-    parts, periods = [], []
+    parts = []
     for name in MOODS:
         root = ET.parse(f"{src}/kelo_{name}.svg").getroot()
         assert root.attrib["viewBox"] == "0 0 120 120"
         css = "".join(e.text or "" for e in root.iter(NS + "style"))
         ctx = Ctx(*parse_css(css))
         walk(ctx, root, {})
-        periods += [round(p * 1000) for p in ctx.periods]
         parts.append(mood_code(name, ctx))
-    loop = reduce(lcm, sorted(set(periods)))
     cases = "\n".join(f"        case .{m}: return {m}" for m in MOODS)
     body = "\n\n".join(parts)
     with open(dst, "w") as out:
@@ -329,9 +322,6 @@ def main():
 public enum KeloArt {{
     /// The SVGs' viewBox is 0 0 {120} {120}.
     public static let viewBox: Double = 120.0
-
-    /// The time after which every animation of every mood repeats (ms), for reference.
-    public static let loopMs: Int = {loop}
 
     /// The drawing of a mood.
     public static func of(_ mood: KeloMood) -> KeloMoodArt {{

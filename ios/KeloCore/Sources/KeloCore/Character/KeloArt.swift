@@ -10,9 +10,6 @@ public enum KeloArt {
     /// The SVGs' viewBox is 0 0 120 120.
     public static let viewBox: Double = 120.0
 
-    /// The time after which every animation of every mood repeats (ms), for reference.
-    public static let loopMs: Int = 144144000
-
     /// The drawing of a mood.
     public static func of(_ mood: KeloMood) -> KeloMoodArt {
         switch mood {

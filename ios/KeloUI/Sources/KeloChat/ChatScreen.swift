@@ -63,12 +63,15 @@ struct ChatPage: View {
     @State private var thanks = false
     @State private var picker = AttachmentPickers()
     @State private var attachOpen = false
+    @State private var nestCard: NestEntry?
+    @Environment(\.nestSurfaceView) private var nestSurface
     @State private var askNotify = false
     /// The notification question is due, but waits until the server has taken the message (see `askNotifyIfTaken`)
     @State private var notifyPending = false
     @State private var composerFocused = false
     /// A secure entry's card a row in 답이 필요해요 led to: marked for a moment
     @State private var markedEntry: String?
+    @State private var offersModel = OffersModel()
 
     var body: some View {
         // The composer floats over the messages (a bottom safe-area inset: the list keeps room for its measured height and scrolls
@@ -99,6 +102,16 @@ struct ChatPage: View {
                 .padding(.trailing, Composer.sideRoom + Composer.jumpInset)
                 .frame(maxWidth: Composer.maxWidth).frame(maxWidth: .infinity)
                 .alignmentGuide(.top) { d in d.height - drop }
+            }
+            .overlay(alignment: .top) {
+                // "/" typed: the commands above the composer card (a tap puts the command in the field; its space closes the list)
+                let slash = SlashCommands.matches(model.input)
+                if !slash.isEmpty {
+                    SlashMenu(commands: slash) { model.setInput(SlashCommands.picked($0)) }
+                        .padding(.horizontal, Composer.sideRoom)
+                        .frame(maxWidth: Composer.maxWidth).frame(maxWidth: .infinity)
+                        .alignmentGuide(.top) { d in d.height + 4 }
+                }
             }
             .padding(.top, ComposerScrim.fade)
             .background(ComposerScrim(bg: c.bg))
@@ -133,6 +146,7 @@ struct ChatPage: View {
             takeShared()
             takeCardKept()
             model.loadModelList(provider: app.profile?.provider ?? "")
+            offersModel.api = { app.api }
         }
         .onChange(of: app.profile?.provider ?? "") { _, p in model.loadModelList(provider: p) }
         .onChange(of: composerFocused) { _, f in app.router.hideChrome(Router.keyboardAsker, f) }
@@ -148,25 +162,23 @@ struct ChatPage: View {
             // back in the app: the open follow-ups, a waiting question and a fill-in card still open (Android ON_RESUME)
             if p == .active { model.loadFollowups(); model.refreshSecrets(); model.refreshAsks(force: true); takeShared() }
         }
+        .task(id: app.router.chatFollowTurn) {
+            guard let turnId = app.router.chatFollowTurn else { return }
+            app.router.chatFollowTurn = nil
+            model.followTurn(turnId)
+        }
         .modifier(ChatStatusFollow(model: model, status: app.activity.status))
         // another phone may have talked to the same agent: keep in step while idle and in view
-        .task(id: scenePhase == .active) {
-            guard scenePhase == .active else { return }
+        .task(id: scenePhase == .active && app.router.shows(.chat)) {
+            guard scenePhase == .active, app.router.shows(.chat) else { return }
             while !Task.isCancelled {
                 await model.checkForNews()
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
             }
         }
         .keloSheet(item: $sheet, detents: [.large]) { s in sheetView(s) }
-        .background {
-            // "+" opens a short sheet of its own
-            Color.clear.keloSheet(isPresented: $attachOpen, detents: [.medium, .large]) {
-                AttachSheet { source in
-                    attachOpen = false
-                    picker.open(source, model: model)
-                }
-            }
-        }
+        // "+" opens a short sheet of its own; a Nest chat card opens over the chat
+        .modifier(AttachSheets(attachOpen: $attachOpen, nestCard: $nestCard, picker: picker, model: model))
         .background {
             // a message the server held back for a key or password (SecretGuard): save it, send it as is, or edit it
             Color.clear.keloSheet(item: Binding(get: { model.secretAsk }, set: { if $0 == nil { model.secretEdit() } }),
@@ -233,7 +245,7 @@ struct ChatPage: View {
         case .chooser:
             ModelChooser(model: model, onMore: { sheet = .modelSheet }, onClose: { sheet = nil })
         case .modelSheet:
-            ModelSheet(onClose: { sheet = nil }, onSaved: { model.loadProviders() })
+            if let api = app.api { ModelPage(api: api, cache: app.cache, prefs: app.prefs, host: app).onDisappear { model.loadProviders() } }
         case .select(let text):
             SelectTextPage(text: text) { sheet = nil }
         case .report(let key):
@@ -262,6 +274,14 @@ struct ChatPage: View {
 
     private var agentName: String { app.profile?.agentName ?? "Kelo" }
 
+    /// Nest's home cards (drawn by the app's renderer; nothing while there is none).
+    @ViewBuilder private var nestHomeCards: some View {
+        let cards = app.nest?.state.entries(NestPlace.homeCard, surface: nestSurface) ?? []
+        if let surface = nestSurface, !cards.isEmpty {
+            VStack(spacing: 8) { ForEach(cards) { surface.view(for: $0) } }
+        }
+    }
+
     // ---- the list -----------------------------------------------------------------------------------------------------------
 
     @ViewBuilder
@@ -274,6 +294,13 @@ struct ChatPage: View {
                 Text(L(R.string.chat_hint, agentName)).font(KeloFont.bodyLarge).foregroundStyle(c.muted)
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity).padding(24).padding(.top, 60)
+                OffersListView(model: offersModel) { turnId in
+                    model.followTurn(turnId)
+                }
+                .padding(.horizontal, 16)
+                // asked only while the empty chat shows the cards: the server counts every listed offer as seen
+                .task { await offersModel.load() }
+                nestHomeCards.padding(.horizontal, 16)
             }
             .scrollDismissesKeyboard(.immediately)
             .scrollBounceBehavior(.always)
@@ -287,6 +314,7 @@ struct ChatPage: View {
                     VStack(alignment: .leading, spacing: 8) {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             Color.clear.frame(height: 1).onAppear { model.loadOlder() }
+                            nestHomeCards
                             if model.loadingOlder { ProgressView().frame(maxWidth: .infinity) }
                             ForEach(model.rows) { item in
                                 VStack(alignment: .leading, spacing: 6) {
@@ -452,9 +480,7 @@ struct ChatPage: View {
                     }
                 }
             } else if let card = m.briefing {
-                BriefingCardView(card: card, onTap: briefingTap, onHours: { h, accept in
-                    Task { _ = try? await app.api?.request("POST", accept ? ContactHoursRules.acceptPath(h.id) : ContactHoursRules.keepPath(h.id)) }
-                })
+                BriefingCardView(card: card, onTap: briefingTap, onHours: { h, accept in model.answerHours(h, accept: accept) })
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     let streaming = model.busy && m.id == nil && model.items.last?.key == m.key
@@ -463,6 +489,9 @@ struct ChatPage: View {
                     }
                     ForEach(m.images, id: \.self) { img in ChatPicture(image: img) }
                     if let id = m.id, let f = model.followups[id] { MessageFollowups(followup: f, model: model) }
+                    if let card = m.comparison {
+                        ComparisonCardView(card: card) { text in Haptics.tick(); model.send(text) }
+                    }
                     if let r = m.replies, !model.busy, QuickReplyRules.isOpen(model.items, key: m.key) {
                         QuickReplies(set: r) { text, answers in Haptics.tick(); model.send(text, answers: answers) }
                     }
@@ -471,14 +500,14 @@ struct ChatPage: View {
         case .tool(let t):
             ToolChip(tool: t)
         case .approval(let a):
-            ApprovalCard(approval: a, onAnswer: { ok in
+            ApprovalCard(approval: a, onAnswer: { ok, rememberSite in
                 if ok && a.pin != nil { model.pinAllowed(a.id) }   // its pin_needed row then asks for the owner's check at once
                 if ok, let card = a.card, card.needsCard {
                     Haptics.tick()
                     model.approveWithCard(a.id, cardId: card.card.id)
                 } else {
                     if ok { Haptics.success() } else { Haptics.warning() }
-                    model.approve(a.id, ok: ok)
+                    model.approve(a.id, ok: ok, rememberSite: rememberSite)
                 }
             }, onKeepForSchedule: { Haptics.success(); model.approve(a.id, ok: true, rememberSchedule: true) })
         case .browser(let b):
@@ -492,6 +521,8 @@ struct ChatPage: View {
             VaultCardRow(item: v, model: model)
         case .connect(let cn):
             ConnectCardRow(item: cn, model: model)
+        case .keySaved(let ks):
+            KeySavedCard(item: ks)
         case .shipping(let sh):
             ShippingFormCard(item: sh, model: model)
         case .secret(let sc):
@@ -767,5 +798,33 @@ private struct ModelChip: View {
         .buttonStyle(PressShrinkStyle())
         .accessibilityLabel("\(L(R.string.chat_model_settings)): \(text)")
         .accessibilityIdentifier("kelo.modelChip")
+    }
+}
+
+/// The "+" sheet (photo, camera, file, and Nest's chat cards) and the sheet a Nest chat card opens.
+private struct AttachSheets: ViewModifier {
+    @Binding var attachOpen: Bool
+    @Binding var nestCard: NestEntry?
+    let picker: AttachmentPickers
+    let model: ChatModel
+    @Environment(AppModel.self) private var app
+    @Environment(\.nestSurfaceView) private var nestSurface
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                Color.clear.keloSheet(isPresented: $attachOpen, detents: [.medium, .large]) {
+                    AttachSheet(nestEntries: app.nest?.state.entries(NestPlace.chatCard, surface: nestSurface) ?? [],
+                                onNest: { e in attachOpen = false; nestCard = e }) { source in
+                        attachOpen = false
+                        picker.open(source, model: model)
+                    }
+                }
+            }
+            .background {
+                Color.clear.keloSheet(item: $nestCard, detents: [.large]) { e in
+                    if let surface = nestSurface { surface.view(for: e) }
+                }
+            }
     }
 }

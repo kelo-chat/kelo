@@ -9,6 +9,8 @@ tests/test_route_table.py pins every route, its order, methods, status code, aut
 Included in this order:
 
     grants          what conditional tasks / jobs may do on their own: list, revoke
+    security        what the injection watch saw (GET /api/security/injections)
+    actions         what Kelo sent, changed or deleted, and whether it is known to have gone through (GET /api/actions)
     chat            AI consent, /api/chat, /api/talk, /api/turns (start)
     nest            Kelo Nest screens on this server
     turns           follow or stop a reply
@@ -21,7 +23,7 @@ Included in this order:
     mail_calendar   mailboxes, calendars, what a phone shares, the Google sign-in app and its broker
     providers       AI providers: list, consent, keys, endpoints, phone sign-in, CLI sidecar updates
     connections     registered services (credentials), OAuth device-flow providers, GitHub sign-in and its broker
-    operator        free addresses, push for every copy, reports, Google beta (/api/operator/*, /broker/*)
+    operator        addresses, push for every copy, reports, Google beta (/api/operator/*, /broker/*)
     vault           device-flow OAuth, vault logins / lock / log, fill-in cards
     devices         pairing, access codes, owner rights, removing a phone
     push            this phone's push registration

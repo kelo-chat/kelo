@@ -15,9 +15,9 @@ struct GoalDetailPage: View {
     @State private var model: GoalDetailModel
     @Environment(\.kelo) private var c
 
-    init(goal: GoalItem, onBack: @escaping () -> Void, onEdit: @escaping (GoalItem) -> Void, onOpenChat: @escaping () -> Void) {
+    init(goal: GoalItem, api: @escaping () -> KeloApi?, onBack: @escaping () -> Void, onEdit: @escaping (GoalItem) -> Void, onOpenChat: @escaping () -> Void) {
         self.goal = goal; self.onBack = onBack; self.onEdit = onEdit; self.onOpenChat = onOpenChat
-        _model = State(initialValue: GoalDetailModel(goalId: goal.id))
+        _model = State(initialValue: GoalDetailModel(goalId: goal.id, api: api))
     }
 
     var body: some View {
@@ -48,7 +48,7 @@ struct GoalDetailPage: View {
             if model.failed { ErrorText(L(R.string.connect_failed), small: true) }
             if let w { content(w) }
         }
-        .onAppear { model.app = app; model.load() }
+        .onAppear { model.load() }
         .onChange(of: phase) { _, p in if p == .active { model.load() } }
         .goalRefresh(every: GoalsRules.refreshMs([shown])) { model.load() }
     }
@@ -75,6 +75,8 @@ struct GoalDetailPage: View {
         if !w.schedules.isEmpty {
             heading(L(R.string.goal_schedules))
             ForEach(w.schedules) { s in
+                // a schedule opens on the work page (Android: the goal's schedule row)
+                Button { app.router.openWork(.schedule(s.id)) } label: {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.name).font(KeloFont.body).foregroundStyle(c.ink).lineLimit(3)
                     let line = [s.description.isEmpty ? nil : s.description, s.enabled ? nil : L(R.string.goal_schedule_off)]
@@ -82,6 +84,10 @@ struct GoalDetailPage: View {
                     if !line.isEmpty { Text(line).font(KeloFont.small).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true) }
                 }
                 .padding(.vertical, 2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
         if !w.documents.isEmpty {

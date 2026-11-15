@@ -51,7 +51,7 @@ import Testing
         changed[changed.count - 1] ^= 1
         await #expect(throws: KeyguardError.badBlob) { try await a.unwrap(changed, reason: "") }
         var android = blob
-        android[0] = KeyguardBlob.androidFormat
+        android[0] = 0x01   // the Android phone's blob format byte
         await #expect(throws: KeyguardError.badBlob) { try await a.unwrap(android, reason: "") }
         await #expect(throws: KeyguardError.badBlob) { try await a.unwrap(Data([0x02, 1, 2, 3]), reason: "") }
     }

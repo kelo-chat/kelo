@@ -6,7 +6,8 @@ import KeloShared
 /// Caches/connector-icons so the list shows them at once next time and offline (Android connectors/ConnectorIcons.kt). A URL that
 /// cannot be fetched gives nil and the tile keeps its initials.
 @MainActor final class ConnectorIcons {
-    static let shared = ConnectorIcons()
+    /// The default of the environment value (the app root's own cache); nothing else reaches it.
+    static let root = ConnectorIcons()
     private var memory: [String: PlatformImage] = [:]
     private var loading: [String: Task<PlatformImage?, Never>] = [:]
     private let dir: URL? = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
@@ -54,6 +55,7 @@ struct ServiceIcon<Fallback: View>: View {
     @Environment(\.kelo) private var c
     @State private var image: PlatformImage?
     @State private var failed = false
+    @Environment(\.connectorIcons) private var icons
 
     var body: some View {
         let url = ConnectorIconRules.pick(icon: icon, small: small, size: Double(size))
@@ -61,7 +63,7 @@ struct ServiceIcon<Fallback: View>: View {
         Group {
             if url.isEmpty || failed {
                 fallback()
-            } else if let img = image ?? ConnectorIcons.shared.cached(url) {
+            } else if let img = image ?? icons.cached(url) {
                 Image(platformImage: img).resizable().interpolation(.high).scaledToFill()
                     .frame(width: size, height: size).clipShape(shape)
                     .overlay(shape.stroke(c.line, lineWidth: 1))
@@ -71,9 +73,9 @@ struct ServiceIcon<Fallback: View>: View {
         }
         .accessibilityHidden(true)
         .task(id: url) {
-            guard !url.isEmpty, ConnectorIcons.shared.cached(url) == nil else { return }
+            guard !url.isEmpty, icons.cached(url) == nil else { return }
             failed = false
-            image = await ConnectorIcons.shared.load(url, api: app.api)
+            image = await icons.load(url, api: app.api)
             failed = image == nil
         }
     }
@@ -81,5 +83,17 @@ struct ServiceIcon<Fallback: View>: View {
     private var tint: Color {
         guard let (r, g, b) = ConnectorIconRules.rgb(color) else { return c.bubble }
         return Color(red: r, green: g, blue: b).opacity(0.18)
+    }
+}
+
+private struct ConnectorIconsKey: EnvironmentKey {
+    @MainActor static let defaultValue = ConnectorIcons.root
+}
+
+extension EnvironmentValues {
+    /// The icon cache of the connectors' tiles (one per app; a test or preview can give its own).
+    var connectorIcons: ConnectorIcons {
+        get { self[ConnectorIconsKey.self] }
+        set { self[ConnectorIconsKey.self] = newValue }
     }
 }

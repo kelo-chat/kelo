@@ -1,7 +1,7 @@
 """Writes KeloCore's API models (Sources/KeloCore/Models/ApiModels.swift) from the compact table below.
 
 Each model becomes a Swift struct that is Codable, Equatable, Hashable and Sendable, with
-  - a memberwise init whose parameters all have the defaults below (except required ones),
+  - a memberwise init whose parameters all have the defaults below (except required ones; none for the models in NO_INIT),
   - a lenient init(from:) built on `Lenient`: a missing, null or mistyped field takes its default, numbers sent as strings and ids
     sent as numbers still read (the Android app's kotlinx settings: ignoreUnknownKeys, coerceInputValues, explicitNulls = false);
     a required field ("!") that is missing makes the whole entry unreadable, and lists leave unreadable entries out,
@@ -25,14 +25,11 @@ MODELS = {
         "userName:S", "agentName:S", "provider:S", "model:S", "fallbackProvider:S", "fallbackModel:S", "backgroundProvider:S",
         "backgroundModel:S", "effort:S", "timezone:S", "avatarVersion:L", "modelReady:B?", "minAppVersion:{S:L}",
         "tone:S=\"polite\""]),
-    "Goal": ("GET /api/goals items. status is tracking | done.", [
-        "id:L!", "title:S", "category:S", "note:S", "status:S=\"tracking\"", "schedulesOn:I"]),
     "Device": ("GET /api/devices items.", ["id:L!", "name:S", "createdAt:D", "lastSeen:D?", "owner:B"]),
     "DeviceList": ("GET /api/devices.", ["devices:[Device]", "current:L?"]),
     "PairStart": ("POST /api/devices/pair. link is \"https://host/#pair=CODE\" (missing only when the server knows no address).", [
         "code:S", "expiresIn:I", "link:S?"]),
     "About": ("GET /api/about.", ["version:S", "build:S"]),
-    "OkAnswer": ("Any {\"ok\": bool} answer.", ["ok:B"]),
     "SeenAnswer": ("POST /api/tasks/seen, /api/notifications/seen.", ["ok:B", "marked:I", "unseen:I"]),
     # ---- chat ------------------------------------------------------------------------------------------------------------------
     "StoredMessage": ("GET /api/messages items. images: the screenshots Kelo showed with an agent reply (server chat_images.py).", [
@@ -41,20 +38,13 @@ MODELS = {
         "id:S", "url:S", "width:I", "height:I", "caption:S"]),
     "MessageFile": ("A file the user sent with a message (server chat_attachments.py): the turn event user_message \"attachments\" and GET /api/messages \"attachments\". kind image | video | audio | document; url and thumb are the server's own (/api/uploads/{name}/file, .../thumb; thumb null until the server has one), read with the signed-in API.", [
         "name:S", "path:S", "kind:S=\"document\"", "mime:S", "size:L", "url:S", "thumb:S?"]),
-    "TurnStarted": ("POST /api/turns.", ["id:S"]),
     "ProviderConsentRecord": ("A provider's consent as stored.", ["acceptedAt:D?", "version:I"]),
-    "ProviderInfo": ("GET /api/providers items, as the model picker reads them.", [
-        "name:S!", "displayName:S", "configured:B?", "effortLevels:[S]", "effortNote:S?", "unofficial:B", "vendor:S",
-        "consent:ProviderConsentRecord?", "consentVersion:I", "company:S?"]),
     "ModelList": ("GET /api/models?provider=. info: what the list says about each model (only the thinking level is read here).", [
         "provider:S", "models:[S]", "labels:{S:S}", "error:S?", "stale:B", "fetchedAt:L?", "info:{S:ModelEffort}"]),
-    "ModelEffort": ("GET /api/models info entry, its thinking level: effortLevels nil = the list does not say (the provider's levels "
-                    "apply), empty = none; effortNote with empty levels: why (a custom server that turned the level away).", [
-        "effortLevels:[S]?", "effortNote:S?"]),
-    "ConversationSummary": ("GET /api/conversation/summary (CONVERSATION COMPACTION in server.py).", [
-        "summary:S", "upToMessageId:L?", "updatedAt:D?", "messagesFolded:I", "compactions:I", "memoryFlushes:I",
-        "lastMemoryFlushAt:D?", "provider:S?", "model:S?", "contextWindow:I?", "maxOutput:I?", "source:S?", "threshold:D?",
-        "lastRequestTokens:I?", "lastError:S?"]),
+    "ModelEffort": ("GET /api/models info entry: can the model be shown pictures (images), its context window when known, and its "
+                    "thinking level: effortLevels nil = the list does not say (the provider's levels apply), empty = none; effortNote "
+                    "with empty levels: why (a custom server that turned the level away).", [
+        "images:B", "context:L?", "effortLevels:[S]?", "effortNote:S?"]),
     # ---- agent status ------------------------------------------------------------------------------------------------------------
     "RunningRun": ("GET /api/agent/status running[] entries.", [
         "taskId:L?", "turnId:S?", "title:S", "status:S", "source:S", "waitingApproval:B", "tab:S?", "controller:S?"]),
@@ -98,14 +88,11 @@ MODELS = {
         "id:L", "scheduleId:L?", "startedAt:D", "finishedAt:D?", "status:S", "result:S", "taskId:L?", "error:S?"]),
     "ScheduleRuns": ("GET /api/schedules/{id}/runs.", ["items:[ScheduleRun]"]),
     "ScheduleArchive": ("GET /api/schedules/archive: deleted jobs, restorable for keep_days.", ["items:[Schedule]", "keepDays:I=30"]),
-    "ScheduleRule": ("\"Keep allowing this in that scheduled job\" (site \"\" = a step on no site).", [
-        "id:L!", "scheduleId:L?", "tool:S", "label:S", "site:S", "createdAt:D", "uses:I", "lastUsed:D?"]),
-    "ScheduleRules": ("GET /api/schedules/{id}/rules.", ["items:[ScheduleRule]"]),
     "ScheduleGrant": ("What a schedule may do without asking, allowed once at setup (schedule_grants.py). kind: login (login, login_label) | purchase (what, caps).", [
         "id:L!", "scheduleId:L", "scheduleName:S", "scheduleWhen:S", "kind:S", "site:S", "createdAt:D", "uses:I", "lastUsed:D?",
         "login:S", "loginLabel:S", "what:S", "maxAmount:D", "currency:S", "monthlyCap:D", "runsPerMonth:I", "maxAmountText:S",
         "monthlyCapText:S", "spentThisMonth:D", "scope:S=\"schedule\"", "scopeRef:S", "taskName:S", "trigger:S", "action:S", "once:B",
-        "urgent:B", "maxCount:I", "used:I", "cardLabel:S?", "cardLast4:S?", "targets:[S]", "template:S", "allowDelete:B"]),
+        "urgent:B", "maxCount:I", "used:I", "totalCount:I", "cardLabel:S?", "cardLast4:S?", "targets:[S]", "template:S", "allowDelete:B"]),
     # ---- the morning briefing (briefing.py): the card on its chat message (GET /api/messages "briefing") ----------------------------
     "BriefingPlace": ("Where the weather is for: the town the owner's phone was last in.", ["name:S"]),
     "BriefingNote": ("A weather note. kind: rain_start | rain_now | snow_start | snow_now | sleet_start | sleet_now | temp_drop | wind | heat | cold | air.", [
@@ -160,21 +147,28 @@ MODELS = {
     "TaskGrantSend": ("A task setup card's message part: recipients, the wording ({braces} vary).", [
         "to:[S]", "site:S", "template:S", "varies:S", "maxCount:I"]),
     "TaskGrantChange": ("A task setup card's change part.", ["what:S", "places:[S]@where", "allowDelete:B", "maxCount:I"]),
+    "TaskGrantApply": ("A task setup card's application part: what for, at most max_count per run and total over all runs (0 = no limit).", [
+        "site:S", "what:S", "maxCount:I=1", "total:I"]),
     "TaskGrantAsk": ("approval_request.grant: the setup card of a \"when X happens, do Y\" task (task_allow, schedule_grants.py).", [
         "scope:S", "taskName:S", "taskWhen:S", "trigger:S", "action:S", "once:B", "urgent:B", "missed:S", "login:TaskGrantLogin?",
-        "purchase:TaskGrantPurchase?", "send:TaskGrantSend?", "change:TaskGrantChange?"]),
+        "purchase:TaskGrantPurchase?", "send:TaskGrantSend?", "change:TaskGrantChange?", "apply:TaskGrantApply?"]),
     "ScheduleGrantList": ("GET /api/schedules/{id}/grants (DELETE /api/schedules/{id}/grants/{grant_id} takes one back).", [
         "items:[ScheduleGrant]"]),
     "RunStarted": ("POST /api/schedules/{id}/run (409 = already running); follow with GET /api/turns/{turn_id}.", [
         "ok:B", "taskId:L?", "turnId:S?"]),
     # ---- watchers --------------------------------------------------------------------------------------------------------------
+    "BuyProblem": ("A problem keeping a watcher from being ready to buy (docs/instant-buy.md).", [
+        "code:S", "text:S"]),
+    "BuyReady": ("The ready-to-buy state of a watcher that buys at its hit (docs/instant-buy.md).", [
+        "armed:B", "lastKeptAt:D?", "signedIn:B?", "problems:[BuyProblem]", "remembered:B"]),
     "DryRun": ("A watcher's check without the agent (POST /api/watchers/{id}/dry-run).", [
         "at:D?", "ok:B", "satisfied:B", "value:S?", "detail:S?", "error:S?", "url:S?", "title:S?"]),
     "Watcher": ("A cheap condition check that wakes the agent only when it holds. kind: page | script; mode: text_appears | text_disappears | number_above | number_below | changed | script; state: off | watching | error | done.", [
         "id:L!", "name:S", "kind:S=\"page\"", "url:S?", "mode:S", "match:S?", "selector:S?", "regex:S?", "threshold:D?",
         "useBrowser:B", "code:S?", "note:S?", "everyMinutes:I", "enabled:B", "once:B", "state:S=\"off\"", "description:S",
         "lastValue:S?", "lastCheckedAt:D?", "nextCheckAt:D?", "lastFiredAt:D?", "fireCount:I", "errorCount:I", "lastError:S?",
-        "disabledReason:S?", "dryRun:DryRun?", "canEnable:B", "createdAt:D?", "updatedAt:D?", "createdBy:S=\"user\""]),
+        "disabledReason:S?", "dryRun:DryRun?", "canEnable:B", "createdAt:D?", "updatedAt:D?", "createdBy:S=\"user\"",
+        "buy:BuyReady?"]),
     "WatcherList": ("GET /api/watchers.", ["items:[Watcher]", "limit:I"]),
     "WatcherEvent": ("GET /api/watchers/{id}/events items.", ["id:L", "at:D", "kind:S", "detail:S?", "value:S?"]),
     "WatcherEvents": ("GET /api/watchers/{id}/events.", ["items:[WatcherEvent]"]),
@@ -185,7 +179,6 @@ MODELS = {
         "taskId:L?", "controller:S=\"agent\"", "controlledBy:S?", "viewers:I", "thumbnail:S?", "thumbnailWidth:I",
         "thumbnailHeight:I", "endedAt:D?"]),
     "BrowserTabs": ("GET /api/browser/sessions?thumbnails=true.", ["available:B", "items:[BrowserTab]"]),
-    "BrowserJobStarted": ("POST /api/browser/sessions {prompt, url?}.", ["id:S", "taskId:L?", "turnId:S?"]),
     "LiveTicket": ("POST /api/browser/sessions/{id}/live-ticket: one use, 30 s, this tab and this device only.", [
         "ticket:S", "expiresIn:I=30"]),
     "ControlAnswer": ("POST /api/browser/sessions/{id}/control {take}.", ["id:S", "controller:S", "controlledBy:S?", "youControl:B"]),
@@ -211,8 +204,6 @@ MODELS = {
     "LookbackRun": ("The last nightly look-back: done | skipped | failed | pending. The last nightly look-back: status, why (`code`: no_messages, switched_off, in_use, no_model, model_error, bad_output; \"\" when done) and counts. `reason` is the server's log text (English, model notes): never shown.", ["at:D?", "status:S", "code:S", "added:I", "updated:I", "dropped:I", "goals:I", "held:I", "reason:S", "changed:B"]),
     "LearnedRule": ("One preference the nightly look-back learned. status: proposed | accepted | rejected; confidence 0..1.", [
         "id:L!", "rule:S", "evidence:S", "date:S", "confidence:D", "status:S=\"proposed\""]),
-    "Lookback": ("GET /api/reflection (404 = the agent's files are off: the app hides the page).", [
-        "enabled:B=true", "rules:[LearnedRule]", "lastRun:LookbackRun?", "guide:S"]),
     "AvatarSaved": ("PUT/DELETE /api/agent/avatar.", ["avatarVersion:L", "mime:S", "bytes:I", "width:I", "height:I"]),
     "ServerNotification": ("GET /api/notifications items. type: task_done | task_failed | approval_waiting | payment_auto | schedule_disabled | schedule_paused | watch_fired | watch_disabled | proactive | browser_check | followup.", [
         "id:L!", "type:S", "title:S", "body:S", "taskId:L?", "approvalId:S?", "scheduleId:L?", "paymentId:L?", "followupId:L?",
@@ -294,10 +285,7 @@ MODELS = {
     "Tokens": ("Token counts.", ["inputTokens:L", "outputTokens:L"]),
     "UsageWindow": ("One limit window, e.g. \"Current session\" 42% used.", [
         "group:S?", "label:S", "usedPercent:I", "resetsAt:S?", "resetsText:S?"]),
-    "Subscription": ("A provider's own limits.", ["provider:S", "windows:[UsageWindow]", "error:S?"]),
-    "Usage": ("GET /api/usage (subscription is nil for providers that report no limits).", [
-        "today:Tokens", "total:Tokens", "subscription:Subscription?"]),
-    "Upload": ("GET /api/uploads items: a document the user uploaded (path \"uploads/<name>\").", ["path:S!", "bytes:L", "modified:D"]),
+    "Subscription": ("A provider's own limits.", ["provider:S", "windows:[UsageWindow]", "error:S?", "role:S"]),
     "UploadText": ("GET /api/uploads/{name}/text.", ["name:S", "text:S", "truncated:B"]),
     "MemoryUse": ("Memory in bytes.", ["used:L?", "limit:L?"]),
     "DiskUse": ("Disk in bytes.", ["used:L", "limit:L?", "parts:{S:L}", "freeOnHost:L?"]),
@@ -319,14 +307,22 @@ MODELS = {
         "removed:[S]", "skipped:[S]", "freed:L", "groups:[CleanupGroup]", "total:L"]),
     "CliStatus": ("A provider's command-line tool.", [
         "installed:B", "installable:B", "loggedIn:B?", "hint:S", "remote:B", "version:S?", "updateHint:S?", "updateAvailable:B", "latestVersion:S?", "updatable:B"]),
-    "ProviderDetail": ("GET /api/providers items, everything the model page and the keychain's AI key page use. key_source: app | env | nil.", [
-        "name:S!", "displayName:S", "oauth:B", "loggedIn:B?", "configured:B?", "cli:CliStatus?", "effortLevels:[S]", "effortNote:S?",
-        "takesKey:B", "keySource:S?", "keyHint:S?", "takesUrl:B", "baseUrl:S?", "unofficial:B", "vendor:S",
-        "consent:ProviderConsentRecord?", "consentVersion:I"]),
     # ---- push ------------------------------------------------------------------------------------------------------------------
-    "PushStatus": ("GET /api/push/status. mode: local | broker | off.", [
-        "enabled:B", "registered:B", "mode:S", "brokerReachable:B?", "brokerPush:B?"]),
     "PushRegistered": ("POST/DELETE /api/push/register.", ["ok:B", "push:B", "removed:B?"]),
+}
+
+NO_INIT = {  # models nothing builds by hand (neither the app nor its tests): decoded only, so no memberwise init
+    "About", "AddressCountries", "AddressForm", "ApprovalAnswer", "ApprovalHistory", "ApprovalRecord", "ApprovalRule",
+    "AvatarSaved", "BriefingAhead", "BriefingItem", "BriefingNote", "BriefingPlace", "BriefingSources", "BriefingWeather",
+    "BrowserTabs", "BrowserTabsBrief", "CalDavAccount", "CalDavAccounts", "CleanupGroup", "CleanupItem", "CleanupResult",
+    "ControlAnswer", "Device", "DeviceList", "DryRun", "DryRunAnswer", "FollowupSettings", "JournalEntry", "JournalGap",
+    "JournalMonth", "LiveTicket", "MailProviders", "NameAnswer", "NewLogin", "NotificationPage", "OAuthApp", "PairStart",
+    "PauseState", "PaymentPinList", "PinSaved", "PushRegistered", "Resources", "RuleList", "RunStarted", "RunningRun",
+    "ScheduleGrantList", "ScheduleRun", "ScheduleRuns", "SeenAnswer", "ShippingFormAnswer", "ShippingProfiles",
+    "SourceAccount", "StoredMessage", "TaskDetail", "TaskGrantApply", "TaskGrantAsk", "TaskGrantChange", "TaskGrantLogin", "TaskGrantPurchase",
+    "TaskGrantSend", "TasksBrief", "UploadText", "UrlAnswer", "VaultLogRow", "VaultState", "WalletLimits",
+    "WalletNotifications", "WatcherEvent", "WatcherEvents", "WeatherProviderInfo", "WorkerAnswer", "WorkerDetail",
+    "WorkerLine", "WorkerReport", "WorkersBrief",
 }
 
 SWIFT = {"S": ("String", '""'), "I": ("Int", "0"), "L": ("Int64", "0"), "D": ("Double", "0"), "B": ("Bool", "false")}
@@ -388,12 +384,13 @@ def model(name, doc, fields):
     for st, d, dec, enc, fname in parsed:
         out.append(f"    public var {fname}: {st}")
     out.append("")
-    params = ", ".join(f"{fname}: {st}" + ("" if d is None else f" = {d}") for st, d, dec, enc, fname in parsed)
-    out.append(f"    public init({params}) {{")
-    for st, d, dec, enc, fname in parsed:
-        out.append(f"        self.{fname} = {fname}")
-    out.append("    }")
-    out.append("")
+    if name not in NO_INIT:
+        params = ", ".join(f"{fname}: {st}" + ("" if d is None else f" = {d}") for st, d, dec, enc, fname in parsed)
+        out.append(f"    public init({params}) {{")
+        for st, d, dec, enc, fname in parsed:
+            out.append(f"        self.{fname} = {fname}")
+        out.append("    }")
+        out.append("")
     out.append("    public init(from decoder: Decoder) throws {")
     out.append("        let j = try Lenient(decoder)")
     for st, d, dec, enc, fname in parsed:

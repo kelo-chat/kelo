@@ -163,34 +163,6 @@ public struct KE2ERequestBodyWriter: Sendable {
     }
 }
 
-/// The outer envelope's parts (for the server side in tests and for checking what goes on the wire). Version 0x01: `ciphertext`
-/// holds head and body, `bodyFrames` is empty. Version 0x02: `ciphertext` holds the head only, `bodyFrames` the bytes after it.
-public struct KE2EEnvelope: Equatable, Sendable {
-    public let version: UInt8
-    public let kid: Data
-    public let enc: Data
-    public let ciphertext: Data
-    public let bodyFrames: Data
-
-    public static func parse(_ outer: Data) throws -> KE2EEnvelope {
-        let d = Data(outer)
-        guard d.count > KE2E.envelopeHeaderBytes + KE2E.tagBytes else { throw KE2EError.badFrame }
-        let kid = d.subdata(in: 1..<9), enc = d.subdata(in: 9..<41)
-        switch d[0] {
-        case KE2E.envelopeVersion:
-            return KE2EEnvelope(version: d[0], kid: kid, enc: enc, ciphertext: d.subdata(in: 41..<d.count), bodyFrames: Data())
-        case KE2E.envelopeVersionStream:
-            guard d.count >= 45 else { throw KE2EError.badFrame }
-            let n = Int(KE2EBytes.readU32(d, at: 41))
-            guard n >= KE2E.tagBytes, d.count >= 45 + n else { throw KE2EError.badFrame }
-            return KE2EEnvelope(version: d[0], kid: kid, enc: enc, ciphertext: d.subdata(in: 45..<(45 + n)),
-                                bodyFrames: d.subdata(in: (45 + n)..<d.count))
-        default:
-            throw KE2EError.badFrame
-        }
-    }
-}
-
 /// One live-view WebSocket message inside KE2E. The first plaintext byte is its type (spec 5.8): 0x01 text (UTF-8 follows), 0x02
 /// binary (a JPEG of the live view). Any other type is an error.
 public enum KE2EWebSocketMessage: Equatable, Sendable {
@@ -230,11 +202,6 @@ public struct KE2EWebSocketCipher: Sendable {
     public init(send: SymmetricKey, receive: SymmetricKey) {
         sealer = KE2EFrameSealer(key: send, aad: KE2E.webSocketAAD)
         opener = KE2EFrameOpener(key: receive, aad: KE2E.webSocketAAD)
-    }
-
-    /// The server's view of the same keys (tests, reference server): it sends with s2c and reads with c2s.
-    public static func serverSide(c2s: SymmetricKey, s2c: SymmetricKey) -> KE2EWebSocketCipher {
-        KE2EWebSocketCipher(send: s2c, receive: c2s)
     }
 
     /// The binary WebSocket message to send for `message`.

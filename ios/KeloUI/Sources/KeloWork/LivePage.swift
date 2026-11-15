@@ -8,23 +8,26 @@ import KeloShared
 /// forward / reload come up; "Hand back" returns it. Leaving the page hands it back too. When nothing live can be shown (the tab
 /// closed) the newest picture kept of it shows instead.
 struct BrowserTabPage: View {
-    let api: KeloApi
     let id: String
     /// Opened to solve a human check: take the tab over once, as soon as the first picture is there and nobody else holds it.
     var takeControl = false
     let onBack: () -> Void
     @State private var live: LiveModel
     @State private var autoTaken = false
-    @State private var tab: BrowserTab?
     @State private var confirmClose = false
-    @State private var model = WorkModel()
+    @State private var model: WorkModel
     @Environment(\.scenePhase) private var phase
     @Environment(\.kelo) private var c
+    @Environment(AppModel.self) private var app
+    private var activity: AgentActivityModel { app.activity }
 
     init(api: KeloApi, id: String, takeControl: Bool = false, onBack: @escaping () -> Void) {
-        self.api = api; self.id = id; self.takeControl = takeControl; self.onBack = onBack
+        self.id = id; self.takeControl = takeControl; self.onBack = onBack
         _live = State(initialValue: LiveModel(api: api, tabId: id))
+        _model = State(initialValue: WorkModel(api: { [api] in api }))
     }
+
+    private var tab: BrowserTab? { live.tab }
 
     var body: some View {
         let controlling = live.status.youControl
@@ -77,14 +80,16 @@ struct BrowserTabPage: View {
         .keloHideNavigationBar()
         .workToast($model.toast)
         .onAppear {
-            model.api = { [api] in api }
             live.start()
         }
         .onDisappear { live.stop(giveBack: true) }
+        .onChange(of: live.mode) { _, mode in
+            if mode == .ended && live.end != .noBrowser { activity.workChanged += 1 }
+        }
         .onChange(of: phase) { _, p in
             if p == .active { live.start() } else if p == .background { live.stop(giveBack: false) }
         }
-        .task { tab = (try? await api.browserTabs(thumbnails: false))?.items.first { $0.id == id } }
+        .task { await live.loadTab() }
         .task(id: AutoTakeKey(hasFrame: live.frame != nil, controlling: controlling, someoneElse: live.status.someoneElse)) {
             guard LiveRules.autoTake(asked: takeControl, done: autoTaken, hasFrame: live.frame != nil, controlling: controlling,
                                      someoneElse: live.status.someoneElse, busy: live.controlBusy) else { return }
@@ -363,12 +368,18 @@ private struct ControlBar: View {
 
 /// The newest picture kept of a tab (when there is no live view).
 private struct ScreenshotView: View {
-    let model: WorkModel
     let id: String
-    @State private var image: PlatformImage?
-    @State private var problem: String?
-    @State private var loading = true
+    @State private var shot: ScreenshotModel
     @Environment(\.kelo) private var c
+
+    init(model: WorkModel, id: String) {
+        self.id = id
+        _shot = State(initialValue: ScreenshotModel(work: model, id: id))
+    }
+
+    private var image: PlatformImage? { shot.image }
+    private var loading: Bool { shot.loading }
+    private var problem: String? { shot.problem }
 
     var body: some View {
         Group {
@@ -383,15 +394,6 @@ private struct ScreenshotView: View {
                 MutedText(problem).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task(id: id) {
-            loading = image == nil
-            do {
-                image = PlatformImage(data: try await model.screenshot(id))
-                problem = nil
-            } catch let e as ApiError {
-                problem = e.status == 404 ? L(R.string.agent_tab_no_picture) : L(R.string.connect_failed)
-            } catch { problem = L(R.string.connect_failed) }
-            loading = false
-        }
+        .task(id: id) { await shot.load() }
     }
 }

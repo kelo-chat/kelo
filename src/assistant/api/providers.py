@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+import secrets
 import time
 from typing import Any
 from fastapi import Depends, HTTPException, Request
@@ -18,10 +20,18 @@ from ..providers.cli_status_cache import CliStatusCache
 from ..effort import levels as effort_levels, note as effort_note
 from ..models import forget, is_configured
 from ..providers import ProviderError, get_provider, list_families
-from ..providers.registry import normalize_base_url, set_stored_base_url
+from ..providers.registry import (
+    USER_ENDPOINT_PREFIX,
+    normalize_base_url,
+    set_stored_base_url,
+    set_user_endpoints,
+    stored_base_url,
+)
 from ..providers import refused as refused_fields
 from ..api.provider_policy import CONSENT_VERSION, UNOFFICIAL
 from ..server import CLI_UPDATE_NOTE_DAYS
+from ..keyring_client import PLACEHOLDER, KeyringError, KeyringTransport, host_entry
+from .. import balances
 from fastapi import APIRouter
 from .context import AppContext
 
@@ -34,8 +44,27 @@ class EndpointIn(BaseModel):
     base_url: Any = ""
 
 
+class EndpointNew(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    base_url: str
+    transport: str = "chat_completions"
+
+
+class EndpointUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    base_url: str | None = None
+
+
+class CustomNameIn(BaseModel):
+    name: str = Field(default="", max_length=40)
+
+
 class KeyIn(BaseModel):
     api_key: str = Field(min_length=8, max_length=512)
+
+
+class AdminKeyIn(BaseModel):
+    api_key: str = Field(min_length=8, max_length=4096)
 
 
 class LoginFinishIn(BaseModel):
@@ -55,6 +84,7 @@ def router(ctx: AppContext) -> APIRouter:
     consent_of = ctx.consent_of
     login_flows = ctx.login_flows
     meta_json = ctx.meta_json
+    keyring = ctx.keyring
     provider_key = ctx.provider_key
     require_auth = ctx.require_auth
     require_owner = ctx.require_owner
@@ -63,6 +93,8 @@ def router(ctx: AppContext) -> APIRouter:
     unofficial_name = ctx.unofficial_name
     unofficial_shown = ctx.unofficial_shown
     usage_cache = ctx.usage_cache
+    account_cache = ctx.account_cache   # balances of the API-key providers (api/models_usage.py)
+    balance_resolver = ctx.balance_resolver
 
     @router.put("/api/providers/{name}/consent", dependencies=[Depends(require_auth)])
     async def put_provider_consent(name: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -100,9 +132,14 @@ def router(ctx: AppContext) -> APIRouter:
         cli_names = [f.default.name for f in shown if f.default.name in (cli_manage.CLAUDE, cli_manage.AGY)]
         clis = dict(zip(cli_names, await asyncio.gather(*(cli_statuses.get(n) for n in cli_names))))
         out = []
+        custom_name = store.meta("custom_name") or ""
         for f in shown:
             p = f.default
-            key = store.key(p.name) if p.name in stored else None
+            is_user = p.name.startswith(USER_ENDPOINT_PREFIX)
+            disp_name = (custom_name or "Custom") if f.name == "custom" else f.display_name
+            in_ring = keyring.has(p.name)   # the key is in the key container: set, but the server holds no copy
+            adm = balances.admin_name(p.name)
+            key = PLACEHOLDER if in_ring else (store.key(p.name) if p.name in stored else None)
             cli = clis.get(p.name)
             if cli:
                 cli = {**cli, **cli_release(p.name, cli)}
@@ -110,7 +147,8 @@ def router(ctx: AppContext) -> APIRouter:
                 cli["updatable"] = bool(owner and cli.get("remote") and cli.get("self_update") and cli.get("installed"))
             out.append({
                 "cli": cli,
-                "name": f.name, "display_name": f.display_name, "supported": True,
+                "name": f.name, "display_name": disp_name, "supported": True,
+                "user_endpoint": is_user,
                 "oauth": p.name in logins, "logged_in": logins.get(p.name, {}).get("logged_in"),
                 # one answer for every sign-in provider (CLI or OAuth): True / False / None (unknown, or not a sign-in provider),
                 # and the account's e-mail when the sign-in says it. DELETE /api/providers/{name}/login signs out.
@@ -120,8 +158,11 @@ def router(ctx: AppContext) -> APIRouter:
                 "effort_levels": list(effort_levels(p.name)), "effort_note": effort_note(p.name),
                 "takes_key": p.auth_type == "api_key" and p.name not in logins and (bool(p.api_key_envs) or p.takes_url),
                 "key_source": "app" if key else ("env" if p.resolve_api_key() else None),
-                "key_hint": key[-4:] if key else None,  # last 4 chars only; the key itself is never returned
+                "key_hint": (keyring.hints.get(p.name) or None) if in_ring else (key[-4:] if key else None),  # last 4 chars only; the key itself is never returned
                 "takes_url": p.takes_url,
+                # an optional admin (billing) key for spend or balance (PUT .../admin-key); it lives only in the key container
+                "admin_key": {"supported": p.name in balances.ADMIN and keyring.enabled, "set": keyring.has(adm),
+                              "hint": keyring.hints.get(adm) or None},
                 **({"base_url": p.resolve_base_url()} if p.takes_url else {}),   # stored in the app, else the environment, else ""
                 "unofficial": p.name in UNOFFICIAL,
                 # where chats go with this provider (ai_consent.py): a company, or null for the owner's own computer or network
@@ -236,8 +277,157 @@ def router(ctx: AppContext) -> APIRouter:
             raise HTTPException(400, f"{prov.name} has a fixed address; it does not take a base URL")
         return prov
 
+    def load_custom_endpoints() -> list[dict[str, Any]]:
+        try:
+            raw = json.loads(store.meta("custom_endpoints") or "[]")
+            return raw if isinstance(raw, list) else []
+        except ValueError:
+            return []
+
+    def save_custom_endpoints(items: list[dict[str, Any]]) -> None:
+        store.set_meta("custom_endpoints", json.dumps(items))
+
+    def check_name_available(new_name: str, exclude_id: str | None = None) -> None:
+        target = new_name.strip().lower()
+        custom_disp = (store.meta("custom_name") or "Custom").strip().lower()
+        if target == custom_disp or target == "custom":
+            if exclude_id != "custom":
+                raise HTTPException(409, {"code": "name_taken"})
+        endpoints = load_custom_endpoints()
+        for it in endpoints:
+            if exclude_id is not None and it.get("id") == exclude_id:
+                continue
+            if str(it.get("name") or "").strip().lower() == target:
+                raise HTTPException(409, {"code": "name_taken"})
+
+    def generate_endpoint_id(name: str, existing_ids: set[str]) -> str:
+        has_ascii_letter = any("a" <= c <= "z" or "A" <= c <= "Z" for c in name)
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:24].strip("-")
+        candidate = f"{USER_ENDPOINT_PREFIX}{slug}" if (has_ascii_letter and slug) else ""
+        if candidate and candidate not in existing_ids:
+            return candidate
+        while True:
+            candidate = f"{USER_ENDPOINT_PREFIX}{secrets.token_hex(3)}"
+            if candidate not in existing_ids:
+                return candidate
+
+    def validate_endpoint_name(name: str) -> str:
+        cleaned = name.strip()
+        if not cleaned or len(cleaned) > 40 or not cleaned.isprintable() or "\n" in cleaned or "\r" in cleaned:
+            raise HTTPException(422, "name must be a single printable line of 1 to 40 characters")
+        return cleaned
+
+    def validate_endpoint_url(url_raw: Any) -> str:
+        try:
+            return normalize_base_url(url_raw)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+
+    @router.post("/api/providers/custom-endpoints", dependencies=[Depends(require_auth)], status_code=201)
+    async def create_custom_endpoint(body: EndpointNew) -> dict[str, Any]:
+        endpoints = load_custom_endpoints()
+        if len(endpoints) >= 20:
+            raise HTTPException(409, {"code": "too_many"})
+        url = validate_endpoint_url(body.base_url)
+        transport = str(body.transport or "chat_completions").strip()
+        if transport not in ("chat_completions", "responses"):
+            raise HTTPException(422, "transport must be 'chat_completions' or 'responses'")
+        name = validate_endpoint_name(body.name)
+        check_name_available(name)
+        existing_ids = {it["id"] for it in endpoints if "id" in it}
+        endpoint_id = generate_endpoint_id(name, existing_ids)
+        new_item = {"id": endpoint_id, "name": name, "base_url": url, "transport": transport}
+        endpoints.append(new_item)
+        save_custom_endpoints(endpoints)
+        store.set_meta(f"base_url:{endpoint_id}", url)
+        set_stored_base_url(endpoint_id, url)
+        set_user_endpoints(endpoints)
+        refused_fields.forget(url)
+        forget(endpoint_id)
+        return new_item
+
+    @router.patch("/api/providers/custom-endpoints/{id}", dependencies=[Depends(require_auth)])
+    async def update_custom_endpoint(id: str, body: EndpointUpdate) -> dict[str, Any]:
+        endpoints = load_custom_endpoints()
+        target = next((it for it in endpoints if it.get("id") == id), None)
+        if target is None:
+            raise HTTPException(404, f"unknown endpoint {id!r}")
+        changed = False
+        if body.name is not None:
+            new_name = validate_endpoint_name(body.name)
+            check_name_available(new_name, exclude_id=id)
+            target["name"] = new_name
+            changed = True
+        if body.base_url is not None:
+            new_url = validate_endpoint_url(body.base_url)
+            target["base_url"] = new_url
+            store.set_meta(f"base_url:{id}", new_url)
+            set_stored_base_url(id, new_url)
+            await drop_entry_if_moved(id, new_url)   # a key saved for the old host does not follow the endpoint to a new one
+            refused_fields.forget(new_url)
+            changed = True
+        if changed:
+            save_custom_endpoints(endpoints)
+            set_user_endpoints(endpoints)
+            forget(id)
+        return {
+            "id": id,
+            "name": target["name"],
+            "base_url": stored_base_url(id) or target.get("base_url", ""),
+            "transport": target.get("transport", "chat_completions"),
+        }
+
+    @router.delete("/api/providers/custom-endpoints/{id}", dependencies=[Depends(require_auth)])
+    async def delete_custom_endpoint(id: str) -> dict[str, Any]:
+        endpoints = load_custom_endpoints()
+        target = next((it for it in endpoints if it.get("id") == id), None)
+        if target is None:
+            raise HTTPException(404, f"unknown endpoint {id!r}")
+        prof = store.profile()
+        main_p = (prof.get("provider") or settings.provider or "").strip()
+        fallback_p = (prof.get("fallback_provider") or "").strip()
+        if main_p == id or fallback_p == id:
+            raise HTTPException(409, {"code": "in_use"})
+        endpoints = [it for it in endpoints if it.get("id") != id]
+        save_custom_endpoints(endpoints)
+        store.set_meta(f"base_url:{id}", "")
+        set_stored_base_url(id, None)
+        store.delete_key(id)
+        if keyring.has(id):   # its key in the key container goes with it
+            try:
+                await keyring.delete(id)
+            except KeyringError:
+                raise HTTPException(503, "the key store is not reachable") from None
+        forget(id)
+        set_user_endpoints(endpoints)
+        return {"ok": True}
+
+    @router.put("/api/providers/custom/name", dependencies=[Depends(require_auth)])
+    async def put_custom_name(body: CustomNameIn) -> dict[str, Any]:
+        raw_name = (body.name or "").strip()
+        if raw_name:
+            if len(raw_name) > 40 or not raw_name.isprintable() or "\n" in raw_name or "\r" in raw_name:
+                raise HTTPException(422, "name must be a single printable line of at most 40 characters")
+            check_name_available(raw_name, exclude_id="custom")
+            store.set_meta("custom_name", raw_name)
+        else:
+            store.set_meta("custom_name", "")
+        return {"ok": True, "name": store.meta("custom_name") or "Custom"}
+
     # The address of an OpenAI-compatible server the user runs or chose (Ollama, LM Studio, vLLM, a gateway). LAN and private
     # addresses are allowed here on purpose; see registry._STORED_BASE_URLS for why this one setting skips netguard.
+    async def drop_entry_if_moved(name: str, url: str) -> None:
+        """The key in the key container was saved for the old address's host only: a new host drops it (the app asks for it again)."""
+        if not keyring.has(name):
+            return
+        entry = await asyncio.to_thread(host_entry, url) if url else None
+        if entry is not None and keyring.hosts.get(name) == entry[0]:
+            return
+        try:
+            await keyring.delete(name)
+        except KeyringError:
+            raise HTTPException(503, "the key store is not reachable") from None
+
     @router.put("/api/providers/{name}/endpoint", dependencies=[Depends(require_auth)])
     async def put_endpoint(name: str, body: EndpointIn) -> dict[str, Any]:
         prov = url_provider(name)
@@ -247,6 +437,7 @@ def router(ctx: AppContext) -> APIRouter:
             raise HTTPException(422, str(e)) from None
         store.set_meta(f"base_url:{prov.name}", url)
         set_stored_base_url(prov.name, url)
+        await drop_entry_if_moved(prov.name, url)
         refused_fields.forget(url)   # the address saved again: the server may take the thinking level now, so it is tried again
         forget(prov.name)
         return {"ok": True, "base_url": url}
@@ -256,6 +447,7 @@ def router(ctx: AppContext) -> APIRouter:
         prov = url_provider(name)
         store.set_meta(f"base_url:{prov.name}", "")
         set_stored_base_url(prov.name, None)
+        await drop_entry_if_moved(prov.name, prov.resolve_base_url())
         forget(prov.name)
         return {"ok": True, "base_url": prov.resolve_base_url()}   # what still applies: the environment's value, or ""
 
@@ -265,16 +457,84 @@ def router(ctx: AppContext) -> APIRouter:
         if not key.isprintable() or any(c.isspace() for c in key):  # also blocks header injection
             raise HTTPException(422, "API key must be a single line without spaces")
         prov = key_provider(name)
-        store.set_key(prov.name, key)
+        if keyring.enabled:   # the key goes to the key container for this provider's own host only; the server keeps no copy
+            entry = await asyncio.to_thread(host_entry, prov.resolve_base_url() or "")
+            if entry is None:
+                raise HTTPException(422, "set the address first")
+            try:
+                await keyring.put(prov.name, key, entry[0], entry[1], hint=key[-4:])
+            except KeyringError:
+                raise HTTPException(503, "the key store is not reachable") from None
+            store.delete_key(prov.name)   # a leftover from before
+        else:
+            store.set_key(prov.name, key)
         forget(prov.name)
         return {"ok": True}
 
     @router.delete("/api/providers/{name}/key", dependencies=[Depends(require_auth)])
     async def remove_key(name: str) -> dict[str, bool]:
         prov = key_provider(name)
-        if not store.delete_key(prov.name):
+        if keyring.has(prov.name):
+            try:
+                await keyring.delete(prov.name)
+            except KeyringError:
+                raise HTTPException(503, "the key store is not reachable") from None
+            store.delete_key(prov.name)
+        elif not store.delete_key(prov.name):
             raise HTTPException(404, "no stored key")
         forget(prov.name)
+        return {"ok": True}
+
+    # The optional admin (billing) key of a provider (balances.ADMIN): it reads spend or the balance and nothing else. It lives only in
+    # the key container. The check call decides: a key the provider refuses is removed again (422 key_refused); any other failure keeps
+    # it, since the provider may just be down.
+    def clear_account_cache(name: str) -> None:
+        for ck in [ck for ck in account_cache if ck[0] == name]:
+            account_cache.pop(ck, None)
+
+    @router.put("/api/providers/{name}/admin-key", dependencies=[Depends(require_auth)])
+    async def put_admin_key(name: str, body: AdminKeyIn) -> dict[str, Any]:
+        prov = key_provider(name)
+        if prov.name not in balances.ADMIN:
+            raise HTTPException(404, f"{prov.name} has no admin key")
+        if not keyring.enabled:   # admin keys live only in the key container
+            raise HTTPException(409, {"code": "keyring_off"})
+        key = body.api_key.strip()
+        if not key.isprintable() or any(c.isspace() for c in key):  # also blocks header injection
+            raise HTTPException(422, "admin key must be a single line without spaces")
+        spec, adm = balances.ADMIN[prov.name], balances.admin_name(prov.name)
+        try:
+            await keyring.put(adm, key, [spec["host"]], False, hint=key[-4:], kind="admin", paths=spec["paths"])
+        except KeyringError:
+            raise HTTPException(503, "the key store is not reachable") from None
+        checked = True
+        try:
+            await balances.admin_values(prov, transport=KeyringTransport(keyring, adm), resolver=balance_resolver)
+        except balances.BalanceError as e:
+            if e.refused:
+                try:
+                    await keyring.delete(adm)
+                except KeyringError:
+                    raise HTTPException(503, "the key store is not reachable") from None
+                forget(prov.name)
+                clear_account_cache(prov.name)
+                raise HTTPException(422, {"code": "key_refused"})
+            checked = False
+        forget(prov.name)
+        clear_account_cache(prov.name)
+        return {"ok": True, "checked": checked}
+
+    @router.delete("/api/providers/{name}/admin-key", dependencies=[Depends(require_auth)])
+    async def remove_admin_key(name: str) -> dict[str, bool]:
+        prov = key_provider(name)
+        adm = balances.admin_name(prov.name)
+        if prov.name not in balances.ADMIN or not keyring.has(adm):
+            raise HTTPException(404, "no admin key")
+        try:
+            await keyring.delete(adm)
+        except KeyringError:
+            raise HTTPException(503, "the key store is not reachable") from None
+        clear_account_cache(prov.name)
         return {"ok": True}
 
     # Sign out of a provider reached by signing in (Claude / agy CLI, Codex, Qwen, MiniMax): the stored login really goes (the CLI's own

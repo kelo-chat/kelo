@@ -105,9 +105,6 @@ enum AddressSamples {
         #expect(list[0].formatted.contains("\n홍길동\n"))
         #expect(list[1].country == "US" && !list[1].isDefault && list[1].lastUsed == 1762650100 && list[1].organization.isEmpty)
         #expect(list[1].value("admin_area") == "CA" && list[1].value("nope") == "")
-        // kept on the phone and read back the same
-        let again = try JSON.decode(ShippingProfile.self, from: try JSON.encode(list[1]))
-        #expect(again == list[1])
     }
 
     @Test func walletCarriesShipping() throws {
@@ -290,13 +287,11 @@ enum AddressSamples {
         }
         #expect(p.amountText == "24,000원" && p.currency == "KRW")
         #expect(p.items == [OrderItem(name: "블루 머그", options: "색상: 네이비 · 용량: 350ml", quantity: 2, priceText: "24,000원")])
-        #expect(p.shipping?.source == OrderShipping.fromProfile && p.shipping?.label == "집" && p.shipping?.country == "KR")
+        #expect(p.shipping?.source == "profile" && p.shipping?.label == "집")
         #expect(p.shipping?.lines == ["서울특별시 강남구 테헤란로 152", "10층 1004호", "06236"])
         #expect(p.coupon == "WELCOME10" && p.orderWhat == "블루 머그 2개")
         guard let card = a.card else { Issue.record("no card"); return }
-        #expect(OrderRules.payWith(card.card) == "생활비 카드 ••4242")
         #expect(OrderRules.shipHead(p.shipping!) == "집 · 홍길동 · +821012345678")
-        #expect(OrderRules.quantity(p.items[0]) == "× 2")
     }
 
     @Test func anOlderPaymentHasNoOrderParts() throws {
@@ -310,9 +305,6 @@ enum AddressSamples {
     @Test func siteAddressAndSmallParts() throws {
         let s = OrderShipping(source: "site", formatted: "Jane Roe\n1 Main St")
         #expect(OrderRules.shipHead(s).isEmpty && s.lines.count == 2)
-        #expect(OrderRules.payWith(CardBrief(id: "c", label: "", brand: "visa", last4: "4242")) == "Visa ••4242")
-        #expect(OrderRules.payWith(CardBrief(id: "c", label: "Work", brand: "visa", last4: "")) == "Work")
-        #expect(OrderRules.quantity(OrderItem(name: "x")) == nil)
     }
 
     @Test func autoPaymentCarriesItemsAndShipping() throws {

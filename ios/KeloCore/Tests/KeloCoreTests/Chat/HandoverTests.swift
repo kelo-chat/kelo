@@ -51,6 +51,15 @@ import Testing
         #expect(hc.check?.isVerification == true)
     }
 
+    @Test func aSignInVerificationApproveStepIsToldApart() throws {
+        let check = CheckInfo.parse(try JSON.parse(#"{"kind":"verification","step":"approve"}"#))
+        #expect(check?.isApproveStep == true)
+        let codeCheck = CheckInfo.parse(try JSON.parse(#"{"kind":"verification","step":"code"}"#))
+        #expect(codeCheck?.isApproveStep == false)
+        let otherCheck = CheckInfo.parse(try JSON.parse(#"{"kind":"","step":"approve"}"#))
+        #expect(otherCheck?.isApproveStep == false)
+    }
+
     @Test func theStreamsHandOverEventIsKnown() throws {
         let ev = TurnEvent.parse(try JSON.parse(#"{"type":"human_check","approval_id":"h1","state":"solved","site":"s.example","tab":"owner"}"#))
         #expect(ev == .humanCheck(.init(approvalId: "h1", state: "solved", site: "s.example", tab: "owner")))
