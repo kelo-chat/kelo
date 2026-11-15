@@ -15,7 +15,8 @@
 
 <p align="center">
   <a href="https://kelo.chat">kelo.chat</a> ·
-  <a href="https://kelo.chat/install">Install</a> ·
+  <a href="docs/install.md">Install</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="README.ko.md">한국어</a>
 </p>
 
@@ -48,14 +49,44 @@ browser to you instead of trying to get around it.
 - **Background work** — long jobs keep going with every step shown; questions they need come to the chat as cards.
 - **Schedules and watchers** — run things at set times; get told when a page shows certain words or a number crosses your limit.
 - **Goals** — write down a goal; Kelo keeps the plan, steps, numbers and due dates with you.
+- **Skills it learns, with your OK** — after a task Kelo can propose its steps as a skill, or you tap "Save as skill"; nothing is
+  used until you approve the text in My → Records. Skill folders format: [docs/packages.md](docs/packages.md).
 - **Connectors** — Gmail and other mailboxes, calendars, GitHub, Notion, Linear, Todoist and many more, each connected on the
   service's own sign-in page.
+- **Your other self-hosted apps** — Home Assistant, Frigate, Immich, Paperless-ngx, Mealie, Tandoor, Grocy, Actual Budget, Firefly III,
+  Linkwarden, Karakeep, Wallabag, Miniflux, FreshRSS, n8n, Uptime Kuma, Beszel, AdGuard Home, Pi-hole, Nextcloud, Gitea and Forgejo, by
+  their address on your network; see [Works with your other self-hosted apps](#works-with-your-other-self-hosted-apps).
 - **Keychain and cards** — passwords and keys go in through a form, never the chat, and the agent never sees them. Cards can be
   locked with a key only your phone holds.
 - **Notifications** — when a task finishes or needs your OK. Pushes carry no content; the app fetches it from your own server.
 - **20 languages** in the apps; Kelo answers in the language you write in.
 
 <p align="center"><img src="docs/media/kelo-chat-approval-en.gif" alt="A request, a result and one approval in the chat" width="420"></p>
+
+## Works with your other self-hosted apps
+
+In the app, Connectors → Self-hosted: type the address of an app the way you open it on your network (`http://192.168.0.10:8123`, a name
+on your network, a Tailscale address, or `host.docker.internal` for an app on the server computer itself), paste the key or sign-in the
+app asks for, and Kelo tries it with one real request before saving. Kelo then talks to the app directly: nothing goes through us and
+nothing leaves your network.
+
+Home Assistant (REST, and its MCP Server when you add that integration), Frigate, Immich, Paperless-ngx, Mealie, Tandoor, Grocy, Actual
+Budget (through the community [actual-http-api](https://github.com/jhonderson/actual-http-api)), Firefly III, Linkwarden, Karakeep,
+Wallabag, Miniflux, FreshRSS, n8n (its API, and an MCP Server Trigger for running workflows), Uptime Kuma (its Prometheus status page),
+Beszel, AdGuard Home, Pi-hole (v6), Nextcloud, Gitea and Forgejo.
+
+- **Only you can set an address.** It is typed in your app's connection form and stored sealed with the key. The assistant has no tool to
+  make or change one, so text on a page or in a mail cannot point Kelo at your network.
+- **Always refused**, even for your own address: loopback (`127.0.0.1`, `::1`) and link-local (`169.254.x.x`, `fe80::`). Loopback inside
+  the container is Kelo's own server (and the browser's DevTools next to it), so a connection pointed there could let outside text steer
+  Kelo into its own admin API. `169.254.169.254` is the cloud metadata service, which on a cloud VM hands out the machine's credentials.
+  Private, Tailscale and public addresses are allowed; redirects are never followed; a name is resolved once and that address is used.
+- **Devices.** When you ask for something in your own message ("unlock the front door", "turn the boiler off"), Kelo does it at once on
+  your Home Assistant, with no approval card. It asks first for anything it would do on its own, in a background job, or after text from
+  a page, mail or message reached the run. A task you set up with its own permission runs as you allowed it.
+- **Pictures and files** (a Frigate snapshot, an Immich photo, a Paperless PDF) are saved to your library and pictures can be shown in the chat.
+- **Coming later:** https addresses with a self-signed certificate (for example Frigate's signed-in port 8971); use the plain http port or an
+  address with a valid certificate for now.
 
 ## Apps
 
@@ -67,17 +98,40 @@ browser to you instead of trying to get around it.
 
 | Platform | Status |
 |---|---|
-| Android | Native app (Kotlin + Jetpack Compose). Beta testing: sign up at [kelo.chat/tester](https://kelo.chat/tester), or install the APK: [kelo.chat/download/android](https://kelo.chat/download/android). Google Play after the beta. |
-| Windows / macOS desktop | Native app (Compose Multiplatform): chat, approvals, live browser, tray, notifications. Windows: [Microsoft Store](https://apps.microsoft.com/detail/9P54HX2TX361?hl=en-us&gl=US), or the [installer (.exe)](https://kelo.chat/download/windows) / [MSI](https://kelo.chat/download/windows-msi); macOS (Apple silicon): [disk image (.dmg)](https://kelo.chat/download/mac). |
+| Android | Native app (Kotlin + Jetpack Compose). In beta testing: sign up at [kelo.chat/tester](https://kelo.chat/tester), or sideload the APK: [kelo.chat/download/android](https://kelo.chat/download/android). Google Play comes after the beta. |
+| Windows / macOS desktop | Native app (Compose Multiplatform): chat, approvals, live browser, tray, notifications. Windows: [Microsoft Store](https://apps.microsoft.com/detail/9P54HX2TX361?hl=en-us&gl=US), or the direct files: [installer (.exe)](https://kelo.chat/download/windows) or [MSI](https://kelo.chat/download/windows-msi); macOS (Apple silicon): [disk image (.dmg)](https://kelo.chat/download/mac). |
 | iOS | Native app (SwiftUI), on the [App Store](https://apps.apple.com/us/app/kelo-ai/id6832422201) (iOS 17 or later). |
 
+Versions, sizes and SHA-256 of the current builds: [kelo.chat/download/latest.json](https://kelo.chat/download/latest.json).
+
+- **Android:** open the APK; if Android asks, allow installing apps from this source (your browser or file manager). Android 8.0 or later.
+- **Windows:** the Microsoft Store version has no such warning. The direct installer files aren't code-signed yet, so SmartScreen may stop them: **More info → Run anyway**. Windows 10 or 11.
+- **macOS:** drag Kelo to Applications. It is signed and notarized by Apple, so it opens right away. Apple silicon (M1 or later).
+
 <p align="center">
-  <img src="docs/media/en-chat.webp" alt="Chat" width="200">
-  <img src="docs/media/en-work.webp" alt="Work" width="200">
-  <img src="docs/media/en-goal.webp" alt="Goal plan" width="200">
-  <img src="docs/media/en-connectors.webp" alt="Connectors" width="200">
+  <img src="src/assistant/site/shots/en-chat.webp" alt="Chat" width="200">
+  <img src="src/assistant/site/shots/en-work.webp" alt="Work" width="200">
+  <img src="src/assistant/site/shots/en-goal-reading.webp" alt="Goal plan: Read 2 books a month" width="200">
+  <img src="src/assistant/site/shots/en-connectors.webp" alt="Connectors" width="200">
 </p>
-<p align="center"><sub>The "Walk 30 minutes a day" goal reads step counts from Health Connect. Step tracking is in the sideload APK only; the Google Play version does not support it yet.</sub></p>
+
+### Verify the downloads
+
+You don't have to trust the files, only the public source. Each release is built in public by GitHub Actions
+([`release-build.yml`](.github/workflows/release-build.yml)) and every file carries a signed record of which source made it:
+
+```sh
+gh attestation verify Kelo-<version>.msi -R kelo-chat/kelo     # also .exe, .msix and the Android files
+```
+
+- **Android (APK from kelo.chat):** the app is built in a pinned Docker environment, so building the tagged source gives the same file.
+  `tools/verify/android-verify.sh --tag <tag>` builds it and compares it with the APK on your phone (the signature is the one thing left out).
+  The **Google Play** version can't be compared byte for byte: Google Play adds its own protection code to the apps it delivers. To check,
+  install the APK from kelo.chat.
+- **Windows:** the installers are not byte-for-byte reproducible; the attestation shows the workflow and commit that built them.
+- **iPhone:** Apple encrypts every App Store app per device, so a byte-for-byte check is impossible. The doc says what you can check.
+
+Steps, limits and what is not covered: [docs/verify-builds.md](docs/verify-builds.md).
 
 ## Install the server
 
@@ -87,6 +141,9 @@ browser to you instead of trying to get around it.
 |---|---|---|---|
 | Minimum | 2 GB | 2 cores | 10 GB |
 | Recommended | 4 GB | 4 cores | 20 GB |
+
+The setup asks for one of these sizes (or No limit). Kelo then stays within it: all of its containers together, program files
+included. Change it later with `kelo limits --choose`.
 
 The one-line installer opens when Kelo is published:
 
@@ -100,18 +157,42 @@ curl -fsSL https://kelo.chat/install.sh | bash
 irm https://kelo.chat/install.ps1 | iex
 ```
 
-The desktop app's source (Windows and macOS: `apps/desktop`, `apps/shared`) is here now; its Windows installers are built in this
-repository's Actions with build provenance (`gh attestation verify <file> -R kelo-chat/kelo`). The server and the phone apps follow.
+Until then, from a copy of this repository:
+
+```bash
+KELO_SOURCE=/path/to/this/repo bash scripts/install.sh
+```
 
 The installer checks Docker, copies Kelo, and opens a four-step guided setup: check the server, pick a size, start Kelo, connect
-your phone with a QR code. The AI model is chosen in the app afterwards. Full guide: [kelo.chat/install](https://kelo.chat/install).
+your phone with a QR code. The AI model is chosen in the app afterwards. Full guide: [docs/install.md](docs/install.md).
 
 ### Reaching your server from the phone
 
-- **Default address** — a free `https://<name>.kelo.chat` address (`kelo connect kelo --name <name>`).
+- **Kelo address** — a `<name>.kelo.chat` address, offered for now (`kelo connect kelo --name <name>`). Availability and terms may change.
 - **Tailscale** — private, no public address.
 - **Your own domain** — DuckDNS or any domain you own.
 
+See [docs/connect.md](docs/connect.md).
+
+### Through Nginx Proxy Manager
+
+Many self-hosters already run Nginx Proxy Manager (NPM). With your own domain this takes about five minutes (replace `kelo.example.com`):
+
+1. In your DNS, point `kelo.example.com` at the address your NPM answers on.
+2. On the Kelo computer run `assistant connect domain --host kelo.example.com --proxy`. Kelo listens on your home network and prints the address to forward to, like `http://192.168.1.20:8080`.
+3. In NPM: **Hosts → Proxy Hosts → Add Proxy Host**. Details tab: Domain Names `kelo.example.com`, Scheme `http`, Forward Hostname / IP the printed address (without `http://`), Forward Port the printed port (8080 unless you changed it). Turn on **Websockets Support** and **Block Common Exploits**.
+4. SSL tab: *Request a new SSL Certificate*, **Force SSL**, **HTTP/2 Support**, accept the Let's Encrypt terms.
+5. Advanced tab, so replies stream as they are written and photos can be uploaded:
+
+   ```
+   proxy_buffering off; proxy_request_buffering off; proxy_cache off;
+   proxy_read_timeout 300s; proxy_send_timeout 300s; client_max_body_size 30m;
+   ```
+
+   Save.
+6. Check with `assistant connect status`, then `assistant phone add` and scan the QR code with the Kelo app: it now uses `https://kelo.example.com`.
+
+Kelo answers plain http on your home network, so let only NPM reach that port if your firewall allows it. Undo with `assistant connect off` and delete the host in NPM.
 
 ### Tip: run Kelo for free
 
@@ -125,7 +206,7 @@ OpenAI-compatible address. Kelo's images build for Arm (linux/arm64) as well as 
    block storage is free in total). "Out of host capacity" means no free Arm machine is available right now: try another
    availability domain, or try again later.
 2. **Install Kelo.** SSH in and run the installer above. It offers to install Docker, then opens the guided setup; **No limit**
-   is a good size here, since the VM is only for Kelo. Choose the free `https://<name>.kelo.chat` address: it works through an
+   is a good size here, since the VM is only for Kelo. Choose a `https://<name>.kelo.chat` address (offered for now): it works through an
    outgoing tunnel, so you don't open any ports in Oracle's firewall.
 3. **Add FreeLLMAPI on the same VM**, joined to Kelo's Docker network so Kelo reaches it by name while it stays closed to the
    internet:
@@ -158,14 +239,68 @@ Keep in mind:
 - **Their terms apply.** FreeLLMAPI is a separate MIT-licensed project meant for one person's own use. Oracle's terms and each
   model provider's free-tier terms (limits, data use, allowed use) still apply.
 
+
 ### Useful commands
 
 ```bash
 kelo status            # each copy: running or not, its address
 kelo phone add         # sign another phone in (QR code)
-kelo limits --choose   # how much RAM/CPU/storage Kelo may use
-kelo instance create alex   # another person on the same server, with their own data and keys
+kelo limits --choose   # Recommended, Minimum or No limit
+kelo instance create alex   # another person on the same server, with their own data and keys (then its address and a QR code)
+kelo instance list           # every copy, its address and whether it runs
+kelo instance stop alex      # stop a copy; its data stays (`kelo instance start alex` brings it back)
+kelo instance delete alex    # delete a copy completely: its chats, keys, files, settings and address
 ```
+
+### Updating
+
+`kelo update` (or `kelo update alex`, or `kelo instance update` for every extra copy) updates safely: it checks free disk,
+remembers the images the copy runs, backs up its data inside its own volume (a consistent copy of the database plus its files; the
+newest 3 are kept), rebuilds, restarts and checks that the copy answers, opens its database and serves a request. If any step fails
+it rolls back by itself to the previous images, puts the backup back if the new version had changed the database, and says so.
+`kelo rollback [name]` goes back to the version before the last update on purpose (the only way to downgrade); `kelo backups [name]`
+lists the backups.
+The database is upgraded in place when a new version starts, and there are no down-migrations, so the data and the version move
+together: if the database layout changed since the rollback point, going back also restores the backup taken at that point
+(changes made after it are lost; `kelo rollback` backs up the current data first). If the layout did not change, the current data is
+kept. `--keep-data` skips the restore at your own risk.
+
+#### From the app, with one button
+
+The owner's phone (or computer) can update the server too: **My → Server update** shows "Server update available: 0.5.0" with
+what is new, an **Update** button, the progress, and the result. It runs the same steps as `kelo update` (free disk, rollback point,
+backup, new images, restart, health check, automatic rollback on failure), and the page says which version the server went back to
+if the new one failed. **Update automatically at night** (off by default) does it by itself in the quietest time Kelo learned from
+your own use, outside your contact hours, when no chat is running, at most once a night, and tells you the result with a
+notification. Other people's phones see nothing.
+
+How it works: a small extra container, the **updater**, is the only part of Kelo that may use Docker. It has no AI and reads no
+web pages or mail, publishes no port, and answers only the main copy's server, on an internal network, with a secret made at setup
+(`UPDATER_TOKEN`, never shown). It knows four fixed commands: status, check, update to the latest release, and roll back. It only
+installs the release named in the official list (`https://kelo.chat/download/latest.json`), pulls each image by its digest from
+`ghcr.io/kelo-chat` (or `KELO_REGISTRY`), and refuses it unless the digest, the signature of Kelo's release workflow (cosign,
+keyless) and the version all check out. It updates the main copy first, then every extra copy (they share the images), and itself
+last. The Claude and agy containers are never published (their CLIs are proprietary): they stay built on your server, and each CLI
+updates itself from the app (My → Model).
+
+```bash
+kelo updater setup [--auto-update]   # turn it on (the installer does this and asks about nightly updates)
+kelo updater status                  # what the server runs, the newest release, the last update
+kelo updater off                     # remove the container; `kelo update` keeps working
+kelo update --from-release           # the same update from the terminal (the default once the server runs release images)
+kelo update --from-source            # build from these files instead (development)
+```
+
+A server built from the source files (the way it is installed today, or with Google Chrome) shows "built from the source files:
+update it on the server machine with `kelo update`" in the app and has no button. A release that needs newer setup files
+(`compose.yml`) says to run the installer again (your data stays).
+
+### Sign in with a subscription account (optional)
+
+`kelo enable oauth` lets you sign in with a subscription account (Claude, Antigravity and others) instead of an API key.
+It also installs Claude Code and Antigravity, each in its own container; you sign in from the app under My → Model.
+These companies have not confirmed that their subscriptions may be used from other apps, so the app asks once before each
+one is used. Turn it off with `kelo disable oauth`.
 
 ## How it's built
 
@@ -175,14 +310,20 @@ kelo instance create alex   # another person on the same server, with their own 
 - **Models** — Anthropic, OpenAI, Google, OpenRouter, Bedrock, Vertex, Azure, DeepSeek, Mistral, xAI, Groq, Together, LM Studio,
   any OpenAI-compatible server, and more.
 
+More: [docs/browser.md](docs/browser.md) (the browser and its safety rules), [docs/vpn.md](docs/vpn.md) (browsing through your VPN or proxy), [docs/push.md](docs/push.md) (notifications),
+[docs/google.md](docs/google.md) (Google sign-in).
 
 ## Privacy
 
 **Your data stays on your server.** Your chats, notes, saved keys and cards are stored only on the Kelo server you run.
 The developer has no way into it and does not collect your conversations.
 
+AI provider keys you enter in the app are kept by a separate small program on your server, not by Kelo itself. Kelo asks it to
+make the model call; it adds the key only for that provider's own address. Under Keyguard, it stays locked until your phone unlocks
+Kelo.
+
 kelo.chat helps with only a few things:
-- **Default address:** it hands out free `name.kelo.chat` addresses. Traffic goes through Cloudflare straight to your server; use Tailscale or your own domain if you'd rather avoid this.
+- **Kelo address (offered for now):** the Kelo project offers `name.kelo.chat` addresses for now; availability and terms may change. Traffic uses https through a Cloudflare Tunnel to your server; use Tailscale or your own domain if you'd rather avoid this.
 - **Notifications:** push notifications carry only an ID that something new happened. The app fetches the content from your server.
 - **Google and GitHub sign-in:** it brokers the sign-in and the token exchange. Tokens pass through but are never stored.
 
@@ -195,10 +336,27 @@ Kelo is a solo project, built and maintained by one person, so some parts may st
 I'll do my best to fix reported issues, but since I work on Kelo alongside a full-time job, I can't promise how quickly that will happen.
 Issues and suggestions are always welcome.
 
+### In development
+
+- **Several custom endpoints**: save more than one OpenAI-compatible endpoint, each under a name you choose, and pick between
+  them in the model list.
+- **Messenger channels**: talk to Kelo from Telegram, Discord and Slack, set up from the Connectors list, with replies as they
+  happen (no polling).
+- **Native server install on Windows and macOS**: run the Kelo server without Docker, as an extra option next to it.
+- **Kelo Nest**: a place to find and add skills, connectors and app extensions (new tabs) made for Kelo.
+
 ## License
 
-Kelo is free software under the [GNU Affero General Public License v3.0 or later](https://www.gnu.org/licenses/agpl-3.0.html). If you run a modified Kelo server
-for other people, the AGPL asks you to offer them your source. The Kelo name, logo and mascot are not covered by the licence —
-forks need their own.
+Kelo is free software under the [GNU Affero General Public License v3.0 or later](LICENSE), for everyone. If you run a
+modified Kelo server for other people over a network, the AGPL asks you to offer them the source of your version.
+
+**Commercial licence.** If the AGPL does not fit how you want to use Kelo (for example, shipping it inside a closed
+product or service without sharing your changes), a commercial licence is available on request: support@kelo.chat.
+
+**Contributing.** Outside pull requests are not accepted yet. Bug reports and ideas are welcome as issues. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+The Kelo name, logo and mascot are not covered by the licence; forks need their own. Third-party code, fonts and service
+icons, and their licences: [NOTICE](NOTICE).
 
 Questions: support@kelo.chat
