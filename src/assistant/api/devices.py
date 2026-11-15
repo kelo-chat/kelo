@@ -1,4 +1,4 @@
-"""Devices and pairing: a phone joins with a one-time code (shown as a QR), reviewers with multi-use access codes; owner rights; removing a phone and everything it shared."""
+"""Devices and pairing: a phone joins with a one-time code (shown as a QR), reviewers with multi-use access codes. Every device has the same rights; removing a phone and everything it shared."""
 
 from __future__ import annotations
 
@@ -30,8 +30,8 @@ class PairIn(BaseModel):
 
 class PairStartIn(BaseModel):
     origin: str = Field(default="", max_length=300)   # the address this device reached the server at, e.g. https://me.example.com
-    owner: bool = False   # the phone it signs in gets the owner's rights (operator settings); master token only (`assistant phone add --owner`)
-    first_owner: bool = False
+    owner: bool = False         # accepted and ignored: there are no owner devices any more (every device has the same rights)
+    first_owner: bool = False   # accepted and ignored
 
 
 def router(ctx: AppContext) -> APIRouter:
@@ -49,10 +49,8 @@ def router(ctx: AppContext) -> APIRouter:
     # ---- devices. A phone is added with a one-time code (shown as a QR); it then holds its own token and can be removed alone.
     @router.post("/api/devices/pair", dependencies=[Depends(require_auth)])
     async def new_pairing(request: Request, body: PairStartIn | None = None) -> dict[str, Any]:
-        owner = bool(body and (body.owner or (body.first_owner and not any(d["owner"] for d in store.devices()))))
-        if body and (body.owner or body.first_owner) and request.state.device_id is not None:   # owner rights are handed out on the server machine only, never phone to phone
-            raise HTTPException(403, "only the access key on the server machine can sign a phone in as the owner (assistant phone add --owner)")
-        out: dict[str, Any] = {"code": store.new_pairing(owner=owner), "expires_in": int(store.PAIRING_TTL), "owner": owner,
+        # `owner` / `first_owner` in the body are ignored; the answer keeps "owner" for older apps (true, false on a review copy)
+        out: dict[str, Any] = {"code": store.new_pairing(), "expires_in": int(store.PAIRING_TTL), "owner": auth.owner_flag(settings.review_mode),
                                "fingerprint": e2e_server.key.fingerprint}
         # a fixed public address wins over the page's own address (a temporary tunnel), so the new phone keeps working after a restart
         origin = (settings.public_url or (body.origin if body else "")).strip().rstrip("/")
@@ -106,14 +104,15 @@ def router(ctx: AppContext) -> APIRouter:
 
     @router.get("/api/devices", dependencies=[Depends(require_auth)])
     async def get_devices(request: Request) -> dict[str, Any]:
-        return {"devices": store.devices(), "current": request.state.device_id}
+        flag = auth.owner_flag(settings.review_mode)   # "owner": kept for older apps; every device has it (not on a review copy)
+        return {"devices": [{**d, "owner": flag} for d in store.devices()], "current": request.state.device_id}
 
     @router.put("/api/devices/{device_id}/owner", dependencies=[Depends(require_master)])
     async def put_device_owner(device_id: int, body: DeviceOwnerIn) -> dict[str, Any]:
-        """Give a paired phone the owner's rights (operator settings) or take them back: master token only (`assistant phone owner`)."""
-        if not store.set_device_owner(device_id, body.owner):
+        """Kept for older tools: owner rights no longer exist (every device has the same rights), so this changes nothing."""
+        if not any(d["id"] == device_id for d in store.devices()):
             raise HTTPException(404, "no such device")
-        return {"ok": True, "id": device_id, "owner": body.owner}
+        return {"ok": True, "id": device_id, "owner": auth.owner_flag(settings.review_mode)}
 
     def forget_device(device_id: int) -> None:
         try:

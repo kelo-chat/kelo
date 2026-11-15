@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Ini akan dibuka setelah peninjauan Google selesai. Mendukung Kelo membantu fitur ini dibuka lebih cepat.",
  "This order already made its payment": "Pesanan ini sudah dibayar",
  "This payment link is made only for another product, so this app can't use it.": "Tautan pembayaran ini dibuat khusus untuk produk lain, jadi aplikasi ini tidak bisa memakainya.",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "Ponsel ini mendapat hak pemilik: bisa membuka pengaturan operator. Pindai hanya dengan ponsel Anda sendiri.",
  "This provider cannot list its models. Type the model yourself": "Penyedia ini tidak bisa menampilkan daftar modelnya. Ketik sendiri nama modelnya",
  "This run already made the purchase allowed for it": "Jalankan ini sudah melakukan pembelian yang diizinkan",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "Kontainer server ini tidak punya CLI. Nyalakan kontainer CLI di `assistant setup` (atau jalankan server Kelo di luar kontainer)",

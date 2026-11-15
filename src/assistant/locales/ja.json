@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Google の審査が終わり次第利用できるようになります。Kelo を応援していただくと、公開が早まります。",
  "This order already made its payment": "この注文はすでに支払い済みです",
  "This payment link is made only for another product, so this app can't use it.": "この決済連携は別の製品専用のため、このアプリでは使えません。",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "このスマホにはオーナー権限が付き、運営者向け設定を開けます。必ずご自身のスマホでスキャンしてください。",
  "This provider cannot list its models. Type the model yourself": "このプロバイダーはモデル一覧を取得できません。モデル名を直接入力してください",
  "This run already made the purchase allowed for it": "この実行では許可された購入をすでに行いました",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "このサーバーコンテナにはCLIがありません。`assistant setup` でCLIコンテナをオンにしてください（または Kelo サーバーをコンテナの外で実行してください）",

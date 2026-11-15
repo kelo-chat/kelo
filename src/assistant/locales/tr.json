@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Google'ın incelemesi bitince açılacak. Kelo'yu desteklemek daha erken açılmasına yardımcı olur.",
  "This order already made its payment": "Bu siparişin ödemesi zaten yapıldı",
  "This payment link is made only for another product, so this app can't use it.": "Bu ödeme bağlantısı yalnızca başka bir ürün için oluşturulmuş, bu yüzden bu uygulama kullanamaz.",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "Bu telefon sahibin yetkilerini alır: yönetici ayarlarını açabilir. Yalnızca kendi telefonunuzla tarayın.",
  "This provider cannot list its models. Type the model yourself": "Bu sağlayıcı modellerini listeleyemiyor. Modeli kendin yaz",
  "This run already made the purchase allowed for it": "Bu çalıştırma izin verilen satın almayı zaten yaptı",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "Bu sunucu kapsayıcısında CLI yok. `assistant setup` içinde CLI kapsayıcısını açın (ya da Kelo sunucusunu bir kapsayıcı dışında çalıştırın)",

@@ -249,6 +249,7 @@ struct KeyguardPage: View {
                 }
             }
         }
+        .keloSwipeBackBlocked()   // the code is shown once: the edge swipe must not leave before "I wrote it down"
     }
 
     // ---- calls ---------------------------------------------------------------------------------------------------------------

@@ -132,9 +132,8 @@ async def test_a_paired_phone_cannot_see_or_change_the_operators_google_client(t
     async with Running(app_with(tmp_path, g, m)) as srv, httpx.AsyncClient(base_url=srv.url) as c:
         _, r = await add_phone(c)
         phone = bearer(r.json()["token"])
-        assert (await c.get("/api/oauth-apps/google", headers=phone)).status_code == 403
-        assert (await c.put("/api/oauth-apps/google", json={"client_id": CLIENT}, headers=phone)).status_code == 403
-        assert (await c.get("/api/oauth-apps/github", headers=phone)).status_code == 403
+        assert (await c.get("/api/oauth-apps/google", headers=phone)).status_code == 200   # every device has the same rights
+        assert (await c.get("/api/oauth-apps/github", headers=phone)).status_code == 200
         assert (await c.get("/api/oauth-apps/google", headers=AUTH)).status_code == 200
         assert (await c.get("/api/google/calendar", headers=phone)).status_code == 200    # the phone still connects its calendar
 

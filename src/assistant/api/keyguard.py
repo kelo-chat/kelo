@@ -1,10 +1,10 @@
 """Keyguard in the API (keyguard.py; docs/security/e2e-and-phone-key.md section 2). Owner only. Key material travels only inside
-KE2E: a call that carries or returns the key must come through /e2e from an owner phone (403 {"code": "e2e_required"} otherwise).
+KE2E: a call that carries or returns the key must come through /e2e from a signed-in phone (403 {"code": "e2e_required"} otherwise).
 
 GET    /api/keyguard                {"mode": "server" | "phone", "locked", "env_key", "recovery", "phones": [{"device_id", "name",
                                     "alg", "created"}], "auto_pay_paused": n (auto-pay cards that wait because Keyguard is off;
                                     the disable answer carries it too)}   (works while locked)
-POST   /api/keyguard/enroll         turn it on (or add this owner phone while unlocked): {"enrollment_id", "key" (the master key,
+POST   /api/keyguard/enroll         turn it on (or add this phone while unlocked): {"enrollment_id", "key" (the master key,
                                     base64url, to wrap with the phone's hardware key), "enabling", "recovery_code"? (enabling only:
                                     24 characters, shown ONCE)}; 409 {"code": "env_key"} while ASSISTANT_SECRET_KEY is set
 POST   /api/keyguard/enroll/finish  {"enrollment_id", "alg": 1 | 2, "blob" (base64, first byte = alg)} -> the view. Enabling re-seals
@@ -52,14 +52,14 @@ def router(ctx: AppContext) -> APIRouter:
     require_owner = ctx.require_owner
 
     def phone_over_e2e(request: Request) -> int:
-        """The calling owner phone's device id; key material only inside KE2E."""
+        """The calling phone's device id; key material only inside KE2E."""
         if not request.scope.get("kelo_e2e") or request.state.device_id is None:
-            raise HTTPException(403, {"code": "e2e_required", "message": "this needs an owner phone talking to the server end to end"})
+            raise HTTPException(403, {"code": "e2e_required", "message": "this needs a phone talking to the server end to end"})
         return int(request.state.device_id)
 
     def master_or_e2e(request: Request) -> None:
         if request.state.device_id is not None and not request.scope.get("kelo_e2e"):
-            raise HTTPException(403, {"code": "e2e_required", "message": "this needs an owner phone talking to the server end to end"})
+            raise HTTPException(403, {"code": "e2e_required", "message": "this needs a phone talking to the server end to end"})
 
     def refused(e: KeyGuardError) -> HTTPException:
         return HTTPException(e.status, {"code": e.code, "message": str(e)})

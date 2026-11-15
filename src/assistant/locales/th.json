@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "ส่วนนี้จะเปิดเมื่อ Google ตรวจสอบเสร็จ การสนับสนุน Kelo ช่วยให้เปิดได้เร็วขึ้น",
  "This order already made its payment": "คำสั่งซื้อนี้ชำระเงินแล้ว",
  "This payment link is made only for another product, so this app can't use it.": "ลิงก์ชำระเงินนี้ทำมาสำหรับผลิตภัณฑ์อื่นเท่านั้น แอปนี้จึงใช้ไม่ได้",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "โทรศัพท์เครื่องนี้จะได้รับสิทธิ์เจ้าของ เปิดการตั้งค่าผู้ดูแลเซิร์ฟเวอร์ได้ สแกนด้วยโทรศัพท์ของคุณเองเท่านั้น",
  "This provider cannot list its models. Type the model yourself": "ผู้ให้บริการนี้แสดงรายการโมเดลไม่ได้ พิมพ์ชื่อโมเดลเองได้เลย",
  "This run already made the purchase allowed for it": "การทำงานรอบนี้ซื้อสิ่งที่อนุญาตไปแล้ว",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "คอนเทนเนอร์เซิร์ฟเวอร์นี้ไม่มี CLI เปิดคอนเทนเนอร์ CLI ใน `assistant setup` (หรือรันเซิร์ฟเวอร์ Kelo นอกคอนเทนเนอร์)",

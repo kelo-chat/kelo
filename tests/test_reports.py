@@ -71,7 +71,7 @@ async def test_a_copy_forwards_a_report_to_the_broker_which_keeps_only_what_was_
         assert row["install"] != install and len(row["install"]) == 64           # only the hash
         assert "127.0.0.1" not in json.dumps(row)                                 # no address kept
         op_phone = await pair(oc)
-        assert (await oc.get("/api/operator/reports", headers=op_phone)).status_code == 403
+        assert (await oc.get("/api/operator/reports", headers=op_phone)).status_code == 200   # every device has the same rights
         assert (await oc.get("/api/operator/reports")).status_code == 401
         # mark handled, filter, then delete
         assert (await oc.post(f"/api/operator/reports/{rep['id']}", headers=AUTH, json={"handled": True})).json()["handled"] is True

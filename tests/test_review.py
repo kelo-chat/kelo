@@ -50,8 +50,8 @@ def test_a_code_signs_in_several_phones_up_to_its_limit_and_only_its_hash_is_kep
     assert a and b and a[1] != b[1]
     assert st.redeem_pairing(code, "third") is None                          # used up
     devs = st.devices()
-    assert [d["code"] for d in devs] == ["review-apple"] * 2 and not any(d["owner"] for d in devs)
-    assert st.device_for_token(a[1])["owner"] is False
+    assert [d["code"] for d in devs] == ["review-apple"] * 2 and all(d["id"] for d in devs)
+    assert "owner" not in st.device_for_token(a[1])             # there are no owner devices; the API reports the old field
     row = st.access_codes()[0]
     assert row["id"] == cid and row["uses"] == 2 and row["devices"] == 2 and row["state"] == "used_up" and "code" not in row
     st._db.commit()
@@ -127,8 +127,8 @@ async def test_codes_are_made_and_revoked_with_the_master_token_only(tmp_path):
         assert listed[0]["devices"] == 3 and listed[0]["state"] == "used_up" and made["code"] not in json.dumps(listed)
         devs = (await c.get("/api/devices", headers=bearer(tokens[0]))).json()["devices"]
         assert sorted(d["code"] for d in devs) == ["", "review-apple", "review-apple", "review-apple"]
-        # a reviewer phone is an ordinary device: no operator settings
-        assert (await c.get("/api/operator/status", headers=bearer(tokens[0]))).status_code == 403
+        # not a review copy: a reviewer's phone is a device like any other (review copies refuse it: test_owner_phone.py)
+        assert (await c.get("/api/operator/status", headers=bearer(tokens[0]))).status_code == 200
         assert (await c.delete(f"/api/devices/codes/{made['id']}", headers=bearer(tokens[0]))).status_code == 403
         gone = (await c.delete(f"/api/devices/codes/{made['id']}", headers=AUTH)).json()
         assert gone == {"ok": True, "signed_out": 3}

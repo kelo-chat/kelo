@@ -1,4 +1,4 @@
-"""The operator's services and settings: free <name>.kelo.chat addresses (kelo_names.py), push for every copy's phones (push.py), reports of bad AI replies (reports.py), Google sign-in beta requests (beta.py). /api/operator/* needs the owner; /broker/* is public and rate-limited."""
+"""The operator's services and settings: free <name>.kelo.chat addresses (kelo_names.py), push for every copy's phones (push.py), reports of bad AI replies (reports.py), Google sign-in beta requests (beta.py). /api/operator/* needs a signed-in device (not on a review copy); /broker/* is public and rate-limited."""
 
 from __future__ import annotations
 
@@ -92,12 +92,13 @@ def router(ctx: AppContext) -> APIRouter:
     report_box = ctx.report_box
     report_broker = ctx.report_broker
     reports = ctx.reports
+    auth = ctx.auth
     require_auth = ctx.require_auth
     require_owner = ctx.require_owner
     settings = ctx.settings
     store = ctx.store
 
-    # ---- free Kelo addresses. The operator's Cloudflare token goes in (owner token only), never out.
+    # ---- free Kelo addresses. The operator's Cloudflare token goes in (any signed-in device), never out.
     @router.get("/api/operator/cloudflare", dependencies=[Depends(require_owner)])
     async def get_operator_cloudflare() -> dict[str, Any]:
         return kelo_names.config()
@@ -180,7 +181,7 @@ def router(ctx: AppContext) -> APIRouter:
         except KeloNameError as e:
             raise HTTPException(e.status, str(e)) from None
 
-    # ---- push notifications for every copy's phones. The operator's Firebase key goes in (owner token only), never out.
+    # ---- push notifications for every copy's phones. The operator's Firebase key goes in (any signed-in device), never out.
     @router.get("/api/operator/firebase", dependencies=[Depends(require_owner)])
     async def get_operator_firebase() -> dict[str, Any]:
         return fcm.config()
@@ -204,7 +205,7 @@ def router(ctx: AppContext) -> APIRouter:
     def is_operator() -> bool:
         """The operator's server: the one other copies lean on (sign-in relay, pushes, free addresses, reports, beta requests).
         ASSISTANT_OPERATOR decides when set; otherwise it is the server whose own address is the broker in its settings, or one
-        already running the free-address or push service. Every self-hosted copy (its owner phone included) is not."""
+        already running the free-address or push service. Every self-hosted copy (its phones included) is not."""
         if settings.review_mode:   # a review copy never shows the operator's settings
             return False
         if settings.operator is not None:
@@ -214,8 +215,9 @@ def router(ctx: AppContext) -> APIRouter:
         return names_itself(settings.public_url, settings.oauth_broker, settings.push_broker, settings.report_broker)
 
     @router.get("/api/operator/status", dependencies=[Depends(require_owner)])
-    async def operator_status() -> dict[str, bool]:
-        return {"owner": True, "operator": is_operator()}
+    async def operator_status(request: Request) -> dict[str, bool]:
+        # "owner" is kept for older apps: true for the access key and every device (a review copy's devices never get here: 403)
+        return {"owner": request.state.device_id is None or auth.owner_flag(settings.review_mode), "operator": is_operator()}
 
     def push_refusal(e: PushError) -> HTTPException:
         return HTTPException(e.status, str(e), headers={"Retry-After": str(e.retry_after)} if e.retry_after else None)

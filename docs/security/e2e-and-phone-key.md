@@ -7,7 +7,7 @@ Two features:
 
 1. **KE2E**: the apps talk to their own Kelo server end to end. Cloudflare (the `<name>.kelo.chat` tunnel ends TLS there), the
    operator server and anything else on the path see only ciphertext.
-2. **Keyguard**: the server's master key can be held by the owner's phones instead of a file next to the database, so a stolen,
+2. **Keyguard**: the server's master key can be held by the user's phones instead of a file next to the database, so a stolen,
    powered-off server disk does not open the keychain, cards or tokens.
 
 Both use only standard primitives through well-known libraries. Nothing here is a new cipher.
@@ -116,7 +116,7 @@ browser opens, `/broker/*` (operator services between servers), and the pre-pair
 
 ---
 
-## 2. Keyguard: the master key held by the owner's phones
+## 2. Keyguard: the master key held by the user's phones
 
 ### 2.1 Today
 
@@ -127,24 +127,24 @@ API keys and the AES-256-GCM sealers (vault, auto-pay cards, personal data). Who
 
 Optional, chosen by the owner (My → Security). Off by default in v1.
 
-- **Enable** (owner phone, over KE2E, biometric confirmation):
+- **Enable** (any signed-in phone, over KE2E, biometric confirmation):
   1. The server makes a new master key `K'` and re-seals everything from `K` to `K'` in one transaction (key rotation; old backups
      keep needing the old key).
   2. It sends `K'` to the phone inside the KE2E answer. The phone wraps it with its hardware key (2.4) and sends back the wrapped blob;
      the server stores `{device_id, alg, blob, created}`.
   3. A **recovery code** (24 characters, shown once on the phone, never stored in plain): the server stores
-     `Argon2id(code, salt) → AES-256-GCM wrap of K'`. It is the only way back if every owner phone is lost.
+     `Argon2id(code, salt) → AES-256-GCM wrap of K'`. It is the only way back if every phone is lost.
   4. The server deletes `master.key`. If `ASSISTANT_SECRET_KEY` is set in `.env`, enabling is refused until
      `assistant keyguard enable` on the server machine removes it (the server cannot edit the host's `.env`).
   5. A check value `HMAC-SHA256(K', "kelo keyguard check")` is stored so a wrong key is recognised.
 - **After a restart** the server is **locked**: it holds no master key. Nothing sealed can be opened (provider keys, vault, cards,
-  connector tokens), so the agent cannot run. The server sends an "unlock" push to owner phones; the app shows "Kelo is locked: open
+  connector tokens), so the agent cannot run. The server sends an "unlock" push to every phone; the app shows "Kelo is locked: open
   it". The owner taps, passes biometrics, the app fetches its blob (`GET /api/keyguard/blob`, KE2E), unwraps it on the phone and
   sends the key (`POST /api/keyguard/unlock`, KE2E). The server checks the check value and keeps the key **in memory only**.
-- **More owner phones**: while unlocked, another owner phone can enroll (step 2 for that phone).
+- **More phones**: while unlocked, another phone can enroll (step 2 for that phone).
 - **Removing a phone** deletes its blob. The last blob cannot be removed without turning the mode off.
 - **Turning it off**: while unlocked, the owner chooses to store the key on the server again (`master.key` written back).
-- **Lost all phones**: `assistant keyguard recover` on the server machine (or the app on a new owner phone) with the recovery code.
+- **Lost all phones**: `assistant keyguard recover` on the server machine (or the app on a new phone) with the recovery code.
 - Locked state in the API: `GET /api/keyguard` → `{"mode": "phone", "locked": true, "phones": [...]}`. Endpoints that need a secret
   answer `423 {"code": "locked"}`; the apps show the unlock prompt for it.
 

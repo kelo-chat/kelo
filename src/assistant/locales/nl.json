@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Dit gaat open zodra de controle door Google klaar is. Kelo steunen helpt om het sneller te openen.",
  "This order already made its payment": "Deze bestelling is al betaald",
  "This payment link is made only for another product, so this app can't use it.": "Deze betaallink is alleen gemaakt voor een ander product, dus deze app kan hem niet gebruiken.",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "Deze telefoon krijgt de rechten van de eigenaar: hij kan de operatorinstellingen openen. Scan alleen met je eigen telefoon.",
  "This provider cannot list its models. Type the model yourself": "Deze provider kan zijn modellen niet tonen. Typ het model zelf in",
  "This run already made the purchase allowed for it": "Deze run heeft de toegestane aankoop al gedaan",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "Deze servercontainer heeft geen CLI. Zet de CLI-container aan in `assistant setup` (of draai de Kelo-server buiten een container)",

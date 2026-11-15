@@ -8,7 +8,7 @@ Who holds what:
     POST /broker/reports. No user token travels; the copy proves who it is with its own random report install secret (made on
     first use, kept encrypted in its own database) and the broker keeps only its SHA-256, the same scheme as push.py.
   - The operator's own copy (its public address is the broker's address) stores the report directly, without an HTTP hop.
-  - The operator reads them with GET /api/operator/reports (owner token only), marks them handled, and can delete one.
+  - The operator reads them with GET /api/operator/reports (any signed-in device), marks them handled, and can delete one.
 
 Nothing else is sent: no other chat history, no account data, no address of the user's server. The broker does not store the IP
 address; it lives only in the in-memory rate counter, like every other /broker/* route. Reports are kept KEEP_DAYS days (the

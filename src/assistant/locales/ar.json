@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "سيُفتح هذا بعد انتهاء مراجعة Google. دعمك لـ Kelo يساعد على فتحه أسرع.",
  "This order already made its payment": "تم دفع هذا الطلب بالفعل",
  "This payment link is made only for another product, so this app can't use it.": "رابط الدفع هذا مخصص لمنتج آخر فقط، لذا لا يستطيع هذا التطبيق استخدامه.",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "سيحصل هذا الهاتف على صلاحيات المالك: يمكنه فتح إعدادات المشغّل. امسح الرمز بهاتفك أنت فقط.",
  "This provider cannot list its models. Type the model yourself": "لا يستطيع هذا المزوّد عرض نماذجه. اكتب اسم النموذج بنفسك",
  "This run already made the purchase allowed for it": "أجرى هذا التشغيل بالفعل عملية الشراء المسموح بها له",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "لا يوجد CLI في حاوية الخادم هذه. فعّل حاوية CLI في `assistant setup` (أو شغّل خادم Kelo خارج الحاوية)",

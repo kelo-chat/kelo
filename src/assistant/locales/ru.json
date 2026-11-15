@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Откроется после проверки Google. Поддержка Kelo поможет открыть это быстрее.",
  "This order already made its payment": "Этот заказ уже оплачен",
  "This payment link is made only for another product, so this app can't use it.": "Эта платёжная ссылка создана для другого продукта, поэтому это приложение не может её использовать.",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "Этот телефон получит права владельца и сможет открывать настройки оператора. Сканируйте код только своим телефоном.",
  "This provider cannot list its models. Type the model yourself": "Этот провайдер не умеет показывать список моделей. Введите модель вручную",
  "This run already made the purchase allowed for it": "Этот запуск уже совершил разрешённую покупку",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "В этом контейнере сервера нет CLI. Включите контейнер CLI в `assistant setup` (или запустите сервер Kelo вне контейнера)",

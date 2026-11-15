@@ -8,7 +8,7 @@ stay closed for everyone (google_web.py). This lets a person ask to be one of th
     POST /broker/beta, proving who it is with the same random install secret as reports (reports.py); the broker keeps only its
     SHA-256. The operator's own copy stores the request directly.
   - The operator's server stores it (BetaDesk), tells the operator at once (a notification on their own app, and an email to SUPPORT
-    sent through the Gmail mailbox connected on that server, if one is), and lists it in 운영자 → 베타 신청 (owner token only).
+    sent through the Gmail mailbox connected on that server, if one is), and lists it in 운영자 → 베타 신청 (any signed-in device).
   - The operator adds the address as a test user in Google Cloud Console, then presses Approved: the requester gets one email (in their
     language, Reply-To SUPPORT) and their install is allowed to start Google sign-ins (beta_installs). Decline: an optional short email.
   - The copy learns the outcome when its connector screens are opened: GET /api/google/beta (and /api/connectors, /api/google/calendar,

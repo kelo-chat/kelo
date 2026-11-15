@@ -180,7 +180,7 @@ def test_the_cli(tmp_path, monkeypatch):
     sent = []
     monkeypatch.setattr(connect, "keyguard_recover", lambda m, inst, code: sent.append(code) or {"ok": True})
     assert manage.run_command(SimpleNamespace(cmd="keyguard", kcmd="status", instance=None), manager=m) == 0
-    assert "owner's phones" in msgs[-2] and "Locked" in msgs[-2] and "Pixel" in msgs[-1]
+    assert "the phones" in msgs[-2] and "Locked" in msgs[-2] and "Pixel" in msgs[-1]
     assert manage.run_command(SimpleNamespace(cmd="keyguard", kcmd="recover", instance=None, code=None), manager=m,
                               ask=lambda q: " CODE24 ") == 0
     assert sent == ["CODE24"] and "Unlocked" in msgs[-1]

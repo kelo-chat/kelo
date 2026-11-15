@@ -311,6 +311,14 @@ def test_the_prompt_describes_this_apps_purchase_path_and_nothing_site_specific(
     assert "confirm_purchase" in short and "APPROVED" in short
 
 
+def test_the_prompt_says_not_to_decline_a_purchase_on_assumed_requirements():
+    text = (CONTENT / "prompts" / "system.md").read_text(encoding="utf-8")
+    section = text.split("**Buying, ordering, booking.**", 1)[1].split("\n\n**", 1)[0]
+    assert "Never decline" in section and "assume the site or the law requires" in section
+    assert "open the site and try" in section and "request_login" in section
+    assert "only after the site itself refuses" in section
+
+
 def test_no_site_names_in_what_was_written_for_purchases():
     texts = [(CONTENT / "prompts" / "system.md").read_text(encoding="utf-8").split("**Buying, ordering, booking.**", 1)[1].split("\n\n**", 1)[0],
              (CONTENT / "skills" / "shopping-and-bookings" / "SKILL.md").read_text(encoding="utf-8"),

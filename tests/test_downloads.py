@@ -213,7 +213,8 @@ async def test_operator_status_is_owner_only_and_true_only_on_the_operators_serv
             assert r.status_code == 200 and r.json() == {"owner": True, "operator": want}, kw
             assert (await c.get("/api/operator/status")).status_code == 401
             _, ph = await add_phone(c, "kid")
-            assert (await c.get("/api/operator/status", headers=bearer(ph.json()["token"]))).status_code == 403
+            ok = await c.get("/api/operator/status", headers=bearer(ph.json()["token"]))    # every device has the same rights
+            assert ok.status_code == 200 and ok.json() == {"owner": True, "operator": want}
 
 
 def test_settings_read_the_operator_flag_and_downloads_folder():

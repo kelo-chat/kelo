@@ -252,6 +252,14 @@ struct ChatPage: View {
         }
     }
 
+    /// A tap on the messages lets go of the keyboard (the list's swipe does nothing when the list is short); taps on buttons and links still work
+    private func dismissKeyboard() {
+        composerFocused = false
+        #if os(iOS)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+    }
+
     private var agentName: String { app.profile?.agentName ?? "Kelo" }
 
     // ---- the list -----------------------------------------------------------------------------------------------------------
@@ -267,7 +275,9 @@ struct ChatPage: View {
                     .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity).padding(24).padding(.top, 60)
             }
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.immediately)
+            .scrollBounceBehavior(.always)
+            .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -340,7 +350,9 @@ struct ChatPage: View {
                 // list after the reader scrolled away, which hid "↓", or flap while rows above it settle their heights
                 .modifier(BottomWatch { reachedBottom($0) })
                 .defaultScrollAnchor(.bottom)
-                .scrollDismissesKeyboard(.interactively)
+                .scrollDismissesKeyboard(.immediately)
+                .scrollBounceBehavior(.always)
+                .simultaneousGesture(TapGesture().onEnded { dismissKeyboard() })
                 .onChange(of: followSignal) { _, _ in
                     let lastMine = model.items.last?.isMine == true
                     if ChatScroll.follow(atBottom: stick, lastIsMine: lastMine) {

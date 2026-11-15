@@ -36,7 +36,7 @@ Each push goes to every phone paired with that copy that registered a token. A d
 
 1. **Download the key.** Open Firebase console → your project → Project settings → Service accounts. Click
    **Generate new private key** to download a JSON file.
-2. **Upload it with the owner token.** Use the app's operator settings, or run curl on the operator's computer:
+2. **Upload it with any signed-in device or the access key.** Use the app's operator settings, or run curl on the operator's computer:
 
    ```
    curl -X PUT https://<operator address>/api/operator/firebase \

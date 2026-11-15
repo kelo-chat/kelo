@@ -1,4 +1,4 @@
-# Keyguard: the key of passwords, keys and cards on the owner's phones
+# Keyguard: the key of passwords, keys and cards on your phones
 
 Server side of `docs/security/e2e-and-phone-key.md` section 2 (and 5.9, 5.14, 5.15). Code: `src/assistant/keyguard.py`
 (`KeyGuard`, the only code that reads `master.key` or `ASSISTANT_SECRET_KEY`), `src/assistant/api/keyguard.py` (the API, contract in
@@ -13,7 +13,7 @@ locked. The apps' enable screen says only "passwords, keys and cards" (never cha
 
 ## Flow
 
-1. Enable (owner phone, over KE2E): `POST /api/keyguard/enroll` gives a NEW key and a recovery code (shown once). The phone wraps
+1. Enable (any signed-in phone, over KE2E): `POST /api/keyguard/enroll` gives a NEW key and a recovery code (shown once). The phone wraps
    the key with its hardware key (Android Keystore AES-GCM, blob `0x01` ‖ IV ‖ ct; iPhone Secure Enclave ECIES, blob `0x02` ‖ ct;
    AAD `"kelo-keyguard v1"`; unlock condition biometrics or device passcode, 5.9) and sends the blob:
    `POST /api/keyguard/enroll/finish`. Only then the server re-seals every secret with the new key in one transaction, stores the
@@ -21,7 +21,7 @@ locked. The apps' enable screen says only "passwords, keys and cards" (never cha
 2. After a restart the server is locked: secrets answer `423 {"code": "locked"}`, `/api/agent/status` has `"locked": true`, and a
    `keyguard_locked` notification (urgent) goes to the phones. The app asks for biometrics, fetches its blob
    (`GET /api/keyguard/blob`), unwraps it and sends the key (`POST /api/keyguard/unlock`). The key stays in memory only.
-3. More owner phones enroll while unlocked (same two calls; no new key, no recovery code). A phone's copy is dropped with
+3. More phones enroll while unlocked (same two calls; no new key, no recovery code). A phone's copy is dropped with
    `DELETE /api/keyguard/phones/{id}` (never the last one). `POST /api/keyguard/disable` writes `master.key` back.
 4. All phones lost: `assistant keyguard recover` on the server machine (or the app's recovery screen over KE2E) with the code.
 
@@ -48,6 +48,12 @@ that it started late because Kelo was locked.
 - Kelo's own working keys in `api_keys` (names with a colon: `push:install_id`, `reports:install_id`, `phone:note-digest`, the
   operator's `operator:*` / `oauth-app:*` tokens) are not the owner's passwords, keys or cards: they follow the personal data's
   key, so pushes (including the unlock push) and reports keep working while locked.
+
+## Who may use it
+
+Every signed-in device (there are no owner devices). The exception is a review copy (`ASSISTANT_REVIEW_MODE`): its devices get 403 on every
+`/api/keyguard/*` route, so a reviewer cannot lock the review server; the access key (server machine) still can. The wallet works as in the
+product (cards can be added); auto-pay simply cannot be turned on there because it needs Keyguard (409 `keyguard_required`).
 
 ## Auto-pay needs Keyguard (owner's rule, 2026-11-10)
 

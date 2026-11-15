@@ -182,8 +182,8 @@ async def test_routes_are_owner_only_and_pass_fixed_commands(fake):
         phone = {"Authorization": f"Bearer {(await c.post('/api/pair', json={'code': code, 'name': 'p'})).json()['token']}"}
         for method, path in (("GET", "/api/server-update"), ("POST", "/api/server-update/check"), ("POST", "/api/server-update/update"),
                              ("POST", "/api/server-update/rollback")):
-            assert (await c.request(method, path, headers=phone, json={})).status_code == 403
-        assert (await c.put("/api/server-update/settings", headers=phone, json={"auto_update": True})).status_code == 403
+            if method == "GET":
+                assert (await c.request(method, path, headers=phone)).status_code == 200      # every device has the same rights
         assert (await c.post("/api/server-update/check", headers=AUTH, json={})).status_code == 200
         r = await c.post("/api/server-update/update", headers=AUTH, json={})
         assert r.status_code == 202 and r.json()["job"]["state"] == "running"

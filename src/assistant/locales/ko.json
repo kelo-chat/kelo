@@ -1041,7 +1041,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Google 검토가 끝나야 열 수 있어요. Kelo를 응원해 주시면 더 빨리 열 수 있어요.",
  "This order already made its payment": "이 주문은 이미 결제했어요",
  "This payment link is made only for another product, so this app can't use it.": "다른 제품 전용의 결제 연동이라 이 앱에서는 쓸 수 없어요.",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "이 휴대폰은 소유자 권한을 받아 운영자 설정을 열 수 있어요. 본인 휴대폰으로만 스캔하세요.",
  "This provider cannot list its models. Type the model yourself": "이 제공자는 모델 목록을 가져올 수 없어요. 직접 입력하세요",
  "This run already made the purchase allowed for it": "이번 실행은 허용된 구매를 이미 했어요",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "이 서버 컨테이너에는 CLI가 없어요. `assistant setup`에서 CLI 컨테이너를 켜세요 (또는 Kelo 서버를 컨테이너 밖에서 실행)",

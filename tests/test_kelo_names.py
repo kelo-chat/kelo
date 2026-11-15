@@ -269,7 +269,7 @@ async def test_the_operator_api_is_owner_only_and_the_broker_endpoints_work(cf):
         assert (await c.get("/api/operator/cloudflare")).status_code == 401
         code = (await c.post("/api/devices/pair", headers=AUTH)).json()["code"]
         phone = {"Authorization": "Bearer " + (await c.post("/api/pair", json={"code": code, "name": "phone"})).json()["token"]}
-        assert (await c.put("/api/operator/cloudflare", headers=phone, json={"api_token": CF_TOKEN})).status_code == 403
+        assert (await c.get("/api/operator/cloudflare", headers=phone)).status_code == 200      # every device has the same rights
         r = await c.put("/api/operator/cloudflare", headers=AUTH,
                         json={"api_token": CF_TOKEN, "account_id": ACC, "zone_id": ZONE, "zone_name": "kelo.chat"})
         assert r.status_code == 200 and CF_TOKEN not in r.text and r.json()["enabled"]

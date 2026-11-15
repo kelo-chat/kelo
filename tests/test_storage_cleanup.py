@@ -221,12 +221,11 @@ async def test_the_routes_list_and_delete_only_with_confirm_and_only_for_the_own
         assert (await anon.get("/api/storage/cleanup")).status_code == 401
 
 
-async def test_a_paired_phone_without_owner_rights_cannot_clean_up(tmp_path):
+async def test_a_paired_phone_can_clean_up_there_are_no_owner_devices(tmp_path):
     app = app_for(tmp_path)
     store = app.state.storage_watch.store
     code = store.new_pairing(owner=False)
     _dev, token = store.redeem_pairing(code, "phone")
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers={"Authorization": f"Bearer {token}"}, timeout=20) as c:
-        assert (await c.get("/api/storage/cleanup")).status_code == 403
-        assert (await c.post("/api/storage/cleanup", json={"items": ["x"], "confirm": True})).status_code == 403
-        assert (await c.get("/api/resources")).json()["can_clean"] is False
+        assert (await c.get("/api/storage/cleanup")).status_code == 200
+        assert (await c.get("/api/resources")).json()["can_clean"] is True

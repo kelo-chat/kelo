@@ -128,13 +128,9 @@ def closing_lines(lang: str, inst: Any, *, running: bool = True, paired: bool = 
 
 
 def phone_step(ui: Any, mgr: Any, name: str | None = None, *, cmd: str | None = None, post: Callable[..., Any] | None = None,
-               start: bool = True, suggestion: str = "", first_owner: bool | None = None) -> bool:
+               start: bool = True, suggestion: str = "") -> bool:
     """Where the phone reaches Kelo (the default address now, Tailscale / own domain later, or not now), then a QR code to
-    sign a phone in. Shared by `assistant setup` (4/4) and `assistant instance create` in a terminal. True if a QR was shown.
-
-    `first_owner` (default: only for the main copy): the phone gets the owner's rights (operator settings) when no device holds
-    them yet. Whoever runs setup on the main copy is at the server machine and owns it, so their first phone needs no extra
-    command. An extra copy is usually someone else's (family, a friend): its phones stay ordinary (`assistant phone owner` later)."""
+    sign a phone in. Shared by `assistant setup` (4/4) and `assistant instance create` in a terminal. True if a QR was shown. Every device that signs in has the same rights."""
     from . import connect
     from .instances import InstanceError
     from .kelo_names import name_problem
@@ -178,12 +174,9 @@ def phone_step(ui: Any, mgr: Any, name: str | None = None, *, cmd: str | None = 
     inst = mgr.load(inst.name)
     if start and inst.connect_url and ui.confirm(t("Sign a phone in now?"), True):
         try:
-            wants_owner = bool(getattr(inst, "is_main", False)) if first_owner is None else first_owner
-            link, _, owner = connect.phone_add_owner(mgr, inst, first_owner=wants_owner, post=post or connect._post)
+            link, _ = connect.phone_add(mgr, inst, post=post or connect._post)
             ui.qr(link)
             ui.info(t("Scan with the phone's camera, or open the link on the phone. It works once and expires in 10 minutes."))
-            if owner:
-                ui.info(t("This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone."))
             return True
         except InstanceError as e:
             ui.warn(t("Could not make a phone link: {why}", why=str(e)))

@@ -333,8 +333,7 @@ def main(argv: list[str] | None = None) -> int:
     pa = phsub.add_parser("add", help="show a QR code to scan with the phone; any number of phones can join")
     pa.add_argument("--instance", help="which extra copy (default: the main one)")
     pa.add_argument("--url", help="the address the phone should use (default: the one set up with `connect`)")
-    pa.add_argument("--owner", action="store_true",
-                    help="the phone that scans this QR gets the owner's rights: it can open the operator settings (only for your own phone)")
+    pa.add_argument("--owner", action="store_true", help=argparse.SUPPRESS)   # old option: every device has the same rights now; ignored
     pf = phsub.add_parser("fingerprint", help="the server key's fingerprint, to compare with My -> Devices in the app (KE2E)")
     pf.add_argument("--instance", help="which extra copy (default: the main one)")
     kgp = sub.add_parser("keyguard", help="who holds the key of passwords, keys and cards (Keyguard): status, or unlock with the recovery code")
@@ -352,11 +351,11 @@ def main(argv: list[str] | None = None) -> int:
     er = e2sub.add_parser("rotate", help="make a new server key; every phone must pair again afterwards")
     er.add_argument("--instance", help="which extra copy (default: the main one)")
     er.add_argument("--yes", action="store_true", help="do it without asking")
-    po = phsub.add_parser("owner", help="list signed-in phones; give one the owner's rights (operator settings) or take them back")
-    po.add_argument("--instance", help="which extra copy (default: the main one)")
+    po = phsub.add_parser("owner", help=argparse.SUPPRESS)   # old command: there are no owner devices any more; prints a note
+    po.add_argument("--instance", help=argparse.SUPPRESS)
     og = po.add_mutually_exclusive_group()
-    og.add_argument("--grant", metavar="ID|NAME", help="give this phone the owner's rights")
-    og.add_argument("--revoke", metavar="ID|NAME", help="take the owner's rights back from this phone (it stays signed in)")
+    og.add_argument("--grant", metavar="ID|NAME", help=argparse.SUPPRESS)
+    og.add_argument("--revoke", metavar="ID|NAME", help=argparse.SUPPRESS)
     iu = isub.add_parser("update", help="update every extra copy safely (one build; each is backed up, checked and rolled back on failure)")
     iu.add_argument("--no-build", action="store_true", help="use the images already on this computer")
     iu.add_argument("--timeout", type=float, default=180, help="seconds each copy has to pass the health check (default 180)")

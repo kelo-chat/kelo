@@ -26,11 +26,11 @@ GET  /api/usage/summary?days=30   token use by day, by kind of job and by model,
 PUT/DELETE /api/providers/{name}/key   API key entered in the app (write-only)
 DELETE /api/providers/{name}/login     sign out of a sign-in provider (409 while it runs the main model; a fallback on it is emptied)
 POST /api/providers/{name}/login/start|finish|cancel, GET .../login/status   sign in from the phone (device code or pasted code)
-POST /api/providers/{name}/cli/update {version?}, GET .../cli/update   owner only: the claude / agy sidecar installs a newer CLI into its
+POST /api/providers/{name}/cli/update {version?}, GET .../cli/update   any signed-in device: the claude / agy sidecar installs a newer CLI into its
     home volume; {"state": idle|running|done|failed, "step", "from", "to", "ok", "error", "unchanged"?, "active": {source, version},
-    "product"}; the CLI status in /api/providers says "updatable" (owner sign-in + a sidecar that can do it)
-GET /api/devices, POST /api/devices/pair ({"owner": true}: master token only), POST /api/pair (one-time code -> device token), DELETE /api/devices/{id},
-PUT /api/devices/{id}/owner (master token only: a phone gets / loses the owner's rights for operator settings)
+    "product"}; the CLI status in /api/providers says "updatable" (a sign-in + a sidecar that can do it)
+GET /api/devices, POST /api/devices/pair ({"origin"}; "owner" / "first_owner" are accepted and ignored), POST /api/pair (one-time code -> device token), DELETE /api/devices/{id},
+PUT /api/devices/{id}/owner (master token only; kept for old tools, changes nothing: there are no owner devices, every device has full rights)
 GET/POST /api/devices/codes, DELETE /api/devices/codes/{id} (master token only): multi-use access codes for app store reviewers
     (POST {"label", "days" (default 30), "uses" (default 20)} -> {"id", "code", "label", "expires_at", "max_uses"}; the code
     is shown this once. DELETE revokes it and signs out every device that joined with it -> {"ok", "signed_out"}. review.py)
@@ -42,19 +42,19 @@ GET /api/secret-requests, POST /api/secret-requests/{id}/cancel|card   fill-in c
 /api/notifications              the agent screen (see AGENT SCREEN API next to serialize())
 GET /api/workers[/{id}], POST /api/workers/{id}/resume|stop|message   background jobs the agent handed off (see WORKERS API)
 /api/browser/sessions/{id}/live (WebSocket), .../frame, .../control, .../input   live view of a tab and taking control (see LIVE VIEW API)
-GET/PUT /api/operator/cloudflare, POST /api/operator/cloudflare/reclaim   the operator's free-address service (owner token only)
+GET/PUT /api/operator/cloudflare, POST /api/operator/cloudflare/reclaim   the operator's free-address service (any signed-in device)
 POST /broker/tunnel/claim|release, GET /broker/tunnel/check   free <name>.kelo.chat addresses for other copies (see kelo_names.py)
 POST/DELETE /api/push/register, GET /api/push/status   this phone's FCM token, for push notifications (see PUSH API next to serialize())
-GET/PUT/DELETE /api/operator/firebase   the operator's Firebase service-account key (owner token only; never returned)
-GET /api/operator/status       {"owner": true, "operator": bool}: whether this is the operator's server (owner token only; the apps
+GET/PUT/DELETE /api/operator/firebase   the operator's Firebase service-account key (any signed-in device; never returned)
+GET /api/operator/status       {"owner": true, "operator": bool}: whether this is the operator's server (any signed-in device; "owner" is kept for older apps: true for every device and the access key; the apps
                                show their operator section only when "operator" is true)
 GET /download/{android|windows|windows-msi|mac}[/{file}], /download/latest.json   the app builds (no auth; see downloads.py)
 POST /broker/push/send, GET /broker/push/status   pushes for other copies' phones (see push.py)
 POST /api/reports              report a bad AI reply to the Kelo developer (forwarded to the broker; see reports.py)
-GET /api/operator/reports, POST|DELETE /api/operator/reports/{id}   the reports other copies sent (owner token only)
+GET /api/operator/reports, POST|DELETE /api/operator/reports/{id}   the reports other copies sent (any signed-in device)
 POST /broker/reports           reports from other copies (no user token; rate-limited; see reports.py)
 GET/POST /api/google/beta      this copy's request to try Google sign-in while it is closed (forwarded to the broker; see beta.py)
-GET /api/operator/beta, POST|DELETE /api/operator/beta/{id}   beta requests other copies sent; approve or decline (owner token only)
+GET /api/operator/beta, POST|DELETE /api/operator/beta/{id}   beta requests other copies sent; approve or decline (any signed-in device)
 POST /broker/beta, POST /broker/beta/status   beta requests from other copies and their answer (install secret; rate-limited; beta.py)
 GET  /healthz                  liveness (no auth)
 /api/keyguard/...              Keyguard: the key of passwords, keys and cards held by the owner's phones; 423 {"code": "locked"}
@@ -67,7 +67,7 @@ POST /e2e, GET /e2e/ws (WebSocket)   KE2E: any API call (or the live view's WebS
 GET  /api/about                {"version", "build", "min_app", "min_server", "min_app_version", "db": {"ok", "schema", "tables",
                                "migrations"}} (used by `assistant update`; version.json, docs/versioning.md). Every answer has
                                X-Kelo-Server: <version>+<build>; an app older than min_app (X-Kelo-App) gets 426 app_too_old
-GET /api/server-update, POST /api/server-update/check|update|rollback, PUT /api/server-update/settings   owner only: update this
+GET /api/server-update, POST /api/server-update/check|update|rollback, PUT /api/server-update/settings   any signed-in device (not on a review copy): update this
                                server from the app through the updater container (see server_updates.py)
 GET  /oauth/client-metadata.json   Kelo's OAuth Client ID Metadata Document (no auth; only on the server holding the shared relay page)
 GET  /                         a short page that opens the Kelo phone app (no web app); the API needs the token
@@ -314,7 +314,7 @@ KELO_FULL_BODY = N_("New copies are refused now. Move the Cloudflare zone to a b
 KELO_NEAR_TITLE = N_("Free Kelo addresses are almost all taken ({used}/{max})")
 KELO_NEAR_BODY = N_("New copies will be refused at {max}. Move the Cloudflare zone to a bigger plan or raise the address limit soon.")
 KELO_BUSY_BODY = N_("{count} new addresses are waiting for their first connection. New claims are refused until fewer wait, at the latest until {time}.")
-LOCKED_WAIT_SECONDS = 12 * 3600.0   # a scheduled run waits this long for an owner phone to unlock Keyguard, then gives up
+LOCKED_WAIT_SECONDS = 12 * 3600.0   # a scheduled run waits this long for a phone to unlock Keyguard, then gives up
 LONG_THINKING_SECONDS = 60.0   # still reasoning after this long: the status says it is a long think (the apps do the same)
 LONG_THINKING = N_("Thinking for a long time")
 
@@ -607,7 +607,7 @@ from .turn_engine import MODEL_STARTED, ApprovalBroker, Turn, TurnRegistry, run_
 # GET    /api/goals/{id}/schedules              {"items": [Schedule]} the jobs that serve that goal (404 no such goal)
 # The PHONE CALENDAR API (phone_calendar.py: PUT/DELETE/GET /api/phone-calendar) and GOOGLE CALENDAR (google_calendar.py, docs/google.md:
 #   GET /api/google/calendar, POST /api/google/web/start {"origin", "product": gmail|calendar}) are described in their modules.
-#   New Google sign-ins stay closed until the operator opens them (PUT /api/oauth-apps/google/open {"open": bool}, owner only): start
+#   New Google sign-ins stay closed until the operator opens them (PUT /api/oauth-apps/google/open {"open": bool}, any signed-in device): start
 #   answers 409 with the review note, and connector rows carry "connect_state": "pending_review"; connected accounts keep working.
 # The PHONE DATA API (phone_data.py: /api/phone, /api/phone/{contacts|messages|call-log|health|dialer|notifications},
 #   /api/phone/tasks/claim, /api/phone/tasks/{id}/result) is described in its module.
@@ -774,7 +774,7 @@ from .turn_engine import MODEL_STARTED, ApprovalBroker, Turn, TurnRegistry, run_
 #   The phone shows its own notification after GET /api/notifications?after=<id - 1> (or opens the task / approval by id).
 #   Sent for every Notification above that nobody saw arrive: task_* and approval_waiting as described there, payment_auto only
 #   when the reply was not being followed (asked within WATCHED_SECONDS), schedule_disabled, schedule_paused, watch_*, proactive and followup always.
-# Operator side (owner token only):
+# Operator side (any signed-in device):
 # PUT    /api/operator/firebase   body: the service-account key file as downloaded (raw JSON; or {"service_account": <file>})
 #          -> {"enabled": true, "project_id", "client_email"}; checked (type, project_id, client_email, private_key) and proven by
 #          minting one OAuth token before it is saved encrypted. 422 {"detail"} never contains the key. The key is never returned.
@@ -871,10 +871,10 @@ from .turn_engine import MODEL_STARTED, ApprovalBroker, Turn, TurnRegistry, run_
 #          "profile", "minimum", "recommended", "alert": {"level": ok|warn (>= 80% of the cap)|critical (>= 95%), "percent" | null
 #          (null without a cap), "host_low": bool (the server machine's disk is critically low), "top": the biggest part | null},
 #          "can_clean": bool (this device may use the cleanup API)}
-# GET    /api/storage/cleanup  (owner) {"groups": [{"id": uploads|images|browser_history|results|backups, "name", "bytes", "count",
+# GET    /api/storage/cleanup  (any signed-in device) {"groups": [{"id": uploads|images|browser_history|results|backups, "name", "bytes", "count",
 #          "items": [{"id", "name", "bytes", "date", "keeps_text"? (uploads), "trashed"? (results), "kind"? (backups: update|memory|
 #          migration)}]}], "total", "older_than_days"}. Notes, memory and the database are never listed.
-# POST   /api/storage/cleanup {"items": [id], "confirm": true}  (owner) -> {"removed", "skipped", "freed", "groups", "total"}; 400 without
+# POST   /api/storage/cleanup {"items": [id], "confirm": true}  (any signed-in device) -> {"removed", "skipped", "freed", "groups", "total"}; 400 without
 #          confirm or items. Only ids on the current list are removed; nothing is ever deleted without this call.
 # A write that fails because the server machine's disk is full answers 507 {"detail": "<localized>", "code": "disk_full"}; a chat
 # reply that hits it ends with {"type": "error", "message": "<the same words>", "code": "disk_full"}. Chat is never refused at the cap.
@@ -1013,8 +1013,8 @@ def create_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         log.info("Kelo server %s", release_version.current().label)   # version.json (docs/versioning.md)
-        if store.keyguard.locked:   # Keyguard (keyguard.py): no secret opens until an owner phone sends the key
-            log.warning("Keyguard: the server is locked until an owner phone unlocks it")
+        if store.keyguard.locked:   # Keyguard (keyguard.py): no secret opens until a phone sends the key
+            log.warning("Keyguard: the server is locked until a phone unlocks it")
             activity.notify("keyguard_locked", i18n.t("Kelo is locked"), i18n.t("Open Kelo on your phone to unlock it."), urgent=True)
         if settings.scheduler:
             scheduler.start()
@@ -1475,7 +1475,7 @@ def create_app(
                 if not store.keyguard.locked:   # locked (Keyguard): the briefing waits for the unlock like every background job
                     b.app_opened(last_use[0], prev_use)   # the morning's first open may bring the briefing early (briefing.py)
 
-    auth = AuthGuard(settings.token, store, note_use)   # api/auth.py: tokens, the brute-force guard, and where KE2E's check plugs in
+    auth = AuthGuard(settings.token, store, note_use, review_mode=settings.review_mode)   # api/auth.py: tokens, the brute-force guard, and where KE2E's check plugs in
     client_key, failures, device_of = auth.client_key, auth.failures, auth.device_of
     require_auth, require_owner, require_master = auth.require_auth, auth.require_owner, auth.require_master
     auth_failed, auth_blocked = auth.auth_failed, auth.auth_blocked
@@ -1873,7 +1873,7 @@ def create_app(
 
     async def run_schedule(s: dict[str, Any]) -> dict[str, Any]:
         waited = ""
-        if store.keyguard.locked:   # Keyguard: no secret opens until an owner phone unlocks; the run waits for it, then says so
+        if store.keyguard.locked:   # Keyguard: no secret opens until a phone unlocks; the run waits for it, then says so
             since = time.monotonic()
             if not await store.keyguard.wait_unlocked(LOCKED_WAIT_SECONDS):
                 tid = activity.start_task(s["name"], f"schedule:{s['id']}")
@@ -1883,7 +1883,7 @@ def create_app(
                 return {"task_id": tid, "status": "failed", "error": "locked"}
             minutes = max(1, round((time.monotonic() - since) / 60))
             waited = (f"\n\n[Not from the user: this run started {minutes} minute(s) late because Kelo was locked (Keyguard) until the "
-                      "owner unlocked it on their phone. Say so in one short line of the report.]")
+                      "the user unlocked it on their phone. Say so in one short line of the report.]")
         try:
             retry = f"\n\n[Not from the user: {s['retry_note']}]" if s.get("retry_note") else ""   # an expired approval tried again
             retry += waited
@@ -2068,7 +2068,7 @@ def create_app(
     scheduler.add_every("proactive", 60, proactive.tick)
     app.include_router(module_router(proactive_routes, proactive, require_auth))
 
-    # updating this server from the app (server_updates.py; the updater container does the work, updater_service.py): owner only,
+    # updating this server from the app (server_updates.py; the updater container does the work, updater_service.py): any signed-in device (not on a review copy),
     # and only on the main copy (the one whose server has UPDATER_TOKEN and reaches the updater)
     def own_version() -> str:
         return release_version.current().version   # version.json

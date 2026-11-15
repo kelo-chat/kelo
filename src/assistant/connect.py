@@ -181,37 +181,19 @@ def _server_call(inst: Instance, call: Callable[..., Any], path: str, **kw: Any)
     if r.status_code == 401:
         raise ConnectError("the access token in the settings file is not accepted by the running server (was it changed? restart the server)")
     if r.status_code == 404 and path.endswith("/owner"):
-        raise ConnectError("no such device (or the running server is older and has no owner phones yet: update it first)")
+        raise ConnectError("no such device")
     if r.status_code != 200:
         raise ConnectError(f"the server refused ({r.status_code}): {r.text[:200]}")
     return r.json()
 
 
-def phone_add(m: Instances, inst: Instance, *, address: str | None = None, owner: bool = False, first_owner: bool = False,
-              post: Callable[..., Any] = httpx.post) -> tuple[str, str]:
-    """Ask the running server for a one-time sign-in link. Returns (link, QR drawn in text). `owner`: the phone that uses it gets
-    the owner's rights (operator settings); `first_owner`: only if no device has them yet."""
-    return _phone_link(inst, post, address, owner, first_owner)[:2]
-
-
-def phone_add_owner(m: Instances, inst: Instance, *, address: str | None = None, owner: bool = False, first_owner: bool = False,
-                    post: Callable[..., Any] = httpx.post) -> tuple[str, str, bool]:
-    """phone_add, plus whether the phone that uses the link will hold the owner's rights (as the server decided)."""
-    return _phone_link(inst, post, address, owner, first_owner)
-
-
-def _phone_link(inst: Instance, post: Callable[..., Any], address: str | None, owner: bool, first_owner: bool) -> tuple[str, str, bool]:
+def phone_add(m: Instances, inst: Instance, *, address: str | None = None, post: Callable[..., Any] = httpx.post) -> tuple[str, str]:
+    """Ask the running server for a one-time sign-in link. Returns (link, QR drawn in text). Every device that signs in has the same
+    rights (there are no owner devices any more), so the request carries nothing about rights."""
     origin = (address or inst.address).rstrip("/")
-    body: dict[str, Any] = {"origin": origin}
-    if owner:
-        body["owner"] = True
-    elif first_owner:
-        body["first_owner"] = True
-    out = _server_call(inst, post, "/api/devices/pair", json=body)
-    if owner and out.get("owner") is not True:   # an older server ignores the field: never hand out a QR that silently lacks the rights
-        raise ConnectError("the running server does not know owner phones yet; update it first (assistant instance update), then try again")
+    out = _server_call(inst, post, "/api/devices/pair", json={"origin": origin})
     link = out["link"]
-    return link, qr_text(link), out.get("owner") is True
+    return link, qr_text(link)
 
 
 def qr_matrix(link: str) -> list[list[bool]]:
@@ -243,13 +225,8 @@ def qr_text(link: str, *, color: bool = False) -> str:
 
 
 def devices(m: Instances, inst: Instance, *, get: Callable[..., Any] | None = None) -> list[dict[str, Any]]:
-    """The copy's signed-in devices: [{"id", "name", "created_at", "last_seen", "owner"}]."""
+    """The copy's signed-in devices: [{"id", "name", "created_at", "last_seen"}]."""
     return list(_server_call(inst, get or _get, "/api/devices").get("devices") or [])
-
-
-def set_device_owner(m: Instances, inst: Instance, device_id: int, owner: bool, *, put: Callable[..., Any] | None = None) -> None:
-    """Give a signed-in device the owner's rights (operator settings) or take them back."""
-    _server_call(inst, put or _put, f"/api/devices/{int(device_id)}/owner", json={"owner": owner})
 
 
 def e2e_info(m: Instances, inst: Instance, *, get: Callable[..., Any] | None = None) -> dict[str, Any]:

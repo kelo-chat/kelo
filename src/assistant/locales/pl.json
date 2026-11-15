@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Będzie dostępne po zakończeniu weryfikacji przez Google. Wspieranie Kelo pomaga przyspieszyć udostępnienie.",
  "This order already made its payment": "To zamówienie zostało już opłacone",
  "This payment link is made only for another product, so this app can't use it.": "Ten link do płatności jest przeznaczony dla innego produktu, więc ta aplikacja nie może go użyć.",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "Ten telefon dostanie uprawnienia właściciela: będzie mógł otwierać ustawienia operatora. Skanuj tylko własnym telefonem.",
  "This provider cannot list its models. Type the model yourself": "Ten dostawca nie udostępnia listy modeli. Wpisz model ręcznie",
  "This run already made the purchase allowed for it": "To uruchomienie już dokonało dozwolonego zakupu",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "Ten kontener serwera nie ma CLI. Włącz kontener CLI w `assistant setup` (albo uruchom serwer Kelo poza kontenerem)",

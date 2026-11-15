@@ -9,7 +9,7 @@ POST /api/server-update/check   {}     -> status, after reading the release list
 POST /api/server-update/update  {}     -> 202 status (job.state "running"); 409 {"detail"} no update / already running / local build
 POST /api/server-update/rollback {}    -> 202 status (job.action "rollback"); 409 {"detail"} no rollback point
 PUT  /api/server-update/settings {"auto_update": bool} -> status
-All owner only (403 for another device). Status:
+Any signed-in device may use them (not on a review copy: 403). Status:
   {"state": "ok" | "local" | "unavailable", "message": "<localized, for local/unavailable>", "current": "0.4.0" | null,
    "latest": {"version", "date", "notes" (in the owner's language)} | null, "update_available": bool, "checked_at": epoch | null,
    "auto_update": bool, "auto_time": "HH:MM" | null (tonight's planned time while auto_update is on),

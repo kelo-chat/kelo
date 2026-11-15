@@ -19,6 +19,8 @@
 #   --no-wait           stop after the upload (do not wait for App Store Connect's processing)
 #   --wait-timeout S    how long to wait for processing (default 2700 s)
 #   --keep-archive DIR  keep the .xcarchive (with its dSYMs) in DIR
+#   --no-upload DIR     export the signed App Store IPA into DIR instead of uploading it (nothing goes to App Store Connect; the
+#                       build number is still checked against App Store Connect's newest)
 # Both: --dry-run prints the steps and the build number and changes nothing.
 #
 # KELO_LOCK_DIR=<folder> makes the script take <folder>/XCODE_LOCK (and DEVICE_LOCK for sim) before heavy Xcode work.
@@ -28,7 +30,7 @@ usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 MODE="${1:-}"; [ -n "$MODE" ] || usage 1; shift
 case "$MODE" in sim|testflight) ;; -h|--help|help) usage 0 ;; *) die "unknown command '$MODE' (sim or testflight)" ;; esac
-SKIP_PACKAGES=0 ONLY=() MOCK=1 LANG_=en SHOTS="" BUILD_NO="" WAIT=1 WAIT_TIMEOUT=2700 KEEP_ARCHIVE=""
+SKIP_PACKAGES=0 ONLY=() MOCK=1 LANG_=en SHOTS="" BUILD_NO="" WAIT=1 WAIT_TIMEOUT=2700 KEEP_ARCHIVE="" IPA_DIR=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-packages) SKIP_PACKAGES=1 ;;
@@ -40,6 +42,7 @@ while [ $# -gt 0 ]; do
     --no-wait) WAIT=0 ;;
     --wait-timeout) WAIT_TIMEOUT="${2:?}"; shift ;;
     --keep-archive) KEEP_ARCHIVE="${2:?}"; shift ;;
+    --no-upload) IPA_DIR="${2:?--no-upload needs a folder for the .ipa}"; WAIT=0; shift ;;
     --dry-run) DRY_RUN=1 ;;
     -h|--help) usage 0 ;;
     *) die "unknown option $1" ;;
@@ -224,7 +227,7 @@ cat >"$TMP/ExportOptions.plist" <<EOF
 <plist version="1.0">
 <dict>
 	<key>method</key><string>app-store-connect</string>
-	<key>destination</key><string>upload</string>
+	<key>destination</key><string>$([ -n "$IPA_DIR" ] && echo export || echo upload)</string>
 	<key>teamID</key><string>$TEAM</string>
 	<key>signingStyle</key><string>automatic</string>
 	<key>manageAppVersionAndBuildNumber</key><false/>
@@ -238,11 +241,18 @@ EOF
 if [ "$DRY_RUN" = 1 ]; then
   note "[dry-run] xcodebuild -exportArchive -archivePath <tmp>/Kelo.xcarchive -exportOptionsPlist <tmp>/ExportOptions.plist -exportPath <tmp>/export -allowProvisioningUpdates -authenticationKeyPath <KEY_PATH> -authenticationKeyID <KEY_ID> -authenticationKeyIssuerID <ISSUER_ID>   (timeout 30 min; UPLOADS to App Store Connect)"
 else
-  step "export, sign and upload to App Store Connect" "${KELO_EXPORT_TIMEOUT:-1800}" "$LOGS/ios-export.log" \
+  step "export and sign$([ -n "$IPA_DIR" ] && echo ' (no upload)' || echo ', upload to App Store Connect')" "${KELO_EXPORT_TIMEOUT:-1800}" "$LOGS/ios-export.log" \
     xcodebuild -exportArchive -archivePath "$TMP/Kelo.xcarchive" -exportOptionsPlist "$TMP/ExportOptions.plist" \
       -exportPath "$TMP/export" -allowProvisioningUpdates \
       -authenticationKeyPath "$KEY_PATH" -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID"
   grep -q "Upload succeeded\|EXPORT SUCCEEDED" "$LOGS/ios-export.log" || die "export finished without 'Upload succeeded' (log: $LOGS/ios-export.log)"
+  if [ -n "$IPA_DIR" ]; then
+    ipa="$(find "$TMP/export" -maxdepth 1 -name '*.ipa' | head -1)"
+    [ -n "$ipa" ] || die "the export made no .ipa (log: $LOGS/ios-export.log)"
+    mkdir -p "$IPA_DIR"
+    mv "$ipa" "$IPA_DIR/Kelo-$MARKETING-$BUILD_NO.ipa"
+    note "IPA (not uploaded): $IPA_DIR/Kelo-$MARKETING-$BUILD_NO.ipa"
+  fi
 fi
 release_lock XCODE_LOCK
 

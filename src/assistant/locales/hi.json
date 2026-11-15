@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Google की समीक्षा पूरी होने पर यह खुलेगा। Kelo का साथ देने से यह जल्दी खुल सकता है।",
  "This order already made its payment": "इस ऑर्डर का भुगतान हो चुका है",
  "This payment link is made only for another product, so this app can't use it.": "यह पेमेंट लिंक सिर्फ़ किसी दूसरे प्रोडक्ट के लिए बना है, इसलिए यह ऐप इसका इस्तेमाल नहीं कर सकता।",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "इस फ़ोन को मालिक के अधिकार मिलेंगे: यह ऑपरेटर सेटिंग्स खोल सकेगा। इसे सिर्फ़ अपने फ़ोन से स्कैन करें।",
  "This provider cannot list its models. Type the model yourself": "यह प्रोवाइडर अपने मॉडल की सूची नहीं दे सकता। मॉडल का नाम खुद टाइप करें",
  "This run already made the purchase allowed for it": "इस रन में अनुमत खरीदारी पहले ही हो चुकी है",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "इस सर्वर कंटेनर में CLI नहीं है। `assistant setup` में CLI कंटेनर चालू करें (या Kelo सर्वर को कंटेनर के बाहर चलाएँ)",

@@ -58,24 +58,18 @@ def test_browse_details_install_and_owner_only_changes(tmp_path):
     r = c.post("/api/nest/packages/habit-tracker/install", headers=AUTH, json={})
     assert r.status_code == 409 and r.json()["permissions"]["hash"] == d["permissions"]["hash"]
     accept = {"accept": d["permissions"]["hash"]}
-    assert c.post("/api/nest/packages/habit-tracker/install", headers=kid, json=accept).status_code == 403
+    assert c.get("/api/nest/installed", headers=kid).status_code == 200      # every device has the same rights (no owner devices)
     r = c.post("/api/nest/packages/habit-tracker/install", headers=AUTH, json=accept)
     assert r.status_code == 200 and r.json()["state"] == "on"
     assert [i["id"] for i in c.get("/api/nest/installed", headers=kid).json()["items"]] == ["habit-tracker"]
     assert c.get("/api/nest/updates", headers=AUTH).json()["items"] == []
-    for method, path, body in [("put", "/api/nest/packages/habit-tracker/pin", {"pinned": True}),
-                               ("put", "/api/nest/packages/habit-tracker/enabled", {"enabled": False}),
-                               ("put", "/api/nest/packages/habit-tracker/permissions", {"revoke": ["ui.tab"]}),
-                               ("put", "/api/nest/extensions/tabs", {"show": []}),
-                               ("post", "/api/nest/refresh", None)]:
-        assert getattr(c, method)(path, headers=kid, **({"json": body} if body is not None else {})).status_code == 403, path
+    assert c.put("/api/nest/packages/habit-tracker/pin", headers=kid, json={"pinned": True}).status_code == 200   # no owner devices
     assert c.put("/api/nest/packages/habit-tracker/pin", headers=AUTH, json={"pinned": True}).json()["pinned"] is True
     assert c.put("/api/nest/packages/habit-tracker/permissions", headers=AUTH, json={"revoke": ["ui.tab"]}).json()["revoked"] == ["ui.tab"]
     assert c.get("/api/nest/extensions", headers=kid).json()["places"]["tab"] == []
     assert c.put("/api/nest/packages/habit-tracker/permissions", headers=AUTH, json={"revoke": ["hosts.x"]}).status_code == 422
     assert c.put("/api/nest/packages/habit-tracker/enabled", headers=AUTH, json={"enabled": False}).json()["state"] == "disabled"
     assert c.get("/api/nest/extensions/habit-tracker/data?surface=today", headers=AUTH).status_code == 403
-    assert c.delete("/api/nest/packages/habit-tracker", headers=kid).status_code == 403
     assert c.delete("/api/nest/packages/habit-tracker", headers=AUTH).json() == {"ok": True}
     assert c.delete("/api/nest/packages/habit-tracker", headers=AUTH).status_code == 404
     assert c.get("/api/nest/installed", headers=AUTH).json()["items"] == []

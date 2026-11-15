@@ -2,7 +2,7 @@
 
 Who holds what:
   - Only the operator's server (the broker, the same one that brokers sign-ins and Kelo addresses) holds the Firebase
-    service-account key of the Kelo project. It is uploaded once with the owner token (PUT /api/operator/firebase), checked by
+    service-account key of the Kelo project. It is uploaded once with any signed-in device (PUT /api/operator/firebase), checked by
     minting one OAuth token, stored encrypted (store.set_key) and never returned.
   - Every copy of Kelo keeps the FCM token of each of its paired phones (POST /api/push/register from the phone). When the copy
     makes a notification that nobody saw arrive (activity.py), it asks the broker to wake its phones: POST /broker/push/send.

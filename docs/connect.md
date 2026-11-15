@@ -99,21 +99,12 @@ Funnel's relays cannot read the traffic, because TLS ends on this computer.
    - **Account → Cloudflare Tunnel → Edit**
    - **Zone → DNS → Edit**, limited to the zone `kelo.chat`
 3. **Run the broker.** On the operator's Kelo (the server reached at `https://kelo.chat`, the same one that brokers sign-ins).
-   The easy way is the app: **My → Operator settings → Cloudflare**. Operator settings show only on the owner's own
-   phone. Give your phone the owner's rights once, on the server machine (from the Kelo folder):
+   The easy way is the app:
+   **My → Operator settings → Cloudflare**. Operator settings show on every phone signed in to the operator's server (every
+   signed-in device has the same full rights; there are no owner devices). The same screen also has **Beta requests** (Google
+   sign-in) and the push key. My → Devices marks the operator's server as **Operator**.
 
-   ```
-   assistant phone owner                    # lists the signed-in devices; pick yours (in a terminal) to give it the rights
-   assistant phone owner --grant "Pixel 9"  # the same without the menu (device number or name)
-   assistant phone add --owner              # or: sign a new phone in with the owner's rights from the start
-   assistant phone owner --revoke 3         # take the rights back (the phone stays signed in)
-   ```
-
-   Add `--instance <name>` for an extra copy. Only the access key on the server machine can hand these rights out; a phone
-   can never give them to itself or to another phone. The same screen also has **Beta requests** (Google sign-in) and the
-   push key. My → Devices marks the owner phone as **Operator**.
-
-   Or, with the owner token:
+   Or, with the access key:
 
    ```
    curl -X PUT https://kelo.chat/api/operator/cloudflare -H "Authorization: Bearer $ASSISTANT_TOKEN" \

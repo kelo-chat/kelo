@@ -70,7 +70,7 @@ public extension View {
     /// Hides the system navigation bar (pages draw their own back bar like Android's BackTitleBar).
     func keloHideNavigationBar() -> some View {
         #if os(iOS)
-        return toolbar(.hidden, for: .navigationBar)
+        return toolbar(.hidden, for: .navigationBar).keloSwipeBack()
         #else
         return self
         #endif

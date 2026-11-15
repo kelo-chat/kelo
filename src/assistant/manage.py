@@ -74,8 +74,8 @@ def run_command(args: Any, manager: Instances | None = None, ask: Callable[[str]
                 _keyguard_enable(m, inst, restart=not getattr(args, "no_restart", False))
             elif args.kcmd == "status":
                 st = connect.keyguard_status(m, inst)
-                where = "the owner's phones" if st["mode"] == "phone" else "this server (master.key or ASSISTANT_SECRET_KEY)"
-                m.out(f"Passwords, keys and cards: the key is held by {where}." + (" Locked: open Kelo on an owner phone." if st["locked"] else ""))
+                where = "the phones" if st["mode"] == "phone" else "this server (master.key or ASSISTANT_SECRET_KEY)"
+                m.out(f"Passwords, keys and cards: the key is held by {where}." + (" Locked: open Kelo on a phone that holds the key." if st["locked"] else ""))
                 for p in st.get("phones") or []:
                     m.out(f"  phone #{p['device_id']} {p.get('name') or ''}".rstrip())
             else:
@@ -93,11 +93,10 @@ def run_command(args: Any, manager: Instances | None = None, ask: Callable[[str]
                 m.out(f"New server key. Fingerprint: {info['fingerprint']}")
                 m.out("Every phone must pair again: show a new QR with `assistant phone add`.")
         elif args.cmd == "phone" and getattr(args, "pcmd", "add") == "owner":
-            _phone_owner(m, m.load(args.instance), args, ask if interactive else None)
+            m.out(OWNER_GONE_NOTE)
         elif args.cmd == "phone":
             inst = m.load(args.instance)
-            owner = bool(getattr(args, "owner", False))
-            link, qr = connect.phone_add(m, inst, address=args.url, owner=owner)
+            link, qr = connect.phone_add(m, inst, address=args.url)   # `--owner` is an old option and is ignored
             if sys.stdout.isatty():                    # painted black on white: scans the same on dark and light terminals
                 qr = connect.qr_text(link, color=True)
             if connect.local_only(args.url or inst.address):
@@ -109,8 +108,6 @@ def run_command(args: Any, manager: Instances | None = None, ask: Callable[[str]
                 m.out(f"Server key fingerprint: {connect.e2e_info(m, inst)['fingerprint']}")
             except connect.ConnectError:
                 pass   # an older server without KE2E
-            if owner:
-                m.out(OWNER_QR_NOTE)
     except (EOFError, KeyboardInterrupt):
         m.out("\nCancelled; nothing was changed.")
         return 1
@@ -123,66 +120,9 @@ def run_command(args: Any, manager: Instances | None = None, ask: Callable[[str]
     return 0
 
 
-OWNER_QR_NOTE = ("OWNER QR: the phone that scans this gets the owner's rights. It can open the operator settings (free addresses, "
-                 "Google sign-in requests, push key). Scan it only with your own phone. Take the rights back any time with: "
-                 "assistant phone owner --revoke <name>")
-
-
-def _device_label(d: dict[str, Any]) -> str:
-    return (f"{d['id']:>4}  {d.get('name') or 'device'}" + ("  [owner]" if d.get("owner") else "")
-            + (f"  [code: {d['code']}]" if d.get("code") else ""))
-
-
-def _find_device(devices: list[dict[str, Any]], key: str) -> dict[str, Any]:
-    """A device by its id, or by its name (exact, then case-insensitive) when that name is unique."""
-    key = key.strip()
-    if key.isdigit():
-        found = [d for d in devices if str(d["id"]) == key]
-    else:
-        found = [d for d in devices if d.get("name") == key] or [d for d in devices if str(d.get("name", "")).lower() == key.lower()]
-    if not found:
-        raise InstanceError(f"no signed-in device called {key!r}; see the list with: assistant phone owner")
-    if len(found) > 1:
-        raise InstanceError(f"{len(found)} devices are called {key!r}; use the number instead: " + ", ".join(str(d["id"]) for d in found))
-    return found[0]
-
-
-def _phone_owner(m: Instances, inst: Any, args: Any, ask: Callable[[str], str] | None) -> None:
-    """`assistant phone owner`: which signed-in devices hold the owner's rights (operator settings); --grant / --revoke change one,
-    or, in a terminal, pick one from the list. It talks to the running server with the access key in the settings file, so only
-    someone at this computer can do it; a phone can never give itself these rights."""
-    devices = connect.devices(m, inst)
-    if args.grant or args.revoke:
-        d, owner = _find_device(devices, args.grant or args.revoke), bool(args.grant)
-    else:
-        m.out(f"Signed-in devices of {_who(inst)} ([owner] = can open the operator settings):")
-        for d in devices:
-            m.out("  " + _device_label(d))
-        if not devices:
-            m.out("  (none yet: sign one in with `assistant phone add --owner`)")
-            return
-        if ask is None:
-            m.out("Change one with: assistant phone owner --grant <number|name>   (or --revoke)")
-            return
-        pick = ask("Type the device number and press Enter (Enter alone = change nothing): ").strip()
-        if not pick:
-            m.out("Nothing was changed.")
-            return
-        d = _find_device(devices, pick)
-        owner = not d.get("owner")
-        verb = "Give" if owner else "Take back from"
-        if ask(f"{verb} {d.get('name') or 'device'} the owner's rights? [y/N]: ").strip().lower() not in ("y", "yes"):
-            m.out("Nothing was changed.")
-            return
-    if bool(d.get("owner")) == owner:
-        m.out(f"{d.get('name') or 'device'} (#{d['id']}) " + ("already has" if owner else "does not have") + " the owner's rights.")
-        return
-    connect.set_device_owner(m, inst, int(d["id"]), owner)
-    if owner:
-        m.out(f"{d.get('name') or 'device'} (#{d['id']}) now has the owner's rights: My -> Operator settings appears after the app "
-              "reloads My. Take them back with: assistant phone owner --revoke " + str(d["id"]))
-    else:
-        m.out(f"{d.get('name') or 'device'} (#{d['id']}) no longer has the owner's rights (it stays signed in as an ordinary phone).")
+OWNER_GONE_NOTE = ("There are no owner devices any more: every device signed in to this server has the same full rights "
+                   "(Keyguard, operator settings, auto-pay and the rest). Nothing to grant or take back. "
+                   "Sign a new phone in with: assistant phone add")
 
 
 def _instance(m: Instances, args: Any, ask: Callable[[str], str] | None, ui: Any = None) -> None:
@@ -399,7 +339,7 @@ def _cli_profiles_on(m: Instances, inst: Any, restart: bool) -> None:
         m.out("Started them (the first start builds their images; this can take a few minutes).")
 
 
-KEYGUARD_PHONE_STEP = ("Now turn it on from your phone: open Kelo on an owner phone, My -> Security -> Keyguard. The phone keeps the key "
+KEYGUARD_PHONE_STEP = ("Now turn it on from your phone: open Kelo on your phone, My -> Security -> Keyguard. The phone keeps the key "
                        "of your passwords, keys and cards; write down the recovery code it shows.")
 
 

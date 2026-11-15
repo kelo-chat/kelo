@@ -26,12 +26,14 @@
 		92C9644983F89F94DE79B568 /* KeloEffortShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47161B921BFBE6EBB9D18C63 /* KeloEffortShotsTests.swift */; };
 		9C442F1A3DDEA24D1A2AEA29 /* KeloResourcesShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4751BCDF5FAC6594A01D9E4F /* KeloResourcesShotsTests.swift */; };
 		AD06F3A9CB59BBCD9F83AFF6 /* KeloStorageShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF6E8A600D27C768BFC4B08 /* KeloStorageShotsTests.swift */; };
+		AD3B7BF54A20501AA5546E56 /* KeloSwipeBackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E023266B1DF092EC008744E9 /* KeloSwipeBackTests.swift */; };
 		AD4092413C6F9B00FA65999C /* KeloOwnerFixesShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E37340ED57820EB6856120 /* KeloOwnerFixesShotsTests.swift */; };
 		CE9B9AC8355350C0C0DAAB79 /* KeloApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D430AD0A245510594E7460C /* KeloApp.swift */; };
 		D1316EED0AAD35D2EAC134DD /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE8AE3CD1CCF1B6ED9DC1784 /* ShareViewController.swift */; };
 		D7A28C0DAC46F35193F8B19B /* KeloScreensTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCFE94A712E9F3054FB2B818 /* KeloScreensTests.swift */; };
 		D976DC70B86C4A512E85FD43 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 876AE208AD5077C8B4CDBFC7 /* Localizable.strings */; };
 		DFDA7321CFFD27EA8DE7A06C /* KeloSkillsShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7945BBC5A63879229C5381ED /* KeloSkillsShotsTests.swift */; };
+		E14441C012152881DC833624 /* KeloKeyboardDismissTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77C3317FF1A594D7FBB09D6C /* KeloKeyboardDismissTests.swift */; };
 		E98FD8032628C13CBBD01814 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 185480D2E586FA0BEE08D314 /* PrivacyInfo.xcprivacy */; };
 		E9FE64E2B305F731AE7BDC6A /* KeloServerUpdateShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36FC07652EF56EC0F39EF6BA /* KeloServerUpdateShotsTests.swift */; };
 		EAE0D4C62D4D2C38DCA4F22D /* KeloStoreShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DA53CB61DFDF1FA349BD131 /* KeloStoreShotsTests.swift */; };
@@ -119,6 +121,7 @@
 		6FF0B9F1B22988C2E12C58FF /* KeloSecretShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloSecretShotsTests.swift; sourceTree = "<group>"; };
 		7306F2E573A14FA400722B8E /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		770A7A820CB2B9EE3A5C7C5E /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/Localizable.strings; sourceTree = "<group>"; };
+		77C3317FF1A594D7FBB09D6C /* KeloKeyboardDismissTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloKeyboardDismissTests.swift; sourceTree = "<group>"; };
 		7945BBC5A63879229C5381ED /* KeloSkillsShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloSkillsShotsTests.swift; sourceTree = "<group>"; };
 		79FFD4BFDE868BBDCCEE2401 /* KeloSecretEntryShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloSecretEntryShotsTests.swift; sourceTree = "<group>"; };
 		7CD77F8F62C8EB5723EDCD24 /* KeloToneShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloToneShotsTests.swift; sourceTree = "<group>"; };
@@ -157,6 +160,7 @@
 		D5BF5AE4453B77A611AAF480 /* pl */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = pl; path = pl.lproj/Localizable.strings; sourceTree = "<group>"; };
 		D8167C37F6EFFA7D2EE15375 /* Kelo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Kelo.entitlements; sourceTree = "<group>"; };
 		DB44E93AA684DD69B71DB81D /* KeloGrantsShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloGrantsShotsTests.swift; sourceTree = "<group>"; };
+		E023266B1DF092EC008744E9 /* KeloSwipeBackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloSwipeBackTests.swift; sourceTree = "<group>"; };
 		E6FA5A6379C406C55A247D92 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		E94E9FFD0CDCFBB1E7C410C5 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
 		EA4BDE0D68673A75A7AE50E9 /* hi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = hi; path = hi.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -198,6 +202,7 @@
 				F3596BF616FA548ECE9372C3 /* KeloFieldSweepTests.swift */,
 				DB44E93AA684DD69B71DB81D /* KeloGrantsShotsTests.swift */,
 				39557A66CAA8292244F5AA8A /* KeloHoursShotsTests.swift */,
+				77C3317FF1A594D7FBB09D6C /* KeloKeyboardDismissTests.swift */,
 				11BBE671469990546D2C3040 /* KeloKeyguardShotsTests.swift */,
 				C5C81B6AD72D1A869AAE096E /* KeloLocationAttachShotsTests.swift */,
 				B41ED8352E74420A1937C386 /* KeloMemoryPassShotsTests.swift */,
@@ -212,6 +217,7 @@
 				7945BBC5A63879229C5381ED /* KeloSkillsShotsTests.swift */,
 				3CF6E8A600D27C768BFC4B08 /* KeloStorageShotsTests.swift */,
 				5DA53CB61DFDF1FA349BD131 /* KeloStoreShotsTests.swift */,
+				E023266B1DF092EC008744E9 /* KeloSwipeBackTests.swift */,
 				7CD77F8F62C8EB5723EDCD24 /* KeloToneShotsTests.swift */,
 			);
 			path = UITests;
@@ -456,6 +462,7 @@
 				2BFC1184C57E146B43571062 /* KeloFieldSweepTests.swift in Sources */,
 				73F9DCB635ED12863D639220 /* KeloGrantsShotsTests.swift in Sources */,
 				FC6CF1E16A1BE130A0D9CE98 /* KeloHoursShotsTests.swift in Sources */,
+				E14441C012152881DC833624 /* KeloKeyboardDismissTests.swift in Sources */,
 				3DA135EFAED1C061EC3D40D0 /* KeloKeyguardShotsTests.swift in Sources */,
 				25F6332F5F3502B521B749AF /* KeloLocationAttachShotsTests.swift in Sources */,
 				68172C7FC89E3F04AEC1A4C7 /* KeloMemoryPassShotsTests.swift in Sources */,
@@ -470,6 +477,7 @@
 				DFDA7321CFFD27EA8DE7A06C /* KeloSkillsShotsTests.swift in Sources */,
 				AD06F3A9CB59BBCD9F83AFF6 /* KeloStorageShotsTests.swift in Sources */,
 				EAE0D4C62D4D2C38DCA4F22D /* KeloStoreShotsTests.swift in Sources */,
+				AD3B7BF54A20501AA5546E56 /* KeloSwipeBackTests.swift in Sources */,
 				7B3E36F3F81DE7904A3901EE /* KeloToneShotsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -683,7 +691,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 26111011;
+				CURRENT_PROJECT_VERSION = 26111024;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = P6GD4DM9C5;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -772,7 +780,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 26111011;
+				CURRENT_PROJECT_VERSION = 26111024;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = P6GD4DM9C5;
 				ENABLE_NS_ASSERTIONS = NO;

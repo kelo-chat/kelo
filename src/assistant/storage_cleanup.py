@@ -24,7 +24,7 @@ that list; anything else is skipped.
 GET  /api/storage/cleanup                         -> {"groups": [{"id", "bytes", "count", "items": [...]}], "total", "older_than_days"}
 POST /api/storage/cleanup {"items": [id], "confirm": true}
      -> {"removed": [id], "skipped": [id], "freed": bytes, "groups": [...] (the list after), "total"}; 400 without confirm
-Both owner only.
+Both: any signed-in device (not on a review copy).
 """
 
 from __future__ import annotations

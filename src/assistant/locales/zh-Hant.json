@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Google 審核完成後即可開放。支持 Kelo 能讓它更快開放。",
  "This order already made its payment": "此訂單已付款",
  "This payment link is made only for another product, so this app can't use it.": "這個付款連結是專為其他產品建立的，所以這個 App 無法使用。",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "這支手機會取得擁有者權限，可以開啟營運者設定。請只用你自己的手機掃描。",
  "This provider cannot list its models. Type the model yourself": "這個供應商無法列出模型。請自行輸入模型",
  "This run already made the purchase allowed for it": "本次執行已完成允許的購買",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "這個伺服器容器中沒有 CLI。請在 `assistant setup` 中開啟 CLI 容器（或在容器外執行 Kelo 伺服器）",

@@ -1,4 +1,4 @@
-"""Keyguard: the master key of the server's SECRETS, held by the owner's phones (docs/security/e2e-and-phone-key.md section 2).
+"""Keyguard: the master key of the server's SECRETS, held by the phones (docs/security/e2e-and-phone-key.md section 2).
 
 Scope (the owner's decision, 2026-11-10): only secrets: the vault (website logins, service keys, connector tokens), the provider API
 keys and the auto-pay cards. Chats, memory, files and the personal data the phones share are NOT under Keyguard: they stay readable
@@ -10,7 +10,7 @@ once Keyguard was turned on, so a locked server still has it.
 Modes:
 - "server" (default): the master key is `<state>/master.key` (or the env var), as before.
 - "phone": the key exists only in memory while unlocked. After a restart the server is LOCKED: every use of a secret raises
-  `Locked` (the API answers 423 {"code": "locked"}) until an owner phone sends the key (`unlock`). Each owner phone keeps its own
+  `Locked` (the API answers 423 {"code": "locked"}) until a phone sends the key (`unlock`). Each phone keeps its own
   wrapped copy (the server stores it, never opens it: format byte 0x01 Android Keystore AES-GCM, 0x02 iPhone Secure Enclave ECIES;
   the phones use the AAD "kelo-keyguard v1"). A recovery code (24 characters, shown once) wraps the key with Argon2id + AES-256-GCM.
   A check value HMAC-SHA256(K, "kelo keyguard check") tells a wrong key from the right one.
@@ -178,7 +178,7 @@ class KeyGuard:
     def key(self) -> bytes:
         k = self._key
         if k is None:
-            raise Locked("the server is locked: open Kelo on an owner phone to unlock it")
+            raise Locked("the server is locked: open Kelo on a phone that holds the key to unlock it")
         return k
 
     def _sealer(self, key: bytes, info: bytes) -> Sealer:
@@ -221,7 +221,7 @@ class KeyGuard:
 
     # ---- turning it on, more phones ------------------------------------------------------------------------------------------------
     def start_enroll(self, device_id: int) -> dict[str, Any]:
-        """Step 1 of enabling (or of adding another owner phone while unlocked): the key the phone must wrap, sent only inside KE2E.
+        """Step 1 of enabling (or of adding another phone while unlocked): the key the phone must wrap, sent only inside KE2E.
         Enabling makes a NEW key K' (nothing is changed until finish); adding a phone hands out the current one."""
         with self._lock:
             if self.env_secret:
@@ -353,7 +353,7 @@ class KeyGuard:
             _call(fn)
 
     async def wait_unlocked(self, timeout: float, poll: float = 2.0) -> bool:
-        """For background work: wait (up to `timeout` seconds) for an owner phone to unlock. True once unlocked."""
+        """For background work: wait (up to `timeout` seconds) for a phone to unlock. True once unlocked."""
         import asyncio
         end = time.monotonic() + timeout
         while self.locked and time.monotonic() < end:

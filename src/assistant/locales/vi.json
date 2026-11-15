@@ -1036,7 +1036,6 @@
  "This opens once Google's review is done. Supporting Kelo helps it open sooner.": "Tính năng này sẽ mở khi Google xét duyệt xong. Ủng hộ Kelo giúp nó mở sớm hơn.",
  "This order already made its payment": "Đơn hàng này đã được thanh toán",
  "This payment link is made only for another product, so this app can't use it.": "Liên kết thanh toán này chỉ dành cho sản phẩm khác nên ứng dụng này không dùng được.",
- "This phone gets the owner's rights: it can open the operator settings. Scan it only with your own phone.": "Điện thoại này sẽ có quyền của chủ sở hữu: mở được cài đặt người vận hành. Chỉ quét bằng điện thoại của chính bạn.",
  "This provider cannot list its models. Type the model yourself": "Nhà cung cấp này không liệt kê được mô hình. Hãy tự nhập tên mô hình",
  "This run already made the purchase allowed for it": "Lần chạy này đã mua món được phép rồi",
  "This server container has no CLI. Turn on the CLI container in `assistant setup` (or run the Kelo server outside a container)": "Container máy chủ này không có CLI. Bật container CLI trong `assistant setup` (hoặc chạy máy chủ Kelo bên ngoài container)",

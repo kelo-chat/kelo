@@ -8,6 +8,7 @@ one plain line each, saying which part: app, server, site, desktop, iOS). When a
 build's version and date, and copy the app lines into the Play release notes (en-US and ko-KR).
 
 ## Unreleased
+- Server (changed): no more owner devices. Every device signed in to a server has the same full rights (Keyguard, operator settings, auto-pay, server update, cleanup), so an extra copy's own person can turn on Keyguard. The `owner` field stays in device lists and /api/operator/status (true for every device) for older apps; `owner` / `first_owner` in POST /api/devices/pair are ignored; `assistant phone owner` only prints a note. A review copy is the exception: reviewers' devices (access code) still cannot reach Keyguard, operator or other server-wide settings (the wallet works as usual; auto-pay needs Keyguard, so it stays off there).
 
 ## 0.9.0 (build 9, 2026-11-10)
 - Server (fixed): a background job the chat hands work to carries the owner's request, and what was asked for is not asked again however many items there are (paying always asks); clicking plain text on a page is no longer taken for a button.

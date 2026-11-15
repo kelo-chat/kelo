@@ -382,7 +382,7 @@ class Wallet:
                 "auto_pay_paused_reason": "keyguard_off" if held else ""}
 
     def keyguard_on(self) -> bool:
-        """Auto-pay is allowed only while Keyguard holds the key on the owner's phones (keyguard.py, mode "phone")."""
+        """Auto-pay is allowed only while Keyguard holds the key on the phones (keyguard.py, mode "phone")."""
         guard = getattr(self.store, "keyguard", None)
         return guard is not None and guard.mode == "phone"
 

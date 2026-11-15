@@ -20,8 +20,9 @@ AUTH_FAIL_WINDOW = 60.0  # ...per this many seconds
 
 
 class AuthGuard:
-    def __init__(self, token: str, store: Any, note_use: Callable[[Request], None]):
+    def __init__(self, token: str, store: Any, note_use: Callable[[Request], None], review_mode: bool = False):
         self.token = token
+        self.review_mode = review_mode   # a review copy: its devices never get the "owner" side (operator settings, Keyguard, auto-pay)
         self.store = store
         self.note_use = note_use   # a signed-in request counts as the app being used (server.py note_use)
         self.failures: dict[str, deque[float]] = {}
@@ -60,7 +61,7 @@ class AuthGuard:
         supplied = request.headers.get("authorization", "")
         scheme, _, value = supplied.partition(" ")
         request.state.device_id = None            # None = the master token (the owner's own tools); otherwise the signed-in device
-        request.state.device_owner = False        # a paired phone given the owner's rights on the server machine (operator settings only)
+        request.state.device_owner = False        # may this caller change server-wide settings: every signed-in device may (False only on a review copy)
         if scheme.lower() == "bearer" and secrets.compare_digest(value.encode(), self.token.encode()):
             self.note_use(request)
             return
@@ -68,7 +69,7 @@ class AuthGuard:
         if device:
             self.check_transport(request, device)
             request.state.device_id = device["id"]
-            request.state.device_owner = bool(device.get("owner"))
+            request.state.device_owner = not self.review_mode
             self.note_use(request)
             return
         recent.append(now)
@@ -78,18 +79,23 @@ class AuthGuard:
         raise HTTPException(401, "invalid or missing bearer token", headers={"WWW-Authenticate": "Bearer"})
 
     def require_owner(self, request: Request) -> None:
-        """Operator settings: the owner's own access key, or a phone the owner marked as theirs on the server machine
-        (`assistant phone add --owner` / `assistant phone owner --grant`). Any other paired phone gets 403. This is the only
-        thing an owner phone gains: it keeps its own device id everywhere else (its browser tab, push, phone data)."""
+        """Server-wide settings (Keyguard, operator settings, updates, cleanup ...): the access key or any signed-in device; there are no
+        owner devices any more, every device has the same rights. The one exception is a review copy (ASSISTANT_REVIEW_MODE): the
+        reviewers' devices (they signed in with an access code) are refused, so a reviewer cannot lock or reconfigure the review server."""
         self.require_auth(request)
-        if request.state.device_id is not None and not request.state.device_owner:
-            raise HTTPException(403, "only the owner's own token can change this")
+        if request.state.device_id is not None and self.review_mode:
+            raise HTTPException(403, "this demo server cannot be reconfigured from a device")
+
+    @staticmethod
+    def owner_flag(review_mode: bool) -> bool:
+        """What the old `owner` field of an API answer says now: true for every device, false on a review copy."""
+        return not review_mode
 
     def require_master(self, request: Request) -> None:
-        """The master token itself (whoever controls the server machine): who may hand out or take back owner rights."""
+        """The master token itself (whoever controls the server machine): access codes, the end-to-end key."""
         self.require_auth(request)
         if request.state.device_id is not None:
-            raise HTTPException(403, "only the access key on the server machine can do this (assistant phone owner)")
+            raise HTTPException(403, "only the access key on the server machine can do this")
 
     @staticmethod
     def device_of(conn: Any) -> str:

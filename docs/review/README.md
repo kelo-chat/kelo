@@ -18,7 +18,7 @@ payments). Only this differs:
 - **Subscription sign-ins are off for good.** The "unofficial" providers (Claude / Antigravity / ChatGPT / Qwen / MiniMax sign-ins)
   are not listed, cannot be chosen or signed in to, and any model call to one is refused, even if the settings file names one.
   `assistant enable oauth --instance review-<store>` refuses.
-- **No operator settings.** Reviewers' phones join as ordinary devices (never the owner's rights) and the copy never reports
+- **No operator settings.** Reviewers' phones join with an access code; on a review copy they never reach operator settings, Keyguard (so nobody can lock the review server); the wallet works as in the product (auto-pay needs Keyguard, so it stays off), and the copy never reports
   itself as the operator's server.
 - **The model is set on the server.** The model from `assistant review model` is written into the profile at start-up, so a
   reviewer's phone shows it by name and never shows the "choose a model" card.
@@ -63,7 +63,7 @@ Run these in the folder that holds `compose.yml`.
    Partner Center: Submission options → Notes for certification).
 
    The code works for the given days and number of devices. Each device that uses it becomes an ordinary signed-in device
-   labelled with the copy's name (`assistant phone owner --instance review-apple` lists them). Only a hash of the code is kept on
+   labelled with the copy's name (My → Devices on the copy lists them). Only a hash of the code is kept on
    the server. A code that runs out stops new sign-ins; devices already signed in stay.
 
 5. **Check it:** `assistant review status` (mode, address, model, codes; never a code or a key).

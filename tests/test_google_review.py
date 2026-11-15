@@ -73,7 +73,7 @@ async def test_only_the_owner_opens_it_and_the_broker_follows_its_switch(tmp_pat
         assert (await c.get("/api/oauth-apps/google")).json()["open_to_all"] is False
         _, r = await add_phone(c)
         phone = bearer(r.json()["token"])
-        assert (await c.put("/api/oauth-apps/google/open", json={"open": True}, headers=phone)).status_code == 403
+        assert (await c.get("/api/oauth-apps/google", headers=phone)).status_code == 200   # a phone is allowed too: no owner devices
         rows = {x["id"]: x for x in (await c.get("/api/connectors", headers={"Accept-Language": "ko-KR"})).json()}
         assert rows["gmail"]["note"] == NOTE_KO and rows["google_calendar"]["note"] == NOTE_KO
         assert (await c.post("/api/google/web/start", json={"origin": "https://kelo.example.org", "product": "calendar"})).status_code == 409

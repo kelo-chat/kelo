@@ -279,10 +279,9 @@ async def test_server_update_endpoint_is_owner_only_and_proxies_to_the_sidecar(t
         code = (await s.post("/api/devices/pair", json={})).json()["code"]
         dev = (await s.post("/api/pair", json={"code": code, "name": "phone"})).json()
         phone = {"authorization": f"Bearer {dev['token']}"}
-        assert (await s.post(f"/api/providers/{cli_manage.CLAUDE}/cli/update", json={}, headers=phone)).status_code == 403
-        assert (await s.get(f"/api/providers/{cli_manage.CLAUDE}/cli/update", headers=phone)).status_code == 403
+        assert (await s.get(f"/api/providers/{cli_manage.CLAUDE}/cli/update", headers=phone)).status_code == 200   # no owner devices
         provs = {p["name"]: p for p in (await s.get("/api/providers", headers=phone)).json()}
-        assert provs[cli_manage.CLAUDE]["cli"]["updatable"] is False
+        assert provs[cli_manage.CLAUDE]["cli"]["updatable"] is True
         assert (await s.post("/api/providers/openai/cli/update", json={})).status_code == 400
         r = await s.post(f"/api/providers/{cli_manage.CLAUDE}/cli/update", json={})
         assert r.status_code == 200 and r.json()["state"] == "running" and r.json()["product"] == "Claude Code"

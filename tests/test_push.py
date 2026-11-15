@@ -189,7 +189,7 @@ async def test_the_operator_uploads_the_firebase_key_which_is_checked_stored_enc
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url) as c:
         _, phone = await pair(c)
         assert (await c.get("/api/operator/firebase", headers=AUTH)).json() == {"enabled": False, "project_id": "", "client_email": ""}
-        assert (await c.put("/api/operator/firebase", headers=phone, content=json.dumps(KEY_FILE))).status_code == 403   # owner only
+        assert (await c.get("/api/operator/firebase", headers=phone)).status_code == 200   # any signed-in device
         for broken in (b"hello", json.dumps({**KEY_FILE, "type": "authorized_user"}), json.dumps({**KEY_FILE, "project_id": "X"}),
                        json.dumps({**KEY_FILE, "client_email": "me@gmail.com"}), json.dumps({**KEY_FILE, "private_key": "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"})):
             r = await c.put("/api/operator/firebase", headers=AUTH, content=broken)

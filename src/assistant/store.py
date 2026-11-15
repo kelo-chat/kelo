@@ -97,7 +97,7 @@ class Store:
             Path(path).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         if str(path) != ":memory:":  # create 0600 up front: it holds the conversation
             os.close(os.open(path, os.O_RDWR | os.O_CREAT, 0o600))
-        # every secret's key comes from the KeyGuard (keyguard.py): master.key / $ASSISTANT_SECRET_KEY, or the owner's phones
+        # every secret's key comes from the KeyGuard (keyguard.py): master.key / $ASSISTANT_SECRET_KEY, or the phones
         self.keyguard = keyguard or KeyGuard(Path(path).parent if str(path) != ":memory:" else None, secret_key)
         self._db = sqlite3.connect(str(path), check_same_thread=False)
         self._db.row_factory = sqlite3.Row
@@ -110,7 +110,7 @@ class Store:
                              ("last_result", "TEXT"), ("last_result_at", "REAL"), ("last_result_detail", "TEXT NOT NULL DEFAULT ''")):
                 if col not in have:             # a database made before the vault existed
                     self._db.execute(f"ALTER TABLE credentials ADD COLUMN {col} {ddl}")
-            for table in ("devices", "pairings"):   # a database made before a phone could hold the owner's rights
+            for table in ("devices", "pairings"):   # old column, kept so an older server can open this database; nothing reads it any more
                 if "owner" not in {r[1] for r in self._db.execute(f"PRAGMA table_info({table})")}:
                     self._db.execute(f"ALTER TABLE {table} ADD COLUMN owner INTEGER NOT NULL DEFAULT 0")
             if "code_id" not in {r[1] for r in self._db.execute("PRAGMA table_info(devices)")}:   # before multi-use access codes
@@ -447,20 +447,20 @@ class Store:
     def _hash(secret: str) -> str:
         return hashlib.sha256(secret.encode()).hexdigest()  # the secrets are 192-256 random bits: a plain hash is enough
 
-    def new_pairing(self, owner: bool = False) -> str:
+    def new_pairing(self, owner: bool = False) -> str:   # `owner` is ignored: every device has the same rights
         """A one-time code (valid ten minutes) that turns into a device token on first use. Only its hash is stored.
-        `owner`: the phone it signs in gets the owner's rights (operator settings); only the master token may ask for that."""
+        `owner` is ignored (there are no owner devices any more)."""
         code = secrets.token_urlsafe(24)
         self._run("DELETE FROM pairings WHERE expires_at < ?", (time.time(),))
         self._run("INSERT INTO pairings(code_hash, expires_at, owner) VALUES(?, ?, ?)",
-                  (self._hash(code), time.time() + self.PAIRING_TTL, int(owner)))
+                  (self._hash(code), time.time() + self.PAIRING_TTL, 0))
         return code
 
     def redeem_pairing(self, code: str, name: str) -> tuple[int, str] | None:
         """(device id, device token) when the code is valid; the code is spent either way it is presented correctly.
         A multi-use access code (`new_access_code`) is tried when no one-time code matches."""
         with self._lock:
-            row = self._db.execute("SELECT expires_at, owner FROM pairings WHERE code_hash = ?", (self._hash(code),)).fetchone()
+            row = self._db.execute("SELECT expires_at FROM pairings WHERE code_hash = ?", (self._hash(code),)).fetchone()
             if not row:
                 return self._redeem_access_code(code, name)
             self._db.execute("DELETE FROM pairings WHERE code_hash = ?", (self._hash(code),))
@@ -468,40 +468,36 @@ class Store:
                 self._db.commit()
                 return None
             token = secrets.token_urlsafe(32)
-            cur = self._db.execute("INSERT INTO devices(name, token_hash, created_at, owner) VALUES(?,?,?,?)",
-                                     (name, self._hash(token), time.time(), int(bool(row[1]))))
+            cur = self._db.execute("INSERT INTO devices(name, token_hash, created_at) VALUES(?,?,?)",
+                                     (name, self._hash(token), time.time()))
             self._db.commit()
             return int(cur.lastrowid), token
 
     def device_for_token(self, token: str) -> dict[str, Any] | None:
-        rows = self._all("SELECT id, name, last_seen, owner, e2e_only FROM devices WHERE token_hash = ?", (self._hash(token),))
+        rows = self._all("SELECT id, name, last_seen, e2e_only FROM devices WHERE token_hash = ?", (self._hash(token),))
         if not rows:
             return None
         row = rows[0]
         if not row["last_seen"] or time.time() - row["last_seen"] > self.LAST_SEEN_EVERY:
             self._run("UPDATE devices SET last_seen = ? WHERE id = ?", (time.time(), row["id"]))
-        return {"id": row["id"], "name": row["name"], "owner": bool(row["owner"]), "e2e_only": bool(row["e2e_only"])}
+        return {"id": row["id"], "name": row["name"], "e2e_only": bool(row["e2e_only"])}
 
     def devices(self) -> list[dict[str, Any]]:
         """Every signed-in device; "code": the label of the access code it joined with ("" for a one-time code)."""
-        rows = self._all("SELECT d.id, d.name, d.created_at, d.last_seen, d.owner, d.e2e_only, COALESCE(c.label, '') AS code "
+        rows = self._all("SELECT d.id, d.name, d.created_at, d.last_seen, d.e2e_only, COALESCE(c.label, '') AS code "
                          "FROM devices d LEFT JOIN access_codes c ON c.id = d.code_id ORDER BY d.id")
-        return [{**{k: v for k, v in r.items() if k != "e2e_only"}, "owner": bool(r["owner"]), "e2e": bool(r["e2e_only"])} for r in rows]
+        return [{**{k: v for k, v in r.items() if k != "e2e_only"}, "e2e": bool(r["e2e_only"])} for r in rows]
 
     def set_device_e2e_only(self, device_id: int) -> bool:
         """KE2E: after a device's first end-to-end call its token is refused on plaintext /api/* (e2e-and-phone-key.md 1.3).
         Pairing again makes a new device; nothing turns it back."""
         return self._run("UPDATE devices SET e2e_only = 1 WHERE id = ? AND e2e_only = 0", (device_id,)).rowcount > 0
 
-    def set_device_owner(self, device_id: int, owner: bool) -> bool:
-        """Give a paired phone the owner's rights (operator settings), or take them back. False when there is no such device."""
-        return self._run("UPDATE devices SET owner = ? WHERE id = ?", (int(owner), device_id)).rowcount > 0
-
     def delete_device(self, device_id: int) -> bool:
         return self._run("DELETE FROM devices WHERE id = ?", (device_id,)).rowcount > 0
 
     # ---- access codes: one code many phones may use for a while (an app store's reviewers, typed from the review notes). Each phone
-    # that uses one becomes an ordinary device (never the owner's rights) tagged with the code's label. Only a hash is kept, of the
+    # that uses one becomes a device like any other tagged with the code's label. Only a hash is kept, of the
     # code with case, spaces and dashes taken out, so "abcd-efgh..." typed on a phone matches "ABCD-EFGH...". Revoking a code ends it
     # and signs out every device that joined with it; a code that only ran out leaves its devices signed in.
     ACCESS_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"   # no I, L, O, 0, 1: nothing that reads as something else
@@ -536,7 +532,7 @@ class Store:
             return None
         token = secrets.token_urlsafe(32)
         self._db.execute("UPDATE access_codes SET uses = uses + 1 WHERE id = ?", (row[0],))
-        cur = self._db.execute("INSERT INTO devices(name, token_hash, created_at, owner, code_id) VALUES(?,?,?,0,?)",
+        cur = self._db.execute("INSERT INTO devices(name, token_hash, created_at, code_id) VALUES(?,?,?,?)",
                                (name, self._hash(token), time.time(), row[0]))
         self._db.commit()
         return int(cur.lastrowid), token

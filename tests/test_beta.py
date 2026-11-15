@@ -127,8 +127,7 @@ async def test_request_notify_approve_and_the_copy_signs_in(tmp_path, monkeypatc
             from test_devices import add_phone, bearer
             _, pr = await add_phone(oc)
             phone = bearer(pr.json()["token"])
-            assert (await oc.get("/api/operator/beta", headers=phone)).status_code == 403
-            assert (await oc.post(f"/api/operator/beta/{req['id']}", json={"action": "approve"}, headers=phone)).status_code == 403
+            assert (await oc.get("/api/operator/beta", headers=phone)).status_code == 200      # every device has the same rights
 
             # before the operator answers, the copy's sign-in stays closed (and the broker's exchange refuses its install)
             async with httpx.AsyncClient(base_url=o.url) as anon:
