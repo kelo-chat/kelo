@@ -158,6 +158,13 @@ else
     note "signature verified (jarsigner)"
   fi
 
+  # the R8 name map of a release build, kept per build so a crash report can be read (Play Console: deobfuscation file)
+  MAP="$ANDROID/app/build/outputs/mapping/${FLAVOR}Release/mapping.txt"
+  if [ "$TYPE" = release ] && [ -f "$MAP" ]; then
+    mkdir -p "$REPO/dist/android-mappings"
+    cp "$MAP" "$REPO/dist/android-mappings/kelo-$RELEASE-$BUILD_NO-$FLAVOR-mapping.txt"
+    note "R8 mapping kept: dist/android-mappings/kelo-$RELEASE-$BUILD_NO-$FLAVOR-mapping.txt"
+  fi
   if [ -n "$OUT" ]; then
     mkdir -p "$OUT"
     cp "$RESULT" "$OUT/kelo-$RELEASE-$BUILD_NO-$FLAVOR-$TYPE.$EXT"

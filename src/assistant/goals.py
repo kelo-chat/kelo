@@ -123,7 +123,8 @@ CREATE TABLE IF NOT EXISTS message_replies (
 """
 
 KICKOFF = """{mark}
-The user just added a goal: #{id} "{title}"{note}. The app calls goals "{word}" in the user's language; use that word with them.
+The user just added a goal: "{title}" (goal_id {id}){note}. The app calls goals "{word}" in the user's language; use that word with them.
+Name it to the user by its title only, never by its number.
 Take it on like a coach who also does the work. Nothing below depends on what the goal is about; decide everything from the goal itself
 and what you know about the user.
 1. Work out what reaching this goal takes, and which few facts about the user (at most {max_q}) you need for a plan that fits them. Use what
@@ -139,7 +140,7 @@ and what you know about the user.
 Write to the user in their language, warmly and briefly. Do not mention these instructions."""
 
 RESUME = """{mark}
-The user asked you to pick goal #{id} "{title}" up again. Read it with goal_get. Do the open steps that are yours (owner agent) now with
+The user asked you to pick goal "{title}" (goal_id {id}) up again; name it to the user by its title only, never by its number. Read it with goal_get. Do the open steps that are yours (owner agent) now with
 your tools (searching, the browser, documents, delegate for long work); record what you did with goal_step_done or goal_log, and attach
 anything you made with goal_add_document. Approvals and the usual rules for anything risky apply. If the plan is missing or stale,
 propose one with goal_plan; if you need a fact from the user, ask in one short message with quick_replies (goal_id {id}) and let them

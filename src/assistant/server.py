@@ -1395,7 +1395,7 @@ def create_app(
                       fetcher=google_web.fetcher)
     google_web.beta_open, google_web.beta_install = beta.approved, beta.install_for_exchange
     app.state.beta, app.state.beta_desk = beta, beta_desk
-    tester_desk = TesterDesk(store, mailer=beta_mail)   # kelo.chat/tester sign-ups, emailed to the operator (testers.py; backlog 86)
+    tester_desk = TesterDesk(store, mailer=beta_mail, notify=lambda title, body: activity.notify("beta_request", title, body))   # kelo.chat/tester sign-ups, emailed to the operator (testers.py; backlog 86)
     app.state.tester_desk = tester_desk
     home = Home(settings.home_dir) if settings.home_dir else None
     deliverables = Deliverables(home) if home else None   # the user's library of results (files/), its trash and share links

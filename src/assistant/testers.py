@@ -15,6 +15,8 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from .i18n import t
+
 log = logging.getLogger("uvicorn.error")
 
 Mailer = Callable[[str, str, str, str], Awaitable[str]]   # (to, subject, body, reply_to) -> what the mailbox said
@@ -44,8 +46,11 @@ class SignupError(ValueError):
 class TesterDesk:
     __test__ = False
 
-    def __init__(self, store: Any, mailer: Mailer | None, wall: Callable[[], float] = time.time) -> None:
-        self.store, self.mailer, self.wall = store, mailer, wall
+    def __init__(self, store: Any, mailer: Mailer | None, wall: Callable[[], float] = time.time,
+                 notify: Callable[[str, str], Any] | None = None) -> None:
+        """`notify(title, body)`: an app notification to the operator for each new sign-up, next to the mail (Gmail hides a mail its
+        own account sent to an address that forwards back to it)."""
+        self.store, self.mailer, self.wall, self.notify = store, mailer, wall, notify
         self._hits: dict[str, deque[float]] = {}
         store._db.executescript(SCHEMA)
 
@@ -90,6 +95,12 @@ class TesterDesk:
             raise SignupError("full")
         rid = int(self.store._run("INSERT INTO tester_signups(email, model, lang, created_at) VALUES(?,?,?,?)",
                                   (email, model, (lang or "")[:8], self.wall())).lastrowid)
+        if self.notify is not None:
+            try:
+                self.notify(t("New tester sign-up: {email}", email=email),
+                            t("Phone: {model} · {count} signed up so far", model=model or "-", count=self.count()))
+            except Exception:  # noqa: BLE001 - the sign-up and its mail never depend on the notification
+                log.warning("tester sign-up %s: the notification failed", rid)
         await self._mail(rid, email, model, lang)
         return True
 

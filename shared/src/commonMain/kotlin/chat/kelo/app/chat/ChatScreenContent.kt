@@ -40,6 +40,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.LocalAppServices
 import chat.kelo.app.core.Profile
@@ -200,11 +201,13 @@ fun ChatScreenContent(
                 }
                 // "/" typed: the commands above the composer card (a tap puts the command in the field, its space closes the list)
                 val slash = SlashCommands.matches(state.input)
-                if (slash.isNotEmpty()) {
+                // not before the composer was measured: on the first frame its height is 0 and the gap would be negative (a crash at
+                // start when a draft that starts with "/" was kept)
+                if (slash.isNotEmpty() && composerHeight > 0.dp) {
                     SlashMenu(
                         slash, onPick = { vm.setInput(SlashCommands.picked(it)) },
                         modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                            .padding(start = 12.dp, end = 12.dp, bottom = composerHeight - ComposerScrimFade + 4.dp),
+                            .padding(start = 12.dp, end = 12.dp, bottom = (composerHeight - ComposerScrimFade + 4.dp).coerceAtLeast(0.dp)),
                     )
                 }
                 // on the composer card's top border at the end side, centred over 보내기; on top of the attachments while they wait

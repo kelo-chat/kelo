@@ -9,6 +9,20 @@ build's version and date, and copy the app lines into the Play release notes (en
 
 ## Unreleased
 
+## 0.10.1 (build 17, 2026-11-14)
+
+Apps in this release: Android 0.10.1 (versionCode 410372).
+
+### Fixed
+- Android, desktop: the app no longer closes at start when the message box kept a draft starting with "/" (after /new).
+- Server: a reply cut off by the model's output limit goes on where it stopped instead of ending mid-sentence.
+- Server: goals are named by their title, never by their number; stopping a goal's work finds it again.
+
+### Changed
+- Apps: the key container is described as "next to Kelo" (본체 옆).
+- Server: a new tester sign-up also shows as a notification in the operator's app (Gmail hides a mail its own account sent to itself).
+- Builds: every Android release build keeps its R8 name map (dist/android-mappings), so crash reports can be read.
+
 ## 0.10.0 (build 16, 2026-11-14)
 
 Apps in this release: Android 0.10.0 (versionCode 410012), desktop 1.0.9 (Windows, macOS), iPhone 0.10.0 on TestFlight.

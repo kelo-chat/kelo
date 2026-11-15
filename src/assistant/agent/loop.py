@@ -385,6 +385,9 @@ REPEAT_NOTE = ("You already made this exact call in this turn and got the result
 TEXT_CALL_NUDGE = ("Your tool call came back as text in your reply and could not be read, so nothing was run and the user did not see "
                    "it. Call the tool again properly, in the tool-call format you were given, with valid JSON arguments; do not write "
                    "tool calls into your reply.")
+CUT_NOTE = ("Your last answer stopped in the middle because it reached the output limit. Continue it exactly where it stopped: "
+            "no repeat of what you wrote, no greeting, no summary, just the rest, in the same language.")
+MAX_CUT_RESUMES = 2   # times a reply cut by the output limit (finish_reason "length") goes on in another step
 FINISH_NUDGE = ("You now have the tool results above. Write your answer to the user now, in their language. "
                 "Do not call another tool unless you truly need it, and you have no shell.")
 NEAR_LIMIT_NOTE = ("[Not from the user: {left} steps are left in this run's step budget.{handoff} Do not start anything new that "
@@ -544,6 +547,7 @@ async def run_agent(
         tail, pending, joining = (tail + out)[-40:], "", False
         return [AssistantText(out)]
 
+    cut_resumes, resuming = 0, False   # a reply cut by the output limit goes on in the next step, joined without a break
     step = 0
     while True:
         step += 1
@@ -562,7 +566,8 @@ async def run_agent(
             history.append({"role": "system", "content": NEAR_LIMIT_NOTE.format(left=limit - step + 1, handoff=handoff)})
         text_parts: list[str] = []
         calls: list[ToolCall] = []
-        joining, pending = said, ""   # a later step's text starts a new paragraph; marks alone ("??") are dropped
+        joining, pending = said and not resuming, ""   # a later step's text starts a new paragraph (not the rest of a cut one); marks alone ("??") are dropped
+        resuming, finish = False, ""
         textcalls = TextCallFilter()   # tool calls written into the text: never shown (textcalls.py)
         masker = found_secrets.Masker()   # a key the model writes into its reply is hidden before it is shown or stored
         if box is not None:
@@ -613,7 +618,7 @@ async def run_agent(
                     total_out += ev.output_tokens
                     reasoning += getattr(ev, "reasoning_tokens", 0) or 0
                 elif isinstance(ev, Done):
-                    pass
+                    finish = ev.finish_reason
         except Exception as e:
             if not isinstance(e, ContextOverflow) and is_context_error(e):
                 raise ContextOverflow(size, f"{type(e).__name__}: {str(e)[:300]}") from e
@@ -678,6 +683,11 @@ async def run_agent(
             yield StepLimit(step - 1, len(progress_keys))
             yield AgentDone(total_in, total_out, step, new_messages, cache_read, cache_write, reasoning)
             return
+        if not calls and finish == "length" and "".join(text_parts).strip() and cut_resumes < MAX_CUT_RESUMES:
+            cut_resumes += 1   # it reached the output limit mid-answer (a small model's cap, long thinking): the rest comes next step
+            resuming = True
+            history.append({"role": "system", "content": CUT_NOTE})
+            continue
         if not calls:
             yield AgentDone(total_in, total_out, step, new_messages, cache_read, cache_write, reasoning)
             return

@@ -420,3 +420,23 @@ async def test_closes_reply_tool_goes_on_when_nothing_is_written_yet_or_it_faile
     fn = scripted([TextDelta("Q?"), ToolCall("c1", "echo", "{}"), Done("tool_calls")], [TextDelta("Q again"), Done("stop")])
     events = await run([tool], fn)
     assert len(fn.seen) == 2
+
+
+async def test_an_answer_cut_by_the_output_limit_goes_on_where_it_stopped():
+    """A small model reached its output cap mid-sentence (finish_reason "length"): the rest comes in the next step, joined with no
+    paragraph break, and the model is told to continue rather than start over."""
+    from assistant.agent.loop import CUT_NOTE
+    fn = scripted([TextDelta("새 다짐 받았어요. 앞서 "), Done("length")],
+                  [TextDelta("말씀하신 요금을 보면 바꿀 만해요."), Done("stop")])
+    events = await run([], fn)
+    assert "".join(e.text for e in events if isinstance(e, AssistantText)) == "새 다짐 받았어요. 앞서 말씀하신 요금을 보면 바꿀 만해요."
+    assert any(m.get("content") == CUT_NOTE for m in fn.seen[1].messages)
+    assert isinstance(events[-1], AgentDone) and events[-1].steps == 2
+
+
+async def test_a_cut_answer_goes_on_at_most_twice():
+    from assistant.agent.loop import MAX_CUT_RESUMES
+    fn = scripted(*[[TextDelta(f"part{k} "), Done("length")] for k in range(MAX_CUT_RESUMES + 1)])
+    events = await run([], fn)
+    assert len(fn.seen) == MAX_CUT_RESUMES + 1
+    assert isinstance(events[-1], AgentDone)

@@ -129,3 +129,24 @@ async def test_site_tester_router(tmp_path, monkeypatch):
                           follow_redirects=False)
         assert p3.status_code == 303
         assert p3.headers["location"] == "/tester?lang=ko&sent=consent#form"
+
+
+async def test_a_new_sign_up_also_notifies_the_operator_and_a_repeat_does_not(tmp_path):
+    """Gmail hides a mail its own account sent to an address that forwards back to it, so the operator also gets an app notification."""
+    store = Store(str(tmp_path / "testers.db"))
+    notes: list[tuple[str, str]] = []
+
+    async def mailer(to: str, subject: str, body: str, reply_to: str) -> str:
+        return "ok"
+
+    desk = TesterDesk(store, mailer, notify=lambda title, body: notes.append((title, body)))
+    assert await desk.sign_up("a@example.com", "Galaxy S24", "ko", True, "1.1.1.1") is True
+    assert len(notes) == 1 and "a@example.com" in notes[0][0] and "Galaxy S24" in notes[0][1]
+    assert await desk.sign_up("a@example.com", "Galaxy S25", "ko", True, "1.1.1.2") is False   # a repeat: no second notice
+    assert len(notes) == 1
+
+    def broken(title: str, body: str) -> None:
+        raise RuntimeError("push down")
+
+    desk2 = TesterDesk(store, mailer, notify=broken)
+    assert await desk2.sign_up("b@example.com", "", "en", True, "1.1.1.3") is True   # a failing notice never fails the sign-up

@@ -44,7 +44,7 @@ def goals_of_turn(ctx: Any, source: str, text: str) -> set[int]:
     re = S.re
     goal_book = ctx.goal_book
     if text.startswith(GOAL_MARK):
-        m = re.search(r"#(\d+)", text)
+        m = re.search(r"goal_id (\d+)", text) or re.search(r"#(\d+)", text)   # the kickoff / resume names it as "goal_id N"
         return {int(m.group(1))} if m else set()
     if source in ("chat", "api") and not text.startswith((HANDOFF_MARK, WATCH_MARK, SCHEDULE_MARK, RECHECK_MARK)):
         return goal_book.answering()

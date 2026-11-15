@@ -1418,7 +1418,7 @@
 "proactive_until_next_day" = "Until %1$s next day";
 "admin_key_add" = "See spend / balance too";
 "admin_key_title" = "Admin key for spend and balance";
-"admin_key_safety" = "Kept in the key container on your server, not by Kelo itself, and used only to read spend and balance.";
+"admin_key_safety" = "Kept in a separate key container next to Kelo, not by Kelo itself, and used only to read spend and balance.";
 "admin_key_how_openai" = "OpenAI: platform.openai.com → Settings → Organization → Admin keys → Create (read-only is enough).";
 "admin_key_how_anthropic" = "Anthropic: console.anthropic.com → Settings → Admin keys (organization accounts only).";
 "admin_key_how_openrouter" = "OpenRouter: openrouter.ai → Settings → Management keys → Create.";
@@ -1430,7 +1430,7 @@
 "admin_key_set" = "Admin key …%1$s";
 "admin_key_remove" = "Remove";
 "admin_key_remove_q" = "Remove the admin key? Spend and balance will no longer show.";
-"my_privacy_keyring" = "AI provider keys you enter (and admin keys, if you add one) are kept by a separate key container on your server, not by Kelo itself; Kelo asks it to make each call, and it adds the key only for that provider's own address.";
+"my_privacy_keyring" = "AI provider keys you enter (and admin keys, if you add one) are kept by a separate key container next to Kelo, not by Kelo itself; Kelo asks it to make each call, and it adds the key only for that provider's own address.";
 "ai_consent_title" = "Before your first message";
 "ai_consent_body" = "Kelo sends your messages, and what it needs for them (files you attach, results from your connected services), to the AI service you choose, so it can answer.";
 "ai_consent_now" = "Chosen now: %1$s. You can see and change it in Model.";

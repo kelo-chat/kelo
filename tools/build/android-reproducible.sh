@@ -165,7 +165,7 @@ fi
 
 # --- 4. collect the files under fixed names, in one folder, with their checksums
 mkdir -p "$OUT"
-rm -f "$OUT"/kelo-*-release-*.aab "$OUT"/kelo-*-release-*.apk "$OUT/SHA256SUMS" "$OUT/build-info.txt"
+rm -f "$OUT"/kelo-*-release-*.aab "$OUT"/kelo-*-release-*.apk "$OUT"/kelo-*-mapping.txt "$OUT/SHA256SUMS" "$OUT/build-info.txt"
 RESULTS=()
 for w in "${WANT[@]}"; do
   flavor="${w%%:*}" ext="${w##*:}"
@@ -174,6 +174,13 @@ for w in "${WANT[@]}"; do
   [ -f "$built" ] || die "Gradle finished but $built is missing (logs: $LOGS/android-repro-*.log)"
   target="$OUT/kelo-$VERSION-$BUILD_NO-$flavor-release-unsigned.$ext"
   cp "$built" "$target"; RESULTS+=("$target")
+  # the R8 name map of this build, so a crash report from a tester's phone can be read (Play Console takes it as the
+  # deobfuscation file); kept per release in dist/android-mappings, which no later build clears
+  map="$SRC/android/kelo/app/build/outputs/mapping/${flavor}Release/mapping.txt"
+  [ -f "$map" ] || die "Gradle finished but the R8 mapping $map is missing"
+  mkdir -p "$REPO/dist/android-mappings"
+  cp "$map" "$OUT/kelo-$VERSION-$BUILD_NO-$flavor-mapping.txt"
+  cp "$map" "$REPO/dist/android-mappings/kelo-$VERSION-$BUILD_NO-$flavor-mapping.txt"
 done
 # the build says which version it made; it must be the one in version.properties
 for f in "${RESULTS[@]}"; do
