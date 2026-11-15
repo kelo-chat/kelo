@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Kelo installer for macOS and Linux. (Windows: scripts/install.ps1)
 #
-#   curl -fsSL <address to be decided>/install.sh | bash                 install, or update when Kelo is already there
-#   curl -fsSL <address to be decided>/install.sh | bash -s -- --yes     no questions (defaults everywhere)
+#   curl -fsSL https://kelo.chat/install.sh | bash                 install, or update when Kelo is already there
+#   curl -fsSL https://kelo.chat/install.sh | bash -s -- --yes     no questions (defaults everywhere)
 #   bash install.sh --uninstall                                          remove Kelo (your data is kept unless --delete-data)
 #
 # What it does, in order: checks this computer (OS, CPU type), checks Docker and Compose (and helps get them), installs `uv`
@@ -287,7 +287,7 @@ ensure_uv() {
 # ---------------------------------------------------------------------------------------------------------------- Kelo files
 # Never overwritten by an update: settings, keys, extra copies, address credentials, and anything the phone apps need to build.
 EXCLUDES=(--exclude=./.env --exclude=./.env.* --exclude=./instances --exclude=./connect --exclude=./.venv --exclude=./.git
-          --exclude=./android --exclude=./ios --exclude=./web/node_modules --exclude=./web/dist
+          --exclude=./android --exclude=./ios --exclude=./server/web/node_modules --exclude=./server/web/dist
           --exclude=__pycache__ --exclude=.pytest_cache --exclude=.ruff_cache "--exclude=*.log")
 
 copy_tree() {   # copy_tree FROM TO
@@ -297,7 +297,9 @@ copy_tree() {   # copy_tree FROM TO
   (cd "$from" && tar -cf - "${EXCLUDES[@]}" .) | (cd "$to" && tar -xf -)
 }
 
-# Placeholder until the public download location is decided: KELO_SOURCE may be a local folder, a .tar.gz URL or a git URL.
+# Where the Kelo files come from: KELO_SOURCE (a local folder, a .tar.gz URL or a git URL), else the public source's newest release
+# (github.com/kelo-chat/kelo-server: the server part of each release; its main branch is the newest release).
+DEFAULT_SOURCE="https://github.com/kelo-chat/kelo-server/archive/refs/heads/main.tar.gz"
 fetch_kelo() {
   local src="$KELO_SOURCE" stage
   if [ -z "$src" ]; then
@@ -305,10 +307,7 @@ fetch_kelo() {
       note "$(say "No KELO_SOURCE given: keeping the Kelo files already in $KELO_HOME." "KELO_SOURCE가 없어 $KELO_HOME 에 있는 Kelo 파일을 그대로 사용합니다.")"
       return 0
     fi
-    die "$(say "Where to download Kelo from is not decided yet. For now point KELO_SOURCE at a Kelo folder, a .tar.gz URL or a git URL:
-      KELO_SOURCE=/path/to/assistant-server bash install.sh" \
-               "Kelo 다운로드 위치가 아직 정해지지 않았습니다. 지금은 KELO_SOURCE에 Kelo 폴더, .tar.gz 주소 또는 git 주소를 지정하세요:
-      KELO_SOURCE=/path/to/assistant-server bash install.sh")"
+    src="$DEFAULT_SOURCE"
   fi
   mkdir -p "$KELO_HOME"
   case "$src" in

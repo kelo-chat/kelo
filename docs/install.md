@@ -1,23 +1,21 @@
 # Installing Kelo
 
-## One command (available once published)
-
-The download address is not decided yet, so these lines do not work until Kelo is published. `<kelo-download>` stands for that
-address.
+## One command
 
 ```
 # macOS and Linux
-curl -fsSL https://<kelo-download>/install.sh | bash
+curl -fsSL https://kelo.chat/install.sh | bash
 
 # Windows (PowerShell; needs Docker Desktop with WSL 2)
-irm https://<kelo-download>/install.ps1 | iex
+irm https://kelo.chat/install.ps1 | iex
 ```
 
-Until then, run the scripts from a copy of this folder and tell them where the Kelo files are:
+The installer downloads the newest release of [kelo-chat/kelo-server](https://github.com/kelo-chat/kelo-server) (the server part of
+each release) into `~/kelo`. To install from another copy instead, tell it where the Kelo files are:
 
 ```
-KELO_SOURCE=/path/to/assistant-server bash scripts/install.sh              # macOS / Linux
-$env:KELO_SOURCE='C:\path\to\assistant-server'; .\scripts\install.ps1    # Windows
+KELO_SOURCE=/path/to/kelo bash scripts/install.sh              # macOS / Linux
+$env:KELO_SOURCE='C:\path\to\kelo'; .\scripts\install.ps1    # Windows
 ```
 
 `KELO_SOURCE` can be a folder, a `.tar.gz` (or `.zip` on Windows) URL, or a git URL.

@@ -1,7 +1,7 @@
 <#
   Kelo installer for Windows (Docker Desktop with WSL 2). macOS and Linux: scripts/install.sh
 
-    irm <address to be decided>/install.ps1 | iex                       install, or update when Kelo is already there
+    irm https://kelo.chat/install.ps1 | iex                       install, or update when Kelo is already there
     & ([scriptblock]::Create((irm <address>/install.ps1))) -Yes         no questions (defaults everywhere)
     .\install.ps1 -Uninstall                                             remove Kelo (your data is kept unless -DeleteData)
 
@@ -229,12 +229,13 @@ function Copy-Tree([string]$from, [string]$to) {
   $global:LASTEXITCODE = 0
 }
 
-# Placeholder until the public download location is decided: KELO_SOURCE may be a local folder, a .zip / .tar.gz URL or a git URL.
+# Where the Kelo files come from: KELO_SOURCE (a local folder, a .zip / .tar.gz URL or a git URL), else the public source's newest
+# release (github.com/kelo-chat/kelo-server: the server part of each release; its main branch is the newest release).
+$DefaultSource = 'https://github.com/kelo-chat/kelo-server/archive/refs/heads/main.zip'
 function Fetch-Kelo {
   if (-not $Source) {
     if (Test-Path (Join-Path $Dir 'compose.yml')) { Note (Say "No KELO_SOURCE given: keeping the Kelo files already in $Dir." "KELO_SOURCE가 없어 $Dir 에 있는 Kelo 파일을 그대로 사용합니다."); return }
-    Die (Say "Where to download Kelo from is not decided yet. For now set KELO_SOURCE to a Kelo folder, a .zip URL or a git URL:`n      `$env:KELO_SOURCE='C:\path\to\assistant-server'; .\install.ps1" `
-             "Kelo 다운로드 위치가 아직 정해지지 않았습니다. 지금은 KELO_SOURCE에 Kelo 폴더, .zip 주소 또는 git 주소를 지정하세요:`n      `$env:KELO_SOURCE='C:\path\to\assistant-server'; .\install.ps1")
+    $script:Source = $DefaultSource
   }
   New-Item -ItemType Directory -Force -Path $Dir | Out-Null
   $stage = Join-Path $env:TEMP ("kelo-src-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
