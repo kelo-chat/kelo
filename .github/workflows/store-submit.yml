@@ -1,0 +1,96 @@
+# Kelo for Windows to the Microsoft Store: takes the MSIX that desktop-windows.yml built (an artifact of one of its runs) and submits it
+# with Microsoft's Store CLI (msstore). Building and packaging stay in desktop-windows.yml; this workflow only signs in and submits.
+#
+# Repository secrets (Settings -> Secrets and variables -> Actions -> Secrets), from the Entra app that Partner Center trusts:
+#   KELO_STORE_TENANT_ID       the directory (tenant) id
+#   KELO_STORE_CLIENT_ID       the application (client) id
+#   KELO_STORE_CLIENT_SECRET   the client secret
+# Repository variable (Variables), not secret:
+#   KELO_STORE_SELLER_ID       Partner Center -> Account settings -> Legal info -> Developer -> Seller ID
+#
+# By default the submission is left as a DRAFT in Partner Center (nothing goes to certification); run with commit: true to send it
+# to certification as well. check: true only signs in and reads the app's current submission (tests the secrets; submits nothing).
+
+name: store-submit
+
+on:
+  workflow_dispatch:
+    inputs:
+      check:
+        description: "Only sign in and read the current submission (tests the secrets; nothing is submitted)"
+        type: boolean
+        required: false
+        default: false
+      run_id:
+        description: "The desktop-windows run whose MSIX to submit (its number in the run's address)"
+        required: false
+        default: ""
+      version:
+        description: "The package number that run built (1.0.10): the artifact is kelo-windows-<version>"
+        required: false
+        default: ""
+      commit:
+        description: "Also send the submission to certification (false = leave it as a draft in Partner Center)"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  submit:
+    runs-on: windows-latest
+    env:
+      PRODUCT_ID: 9P54HX2TX361
+    steps:
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.check }}
+        with:
+          name: kelo-windows-${{ inputs.version }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+          path: artifact
+
+      - name: Find the MSIX
+        if: ${{ !inputs.check }}
+        id: msix
+        shell: pwsh
+        run: |
+          $f = Get-ChildItem artifact -Recurse -Filter *.msix | Select-Object -First 1
+          if (-not $f) { throw "no .msix in the artifact kelo-windows-${{ inputs.version }} of run ${{ inputs.run_id }}" }
+          "path=$($f.FullName)" >> $env:GITHUB_OUTPUT
+          Write-Host "MSIX: $($f.Name) ($([math]::Round($f.Length / 1MB, 1)) MB)"
+
+      - name: Store CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      - name: Sign in to Partner Center
+        shell: pwsh
+        env:
+          TENANT_ID: ${{ secrets.KELO_STORE_TENANT_ID }}
+          CLIENT_ID: ${{ secrets.KELO_STORE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.KELO_STORE_CLIENT_SECRET }}
+          SELLER_ID: ${{ vars.KELO_STORE_SELLER_ID }}
+        run: |
+          foreach ($n in 'TENANT_ID','CLIENT_ID','CLIENT_SECRET','SELLER_ID') {
+            if (-not (Get-Item "env:$n" -ErrorAction SilentlyContinue).Value) { throw "$n is not set (see the notes at the top of this file)" }
+          }
+          msstore reconfigure --tenantId $env:TENANT_ID --sellerId $env:SELLER_ID --clientId $env:CLIENT_ID --clientSecret $env:CLIENT_SECRET
+
+      - name: Check only
+        if: ${{ inputs.check }}
+        shell: pwsh
+        run: |
+          msstore apps get $env:PRODUCT_ID
+          msstore submission status $env:PRODUCT_ID
+
+      - name: Submit
+        if: ${{ !inputs.check }}
+        shell: pwsh
+        run: |
+          $a = @('publish', '${{ steps.msix.outputs.path }}', '-id', $env:PRODUCT_ID)
+          if ('${{ inputs.commit }}' -ne 'true') { $a += '-nc' }   # no commit: the submission waits as a draft in Partner Center
+          msstore @a
+          msstore submission status $env:PRODUCT_ID
