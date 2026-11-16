@@ -4,7 +4,6 @@
 # into a kelo-chat/kelo checkout (keep its README.md, README.ko.md, docs/media), commit "Release …", tag android-X / ios-X /
 # windows-X / macos-X / release-X (never v*: those tags start the image and release workflows), push.
 set -eu
-setopt null_glob   # the test globs below may match nothing in an older commit
 out="$1"; commit="${2:-main}"; repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 rm -rf "$out"; mkdir -p "$out"
 cd "$repo"
@@ -20,17 +19,10 @@ for base in src server/src; do
   rm -rf $base/assistant/hosting/macos $base/assistant/hosting/windows
   rm -f $base/assistant/hosting/host.py $base/assistant/hosting/supervisor.py $base/assistant/hosting/cli.py $base/assistant/hosting/doctor.py
 done
-rm -f docs/native-server.md docs/android-device-option.md
-# the Apple container (macOS) and WSL / MSI (Windows) server installs are not published yet either (2026-11-16)
-for base in src server/src; do rm -rf $base/assistant/hosting/apple_container; done
-rm -rf packaging/macos packaging/windows packaging/wsl
-rm -f scripts/windows/kelo-wsl-install.ps1 scripts/windows/kelo-wsl-uninstall.ps1 scripts/windows/kelo-android-setup.ps1
-rm -f tools/build/mac-server-pkg.sh tools/build/server-windows.ps1 tools/build/wsl-distro.sh
+rm -f docs/native-server.md
 for base in tests server/tests; do
   rm -f $base/hosting_fakes.py $base/test_hosting_supervisor.py $base/test_hosting_macos.py $base/test_hosting_cli.py \
-        $base/test_hosting_users.py $base/test_hosting_folders.py $base/test_hosting_seatbelt.py \
-        $base/test_apple_container_*.py $base/test_hosting_windows_*.py $base/test_hosting_firewall.py \
-        $base/test_mac_pkg.py $base/test_windows_*.py $base/test_wsl_distro.py
+        $base/test_hosting_users.py $base/test_hosting_folders.py $base/test_hosting_seatbelt.py
 done
 [ -f pyproject.toml ] && sed -i '' '/^kelo-server = /d' pyproject.toml
 grep -rlI "192\.168\.0\.101" . | while read -r f; do sed -i '' 's/192\.168\.0\.101/192.168.1.50/g' "$f"; done || true
