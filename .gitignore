@@ -11,27 +11,27 @@ wheels/
 .venv
 
 # Web app
-web/node_modules/
-web/dist/
+server/web/node_modules/
+server/web/dist/
 
 # one folder per extra user: holds their tokens and keys
 instances/
 
 # Android app: signing keys, build output, local SDK path
-android/keystore
-android/kelo/build
-android/kelo/app/build
-android/kelo/.gradle
-android/kelo/.kotlin
-android/kelo/local.properties
-shared/.gradle
-shared/.kotlin
-shared/local.properties
-android/dist
+apps/android/keystore
+apps/android/kelo/build
+apps/android/kelo/app/build
+apps/android/kelo/.gradle
+apps/android/kelo/.kotlin
+apps/android/kelo/local.properties
+apps/shared/.gradle
+apps/shared/.kotlin
+apps/shared/local.properties
+apps/android/dist
 
 # Play Store: built bundles and the Play API service account key never go into git
-android/play/*.aab
-android/play/*.json
+apps/android/play/*.aab
+apps/android/play/*.json
 
 # secrets and per-machine connection settings: never in git
 .env
@@ -47,9 +47,9 @@ connect/kelo/
 keystore.properties
 
 # large build outputs and scratch renders
-android/design/promo-src/out/
-android/design/promo-src/peek/
-android/design/promo-src/chk/
+apps/android/design/promo-src/out/
+apps/android/design/promo-src/peek/
+apps/android/design/promo-src/chk/
 docs/site-preview/
 docs/site-screens/
 
@@ -64,4 +64,4 @@ google-services.json
 .DS_Store
 
 # Microsoft Store API settings (client secret)
-desktop/store/*.env
+apps/desktop/store/*.env

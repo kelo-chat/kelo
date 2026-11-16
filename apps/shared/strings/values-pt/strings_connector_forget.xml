@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
+    <string name="connector_forget_title">Apagar também os dados vindos de %1$s?</string>
+    <string name="connector_forget_files">Arquivos: %1$d</string>
+    <string name="connector_forget_notes">Notas: %1$d</string>
+    <string name="connector_forget_items">Itens: %1$d</string>
+    <string name="connector_forget_trash">Os arquivos vão para a lixeira da biblioteca.</string>
+    <string name="connector_forget_delete">Apagar</string>
+    <string name="connector_forget_keep">Manter</string>
+    <string name="connector_forget_done">Apagado: %1$s</string>
+</resources>

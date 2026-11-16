@@ -1,4 +1,4 @@
-"""A pretend Kelo server for the store screenshots (App Store and Google Play), built on desktop/tools/mock_server.py and its
+"""A pretend Kelo server for the store screenshots (App Store and Google Play), built on apps/desktop/tools/mock_server.py and its
 mock_parts: no model, no network, nothing saved. It plays one ordinary morning of one user, in English or Korean:
 
 - the chat: today's morning briefing (weather, two events, one mail to check). POST /mock/chat {"chat": briefing|handoff|empty}
@@ -39,7 +39,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(__file__).resolve().parent / "data"
 
-spec = importlib.util.spec_from_file_location("kelo_mock", ROOT / "desktop/tools/mock_server.py")
+spec = importlib.util.spec_from_file_location("kelo_mock", ROOT / "apps/desktop/tools/mock_server.py")
 dm = importlib.util.module_from_spec(spec)
 sys.modules["kelo_mock"] = dm
 spec.loader.exec_module(dm)
@@ -68,11 +68,11 @@ if A.print_tz:
     print(min(ok, key=lambda z: abs(minutes(z) - 8 * 60 - 30)) if ok else "Asia/Seoul")
     sys.exit(0)
 LANG, KO, TZ = A.lang, A.lang == "ko", ZoneInfo(A.tz)
-KO_TEXT = json.loads((ROOT / "src/assistant/locales/ko.json").read_text())
+KO_TEXT = json.loads((ROOT / "server/src/assistant/locales/ko.json").read_text())
 
 
 def tr(en: str) -> str:
-    """The server's own words for a label (src/assistant/locales/ko.json), as a real server sends them."""
+    """The server's own words for a label (server/src/assistant/locales/ko.json), as a real server sends them."""
     return KO_TEXT.get(en, en) if KO else en
 
 
@@ -215,7 +215,7 @@ SCENES = {
 
 
 def order_event(turn: dict) -> dict:
-    """The one final approval of a purchase (confirm_purchase), shaped as desktop/tools/mock_parts/shipping_data's sample: a train
+    """The one final approval of a purchase (confirm_purchase), shaped as apps/desktop/tools/mock_parts/shipping_data's sample: a train
     ticket, so no shipping part, paid with what the site keeps (no card from the phone)."""
     site = "rail.example.com"
     item = w("서울 → 부산 KTX", "New York → Boston")

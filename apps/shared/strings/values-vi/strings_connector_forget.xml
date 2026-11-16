@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
+    <string name="connector_forget_title">Xóa luôn dữ liệu đến từ %1$s?</string>
+    <string name="connector_forget_files">Tệp: %1$d</string>
+    <string name="connector_forget_notes">Ghi chú: %1$d</string>
+    <string name="connector_forget_items">Mục: %1$d</string>
+    <string name="connector_forget_trash">Tệp sẽ chuyển vào thùng rác của thư viện.</string>
+    <string name="connector_forget_delete">Xóa</string>
+    <string name="connector_forget_keep">Giữ lại</string>
+    <string name="connector_forget_done">Đã xóa: %1$s</string>
+</resources>

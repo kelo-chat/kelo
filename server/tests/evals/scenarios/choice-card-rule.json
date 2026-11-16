@@ -1,0 +1,39 @@
+{
+  "name": "choice-card-rule",
+  "about": "The system prompt carries the rule that a vague purchase gets 2-4 options as a choice card and is not decided for the owner.",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Buy me a phone case"
+  ],
+  "model": [
+    [
+      {
+        "text": "Which one? Here are 3 options."
+      }
+    ]
+  ],
+  "tools": {
+    "pay": {
+      "error": "should not be called before the owner picks one"
+    }
+  },
+  "expect": {
+    "prompt_contains": [
+      "offer 2-4 fitting ones as a choice card"
+    ],
+    "reply_contains": [
+      "3 options"
+    ],
+    "model_calls": 1
+  },
+  "live": {
+    "expect": {
+      "not_called": [
+        "pay"
+      ]
+    },
+    "note": "live: the model offers options and does not pay for one by itself"
+  }
+}

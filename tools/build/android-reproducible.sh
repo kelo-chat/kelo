@@ -4,34 +4,34 @@
 #
 #   tools/build/android-reproducible.sh                       Play bundle + sideload APK of the committed source (HEAD)
 #   tools/build/android-reproducible.sh --targets play-aab,sideload-apk,full-apk
-#   tools/build/android-reproducible.sh --sign                owner only: sign the results with android/keystore (after the build)
+#   tools/build/android-reproducible.sh --sign                owner only: sign the results with apps/android/keystore (after the build)
 #
 # Options:
 #   --targets LIST   play-aab (Play bundle), sideload-apk (the APK of kelo.chat/download/android), full-apk (SMS / call log build);
 #                    comma separated, default play-aab,sideload-apk
 #   --out DIR        where the files go (default dist/android-reproducible)
 #   --worktree       build the working tree (committed + new files, not ignored ones) instead of the commit HEAD: for trying a change
-#   --from DIR       build a copy of android/kelo that is in DIR (made earlier; for testing that the same folder builds the same).
-#                    The shared/ module is taken from DIR/../../shared (a repository-shaped folder: DIR is <root>/android/kelo)
+#   --from DIR       build a copy of apps/android/kelo that is in DIR (made earlier; for testing that the same folder builds the same).
+#                    The apps/shared/ module is taken from DIR/../../shared (a repository-shaped folder: DIR is <root>/apps/android/kelo)
 #   --update-verification-metadata   maintainers: after changing a dependency, record the checksums of every file the build downloads
-#                    in android/kelo/gradle/verification-metadata.xml (commit it; the normal build refuses any file not listed there)
-#   --sign           sign what was built with android/keystore/keystore.properties: .aab with jarsigner, .apk with apksigner. The
+#                    in apps/android/kelo/gradle/verification-metadata.xml (commit it; the normal build refuses any file not listed there)
+#   --sign           sign what was built with apps/android/keystore/keystore.properties: .aab with jarsigner, .apk with apksigner. The
 #                    signature is the only difference to the files anyone else builds (it is left out of every comparison)
 #   --cache DIR      Gradle download cache (default ~/.cache/kelo-repro/gradle); --no-cache uses a throw-away one
 #   --dry-run        print the steps and stop
-# Test knobs: --mount PATH (where android/kelo is inside the container, default /build/android/kelo; the repository-shaped source
+# Test knobs: --mount PATH (where apps/android/kelo is inside the container, default /build/android/kelo; the repository-shaped source
 # copy is mounted two folders up, so ../../shared and ../../version.json resolve), KELO_REPRO_WORK (where the source copy is made,
 # default ~/.cache/kelo-repro/work; it must be a place Docker can mount).
 #
 # Needs Docker (on an Apple Silicon Mac the linux/amd64 image runs emulated: allow a few hours for the first build) and git.
 # Output: <out>/kelo-<versionName>-<flavor>-release-unsigned.{aab,apk} (or ...-signed...), SHA256SUMS and build-info.txt.
-# Nothing in the files or in build-info.txt comes from the clock or the machine: the version is android/kelo/version.properties.
+# Nothing in the files or in build-info.txt comes from the clock or the machine: the version is apps/android/kelo/version.properties.
 source "$(dirname "$0")/lib.sh"
 
 usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 TARGETS="play-aab,sideload-apk" OUT="$REPO/dist/android-reproducible" WORKTREE=0 SIGN=0 FROM="" WRITE_VERIFY=0
-CACHE="${KELO_REPRO_CACHE:-$HOME/.cache/kelo-repro/gradle}" NOCACHE=0 MOUNT=/build/android/kelo
+CACHE="${KELO_REPRO_CACHE:-$HOME/.cache/kelo-repro/gradle}" NOCACHE=0 MOUNT=/build/apps/android/kelo
 while [ $# -gt 0 ]; do
   case "$1" in
     --targets) TARGETS="${2:?--targets needs a list}"; shift ;;
@@ -49,8 +49,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-case "$MOUNT" in /*/*/*) ;; *) die "--mount must be an absolute path of at least three folders (the repository root is two levels up)" ;; esac
-ROOT_MOUNT="$(dirname "$(dirname "$MOUNT")")"   # the repository-shaped source copy; android/kelo is $MOUNT, shared/ is $ROOT_MOUNT/shared
+case "$MOUNT" in /*/*/*/*) ;; *) die "--mount must be an absolute path of at least four folders (the repository root is three levels up)" ;; esac
+ROOT_MOUNT="$(dirname "$(dirname "$(dirname "$MOUNT")")")"   # the repository-shaped source copy; apps/android/kelo is $MOUNT, apps/shared/ is $ROOT_MOUNT/apps/shared
 case "$OUT" in /*) ;; *) OUT="$PWD/$OUT" ;; esac
 
 # --- what to build: target -> Gradle task, output file, result name
@@ -66,11 +66,11 @@ for t in "${_T[@]}"; do
 done
 [ ${#TASKS[@]} -gt 0 ] || die "no targets"
 
-ANDROID_SRC="$REPO/android/kelo"
-DOCKER_DIR="$REPO/android/reproducible"
-[ -f "$ANDROID_SRC/version.properties" ] || die "android/kelo/version.properties is missing (the version comes from there)"
+ANDROID_SRC="$REPO/apps/android/kelo"
+DOCKER_DIR="$REPO/apps/android/reproducible"
+[ -f "$ANDROID_SRC/version.properties" ] || die "apps/android/kelo/version.properties is missing (the version comes from there)"
 BUILD_NO="$(sed -n 's/^build=\([0-9][0-9]*\)$/\1/p' "$ANDROID_SRC/version.properties" | head -1)"
-[ -n "$BUILD_NO" ] || die "android/kelo/version.properties has no 'build=<number>' line"
+[ -n "$BUILD_NO" ] || die "apps/android/kelo/version.properties has no 'build=<number>' line"
 RELEASE="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$REPO/version.json")" || die "version.json at the repository root is missing or unreadable"
 VERSION="$RELEASE"   # versionName (docs/versioning.md); versionCode is $BUILD_NO
 
@@ -80,13 +80,13 @@ IMAGE="kelo-android-repro:$HASH"
 
 log "Kelo Android $VERSION, reproducible build (${TARGETS})"
 note "source: $([ -n "$FROM" ] && echo "the folder $FROM" || { [ "$WORKTREE" = 1 ] && echo 'working tree (uncommitted changes included)' || echo "commit $(git -C "$REPO" rev-parse --short=12 HEAD 2>/dev/null || echo '?') (HEAD)"; })"
-note "image:  $IMAGE (linux/amd64)   android/kelo in the container: $MOUNT   (source copy mounted at $ROOT_MOUNT)"
-if [ "$WORKTREE" = 0 ] && [ -z "$FROM" ] && [ -n "$(git -C "$REPO" status --porcelain -- android/kelo android/reproducible shared version.json 2>/dev/null)" ]; then
-  warn "android/kelo, shared, version.json or android/reproducible has uncommitted changes: they are NOT in this build (it builds HEAD). Use --worktree to include them."
+note "image:  $IMAGE (linux/amd64)   apps/android/kelo in the container: $MOUNT   (source copy mounted at $ROOT_MOUNT)"
+if [ "$WORKTREE" = 0 ] && [ -z "$FROM" ] && [ -n "$(git -C "$REPO" status --porcelain -- apps/android/kelo apps/android/reproducible apps/shared version.json 2>/dev/null)" ]; then
+  warn "apps/android/kelo, apps/shared, version.json or apps/android/reproducible has uncommitted changes: they are NOT in this build (it builds HEAD). Use --worktree to include them."
 fi
 if [ "$DRY_RUN" = 1 ]; then
   note "[dry-run] docker build --platform linux/amd64 -t $IMAGE $DOCKER_DIR"
-  note "[dry-run] copy the source (android/kelo, shared, version.json) into a clean repository-shaped folder, then: docker run --rm --platform linux/amd64 -u <you> -v <copy>:$ROOT_MOUNT -w $MOUNT $IMAGE <task>   (once per task: ${TASKS[*]})"
+  note "[dry-run] copy the source (apps/android/kelo, apps/shared, version.json) into a clean repository-shaped folder, then: docker run --rm --platform linux/amd64 -u <you> -v <copy>:$ROOT_MOUNT -w $MOUNT $IMAGE <task>   (once per task: ${TASKS[*]})"
   note "[dry-run] collect the files into $OUT$([ "$SIGN" = 1 ] && echo ', sign them')"
   exit 0
 fi
@@ -104,28 +104,28 @@ else
 fi
 
 # --- 2. a clean, repository-shaped copy of the source: only files git knows (so local junk, build folders, local.properties and keys
-# cannot get in): $SRC/android/kelo, $SRC/shared (the module both apps use) and $SRC/version.json (app/build.gradle.kts reads
+# cannot get in): $SRC/apps/android/kelo, $SRC/apps/shared (the module both apps use) and $SRC/version.json (app/build.gradle.kts reads
 # ../../version.json). The container mounts $SRC at $ROOT_MOUNT and builds in $MOUNT, so ../../shared and ../../version.json resolve.
 WORK_BASE="${KELO_REPRO_WORK:-$HOME/.cache/kelo-repro/work}"
 mkdir -p "$WORK_BASE"
 SRC="$(mktemp -d "$WORK_BASE/src.XXXXXX")"; _CLEAN_PATHS+=("$SRC")
-mkdir -p "$SRC/android/kelo" "$SRC/shared"
+mkdir -p "$SRC/apps/android/kelo" "$SRC/apps/shared"
 RSYNC_SKIP=(--exclude build --exclude .gradle --exclude .kotlin --exclude local.properties)
 if [ -n "$FROM" ]; then
   [ -f "$FROM/gradlew" ] || die "--from $FROM has no gradlew"
-  [ -f "$FROM/../../shared/settings.gradle.kts" ] || die "--from $FROM needs the shared/ module two folders up ($FROM/../../shared): give the android/kelo folder of a repository-shaped copy"
-  rsync -a "${RSYNC_SKIP[@]}" "$FROM/" "$SRC/android/kelo/"
-  rsync -a "${RSYNC_SKIP[@]}" "$FROM/../../shared/" "$SRC/shared/"
+  [ -f "$FROM/../../shared/settings.gradle.kts" ] || die "--from $FROM needs the apps/shared/ module two folders up ($FROM/../../shared): give the apps/android/kelo folder of a repository-shaped copy"
+  rsync -a "${RSYNC_SKIP[@]}" "$FROM/" "$SRC/apps/android/kelo/"
+  rsync -a "${RSYNC_SKIP[@]}" "$FROM/../../shared/" "$SRC/apps/shared/"
 elif [ "$WORKTREE" = 1 ]; then
-  (cd "$ANDROID_SRC" && git ls-files -z -co --exclude-standard -- . ':!screens') | (cd "$ANDROID_SRC" && rsync -a --from0 --files-from=- ./ "$SRC/android/kelo/")
-  (cd "$REPO/shared" && git ls-files -z -co --exclude-standard -- .) | (cd "$REPO/shared" && rsync -a --from0 --files-from=- ./ "$SRC/shared/")
+  (cd "$ANDROID_SRC" && git ls-files -z -co --exclude-standard -- . ':!screens') | (cd "$ANDROID_SRC" && rsync -a --from0 --files-from=- ./ "$SRC/apps/android/kelo/")
+  (cd "$REPO/apps/shared" && git ls-files -z -co --exclude-standard -- .) | (cd "$REPO/apps/shared" && rsync -a --from0 --files-from=- ./ "$SRC/apps/shared/")
 else
-  git -C "$REPO" archive --format=tar "HEAD:android/kelo" | tar -x -C "$SRC/android/kelo"
-  rm -rf "$SRC/android/kelo/screens"
-  git -C "$REPO" archive --format=tar "HEAD:shared" | tar -x -C "$SRC/shared"
+  git -C "$REPO" archive --format=tar "HEAD:apps/android/kelo" | tar -x -C "$SRC/apps/android/kelo"
+  rm -rf "$SRC/apps/android/kelo/screens"
+  git -C "$REPO" archive --format=tar "HEAD:apps/shared" | tar -x -C "$SRC/apps/shared"
 fi
-[ -f "$SRC/android/kelo/gradlew" ] || die "the source copy has no gradlew (is android/kelo committed?)"
-[ -f "$SRC/shared/settings.gradle.kts" ] || die "the source copy has no shared/settings.gradle.kts (is shared/ committed?)"
+[ -f "$SRC/apps/android/kelo/gradlew" ] || die "the source copy has no gradlew (is apps/android/kelo committed?)"
+[ -f "$SRC/apps/shared/settings.gradle.kts" ] || die "the source copy has no apps/shared/settings.gradle.kts (is apps/shared/ committed?)"
 # the app's version comes from the repository's root version.json: it goes along, from the same source as the rest (HEAD, or the
 # working tree / the repository for --worktree and --from)
 if [ "$WORKTREE" = 0 ] && [ -z "$FROM" ]; then
@@ -133,8 +133,8 @@ if [ "$WORKTREE" = 0 ] && [ -z "$FROM" ]; then
 else
   cp "$REPO/version.json" "$SRC/version.json"
 fi
-[ "$(sed -n 's/^build=//p' "$SRC/android/kelo/version.properties")" = "$BUILD_NO" ] || die "version.properties in the source copy differs from $BUILD_NO (commit it, or use --worktree)"
-[ -f "$SRC/android/kelo/app/google-services.json" ] || warn "android/kelo/app/google-services.json is not in the source: this build has NO push notifications (and will not match the owner's)"
+[ "$(sed -n 's/^build=//p' "$SRC/apps/android/kelo/version.properties")" = "$BUILD_NO" ] || die "version.properties in the source copy differs from $BUILD_NO (commit it, or use --worktree)"
+[ -f "$SRC/apps/android/kelo/app/google-services.json" ] || warn "apps/android/kelo/app/google-services.json is not in the source: this build has NO push notifications (and will not match the owner's)"
 
 # --- 3. the build
 # The commit the source came from goes INTO the container build (the copy has no .git), as Gradle properties through the environment
@@ -158,8 +158,8 @@ for task in "${TASKS[@]}"; do
       "$IMAGE" "$task"
 done
 if [ "$WRITE_VERIFY" = 1 ]; then
-  cp "$SRC/android/kelo/gradle/verification-metadata.xml" "$ANDROID_SRC/gradle/verification-metadata.xml"
-  log "wrote android/kelo/gradle/verification-metadata.xml ($(grep -c '<component ' "$ANDROID_SRC/gradle/verification-metadata.xml") components): review and commit it"
+  cp "$SRC/apps/android/kelo/gradle/verification-metadata.xml" "$ANDROID_SRC/gradle/verification-metadata.xml"
+  log "wrote apps/android/kelo/gradle/verification-metadata.xml ($(grep -c '<component ' "$ANDROID_SRC/gradle/verification-metadata.xml") components): review and commit it"
   exit 0
 fi
 
@@ -169,14 +169,14 @@ rm -f "$OUT"/kelo-*-release-*.aab "$OUT"/kelo-*-release-*.apk "$OUT"/kelo-*-mapp
 RESULTS=()
 for w in "${WANT[@]}"; do
   flavor="${w%%:*}" ext="${w##*:}"
-  if [ "$ext" = aab ]; then built="$SRC/android/kelo/app/build/outputs/bundle/${flavor}Release/app-${flavor}-release.aab"
-  else built="$SRC/android/kelo/app/build/outputs/apk/$flavor/release/app-$flavor-release-unsigned.apk"; fi
+  if [ "$ext" = aab ]; then built="$SRC/apps/android/kelo/app/build/outputs/bundle/${flavor}Release/app-${flavor}-release.aab"
+  else built="$SRC/apps/android/kelo/app/build/outputs/apk/$flavor/release/app-$flavor-release-unsigned.apk"; fi
   [ -f "$built" ] || die "Gradle finished but $built is missing (logs: $LOGS/android-repro-*.log)"
   target="$OUT/kelo-$VERSION-$BUILD_NO-$flavor-release-unsigned.$ext"
   cp "$built" "$target"; RESULTS+=("$target")
   # the R8 name map of this build, so a crash report from a tester's phone can be read (Play Console takes it as the
   # deobfuscation file); kept per release in dist/android-mappings, which no later build clears
-  map="$SRC/android/kelo/app/build/outputs/mapping/${flavor}Release/mapping.txt"
+  map="$SRC/apps/android/kelo/app/build/outputs/mapping/${flavor}Release/mapping.txt"
   [ -f "$map" ] || die "Gradle finished but the R8 mapping $map is missing"
   mkdir -p "$REPO/dist/android-mappings"
   cp "$map" "$OUT/kelo-$VERSION-$BUILD_NO-$flavor-mapping.txt"
@@ -201,10 +201,10 @@ done
 
 # --- 5. signing (owner only): after the build, so the signature cannot influence what was built
 if [ "$SIGN" = 1 ]; then
-  KEYSTORE_DIR="$REPO/android/keystore"; PROPS="$KEYSTORE_DIR/keystore.properties"
-  [ -f "$PROPS" ] || die "--sign needs android/keystore/keystore.properties (the upload key; not in git)"
+  KEYSTORE_DIR="$REPO/apps/android/keystore"; PROPS="$KEYSTORE_DIR/keystore.properties"
+  [ -f "$PROPS" ] || die "--sign needs apps/android/keystore/keystore.properties (the upload key; not in git)"
   prop() { sed -n "s/^$1=//p" "$PROPS" | head -1; }
-  KS="$KEYSTORE_DIR/$(prop storeFile)"; [ -f "$KS" ] || die "keystore.properties names a storeFile that is not in android/keystore"
+  KS="$KEYSTORE_DIR/$(prop storeFile)"; [ -f "$KS" ] || die "keystore.properties names a storeFile that is not in apps/android/keystore"
   ALIAS="$(prop keyAlias)"
   export KELO_STORE_PASS KELO_KEY_PASS            # passwords go to the signing tools through the environment, never to the screen
   KELO_STORE_PASS="$(prop storePassword)"; KELO_KEY_PASS="$(prop keyPassword)"

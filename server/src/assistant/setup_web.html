@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Kelo</title>
+<style>
+:root {
+  --bg: #f4f7fa; --card: #ffffff; --ink: #17202b; --muted: #5a6778; --line: #d5dde6;
+  --accent: #0277bd; --on-accent: #ffffff; --ok: #2e7d32; --warn: #8a5300; --bad: #b3261e; --soft: #e6f3fb;
+  --code: #eef2f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12161c; --card: #1c232d; --ink: #e7edf4; --muted: #9aa7b6; --line: #2f3b4a;
+    --accent: #4fc3f7; --on-accent: #06121a; --ok: #7bd17f; --warn: #ffc56b; --bad: #ff8a80; --soft: #1d3442;
+    --code: #252f3b;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body {
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif;
+  overflow-wrap: anywhere; word-break: keep-all;
+}
+main { max-width: 640px; margin: 0 auto; padding: 20px 14px 40px; }
+h1 { font-size: 26px; margin: 0; color: var(--accent); }
+h2 { font-size: 17px; margin: 0 0 10px; }
+.tagline { color: var(--muted); margin: 2px 0 14px; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); font-size: 14px; }
+
+.steps { list-style: none; margin: 0 0 18px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
+.steps li { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: var(--card); color: var(--muted); font-size: 14px; min-width: 0; }
+.steps li .n { font-weight: 600; margin-right: 6px; }
+.steps li.done { color: var(--ok); }
+.steps li.now { border-color: var(--accent); color: var(--ink); box-shadow: inset 0 0 0 1px var(--accent); }
+
+.feed { display: flex; flex-direction: column; gap: 6px; }
+.row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px; align-items: start; }
+.row .mark { font-weight: 700; text-align: center; }
+.row.ok .mark { color: var(--ok); }
+.row.warn .mark, .row.warn .text { color: var(--warn); }
+.row.info .text.sub { color: var(--muted); font-size: 14px; }
+.step-head { margin: 14px 0 2px; font-size: 15px; color: var(--accent); font-weight: 600; }
+
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-top: 16px; }
+.card.question { border-color: var(--accent); }
+.card.fail { border-color: var(--bad); }
+.card.fail h2 { color: var(--bad); }
+.card.done { border-color: var(--ok); }
+.card.done h2 { color: var(--ok); }
+.question-text { font-weight: 600; margin: 0 0 12px; }
+
+.opt { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 8px; cursor: pointer; min-height: 44px; }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--soft); }
+.opt input { margin: 4px 0 0; flex: none; width: 18px; height: 18px; accent-color: var(--accent); }
+.opt .label { font-weight: 600; }
+.opt .note { color: var(--muted); font-size: 14px; margin-top: 2px; }
+
+input[type=text] {
+  width: 100%; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink); min-height: 44px;
+}
+input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+button {
+  font: inherit; font-weight: 600; min-height: 44px; padding: 8px 18px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); text-transform: capitalize;
+  flex: 1 1 120px; max-width: 100%;
+}
+button.primary { background: var(--accent); border-color: transparent; color: var(--on-accent); }
+button:disabled { opacity: .6; cursor: default; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.live { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.live .head { padding: 8px 12px; background: var(--code); font-weight: 600; font-size: 14px; }
+.live pre {
+  margin: 0; padding: 10px 12px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); min-height: 3em;
+}
+.live.done .head { color: var(--muted); }
+
+.qr { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.qr canvas { width: min(260px, 100%); height: auto; background: #ffffff; border-radius: 8px; padding: 8px; box-sizing: content-box; }
+.qr a { color: var(--accent); overflow-wrap: anywhere; font-size: 15px; }
+
+.summary-url { font-size: 18px; font-weight: 600; color: var(--accent); overflow-wrap: anywhere; }
+.summary-note { margin: 10px 0 14px; font-weight: 600; }
+dl.cmds { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+dl.cmds dt { font: 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--code); padding: 6px 8px;
+  border-radius: 8px; overflow-wrap: anywhere; }
+dl.cmds dd { margin: 2px 0 0 4px; color: var(--muted); font-size: 14px; }
+
+.status { margin-top: 18px; color: var(--muted); font-size: 14px; min-height: 1.5em; }
+.status.error { color: var(--bad); }
+.hint-err { color: var(--bad); font-size: 14px; margin-top: 8px; }
+
+@media (max-width: 360px) {
+  main { padding: 14px 10px 30px; }
+  .card { padding: 14px 12px; }
+  button { flex-basis: 100%; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Kelo</h1>
+    <p class="tagline" id="tagline"></p>
+  </header>
+
+  <ol class="steps" id="steps" aria-label="Steps"></ol>
+
+  <div class="feed" id="feed" aria-live="polite"></div>
+  <section id="card-slot"></section>
+  <p class="status" id="status" role="status"></p>
+</main>
+
+<script>
+"use strict";
+const TOKEN = (location.hash.match(/(?:^|[#&])t=([^&]+)/) || [])[1] || "";
+if (location.hash) history.replaceState(null, "", location.pathname);
+
+let S = {};
+let after = 0;
+let totalSteps = 4;
+let currentStep = 0;
+const stepTitles = {};
+let liveBox = null;
+let liveLines = [];
+let card = null;
+let cardId = null;
+let ended = false;
+
+function T(key) { return (S && S[key]) || key; }
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
+}
+function setStatus(text, error) {
+  const s = document.getElementById("status");
+  s.textContent = text || "";
+  s.className = "status" + (error ? " error" : "");
+}
+function feed() { return document.getElementById("feed"); }
+function scrollCard() { if (card) card.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
+
+function renderSteps() {
+  const list = document.getElementById("steps");
+  list.replaceChildren();
+  for (let n = 1; n <= totalSteps; n++) {
+    const li = el("li");
+    if (n < currentStep) li.className = "done";
+    if (n === currentStep) li.className = "now";
+    li.appendChild(el("span", "n", n + "/" + totalSteps));
+    li.appendChild(document.createTextNode(stepTitles[n] || ""));
+    list.appendChild(li);
+  }
+}
+
+function row(kind, text) {
+  const r = el("div", "row " + kind);
+  r.appendChild(el("span", "mark", kind === "ok" ? "✓" : kind === "warn" ? "!" : ""));
+  const t = el("div", "text" + (kind === "info" && /^\s/.test(text) ? " sub" : ""), text.replace(/^\s+/, ""));
+  r.appendChild(t);
+  feed().appendChild(r);
+}
+
+function clearCard() {
+  if (card) card.remove();
+  card = null;
+  cardId = null;
+  document.getElementById("card-slot").replaceChildren();
+}
+function putCard(node, id) {
+  clearCard();
+  card = node;
+  cardId = id === undefined ? null : id;
+  document.getElementById("card-slot").appendChild(node);
+  scrollCard();
+}
+
+async function send(id, value, buttons) {
+  buttons.forEach((b) => (b.disabled = true));
+  let ok = false, gone = false;
+  try {
+    const r = await fetch("/answer", {
+      method: "POST",
+      headers: { "X-Kelo-Setup": TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: id, value: value }),
+    });
+    ok = r.ok;
+    gone = r.status === 409;
+  } catch (e) { ok = false; }
+  if (ok || gone) { if (cardId === id) clearCard(); return; }
+  buttons.forEach((b) => (b.disabled = false));
+  setStatus(T("Could not send your answer. Try again."), true);
+}
+
+function questionCard(ev) {
+  const node = el("section", "card question");
+  node.appendChild(el("p", "question-text", ev.question));
+  const buttons = [];
+  if (ev.type === "choose") {
+    const group = el("div");
+    group.setAttribute("role", "radiogroup");
+    ev.options.forEach((o) => {
+      const label = el("label", "opt");
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "choice";
+      input.value = o.key;
+      input.checked = o.key === String(ev.default);
+      const text = el("div");
+      text.appendChild(el("div", "label", o.label));
+      if (o.note) text.appendChild(el("div", "note", o.note));
+      label.appendChild(input);
+      label.appendChild(text);
+      group.appendChild(label);
+    });
+    node.appendChild(group);
+    const go = el("button", "primary", T("Continue"));
+    go.type = "button";
+    buttons.push(go);
+    go.addEventListener("click", () => {
+      const picked = node.querySelector("input[name=choice]:checked");
+      send(ev.id, picked ? picked.value : String(ev.default), buttons);
+    });
+    node.appendChild(actions(buttons));
+  } else if (ev.type === "ask") {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = ev.default || "";
+    input.setAttribute("aria-label", ev.question);
+    input.autocomplete = "off";
+    input.autocapitalize = "off";
+    input.spellcheck = false;
+    node.appendChild(input);
+    const go = el("button", "primary", T("Continue"));
+    go.type = "button";
+    buttons.push(go);
+    const submit = () => send(ev.id, input.value, buttons);
+    go.addEventListener("click", submit);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    node.appendChild(actions(buttons));
+    setTimeout(() => input.focus(), 0);
+  } else if (ev.type === "confirm") {
+    const yes = el("button", ev.default ? "primary" : "", T("yes"));
+    const no = el("button", ev.default ? "" : "primary", T("no"));
+    yes.type = no.type = "button";
+    buttons.push(yes, no);
+    yes.addEventListener("click", () => send(ev.id, true, buttons));
+    no.addEventListener("click", () => send(ev.id, false, buttons));
+    node.appendChild(actions(buttons));
+  }
+  return node;
+}
+function actions(buttons) {
+  const bar = el("div", "actions");
+  buttons.forEach((b) => bar.appendChild(b));
+  return bar;
+}
+
+function qrCard(ev) {
+  const node = el("section", "card qr");
+  const n = ev.matrix.length;
+  const scale = 4;
+  const canvas = document.createElement("canvas");
+  canvas.width = n * scale;
+  canvas.height = n * scale;
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute("aria-label", ev.link);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#000000";
+  ev.matrix.forEach((line, y) => {
+    for (let x = 0; x < line.length; x++) if (line[x] === "1") ctx.fillRect(x * scale, y * scale, scale, scale);
+  });
+  node.appendChild(canvas);
+  const link = el("a", "", ev.link);
+  if (webLink(ev.link)) link.href = ev.link;         // anything else (javascript:, data:, ...) stays plain text
+  node.appendChild(link);
+  return node;
+}
+
+// Only https links, or plain http to this computer, may become a clickable href; the server text is never trusted as a scheme
+function webLink(u) {
+  return /^https:\/\/[^\s]+$/i.test(u) || /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/[^\s]*$/i.test(u);
+}
+
+function summaryCard(ev) {
+  const node = el("section", "card done");
+  node.appendChild(el("h2", "", T("All set")));
+  node.appendChild(el("div", "summary-url", ev.url));
+  node.appendChild(el("p", "summary-note", ev.note));
+  node.appendChild(el("h2", "", T("Useful later")));
+  const list = el("dl", "cmds");
+  ev.commands.forEach((c) => {
+    list.appendChild(el("dt", "", c.command));
+    list.appendChild(el("dd", "", c.what));
+  });
+  node.appendChild(list);
+  return node;
+}
+
+function failCard(ev) {
+  const node = el("section", "card fail");
+  node.setAttribute("role", "alert");
+  node.appendChild(el("h2", "", ev.title));
+  ev.lines.forEach((line) => node.appendChild(el("p", line.startsWith("  ") ? "muted" : "", line.replace(/^\s+/, ""))));
+  return node;
+}
+
+function handle(ev) {
+  switch (ev.type) {
+    case "hello":
+      S = ev.strings || {};
+      document.documentElement.lang = ev.lang || "en";
+      setStatus("");
+      break;
+    case "banner":
+      document.getElementById("tagline").textContent = ev.tagline;
+      if (ev.rerun) row("warn", ev.rerun_text);
+      break;
+    case "step":
+      totalSteps = ev.total;
+      currentStep = ev.n;
+      stepTitles[ev.n] = ev.title;
+      renderSteps();
+      feed().appendChild(el("div", "step-head", ev.n + "/" + ev.total + "  " + ev.title));
+      break;
+    case "ok": row("ok", ev.text); break;
+    case "warn": row("warn", ev.text); break;
+    case "info": row("info", ev.text); break;
+    case "choose":
+    case "ask":
+    case "confirm":
+      putCard(questionCard(ev), ev.id);
+      break;
+    case "resolved":
+      if (cardId === ev.id) clearCard();
+      break;
+    case "live":
+      liveLines = [];
+      liveBox = el("div", "live");
+      liveBox.appendChild(el("div", "head", ev.title));
+      liveBox.appendChild(el("pre"));
+      feed().appendChild(liveBox);
+      break;
+    case "log":
+      if (liveBox) {
+        liveLines.push(ev.text);
+        const pre = liveBox.querySelector("pre");
+        pre.textContent = liveLines.slice(-12).join("\n");
+      }
+      break;
+    case "live_end":
+      if (liveBox) liveBox.classList.add("done");
+      liveBox = null;
+      break;
+    case "qr":
+      putCard(qrCard(ev));
+      break;
+    case "summary":
+      clearCard();
+      feed().appendChild(summaryCard(ev));
+      ended = true;
+      setStatus(T("Setup has ended. You can close this page."));
+      break;
+    case "fail":
+      clearCard();
+      feed().appendChild(failCard(ev));
+      ended = true;
+      setStatus(T("Setup has ended. You can close this page."));
+      break;
+    default:
+      break;
+  }
+}
+
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+async function poll() {
+  if (!TOKEN) { setStatus(T("The link is not valid. Open the link that the installer or the terminal printed."), true); return; }
+  setStatus(T("Connecting to the setup…"));
+  let failures = 0;
+  for (;;) {
+    let r;
+    try {
+      r = await fetch("/events?after=" + after, { headers: { "X-Kelo-Setup": TOKEN }, cache: "no-store" });
+    } catch (e) {
+      if (ended) { setStatus(T("Setup has ended. You can close this page.")); return; }
+      if (++failures > 4) { setStatus(T("The connection to the setup was lost. Run the setup again."), true); return; }
+      await sleep(1500);
+      continue;
+    }
+    if (r.status === 403) { setStatus(T("The link is not valid. Open the link that the installer or the terminal printed."), true); return; }
+    if (!r.ok) {
+      if (++failures > 4) { setStatus(T("The connection to the setup was lost. Run the setup again."), true); return; }
+      await sleep(1500);
+      continue;
+    }
+    failures = 0;
+    const events = await r.json();
+    for (const ev of events) {
+      after = ev.id;
+      handle(ev);
+      if (ev.type === "summary" || ev.type === "fail") return;
+    }
+  }
+}
+
+poll();
+</script>
+</body>
+</html>

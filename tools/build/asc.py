@@ -12,6 +12,11 @@ contents and the signed token (JWT) are never printed, logged or put on a comman
                                                   waits until that build is VALID (exit 0), FAILED/INVALID (exit 2) or the time
                                                   is up (exit 124); a build that has not shown up yet counts as waiting
     asc.py get /v1/...                            raw GET (JSON on stdout), for anything else
+    asc.py prepare-version --version 1.0.1 --build 26111412 --whats-new notes.json
+                                                  the App Store version (made when missing), its build, and the "What's New"
+                                                  text of every localization it has (notes.json: {"en-US": "...", "ko": "..."};
+                                                  a locale without its own text gets en-US's). Nothing is submitted.
+    asc.py submit --version 1.0.1                 sends that version to App Review (the owner's go first; it goes to Apple)
 """
 import argparse
 import base64
@@ -133,6 +138,55 @@ class Client:
         return [(d["id"], d["attributes"].get("version"), d["attributes"].get("processingState"),
                  d["attributes"].get("uploadedDate")) for d in js.get("data", [])]
 
+    def ok(self, method, path, body=None, expect=(200, 201, 204)):
+        st, js = self.call(method, path, body)
+        if st not in expect:
+            errs = [f"{e.get('status')} {e.get('title')}: {e.get('detail')}" for e in js.get("errors", [])] or [str(js)[:500]]
+            raise AscError(f"{method} {path.split('?')[0]} -> HTTP {st}: " + "; ".join(errs))
+        return js
+
+    def store_version(self, app, version_string):
+        """The iOS App Store version with this number, made when it does not exist yet; its id."""
+        js = self.get_ok(f"/v1/apps/{app}/appStoreVersions?" + urllib.parse.urlencode(
+            {"filter[versionString]": version_string, "filter[platform]": "IOS"}))
+        if js.get("data"):
+            return js["data"][0]["id"]
+        made = self.ok("POST", "/v1/appStoreVersions", {"data": {
+            "type": "appStoreVersions", "attributes": {"platform": "IOS", "versionString": version_string},
+            "relationships": {"app": {"data": {"type": "apps", "id": app}}}}})
+        return made["data"]["id"]
+
+    def attach_build(self, version_id, build_id):
+        self.ok("PATCH", f"/v1/appStoreVersions/{version_id}/relationships/build", {"data": {"type": "builds", "id": build_id}})
+
+    def set_whats_new(self, version_id, notes_by_locale):
+        """Writes "What's New" for every localization of the version; returns the locales written."""
+        js = self.get_ok(f"/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations?limit=50")
+        fallback = notes_by_locale.get("en-US") or next(iter(notes_by_locale.values()), "")
+        written = []
+        for localization in js.get("data", []):
+            locale = localization["attributes"].get("locale", "")
+            text = notes_by_locale.get(locale) or notes_by_locale.get(locale.split("-")[0]) or fallback
+            if not text:
+                continue
+            self.ok("PATCH", f"/v1/appStoreVersionLocalizations/{localization['id']}", {"data": {
+                "type": "appStoreVersionLocalizations", "id": localization["id"], "attributes": {"whatsNew": text[:4000]}}})
+            written.append(locale)
+        return written
+
+    def submit_for_review(self, app, version_id):
+        """A review submission holding this version, sent to App Review; its id."""
+        submission = self.ok("POST", "/v1/reviewSubmissions", {"data": {
+            "type": "reviewSubmissions", "attributes": {"platform": "IOS"},
+            "relationships": {"app": {"data": {"type": "apps", "id": app}}}}})["data"]["id"]
+        self.ok("POST", "/v1/reviewSubmissionItems", {"data": {
+            "type": "reviewSubmissionItems",
+            "relationships": {"reviewSubmission": {"data": {"type": "reviewSubmissions", "id": submission}},
+                              "appStoreVersion": {"data": {"type": "appStoreVersions", "id": version_id}}}}})
+        self.ok("PATCH", f"/v1/reviewSubmissions/{submission}", {"data": {
+            "type": "reviewSubmissions", "id": submission, "attributes": {"submitted": True}}})
+        return submission
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -150,6 +204,14 @@ def main(argv=None):
             s.add_argument("--interval", type=int, default=60)
     g = sub.add_parser("get")
     g.add_argument("path")
+    pv = sub.add_parser("prepare-version")
+    pv.add_argument("--bundle", default="chat.kelo.app")
+    pv.add_argument("--version", required=True, help="the App Store version, e.g. 1.0.1")
+    pv.add_argument("--build", required=True, help="the build number (CFBundleVersion) to attach")
+    pv.add_argument("--whats-new", required=True, help='a JSON file {"en-US": "...", "ko": "..."}')
+    sm = sub.add_parser("submit")
+    sm.add_argument("--bundle", default="chat.kelo.app")
+    sm.add_argument("--version", required=True)
     a = ap.parse_args(argv)
 
     try:
@@ -166,6 +228,21 @@ def main(argv=None):
             st, js = c.call("GET", a.path)
             print(json.dumps(js, indent=1))
             return 0 if st == 200 else 1
+        elif a.cmd == "prepare-version":
+            app = c.app_id(a.bundle)
+            rows = c.builds(app, version=a.build, limit=1)
+            if not rows or rows[0][2] != "VALID":
+                raise AscError(f"build {a.build} is not processed (VALID) yet: {rows[0][2] if rows else 'not listed'}")
+            with open(a.whats_new, encoding="utf-8") as f:
+                notes = json.load(f)
+            version_id = c.store_version(app, a.version)
+            c.attach_build(version_id, rows[0][0])
+            locales = c.set_whats_new(version_id, notes)
+            print(f"version {a.version} ({version_id}) has build {a.build}; What's New written for {', '.join(locales) or 'no locale'}")
+        elif a.cmd == "submit":
+            app = c.app_id(a.bundle)
+            submission = c.submit_for_review(app, c.store_version(app, a.version))
+            print(f"version {a.version} sent to App Review (submission {submission})")
         elif a.cmd == "wait-build":
             app = c.app_id(a.bundle)
             deadline = time.monotonic() + a.timeout

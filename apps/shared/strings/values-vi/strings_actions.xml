@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="actions_title">Những việc Kelo đã làm</string>
+    <string name="actions_period_today">Hôm nay</string>
+    <string name="actions_period_7d">7 ngày</string>
+    <string name="actions_period_30d">30 ngày</string>
+    <string name="actions_state_unknown">Đang kiểm tra</string>
+    <string name="actions_state_failed">Không thành công</string>
+    <string name="actions_empty">Kelo chưa làm bất cứ việc gì bên ngoài.</string>
+    <string name="actions_outside_text_note">Những gì Kelo đọc từ trang web, email và tệp tin đều được coi là dữ liệu, không bao giờ là hướng dẫn; văn bản đó không thể khiến Kelo thanh toán, gửi hoặc xóa bất cứ thứ gì.</string>
+</resources>

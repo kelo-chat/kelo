@@ -20,7 +20,7 @@ sandboxes themselves.
 
 Recommendations:
 
-1. **One app, two roles.** The existing desktop app (`desktop/`) gets a switch, "Use this computer as the Kelo server". The server
+1. **One app, two roles.** The existing desktop app (`apps/desktop/`) gets a switch, "Use this computer as the Kelo server". The server
    parts are a separately versioned, signed **runtime pack** that is downloaded when the switch is turned on. The pack is not
    inside the client bundle (section 7).
 2. **Browser.** Bundle a Chromium with its own profile folder. Keep Chromium's own sandbox on. Run it `--headless=new`. Force all
@@ -45,8 +45,8 @@ Recommendations:
    show the active level in the app. Windows starts with the equivalent of Standard.
 8. **Drop multiple copies (instances) for native.** Keep one server per OS user account. Several people per computer stays a
    Docker/Linux feature (section 4.8).
-9. **Updates.** Extend the desktop app's existing updater (`desktop/.../core/Updates.kt`, which already reads `latest.json` and
-   checks sha256) with **minisign signatures**, in the same format `nest_sign.py` already implements. Use **versioned
+9. **Updates.** Extend the desktop app's existing updater (`apps/desktop/.../core/Updates.kt`, which already reads `latest.json` and
+   checks sha256) with **minisign signatures**, in the minisign format (Ed25519). Use **versioned
    side-by-side runtime folders**. Apply the database rule from `updates.py` unchanged (back up before, restore on rollback when
    the schema fingerprint changed). Give Chromium its own update channel, because it needs security updates more often than Kelo
    ships (section 6).
@@ -71,7 +71,7 @@ most have a read-only root.
 | `server` (uid 1001, read-only root, `env_file`) | Holds the secrets: `ASSISTANT_TOKEN`, API keys, `ASSISTANT_SECRET_KEY` and the DB. It is the only container with them. Port is bound to `127.0.0.1` by default. | The apps; it drives the browser over DevTools (`browser:9223`), the workroom over `/run/workroom/agent.sock`, the CLIs over `cli-net`, and the updater over `updater-net`. Its own outward reads go through `netguard.py` / `watchers.public_get`. |
 | `browser` (uid 1000, **no env_file**, only `browser-net` which is `internal`) | A malicious page: no route anywhere except the egress proxy; holds no secrets; the profile lives in a volume; runs `--no-sandbox` because "the container is the sandbox" (`entrypoint.sh`). Downloads go to a volume the server mounts read-only and are deleted after one day. Policy in `docker/chromium-policy.json`. | `tools/browser.py` (Playwright `connect_over_cdp`), `tools/live.py` (screencast and taking control), `tools/downloads.py`, `browser_identity.py` (runs next to it), noVNC viewer on 6080. |
 | `egress` (uid 1004, no keys) | LAN, host, CGNAT, link-local and metadata access from pages: resolves the name itself, refuses if *any* address is non-public, connects to the address it checked (no DNS rebinding), and blocks Google background hosts. Also relays the noVNC port. | The browser's only way out. |
-| `workroom` (uid 1003, `network_mode: none`, read-only root, 2 GB RAM, `pids_limit: 512`) | Prompt-injected code: no network, no secrets, scratch `/work` emptied before and after every job, `sweep()` kills every leftover process, `RLIMIT_FSIZE`, not dumpable (`prctl`). Installs go only through the server's `InstallProxy` (proxy.sock, registries only, one-time password). | `workroom.py` tools (`run_code`, install), document and media generation (LibreOffice, ffmpeg, ImageMagick, poppler in `Dockerfile.workroom`). |
+| `workroom` (uid 1003, `network_mode: none`, read-only root, 2 GB RAM, `pids_limit: 512`) | Prompt-injected code: no network, no secrets, scratch `/work` emptied before and after every job, `sweep()` kills every leftover process, `RLIMIT_FSIZE`, not dumpable (`prctl`). Installs go only through the server's `InstallProxy` (proxy.sock, registries only, one-time password). | `workroom.py` tools (`run_code`, install), document and media generation (LibreOffice, ffmpeg, ImageMagick, poppler in `docker/workroom.Dockerfile`). |
 | `claude-cli`, `agy-cli` (uid 1002, `cli-net` only, no env_file, own home volume) | Credential separation: the subscription login is never visible to the server or browser, and model keys are never visible to the CLI. A page cannot reach a logged-in CLI (they are not on `agent`/`browser-net`). | `providers/cli_remote.py`, `cli_agents.py`, `agy_pool.py` (warm sessions), `cli_login.py` (phone sign-in), `cli_update.py` (in-app CLI update into the home volume). |
 | `updater` (only container with the Docker socket, `updater-net` internal, fixed commands, `UPDATER_TOKEN`) | Keeps Docker control away from the AI-facing server. Verifies digest, cosign signature and version label (`release.py`). | `server_updates.py`, `updates.py` (backup, rollback, schema fingerprint). |
 | `cloudflared` / `kelo-tunnel` (`agent` network only) | Tunnel credentials stay out of the server. | `connect.py` modes `cloudflare` and `kelo`. |
@@ -300,7 +300,7 @@ Profile per job (illustrative; the real one comes out of spike 0.4):
 | **AppContainer (LPAC) + Job Object** | Denied: user-profile ACLs do not grant the AppContainer SID; grant only the job and tools folders | None without capabilities (loopback is blocked too). For installs, `internetClient` without `privateNetworkClientServer` reaches the public internet but not the LAN or loopback **[verify]** | None (profile via `CreateAppContainerProfile`) | Python, Node, LibreOffice and ffmpeg inside AppContainer need testing; installs reach all public hosts, not just registries (keep `--ignore-scripts`, prefer binaries) |
 | Restricted token / Low integrity only | **Readable** (reads are not restricted) | Not restricted | None | Not enough on its own |
 | Dedicated local user + WFP by SID (srt's way) | Denied by profile ACLs | Only loopback to the proxy port, kernel-enforced | Admin once; a password to store, or S4U | srt's Windows backend is alpha; account management on Home editions |
-| WSL 2 work room | Denied if `automount` and `interop` are off in `/etc/wsl.conf` | bwrap without network namespace inside | WSL install (admin, virtualization, maybe reboot) | Reuses `Dockerfile.workroom` as a rootfs (`wsl --import`); heavy prerequisite |
+| WSL 2 work room | Denied if `automount` and `interop` are off in `/etc/wsl.conf` | bwrap without network namespace inside | WSL install (admin, virtualization, maybe reboot) | Reuses `docker/workroom.Dockerfile` as a rootfs (`wsl --import`); heavy prerequisite |
 | Off at first | n/a | n/a | n/a | Agent loses `run_code`; document making falls back to server-side Python libraries |
 
 **Recommendation.** Phase 2 ships with the work room off on native Windows, and the tool list says so (`workroom.NOT_RUNNING`
@@ -463,7 +463,7 @@ pays for the rest. Mac architectures: arm64 and x86_64 as separate packs, not un
 ```
 
 **Signing.** cosign keyless (used for images) needs an online CA and log. For native packs, sign the manifest with **minisign
-(Ed25519)**, exactly as `nest_sign.py` already reads and writes it. Pin one public key in the client, and verify it in Kotlin
+(Ed25519)**, in the minisign format. Pin one public key in the client, and verify it in Kotlin
 with the JDK's built-in Ed25519 (JDK 15+; the desktop builds on 17). Keep `release.py`'s trust rules:
 
 - the manifest only names files (host allow-list, sha256, size);
@@ -515,14 +515,14 @@ whether it is wanted.
 |---|---|---|
 | Install | One download; the server pack is fetched on demand | Two installs, two icons |
 | Pairing | Automatic: the client reads the local token, no QR | QR or link as today |
-| Tray, start at sign-in, single instance, updates, 20 languages | Already in `desktop/` | Rebuilt or duplicated |
+| Tray, start at sign-in, single instance, updates, 20 languages | Already in `apps/desktop/` | Rebuilt or duplicated |
 | Signing and notarization pipelines | One app + packs | Two apps |
 | Coupling | The client must not be needed for the server to run: the server is its own launchd/Task Scheduler job | Natural |
 | Store builds | Store build hides the server switch | Server app is never in a Store |
 
 **Recommendation: one app.** The switch lives under My → this device. The client is only the controller; quitting it does not stop
 the server. The server pack, Chromium and the workroom pack are separate signed downloads, so client-only users stay small.
-Desktop work: a new `desktop/src/main/kotlin/chat/kelo/desktop/server/` package (pack download and verify, supervisor control,
+Desktop work: a new `apps/desktop/src/main/kotlin/chat/kelo/desktop/server/` package (pack download and verify, supervisor control,
 status, protection level, keep-awake, Hardened set-up) and strings in all 20 languages. Android stays the UI reference; the server
 switch is desktop-only by nature.
 
@@ -575,7 +575,7 @@ separation, and should be described that way in the app (section 13).
 
 | File / module | Change |
 |---|---|
-| **new** `src/assistant/native/` | `paths.py` (data folders per OS), `supervisor.py`, `browser_host.py` (launch, pipe, DevTools gate, downloads cleanup, identity), `seatbelt.py`, `appcontainer.py` (phase 3, ctypes), `power.py` (sleep assertions), `secrets_store.py` (Keychain/DPAPI), `accounts.py` (Hardened set-up), `pf.py`, `updater.py` (pack verify, flip, rollback) |
+| **new** `server/src/assistant/native/` | `paths.py` (data folders per OS), `supervisor.py`, `browser_host.py` (launch, pipe, DevTools gate, downloads cleanup, identity), `seatbelt.py`, `appcontainer.py` (phase 3, ctypes), `power.py` (sleep assertions), `secrets_store.py` (Keychain/DPAPI), `accounts.py` (Hardened set-up), `pf.py`, `updater.py` (pack verify, flip, rollback) |
 | `docker/entrypoint.sh` | `browser)` branch calls `python -m assistant.native.browser_host --docker` (shared logic) |
 | `egress.py` | `EGRESS_BIND`, port 0 reporting, relay optional |
 | `tools/browser.py` | `BROWSER_CDP_URL` ws endpoint in `_ensure_browser`; `check_url` also refuses `file:` |
@@ -589,10 +589,10 @@ separation, and should be described that way in the app (section 13).
 | `quota.py` | `host_capacity()` via `sysctl hw.memsize` / `GlobalMemoryStatusEx`; `cgroup_limits()` returns empty natively |
 | `limits.py` | native: storage cap only (as today); RAM/CPU for workroom via Job Object (Windows) or RSS watch (macOS); UI shows capacity numbers |
 | `instances.py`, `manage.py` | backend interface; native = `main` only |
-| `updates.py`, `server_updates.py`, `release.py`, `downloads.py` | native backend; `server_native` manifest section; minisign verify (reuse `nest_sign.py`) |
+| `updates.py`, `server_updates.py`, `release.py`, `downloads.py` | native backend; `server_native` manifest section; minisign verify |
 | `connect.py` | process backend for `kelo`/`cloudflare`; Tailscale path discovery; `direct` disabled natively |
 | `cli.py` / `wizard.py` | native set-up runs from the app; `assistant` CLI still works against the native data folder |
-| `desktop/` | server switch, pack manager, Hardened set-up, keep-awake, status; Swift helper for SMAppService; `Updates.kt` signature check |
+| `apps/desktop/` | server switch, pack manager, Hardened set-up, keep-awake, status; Swift helper for SMAppService; `Updates.kt` signature check |
 | `tools/build/` | `server-pack.sh` (mac), Windows workflow for packs; signing and notarization of packs |
 | `docs/` | install, browser, connect pages for native |
 
@@ -646,7 +646,7 @@ Total: about 6–9 months to all phases **[guess]**. Phase 1 alone gives Mac own
 - **Read in this repository:** every claim about `compose.yml`, the Dockerfiles, `entrypoint.sh`, `chromium-policy.json`,
   `egress.py` (including the `0.0.0.0` bind), `netguard.py`, `tools/browser.py` (`connect_over_cdp` over HTTP), `tools/live.py`
   (screencast), `workroom*.py` (`sweep()` via `/proc`, install flags), `cli_*`, `agy_pool.py`, `instances.py`, `updates.py`,
-  `release.py`, `updater_service.py`, `server_updates.py`, `nest_sign.py`, `connect.py`, the install scripts and `desktop/`.
+  `release.py`, `updater_service.py`, `server_updates.py`, `connect.py`, the install scripts and `apps/desktop/`.
 - **From the web:**
   - sandbox-runtime's design, licence (Apache-2.0), platforms, Windows alpha approach and documented limitations, from its README
     at <https://github.com/anthropic-experimental/sandbox-runtime>. Its canonical owner is stated there as `anthropics`. I did not

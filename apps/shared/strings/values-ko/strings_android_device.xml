@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">휴대폰 기기</string>
+    <string name="android_device_connected">연결됨</string>
+    <string name="android_device_not_connected">연결 안 됨</string>
+    <string name="android_device_play_store">Play 스토어</string>
+    <string name="android_device_korean_input">한글 입력</string>
+    <string name="android_device_missing">없음</string>
+    <string name="android_device_check">연결 확인</string>
+    <string name="android_device_view">화면 보기</string>
+    <string name="android_device_note">기기 주소는 서버의 .env에서 바꿔요. 설정 방법은 README의 \'Kelo가 쓸 안드로이드 기기\'를 보세요.</string>
+    <string name="android_device_readme">README 열기</string>
+</resources>

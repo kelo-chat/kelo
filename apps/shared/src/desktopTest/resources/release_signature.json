@@ -1,0 +1,15 @@
+{
+  "public_key": "YQMuw5zY7PbXoUYm67pyDDHSa4k6xRA9iJ9KRd18jyQ=",
+  "key_id": "d344a24408cb60e6",
+  "platform": "windows",
+  "row": {
+    "file": "kelo-1.2.3-4242.exe",
+    "version": "1.2.3",
+    "version_code": 4242,
+    "size": 1234567,
+    "sha256": "19ecac392002877908283fac784285d4350c2cbb8cb1674cea5c19d551e1785d",
+    "commit": "173f637eaa06941cea2a9f11139f802c6eb46b6f"
+  },
+  "statement": "kelo-release-v1\nplatform=windows\nfile=kelo-1.2.3-4242.exe\nversion=1.2.3\nversion_code=4242\nsize=1234567\nsha256=19ecac392002877908283fac784285d4350c2cbb8cb1674cea5c19d551e1785d\ncommit=173f637eaa06941cea2a9f11139f802c6eb46b6f\n",
+  "sig": "fboOJLTlSA/oDqnLy80PU4mhd7Y7HrHcZBC0QyYIimxL7e1tuTFzwWPVx0nhb1ldrEMrON5BNAIaJVzUgGtqDg=="
+}

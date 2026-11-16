@@ -1,6 +1,6 @@
 # Push notifications
 
-Kelo wakes the phone app with Firebase Cloud Messaging (FCM). The Firebase project is the operator's own (its id is in the app's `android/kelo/app/google-services.json`, which is public client configuration and part of the source; to build with your own Firebase project, replace that file, see [verify-builds.md](verify-builds.md)) and the Android package is
+Kelo wakes the phone app with Firebase Cloud Messaging (FCM). The Firebase project is the operator's own (its id is in the app's `apps/android/kelo/app/google-services.json`, which is public client configuration and part of the source; to build with your own Firebase project, replace that file, see [verify-builds.md](verify-builds.md)) and the Android package is
 `chat.kelo.app`. Only the operator's server (the broker, the same one that brokers sign-ins and Kelo addresses) holds the
 Firebase service-account key. Every other copy sends its pushes through that broker.
 
@@ -39,7 +39,7 @@ review, opening times). When a check finds a change that two independent sources
 confirmed it a second time itself, the correction arrives as an ordinary Kelo message in the chat and a normal `task_done` push
 (ids only, as above), in your waking hours only. A check that finds nothing, or finds too little to be sure, sends nothing.
 `GET /api/rechecks?days=` lists what is being checked; `PUT /api/proactive` takes `rechecks` (on/off) and `recheck_per_day`
-(research runs a day, default 4). The design is in `src/assistant/recheck.py`.
+(research runs a day, default 4). The design is in `server/src/assistant/recheck.py`.
 
 ## Offers
 
@@ -55,7 +55,7 @@ a card for 3 days with no mark against it.
 `GET /api/offers` lists the cards (counted as seen once per local day), `POST /api/offers/{id}/start` sends the card's request as your
 message (409 while Kelo is answering) and gives the model its prepared steps as a hidden note that is never stored or shown, and
 `POST /api/offers/{id}/dismiss {"reason"?: "not_interested"|"done_already"|"not_now"}` removes it. `PUT /api/proactive` takes `offers`
-(on/off, on by default). The design is in `src/assistant/offers.py`.
+(on/off, on by default). The design is in `server/src/assistant/offers.py`.
 
 ## For the operator
 
@@ -87,12 +87,13 @@ App Store) or `"development"` (an Xcode run). The operator's server signs with i
 same ids as above, nothing else. The operator sets `KELO_APNS_KEY_FILE` (path of the .p8, never stored in the database),
 `KELO_APNS_KEY_ID`, `KELO_APNS_TEAM_ID` and optionally `KELO_APNS_TOPIC` (default `chat.kelo.app`); without them iPhone pushes are skipped
 quietly. The broker takes `"apns": [{"token", "environment"}]` next to `"tokens"` and answers `"apns_results"` (same shape; `error` is Apple's
-reason, `DISABLED` where the broker has no APNs key). A 410 or `BadDeviceToken` marks the token invalid and the copy drops it. See ios/README.md.
+reason, `DISABLED` where the broker has no APNs key). A 410 or `BadDeviceToken` marks the token invalid and the copy drops it. See apps/ios/README.md.
 
 ## Which broker a copy uses
 
-A copy uses the first of these that is set: `ASSISTANT_PUSH_BROKER`, `ASSISTANT_KELO_BROKER`, `ASSISTANT_OAUTH_BROKER`. If
-none is set and the copy has no Firebase key of its own, push is off. Its endpoints still answer, with `"push": false`.
+A copy uses the first of these that is set: `ASSISTANT_PUSH_BROKER`, `ASSISTANT_KELO_BROKER`, `ASSISTANT_OAUTH_BROKER`; if none is
+set, the operator `https://kelo.chat` (the same default the sign-in broker has, settings.py `_broker`). Set it to `off` for no operator
+push; then, without a Firebase key of its own, push is off and the endpoints answer `"push": false`.
 
 ## Phone side (each copy, device token)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Checks the server's translations (src/assistant/locales/<lang>.json) against the English templates in the code.
+"""Checks the server's translations (server/src/assistant/locales/<lang>.json) against the English templates in the code.
 
-The English source is every string-literal first argument of t(...) / N_(...) under src/assistant (see i18n.py). For each
+The English source is every string-literal first argument of t(...) / N_(...) under server/src/assistant (see i18n.py). For each
 language file this reports:
   - missing:  templates in the code with no entry (they show in English until translated)
   - unused:   entries no t()/N_() uses any more
@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src" / "assistant"
+SRC = ROOT / "server" / "src" / "assistant"
 LOCALES = SRC / "locales"
 
 

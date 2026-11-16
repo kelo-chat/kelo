@@ -1,0 +1,43 @@
+{
+  "name": "tool-error-reported",
+  "about": "A failing tool shows its error to the app and to the model; the reply does not hide the failure.",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Search for phone cases"
+  ],
+  "model": [
+    [
+      {
+        "tool": "web_search",
+        "args": {
+          "q": "phone case"
+        }
+      }
+    ],
+    [
+      {
+        "text": "The search failed: connection refused, so I have no results yet."
+      }
+    ]
+  ],
+  "tools": {
+    "web_search": {
+      "error": "connection refused by the search service",
+      "description": "Search the web."
+    }
+  },
+  "expect": {
+    "called": [
+      "web_search"
+    ],
+    "tool_error": {
+      "name": "web_search",
+      "visible_to_model": "connection refused"
+    },
+    "reply_contains": [
+      "failed"
+    ]
+  }
+}

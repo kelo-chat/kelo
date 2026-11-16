@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">Kurulacak her şeyi gör</string>
+    <string name="nest_contents_title">Kurulacak olanlar</string>
+    <string name="nest_contents_warnings">Yükleme sırasındaki notlar</string>
+    <string name="nest_contents_endpoints">Bağlandığı yerler</string>
+    <string name="nest_contents_none">Yok</string>
+    <string name="nest_contents_files">Dosyalar</string>
+    <string name="nest_contents_total">Toplam %1$s</string>
+    <string name="nest_contents_cut">Bu dosya çok uzun, bu yüzden yalnızca bir kısmı gösteriliyor.</string>
+    <string name="nest_contents_back">Tüm dosyalar</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">Değişiklikleri gör</string>
+    <string name="nest_update_changed">%1$d dosya değişti</string>
+    <string name="nest_changed_title">Bu güncelleme neyi değiştiriyor</string>
+    <string name="nest_changed_added">Eklenen dosyalar</string>
+    <string name="nest_changed_removed">Silinen dosyalar</string>
+    <string name="nest_changed_modified">Değiştirilen dosyalar</string>
+</resources>

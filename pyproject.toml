@@ -1,6 +1,6 @@
 [project]
 name = "assistant"
-version = "0.10.1"
+version = "0.10.2"
 description = "Kelo: a self-hosted personal AI agent"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE", "NOTICE"]
@@ -18,8 +18,10 @@ dependencies = [
     "pillow-heif>=1.1",
     "playwright>=1.64.1",
     "pydantic>=2.14.3",
+    "psutil>=6.1",
     "pypdf>=7.0.0",
     "python-docx>=1.2.0",
+    "pywinpty>=2.0; sys_platform == 'win32'",
     "recurring-ical-events>=3.8.2",
     "rich>=13",
     "segno>=1.6.6",
@@ -39,6 +41,9 @@ gcp = ["google-auth>=2.35", "requests>=2.32"]
 requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+module-root = "server/src"
+
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
@@ -48,5 +53,5 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
 asyncio_mode = "auto"
-testpaths = ["tests"]
-markers = ["keyguard_real: the test sees Keyguard's real state (auto-pay rules; see tests/conftest.py)"]
+testpaths = ["server/tests"]
+markers = ["keyguard_real: the test sees Keyguard's real state (auto-pay rules; see server/tests/conftest.py)"]

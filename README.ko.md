@@ -77,10 +77,10 @@ LM Studio, Ollama 같은 OpenAI 호환 서버로 내 장비에서 직접 돌릴 
 - **macOS:** Kelo를 응용 프로그램 폴더로 끌어 놓으세요. Apple 공증을 받은 앱이라 바로 열려요. Apple 실리콘(M1 이상) Mac용.
 
 <p align="center">
-  <img src="src/assistant/site/shots/ko-chat.webp" alt="채팅" width="200">
-  <img src="src/assistant/site/shots/ko-work.webp" alt="작업" width="200">
-  <img src="src/assistant/site/shots/ko-goal-reading.webp" alt="다짐 계획: 한 달에 책 2권 읽기" width="200">
-  <img src="src/assistant/site/shots/ko-connectors.webp" alt="커넥터" width="200">
+  <img src="server/src/assistant/site/shots/ko-chat.webp" alt="채팅" width="200">
+  <img src="server/src/assistant/site/shots/ko-work.webp" alt="작업" width="200">
+  <img src="server/src/assistant/site/shots/ko-goal-reading.webp" alt="다짐 계획: 한 달에 책 2권 읽기" width="200">
+  <img src="server/src/assistant/site/shots/ko-connectors.webp" alt="커넥터" width="200">
 </p>
 
 ### 내려받은 파일 확인하기
@@ -219,6 +219,77 @@ kelo instance delete alex    # 완전히 삭제 (대화, 키, 파일, 설정, �
 Antigravity가 각각 별도 컨테이너로 설치되고, 로그인은 앱의 마이 → 모델에서 해요. 이 회사들이 다른 앱에서 구독을 써도 된다고
 공식적으로 허락한 것은 아니라서, 앱이 처음 쓰기 전에 한 번 물어봐요. 끄기: `kelo disable oauth`
 
+### Kelo가 쓸 안드로이드 기기 (선택)
+
+웹사이트가 없거나 불편한 앱(배달, 예약, 앱 전용 쿠폰)은 Kelo가 안드로이드 기기를 직접 조작해요. 화면을 읽고, 누르고, 한글도
+입력하고, 앱을 열어요. 결제·보내기·삭제는 브라우저와 똑같이 먼저 물어보고, 로그인은 보안 카드에 넣은 정보로 Kelo가 직접 입력해요.
+기기는 이 중 하나면 돼요.
+
+- **Kelo 옆**: 집 안 리눅스 기기에서 돌리는 [redroid](https://github.com/remote-android/redroid-doc)(컨테이너 안드로이드), 에뮬레이터, 가상 머신
+- **남는 폰**: 무선 디버깅을 켠 휴대폰
+- **Kelo와 같은 리눅스 서버** (Mac·Windows의 Docker Desktop에서는 redroid가 돌지 않아요)
+
+`.env`에 설정을 넣고, 연결 컨테이너(기기와 adb로 이야기하는 작은 컨테이너)를 만든 다음 업데이트해요.
+
+```bash
+COMPOSE_PROFILES=...,android               # 지금 쓰는 프로필에 android 추가
+ANDROID_DEVICE=192.168.0.20:5555           # 기기의 adb 주소
+ANDROID_BRIDGE_TOKEN=<32자 이상 아무 문자열>
+```
+
+```bash
+docker compose --profile android build android
+kelo update
+```
+
+어디에 두느냐에 따라 필요한 것:
+
+| | Kelo 옆 (리눅스의 redroid) | Kelo와 같은 서버 (redroid) | 남는 폰 |
+| --- | --- | --- | --- |
+| 기계 | Docker가 있는 x86_64 또는 arm64 리눅스, 여유 메모리 2.5GB, 디스크 4GB | Kelo 서버 자체(리눅스만), 메모리 2.5GB 추가 | 항상 켜 두고 충전 중인 Android 11 이상 폰 |
+| 커널 | `binder_linux`(대부분의 배포판, Ubuntu는 `linux-modules-extra`), Android 15는 `loop`, `erofs`도 | 같음 | 필요 없음 |
+| 설정 | 아래 명령 실행 후 `ANDROID_DEVICE=<그 기기의 집 안 주소>:5555` | 아래 명령에서 `-p` 대신 `--network <kelo 프로젝트>_android-out`으로 띄우고(`docker network ls`로 이름 확인, 포트를 열지 않아요) `ANDROID_DEVICE=redroid:5555` | 개발자 옵션 → 무선 디버깅 → 페어링 코드로 기기 페어링, 컴퓨터에서 `adb pair` / `adb connect` 한 번, `ANDROID_DEVICE=<폰 주소>:<포트>` |
+| 네트워크 | Kelo 서버가 기기 포트에 닿아야 해요(Mac의 Docker Desktop·colima는 로컬 네트워크 권한이나 작은 중계 프로그램이 필요할 수 있어요) | 없음 | 폰과 서버가 같은 네트워크 |
+
+리눅스에서 redroid 띄우기 (Android 15):
+
+```bash
+echo "options binder_linux devices=binder,hwbinder,vndbinder" | sudo tee /etc/modprobe.d/redroid.conf
+printf "binder_linux\nloop\nerofs\n" | sudo tee /etc/modules-load.d/redroid.conf
+sudo modprobe binder_linux devices=binder,hwbinder,vndbinder && sudo modprobe loop && sudo modprobe erofs
+printf 'KERNEL=="binder", MODE="0666"\nKERNEL=="hwbinder", MODE="0666"\nKERNEL=="vndbinder", MODE="0666"\n' | sudo tee /etc/udev/rules.d/60-redroid-binder.rules
+sudo chmod 666 /dev/binder /dev/hwbinder /dev/vndbinder
+docker run -d --privileged --name redroid --restart unless-stopped --memory 2560m -v redroid-data:/data \
+  -p <집 안 주소>:5555:5555 redroid/redroid:15.0.0-latest \
+  androidboot.redroid_gpu_mode=guest androidboot.redroid_width=720 androidboot.redroid_height=1280 androidboot.redroid_dpi=320
+```
+
+**Google Play 넣기.** redroid 기본 이미지에는 Google 앱이 없어요. x86_64에서는 LiteGapps로 직접 만들어요(MindTheGapps의 x86_64
+빌드에는 2022년 Play 스토어가 들어 있어서 Android 14·15에서 죽어요). [regulad/redroid-script](https://github.com/regulad/redroid-script)의
+빌드 방법은 받는 파일마다 체크섬이 고정돼 있어요. 완성된 이미지를 받지 말고 직접 빌드하세요.
+
+```bash
+git clone https://github.com/regulad/redroid-script && cd redroid-script
+docker build -t redroid:15-gapps \
+  --build-arg BASE=docker.io/redroid/redroid:15.0.0-250627 \
+  --build-arg TOOLS=docker.io/library/alpine:3.24.3 --build-arg BUSYBOX=docker.io/library/busybox:1.38.0-musl \
+  --build-arg GAPPS_KIND=litegapps --build-arg LITEGAPPS_TREE=x86_64/35 \
+  --build-arg GAPPS_URL=<matrix.json의 litegapps-15.0-x86_64 url> --build-arg GAPPS_SHA256=<그 sha256> \
+  --build-arg ADDON_URL=<litegapps-setupwizard-15.0-x86_64 url> --build-arg ADDON_SHA256=<그 sha256> \
+  --build-arg NATIVE_BRIDGE=none .
+```
+
+그다음 위 `docker run`에서 `redroid/redroid:15.0.0-latest` 대신 `redroid:15-gapps`로 띄우고(데이터 볼륨은 새로), Kelo에게
+"플레이스토어 로그인해 줘"라고 하면 로그인 카드로 넣은 정보를 기기에 입력해요. `NATIVE_BRIDGE=none`은 ARM 변환을 빼서, ARM 전용
+앱은 설치되지 않아요. ARM 전용 앱이 꼭 필요하면 ARM 변환 계층을 넣지 말고, 예비 실물 폰이나 ARM 서버(라즈베리파이, Ampere 등)에서 redroid를
+쓰세요. 변환 계층은 재배포 권리가 없는 비공개 파일이고 Android 15에서 불안정해요.
+
+**한글 입력.** 기기에 [ADB Keyboard](https://github.com/senzhk/ADBKeyBoard)를 깔아야 해요(APK를 `adb install`한 뒤
+`adb shell ime enable com.android.adbkeyboard/.AdbIME`).
+
+은행·결제 앱은 보통 에뮬레이터에서 실행을 막고, 계정당 폰 한 대만 허용하는 앱은 실제 폰이 로그아웃될 수 있어요. 자세한 내용:
+[docs/android-device.md](docs/android-device.md)
+
 ## 구조
 
 - **서버** — Docker 안의 Python(FastAPI). 격리된 Chromium 브라우저, 내부 주소로는 나가지 못하게 막는 프록시, 코드 실행용 작업실이
@@ -257,7 +328,7 @@ Kelo는 누구에게나 [GNU Affero General Public License v3.0 이상](LICENSE)
 요청 시 상업용 라이선스를 드려요: support@kelo.chat.
 
 **기여.** 지금은 외부 풀 리퀘스트를 받지 않아요. 버그 제보와 제안은 이슈로 환영해요. 자세한 내용은
-[CONTRIBUTING.md](CONTRIBUTING.md)를 봐 주세요.
+[CONTRIBUTING.md](.github/CONTRIBUTING.md)를 봐 주세요.
 
 Kelo 이름, 로고, 마스코트는 라이선스에 포함되지 않아요. 포크는 자기 이름과 그림을 써야 해요. 포함된 다른 사람의 코드,
 글꼴, 서비스 아이콘과 그 라이선스: [NOTICE](NOTICE).

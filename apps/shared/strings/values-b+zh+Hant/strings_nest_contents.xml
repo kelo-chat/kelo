@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">查看將安裝的全部內容</string>
+    <string name="nest_contents_title">將安裝的內容</string>
+    <string name="nest_contents_warnings">載入時的提示</string>
+    <string name="nest_contents_endpoints">連線的位址</string>
+    <string name="nest_contents_none">無</string>
+    <string name="nest_contents_files">檔案</string>
+    <string name="nest_contents_total">共 %1$s</string>
+    <string name="nest_contents_cut">這個檔案太長，只顯示了一部分。</string>
+    <string name="nest_contents_back">全部檔案</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">查看變更</string>
+    <string name="nest_update_changed">%1$d 個檔案有變動</string>
+    <string name="nest_changed_title">這次更新改了什麼</string>
+    <string name="nest_changed_added">新增的檔案</string>
+    <string name="nest_changed_removed">刪除的檔案</string>
+    <string name="nest_changed_modified">變動的檔案</string>
+</resources>

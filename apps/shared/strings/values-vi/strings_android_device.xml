@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">Thiết bị Android</string>
+    <string name="android_device_connected">Đã kết nối</string>
+    <string name="android_device_not_connected">Chưa kết nối</string>
+    <string name="android_device_play_store">Play Store</string>
+    <string name="android_device_korean_input">Nhập tiếng Hàn</string>
+    <string name="android_device_missing">Không có</string>
+    <string name="android_device_check">Kiểm tra kết nối</string>
+    <string name="android_device_view">Xem màn hình</string>
+    <string name="android_device_note">Địa chỉ thiết bị được đặt trong .env của máy chủ. Xem “Thiết bị Android mà Kelo có thể dùng” trong README.</string>
+    <string name="android_device_readme">Mở README</string>
+</resources>

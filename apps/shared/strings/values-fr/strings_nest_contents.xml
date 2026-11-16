@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">Voir tout ce qui sera installé</string>
+    <string name="nest_contents_title">Ce qui sera installé</string>
+    <string name="nest_contents_warnings">Remarques au chargement</string>
+    <string name="nest_contents_endpoints">Où il se connecte</string>
+    <string name="nest_contents_none">Aucun</string>
+    <string name="nest_contents_files">Fichiers</string>
+    <string name="nest_contents_total">%1$s au total</string>
+    <string name="nest_contents_cut">Ce fichier est trop long, seule une partie est affichée.</string>
+    <string name="nest_contents_back">Tous les fichiers</string>
+    <string name="nest_contents_bytes">%1$d o</string>
+    <string name="nest_contents_kb">%1$d Ko</string>
+    <string name="nest_changed_open">Voir les modifications</string>
+    <string name="nest_update_changed">%1$d fichiers modifiés</string>
+    <string name="nest_changed_title">Ce que change cette mise à jour</string>
+    <string name="nest_changed_added">Fichiers ajoutés</string>
+    <string name="nest_changed_removed">Fichiers supprimés</string>
+    <string name="nest_changed_modified">Fichiers modifiés</string>
+</resources>

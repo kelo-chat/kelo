@@ -20,7 +20,7 @@ from assistant import wizard
 
 HERE = Path(__file__).resolve().parent
 GB = 1024**3
-BUILD_LOG = ["#1 [server internal] load build definition from Dockerfile", "#7 [server 4/9] RUN uv sync --frozen --no-dev",
+BUILD_LOG = ["#1 [server internal] load build definition from docker/server.Dockerfile", "#7 [server 4/9] RUN uv sync --frozen --no-dev",
              "#12 [workroom 3/6] RUN apt-get install -y libreoffice-writer", "#15 exporting to image", "#15 naming to docker.io/library/kelo:latest done",
              " Network assistant-server_agent  Created", " Container assistant-server-browser-1  Started",
              " Container assistant-server-server-1  Started"]

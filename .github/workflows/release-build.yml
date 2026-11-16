@@ -1,7 +1,7 @@
 # Kelo app builds for a release, made in public so anyone can check that what is in the stores is what the source says:
 #
 #   android  the Play bundle (.aab) and the APKs, built by tools/build/android-reproducible.sh in the pinned Docker environment
-#            (android/reproducible/Dockerfile). Anyone can build the same tag the same way and get the same files; the signature
+#            (apps/android/reproducible/Dockerfile). Anyone can build the same tag the same way and get the same files; the signature
 #            is the only difference. Compare with tools/verify/android-verify.sh (docs/verify-builds.md).
 #   windows  the MSI, EXE and MSIX from desktop-windows.yml (called here, so there is one definition of the Windows build). They are
 #            not byte-for-byte reproducible; the attestation below is their proof.
@@ -31,7 +31,7 @@ on:
         required: false
         default: true
       desktop_version:
-        description: "Windows package number, three numbers (1.0.8); empty = desktop/version.properties"
+        description: "Windows package number, three numbers (1.0.8); empty = apps/desktop/version.properties"
         required: false
         default: ""
 
@@ -59,7 +59,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/kelo-repro/gradle
-          key: kelo-repro-gradle-${{ hashFiles('android/kelo/gradle/verification-metadata.xml', 'android/kelo/gradle/libs.versions.toml') }}
+          key: kelo-repro-gradle-${{ hashFiles('apps/android/kelo/gradle/verification-metadata.xml', 'apps/android/kelo/gradle/libs.versions.toml') }}
 
       - name: Build in the pinned environment
         run: tools/build/android-reproducible.sh --targets play-aab,sideload-apk --out "$RUNNER_TEMP/android"

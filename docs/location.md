@@ -1,6 +1,6 @@
 # Location: coordinates, places and the permission card
 
-What the server does with the phone's location (backlog 24). Code: `src/assistant/location.py`, `weather.py` (`my_location`,
+What the server does with the phone's location (backlog 24). Code: `server/src/assistant/location.py`, `weather.py` (`my_location`,
 `set_here`), the card in `server.py` (`ask_location`, LOCATION REQUEST block), `api/approvals.py` (`POST /api/location-requests/{id}`).
 
 ## The phone's place
@@ -19,7 +19,7 @@ lightly: coordinates are rounded to 3 decimals (about 110 m) before they leave t
 
 ## For the runtime agent: the near-coordinates place search tool (tools/)
 
-The tool lives in `src/assistant/tools/` (runtime agent's area). What it can use from the server, in process:
+The tool lives in `server/src/assistant/tools/` (runtime agent's area). What it can use from the server, in process:
 
 - The user's place: `weather.here()` / the raw record behind `my_location` (`Weather._here_raw()`: `lat`, `lon`, `accuracy_m`,
   `at`, `name`, `sublocality`, `country_code`). Suggest a public `Weather.here_raw()` if you need it; ask the server agent.

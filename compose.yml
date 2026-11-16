@@ -15,6 +15,7 @@ x-kelo-compose-level: 2   # raised when a release needs a newer compose.yml (the
 
 x-build: &build
   context: .
+  dockerfile: docker/server.Dockerfile
   args:
     BROWSER: ${BROWSER:-chromium}     # chromium | chrome
 
@@ -49,6 +50,9 @@ services:
       ASSISTANT_UPDATER_URL: http://updater:9400         # updates from the app; used only with UPDATER_TOKEN (the main copy)
       KEYRING_URL: http://keyring:9500                   # the key container (docs/keyring.md)
       KEYRING_TOKEN: ${KEYRING_TOKEN:-}
+      ANDROID_BRIDGE_URL: ${ANDROID_BRIDGE_URL-http://android:8090}   # the Android bridge (docs/android-device.md); used only with the three below set
+      ANDROID_BRIDGE_TOKEN: ${ANDROID_BRIDGE_TOKEN:-}   # shared secret with the bridge, at least 32 characters
+      ANDROID_DEVICE: ${ANDROID_DEVICE:-}               # host:port of the device; empty = the feature is off
     env_file: ${ENV_FILE:-.env}        # API keys + token live ONLY in this container (instances use their own file)
     read_only: true
     tmpfs: ["/tmp"]
@@ -59,8 +63,9 @@ services:
     # host.docker.internal = this computer, for an app the owner runs next to Kelo (Connectors → Self-hosted); Docker Desktop has it already,
     # Linux needs this line. Only the owner's own connection form can use it; loopback and link-local stay refused (netguard.fetch_local).
     extra_hosts: ["host.docker.internal:host-gateway"]
-    networks: [agent, cli-net, browser-net, vpn-net, keyring-net]   # browser-net: the browser's DevTools (the server reaches it directly, not via the proxy);
-                                                       # vpn-net: web_fetch / web_search go through the VPN connector's sidecar when it is on
+    networks: [agent, cli-net, browser-net, vpn-net, keyring-net, android-net]   # browser-net: the browser's DevTools (the server reaches it directly, not via the proxy);
+                                                       # vpn-net: web_fetch / web_search go through the VPN connector's sidecar when it is on;
+                                                       # android-net: the Android bridge, when the `android` profile is on
     # (the main copy's server is also attached to updater-net, by the updater itself while it runs: see the updater below)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
@@ -165,14 +170,44 @@ services:
       timeout: 5s
       retries: 5
 
-  # ---- the work room: where the agent runs code and makes documents, charts and media (Dockerfile.workroom, workroom.py).
+  # ---- the Android bridge (docker/android/bridge.py, docs/android-device.md): opt-in profile `android`. adb plus a small HTTP API for ONE
+  # device the owner set up (a redroid container, an emulator or a spare phone with wireless debugging; ANDROID_DEVICE=host:port in .env).
+  # The server is its only neighbour (android-net, internal) and it answers only to ANDROID_BRIDGE_TOKEN (32+ characters; it refuses
+  # to start with a shorter one). Its one way out is android-out, to the device on the LAN: nothing else of ours is on that network.
+  # Turn it on: add `android` to COMPOSE_PROFILES in .env, then `docker compose --profile android up -d --build android`.
+  # No env_file: no keys and no server token.
+  android:
+    profiles: [android]
+    build: {context: docker/android}
+    image: ${KELO_ANDROID_IMAGE:-assistant-android:local}
+    <<: *hardening
+    restart: unless-stopped
+    user: "1006:1006"
+    environment:
+      ANDROID_DEVICE: ${ANDROID_DEVICE:-}              # host:port, e.g. 192.168.1.50:5555
+      ANDROID_BRIDGE_TOKEN: ${ANDROID_BRIDGE_TOKEN:-}
+      ANDROID_ADB_HOST: ${ANDROID_ADB_HOST:-}          # the Windows host address from WSL 2 (default gateway or mirrored 127.0.0.1)
+    read_only: true
+    tmpfs: ["/tmp"]                                    # adb's own socket and log
+    mem_limit: ${ANDROID_MEMORY:-256m}
+    memswap_limit: ${ANDROID_MEMORY:-256m}
+    volumes: ["android-adb:/home/bridge/.android"]     # adb's key: a phone paired once (wireless debugging) stays paired
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [android-net, android-out]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8090/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ---- the work room: where the agent runs code and makes documents, charts and media (docker/workroom.Dockerfile, workroom.py).
   # No network at all, no env_file (no keys, no ASSISTANT_TOKEN, no database), read-only root, unprivileged. The server talks to it
   # through a Unix socket in `workroom-io`, the only volume the two share; installs reach the package registries through the
   # server's proxy socket there, only while an install the user approved runs. Capped by default (`assistant limits --workroom-*`).
   workroom:
     build:
       context: .
-      dockerfile: Dockerfile.workroom
+      dockerfile: docker/workroom.Dockerfile
       args:
         WORKROOM_APT_PACKAGES: ${WORKROOM_APT_PACKAGES:-}   # extra Debian packages baked into the image (rebuild to apply)
     image: ${KELO_WORKROOM_IMAGE:-assistant-workroom:local}
@@ -194,7 +229,7 @@ services:
   # a compromised web page must not be able to reach a logged-in CLI. No env_file: no keys, no ASSISTANT_TOKEN.
   claude-cli:
     profiles: [claude]
-    build: {context: ., dockerfile: Dockerfile.cli, target: claude}
+    build: {context: ., dockerfile: docker/cli.Dockerfile, target: claude}
     image: ${KELO_CLI_CLAUDE_IMAGE:-assistant-cli-claude:local}
     <<: *hardening
     restart: unless-stopped
@@ -216,7 +251,7 @@ services:
 
   agy-cli:
     profiles: [agy]
-    build: {context: ., dockerfile: Dockerfile.cli, target: agy}
+    build: {context: ., dockerfile: docker/cli.Dockerfile, target: agy}
     image: ${KELO_CLI_AGY_IMAGE:-assistant-cli-agy:local}
     <<: *hardening
     restart: unless-stopped
@@ -236,7 +271,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ---- the updater (updater_service.py, Dockerfile.updater): opt-in profile `updater`, the main copy only (`assistant updater setup`
+  # ---- the updater (updater_service.py, docker/updater.Dockerfile): opt-in profile `updater`, the main copy only (`assistant updater setup`
   # writes the settings below into .env). The ONLY container with the Docker socket: it can pull images and restart this computer's
   # copies, and nothing else of ours can. No AI, no model keys, no web or mail content, no published port. It answers only on
   # updater-net (internal; the main copy's server is its only neighbour: the updater attaches it there itself, so no other copy gets
@@ -246,7 +281,7 @@ services:
   # files and env files it uses are exactly the ones the terminal uses.
   updater:
     profiles: [updater]
-    build: {context: ., dockerfile: Dockerfile.updater}
+    build: {context: ., dockerfile: docker/updater.Dockerfile}
     image: ${KELO_UPDATER_IMAGE:-assistant-updater:local}
     <<: *hardening
     restart: unless-stopped
@@ -279,7 +314,7 @@ services:
   # One tunnel per copy, started with the profile `cloudflare`; the tunnel credentials stay on this machine.
   cloudflared:
     profiles: [cloudflare]
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
     <<: *hardening
     restart: unless-stopped
     user: "${CLOUDFLARED_USER:-65532:65532}"
@@ -294,7 +329,7 @@ services:
   # Traffic passes through Cloudflare (https ends there). `assistant connect off` gives the name back.
   kelo-tunnel:
     profiles: [kelo]
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.7@sha256:4955524aeaa379e154023d5a027c250f7b35041a2e7e950cf13f144bc9b9c5ba
     <<: *hardening
     restart: unless-stopped
     command: tunnel --no-autoupdate run
@@ -327,11 +362,14 @@ networks:
   vpn-net: {internal: true}       # the VPN sidecar <-> egress and the server, nothing else (the browser is not on it)
   keyring-net: {internal: true}   # the server <-> the key container, nothing else
   keyring-out: {}                 # the key container's own way to the providers (and the LAN, for a custom endpoint)
+  android-net: {internal: true}   # the server <-> the Android bridge, nothing else (made with the server; empty while the profile is off)
+  android-out: {}                 # the Android bridge's own way to the device on the LAN
   updater-net: {internal: true}   # the main copy's server <-> the updater, nothing else (made only where the updater runs)
   updater-out: {}                 # the updater's own way to the release list and the signature checks
 
 volumes:
   server-state: {}
+  android-adb: {}       # the Android bridge's adb key (a paired phone stays paired)
   keyring-state: {}     # keyring.db: the AI providers' keys, sealed under the ring key (only the key container mounts it)
   browser-data: {}
   browser-downloads: {}   # files pages downloaded (written by the browser, read-only for the server); kept for a day

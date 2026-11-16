@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">Perangkat Android</string>
+    <string name="android_device_connected">Terhubung</string>
+    <string name="android_device_not_connected">Tidak terhubung</string>
+    <string name="android_device_play_store">Play Store</string>
+    <string name="android_device_korean_input">Input bahasa Korea</string>
+    <string name="android_device_missing">Tidak ada</string>
+    <string name="android_device_check">Periksa koneksi</string>
+    <string name="android_device_view">Lihat layar</string>
+    <string name="android_device_note">Alamat perangkat diatur di .env server. Lihat “Perangkat Android yang bisa dipakai Kelo” di README.</string>
+    <string name="android_device_readme">Buka README</string>
+</resources>

@@ -11,8 +11,8 @@ This document has two parts:
 1. **For the apps**: the endpoints, what they return, and how to render each component. This is all an app needs.
 2. **For package authors**: the `ui` section of `kelo-package.json` that the server turns into part 1.
 
-Publishing and permissions are in [`nest.md`](nest.md). The server code is `src/assistant/nest.py` (resolving, data, actions) and
-`src/assistant/nest_manifest.py` (checking a manifest).
+Publishing and permissions are in [`nest.md`](nest.md). The server code is `server/src/assistant/nest.py` (resolving, data, actions) and
+`server/src/assistant/nest_manifest.py` (checking a manifest).
 
 ---
 
@@ -294,7 +294,7 @@ components while older servers and apps still show the rest of the screen.
 
 ### A complete example
 
-`examples/packages/habit-tracker/` adds a Habits tab (a form, a list with a remove action, an "ask Kelo" button) and a Home card,
-bound to entries its skill also writes. `examples/packages/example_parcels/` adds a Parcels tab bound to its API-key connector, with a
-confirmed POST and DELETE. `examples/packages/daily-countdown/` is a screens-only extension that also shows the owner's upcoming
+`server/examples/packages/habit-tracker/` adds a Habits tab (a form, a list with a remove action, an "ask Kelo" button) and a Home card,
+bound to entries its skill also writes. `server/examples/packages/example_parcels/` adds a Parcels tab bound to its API-key connector, with a
+confirmed POST and DELETE. `server/examples/packages/daily-countdown/` is a screens-only extension that also shows the owner's upcoming
 calendar events.

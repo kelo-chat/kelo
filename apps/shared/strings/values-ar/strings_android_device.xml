@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">جهاز أندرويد</string>
+    <string name="android_device_connected">متصل</string>
+    <string name="android_device_not_connected">غير متصل</string>
+    <string name="android_device_play_store">متجر Play</string>
+    <string name="android_device_korean_input">الإدخال الكوري</string>
+    <string name="android_device_missing">غير متوفر</string>
+    <string name="android_device_check">فحص الاتصال</string>
+    <string name="android_device_view">عرض الشاشة</string>
+    <string name="android_device_note">يُضبط عنوان الجهاز في ملف .env على الخادم. راجع «جهاز أندرويد يمكن لـ Kelo استخدامه» في README.</string>
+    <string name="android_device_readme">فتح README</string>
+</resources>

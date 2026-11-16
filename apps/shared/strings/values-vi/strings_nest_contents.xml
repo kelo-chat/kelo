@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">Xem tất cả những gì sẽ được cài đặt</string>
+    <string name="nest_contents_title">Những gì sẽ được cài đặt</string>
+    <string name="nest_contents_warnings">Lưu ý khi tải</string>
+    <string name="nest_contents_endpoints">Nơi nó kết nối tới</string>
+    <string name="nest_contents_none">Không có</string>
+    <string name="nest_contents_files">Tệp</string>
+    <string name="nest_contents_total">Tổng cộng %1$s</string>
+    <string name="nest_contents_cut">Tệp này quá dài nên chỉ hiển thị một phần.</string>
+    <string name="nest_contents_back">Tất cả tệp</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">Xem thay đổi</string>
+    <string name="nest_update_changed">%1$d tệp đã thay đổi</string>
+    <string name="nest_changed_title">Bản cập nhật này thay đổi gì</string>
+    <string name="nest_changed_added">Tệp được thêm</string>
+    <string name="nest_changed_removed">Tệp đã xóa</string>
+    <string name="nest_changed_modified">Tệp đã sửa</string>
+</resources>

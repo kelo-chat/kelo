@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
+    <string name="connector_forget_title">هل تريد حذف البيانات القادمة من %1$s أيضًا؟</string>
+    <string name="connector_forget_files">الملفات: %1$d</string>
+    <string name="connector_forget_notes">الملاحظات: %1$d</string>
+    <string name="connector_forget_items">العناصر: %1$d</string>
+    <string name="connector_forget_trash">تنتقل الملفات إلى سلة المحذوفات في المكتبة.</string>
+    <string name="connector_forget_delete">حذف</string>
+    <string name="connector_forget_keep">إبقاء</string>
+    <string name="connector_forget_done">تم الحذف: %1$s</string>
+</resources>

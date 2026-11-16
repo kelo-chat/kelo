@@ -6,7 +6,7 @@
 #   tools/build/android.sh release full                   the signed APK with SMS / call log / notification reading (adb installs)
 #   tools/build/android.sh release play                   a signed APK of the Play build (for testing it on a phone)
 #   tools/build/android.sh bundle [play|full]             the signed App Bundle (.aab) for Google Play (default: play)
-#   tools/build/android.sh version [--build N]            only pick the number of the next release and write it to android/kelo/version.properties
+#   tools/build/android.sh version [--build N]            only pick the number of the next release and write it to apps/android/kelo/version.properties
 #
 # Quick builds on this Mac. The builds that go to the stores come from tools/build/android-reproducible.sh instead (a pinned
 # environment, so anyone can build the same files from the public source and compare; see docs/verify-builds.md).
@@ -16,14 +16,14 @@
 #   --build N         use versionCode N instead of a fresh one (rebuild a given release)
 #   --out DIR         also copy the result to DIR as kelo-<version>-N-<flavor>-<type>.apk|.aab
 #   --publish         after a release sideload build: offer it at <main copy>/download/android (assistant publish-app)
-#   --unsigned        allow a release build without android/keystore/keystore.properties (it is left unsigned)
-#   --write-version   this release build IS the release: also write N to android/kelo/version.properties (commit it with it)
+#   --unsigned        allow a release build without apps/android/keystore/keystore.properties (it is left unsigned)
+#   --write-version   this release build IS the release: also write N to apps/android/kelo/version.properties (commit it with it)
 #   --dry-run         print what would run (version, Gradle tasks, publish command) and stop
 #
 # Version: versionName = "version" of the root version.json (e.g. 0.9.0, docs/versioning.md); versionCode N = minutes since late
-# 2026, from the formula in android/kelo/app/build.gradle.kts. This script computes N once and passes -PkeloBuild=N, so the log
+# 2026, from the formula in apps/android/kelo/app/build.gradle.kts. This script computes N once and passes -PkeloBuild=N, so the log
 # and the APK agree. Only an explicit step writes N
-# into android/kelo/version.properties (the one tracked place the version is read from when no -PkeloBuild is given): `version`, or a
+# into apps/android/kelo/version.properties (the one tracked place the version is read from when no -PkeloBuild is given): `version`, or a
 # release build with --write-version. Test, debug and trial release builds never touch it. Commit the file with the release, and
 # building the tagged source again gives the same version (docs/verify-builds.md). (Versioning is moving to one root VERSION file.)
 source "$(dirname "$0")/lib.sh"
@@ -56,10 +56,10 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-ANDROID="$REPO/android/kelo"
+ANDROID="$REPO/apps/android/kelo"
 GRADLE_FILE="$ANDROID/app/build.gradle.kts"
 VERSION_FILE="$ANDROID/version.properties"
-KEYSTORE_PROPS="$REPO/android/keystore/keystore.properties"
+KEYSTORE_PROPS="$REPO/apps/android/keystore/keystore.properties"
 
 cap() { printf '%s%s' "$(printf '%s' "${1:0:1}" | tr '[:lower:]' '[:upper:]')" "${1:1}"; }
 
@@ -82,11 +82,11 @@ write_version_file() {
   local tmp; tmp="$(mktemp "$VERSION_FILE.XXXXXX")"
   sed "s/^build=.*/build=$BUILD_NO/" "$VERSION_FILE" >"$tmp" && mv "$tmp" "$VERSION_FILE"
   grep -q "^build=$BUILD_NO\$" "$VERSION_FILE" || die "could not write build=$BUILD_NO to $VERSION_FILE"
-  note "wrote build=$BUILD_NO to android/kelo/version.properties - commit it with the release"
+  note "wrote build=$BUILD_NO to apps/android/kelo/version.properties - commit it with the release"
 }
 if [ "$TYPE" = version ]; then
   log "Kelo Android next release: $VERSION"
-  if [ "$DRY_RUN" = 1 ]; then note "[dry-run] would write build=$BUILD_NO to android/kelo/version.properties"; else write_version_file; fi
+  if [ "$DRY_RUN" = 1 ]; then note "[dry-run] would write build=$BUILD_NO to apps/android/kelo/version.properties"; else write_version_file; fi
   note "CHANGELOG heading for this release: ## $VERSION — $(date +%Y-%m-%d)"
   exit 0
 fi
@@ -111,25 +111,25 @@ fi
 
 log "Kelo Android $VERSION ($TYPE $FLAVOR$([ "$BUNDLE" = 1 ] && echo ', bundle'))"
 
-# --- signing: android/keystore/keystore.properties (read by Gradle; never printed here)
+# --- signing: apps/android/keystore/keystore.properties (read by Gradle; never printed here)
 if [ "$TYPE" = release ]; then
   if [ -f "$KEYSTORE_PROPS" ]; then
     STORE_FILE="$(sed -n 's/^storeFile=//p' "$KEYSTORE_PROPS" | head -1)"
-    [ -n "$STORE_FILE" ] && [ -f "$REPO/android/keystore/$STORE_FILE" ] || die "keystore.properties names a storeFile that is not in android/keystore"
-    note "signing: android/keystore ($STORE_FILE)"
+    [ -n "$STORE_FILE" ] && [ -f "$REPO/apps/android/keystore/$STORE_FILE" ] || die "keystore.properties names a storeFile that is not in apps/android/keystore"
+    note "signing: apps/android/keystore ($STORE_FILE)"
   elif [ "$UNSIGNED" = 1 ]; then
-    warn "no android/keystore/keystore.properties: the release build is left UNSIGNED (cannot be installed or uploaded)"
+    warn "no apps/android/keystore/keystore.properties: the release build is left UNSIGNED (cannot be installed or uploaded)"
   else
-    die "no android/keystore/keystore.properties, so a release build would be unsigned. Restore the keystore, or pass --unsigned."
+    die "no apps/android/keystore/keystore.properties, so a release build would be unsigned. Restore the keystore, or pass --unsigned."
   fi
 fi
 
-source_commit android/kelo shared version.json   # the version line in My links to this commit (app/build.gradle.kts: SOURCE_COMMIT)
+source_commit apps/android/kelo apps/shared version.json   # the version line in My links to this commit (app/build.gradle.kts: SOURCE_COMMIT)
 note "source: ${SOURCE_COMMIT:-unknown}$([ "$SOURCE_DIRTY" = true ] && echo ' (modified: files differ from this commit)')"
 GRADLE=(./gradlew --no-daemon --console=plain -PkeloBuild="$BUILD_NO" -PkeloCommit="$SOURCE_COMMIT" -PkeloDirty="$SOURCE_DIRTY" -Pkotlin.compiler.execution.strategy=in-process
         ${TASKS[@]+"${TASKS[@]}"})
 if [ "$DRY_RUN" = 1 ]; then
-  note "[dry-run] (cd android/kelo && JAVA_HOME=/opt/homebrew/opt/openjdk@17 $(printf '%q ' "${GRADLE[@]}"))"
+  note "[dry-run] (cd apps/android/kelo && JAVA_HOME=/opt/homebrew/opt/openjdk@17 $(printf '%q ' "${GRADLE[@]}"))"
 else
   need_disk
   use_jdk17
@@ -194,8 +194,8 @@ fi
 note "CHANGELOG heading for this build: ## $VERSION — $(date +%Y-%m-%d)"
 if [ "$BUNDLE" = 1 ]; then
   note "upload to Play (internal track, as a draft):"
-  note "  uv run --with google-auth --with requests python3 android/play/upload.py --aab $RESULT --track internal"
-  note "  (needs KELO_PLAY_KEY = the service account JSON; see android/play/PLAY.md)"
+  note "  uv run --with google-auth --with requests python3 apps/android/play/upload.py --aab $RESULT --track internal"
+  note "  (needs KELO_PLAY_KEY = the service account JSON; see apps/android/play/PLAY.md)"
 fi
 if [ "$PUBLISH" = 0 ] && [ "$TYPE" = release ] && [ "$FLAVOR" = sideload ] && [ "$BUNDLE" = 0 ]; then
   note "offer it for download (main copy): (cd $REPO && $(printf '%q ' "${PUBLISH_CMD[@]}"))"

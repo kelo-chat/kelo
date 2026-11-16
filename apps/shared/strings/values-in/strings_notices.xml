@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">Pengumuman</string>
+    <string name="notices_important">Penting</string>
+    <string name="notices_more">Lihat selengkapnya</string>
+    <string name="notices_close">Tutup</string>
+</resources>

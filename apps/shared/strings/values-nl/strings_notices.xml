@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">Mededelingen</string>
+    <string name="notices_important">Belangrijk</string>
+    <string name="notices_more">Meer lezen</string>
+    <string name="notices_close">Sluiten</string>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">Android cihaz</string>
+    <string name="android_device_connected">Bağlı</string>
+    <string name="android_device_not_connected">Bağlı değil</string>
+    <string name="android_device_play_store">Play Store</string>
+    <string name="android_device_korean_input">Korece giriş</string>
+    <string name="android_device_missing">Yok</string>
+    <string name="android_device_check">Bağlantıyı kontrol et</string>
+    <string name="android_device_view">Ekranı göster</string>
+    <string name="android_device_note">Cihaz adresi sunucunun .env dosyasında ayarlanır. README\'deki “Kelo\'nun kullanabileceği bir Android cihaz” bölümüne bakın.</string>
+    <string name="android_device_readme">README\'yi aç</string>
+</resources>

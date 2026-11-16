@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A real Kelo server (src/assistant/server.py) with a filled storage, for screenshots of the storage warning and the cleanup screen.
+"""A real Kelo server (server/src/assistant/server.py) with a filled storage, for screenshots of the storage warning and the cleanup screen.
 
     uv run python tools/storage_demo_server.py --state /tmp/kelo-storage-demo --lang ko --level warn --port 18931
 
@@ -26,7 +26,7 @@ from collections import namedtuple
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "server" / "src"))
 
 TOKEN = "kelo-storage-demo-token-0001"
 DAY = 86400

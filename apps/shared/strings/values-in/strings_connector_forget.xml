@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
+    <string name="connector_forget_title">Hapus juga data yang berasal dari %1$s?</string>
+    <string name="connector_forget_files">File: %1$d</string>
+    <string name="connector_forget_notes">Catatan: %1$d</string>
+    <string name="connector_forget_items">Item: %1$d</string>
+    <string name="connector_forget_trash">File dipindahkan ke tempat sampah pustaka.</string>
+    <string name="connector_forget_delete">Hapus</string>
+    <string name="connector_forget_keep">Simpan</string>
+    <string name="connector_forget_done">Dihapus: %1$s</string>
+</resources>

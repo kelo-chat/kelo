@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">ประกาศ</string>
+    <string name="notices_important">สำคัญ</string>
+    <string name="notices_more">ดูเพิ่มเติม</string>
+    <string name="notices_close">ปิด</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
+    <string name="connector_forget_title">%1$s에서 가져온 자료도 지울까요?</string>
+    <string name="connector_forget_files">파일 %1$d개</string>
+    <string name="connector_forget_notes">메모 %1$d개</string>
+    <string name="connector_forget_items">항목 %1$d개</string>
+    <string name="connector_forget_trash">파일은 휴지통으로 가요</string>
+    <string name="connector_forget_delete">지우기</string>
+    <string name="connector_forget_keep">남겨두기</string>
+    <string name="connector_forget_done">지웠어요: %1$s</string>
+</resources>

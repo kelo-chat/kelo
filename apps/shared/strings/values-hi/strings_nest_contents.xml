@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">इंस्टॉल होने वाली हर चीज़ देखें</string>
+    <string name="nest_contents_title">क्या इंस्टॉल होगा</string>
+    <string name="nest_contents_warnings">लोड करते समय की सूचनाएँ</string>
+    <string name="nest_contents_endpoints">यह किससे जुड़ता है</string>
+    <string name="nest_contents_none">कुछ नहीं</string>
+    <string name="nest_contents_files">फ़ाइलें</string>
+    <string name="nest_contents_total">कुल %1$s</string>
+    <string name="nest_contents_cut">यह फ़ाइल बहुत लंबी है, इसलिए इसका केवल एक हिस्सा दिख रहा है।</string>
+    <string name="nest_contents_back">सभी फ़ाइलें</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">बदलाव देखें</string>
+    <string name="nest_update_changed">%1$d फ़ाइलें बदली गईं</string>
+    <string name="nest_changed_title">इस अपडेट में क्या बदलता है</string>
+    <string name="nest_changed_added">जोड़ी गई फ़ाइलें</string>
+    <string name="nest_changed_removed">हटाई गई फ़ाइलें</string>
+    <string name="nest_changed_modified">बदली गई फ़ाइलें</string>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">Устройство Android</string>
+    <string name="android_device_connected">Подключено</string>
+    <string name="android_device_not_connected">Не подключено</string>
+    <string name="android_device_play_store">Play Маркет</string>
+    <string name="android_device_korean_input">Ввод на корейском</string>
+    <string name="android_device_missing">Нет</string>
+    <string name="android_device_check">Проверить подключение</string>
+    <string name="android_device_view">Показать экран</string>
+    <string name="android_device_note">Адрес устройства задаётся в файле .env на сервере. См. «Устройство Android, которым может пользоваться Kelo» в README.</string>
+    <string name="android_device_readme">Открыть README</string>
+</resources>

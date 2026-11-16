@@ -10,6 +10,10 @@ curl -fsSL https://kelo.chat/install.sh | bash
 irm https://kelo.chat/install.ps1 | iex
 ```
 
+> **Mac (coming): Kelo Server.pkg:** Work is underway on a signed macOS installer package (`Kelo Server.pkg`) for macOS 26+ on Apple silicon. It installs Apple `container` and Kelo's container runtime to run Kelo without Docker or terminal commands. It configures the background LaunchDaemon (`chat.kelo.server`) and opens the guided setup in your browser. Not released yet; see [Direction since 2026-11-16](native-server.md#direction-since-2026-11-16-apple-container-on-macos-26-apple-silicon).
+>
+> **Windows without Docker Desktop:** Work is underway on a dedicated Windows installer that runs Docker Engine inside Kelo's own WSL 2 distro (no Docker Desktop needed, free for everyone). For architecture and status, see [Direction since 2026-11-16 (Windows)](native-server.md#direction-since-2026-11-16-windows).
+
 The installer downloads the newest release of [kelo-chat/kelo-server](https://github.com/kelo-chat/kelo-server) (the server part of
 each release) into `~/kelo`. To install from another copy instead, tell it where the Kelo files are:
 
@@ -29,13 +33,18 @@ What the installer does:
 4. Copies the Kelo files. Your `.env`, `instances/`, `connect/` and the phone app folders are never overwritten.
 5. Prepares Python with `uv sync`, and adds a `kelo` command (`~/.local/bin/kelo`, or `kelo.cmd` on Windows) that runs
    `assistant` in the Kelo folder: `kelo status`, `kelo phone add`, `kelo limits --choose`.
-6. Opens the guided setup (`assistant setup`), described below.
+6. Opens the guided setup (`assistant setup --from-release`), described below. It pulls the signed official Kelo images
+   (digest and signature checked) and starts them; nothing is built on your computer. If the pull fails, it says why and
+   builds the images here instead. `--build-here` builds them here from the start (slow).
 
-Options: `--yes` (no questions; defaults everywhere, never deletes data), `--dir DIR`, `--source SRC`, `--no-start`,
-`--uninstall` (add `--delete-data` to also delete chats, keys and files). On Windows: `-Yes`, `-Dir`, `-Source`, `-NoStart`,
-`-Uninstall`, `-DeleteData`. `NO_COLOR=1` turns colours off. Questions are read from the terminal even through `curl | bash`.
+Options: `--yes` (no questions; defaults everywhere, never deletes data), `--add NAME` (add another Kelo server copy),
+`--dir DIR`, `--source SRC`, `--from-release` (the default), `--build-here`, `--no-start`, `--uninstall` (add `--delete-data`
+to also delete chats, keys and files). On Windows: `-Yes`, `-Add NAME`, `-Dir`, `-Source`, `-FromRelease`, `-BuildHere`,
+`-NoStart`, `-Uninstall`, `-DeleteData`. A custom `--source` is built here, since it is not the release, unless `--from-release`
+is given too. `NO_COLOR=1` turns colours off. Questions are read from the terminal even through `curl | bash`.
 
-- **Update:** run the same command again. Your data, keys and signed-in phones stay; the containers are rebuilt and restarted.
+- **Update:** run the same command again (the installer asks whether to update or add another copy; with `--yes` / `-Yes` it
+  updates directly). Your data, keys and signed-in phones stay; the containers are rebuilt and restarted.
 - **Uninstall:** `bash install.sh --uninstall`. It stops every copy, removes the main containers and the `kelo` command, gives
   a Kelo address back, and keeps your data (Docker volumes, `.env` and `instances/`) unless you add `--delete-data` (then
   every copy is deleted with `kelo instance delete`).
@@ -43,7 +52,7 @@ Options: `--yes` (no questions; defaults everywhere, never deletes data), `--dir
 ## The guided setup
 
 `assistant setup` (or `kelo setup`) in a terminal opens a four-step screen in the system language (any language in
-`src/assistant/locales/`; `KELO_LANG=ko` or `KELO_LANG=en` overrides it):
+`server/src/assistant/locales/`; `KELO_LANG=ko` or `KELO_LANG=en` overrides it):
 
 1. **Check the Kelo server** – Docker, Compose, and the CPUs, RAM and free disk Docker can use. Creates the access token and the
    encryption key (never shown).
@@ -52,7 +61,10 @@ Options: `--yes` (no questions; defaults everywhere, never deletes data), `--dir
    the server, browser, work room and Claude/agy containers each get a share of it. It suggests Minimum when the computer is
    smaller than Recommended and warns if a choice is above what it has. Change it later with `assistant limits --choose`
    (or `--profile recommended|minimum|unlimited`; single sizes such as `--memory` still work).
-3. **Start Kelo** – `docker compose up -d --build` with a spinner and the last few log lines, then waits until Kelo answers.
+3. **Start Kelo** – with `--from-release` (the installer's default) it first pulls and checks the signed official images, then runs
+   `docker compose up -d` (no build; the Claude and agy containers are still built here, as their CLIs are not published). If the
+   pull fails it shows the reason and runs `docker compose up -d --build` instead. Without `--from-release` it is
+   `docker compose up -d --build`. Either way a spinner and the last few log lines show, then it waits until Kelo answers.
 4. **Phone** – a `<name>.kelo.chat` address (offered for now; availability and terms may change) (`assistant connect kelo`), Tailscale or your own domain (prints the
    commands to run), or skip for now (the phone app needs an https address, so it cannot sign in until one is set). Then it
    shows a compact QR code (about 20 lines) to scan with the phone, and the link.
@@ -65,8 +77,18 @@ A re-run is an update: it keeps every answer as the suggestion (press Enter) and
 
 - `assistant setup --plain` asks the old plain-text questions.
 - `assistant setup --yes` asks nothing.
-- `--no-start` saves the answers without building.
+- `--no-start` saves the answers without building or starting.
+- `--from-release` pulls and checks the signed release images instead of building them here (the installer passes it by default).
 - `--browser`, `--cli` and `--profile` still skip their questions.
+
+### Setup in a browser
+
+`assistant setup --web` asks the same four steps in a page instead of the terminal: it prints a link, opens it in the
+browser, and the page answers each question as the terminal would. The page runs only on this computer (it listens on
+127.0.0.1 only), and the link carries a one-time token in its fragment, so the token never reaches a server log. When the
+run ends, the page shows the summary (or the failure) and the server stops by itself. `--no-open` only prints the link and
+leaves the browser alone. The terminal setup is unchanged; the Mac and Windows installers are
+planned to use this page.
 
 Screenshots: `docs/install-demo/`.
 
@@ -74,9 +96,10 @@ Screenshots: `docs/install-demo/`.
 
 The installer sets up the **updater** container (`assistant updater setup`) and asks one question, "Update automatically at
 night?" (default no). Installer options: `--auto-update` / `--no-auto-update` (`KELO_AUTO_UPDATE=1|0`; PowerShell `-AutoUpdate` /
-`-NoAutoUpdate`) skip the question, and `--from-release` (`KELO_FROM_RELEASE=1`; `-FromRelease`) pulls and checks the signed
-release images instead of building them here (the Claude and agy containers are still built here: their CLIs are never
-published). `KELO_REGISTRY` points at another registry (default `ghcr.io/kelo-chat`).
+`-NoAutoUpdate`) skip the question. The installer pulls and checks the signed release images by default (`--from-release`,
+`KELO_FROM_RELEASE=1`, `-FromRelease`); `--build-here` (`KELO_FROM_RELEASE=0`, `-BuildHere`) builds them here instead (the Claude
+and agy containers are built here either way: their CLIs are never published). `KELO_REGISTRY` points at another registry
+(default `ghcr.io/kelo-chat`).
 
 `assistant updater setup` writes into `.env`, printing no secret:
 
@@ -99,6 +122,15 @@ How a release is made (for the operator; nothing is published automatically): a 
 linux/amd64 and linux/arm64, pushes them to `ghcr.io/kelo-chat/<name>:<version>` and `:stable`, signs them with cosign keyless, and
 attaches `release.json`. `assistant publish-server release.json` on the operator's server adds it to
 `https://kelo.chat/download/latest.json` under `"server"`, where every updater reads it.
+
+## More than one Kelo server on one computer
+
+One computer can host several Kelo servers (for different people, or for testing). Running the installer again asks whether to update or create another copy (`--add <name>` / `-Add <name>` creates one directly; `--yes` / `-Yes` updates). You can also run `kelo instance create <name>` at any time.
+
+- **What is separate:** Each copy runs on its own port, with its own access token, database, chats, files, API keys, and phone pairings. Each copy can also have its own `<name>.kelo.chat` address (`kelo connect kelo`). Settings live in `instances/<name>/env`.
+- **What is shared:** Docker images and the updater container are shared across all copies on the computer.
+- **Updating:** Only the main copy runs the updater; an update from the main copy's app (or `kelo update`) updates all copies together.
+- **Memory:** Each additional copy needs its own RAM and disk space. Recommended size for another copy is 4 GB RAM (minimum 2 GB). Check and adjust caps anytime with `kelo limits --instance <name>`.
 
 ## Optional settings
 

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="actions_title">Kelo 做过的事</string>
+    <string name="actions_period_today">今天</string>
+    <string name="actions_period_7d">7天</string>
+    <string name="actions_period_30d">30天</string>
+    <string name="actions_state_unknown">确认中</string>
+    <string name="actions_state_failed">未成功</string>
+    <string name="actions_empty">Kelo 还没有在外部进行过操作。</string>
+    <string name="actions_outside_text_note">从网页、邮件和文件中读取的内容仅作为数据处理，绝不作为指令；此类文本无法促使 Kelo 进行支付、发送或删除任何内容。</string>
+</resources>

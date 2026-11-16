@@ -1,0 +1,42 @@
+{
+  "name": "login-card-once",
+  "about": "Asking for the same login twice in one reply leaves one open login card.",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Sign in to my shop account at shop.example.test"
+  ],
+  "model": [
+    [
+      {
+        "tool": "request_login",
+        "args": {
+          "site": "https://shop.example.test/login"
+        }
+      }
+    ],
+    [
+      {
+        "tool": "request_login",
+        "args": {
+          "site": "https://shop.example.test/login"
+        }
+      }
+    ],
+    [
+      {
+        "text": "I need your sign-in for the shop; please fill in the card."
+      }
+    ]
+  ],
+  "real": [
+    "request_login"
+  ],
+  "expect": {
+    "login_cards": 1,
+    "reply_contains": [
+      "sign-in"
+    ]
+  }
+}

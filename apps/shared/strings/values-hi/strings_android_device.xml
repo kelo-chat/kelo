@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">Android डिवाइस</string>
+    <string name="android_device_connected">कनेक्टेड</string>
+    <string name="android_device_not_connected">कनेक्ट नहीं है</string>
+    <string name="android_device_play_store">Play Store</string>
+    <string name="android_device_korean_input">कोरियाई इनपुट</string>
+    <string name="android_device_missing">नहीं है</string>
+    <string name="android_device_check">कनेक्शन जाँचें</string>
+    <string name="android_device_view">स्क्रीन देखें</string>
+    <string name="android_device_note">डिवाइस का पता सर्वर की .env में सेट होता है। README में “Kelo के इस्तेमाल लायक Android डिवाइस” देखें।</string>
+    <string name="android_device_readme">README खोलें</string>
+</resources>

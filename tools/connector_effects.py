@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Writes docs/connector-permissions.md: for every connector, the kinds of action it has (read, change, send, delete) and the actions in
-each kind, taken from the code (src/assistant/effects.py, presets.py, mcp_oauth.py, oauth_connect.py). A test keeps the file in step.
+each kind, taken from the code (server/src/assistant/effects.py, presets.py, mcp_oauth.py, oauth_connect.py). A test keeps the file in step.
 
   uv run python tools/connector_effects.py            # print it
   uv run python tools/connector_effects.py --write    # update docs/connector-permissions.md
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "server" / "src"))
 
 from assistant import effects, forbidden  # noqa: E402
 from assistant.catalog import BY_ID  # noqa: E402
@@ -77,7 +77,7 @@ def render() -> str:
            "its tool asks today. `allow` means no approval card, except for payments, purchases, card and PIN steps, sign-ups and account steps, "
            "and anything the privacy guard flags: they keep their own checks always. `ask` means a card every time, even where a standing rule "
            "or a task's permission would have allowed it. `off` means the step is not run and the model is told the owner turned it off.", "",
-           "API: `GET/PUT/DELETE /api/connectors/{id}/permissions` (see `src/assistant/permissions.py`). Kinds: " + ", ".join(KINDS) + ".", ""]
+           "API: `GET/PUT/DELETE /api/connectors/{id}/permissions` (see `server/src/assistant/permissions.py`). Kinds: " + ", ".join(KINDS) + ".", ""]
     for fam, title in FAMILY_TITLES.items():
         out += [f"## {title}", "", "| Action id | Label | Kind | Tool |", "|---|---|---|---|"]
         acts = FAMILIES[fam]
@@ -107,7 +107,7 @@ def render() -> str:
         out.append(f"| {nm} | `{cid}` | {fam} | {', '.join(kinds_of(fam, sends))} |")
     c = counts()
     out += ["", "## Never called or always asked", "",
-            "Whatever the connector's setting, a standing rule or a task's permission says (`src/assistant/forbidden.py`). **never**: the call is "
+            "Whatever the connector's setting, a standing rule or a task's permission says (`server/src/assistant/forbidden.py`). **never**: the call is "
             "refused before any request, whoever asks (it would break or hijack Kelo, run arbitrary code on the owner's machine, or mint a new "
             "key, token or password that would come back to Kelo). **ask**: the step always shows an Allow/Deny card, and `allow` does not skip it. "
             "Class: code, takeover (who can get in), system, data (cannot come back). Methods `*` = every method; paths are matched against the "

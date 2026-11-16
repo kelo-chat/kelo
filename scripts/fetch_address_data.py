@@ -1,4 +1,4 @@
-"""Rebuild src/assistant/data/address_data.json: the open address metadata the shipping forms are built from.
+"""Rebuild server/src/assistant/data/address_data.json: the open address metadata the shipping forms are built from.
 
 Sources (see NOTICE):
 - Google's address metadata (the data behind libaddressinput / Chromium's address forms), CC-BY 4.0:
@@ -23,7 +23,7 @@ from pathlib import Path
 BASE = "https://chromium-i18n.appspot.com/ssl-address/data"
 PHONE = "https://raw.githubusercontent.com/google/libphonenumber/master/resources/PhoneNumberMetadata.xml"
 ZONES = "https://data.iana.org/time-zones/tzdb/zone.tab"
-OUT = Path(__file__).resolve().parents[1] / "src" / "assistant" / "data" / "address_data.json"
+OUT = Path(__file__).resolve().parents[1] / "server" / "src" / "assistant" / "data" / "address_data.json"
 KEEP = ("name", "lang", "languages", "fmt", "lfmt", "require", "upper", "zip", "zipex", "state_name_type", "locality_name_type",
         "sublocality_name_type", "zip_name_type", "sub_keys", "sub_names", "sub_lnames")
 

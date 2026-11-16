@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">الإعلانات</string>
+    <string name="notices_important">مهم</string>
+    <string name="notices_more">عرض التفاصيل</string>
+    <string name="notices_close">إغلاق</string>
+</resources>

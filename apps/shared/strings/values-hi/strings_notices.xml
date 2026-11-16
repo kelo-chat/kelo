@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">सूचनाएं</string>
+    <string name="notices_important">ज़रूरी</string>
+    <string name="notices_more">और जानें</string>
+    <string name="notices_close">बंद करें</string>
+</resources>

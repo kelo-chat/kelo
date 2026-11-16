@@ -39,8 +39,9 @@ Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
 
 - **Managed policy** (`docker/chromium-policy.json`, installed root-owned to `/etc/chromium/policies/managed/` and Chrome's directory):
   component updates, metrics, feedback, sign-in and sync off; password manager and leak detection off (the vault handles logins);
-  address/card autofill off; spelling service, translate, search suggestions, media router (LAN cast discovery) off; notifications,
-  location, sensors, USB/serial/Bluetooth/HID and local fonts denied by default; PDFs open in the browser (`AlwaysOpenPdfExternally:
+  address/card autofill off; spelling service, translate, search suggestions, media router (LAN cast discovery) off; notifications
+  set to **ask** (`DefaultNotificationsSetting: 3`: a site's permission reads "default", like a normal Chrome; nobody answers the
+  prompt, so no site is ever granted); location, sensors, USB/serial/Bluetooth/HID and local fonts denied by default; PDFs open in the browser (`AlwaysOpenPdfExternally:
   false`) and nothing asks for a download folder; Google update/variations/autofill/optimization hosts blocked (also refused by the proxy).
   Check it at `chrome://policy` in the viewer.
 - **Language and time zone**: `BROWSER_LANG` (default `ko-KR`) sets `--lang` and `--accept-lang` (`ko-KR,ko,en-US,en`): what sites see in
@@ -49,7 +50,7 @@ Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
   container's own `TZ` (`BROWSER_TZ`, default Asia/Seoul) covers anything opened otherwise.
 - **Identity: Google Chrome.** The browser is used for ordinary personal browsing on the user's behalf (shopping, bookings, mail,
   forms), so sites should treat it like the normal desktop Chrome most people use, not like an unusual or automated client. Which build
-  it is comes from `BROWSER` in `.env` (`assistant setup` asks; the Dockerfile records the result in `/etc/kelo-browser`):
+  it is comes from `BROWSER` in `.env` (`assistant setup` asks; docker/server.Dockerfile records the result in `/etc/kelo-browser`):
   - `BROWSER=chrome` (this server): **real Google Chrome stable**, installed from Google's signed apt repository
     (`dl.google.com/linux/chrome/deb`). Google publishes it for **linux/amd64 and, since mid-2026, linux/arm64** (Apple-silicon Docker
     Desktop runs arm64), checked 2026-11-08: both architectures carry `google-chrome-stable` 157.0.8103.38. Nothing about its identity is
@@ -70,7 +71,13 @@ Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
     Chromium's own brand list (the UA string is still right); Kelo never opens tabs that way (Playwright opens `about:blank` first).
   - Both: headful on a 1440×900 screen (Xvfb), no "Headless" anywhere, `navigator.webdriver` `false` (Chrome only sets it with
     `--enable-automation`/headless, which are not used), language and time zone are the user's own (below).
-- **What is deliberately not done**: no canvas, WebGL, audio, font, screen or timing noise, no hiding of DevTools, no other fingerprint
+- **WebGL and notifications (2026-11-15)**: the browser has a WebGL context like a desktop Chrome without a GPU: the entrypoint passes
+  `--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist` (software GL, the renderer string is SwiftShader's).
+  Notifications are "ask" by policy, so a site reads `default`/`prompt` and never `denied`. These are generic, for every site; no site
+  is named anywhere. Measured on the image (Chromium 156, arm64): WebGL 1 and WebGL 2 both give a context; the unmasked renderer is
+  `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device …), SwiftShader driver)`. A blank `about:blank` tab still reads "denied" (an opaque
+  origin); a real site reads "default". Before the change: no WebGL context at all, "denied" everywhere.
+- **What is deliberately not done**: no canvas, audio, font, screen or timing noise, no WebGL value faked, no hiding of DevTools, no other fingerprint
   forging. The only goal is that the browser's identity is consistently "Chrome" everywhere a site can look; consistency matters more than
   tricks, and the browser stays honest about everything else (it is a Linux desktop Chrome, which is what it really is).
 - **How it was checked** (2026-11-08, linux/arm64, local test page and a tiny local HTTP server inside the container, no external sites):

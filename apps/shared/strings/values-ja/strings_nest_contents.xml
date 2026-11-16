@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">インストールされる内容をすべて見る</string>
+    <string name="nest_contents_title">インストールされる内容</string>
+    <string name="nest_contents_warnings">読み込み時のお知らせ</string>
+    <string name="nest_contents_endpoints">接続先</string>
+    <string name="nest_contents_none">なし</string>
+    <string name="nest_contents_files">ファイル</string>
+    <string name="nest_contents_total">合計 %1$s</string>
+    <string name="nest_contents_cut">このファイルは長すぎるため、一部だけを表示しています。</string>
+    <string name="nest_contents_back">すべてのファイル</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">変更内容を見る</string>
+    <string name="nest_update_changed">変更されたファイル %1$d 件</string>
+    <string name="nest_changed_title">このアップデートで変わること</string>
+    <string name="nest_changed_added">追加されたファイル</string>
+    <string name="nest_changed_removed">削除されたファイル</string>
+    <string name="nest_changed_modified">変更されたファイル</string>
+</resources>

@@ -73,14 +73,20 @@ case "${ROLE:-}" in
     # --no-sandbox: Chrome's sandbox needs user namespaces the container does not grant. The
     # container (unprivileged, no capabilities, no host mounts, no network route but the proxy) is the sandbox instead.
     # Managed policy (/etc/chromium/policies/managed/kelo.json): no sync, sign-in, password manager, autofill, metrics or component
-    # updates; notifications and location denied; PDFs open in the browser. Headful on a 1440x900 screen with a Chrome identity (above);
-    # nothing else is disguised (navigator.webdriver is already false when the browser is driven over DevTools like this).
+    # updates; notifications ask (nobody answers, so no site is ever granted); location denied; PDFs open in the browser. Headful on a
+    # 1440x900 screen with a Chrome identity (above). WebGL is on the way a desktop Chrome without a GPU has it: SwiftShader (software
+    # GL inside the browser, no GPU needed). That enables a feature every normal Chrome has; no value is faked. navigator.webdriver is
+    # already false when the browser is driven over DevTools like this; --disable-blink-features=AutomationControlled keeps the
+    # rest of Blink's automation mode off as well, as on a desktop Chrome a person uses.
     # shellcheck disable=SC2086
     exec browser \
       --no-sandbox --no-first-run --no-default-browser-check \
       --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
       --user-data-dir=/data/profile \
-      --window-size=1440,900 --start-maximized --disable-dev-shm-usage $CACHE_FLAG $PROXY_FLAG $LANG_FLAGS \
+      --window-size=1440,900 --start-maximized --disable-dev-shm-usage \
+      --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist \
+      --disable-blink-features=AutomationControlled \
+      $CACHE_FLAG $PROXY_FLAG $LANG_FLAGS \
       ${UA_FLAG:+"$UA_FLAG"} \
       about:blank
     ;;

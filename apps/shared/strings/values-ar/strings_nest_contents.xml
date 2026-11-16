@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">عرض كل ما سيُثبَّت</string>
+    <string name="nest_contents_title">ما الذي سيُثبَّت</string>
+    <string name="nest_contents_warnings">ملاحظات أثناء التحميل</string>
+    <string name="nest_contents_endpoints">أين يتصل</string>
+    <string name="nest_contents_none">لا شيء</string>
+    <string name="nest_contents_files">الملفات</string>
+    <string name="nest_contents_total">المجموع %1$s</string>
+    <string name="nest_contents_cut">هذا الملف طويل جدًا، لذلك يُعرض جزء منه فقط.</string>
+    <string name="nest_contents_back">كل الملفات</string>
+    <string name="nest_contents_bytes">%1$d بايت</string>
+    <string name="nest_contents_kb">%1$d كيلوبايت</string>
+    <string name="nest_changed_open">عرض التغييرات</string>
+    <string name="nest_update_changed">الملفات المعدّلة: %1$d</string>
+    <string name="nest_changed_title">ما الذي يغيّره هذا التحديث</string>
+    <string name="nest_changed_added">الملفات المضافة</string>
+    <string name="nest_changed_removed">الملفات المحذوفة</string>
+    <string name="nest_changed_modified">الملفات المعدّلة</string>
+</resources>

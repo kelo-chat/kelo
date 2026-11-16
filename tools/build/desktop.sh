@@ -1,16 +1,16 @@
 #!/bin/bash
-# Kelo for the desktop (Compose Multiplatform, desktop/). See tools/build/README.md.
+# Kelo for the desktop (Compose Multiplatform, apps/desktop/). See tools/build/README.md.
 #
 #   tools/build/desktop.sh test                 the desktop unit tests (Gradle, JDK 17)
 #   tools/build/desktop.sh mac                  the macOS disk image (jpackage via ./gradlew packageDmg) -> dist/, built with the JDK
-#                                               pinned in desktop/packaging/macos/JDK (downloaded once to ~/.cache/kelo/jdk)
+#                                               pinned in apps/desktop/packaging/macos/JDK (downloaded once to ~/.cache/kelo/jdk)
 #                                               signed + notarized only when a "Developer ID Application" certificate is in the
 #                                               keychain; else it is left unsigned and says so
 #   tools/build/desktop.sh windows              runs .github/workflows/desktop-windows.yml on GitHub (MSI, EXE, MSIX can only be
 #                                               made on Windows), waits for it, downloads the files to dist/windows-<version>/
 #
 # Options:
-#   --version X.Y.Z     the installers' package number (default: packageVersion in desktop/version.properties)
+#   --version X.Y.Z     the installers' package number (default: packageVersion in apps/desktop/version.properties)
 #   --ref BRANCH        windows: the branch the workflow builds (default: the current branch; it builds what is PUSHED there)
 #   --run-id N          windows: do not start a run, only wait for / download run N (e.g. one started by a push)
 #   --timeout MIN       windows: how long to wait for the run (default 60)
@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-DESKTOP="$REPO/desktop"
+DESKTOP="$REPO/apps/desktop"
 WORKFLOW="$REPO/.github/workflows/desktop-windows.yml"
 DIST="$REPO/dist"
 if [ -z "$VERSION" ]; then   # the installers' package number: one tracked place (docs/versioning.md)
@@ -48,11 +48,11 @@ gradle_desktop() {   # gradle_desktop step|soft_step NAME TIMEOUT LOG tasks...
   local how="$1" name="$2" secs="$3" logf="$4"; shift 4
   if [ "$DRY_RUN" != 1 ]; then
     need_disk
-    # macOS app: the one pinned JDK (desktop/packaging/macos/JDK), and Gradle started with the zipclock agent (tools/build/zipclock/README.md)
+    # macOS app: the one pinned JDK (apps/desktop/packaging/macos/JDK), and Gradle started with the zipclock agent (tools/build/zipclock/README.md)
     if [ "${PIN_JDK:-0}" = 1 ]; then kelo_packaging_jdk; kelo_zip_clock "$REPO"; else use_jdk17; fi
   fi
   cd "$DESKTOP"
-  source_commit desktop shared version.json   # the version line in My links to this commit (desktop/build.gradle.kts: ReleaseInfo.SOURCE_COMMIT)
+  source_commit apps/desktop apps/shared version.json   # the version line in My links to this commit (apps/desktop/build.gradle.kts: ReleaseInfo.SOURCE_COMMIT)
   "$how" "$name" "$secs" "$logf" ./gradlew --no-daemon --console=plain -PkeloCommit="$SOURCE_COMMIT" -PkeloDirty="$SOURCE_DIRTY" \
     -Pkotlin.compiler.execution.strategy=in-process \
     ${GRADLE_REPRO_ARGS[@]+"${GRADLE_REPRO_ARGS[@]}"} "$@"
@@ -203,4 +203,4 @@ n="$(find "$OUTDIR" -type f | wc -l | tr -d ' ')"
 log "done: Kelo desktop $VERSION for Windows ($n files)"
 for f in "$OUTDIR"/*; do note "output: $f ($(human_size "$f"))"; done
 note "offer for download (main copy): uv run assistant publish-app windows <the .exe>  /  publish-app windows-msi <the .msi>"
-for f in "$OUTDIR"/*.msix; do [ -e "$f" ] && note "Microsoft Store draft (not run; see desktop/store/MSSTORE.md): python3 -I desktop/store/msstore.py submit --msix $f   (add --commit to send it to certification)"; done
+for f in "$OUTDIR"/*.msix; do [ -e "$f" ] && note "Microsoft Store draft (not run; see apps/desktop/store/MSSTORE.md): python3 -I apps/desktop/store/msstore.py submit --msix $f   (add --commit to send it to certification)"; done

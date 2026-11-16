@@ -17,22 +17,24 @@ on:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
-      - "ios/**"
+      - "!docs/security/e2e-vectors.*"   # the shared vectors and their pin are tested here, so their changes run CI
+      - "apps/ios/**"
       - "site/**"
-      - "desktop/screens/**"
-      - "desktop/store/**"
-      - "desktop/packaging/**"
+      - "apps/desktop/screens/**"
+      - "apps/desktop/store/**"
+      - "apps/desktop/packaging/**"
       - ".github/workflows/desktop-windows.yml"
       - ".github/workflows/release-*.yml"
   pull_request:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
-      - "ios/**"
+      - "!docs/security/e2e-vectors.*"   # the shared vectors and their pin are tested here, so their changes run CI
+      - "apps/ios/**"
       - "site/**"
-      - "desktop/screens/**"
-      - "desktop/store/**"
-      - "desktop/packaging/**"
+      - "apps/desktop/screens/**"
+      - "apps/desktop/store/**"
+      - "apps/desktop/packaging/**"
       - ".github/workflows/desktop-windows.yml"
       - ".github/workflows/release-*.yml"
   workflow_dispatch:
@@ -63,7 +65,7 @@ jobs:
           uv python install 3.12
           uv sync --locked --dev
 
-      # the browser tools are tested against real Chromium pages (tests/fixtures); the browser is cached between runs
+      # the browser tools are tested against real Chromium pages (server/tests/fixtures); the browser is cached between runs
       - name: Playwright's Chromium (cached)
         id: pw-cache
         uses: actions/cache@v4
@@ -77,9 +79,14 @@ jobs:
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: uv run playwright install-deps chromium
 
+      # the KE2E vectors: the file equals the generator's output and its SHA-256 matches e2e-vectors.sha256
+      - name: E2E vectors match the generator
+        run: uv run python server/tests/e2e_vectors_gen.py --check
+
       - name: Tests
         env:
           TZ: Asia/Seoul
+          KELO_REQUIRE_VECTORS: "1"   # the apps' vectors tests fail, not skip, when the file is missing
         run: uv run pytest -q -p no:cacheprovider
 
   android:
@@ -88,14 +95,14 @@ jobs:
     timeout-minutes: 45
     defaults:
       run:
-        working-directory: android/kelo
+        working-directory: apps/android/kelo
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"   # the shared Kotlin code hits a Kotlin backend error on 17 (BriefingWeather.copy$default); local builds use 21
 
       # caches ~/.gradle (wrapper, dependencies, build cache); only the main branch writes it, other branches read it
       - uses: gradle/actions/setup-gradle@v4
@@ -108,13 +115,16 @@ jobs:
 
       - name: String resources in every language
         working-directory: .
-        run: python3 android/tools/strings_check.py
+        run: python3 apps/android/tools/strings_check.py
 
       - name: iPhone version file matches version.json
         working-directory: .
-        run: python3 ios/tools/gen_version.py --check
+        run: python3 apps/ios/tools/gen_version.py --check
 
+      # also runs apps/shared's Ke2eVectorsFileTest (the shared desktopTest, see apps/android/kelo/app/build.gradle.kts)
       - name: Unit tests (full debug)
+        env:
+          KELO_REQUIRE_VECTORS: "1"
         run: ./gradlew --no-daemon --console=plain :app:testFullDebugUnitTest
 
       - uses: actions/upload-artifact@v4
@@ -122,10 +132,10 @@ jobs:
         with:
           name: android-unit-test-report
           path: |
-            android/kelo/app/build/reports/tests
-            android/kelo/app/build/test-results
-            shared/build/reports/tests
-            shared/build/test-results
+            apps/android/kelo/app/build/reports/tests
+            apps/android/kelo/app/build/test-results
+            apps/shared/build/reports/tests
+            apps/shared/build/test-results
           if-no-files-found: ignore
 
   desktop:
@@ -134,14 +144,14 @@ jobs:
     timeout-minutes: 45
     defaults:
       run:
-        working-directory: desktop
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"   # the shared Kotlin code hits a Kotlin backend error on 17 (BriefingWeather.copy$default); local builds use 21
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -155,7 +165,10 @@ jobs:
       - name: Fonts
         run: sudo apt-get update -q && sudo apt-get install -y -q fonts-noto-cjk fonts-noto-core
 
+      # `test` also runs apps/shared's desktopTest (Ke2eVectorsFileTest): tasks.test dependsOn it in build.gradle.kts
       - name: Tests
+        env:
+          KELO_REQUIRE_VECTORS: "1"
         run: ./gradlew --no-daemon --console=plain test
 
       - uses: actions/upload-artifact@v4
@@ -163,10 +176,10 @@ jobs:
         with:
           name: desktop-linux-test-report
           path: |
-            desktop/build/reports/tests/test
-            desktop/build/test-results/test
-            shared/build/reports/tests
-            shared/build/test-results
-            desktop/build/parity
-            desktop/build/mock-server
+            apps/desktop/build/reports/tests/test
+            apps/desktop/build/test-results/test
+            apps/shared/build/reports/tests
+            apps/shared/build/test-results
+            apps/desktop/build/parity
+            apps/desktop/build/mock-server
           if-no-files-found: ignore

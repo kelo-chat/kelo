@@ -12,7 +12,8 @@
 # release-build.yml (version tags of the public repository) calls this workflow with attest: true, which gives every installer a
 # build provenance attestation: `gh attestation verify <file> -R kelo-chat/kelo` shows it was built by that workflow from that commit.
 # The installers themselves are not byte-for-byte reproducible (jpackage and the MSIX tools write times and ids), so the attestation
-# is the proof for them, not a rebuild. (docs/verify-builds.md)
+# is the proof for the installer file. What is inside is checked file by file: tools/verify/windows-verify.ps1 builds the same commit
+# with the pinned JDK (apps/desktop/packaging/windows/JDK) and compares the app's files. (docs/verify-builds.md)
 
 name: desktop-windows
 
@@ -20,17 +21,22 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Package number, three numbers (1.0.8); empty = desktop/version.properties. The MSIX gets a fourth .0"
+        description: "Package number, three numbers (1.0.8); empty = apps/desktop/version.properties. The MSIX gets a fourth .0"
         required: false
         default: ""
       tests:
         description: "Only these tests (Gradle --tests patterns, space separated, e.g. *ReactionShotsTest); empty runs them all"
         required: false
         default: ""
+      attest:
+        description: "Attach a build provenance attestation to the installers (the public repository's runs)"
+        type: boolean
+        required: false
+        default: false
   workflow_call:
     inputs:
       version:
-        description: "Package number, three numbers (1.0.8); empty = desktop/version.properties"
+        description: "Package number, three numbers (1.0.8); empty = apps/desktop/version.properties"
         type: string
         required: false
         default: ""
@@ -45,19 +51,20 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 120   # a normal run takes ~25 min; a hung test must not hold the runner for hours
     permissions:
       contents: read
       id-token: write         # the attestation is signed with this run's OIDC identity (only used when attest is true)
       attestations: write
     defaults:
       run:
-        working-directory: desktop
+        working-directory: apps/desktop
     env:
       VERSION_INPUT: ${{ inputs.version || github.event.inputs.version || '' }}
     steps:
       - uses: actions/checkout@v4
 
-      # the installers' package number lives in one tracked place, desktop/version.properties (docs/versioning.md); a version given
+      # the installers' package number lives in one tracked place, apps/desktop/version.properties (docs/versioning.md); a version given
       # to the run overrides it for that run only. The release people see (0.9.0) comes from version.json through the Gradle build.
       - name: Package number
         shell: bash
@@ -66,13 +73,50 @@ jobs:
           [ -n "$v" ] || v="$(sed -n 's/^packageVersion=\([0-9][0-9.]*\)[[:space:]]*$/\1/p' version.properties | head -1)"
           case "$v" in [1-9]*.*[0-9].*[0-9]) ;; *) echo "bad package number '$v' (MAJOR.MINOR.BUILD, MAJOR >= 1)"; exit 1 ;; esac
           echo "VERSION=$v" >> "$GITHUB_ENV"
-          echo "package number $v; $(grep -o '"version": *"[^"]*"' ../version.json) (version.json)"
+          echo "package number $v; $(grep -o '"version": *"[^"]*"' ../../version.json) (version.json)"
 
-      - uses: actions/setup-java@v4
+      # the one exact Java runtime the app is packaged with (apps/desktop/packaging/windows/JDK: Eclipse Temurin, by SHA-256), so that
+      # the runtime folder inside the app is the same for everyone who builds this commit (tools/verify/windows-verify.ps1)
+      - name: Pinned JDK
+        shell: pwsh
+        working-directory: .
+        run: |
+          $line = (Get-Content apps/desktop/packaging/windows/JDK | Where-Object { $_ -notmatch '^\s*#' } | Select-Object -First 1)
+          $name, $arch, $want = $line -split '\s+'
+          if ($name -notmatch '^temurin-17\.\d+\.\d+\+\d+$' -or $arch -ne 'x64' -or $want -notmatch '^[0-9a-f]{64}$') { throw "bad JDK pin: $line" }
+          $ver = $name.Substring(8)
+          $url = "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-$($ver.Replace('+','%2B'))/OpenJDK17U-jdk_x64_windows_hotspot_$($ver.Replace('+','_')).zip"
+          $zip = Join-Path $env:RUNNER_TEMP 'jdk.zip'
+          for ($i = 1; $i -le 3; $i++) {
+            try { Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing; break } catch { if ($i -eq 3) { throw }; Start-Sleep -Seconds (20 * $i) }
+          }
+          $got = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
+          if ($got -ne $want) { throw "the JDK download is $got, expected $want (apps/desktop/packaging/windows/JDK)" }
+          $dir = Join-Path $env:RUNNER_TEMP 'jdk'
+          Expand-Archive -Path $zip -DestinationPath $dir
+          $jdkHome = (Get-ChildItem $dir -Directory | Select-Object -First 1).FullName
+          if (-not (Test-Path (Join-Path $jdkHome 'bin\java.exe'))) { throw "unexpected layout in the JDK archive" }
+          "JAVA_HOME=$jdkHome" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "$jdkHome\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          & "$jdkHome\bin\java.exe" -version
+
+      # the Compose plugin writes every jar with the clock of the build and puts a hash of one into its file name: this Java agent
+      # (tools/build/zipclock/README.md) gives the zip entries a fixed time, so two builds of one commit are the same files
+      - name: Fixed zip times
+        shell: pwsh
+        working-directory: .
+        run: |
+          . tools/verify/windows-lib.ps1
+          $jar = New-KeloZipClock $env:JAVA_HOME
+          "KELO_GRADLE_JVMARGS=$(Get-KeloGradleJvmArgs 'apps/desktop' $jar)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - uses: actions/cache@v4   # keeps the Gradle and Kotlin downloads between runs (what setup-java's cache: gradle did)
         with:
-          distribution: temurin
-          java-version: "17"
-          cache: gradle            # keeps the Gradle and Kotlin downloads between runs
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('apps/desktop/**/*.gradle*', 'apps/desktop/gradle/wrapper/gradle-wrapper.properties', 'apps/shared/**/*.gradle*', 'apps/shared/gradle/**') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       - uses: actions/setup-python@v5
         with:
@@ -93,6 +137,7 @@ jobs:
         shell: pwsh
         env:
           TESTS: ${{ github.event.inputs.tests }}
+          KELO_REQUIRE_VECTORS: "1"   # the shared KE2E vectors test fails, not skips, when the file is missing
         run: |
           $a = @('--no-daemon', 'test')
           foreach ($t in "$env:TESTS" -split '\s+') { if ($t) { $a += @('--tests', $t) } }
@@ -105,15 +150,15 @@ jobs:
         with:
           name: kelo-windows-test-report
           path: |
-            desktop/build/reports/tests/test
-            desktop/build/test-results/test
-            desktop/build/parity
-            desktop/build/mock-server
+            apps/desktop/build/reports/tests/test
+            apps/desktop/build/test-results/test
+            apps/desktop/build/parity
+            apps/desktop/build/mock-server
           if-no-files-found: ignore
 
       - name: MSI and EXE
         # -PkeloCommit: the commit this run built, shown in My as a link to its source on GitHub (a checkout is clean, so not modified)
-        run: '& $env:GRADLE_CMD --no-daemon packageMsi packageExe createDistributable "-PkeloVersion=${{ env.VERSION }}" "-PkeloCommit=${{ github.sha }}" "-PkeloDirty=false"'
+        run: '& $env:GRADLE_CMD --no-daemon packageMsi packageExe createDistributable "-PkeloVersion=${{ env.VERSION }}" "-PkeloCommit=${{ github.sha }}" "-PkeloDirty=false" "-Dorg.gradle.jvmargs=$env:KELO_GRADLE_JVMARGS"'
 
       - name: MSIX
         shell: pwsh
@@ -147,15 +192,15 @@ jobs:
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
-            desktop/build/compose/binaries/main/msi/*.msi
-            desktop/build/compose/binaries/main/exe/*.exe
-            desktop/build/msix/*.msix
+            apps/desktop/build/compose/binaries/main/msi/*.msi
+            apps/desktop/build/compose/binaries/main/exe/*.exe
+            apps/desktop/build/msix/*.msix
 
       - uses: actions/upload-artifact@v4
         with:
           name: kelo-windows-${{ env.VERSION }}
           path: |
-            desktop/build/compose/binaries/main/msi/*.msi
-            desktop/build/compose/binaries/main/exe/*.exe
-            desktop/build/msix/*.msix
+            apps/desktop/build/compose/binaries/main/msi/*.msi
+            apps/desktop/build/compose/binaries/main/exe/*.exe
+            apps/desktop/build/msix/*.msix
           if-no-files-found: error

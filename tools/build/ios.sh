@@ -2,8 +2,8 @@
 # Kelo for iPhone: test on the simulator, or send a build to TestFlight. See tools/build/README.md.
 #
 #   tools/build/ios.sh sim          KeloCore + KeloUI package tests, then the app built and its UI walk (KeloScreensTests/testWalk)
-#                                   run on the simulator "kelo-ios-check" against desktop/tools/mock_server.py behind
-#                                   ios/tools/mock_e2e_gateway.py (KE2E; needs uv and the server's environment)
+#                                   run on the simulator "kelo-ios-check" against apps/desktop/tools/mock_server.py behind
+#                                   apps/ios/tools/mock_e2e_gateway.py (KE2E; needs uv and the server's environment)
 #   tools/build/ios.sh testflight   new build number (YYMMDDHH) in project.yml -> xcodegen -> unsigned archive -> export signed
 #                                   by Apple (cloud signing, App Store Connect API key) -> upload -> wait until the build is
 #                                   processed (VALID)
@@ -50,9 +50,9 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-IOS="$REPO/ios"
+IOS="$REPO/apps/ios"
 # the commit this build's source came from, asked now (before this script edits project.yml for a TestFlight build number): My links to it
-source_commit ios shared/strings version.json
+source_commit apps/ios apps/shared/strings version.json
 SOURCE_ARGS=("KELO_SOURCE_COMMIT=$SOURCE_COMMIT" "KELO_SOURCE_DIRTY=$([ "$SOURCE_DIRTY" = true ] && echo YES || echo NO)")
 PROJ_DIR="$IOS/Kelo"
 SPEC="$PROJ_DIR/project.yml"
@@ -66,15 +66,16 @@ make_temp ios TMP                # DerivedData, archive, export, SwiftPM scratch
 DD="$TMP/DerivedData"
 
 generate_project() {
-  step "version (ios/tools/gen_version.py, from version.json)" 60 "$LOGS/ios-version.log" python3 "$IOS/tools/gen_version.py"
-  step "strings (ios/tools/gen_strings.py)" 300 "$LOGS/ios-strings.log" python3 "$IOS/tools/gen_strings.py"
+  step "version (apps/ios/tools/gen_version.py, from version.json)" 60 "$LOGS/ios-version.log" python3 "$IOS/tools/gen_version.py"
+  step "strings (apps/ios/tools/gen_strings.py)" 300 "$LOGS/ios-strings.log" python3 "$IOS/tools/gen_strings.py"
   step "xcodegen" 300 "$LOGS/ios-xcodegen.log" xcodegen generate --spec "$SPEC" --project "$PROJ_DIR"
 }
 
 # ------------------------------------------------------------------------------------------------------------------------- sim
 if [ "$MODE" = sim ]; then
   if [ "$SKIP_PACKAGES" = 0 ]; then
-    soft_step "KeloCore tests (swift test)" 1800 "$LOGS/ios-kelocore.log" "$IOS/KeloCore/test.sh" --scratch-path "$TMP/spm-core"
+    # KELO_REQUIRE_VECTORS=1: the KE2E vectors test fails (not skips) when docs/security/e2e-vectors.json is missing
+    soft_step "KeloCore tests (swift test)" 1800 "$LOGS/ios-kelocore.log" env KELO_REQUIRE_VECTORS=1 "$IOS/KeloCore/test.sh" --scratch-path "$TMP/spm-core"
     soft_step "KeloUI tests (swift test)" 2400 "$LOGS/ios-keloui.log" "$IOS/KeloUI/test.sh" --scratch-path "$TMP/spm-ui"
     if [ "$DRY_RUN" = 0 ]; then
       for f in kelocore keloui; do note "$f: $(grep -E 'Test run with [0-9]+ tests|Executed [0-9]+ tests' "$LOGS/ios-$f.log" | tail -1 | sed 's/^[^A-Za-z]*//')"; done
@@ -89,7 +90,7 @@ for runtime, devs in json.load(sys.stdin)["devices"].items():
     for d in devs:
         if d["name"] == name and d.get("isAvailable"):
             print(d["udid"], d["state"]); sys.exit()' "$SIM_NAME")"
-  [ -n "$UDID" ] || die "no simulator named $SIM_NAME (create it once, see ios/README.md; this script never makes new ones)"
+  [ -n "$UDID" ] || die "no simulator named $SIM_NAME (create it once, see apps/ios/README.md; this script never makes new ones)"
   SIM_STATE="${UDID#* }"; UDID="${UDID%% *}"
   note "simulator $SIM_NAME ($UDID, $SIM_STATE)"
 
@@ -105,9 +106,9 @@ for runtime, devs in json.load(sys.stdin)["devices"].items():
   if [ "$MOCK" = 1 ]; then
     PORT="$(free_port)"
     if [ "$DRY_RUN" = 1 ]; then
-      note "[dry-run] python3 desktop/tools/mock_server.py --port $PORT --lang $LANG_   (stopped at the end)"
+      note "[dry-run] python3 apps/desktop/tools/mock_server.py --port $PORT --lang $LANG_   (stopped at the end)"
     else
-      python3 "$REPO/desktop/tools/mock_server.py" --port "$PORT" --lang "$LANG_" >"$LOGS/ios-mock.log" 2>&1 &
+      python3 "$REPO/apps/desktop/tools/mock_server.py" --port "$PORT" --lang "$LANG_" >"$LOGS/ios-mock.log" 2>&1 &
       MOCK_PID=$!
       on_exit "kill $MOCK_PID 2>/dev/null; wait $MOCK_PID 2>/dev/null"
       up=0
@@ -121,7 +122,7 @@ for runtime, devs in json.load(sys.stdin)["devices"].items():
       # the app talks only KE2E (spec 5.18): the server's own KE2E layer in front of the plaintext mock
       UPSTREAM="$PORT"
       PORT="$(free_port)"
-      (cd "$REPO" && exec uv run --quiet python ios/tools/mock_e2e_gateway.py --port "$PORT" --upstream "$UPSTREAM") >"$LOGS/ios-e2e-gateway.log" 2>&1 &
+      (cd "$REPO" && exec uv run --quiet python apps/ios/tools/mock_e2e_gateway.py --port "$PORT" --upstream "$UPSTREAM") >"$LOGS/ios-e2e-gateway.log" 2>&1 &
       GW_PID=$!
       on_exit "kill $GW_PID 2>/dev/null; wait $GW_PID 2>/dev/null"
       up=0
@@ -133,7 +134,7 @@ for runtime, devs in json.load(sys.stdin)["devices"].items():
       [ "$up" = 1 ] || { tail -20 "$LOGS/ios-e2e-gateway.log" >&2; die "the KE2E gateway did not start"; }
       note "KE2E gateway on 127.0.0.1:$PORT -> mock (pid $GW_PID)"
     fi
-    TOKEN="$(sed -n 's/^TOKEN = "\(.*\)"/\1/p' "$REPO/desktop/tools/mock_server.py" | head -1)"
+    TOKEN="$(sed -n 's/^TOKEN = "\(.*\)"/\1/p' "$REPO/apps/desktop/tools/mock_server.py" | head -1)"
     TEST_ENV=(TEST_RUNNER_KELO_SERVER="http://127.0.0.1:$PORT" TEST_RUNNER_KELO_KEY="$TOKEN" TEST_RUNNER_KELO_LANG="$LANG_"
               TEST_RUNNER_KELO_TAG="$LANG_-check" TEST_RUNNER_KELO_SHOTS="$SHOTS")
   fi
@@ -199,7 +200,7 @@ MARKETING="$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([0-9.]*\)"\{0,1\}.*/\1/p
 note "version $MARKETING ($BUILD_NO); project.yml had $CURRENT, App Store Connect's newest is $LATEST"
 
 if [ "$DRY_RUN" = 1 ]; then
-  note "[dry-run] would set CURRENT_PROJECT_VERSION: \"$BUILD_NO\" in ios/Kelo/project.yml"
+  note "[dry-run] would set CURRENT_PROJECT_VERSION: \"$BUILD_NO\" in apps/ios/Kelo/project.yml"
 elif [ "$BUILD_NO" != "$CURRENT" ]; then
   sed -i '' -E "s/^( *CURRENT_PROJECT_VERSION: *)\"?[0-9]+\"?/\1\"$BUILD_NO\"/" "$SPEC"
   grep -q "CURRENT_PROJECT_VERSION: \"$BUILD_NO\"" "$SPEC" || die "could not write the build number into $SPEC"

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">Thông báo</string>
+    <string name="notices_important">Quan trọng</string>
+    <string name="notices_more">Xem thêm</string>
+    <string name="notices_close">Đóng</string>
+</resources>

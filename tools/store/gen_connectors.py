@@ -9,7 +9,7 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "server" / "src"))
 
 from assistant import i18n  # noqa: E402
 from assistant.connect_ways import ways  # noqa: E402
@@ -48,7 +48,8 @@ for lang in ("en", "ko"):
         rows = connector_rows(ways(Store(), Mail(lang), browser=True, google_open=False), regions={"KR"} if lang == "ko" else {"US"})
     finally:
         i18n.reset(tok)
-    rows = [r for r in rows if r.get("featured")]
+    # the store shows only connectors that work: Google Calendar waits for Google's review ("pending_review", shown as coming soon)
+    rows = [r for r in rows if r.get("featured") and r.get("connect_state") != "pending_review"]
     rows.sort(key=lambda r: r["rank"])
     (out / f"connectors-{lang}.json").write_text(json.dumps(rows, ensure_ascii=False, indent=1))
     print(lang, len(rows), [(r["id"], r["status"]) for r in rows[:12]])

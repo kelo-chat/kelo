@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">See everything it will install</string>
+    <string name="nest_contents_title">What gets installed</string>
+    <string name="nest_contents_warnings">Notes from loading it</string>
+    <string name="nest_contents_endpoints">Where it connects</string>
+    <string name="nest_contents_none">Nothing</string>
+    <string name="nest_contents_files">Files</string>
+    <string name="nest_contents_total">%1$s in total</string>
+    <string name="nest_contents_cut">This file is too long, so only part of it is shown.</string>
+    <string name="nest_contents_back">All files</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">See the changes</string>
+    <string name="nest_update_changed">%1$d changed files</string>
+    <string name="nest_changed_title">What this update changes</string>
+    <string name="nest_changed_added">Added files</string>
+    <string name="nest_changed_removed">Removed files</string>
+    <string name="nest_changed_modified">Changed files</string>
+</resources>

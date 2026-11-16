@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
+    <string name="connector_forget_title">ลบข้อมูลที่มาจาก %1$s ด้วยไหม</string>
+    <string name="connector_forget_files">ไฟล์ %1$d</string>
+    <string name="connector_forget_notes">บันทึก %1$d</string>
+    <string name="connector_forget_items">รายการ %1$d</string>
+    <string name="connector_forget_trash">ไฟล์จะไปที่ถังขยะของคลัง</string>
+    <string name="connector_forget_delete">ลบ</string>
+    <string name="connector_forget_keep">เก็บไว้</string>
+    <string name="connector_forget_done">ลบแล้ว: %1$s</string>
+</resources>

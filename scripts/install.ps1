@@ -7,15 +7,19 @@
 
   What it does, in order: checks this PC (Windows version, CPU type, WSL 2), checks Docker Desktop and Compose (and says how to
   get them), installs `uv` if it is missing, puts the Kelo files in %USERPROFILE%\kelo, prepares Python with uv, adds a `kelo`
-  command, and opens the guided setup. Running it again is an update: .env, chats, keys and phones stay as they are.
+  command, pulls Kelo's official images (signed; checked before use), and opens the guided setup, which starts Kelo and shows
+  a QR code for your phone. Running it again is an update: .env, chats, keys and phones stay as they are.
 
   Parameters (each also as an environment variable):
     -Yes          answer every question with its default (KELO_YES=1); never deletes data
     -Dir DIR      where Kelo lives (KELO_HOME, default %USERPROFILE%\kelo)
-    -Source SRC   where to get the Kelo files: a folder, a .zip / .tar.gz URL or a git URL (KELO_SOURCE)
-    -NoStart      save the answers but do not build or start the containers (KELO_NO_START=1)
-    -FromRelease  pull the signed release images instead of building them here (KELO_FROM_RELEASE=1); the Claude/agy
-                  containers are still built here (their CLIs are never published)
+    -Source SRC   where to get the Kelo files: a folder, a .zip / .tar.gz URL or a git URL (KELO_SOURCE). A custom source is
+                  built here, since its images are not the official ones, unless -FromRelease is given too
+    -FromRelease  the default: pull the signed official images instead of building them here (KELO_FROM_RELEASE=1). If the
+                  pull fails they are built here instead, with a warning. The Claude/agy containers are always built here
+                  (their CLIs are never published)
+    -BuildHere    build the images on this PC instead (KELO_FROM_RELEASE=0); slow, and it can fail on small machines
+    -NoStart      save the answers but do not start the containers (KELO_NO_START=1)
     -AutoUpdate   let Kelo update the server by itself at night (KELO_AUTO_UPDATE=1); -NoAutoUpdate: only when the owner
                   presses Update in the app (the default; asked when there is a terminal)
     -Uninstall    stop and remove Kelo; add -DeleteData to also delete chats, keys and files for good
@@ -28,6 +32,7 @@ param(
   [string]$Source,
   [switch]$NoStart,
   [switch]$FromRelease,
+  [switch]$BuildHere,
   [switch]$AutoUpdate,
   [switch]$NoAutoUpdate,
   [switch]$Uninstall,
@@ -43,6 +48,10 @@ if (-not $Source -and $env:KELO_SOURCE) { $Source = $env:KELO_SOURCE }
 if ($env:KELO_YES -eq '1') { $Yes = $true }
 if ($env:KELO_NO_START -eq '1') { $NoStart = $true }
 if ($env:KELO_FROM_RELEASE -eq '1') { $FromRelease = $true }
+if ($env:KELO_FROM_RELEASE -eq '0') { $BuildHere = $true }
+# The official images are the default. A custom -Source is not the release, so it is built here unless -FromRelease is given.
+$releaseAsked = [bool]$FromRelease
+if ($BuildHere -or (-not $releaseAsked -and $Source)) { $FromRelease = $false } else { $FromRelease = $true }
 if ($env:KELO_AUTO_UPDATE -eq '1') { $AutoUpdate = $true } elseif ($env:KELO_AUTO_UPDATE -eq '0') { $NoAutoUpdate = $true }
 $BinDir = if ($env:KELO_BIN_DIR) { $env:KELO_BIN_DIR } else { Join-Path $env:USERPROFILE '.local\bin' }
 
@@ -111,8 +120,9 @@ function Ask-YesNo([string]$q, [bool]$default) {
 
 $Log = Join-Path $env:TEMP ("kelo-install-{0}.log" -f [guid]::NewGuid().ToString('N').Substring(0, 8))
 
-# Step "what is happening" { command }: one line with a spinner; output goes to the log, shown only if it fails.
-function Step([string]$label, [scriptblock]$block) {
+# Step "what is happening" { command }: one line with a spinner; output goes to the log, shown only if it fails. -Soft: a failed
+# step returns instead of stopping the install (the caller falls back); its exit code is left in $script:StepCode.
+function Step([string]$label, [scriptblock]$block, [switch]$Soft) {
   $start = Get-Date
   Add-Content -Path $Log -Value "`n==> $label"
   $job = Start-Job -ArgumentList $block.ToString(), $Log, (Get-Location).Path -ScriptBlock {
@@ -135,8 +145,10 @@ function Step([string]$label, [scriptblock]$block) {
   try { $code = [int](@(Receive-Job $job -ErrorAction Stop) | Select-Object -Last 1) } catch { Add-Content -Path $Log -Value $_.ToString() }
   Remove-Job $job -Force
   $secs = [int]((Get-Date) - $start).TotalSeconds
+  $script:StepCode = $code
   if ($code -eq 0) { Ok "$label ($secs s)"; return }
   W '  ✗ ' 'Red'; Write-Host $label
+  if ($Soft) { return }
   Get-Content $Log -Tail 20 | ForEach-Object { W '    │ ' 'DarkGray'; Write-Host $_ }
   Die (Say "That step failed (exit $code). Full log: $Log" "이 단계가 실패했습니다 (종료 코드 $code). 전체 로그: $Log")
 }
@@ -319,28 +331,51 @@ function Remove-Kelo {
 
 # ------------------------------------------------------------------------------------------------------------- updates from the app
 # The updater container (compose profile `updater`): the owner presses Update in the app, or lets it update at night. Its secret
-# (UPDATER_TOKEN) is made by `assistant updater setup` and never shown. -FromRelease pulls and checks the signed images first.
-function Setup-Updater {
+# (UPDATER_TOKEN) is made by `assistant updater setup` and never shown. The images are the signed official ones (checked by
+# `assistant`, digest and signature) or were built from these files; the app says to update with `kelo update` in the second case.
+$script:AutoOn = [bool]$AutoUpdate   # decided by Ask-AutoUpdate when there is a terminal; the default otherwise
+
+function Ask-AutoUpdate {
   Section (Say 'Updates from the app' '앱에서 하는 업데이트')
-  $auto = $false
-  if ($AutoUpdate) { $auto = $true }
-  elseif (-not $NoAutoUpdate) {
-    Note (Say "The owner's phone can update this server with one button (My → Server update). Kelo can also do it by itself at night," '주인 휴대폰에서 버튼 하나로 이 서버를 업데이트할 수 있습니다 (마이 → 서버 업데이트). 밤에 Kelo가 알아서 할 수도 있습니다,')
-    Note (Say 'when you usually do not use it; a backup is made first and it goes back by itself if the new version fails.' '평소 쓰지 않는 시간에요. 먼저 백업하고, 새 버전이 실패하면 저절로 되돌립니다.')
-    $auto = Ask-YesNo (Say 'Update automatically at night?' '밤에 자동으로 업데이트할까요?') $false
-  }
-  $u = @('updater', 'setup', $(if ($auto) { '--auto-update' } else { '--no-auto-update' }))
+  if ($AutoUpdate) { $script:AutoOn = $true; return }
+  if ($NoAutoUpdate) { $script:AutoOn = $false; return }
+  Note (Say "The owner's phone can update this server with one button (My → Server update). Kelo can also do it by itself at night," '주인 휴대폰에서 버튼 하나로 이 서버를 업데이트할 수 있습니다 (마이 → 서버 업데이트). 밤에 Kelo가 알아서 할 수도 있습니다,')
+  Note (Say 'when you usually do not use it; a backup is made first and it goes back by itself if the new version fails.' '평소 쓰지 않는 시간에요. 먼저 백업하고, 새 버전이 실패하면 저절로 되돌립니다.')
+  $script:AutoOn = Ask-YesNo (Say 'Update automatically at night?' '밤에 자동으로 업데이트할까요?') $false
+}
+
+# assistant updater setup with this run's choices plus the extra arguments; -Soft: a failure returns (see Step)
+function Run-UpdaterSetup([string]$label, [string[]]$Extra = @(), [switch]$Soft) {
+  $u = @('updater', 'setup', $(if ($script:AutoOn) { '--auto-update' } else { '--no-auto-update' }))
   if ($env:KELO_REGISTRY) { $u += @('--registry', $env:KELO_REGISTRY) }
-  if ($NoStart -or $FromRelease) { $u += '--no-start' }
-  if ($FromRelease) { $u += '--pull-release' }
+  if ($NoStart) { $u += '--no-start' }
+  $u += $Extra
   $cmd = "& '$Uv' run --quiet --no-dev --frozen assistant " + (($u | ForEach-Object { "'$_'" }) -join ' ')
-  $label = if ($FromRelease) { Say 'Downloading the signed Kelo images and checking them' '서명된 Kelo 이미지를 내려받고 확인하는 중' } else { Say 'Setting up the updater' '업데이트 도구 설정 중' }
-  Step $label ([scriptblock]::Create($cmd))
-  if ($FromRelease -and -not $NoStart) {
-    Step (Say 'Starting Kelo' 'Kelo 시작 중') { $env:BUILDKIT_PROGRESS = 'plain'; docker compose up -d --remove-orphans }
-  }
-  if ($auto) { Ok (Say 'Nightly auto-update is on (change it in the app: My → Server update)' '밤 자동 업데이트를 켰습니다 (앱의 마이 → 서버 업데이트에서 바꿀 수 있습니다)') }
+  Step $label ([scriptblock]::Create($cmd)) -Soft:$Soft
+}
+
+function Setup-Updater {
+  Ask-AutoUpdate
+  Run-UpdaterSetup (Say 'Setting up the updater' '업데이트 도구 설정 중')
+  if ($script:AutoOn) { Ok (Say 'Nightly auto-update is on (change it in the app: My → Server update)' '밤 자동 업데이트를 켰습니다 (앱의 마이 → 서버 업데이트에서 바꿀 수 있습니다)') }
   else { Ok (Say 'Updates when the owner presses Update in the app (My → Server update)' '앱에서 업데이트를 누를 때 업데이트합니다 (마이 → 서버 업데이트)') }
+}
+
+# Without a terminal, the first install pulls the official images before Kelo starts (the updater's settings come with the pull).
+# If the pull fails, the images are built here instead, as before, with a warning.
+function Pull-FirstInstall {
+  Run-UpdaterSetup (Say 'Downloading the official Kelo images and checking their signatures' '공식 Kelo 이미지를 내려받고 서명을 확인하는 중') -Extra @('--no-start', '--pull-release') -Soft
+  if ($script:StepCode -eq 0) {
+    if (-not $NoStart) { Step (Say 'Starting Kelo' 'Kelo 시작 중') { $env:BUILDKIT_PROGRESS = 'plain'; docker compose up -d --remove-orphans } }
+    return
+  }
+  $why = @(Get-Content $Log | Where-Object { $_ -like 'error:*' }) | Select-Object -Last 1
+  $why = if ($why) { ($why -replace '^error:\s*', '') } else { '' }
+  $head = if ($why) { ": $why" } else { '' }
+  Warn (Say "Could not get the official images$head. Building them here instead." "공식 이미지를 받지 못했습니다$head. 이 PC에서 직접 빌드합니다.")
+  if (-not $NoStart) {
+    Step (Say 'Building and starting Kelo (the first time takes a few minutes)' 'Kelo를 빌드하고 시작하는 중 (처음에는 몇 분 걸립니다)') { $env:BUILDKIT_PROGRESS = 'plain'; docker compose up -d --build --remove-orphans }
+  }
 }
 
 # ------------------------------------------------------------------------------------------------------------- main
@@ -368,10 +403,22 @@ function Invoke-KeloInstall {
   $env:KELO_CMD = 'kelo'
   if ($Interactive) {
     Write-Host ''
+    # Kelo files from before 0.10.2 have no `setup --from-release`: their guided screen saves the answers only, and the images
+    # are pulled (or built) after it, as before (no QR step then: the closing note says how to connect a phone).
+    $wizardPulls = $false
+    if ($FromRelease) {
+      $help = (& $Uv run --quiet --no-dev --frozen assistant setup --help 2>$null) -join "`n"
+      $wizardPulls = $help -match '--from-release'
+    }
     $setupArgs = @('run', '--quiet', '--no-dev', '--frozen', 'assistant', 'setup')
-    if ($NoStart -or $FromRelease) { $setupArgs += '--no-start' }   # release images are pulled in Setup-Updater, never built here
+    if ($NoStart -or ($FromRelease -and -not $wizardPulls)) { $setupArgs += '--no-start' }
+    if ($wizardPulls) { $setupArgs += '--from-release' }   # the guided screen pulls the official images, then starts Kelo
     & $Uv @setupArgs
     if ($LASTEXITCODE) { Stop-Install $LASTEXITCODE }
+    if ($FromRelease -and -not $wizardPulls) {
+      Pull-FirstInstall
+      Note (Say 'Next: kelo connect kelo --name <name>   then   kelo phone add' '다음: kelo connect kelo --name <이름>   그리고   kelo phone add')
+    }
     Setup-Updater
     return
   }
@@ -379,7 +426,8 @@ function Invoke-KeloInstall {
   & $Uv run --quiet --no-dev --frozen assistant setup --yes *>> $Log
   if ($LASTEXITCODE -ne 0) { Die (Say "Setup failed. Log: $Log" "설정이 실패했습니다. 로그: $Log") }
   Ok (Say "Saved the settings in $Dir\.env" "$Dir\.env 에 설정을 저장했습니다")
-  if (-not $NoStart -and -not $FromRelease) {
+  if ($FromRelease) { Pull-FirstInstall }
+  elseif (-not $NoStart) {
     Step (Say 'Building and starting Kelo (the first time takes a few minutes)' 'Kelo를 빌드하고 시작하는 중 (처음에는 몇 분 걸립니다)') {
       $env:BUILDKIT_PROGRESS = 'plain'; docker compose up -d --build --remove-orphans
     }

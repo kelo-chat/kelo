@@ -209,7 +209,7 @@ needs it disclosed).
    used in plaintext, and the app shows that state.
 6. **Libraries**: JVM (desktop) and Android use **BouncyCastle** (`org.bouncycastle:bcprov-jdk18on`, lightweight API: HPKE with
    export, fixed ephemeral keys for tests). Tink's public API cannot export secrets. The pure-JVM core lives once in Android
-   (`chat.kelo.app.core.e2e`) and reaches the desktop through the `shared/` module; no second copy.
+   (`chat.kelo.app.core.e2e`) and reaches the desktop through the `apps/shared/` module; no second copy.
 7. Desktop facts: chat answers are followed with `GET /api/turns/{id}?wait=20`, the live view polls `…/frame` (no WebSocket on desktop).
 8. **WebSocket message type**: the first plaintext byte of every sealed WebSocket message is its type, `0x01` text or `0x02` binary
    (the live view mixes a text header and a JPEG). If the first envelope fails, the server closes with code `4400` (does not open),

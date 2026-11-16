@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
+    <string name="connector_forget_title">%1$s से आए डेटा को भी मिटाएँ?</string>
+    <string name="connector_forget_files">फ़ाइलें: %1$d</string>
+    <string name="connector_forget_notes">नोट: %1$d</string>
+    <string name="connector_forget_items">आइटम: %1$d</string>
+    <string name="connector_forget_trash">फ़ाइलें लाइब्रेरी के ट्रैश में जाएँगी।</string>
+    <string name="connector_forget_delete">मिटाएँ</string>
+    <string name="connector_forget_keep">रखें</string>
+    <string name="connector_forget_done">मिटा दिया: %1$s</string>
+</resources>

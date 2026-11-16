@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="actions_title">Co zrobił Kelo</string>
+    <string name="actions_period_today">Dzisiaj</string>
+    <string name="actions_period_7d">7 dni</string>
+    <string name="actions_period_30d">30 dni</string>
+    <string name="actions_state_unknown">Sprawdzanie</string>
+    <string name="actions_state_failed">Nie powiodło się</string>
+    <string name="actions_empty">Kelo nie zrobił jeszcze nic na zewnątrz.</string>
+    <string name="actions_outside_text_note">To, co Kelo czyta ze stron internetowych, e-maili i plików, jest traktowane jako dane, a nie instrukcje; taki tekst nie może skłonić Kelo do płacenia, wysyłania ani usuwania czegokolwiek.</string>
+</resources>

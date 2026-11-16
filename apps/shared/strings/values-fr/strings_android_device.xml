@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">Appareil Android</string>
+    <string name="android_device_connected">Connecté</string>
+    <string name="android_device_not_connected">Non connecté</string>
+    <string name="android_device_play_store">Play Store</string>
+    <string name="android_device_korean_input">Saisie en coréen</string>
+    <string name="android_device_missing">Absent</string>
+    <string name="android_device_check">Vérifier la connexion</string>
+    <string name="android_device_view">Voir l\'écran</string>
+    <string name="android_device_note">L\'adresse de l\'appareil se règle dans le .env du serveur. Voir « Un appareil Android que Kelo peut utiliser » dans le README.</string>
+    <string name="android_device_readme">Ouvrir le README</string>
+</resources>

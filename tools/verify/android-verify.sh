@@ -95,20 +95,20 @@ say "the source"
 if [ -z "$SOURCE" ]; then
   SOURCE="$WORK/source"
   if [ -z "$TAG" ]; then
-    # the tag whose android/kelo/version.properties says the phone's build (versionCode): the repository's tags, newest first
+    # the tag whose apps/android/kelo/version.properties says the phone's build (versionCode): the repository's tags, newest first
     note "no --tag: looking for the tag with build $PHONE_CODE"
     git clone --quiet --filter=blob:none --no-checkout "$REPO_URL" "$SOURCE" || die "could not clone $REPO_URL"
     for t in $(git -C "$SOURCE" tag --sort=-creatordate | head -40); do
-      if git -C "$SOURCE" show "$t:android/kelo/version.properties" 2>/dev/null | grep -q "^build=${PHONE_CODE}\$"; then TAG="$t"; break; fi
+      if git -C "$SOURCE" show "$t:apps/android/kelo/version.properties" 2>/dev/null | grep -q "^build=${PHONE_CODE}\$"; then TAG="$t"; break; fi
     done
-    [ -n "$TAG" ] || die "no tag in $REPO_URL has build $PHONE_CODE in android/kelo/version.properties; pass --tag"
+    [ -n "$TAG" ] || die "no tag in $REPO_URL has build $PHONE_CODE in apps/android/kelo/version.properties; pass --tag"
     rm -rf "$SOURCE"
   fi
   note "cloning $REPO_URL at $TAG"
   git clone --quiet --depth 1 --branch "$TAG" "$REPO_URL" "$SOURCE" || die "could not clone $TAG from $REPO_URL"
 fi
-[ -f "$SOURCE/android/kelo/version.properties" ] || die "$SOURCE does not look like the Kelo source (android/kelo/version.properties missing)"
-SRC_BUILD="$(sed -n 's/^build=//p' "$SOURCE/android/kelo/version.properties" | head -1)"
+[ -f "$SOURCE/apps/android/kelo/version.properties" ] || die "$SOURCE does not look like the Kelo source (apps/android/kelo/version.properties missing)"
+SRC_BUILD="$(sed -n 's/^build=//p' "$SOURCE/apps/android/kelo/version.properties" | head -1)"
 note "source: $(git -C "$SOURCE" rev-parse HEAD 2>/dev/null || echo 'not a git checkout')  build $SRC_BUILD"
 [ "$SRC_BUILD" = "$PHONE_CODE" ] || die "the source is build $SRC_BUILD but the app on the phone is build $PHONE_CODE ($PHONE_VERSION): check out the tag of the version you have"
 if [ -z "$GIVEN" ] && [ -n "$(git -C "$SOURCE" status --porcelain 2>/dev/null)" ]; then

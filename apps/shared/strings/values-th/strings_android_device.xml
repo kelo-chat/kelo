@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">อุปกรณ์ Android</string>
+    <string name="android_device_connected">เชื่อมต่อแล้ว</string>
+    <string name="android_device_not_connected">ยังไม่เชื่อมต่อ</string>
+    <string name="android_device_play_store">Play Store</string>
+    <string name="android_device_korean_input">การพิมพ์ภาษาเกาหลี</string>
+    <string name="android_device_missing">ไม่มี</string>
+    <string name="android_device_check">ตรวจสอบการเชื่อมต่อ</string>
+    <string name="android_device_view">ดูหน้าจอ</string>
+    <string name="android_device_note">ที่อยู่ของอุปกรณ์ตั้งค่าใน .env ของเซิร์ฟเวอร์ ดู “อุปกรณ์ Android ที่ Kelo ใช้ได้” ใน README</string>
+    <string name="android_device_readme">เปิด README</string>
+</resources>

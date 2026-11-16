@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="actions_title">Kelo\'nun yaptıkları</string>
+    <string name="actions_period_today">Bugün</string>
+    <string name="actions_period_7d">7 gün</string>
+    <string name="actions_period_30d">30 gün</string>
+    <string name="actions_state_unknown">Kontrol ediliyor</string>
+    <string name="actions_state_failed">Gerçekleşmedi</string>
+    <string name="actions_empty">Kelo henüz dışarıda bir işlem yapmadı.</string>
+    <string name="actions_outside_text_note">Kelo\'nun web sayfalarından, e-postalardan ve dosyalardan okuduğu metinler veri olarak kabul edilir, asla talimat olarak değerlendirilmez; Kelo\'nun ödeme yapmasını, göndermesini veya silmesini sağlayamaz.</string>
+</resources>

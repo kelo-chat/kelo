@@ -1,11 +1,11 @@
-# Kelo Nest: publish packages for Kelo
+# Kelo Nest: packages for Kelo, shared by a GitHub link
 
-**Kelo Nest** ("Nest") is where people publish things Kelo can use: guides for the agent, connections to services, and screens for
-the apps. Every Kelo server can browse Nest, show the owner what a package may do in plain words, and install it with the owner's
-approval. Nothing in a package is code: Kelo and its apps never run anything a package brings, so a package works on every server and
+**Kelo Nest** ("Nest") is how people share things Kelo can use: guides for the agent, connections to services, and screens for
+the apps. A package lives in its author's GitHub repository. Anyone can share the link; the owner pastes it on their Kelo server, sees
+what the package may do in plain words, and installs it with their approval. Nothing in a package is code: Kelo and its apps never run anything a package brings, so a package works on every server and
 every app without an update.
 
-This page is for publishers (and, at the end, for whoever runs the Nest index). The screens a package adds are specified in
+This page is for the people who make packages. The screens a package adds are specified in
 [`nest-ui.md`](nest-ui.md); the package folder format it builds on is in [`packages.md`](packages.md).
 
 ## What a package can be
@@ -14,13 +14,13 @@ One package is one folder with a `kelo-package.json` manifest. Its `kind` is one
 
 | Kind | What it adds | Example |
 | --- | --- | --- |
-| `skill` | a written guide (`SKILL.md`) Kelo reads when it fits the user's request | [`trip-packing-list`](../examples/packages/trip-packing-list/) |
-| `connector` | a connection to a service, in one of four ways (below) | [`example_notes`](../examples/packages/example_notes/), [`example_weather`](../examples/packages/example_weather/), [`example_tasks`](../examples/packages/example_tasks/), [`example_market`](../examples/packages/example_market/) |
-| `extension` | screens for the apps (and entries kept on the server) only | [`daily-countdown`](../examples/packages/daily-countdown/) |
+| `skill` | a written guide (`SKILL.md`) Kelo reads when it fits the user's request | [`trip-packing-list`](../server/examples/packages/trip-packing-list/) |
+| `connector` | a connection to a service, in one of four ways (below) | [`example_notes`](../server/examples/packages/example_notes/), [`example_weather`](../server/examples/packages/example_weather/), [`example_tasks`](../server/examples/packages/example_tasks/), [`example_market`](../server/examples/packages/example_market/) |
+| `extension` | screens for the apps (and entries kept on the server) only | [`daily-countdown`](../server/examples/packages/daily-countdown/) |
 
 A skill or a connector can **also** add screens with a `ui` section: it is then listed with the kinds `skill, extension` or
-`connector, extension`. [`habit-tracker`](../examples/packages/habit-tracker/) is a skill with a Habits tab;
-[`example_parcels`](../examples/packages/example_parcels/) is a key connector with a Parcels tab.
+`connector, extension`. [`habit-tracker`](../server/examples/packages/habit-tracker/) is a skill with a Habits tab;
+[`example_parcels`](../server/examples/packages/example_parcels/) is a key connector with a Parcels tab.
 
 Ids: a connector's id uses `a-z 0-9 _` and starts with a letter; a skill's or extension's uses `a-z 0-9 -`. 2-48 characters. The
 folder is named by the id. An id a built-in skill or connector uses is refused.
@@ -69,7 +69,7 @@ A connector that holds the owner's mail or calendar says so, with how Kelo's sta
 or a key connector with `mcp_url`) or to requests on its API (a key or OAuth connector with `base_url`). Kelo's built-in features then
 read it like any built-in mailbox or calendar, with no change to Kelo: the morning briefing and the heads-ups (and the accounts list
 under Notifications → accounts Kelo reads, where the owner can switch it off), `calendar_events`, and `email_list`, `email_read` and `email_update`.
-[`example_mail`](../examples/packages/example_mail/kelo-package.json) is a complete one.
+[`example_mail`](../server/examples/packages/example_mail/kelo-package.json) is a complete one.
 
 ```json
 "provides": {
@@ -184,9 +184,9 @@ What the server enforces for every package, whatever it declares:
 - pictures are fetched by the server, never by the phone, and only PNG, JPEG, WebP or GIF up to 1 MiB;
 - package text reaching Kelo (a skill, entries, a button's request) is fenced as third-party text: it cannot change Kelo's rules,
   grant permissions or skip approvals;
-- a changed, turned-off or withdrawn package does nothing at all.
+- a changed or turned-off package does nothing at all.
 
-## Make, check and publish a package
+## Make and check a package
 
 Install the server code (or use any Kelo server's image), then:
 
@@ -201,63 +201,93 @@ kelo nest pack my-package --out dist            # a reproducible .tar.gz, its sh
 Test it on your own server first: copy the folder to `<state>/packages/<id>/`; it is picked up on the next message, without a
 restart. Its screens show in the apps at once.
 
-### Publishing: a pull request to the registry
+To share it, put the package in a GitHub repository with `kelo-package.json` at the top of the repository, and share the repository
+link. See [Share and install by link](#share-and-install-by-link).
 
-Nest is built from a public Git repository, the **registry** (`kelo-chat/nest`). Every published version is one small JSON file
-there, added by pull request. Your package itself lives where you keep it:
+## Made by talking, shared on GitHub
 
-- **a Git repository** on github.com, gitlab.com or codeberg.org, pinned to a full 40-character commit (a tag or branch can be moved
-  later, so it is never accepted), or
-- **an archive** (`.tar.gz` or `.zip`, ideally from `kelo nest pack`) at any public https address, pinned by its sha256.
+Status: built (2026-11-15): drafts, the draft tools and live reload, Made here in all three apps, Share to GitHub, and install from a
+link. The owner asks in chat ("make me a tab that tracks my reading", "turn the way I write reviews into a skill"), sees the result
+in the app at once, changes it by talking, and shares it with one tap: Kelo puts it on the owner's GitHub and gives the owner the
+repository link. No command line, no git.
 
-```sh
-git clone https://github.com/kelo-chat/nest && cd nest
-kelo nest publish ../my-package --registry . --publisher <your id> \
-    --git-url https://github.com/you/my-package --commit <40-character commit> [--path package]
-# or: --archive dist/my-package-1.0.0.tar.gz --archive-url https://you.example/my-package-1.0.0.tar.gz
+### Drafts
+
+- A draft is an ordinary package folder in `<state>/package-drafts/<id>/` (manifest, `SKILL.md`, `ui`, `store`), so it is read and
+  checked by the same code as a published package (`packages.load_package(folder, source="draft")`).
+- Agent tools (loaded on demand): `nest_draft_create(kind, id, name, description)`, `nest_draft_write(id, path, content)` (only the
+  package's own files: `kelo-package.json`, `SKILL.md`, files under `ui/` and `assets/`; at most 256 KB per file, 2 MB per draft),
+  `nest_draft_check(id)` (the validator's findings and what the owner would be shown), `nest_draft_delete(id)`.
+- A draft is live on this server only while it is a draft: its skill is listed as a draft ("draft, made here"), its screens are
+  served by `/api/nest/extensions` with `"draft": true`. Every write bumps the draft's version (`0.0.N`), and the server sends a new
+  live event `nest_changed` {"id"} so the app reloads the open screen: the owner sees the change right after asking for it.
+- A draft never gets more than a package would: the same permissions block, shown and approved the same way when it first asks for
+  a permission (a draft with `connect` or `http` permissions asks before its first use, like an installed package).
+- A skill the owner approved with `propose_skill` can become a draft ("share this skill"): its `SKILL.md` is copied into a new
+  skill draft; the custom skill itself stays.
+
+### In the apps
+
+- My -> Nest -> "Made here": the drafts and the custom skills, each with its kind, version and three actions: Open (the screen, or
+  the skill text read-only), Share, Delete. A draft's tab can be put on the tab bar like an installed extension (tab rules above).
+- Draft screens carry a small "draft" badge in the screen header. Nothing else differs, so what the owner sees is what others get.
+- Built in the apps (Android, desktop, iOS): the native renderer of [`nest-ui.md`](nest-ui.md) Part 1, My -> Nest -> Made here, the
+  draft badge, Open / Share / Delete (Share's `409 github_write_needed` opens the GitHub connect panel and then shares again), the tab
+  picker, and the live `nest_changed` reload of an open screen. Android: `shell/Nest*.kt`, `my/Nest*.kt`; iOS: `KeloShared/App/Nest*.swift`,
+  `KeloShared/Design/NestViews.swift`, `KeloMy/Pages/NestPage.swift`.
+
+### Share: to the owner's GitHub
+
+1. Share needs the GitHub connector with write access to repositories ("Public repositories only" is enough for a public
+   repository). Without it, the Share sheet offers to connect GitHub first (the device-code sign-in that exists today).
+2. Tapping Share sends `POST /api/nest/drafts/{id}/share`. The server starts a chat turn with a hidden mark; Kelo asks in the
+   owner's language, with quick replies: "I'll put it on GitHub. Name the repository `kelo-<id>`? Public?" The owner can answer
+   with another name.
+3. Kelo calls `nest_share_github(id, repo, public)`, which always shows an approval card: the account, the repository name,
+   public or private, and the file list. On approval:
+   - checks first: the validator again, the secret scan (`found_secrets`) and the privacy guard on every file (nothing of the
+     owner's: no keychain values, no addresses, no entries from `store`); any finding stops it and is shown;
+   - creates the repository when it does not exist (`POST /user/repos`, with a README made from the manifest and the license the
+     owner picks once, default MIT for skills and screens);
+   - pushes the files as one commit with the Git Data API (blobs -> tree -> commit -> update the ref), so no git program is needed;
+   - answers with the repository link and the 40-character commit.
+4. Then Kelo tells the owner the repository link, and that anyone can install it by pasting that link in My -> Nest -> Install from
+   link. Nothing is published anywhere else: the repository is the package.
+5. Sharing again pushes a new commit to the same repository. The installed copies get it as an update (see below).
+
+### API (drafts)
+
 ```
-
-This writes `packages/<id>/<version>.json` and prints the git commands for the pull request; it does not push anything. The file
-holds your package's names and descriptions in every language it has (`strings` in the manifest), its kinds, the source, the
-**content hash** (one hash over every file of the package) and the permissions. On your first package, add yourself to
-`publishers.json` in the same pull request (`{"<id>": {"name": "...", "homepage": "https://..."}}`).
-
-The registry's check (`kelo nest check-registry`) refuses a file that does not match its folder and name, an unknown publisher, a
-package id that belongs to another publisher, and anything a server would refuse. A published version never changes: to fix
-something, publish a new version.
-
-### Review and "verified"
-
-The Nest operator reviews pull requests. A package the operator has looked at closely is listed in `verified.json` and marked
-**verified** in the apps; a publisher whose identity the operator checked is marked verified in `publishers.json`. Everything else is
-listed as unverified (the owner sees that before installing). Verified or not, every server checks the files against the index and
-enforces the permissions.
-
-### Withdrawal
-
-When a published package turns out to be harmful, the operator adds it to `withdrawn.json` (all versions, some versions, or exact
-content hashes, with a reason). Every server that reads the next index turns that package off, tells its owner why, and keeps it off
-(even offline) until a version that is not withdrawn is installed. A withdrawn package cannot be turned back on.
-
-## How a server trusts Nest
-
+GET    /api/nest/drafts                    {"items": [{"id", "kind", "name", "version", "updated_at", "shared": {"repo", "commit", "at"} | null}]}
+GET    /api/nest/drafts/{id}               the files (text) and the validator's findings
+DELETE /api/nest/drafts/{id}               {"ok"}
+POST   /api/nest/drafts/{id}/share         202 {"turn_id"}: the chat turn that asks for the repository name; 409 without GitHub write access
 ```
-https://kelo.chat/nest/index.json           the index: every package, its versions, sources, content hashes, permissions
-https://kelo.chat/nest/index.json.minisig   its signature
-```
+New notification types (add to `push.NOTE_TYPES`): `nest_shared`.
 
-- **Signed with minisign (Ed25519).** The index is signed by the Nest operator's key; every server carries the operator's public key
-  and reads no index without a valid signature. minisign is a small, standard format that needs no network, no certificate
-  authority and no log to verify, so a server behind a firewall or offline checks it the same way; operators can use the `minisign`
-  program or `kelo nest index sign`. (Sigstore was considered: it proves who signed through an online certificate authority and
-  transparency log, which a self-hosted server cannot always reach, and there is exactly one signer here.)
-- **Fresh and never older.** The index has an expiry time (a server stops trusting an index that someone keeps it stuck on) and a
-  sequence number that only goes up (a server refuses an older signed index once it has seen a newer one).
-- **Exact files.** Each version names its source (a commit or an archive's sha256) and its content hash. A server checks both after
-  downloading, and that the package's id, version, kinds, connect type and permissions are exactly what the index says, before
-  anything is installed.
-- **Bound to the owner's approval.** The installed files' hash is what the owner approved; if the files change on disk, the package
-  stops working until the owner approves again (see [`packages.md`](packages.md)).
+### Order
+
+1. Server: drafts folder, `load_package(..., source="draft")`, the draft tools, the `nest_changed` event on each write, tests.
+2. Apps: "Made here" in My -> Nest, the draft badge, Share and Delete (Android first, then desktop and iOS).
+3. Share to GitHub (Git Data API), the repository question and the approval card.
+4. Install from a GitHub link.
+
+## Share and install by link
+
+A package is a folder in a GitHub repository, with `kelo-package.json` at the top of the repository. To share it, share the repository
+link. The owner of a Kelo server installs it: in the app, **My -> Nest -> Install from link**, paste the link. The server reads the
+newest commit of the repository, checks it like any package, and shows the owner its name, its author and what it may do (its
+permissions, in plain words). **Install** pins that exact commit and its content hash, so what the owner saw is what gets installed.
+The server fetches only the forge's archive of that commit, from github.com. A preview is kept for 15 minutes; after that the owner
+pastes the link again.
+
+Later commits show as an **update** in My -> Nest. The server checks the repository about every six hours, and when the owner asks.
+An update that keeps or asks for less permission installs when the owner taps Update. An update that asks for more permission is
+shown again, with what changed, and installs only when the owner approves it. A pinned package is not updated. The owner can turn a
+package off, remove it, or take single permissions back at any time.
+
+Nobody reviews packages: there is no review, no "verified" mark and no catalog. The app says so when the owner installs one. The
+owner decides from what the package says it may do, and from who published it.
 
 ## The server API
 
@@ -265,23 +295,22 @@ For the apps (owner-only where it changes something; `Accept-Language` picks the
 
 | Method and path | Who | What |
 | --- | --- | --- |
-| `GET /api/nest/status` | any device | the index: trusted key present, sequence, expiry, last error; `max_tabs` |
-| `GET /api/nest/browse?q=&kind=` | any device | search (`kind`: `skill`, `connector`, `extension`) |
-| `POST /api/nest/refresh` | owner | fetch the index now (applies the withdrawal list) |
-| `GET /api/nest/packages/{id}` | any device | details: versions, permissions in plain words and their `hash`, installed state, update |
-| `POST /api/nest/packages/{id}/install` | owner | `{"version"?, "accept": "<permissions hash>"}`; `409` with the permissions when `accept` is not the hash shown |
-| `POST /api/nest/packages/{id}/update` | owner | `{"version"?, "accept"?, "switch_source"?}`; `409` with `widened` when it asks for more |
+| `GET /api/nest/status` | any device | `max_tabs` |
+| `POST /api/nest/install-from-link` | owner | `{"url": "https://github.com/<owner>/<repo>"}`: the package's card with its `token`, its permissions and their `hash`. Installs nothing; `422` when it is not a package |
+| `POST /api/nest/install-from-link/confirm` | owner | `{"token", "accept": "<permissions hash>"}`: installs the previewed commit. `409` with `error` `look_again` (the permissions are not the ones `accept` names), `already_installed` or `changed` (the repository changed since the preview); `410` `link_expired`; `422` `refused` |
+| `GET /api/nest/packages/{id}` | any device | the installed package: state, permissions, repository (`repo`), update as last checked |
+| `POST /api/nest/packages/{id}/update` | owner | `{"accept"?: "<new permissions hash>"}`: installs the newest commit of the repository. `409` with `error` `look_again` plus `widened`, `narrowed` and `permissions` when it asks for more; `409` when up to date or pinned |
 | `DELETE /api/nest/packages/{id}?keep_data=false` | owner | remove it (its entries and vault item go too) |
 | `PUT /api/nest/packages/{id}/pin` | owner | `{"pinned": true}`: stay on this version |
 | `PUT /api/nest/packages/{id}/enabled` | owner | `{"enabled": false}`: turn it off without removing it |
 | `PUT /api/nest/packages/{id}/permissions` | owner | `{"revoke": ["reads.calendar", "ui.tab", "actions.connector"], "grant": [...]}` |
 | `PUT /api/nest/packages/{id}/client-id` | owner | `{"client_id": "..."}` for an `oauth` package with `client: "owner"` |
-| `GET /api/nest/installed` | any device | every installed package: state (`on`, `disabled`, `withdrawn`), pinned, permissions, granted, update |
+| `GET /api/nest/installed` | any device | every installed package: `state` (`on` or `disabled`), `pinned`, `permissions`, `granted`, `repo`, `update` |
 | `GET /api/nest/updates` | any device | installed packages with an update that is not pinned |
 | `GET /api/nest/extensions` and the screen endpoints | | see [`nest-ui.md`](nest-ui.md) |
 
-Packages copied into `<state>/packages/` by hand and custom skills keep working as before; they are listed as installed (by hand,
-"unreviewed") and never updated from Nest.
+Packages copied into `<state>/packages/` by hand and custom skills keep working as before; they are listed as installed, with no
+repository, and are never updated from Nest.
 
 ## Limits
 
@@ -291,22 +320,3 @@ Packages copied into `<state>/packages/` by hand and custom skills keep working 
 | programs | none: an executable bit, a program header, a script or program file name refuses the package |
 | `ui` | 48 KiB; 6 surfaces (1 tab, 1 My page section, 2 Home cards, 2 chat cards); 8 screens; 60 components per screen |
 | entries | 4 collections, 12 fields each, 1000 entries per collection, 512 KiB in all |
-| index | 4 MiB, 2000 packages, 50 versions each |
-
-## For the Nest operator
-
-```sh
-kelo nest keygen --out ~/nest-keys                     # once: nest.key (keep it offline) and nest.pub
-# put the printed public line in src/assistant/nest_index.py TRUSTED_KEYS (or ASSISTANT_NEST_KEYS on a server)
-kelo nest check-registry nest/                         # CI on every pull request
-kelo nest index build --registry nest/ --out site/nest/index.json --expires-days 30
-kelo nest index sign --key ~/nest-keys/nest.key site/nest/index.json   # or: minisign -Sm site/nest/index.json
-kelo nest index verify --pub ~/nest-keys/nest.pub site/nest/index.json
-```
-
-Publish `index.json` and `index.json.minisig` at `https://kelo.chat/nest/`. Rebuild and sign at least every couple of weeks even with
-no changes (the expiry), and at once after a withdrawal. The sequence defaults to the current time, so it always goes up.
-
-Server settings: `ASSISTANT_NEST_KEYS` (more trusted public keys, comma-separated: a second key for rotation, or a private index),
-`ASSISTANT_NEST_INDEX` (another index address). To rotate the key: add the new public key next to the old one in a server release,
-sign with the new key once that release is out, then remove the old key.

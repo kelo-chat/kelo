@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="actions_title">Kelo가 한 일</string>
+    <string name="actions_period_today">오늘</string>
+    <string name="actions_period_7d">7일</string>
+    <string name="actions_period_30d">30일</string>
+    <string name="actions_state_unknown">확인 중</string>
+    <string name="actions_state_failed">안 됨</string>
+    <string name="actions_empty">아직 Kelo가 밖에서 한 일이 없어요.</string>
+    <string name="actions_outside_text_note">웹페이지·메일·파일에서 읽은 글은 데이터로만 다루며 명령으로 받아들이지 않아요. 이런 글로 결제·전송·삭제를 시킬 수 없어요.</string>
+</resources>

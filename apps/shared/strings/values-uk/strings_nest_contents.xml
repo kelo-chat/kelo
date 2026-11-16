@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">Переглянути все, що буде встановлено</string>
+    <string name="nest_contents_title">Що буде встановлено</string>
+    <string name="nest_contents_warnings">Зауваження під час завантаження</string>
+    <string name="nest_contents_endpoints">Куди він підключається</string>
+    <string name="nest_contents_none">Немає</string>
+    <string name="nest_contents_files">Файли</string>
+    <string name="nest_contents_total">Усього %1$s</string>
+    <string name="nest_contents_cut">Цей файл занадто довгий, тому показано лише частину.</string>
+    <string name="nest_contents_back">Усі файли</string>
+    <string name="nest_contents_bytes">%1$d Б</string>
+    <string name="nest_contents_kb">%1$d КБ</string>
+    <string name="nest_changed_open">Переглянути зміни</string>
+    <string name="nest_update_changed">Змінених файлів: %1$d</string>
+    <string name="nest_changed_title">Що змінює це оновлення</string>
+    <string name="nest_changed_added">Додані файли</string>
+    <string name="nest_changed_removed">Видалені файли</string>
+    <string name="nest_changed_modified">Змінені файли</string>
+</resources>

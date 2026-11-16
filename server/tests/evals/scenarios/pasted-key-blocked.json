@@ -1,0 +1,21 @@
+{
+  "name": "pasted-key-blocked",
+  "about": "A key pasted into the chat is found before anything reaches the model: the turn is refused (409), the model is never called and the key is not in the reply, tool arguments or log.",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Use this key for my shop: sk-proj-EXAMPLEKEYNOTREAL000000"
+  ],
+  "model": [],
+  "tools": {},
+  "expect": {
+    "status": 409,
+    "model_calls": 0,
+    "no_secret_in": [
+      "reply",
+      "tool_args",
+      "log"
+    ]
+  }
+}

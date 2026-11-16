@@ -109,10 +109,10 @@ Versions, sizes and SHA-256 of the current builds: [kelo.chat/download/latest.js
 - **macOS:** drag Kelo to Applications. It is signed and notarized by Apple, so it opens right away. Apple silicon (M1 or later).
 
 <p align="center">
-  <img src="src/assistant/site/shots/en-chat.webp" alt="Chat" width="200">
-  <img src="src/assistant/site/shots/en-work.webp" alt="Work" width="200">
-  <img src="src/assistant/site/shots/en-goal-reading.webp" alt="Goal plan: Read 2 books a month" width="200">
-  <img src="src/assistant/site/shots/en-connectors.webp" alt="Connectors" width="200">
+  <img src="server/src/assistant/site/shots/en-chat.webp" alt="Chat" width="200">
+  <img src="server/src/assistant/site/shots/en-work.webp" alt="Work" width="200">
+  <img src="server/src/assistant/site/shots/en-goal-reading.webp" alt="Goal plan: Read 2 books a month" width="200">
+  <img src="server/src/assistant/site/shots/en-connectors.webp" alt="Connectors" width="200">
 </p>
 
 ### Verify the downloads
@@ -302,6 +302,78 @@ It also installs Claude Code and Antigravity, each in its own container; you sig
 These companies have not confirmed that their subscriptions may be used from other apps, so the app asks once before each
 one is used. Turn it off with `kelo disable oauth`.
 
+### An Android device Kelo can use (optional)
+
+For apps with no usable website (delivery, booking, app-only coupons), Kelo can drive an Android device: it reads the screen, taps,
+types (Korean too) and opens apps, with the same approval rules as its browser (payments, sending and deleting ask), and it signs in
+with the login you enter in its secure card. The device can be:
+
+- **next to Kelo**: [redroid](https://github.com/remote-android/redroid-doc) (Android in a container) on a Linux machine on your network,
+  an emulator, or a VM;
+- **a spare phone** with wireless debugging turned on;
+- **on the same Linux server as Kelo** (Docker Desktop on macOS and Windows cannot run redroid).
+
+Turn it on in `.env`, then build the bridge (a small container that talks adb to the device) and update:
+
+```bash
+COMPOSE_PROFILES=...,android               # add android to the profiles you have
+ANDROID_DEVICE=192.168.0.20:5555           # the device's adb address
+ANDROID_BRIDGE_TOKEN=<32+ random characters>
+```
+
+```bash
+docker compose --profile android build android
+kelo update
+```
+
+What each place needs:
+
+| | Next to Kelo (redroid on Linux) | Same server as Kelo (redroid) | Spare phone |
+| --- | --- | --- | --- |
+| Machine | x86_64 or arm64 Linux with Docker; 2.5 GB of free memory, 4 GB of disk | the Kelo server itself, Linux only, 2.5 GB more memory | any Android 11+ phone, always on and charging |
+| Kernel | `binder_linux` (most distributions; Ubuntu: `linux-modules-extra`), plus `loop` and `erofs` for Android 15 | same | none |
+| Setup | the commands below, then `ANDROID_DEVICE=<its LAN address>:5555` | the commands below, but with `--network <kelo-project>_android-out` instead of `-p` (find it with `docker network ls`; no port is opened), then `ANDROID_DEVICE=redroid:5555` | Developer options → Wireless debugging → Pair with code, then `adb pair` / `adb connect` once from a computer; `ANDROID_DEVICE=<phone address>:<port>` |
+| Network | the Kelo server must reach the device's port (a Mac running Docker Desktop or colima may need its Local Network permission, or a small relay) | none | the phone on the same network as the server |
+
+redroid on Linux (Android 15):
+
+```bash
+echo "options binder_linux devices=binder,hwbinder,vndbinder" | sudo tee /etc/modprobe.d/redroid.conf
+printf "binder_linux\nloop\nerofs\n" | sudo tee /etc/modules-load.d/redroid.conf
+sudo modprobe binder_linux devices=binder,hwbinder,vndbinder && sudo modprobe loop && sudo modprobe erofs
+printf 'KERNEL=="binder", MODE="0666"\nKERNEL=="hwbinder", MODE="0666"\nKERNEL=="vndbinder", MODE="0666"\n' | sudo tee /etc/udev/rules.d/60-redroid-binder.rules
+sudo chmod 666 /dev/binder /dev/hwbinder /dev/vndbinder
+docker run -d --privileged --name redroid --restart unless-stopped --memory 2560m -v redroid-data:/data \
+  -p <lan-address>:5555:5555 redroid/redroid:15.0.0-latest \
+  androidboot.redroid_gpu_mode=guest androidboot.redroid_width=720 androidboot.redroid_height=1280 androidboot.redroid_dpi=320
+```
+
+**Google Play.** redroid's own images have no Google apps. On x86_64, build one with LiteGapps (MindTheGapps' x86_64 builds carry a
+2022 Play Store that crashes on Android 14 and 15). The recipe in [regulad/redroid-script](https://github.com/regulad/redroid-script)
+pins every download by its checksum; build it yourself rather than pulling a ready image:
+
+```bash
+git clone https://github.com/regulad/redroid-script && cd redroid-script
+docker build -t redroid:15-gapps \
+  --build-arg BASE=docker.io/redroid/redroid:15.0.0-250627 \
+  --build-arg TOOLS=docker.io/library/alpine:3.24.3 --build-arg BUSYBOX=docker.io/library/busybox:1.38.0-musl \
+  --build-arg GAPPS_KIND=litegapps --build-arg LITEGAPPS_TREE=x86_64/35 \
+  --build-arg GAPPS_URL=<litegapps-15.0-x86_64 url from matrix.json> --build-arg GAPPS_SHA256=<its sha256 from matrix.json> \
+  --build-arg ADDON_URL=<litegapps-setupwizard-15.0-x86_64 url> --build-arg ADDON_SHA256=<its sha256> \
+  --build-arg NATIVE_BRIDGE=none .
+```
+
+Then run `redroid:15-gapps` in the `docker run` above instead of `redroid/redroid:15.0.0-latest` (a new data volume), and sign in to
+Play by asking Kelo ("sign in to the Play Store"): the login card types it on the device. `NATIVE_BRIDGE=none` leaves out ARM
+translation, so apps built only for ARM do not install. If you need ARM-only apps, use a spare phone or redroid on an ARM server (Raspberry Pi, Ampere) rather than an ARM
+translation layer: those layers are closed files without the right to redistribute them, and unstable on Android 15.
+
+**Typing.** Install [ADB Keyboard](https://github.com/senzhk/ADBKeyBoard) on the device (`adb install` its APK, then
+`adb shell ime enable com.android.adbkeyboard/.AdbIME`) so Kelo can type more than plain ASCII (Korean, emoji).
+
+Bank and payment apps usually refuse emulators, and an app that allows one phone per account may sign your phone out. Details:
+[docs/android-device.md](docs/android-device.md).
+
 ## How it's built
 
 - **Server** — Python (FastAPI) in Docker, with a sandboxed Chromium browser, an egress proxy that refuses private addresses, and a
@@ -354,7 +426,7 @@ modified Kelo server for other people over a network, the AGPL asks you to offer
 product or service without sharing your changes), a commercial licence is available on request: support@kelo.chat.
 
 **Contributing.** Outside pull requests are not accepted yet. Bug reports and ideas are welcome as issues. See
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](.github/CONTRIBUTING.md).
 
 The Kelo name, logo and mascot are not covered by the licence; forks need their own. Third-party code, fonts and service
 icons, and their licences: [NOTICE](NOTICE).

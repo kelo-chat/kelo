@@ -1,0 +1,44 @@
+{
+  "name": "payment-within-grant-no-card",
+  "about": "A payment under the owner's grant cap runs without a card; the same tool over the cap asks (see payment-asks-outside-grant).",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Buy the phone case for 30 from example.test, as the grant allows"
+  ],
+  "model": [
+    [
+      {
+        "tool": "pay",
+        "args": {
+          "amount": 30,
+          "site": "shop.example.test"
+        }
+      }
+    ],
+    [
+      {
+        "text": "Paid 30."
+      }
+    ]
+  ],
+  "tools": {
+    "pay": {
+      "approval": {
+        "auto_within": 50
+      },
+      "result": "paid",
+      "description": "Pay for an order (asks the owner unless a grant covers it)."
+    }
+  },
+  "expect": {
+    "approval_asked": false,
+    "called": [
+      "pay"
+    ],
+    "reply_contains": [
+      "Paid 30"
+    ]
+  }
+}

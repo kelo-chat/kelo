@@ -6,16 +6,21 @@
 #   bash install.sh --uninstall                                          remove Kelo (your data is kept unless --delete-data)
 #
 # What it does, in order: checks this computer (OS, CPU type), checks Docker and Compose (and helps get them), installs `uv`
-# if it is missing, puts the Kelo files in ~/kelo, prepares Python with uv, adds a `kelo` command, and opens the guided setup.
+# if it is missing, puts the Kelo files in ~/kelo, prepares Python with uv, adds a `kelo` command, pulls Kelo's official images
+# (signed; checked before use), and opens the guided setup, which starts Kelo and shows a QR code for your phone.
 # Running it again is an update: your .env, chats, keys and phones stay as they are.
 #
 # Options (each also as an environment variable):
 #   -y, --yes          answer every question with its default (KELO_YES=1); never deletes data
+#   --add NAME         add another Kelo server copy without asking (KELO_ADD)
 #   --dir DIR          where Kelo lives (KELO_HOME, default ~/kelo)
-#   --source SRC       where to get the Kelo files: a folder, a .tar.gz URL or a git URL (KELO_SOURCE)
-#   --no-start         save the answers but do not build or start the containers (KELO_NO_START=1)
-#   --from-release     pull the signed release images instead of building them here (KELO_FROM_RELEASE=1); the Claude/agy
-#                      containers are still built here (their CLIs are never published)
+#   --source SRC       where to get the Kelo files: a folder, a .tar.gz URL or a git URL (KELO_SOURCE). A custom source is
+#                      built here, since its images are not the official ones, unless --from-release is given too
+#   --from-release     the default: pull the signed official images instead of building them here (KELO_FROM_RELEASE=1).
+#                      If the pull fails they are built here instead, with a warning. The Claude/agy containers are always
+#                      built here (their CLIs are never published)
+#   --build-here       build the images on this computer instead (KELO_FROM_RELEASE=0); slow, and it can fail on small machines
+#   --no-start         save the answers but do not start the containers (KELO_NO_START=1)
 #   --auto-update      let Kelo update the server by itself at night (KELO_AUTO_UPDATE=1); --no-auto-update: only when the owner
 #                      presses Update in the app (the default; asked when there is a terminal)
 #   --uninstall        stop and remove Kelo; add --delete-data to also delete chats, keys and files for good
@@ -28,26 +33,30 @@ KELO_HOME="${KELO_HOME:-$HOME/kelo}"
 KELO_SOURCE="${KELO_SOURCE:-}"
 YES="${KELO_YES:-0}"
 START=1; [ "${KELO_NO_START:-0}" = "1" ] && START=0
-FROM_RELEASE="${KELO_FROM_RELEASE:-0}"
+FROM_RELEASE="${KELO_FROM_RELEASE:-}"   # 1 = official images, 0 = build here; empty = decided after the options
 AUTO_UPDATE="${KELO_AUTO_UPDATE:-}"
 UNINSTALL=0
 DELETE_DATA=0
 BIN_DIR="${KELO_BIN_DIR:-$HOME/.local/bin}"
+ADD_NAME="${KELO_ADD:-}"
 
 usage() {
-  if [ -f "$0" ]; then sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
-  else printf 'Kelo installer. Options: --yes --dir DIR --source SRC --no-start --from-release --auto-update --uninstall [--delete-data] --help\n'; fi
+  if [ -f "$0" ]; then sed -n '2,/^# NO_COLOR/p' "$0" | sed 's/^# \{0,1\}//'
+  else printf 'Kelo installer. Options: --yes --add NAME --dir DIR --source SRC --from-release --build-here --no-start --auto-update --uninstall [--delete-data] --help\n'; fi
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -y|--yes) YES=1 ;;
+    --add) ADD_NAME="${2:?--add needs a name}"; shift ;;
+    --add=*) ADD_NAME="${1#*=}" ;;
     --dir) KELO_HOME="${2:?--dir needs a folder}"; shift ;;
     --dir=*) KELO_HOME="${1#*=}" ;;
     --source) KELO_SOURCE="${2:?--source needs a folder or URL}"; shift ;;
     --source=*) KELO_SOURCE="${1#*=}" ;;
     --no-start) START=0 ;;
     --from-release) FROM_RELEASE=1 ;;
+    --build-here) FROM_RELEASE=0 ;;
     --auto-update) AUTO_UPDATE=1 ;;
     --no-auto-update) AUTO_UPDATE=0 ;;
     --uninstall) UNINSTALL=1 ;;
@@ -57,6 +66,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# The official images are the default. A custom --source is not the release, so it is built here unless asked otherwise.
+if [ -z "$FROM_RELEASE" ]; then
+  if [ -n "$KELO_SOURCE" ]; then FROM_RELEASE=0; else FROM_RELEASE=1; fi
+fi
 
 # ---------------------------------------------------------------------------------------------------------------- language
 LANG_KO=0
@@ -140,6 +153,7 @@ LOG="$(mktemp "${TMPDIR:-/tmp}/kelo-install.XXXXXX")"   # kept when something fa
 FRAMES=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
 
 # step "what is happening" command...: one line with a spinner; the command's output goes to the log, shown only if it fails.
+# With STEP_SOFT=1 a failed step returns its exit code instead of stopping the installer, so the caller can fall back.
 step() {
   local label="$1"; shift
   local start=$SECONDS status=0
@@ -163,8 +177,10 @@ step() {
   fi
   if [ "$status" -eq 0 ]; then
     ok "$label ${D}($((SECONDS - start))s)${R}"
+    return 0
   else
     printf '  %s✗%s %s\n' "$RED$B" "$R" "$label"
+    if [ "${STEP_SOFT:-0}" = 1 ]; then return "$status"; fi
     tail -n 20 "$LOG" | sed "s/^/    ${D}│${R} /"
     die "$(say "That step failed (exit $status). Full log: $LOG" "이 단계가 실패했습니다 (종료 코드 $status). 전체 로그: $LOG")"
   fi
@@ -326,6 +342,15 @@ fetch_kelo() {
       [ -f "$top/compose.yml" ] || die "$(say "That archive does not look like Kelo (no compose.yml)." "그 압축 파일은 Kelo가 아닌 것 같습니다 (compose.yml 없음).")"
       step "$(say "Putting the files in $KELO_HOME" "$KELO_HOME 에 파일 넣는 중")" copy_tree "$top" "$KELO_HOME"
       rm -rf "$stage" ;;
+    *.tar.gz|*.tgz|*.tar)
+      stage="$(mktemp -d)"
+      mkdir -p "$stage/x"
+      step "$(say "Unpacking" "압축 푸는 중")" tar -xf "$src" -C "$stage/x"
+      local top="$stage/x"
+      [ "$(ls -A "$stage/x" | wc -l | tr -d ' ')" = 1 ] && [ -d "$stage/x/$(ls -A "$stage/x")" ] && top="$stage/x/$(ls -A "$stage/x")"
+      [ -f "$top/compose.yml" ] || die "$(say "That archive does not look like Kelo (no compose.yml)." "그 압축 파일은 Kelo가 아닌 것 같습니다 (compose.yml 없음).")"
+      step "$(say "Putting the files in $KELO_HOME" "$KELO_HOME 에 파일 넣는 중")" copy_tree "$top" "$KELO_HOME"
+      rm -rf "$stage" ;;
     *)
       [ -f "$src/compose.yml" ] || die "$(say "$src does not look like a Kelo folder (no compose.yml)." "$src 는 Kelo 폴더가 아닌 것 같습니다 (compose.yml 없음).")"
       step "$(say "Copying Kelo into $KELO_HOME" "$KELO_HOME 에 Kelo 복사 중")" copy_tree "$src" "$KELO_HOME" ;;
@@ -398,33 +423,205 @@ uninstall() {
 
 # ---------------------------------------------------------------------------------------------------------------- updates from the app
 # The updater container (compose profile `updater`): the owner presses Update in the app, or lets it update at night. Its secret
-# (UPDATER_TOKEN) is made by `assistant updater setup` and never shown. With --from-release the signed images are pulled and
-# checked first (digest and signature); otherwise they were built from these files and the app says to update with `kelo update`.
-setup_updater() {
+# (UPDATER_TOKEN) is made by `assistant updater setup` and never shown. The images are the signed official ones (checked by
+# `assistant`, digest and signature) or were built from these files; the app says to update with `kelo update` in the second case.
+ask_auto_update() {
   section "$(say "Updates from the app" "앱에서 하는 업데이트")"
+  note "$(say "The owner's phone can update this server with one button (My → Server update). Kelo can also do it by itself at night," \
+              "주인 휴대폰에서 버튼 하나로 이 서버를 업데이트할 수 있습니다 (마이 → 서버 업데이트). 밤에 Kelo가 알아서 할 수도 있습니다,")"
+  note "$(say "when you usually do not use it; a backup is made first and it goes back by itself if the new version fails." \
+              "평소 쓰지 않는 시간에요. 먼저 백업하고, 새 버전이 실패하면 저절로 되돌립니다.")"
   if [ -z "$AUTO_UPDATE" ]; then
-    note "$(say "The owner's phone can update this server with one button (My → Server update). Kelo can also do it by itself at night," \
-                "주인 휴대폰에서 버튼 하나로 이 서버를 업데이트할 수 있습니다 (마이 → 서버 업데이트). 밤에 Kelo가 알아서 할 수도 있습니다,")"
-    note "$(say "when you usually do not use it; a backup is made first and it goes back by itself if the new version fails." \
-                "평소 쓰지 않는 시간에요. 먼저 백업하고, 새 버전이 실패하면 저절로 되돌립니다.")"
     if ask_yn "$(say "Update automatically at night?" "밤에 자동으로 업데이트할까요?")" n; then AUTO_UPDATE=1; else AUTO_UPDATE=0; fi
   fi
-  local uargs=(updater setup)
-  [ "$AUTO_UPDATE" = 1 ] && uargs+=(--auto-update) || uargs+=(--no-auto-update)
-  [ -n "${KELO_REGISTRY:-}" ] && uargs+=(--registry "$KELO_REGISTRY")
-  { [ "$START" = 0 ] || [ "$FROM_RELEASE" = 1 ]; } && uargs+=(--no-start)
-  if [ "$FROM_RELEASE" = 1 ]; then
-    uargs+=(--pull-release)
-    step "$(say "Downloading the signed Kelo images and checking them" "서명된 Kelo 이미지를 내려받고 확인하는 중")" \
-      env KELO_CMD=kelo "$UV" run --quiet --no-dev --frozen assistant "${uargs[@]}"
-    if [ "$START" = 1 ]; then   # builds only what a release never contains (the Claude / agy containers, when chosen)
+}
+
+# assistant updater setup with this run's choices, plus the extra arguments; a failure stops the installer unless STEP_SOFT=1
+run_updater_setup() {   # run_updater_setup "what is happening" [extra arguments]
+  local label="$1"; shift
+  local args=(updater setup)
+  if [ "$AUTO_UPDATE" = 1 ]; then args+=(--auto-update); else args+=(--no-auto-update); fi
+  if [ -n "${KELO_REGISTRY:-}" ]; then args+=(--registry "$KELO_REGISTRY"); fi
+  if [ "$START" = 0 ]; then args+=(--no-start); fi
+  args+=("$@")
+  step "$label" env KELO_CMD=kelo "$UV" run --quiet --no-dev --frozen assistant "${args[@]}"
+}
+
+setup_updater() {
+  ask_auto_update
+  run_updater_setup "$(say "Setting up the updater" "업데이트 도구 설정 중")"
+  if [ "$AUTO_UPDATE" = 1 ]; then ok "$(say "Nightly auto-update is on (change it in the app: My → Server update)" "밤 자동 업데이트를 켰습니다 (앱의 마이 → 서버 업데이트에서 바꿀 수 있습니다)")"
+  else ok "$(say "Updates when the owner presses Update in the app (My → Server update)" "앱에서 업데이트를 누를 때 업데이트합니다 (마이 → 서버 업데이트)")"; fi
+}
+
+# Without a terminal, the first install pulls the official images before Kelo starts (the updater's settings come with the pull).
+# If the pull fails, the images are built here instead, as before, with a warning. Only the Claude / agy containers are built
+# when the official images are used (their CLIs are never published).
+pull_first_install() {
+  if STEP_SOFT=1 run_updater_setup "$(say "Downloading the official Kelo images and checking their signatures" \
+                                       "공식 Kelo 이미지를 내려받고 서명을 확인하는 중")" --no-start --pull-release; then
+    if [ "$START" = 1 ]; then
       step "$(say "Starting Kelo" "Kelo 시작 중")" env BUILDKIT_PROGRESS=plain docker compose up -d --remove-orphans
     fi
   else
-    step "$(say "Setting up the updater" "업데이트 도구 설정 중")" env KELO_CMD=kelo "$UV" run --quiet --no-dev --frozen assistant "${uargs[@]}"
+    local why
+    why="$(grep '^error' "$LOG" 2>/dev/null | tail -n 1 | sed 's/^error: //' || true)"   # the reason assistant printed, if any
+    warn "$(say "Could not get the official images${why:+: $why}. Building them here instead." \
+                "공식 이미지를 받지 못했습니다${why:+: $why}. 이 서버에서 직접 빌드합니다.")"
+    if [ "$START" = 1 ]; then
+      step "$(say "Building and starting Kelo (the first time takes a few minutes)" "Kelo를 빌드하고 시작하는 중 (처음에는 몇 분 걸립니다)")" \
+        env BUILDKIT_PROGRESS=plain docker compose up -d --build --remove-orphans
+    fi
   fi
-  if [ "$AUTO_UPDATE" = 1 ]; then ok "$(say "Nightly auto-update is on (change it in the app: My → Server update)" "밤 자동 업데이트를 켰습니다 (앱의 마이 → 서버 업데이트에서 바꿀 수 있습니다)")"
-  else ok "$(say "Updates when the owner presses Update in the app (My → Server update)" "앱에서 업데이트를 누를 때 업데이트합니다 (마이 → 서버 업데이트)")"; fi
+}
+
+# ---------------------------------------------------------------------------------------------------------------- multiple instances
+get_free_memory_mb() {
+  if [ -n "${KELO_TEST_FREE_MEM_MB:-}" ]; then
+    printf '%s' "$KELO_TEST_FREE_MEM_MB"
+    return
+  fi
+  local free_mb=0
+  if [ "$OS" = Linux ] && [ -r /proc/meminfo ]; then
+    free_mb="$(awk '/^MemAvailable:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || true)"
+    if [ -z "$free_mb" ] || [ "$free_mb" -eq 0 ]; then
+      free_mb="$(awk '/^MemFree:/ {free=$2} /^Buffers:/ {buf=$2} /^Cached:/ {cache=$2} END {print int((free+buf+cache)/1024)}' /proc/meminfo 2>/dev/null || true)"
+    fi
+  elif [ "$OS" = Darwin ]; then
+    free_mb="$(vm_stat 2>/dev/null | awk '
+      BEGIN {ps=4096; free=0; spec=0}
+      /page size of/ {sub(/.*page size of /,""); sub(/ bytes.*/,""); ps=$1}
+      /Pages free/ {sub(/\./,"",$3); free=$3}
+      /Pages speculative/ {sub(/\./,"",$3); spec=$3}
+      END {printf "%d", (free+spec)*ps/(1024*1024)}
+    ' 2>/dev/null || true)"
+  fi
+  printf '%s' "${free_mb:-0}"
+}
+
+show_memory_info() {
+  local free_mb
+  free_mb="$(get_free_memory_mb)"
+  if [ -n "$free_mb" ] && [ "$free_mb" -gt 0 ] 2>/dev/null; then
+    local free_gb
+    free_gb="$(awk -v mb="$free_mb" 'BEGIN {printf "%.1f", mb/1024}')"
+    note "$(say "Free memory: ${free_gb} GB (recommended for another copy: 4 GB)" \
+                "여유 메모리: ${free_gb} GB (서버 추가 권장: 4 GB)")"
+    if [ "$free_mb" -lt 4096 ]; then
+      warn "$(say "Free memory is below the recommended 4 GB for one more copy." \
+                  "여유 메모리가 복사본 추가 권장 사양(4 GB)보다 적습니다.")"
+    fi
+  else
+    note "$(say "Recommended memory for another copy: 4 GB" \
+                "서버 추가 권장 메모리: 4 GB")"
+  fi
+}
+
+valid_name_format() {
+  local n="$1"
+  [ "${#n}" -ge 3 ] && [ "${#n}" -le 20 ] || return 1
+  case "${n:0:1}" in
+    [a-z]) ;;
+    *) return 1 ;;
+  esac
+  case "${n: -1}" in
+    [a-z0-9]) ;;
+    *) return 1 ;;
+  esac
+  case "$n" in
+    *[!a-z0-9-]*) return 1 ;;
+  esac
+  return 0
+}
+
+is_existing_name() {
+  local n="$1"
+  [ "$n" = "main" ] && return 0
+  [ -e "$KELO_HOME/instances/$n" ] && return 0
+  return 1
+}
+
+ensure_kelo_command() {
+  if [ ! -x "$BIN_DIR/kelo" ]; then
+    find_uv || ensure_uv
+    install_launcher
+  fi
+}
+
+add_instance() {
+  local name="$1"
+  section "$(say "Add another Kelo server" "Kelo 서버 하나 더 만들기")"
+  show_memory_info
+
+  if [ -z "$name" ]; then
+    while true; do
+      printf '  %s: ' "$(say "Name of the new copy (3-20 lowercase letters, digits or '-')" \
+                             "새 복사본 이름 (3~20자의 영문 소문자, 숫자, '-')")"
+      if ! IFS= read -r name <"$TTY_IN"; then
+        printf '\n'
+        exit 0
+      fi
+      if [ -z "$name" ]; then
+        continue
+      fi
+      if ! valid_name_format "$name"; then
+        warn "$(say "Name must be 3-20 lowercase letters, digits or '-', starting with a letter." \
+                    "이름은 영문 소문자로 시작하는 3~20자의 소문자, 숫자, '-'이어야 합니다.")"
+        name=""
+        continue
+      fi
+      if is_existing_name "$name"; then
+        warn "$(say "A Kelo server named '$name' already exists." \
+                    "'$name' 이름을 가진 Kelo 서버가 이미 있습니다.")"
+        name=""
+        continue
+      fi
+      break
+    done
+  else
+    if ! valid_name_format "$name"; then
+      die "$(say "Name '$name' is invalid: must be 3-20 lowercase letters, digits or '-', starting with a letter." \
+                 "잘못된 이름 '$name': 영문 소문자로 시작하는 3~20자의 소문자, 숫자, '-'이어야 합니다.")"
+    fi
+    if is_existing_name "$name"; then
+      die "$(say "A Kelo server named '$name' already exists." \
+                 "'$name' 이름을 가진 Kelo 서버가 이미 있습니다.")"
+    fi
+  fi
+
+  ensure_kelo_command
+  local cmd=("$BIN_DIR/kelo" instance create "$name")
+  [ "$YES" = 1 ] && cmd+=(--yes)
+  if [ -n "$TTY_IN" ] && [ -t 0 ]; then
+    "${cmd[@]}"
+  elif [ -n "$TTY_IN" ]; then
+    "${cmd[@]}" <"$TTY_IN"
+  else
+    "${cmd[@]}"
+  fi
+}
+
+ask_reinstall_choice() {
+  printf '\n  %s\n' "$(say "Kelo is already installed here. What would you like to do?" \
+                           "이 컴퓨터에 Kelo가 이미 있어요. 무엇을 할까요?")"
+  printf '    %s1%s) %s %s(%s)%s\n' "$BLUE$B" "$R" "$(say "Update it" "업데이트하기")" "$D" "$(say "default" "기본값")" "$R"
+  printf '    %s2%s) %s\n' "$BLUE$B" "$R" "$(say "Add another Kelo server (for another person or a test)" \
+                                              "Kelo 서버 하나 더 만들기 (다른 사람용이나 테스트용)")"
+  local ans
+  while true; do
+    printf '  %s %s[1]%s: ' "$(say "Choice" "선택")" "$BLUE$B" "$R"
+    if ! IFS= read -r ans <"$TTY_IN"; then
+      ans=""
+    fi
+    case "$ans" in
+      ""|1) return 0 ;;
+      2)
+        add_instance ""
+        exit 0
+        ;;
+      *) ;;
+    esac
+  done
 }
 
 # ---------------------------------------------------------------------------------------------------------------- main
@@ -432,6 +629,18 @@ main() {
   [ "$UNINSTALL" = 1 ] && { uninstall; return; }
   banner
   detect_platform
+  if [ -f "$KELO_HOME/compose.yml" ]; then
+    if [ -n "$ADD_NAME" ]; then
+      add_instance "$ADD_NAME"
+      return 0
+    fi
+    if [ "$INTERACTIVE" = 1 ]; then
+      ask_reinstall_choice
+    fi
+  elif [ -n "$ADD_NAME" ]; then
+    die "$(say "Kelo is not installed in $KELO_HOME yet. Install it first without --add." \
+                "Kelo가 아직 $KELO_HOME 에 설치되어 있지 않습니다. 먼저 --add 없이 설치하세요.")"
+  fi
   local mode
   if [ -f "$KELO_HOME/compose.yml" ]; then mode="$(say "update (data kept)" "업데이트 (데이터 유지)")"; else mode="$(say "new install" "새로 설치")"; fi
   printf '\n'
@@ -450,21 +659,35 @@ main() {
   step "$(say "Preparing Python and Kelo's packages" "Python과 Kelo 패키지 준비 중")" "$UV" sync --frozen --no-dev
   install_launcher
 
+  # Kelo files from before 0.10.2 have no `setup --from-release`: their guided screen saves the answers only, and the images are
+  # pulled (or built) after it, as before (no QR step then: the closing note says how to connect a phone).
+  local wizard_pulls=0
+  if [ "$FROM_RELEASE" = 1 ] && "$UV" run --quiet --no-dev --frozen assistant setup --help 2>/dev/null | grep -q -- '--from-release'; then
+    wizard_pulls=1
+  fi
   local args=(setup)
-  { [ "$START" = 0 ] || [ "$FROM_RELEASE" = 1 ]; } && args+=(--no-start)   # release images are pulled below, never built here
+  if [ "$START" = 0 ] || { [ "$FROM_RELEASE" = 1 ] && [ "$wizard_pulls" = 0 ]; }; then args+=(--no-start); fi
+  if [ "$wizard_pulls" = 1 ]; then args+=(--from-release); fi   # the guided screen pulls the official images, then starts Kelo
   if [ "$INTERACTIVE" = 1 ]; then
     printf '\n'
     KELO_CMD=kelo "$UV" run --quiet --no-dev --frozen assistant "${args[@]}" <"$TTY_IN"
+    if [ "$FROM_RELEASE" = 1 ] && [ "$wizard_pulls" = 0 ]; then
+      pull_first_install
+      note "$(say "Next: kelo connect kelo --name <name>   then   kelo phone add" "다음: kelo connect kelo --name <이름>   그리고   kelo phone add")"
+    fi
+    setup_updater
   else
     section "$(say "Setup (no questions)" "설정 (질문 없이)")"
     KELO_CMD=kelo "$UV" run --quiet --no-dev --frozen assistant setup --yes >>"$LOG" 2>&1
     ok "$(say "Saved the settings in $KELO_HOME/.env" "$KELO_HOME/.env 에 설정을 저장했습니다")"
-    if [ "$START" = 1 ] && [ "$FROM_RELEASE" != 1 ]; then
+    if [ "$FROM_RELEASE" = 1 ]; then
+      pull_first_install
+    elif [ "$START" = 1 ]; then
       step "$(say "Building and starting Kelo (the first time takes a few minutes)" "Kelo를 빌드하고 시작하는 중 (처음에는 몇 분 걸립니다)")" \
         env BUILDKIT_PROGRESS=plain docker compose up -d --build --remove-orphans
     fi
+    setup_updater
   fi
-  setup_updater
   [ "$INTERACTIVE" = 1 ] || note "$(say "Next: kelo connect kelo --name <name>   then   kelo phone add" "다음: kelo connect kelo --name <이름>   그리고   kelo phone add")"
   rm -f "$LOG"
 }

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="actions_title">Wat Kelo heeft gedaan</string>
+    <string name="actions_period_today">Vandaag</string>
+    <string name="actions_period_7d">7 dagen</string>
+    <string name="actions_period_30d">30 dagen</string>
+    <string name="actions_state_unknown">Controleren</string>
+    <string name="actions_state_failed">Niet gelukt</string>
+    <string name="actions_empty">Kelo heeft buiten nog niets gedaan.</string>
+    <string name="actions_outside_text_note">Wat Kelo leest van webpagina\'s, e-mails en bestanden wordt behandeld als gegevens, nooit als instructies; dergelijke tekst kan Kelo nergens voor laten betalen, verzenden of verwijderen.</string>
+</resources>

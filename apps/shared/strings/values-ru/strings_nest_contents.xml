@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">Посмотреть всё, что будет установлено</string>
+    <string name="nest_contents_title">Что будет установлено</string>
+    <string name="nest_contents_warnings">Замечания при загрузке</string>
+    <string name="nest_contents_endpoints">Куда он подключается</string>
+    <string name="nest_contents_none">Нет</string>
+    <string name="nest_contents_files">Файлы</string>
+    <string name="nest_contents_total">Всего %1$s</string>
+    <string name="nest_contents_cut">Этот файл слишком длинный, поэтому показана только его часть.</string>
+    <string name="nest_contents_back">Все файлы</string>
+    <string name="nest_contents_bytes">%1$d Б</string>
+    <string name="nest_contents_kb">%1$d КБ</string>
+    <string name="nest_changed_open">Посмотреть изменения</string>
+    <string name="nest_update_changed">Изменено файлов: %1$d</string>
+    <string name="nest_changed_title">Что меняет это обновление</string>
+    <string name="nest_changed_added">Добавленные файлы</string>
+    <string name="nest_changed_removed">Удалённые файлы</string>
+    <string name="nest_changed_modified">Изменённые файлы</string>
+</resources>

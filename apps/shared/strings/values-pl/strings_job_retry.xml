@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A job waiting to try again (work/RetryRules.kt): the chip and the status line. "%1$s" = the time or the date. -->
+    <string name="work_job_waiting">Ponowna próba zaplanowana</string>
+    <string name="work_job_retry_at">Ponowna próba zaplanowana · %1$s</string>
+    <string name="work_job_retry_tomorrow">Ponowna próba zaplanowana · jutro %1$s</string>
+</resources>

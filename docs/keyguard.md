@@ -1,7 +1,7 @@
 # Keyguard: the key of passwords, keys and cards on your phones
 
-Server side of `docs/security/e2e-and-phone-key.md` section 2 (and 5.9, 5.14, 5.15). Code: `src/assistant/keyguard.py`
-(`KeyGuard`, the only code that reads `master.key` or `ASSISTANT_SECRET_KEY`), `src/assistant/api/keyguard.py` (the API, contract in
+Server side of `docs/security/e2e-and-phone-key.md` section 2 (and 5.9, 5.14, 5.15). Code: `server/src/assistant/keyguard.py`
+(`KeyGuard`, the only code that reads `master.key` or `ASSISTANT_SECRET_KEY`), `server/src/assistant/api/keyguard.py` (the API, contract in
 its docstring), `Store` (takes its sealers from the KeyGuard at each use).
 
 ## Scope (owner's decision, 2026-11-10)

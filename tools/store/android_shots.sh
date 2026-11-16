@@ -2,7 +2,7 @@
 # Raw Google Play captures: the installed Kelo app on an Android emulator against tools/store/store_mock.py, at a Galaxy S size.
 #
 #   tools/store/android_shots.sh OUT_DIR [en] [ko]        (default: en ko)
-#   then: uv run python tools/store/compose.py android OUT_DIR android/play/screenshots
+#   then: uv run python tools/store/compose.py android OUT_DIR apps/android/play/screenshots
 #
 # Writes OUT_DIR/{en,ko}-01.png .. -08.png, 1080x2340 (the scenes and their order: tools/store/compose.py SHOTS).
 # Environment: KELO_ADB_SERIAL (default: the only device), KELO_LOCK_DIR (take <dir>/DEVICE_LOCK with mkdir first, as

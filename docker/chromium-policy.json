@@ -21,7 +21,7 @@
   "EnableMediaRouter": false,
   "AlwaysOpenPdfExternally": false,
   "PromptForDownloadLocation": false,
-  "DefaultNotificationsSetting": 2,
+  "DefaultNotificationsSetting": 3,
   "DefaultGeolocationSetting": 2,
   "DefaultSensorsSetting": 2,
   "DefaultSerialGuardSetting": 2,

@@ -10,7 +10,7 @@ from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 OUT = ROOT / "tools/store/data"
-FONT = (ROOT / "android/design/promo-src/fonts/PretendardVariable.woff2").as_uri()
+FONT = (ROOT / "apps/android/design/promo-src/fonts/PretendardVariable.woff2").as_uri()
 
 D = {
     "ko": dict(q="부산 해운대 · 11월 17일 – 19일 · 2박 · 성인 1명", sort="가격 낮은 순", n="숙소 3곳", per="1박", btn="자세히", tax="세금 포함",

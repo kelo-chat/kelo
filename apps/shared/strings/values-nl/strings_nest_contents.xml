@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">Bekijk alles wat wordt geïnstalleerd</string>
+    <string name="nest_contents_title">Wat wordt geïnstalleerd</string>
+    <string name="nest_contents_warnings">Meldingen bij het laden</string>
+    <string name="nest_contents_endpoints">Waar het verbinding mee maakt</string>
+    <string name="nest_contents_none">Niets</string>
+    <string name="nest_contents_files">Bestanden</string>
+    <string name="nest_contents_total">%1$s in totaal</string>
+    <string name="nest_contents_cut">Dit bestand is te lang, dus er wordt maar een deel getoond.</string>
+    <string name="nest_contents_back">Alle bestanden</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">Bekijk de wijzigingen</string>
+    <string name="nest_update_changed">%1$d gewijzigde bestanden</string>
+    <string name="nest_changed_title">Wat deze update verandert</string>
+    <string name="nest_changed_added">Toegevoegde bestanden</string>
+    <string name="nest_changed_removed">Verwijderde bestanden</string>
+    <string name="nest_changed_modified">Gewijzigde bestanden</string>
+</resources>

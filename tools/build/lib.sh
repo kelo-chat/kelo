@@ -201,12 +201,12 @@ use_jdk17() {
 }
 
 # kelo_packaging_jdk [JDK-FILE]: the one exact Java runtime the macOS app is packaged with, so that two Macs build the same app
-# (the runtime inside Kelo.app is made from this JDK by jlink). JDK-FILE (default desktop/packaging/macos/JDK) has one line:
+# (the runtime inside Kelo.app is made from this JDK by jlink). JDK-FILE (default apps/desktop/packaging/macos/JDK) has one line:
 #   temurin-17.0.21+9 aarch64 <sha256 of the Eclipse Temurin tar.gz>
 # The tar.gz is downloaded from github.com/adoptium/temurin17-binaries once into ~/.cache/kelo/jdk/<version>, checked against that
 # SHA-256, and JAVA_HOME / PATH point to it. Apple Silicon Macs only (the app is arm64).
 kelo_packaging_jdk() {
-  local file="${1:-$REPO/desktop/packaging/macos/JDK}" line name arch want ver dir url tgz part
+  local file="${1:-$REPO/apps/desktop/packaging/macos/JDK}" line name arch want ver dir url tgz part
   [ -f "$file" ] || die "no JDK pin file: $file"
   line="$(grep -v '^[[:space:]]*#' "$file" | head -1)"
   read -r name arch want <<<"$line"
@@ -238,7 +238,7 @@ kelo_packaging_jdk() {
 # in tools/build/zipclock (README there) once into ~/.cache/kelo/zipclock/<hash of its source>/ and sets the array GRADLE_REPRO_ARGS
 # to the Gradle option that starts the build with it: "${GRADLE_REPRO_ARGS[@]}" goes into the ./gradlew command line. SOURCE-DIR (default
 # this checkout) is the checkout whose tools/build/zipclock is used, when it has one; BUILD-DIR (default the same) is the checkout that is built
-# (its desktop/gradle.properties gives the Gradle JVM options the agent is added to).
+# (its apps/desktop/gradle.properties gives the Gradle JVM options the agent is added to).
 GRADLE_REPRO_ARGS=()
 kelo_zip_clock() {
   local src="${1:-$REPO}" build cache jar sum jvmargs
@@ -258,8 +258,8 @@ kelo_zip_clock() {
       --date 2000-01-01T00:00:00Z -C "$cache.tmp/classes" . || die "could not pack the zipclock agent"
     rm -rf "$cache" && mkdir -p "$cache" && mv "$cache.tmp/zipclock.jar" "$jar" && rm -rf "$cache.tmp"
   fi
-  # the build's own JVM options (desktop/gradle.properties), plus the agent and the access it needs to the JDK's bundled ASM
-  jvmargs="$(sed -n 's/^org.gradle.jvmargs=//p' "$build/desktop/gradle.properties" | head -1)"
+  # the build's own JVM options (apps/desktop/gradle.properties), plus the agent and the access it needs to the JDK's bundled ASM
+  jvmargs="$(sed -n 's/^org.gradle.jvmargs=//p' "$build/apps/desktop/gradle.properties" | head -1)"
   GRADLE_REPRO_ARGS=("-Dorg.gradle.jvmargs=${jvmargs:--Xmx3g} --add-exports=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED -javaagent:$jar")
   note "zipclock agent: $jar"
 }

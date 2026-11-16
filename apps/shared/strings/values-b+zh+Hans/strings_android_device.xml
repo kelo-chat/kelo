@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">安卓设备</string>
+    <string name="android_device_connected">已连接</string>
+    <string name="android_device_not_connected">未连接</string>
+    <string name="android_device_play_store">Play 商店</string>
+    <string name="android_device_korean_input">韩文输入</string>
+    <string name="android_device_missing">没有</string>
+    <string name="android_device_check">检查连接</string>
+    <string name="android_device_view">查看屏幕</string>
+    <string name="android_device_note">设备地址在服务器的 .env 中设置。请参阅 README 中的“Kelo 可使用的安卓设备”。</string>
+    <string name="android_device_readme">打开 README</string>
+</resources>

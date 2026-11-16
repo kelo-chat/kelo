@@ -1,17 +1,17 @@
 """Store screenshots from raw captures: the app's screen in a device frame on a store-sized canvas, one short headline above it.
 
-    uv run python tools/store/compose.py ios     RAW_DIR ios/store/screenshots
-    uv run python tools/store/compose.py android RAW_DIR android/play/screenshots
+    uv run python tools/store/compose.py ios     RAW_DIR apps/ios/store/screenshots
+    uv run python tools/store/compose.py android RAW_DIR apps/android/play/screenshots
 
 RAW_DIR holds {en,ko}-NN.png, NN = 01..08 as in SHOTS, captured at the device's own resolution (no scaling before this step):
-- ios: 1206x2622, the iPhone 17 simulator (kelo-ios-check), from ios/Kelo/UITests/KeloStoreShotsTests.swift;
+- ios: 1206x2622, the iPhone 17 simulator (kelo-ios-check), from apps/ios/Kelo/UITests/KeloStoreShotsTests.swift;
 - android: 1080x2340, the emulator set to a Galaxy S size (`wm size 1080x2340`, density 420), from tools/store/android_shots.sh.
 Writes ios: OUT/{en,ko}/{6.9,6.5}/NN-name.png (1320x2868 and 1284x2778); android: OUT/{en,ko}/NN-name.png (1080x2160).
 Every PNG is RGB without alpha (App Store Connect refuses transparency; Play wants 24-bit PNG).
 
 The capture is only ever scaled uniformly (one factor for width and height, Lanczos), never stretched or cropped. Frames are
 drawn here, generic and without any logo: an iPhone-like frame (thin even bezel, Dynamic Island, the display's own corner radius)
-and a Galaxy-S-like frame (thin even bezel, a centred punch-hole camera, flatter corners). Same look as android/design/
+and a Galaxy-S-like frame (thin even bezel, a centred punch-hole camera, flatter corners). Same look as apps/android/design/
 play_screenshots.py and feature_graphic.py: Pretendard ExtraBold headline on the cream gradient.
 """
 
@@ -25,7 +25,7 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-FONT = (ROOT / "android/design/promo-src/fonts/PretendardVariable.woff2").as_uri()
+FONT = (ROOT / "apps/android/design/promo-src/fonts/PretendardVariable.woff2").as_uri()
 
 SHOTS = [  # (NN-name, ko headline, en headline): short, and true to what the shot shows
     ("01-handoff", "채팅으로 일을 맡겨요", "Hand off tasks in a chat"),

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">Объявления</string>
+    <string name="notices_important">Важно</string>
+    <string name="notices_more">Подробнее</string>
+    <string name="notices_close">Закрыть</string>
+</resources>

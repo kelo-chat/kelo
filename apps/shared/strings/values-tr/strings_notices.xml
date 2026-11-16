@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">Duyurular</string>
+    <string name="notices_important">Önemli</string>
+    <string name="notices_more">Ayrıntılar</string>
+    <string name="notices_close">Kapat</string>
+</resources>

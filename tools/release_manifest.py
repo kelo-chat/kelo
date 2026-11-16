@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Writes release.json, the manifest of a Kelo server release (see src/assistant/release.py), in the release workflow.
+"""Writes release.json, the manifest of a Kelo server release (see server/src/assistant/release.py), in the release workflow.
 
   python3 tools/release_manifest.py --version 0.5.0 --digests-dir digests/ [--registry ghcr.io/kelo-chat] [--channel stable]
       [--min-app android=402400 --min-app ios=57 --min-app desktop=1.0.3] [--notes-dir docs/release-notes/0.5.0] [--notes-file en=notes.txt]
@@ -19,7 +19,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server" / "src"))
 
 from assistant.release import COMPONENTS, DEFAULT_CHANNEL, DEFAULT_REGISTRY, ReleaseError, build_manifest  # noqa: E402
 

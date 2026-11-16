@@ -1,7 +1,7 @@
 # Kelo server release images: on a version tag (v0.5.0) in the public source repository kelo-chat/kelo, build every image for
 # linux/amd64 and linux/arm64, push it to ghcr.io/kelo-chat/<name>:<version> (and move the channel tag `stable` for a release that
 # is not a pre-release), sign it with cosign keyless (this workflow's GitHub OIDC identity; no key exists anywhere), and write
-# release.json (tools/release_manifest.py), the manifest every Kelo server's updater checks (src/assistant/release.py).
+# release.json (tools/release_manifest.py), the manifest every Kelo server's updater checks (server/src/assistant/release.py).
 #
 # Nothing here publishes the release to Kelo servers: release.json is attached to the run. The operator puts it on kelo.chat with
 #   assistant publish-server release.json        (then https://kelo.chat/download/latest.json carries it under "server")
@@ -9,7 +9,7 @@
 # renaming this file or the repository needs a matching change there.
 #
 # Images: server (one image for the server, browser and egress roles; Chromium only: a Google Chrome build is never published),
-# workroom, updater. NOT the Claude / agy CLI sidecars (Dockerfile.cli): they contain proprietary programs (@anthropic-ai/claude-code,
+# workroom, updater. NOT the Claude / agy CLI sidecars (docker/cli.Dockerfile): they contain proprietary programs (@anthropic-ai/claude-code,
 # Google's agy) that may not be redistributed, so every user builds them on their own machine; servers refuse a manifest naming them. Each carries the labels org.opencontainers.image.version=<version> and
 # chat.kelo.release=<version>; a server checks the first against the manifest, and a copy without the second was built from source.
 #
@@ -46,9 +46,9 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - {name: server, file: Dockerfile, target: ""}
-          - {name: workroom, file: Dockerfile.workroom, target: ""}
-          - {name: updater, file: Dockerfile.updater, target: ""}
+          - {name: server, file: docker/server.Dockerfile, target: ""}
+          - {name: workroom, file: docker/workroom.Dockerfile, target: ""}
+          - {name: updater, file: docker/updater.Dockerfile, target: ""}
     steps:
       - uses: actions/checkout@v4
 

@@ -19,7 +19,7 @@ the time zone does not matter), whether it had none or the plugin stamped it wit
 
 ## How it runs
 
-`kelo_zip_clock` in `tools/build/lib.sh` compiles it once with the pinned JDK (`desktop/packaging/macos/JDK`) into
+`kelo_zip_clock` in `tools/build/lib.sh` compiles it once with the pinned JDK (`apps/desktop/packaging/macos/JDK`) into
 `~/.cache/kelo/zipclock/` and gives Gradle `-Dorg.gradle.jvmargs="... --add-exports=java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED
 -javaagent:<jar>"` (the JDK's own bundled ASM does the byte-code edit). Delete the folder and the next build compiles it again.
 

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">Lihat semua yang akan dipasang</string>
+    <string name="nest_contents_title">Yang akan dipasang</string>
+    <string name="nest_contents_warnings">Catatan saat memuat</string>
+    <string name="nest_contents_endpoints">Tempat ia terhubung</string>
+    <string name="nest_contents_none">Tidak ada</string>
+    <string name="nest_contents_files">Berkas</string>
+    <string name="nest_contents_total">Total %1$s</string>
+    <string name="nest_contents_cut">Berkas ini terlalu panjang, jadi hanya sebagian yang ditampilkan.</string>
+    <string name="nest_contents_back">Semua berkas</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">Lihat perubahan</string>
+    <string name="nest_update_changed">%1$d berkas berubah</string>
+    <string name="nest_changed_title">Yang diubah pembaruan ini</string>
+    <string name="nest_changed_added">Berkas yang ditambahkan</string>
+    <string name="nest_changed_removed">Berkas yang dihapus</string>
+    <string name="nest_changed_modified">Berkas yang diubah</string>
+</resources>

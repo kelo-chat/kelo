@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
+    <string name="connector_forget_title">同時刪除來自 %1$s 的資料嗎？</string>
+    <string name="connector_forget_files">檔案 %1$d</string>
+    <string name="connector_forget_notes">筆記 %1$d</string>
+    <string name="connector_forget_items">項目 %1$d</string>
+    <string name="connector_forget_trash">檔案會移到資料庫的垃圾桶。</string>
+    <string name="connector_forget_delete">刪除</string>
+    <string name="connector_forget_keep">保留</string>
+    <string name="connector_forget_done">已刪除：%1$s</string>
+</resources>

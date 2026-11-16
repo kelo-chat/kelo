@@ -123,9 +123,9 @@ Facts below are quoted from Google's documentation (checked November 2026).
 
 ## How it works in Kelo
 
-- `src/assistant/google_web.py` builds the sign-in link (`PRODUCTS`: the scopes for each connector), exchanges the code, and
+- `server/src/assistant/google_web.py` builds the sign-in link (`PRODUCTS`: the scopes for each connector), exchanges the code, and
   refreshes tokens through the broker.
-- `src/assistant/google_calendar.py` handles the Calendar account, the API calls, and the agent's tools: `gcal_calendars` and
+- `server/src/assistant/google_calendar.py` handles the Calendar account, the API calls, and the agent's tools: `gcal_calendars` and
   `gcal_events` read, while `gcal_create_event`, `gcal_update_event` and `gcal_delete_event` each show an approval card that says
   what will change.
 - The app's endpoints are `GET /api/google/calendar` (can the sign-in be used here, and if not, why; the connected accounts),

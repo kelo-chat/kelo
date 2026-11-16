@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">お知らせ</string>
+    <string name="notices_important">重要</string>
+    <string name="notices_more">詳しく見る</string>
+    <string name="notices_close">閉じる</string>
+</resources>

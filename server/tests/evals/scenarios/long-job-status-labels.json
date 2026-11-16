@@ -1,0 +1,56 @@
+{
+  "name": "long-job-status-labels",
+  "about": "A multi-step job shows a live status line for each step, so the app can say what is happening while it runs.",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Check the stock of all 3 shops on example.test and tell me the cheapest"
+  ],
+  "model": [
+    [
+      {
+        "tool": "check_stock",
+        "args": {
+          "shop": "a"
+        }
+      }
+    ],
+    [
+      {
+        "tool": "check_stock",
+        "args": {
+          "shop": "b"
+        }
+      }
+    ],
+    [
+      {
+        "tool": "check_stock",
+        "args": {
+          "shop": "c"
+        }
+      }
+    ],
+    [
+      {
+        "text": "Shop b is cheapest."
+      }
+    ]
+  ],
+  "tools": {
+    "check_stock": {
+      "result": "in stock, 12,900 KRW",
+      "description": "Check one shop's stock and price."
+    }
+  },
+  "expect": {
+    "called": [
+      "check_stock"
+    ],
+    "status_labels": 3,
+    "reply_contains": [
+      "cheapest"
+    ]
+  }
+}

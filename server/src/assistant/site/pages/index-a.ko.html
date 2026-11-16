@@ -1,0 +1,152 @@
+<!-- Kelo home, design A ("Daylight"): built from scratchpad tools/content.py by build.py. Same copy as index-b. Every app
+     picture is a real Kelo screen (site/shots); photographs are Wikimedia Commons, credited on /privacy. -->
+<div id="pair" class="pair" hidden role="dialog" aria-modal="true" aria-labelledby="pair-title">
+  <div class="pair-card">
+    {{svg:approval}}
+    <h2 id="pair-title">새 휴대폰 연결하기</h2>
+    <p>이 링크는 휴대폰을 Kelo 서버에 연결하는 링크예요. 연결은 Kelo 앱 안에서 마무리해요.</p>
+    <ol><li>Kelo 앱을 여세요.</li><li>연결 화면에서 <strong>QR 코드를 스캔</strong>하거나, 아래 버튼으로 이 링크를 복사해 <strong>링크 붙여넣기</strong>에 그대로 붙여 넣으세요.</li></ol>
+    <a id="pair-open" class="btn btn--primary" href="{{app_open}}">Kelo 앱 열기</a>
+    <p id="pair-other" class="note" hidden>iPhone 앱은 App Store에서 받을 수 있고, Android 앱은 베타 테스트 중이에요.</p>
+    <button id="pair-copy" class="btn btn--secondary" type="button">링크 복사</button>
+    <p id="pair-copied" class="pair-copied" role="status" aria-live="polite" data-ok="복사했어요. 앱의 ‘링크 붙여넣기’에 붙여 넣으세요." data-fail="복사하지 못했어요. 주소창을 길게 눌러 링크를 복사해 주세요."></p>
+    <p class="note">링크는 10분 동안 한 번만 쓸 수 있어요. 앱이 아직 없다면 이 페이지의 ‘앱 받기’에서 받으세요.</p>
+    <button id="pair-close" class="close" type="button">Kelo가 뭔지 보기</button>
+  </div>
+</div>
+
+<div class="thread" aria-hidden="true"><span class="thread__fill"></span></div>
+
+<section id="hero" class="hero" data-tone="0" data-mood="idle" aria-labelledby="hero-h">
+  <div class="wrap hero__grid">
+    <div class="hero__copy">
+      <p class="pill"><span class="dot" aria-hidden="true"></span>오픈 소스 · AGPL-3.0</p>
+      <h1 id="hero-h">직접 설치해 쓰는<br>나만의 AI 비서</h1>
+      <p class="hero__lead">Kelo는 직접 설치한 Kelo 서버에서 돌아가는 AI 비서예요. 휴대폰으로 말을 걸면 자기 브라우저와 연결한 서비스로 일을 처리하고, 결제나 전송처럼 되돌리기 어려운 일은 꼭 먼저 물어봐요.</p>
+      <div class="btn-row">
+        <a class="btn btn--primary" href="{{href:install}}">서버 설치하기<svg class="i-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <a class="btn btn--secondary" href="#get-app">앱 받기</a>
+      </div>
+      <dl class="hero__facts"><div><dt>2GB</dt><dd>RAM이면 시작</dd></div><div><dt>몇 대든</dt><dd>휴대폰 연결</dd></div></dl>
+    </div>
+    <div class="hero__stage" role="img" aria-label="실제 Kelo 앱 화면 세 개: 진행 중인 일과 예약이 보이는 작업 화면, 부산 출장 KTX 시간을 찾아 주고 캘린더에 넣기 전에 허락을 묻는 채팅, 커넥터 화면.">
+      <figure class="phone phone--l"><img src="{{shot:ko-work}}" srcset="{{shot:ko-work-half}} 270w, {{shot:ko-work}} 540w" sizes="(min-width: 1024px) 260px, 34vw" width="540" height="1200" alt="" loading="lazy" decoding="async"></figure>
+      <figure class="phone phone--c"><img src="{{shot:ko-ask}}" srcset="{{shot:ko-ask-half}} 270w, {{shot:ko-ask}} 540w" sizes="(min-width: 1024px) 300px, 46vw" width="540" height="1200" alt="" fetchpriority="high"></figure>
+      <figure class="phone phone--r"><img src="{{shot:ko-connectors}}" srcset="{{shot:ko-connectors-half}} 270w, {{shot:ko-connectors}} 540w" sizes="(min-width: 1024px) 260px, 34vw" width="540" height="1200" alt="" loading="lazy" decoding="async"></figure>
+    </div>
+  </div>
+  <div class="wrap strip"><p>쓰던 서비스와 함께 일해요</p><ul class="logos logos--strip"><li><img src="{{asset:logo-gmail.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Gmail</span></li><li><img src="{{asset:logo-github.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>GitHub</span></li><li><img src="{{asset:logo-notion.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Notion</span></li><li><img src="{{asset:logo-linear.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Linear</span></li><li><img src="{{asset:logo-todoist.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Todoist</span></li><li><img src="{{asset:logo-zapier.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Zapier</span></li></ul></div>
+</section>
+
+<section id="flow" class="flow" data-tone="1" data-mood="listening" aria-labelledby="flow-h">
+  <div class="wrap">
+    <header class="sec-head"><p class="kicker">부탁 한 번의 흐름</p><h2 id="flow-h">말로 맡기면, 끝까지 해요</h2><p class="sec-intro">Kelo는 찾고, 확인받고, 마무리하고, 그날 일을 돌아봐요. 휴대폰에서 하나하나 보여요.</p></header>
+    <div class="flow__body">
+      <ol class="flow__steps"><li class="flow__step is-on" data-step="0" data-mood="listening"><span class="flow__n" aria-hidden="true">01</span><div class="flow__text"><h3>말이나 글로 맡겨요</h3><p>글이나 말로 부탁하세요. 사진과 PDF, Word, Excel 문서도 함께 보낼 수 있어요. Kelo는 내가 쓴 언어로 답해요.</p></div><figure class="flow__inline phone"><img src="{{shot:ko-chat}}" srcset="{{shot:ko-chat-half}} 270w, {{shot:ko-chat}} 540w" sizes="(min-width: 640px) 300px, 70vw" width="540" height="1200" alt="Kelo 채팅: 다음 주 화요일 부산 출장 KTX 시간과 요금을 찾아 정리한 답." loading="lazy" decoding="async"></figure></li><li class="flow__step" data-step="1" data-mood="browser"><span class="flow__n" aria-hidden="true">02</span><div class="flow__text"><h3>자기 브라우저로 찾아요</h3><p>Kelo 서버 안의 전용 Chromium으로 사이트를 열고, 비교하고, 양식을 채워요. 휴대폰에서 실시간으로 보다가 직접 조작하고 다시 맡길 수 있어요. 이 브라우저는 집 안 네트워크에 닿지 못하게 막혀 있어요.</p></div><figure class="flow__inline phone"><img src="{{shot:ko-work}}" srcset="{{shot:ko-work-half}} 270w, {{shot:ko-work}} 540w" sizes="(min-width: 640px) 300px, 70vw" width="540" height="1200" alt="작업 화면: 지금 하는 일 ‘부산 숙소 비교’, 지켜보는 중인 가격, 다가오는 예약." loading="lazy" decoding="async"></figure></li><li class="flow__step" data-step="2" data-mood="approval"><span class="flow__n" aria-hidden="true">03</span><div class="flow__text"><h3>확정하기 전에 물어요</h3><p>결제, 주문, 예약, 보내기, 삭제처럼 되돌리기 어려운 일은 휴대폰에 허락 카드가 먼저 와요. 무엇을 하려는지 말로 보여 주고, 허락해야 진행해요.</p></div><figure class="flow__inline phone"><img src="{{shot:ko-ask}}" srcset="{{shot:ko-ask-half}} 270w, {{shot:ko-ask}} 540w" sizes="(min-width: 640px) 300px, 70vw" width="540" height="1200" alt="채팅 속 허락 카드: 부산 출장 일정을 캘린더에 추가해도 될지 묻고, 거절과 허용 버튼이 있어요." loading="lazy" decoding="async"></figure></li><li class="flow__step" data-step="3" data-mood="reading"><span class="flow__n" aria-hidden="true">04</span><div class="flow__text"><h3>밤마다 돌아보고 배워요</h3><p>하루가 끝나면 대화를 돌아보고 내 취향을 짧은 규칙으로 제안해요. 남길지 버릴지는 내가 정하고, 버린 규칙은 다시 제안하지 않아요.</p></div><figure class="flow__inline phone"><img src="{{shot:ko-records}}" srcset="{{shot:ko-records-half}} 300w, {{shot:ko-records}} 600w" sizes="(min-width: 640px) 300px, 70vw" width="600" height="1305" alt="기록 화면: 밤마다 돌아보기가 켜져 있고, 제안된 규칙 두 개가 남기기나 버리기를 기다려요." loading="lazy" decoding="async"></figure></li></ol>
+      <div class="flow__stage"><div class="phone phone--stage"><figure class="flow__frame is-on" data-step="0"><img src="{{shot:ko-chat}}" srcset="{{shot:ko-chat-half}} 270w, {{shot:ko-chat}} 540w" sizes="320px" width="540" height="1200" alt="Kelo 채팅: 다음 주 화요일 부산 출장 KTX 시간과 요금을 찾아 정리한 답." loading="lazy" decoding="async"></figure><figure class="flow__frame" data-step="1"><img src="{{shot:ko-work}}" srcset="{{shot:ko-work-half}} 270w, {{shot:ko-work}} 540w" sizes="320px" width="540" height="1200" alt="작업 화면: 지금 하는 일 ‘부산 숙소 비교’, 지켜보는 중인 가격, 다가오는 예약." loading="lazy" decoding="async"></figure><figure class="flow__frame" data-step="2"><img src="{{shot:ko-ask}}" srcset="{{shot:ko-ask-half}} 270w, {{shot:ko-ask}} 540w" sizes="320px" width="540" height="1200" alt="채팅 속 허락 카드: 부산 출장 일정을 캘린더에 추가해도 될지 묻고, 거절과 허용 버튼이 있어요." loading="lazy" decoding="async"></figure><figure class="flow__frame" data-step="3"><img src="{{shot:ko-records}}" srcset="{{shot:ko-records-half}} 300w, {{shot:ko-records}} 600w" sizes="320px" width="600" height="1305" alt="기록 화면: 밤마다 돌아보기가 켜져 있고, 제안된 규칙 두 개가 남기기나 버리기를 기다려요." loading="lazy" decoding="async"></figure></div><div class="flow__dots" aria-hidden="true"><span class="flow__dot is-on" data-step="0"></span><span class="flow__dot" data-step="1"></span><span class="flow__dot" data-step="2"></span><span class="flow__dot" data-step="3"></span></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="features" data-tone="2" data-mood="working" aria-labelledby="features-h">
+  <div class="wrap">
+    <header class="sec-head"><p class="kicker">할 수 있는 일</p><h2 id="features-h">채팅 한 줄에서 문서와 알림까지</h2><p class="sec-intro">Kelo는 대화로 시작해 파일을 만들고, 일정을 챙기고, 필요할 때 먼저 말을 걸어요.</p></header>
+    <div class="bento">
+      <article id="workroom" class="tile tile--workroom" data-mood="working">
+        <div class="tile__copy"><p class="kicker">작업실</p><h3>표와 문서는 작업실에서 만들어요</h3><p>인터넷도 비밀 정보도 닿지 않는 격리된 공간에서 코드를 돌려요. 스프레드시트, Word·PowerPoint 문서, 차트를 만들고, PDF·이미지·오디오·비디오 파일을 다른 형식으로 바꿔요. 결과물은 보관함에 모이고, 패키지 설치는 매번 허락을 받아요.</p><ul class="chips"><li>스프레드시트</li><li>Word</li><li>PowerPoint</li><li>차트</li><li>PDF</li><li>이미지</li><li>오디오</li><li>비디오</li></ul></div>
+        <div class="tile__media tile__media--shot"><figure class="shotcard"><img src="{{shot:ko-workroom}}" srcset="{{shot:ko-workroom-half}} 301w, {{shot:ko-workroom}} 603w" sizes="(min-width: 1024px) 380px, 80vw" width="603" height="714" alt="Kelo 채팅: 이번 주 할 일을 정리하고, 분기 보고서 뼈대를 Word 파일로 만들어 둔 답." loading="lazy" decoding="async"></figure></div>
+      </article>
+      <article id="away" class="tile tile--away" data-mood="done">
+        <div class="tile__copy"><p class="kicker">새 소식 알림</p><h3>자리를 비워도 챙겨요</h3><p>알아야 할 일이 생기면 묻지 않아도 먼저 알려 줘요. 알림 받는 시간은 Kelo를 쓰는 패턴에서 배우고, 그 밖의 시간에는 조용히 기다려요.</p><ul class="ticks"><li>중요한 메일이 왔을 때</li><li>예약해 둔 일의 결과가 나왔을 때</li><li>지켜보던 가격이나 글자가 바뀌었을 때</li><li>다짐의 기한이 다가올 때</li></ul></div>
+        <div class="tile__media tile__media--shot"><figure class="shotcard shotcard--wide"><img src="{{shot:ko-hours}}" srcset="{{shot:ko-hours-half}} 370w, {{shot:ko-hours}} 740w" sizes="(min-width: 1024px) 420px, 90vw" width="740" height="530" alt="알림 설정: ‘Kelo가 먼저 알려주기’가 켜져 있고, 사용 패턴에서 배운 알림 받는 시간은 오전 10시부터 다음 날 오전 1시까지예요." loading="lazy" decoding="async"></figure></div>
+      </article>
+      <article id="schedule" class="tile tile--schedule" data-mood="working"><div class="tile__copy"><p class="kicker">예약 · 지켜보기</p><h3>정해 둔 때에 알아서</h3><p>“매일 아침 9시쯤”, “30분마다”처럼 말해 두면 그때 해요. 페이지에 어떤 글자가 뜨거나 가격이 기준 아래로 내려가면 그때만 깨어나고, 확인에는 AI 모델을 쓰지 않아요.</p></div><div class="tile__media tile__media--photo"><img class="photo" src="{{asset:photo-clock-1280.webp}}" srcset="{{asset:photo-clock-640.webp}} 640w, {{asset:photo-clock-1280.webp}} 1280w" sizes="(min-width: 1024px) 34vw, 100vw" width="1280" height="854" alt="나무 책장 위에 놓인 오래된 자명종." loading="lazy" decoding="async"></div></article><article id="keychain" class="tile tile--keychain" data-mood="idle"><div class="tile__copy"><p class="kicker">키체인</p><h3>비밀번호는 채팅으로 받지 않아요</h3><p>비밀번호와 API 키는 앱의 입력 칸으로만 받아 Kelo 서버에 잠가 둬요. 저장한 값은 아무도 읽을 수 없고, 비서도 값을 보지 않고 써요.</p></div><div class="tile__media tile__media--crop"><figure class="phone phone--crop"><img src="{{shot:ko-my}}" srcset="{{shot:ko-my-half}} 270w, {{shot:ko-my}} 540w" sizes="280px" width="540" height="1200" alt="마이 화면: 계정과 기기, 모델, 사용량, 연결된 서비스, 키체인." loading="lazy" decoding="async"></figure></div></article><article id="wallet" class="tile tile--wallet" data-mood="approval"><div class="tile__copy"><p class="kicker">결제 카드</p><h3>허락한 결제만 해요</h3><p>카드마다 자동 결제를 켤지 정해요. 끈 카드는 휴대폰만 아는 키로 잠겨 서버도 읽지 못하고, 결제마다 지문이나 얼굴로 허락해요.</p></div><div class="tile__media tile__media--crop"><figure class="phone phone--crop"><img src="{{shot:ko-wallet}}" srcset="{{shot:ko-wallet-half}} 380w, {{shot:ko-wallet}} 760w" sizes="280px" width="760" height="1500" alt="결제 카드 화면: 카드 세 장, 자동 결제 여부와 자동 결제 한도." loading="lazy" decoding="async"></figure></div></article><article id="goals" class="tile tile--goals" data-mood="thinking"><div class="tile__copy"><p class="kicker">다짐</p><h3>다짐을 계획으로 나눠요</h3><p>목표를 적어 두면 내가 할 일과 Kelo가 할 일로 나누고, 숫자와 기한을 함께 챙겨요.</p></div><div class="tile__media tile__media--mix"><img class="photo" src="{{asset:photo-library-820.webp}}" srcset="{{asset:photo-library-420.webp}} 420w, {{asset:photo-library-820.webp}} 820w" sizes="(min-width: 1024px) 40vw, 100vw" width="820" height="615" alt="" loading="lazy" decoding="async"><figure class="phone phone--mini"><img src="{{shot:ko-goal-reading}}" srcset="{{shot:ko-goal-reading-half}} 270w, {{shot:ko-goal-reading}} 540w" sizes="200px" width="540" height="1200" alt="다짐 ‘한 달에 책 2권 읽기’: 내가 할 일과 Kelo가 할 일로 나뉜 계획, 이번 달 읽은 310쪽." loading="lazy" decoding="async"></figure></div></article><article id="selfhosted" class="tile tile--models" data-mood="idle"><div class="tile__copy"><p class="kicker">직접 돌리는 앱</p><h3>집에서 돌리는 앱과도 이어져요</h3><p>Home Assistant, Frigate, Immich, Paperless-ngx, Mealie, Tandoor, Grocy, Actual Budget, Firefly III, Linkwarden, Karakeep, Wallabag, Miniflux, FreshRSS, n8n, Uptime Kuma, Beszel, AdGuard Home, Pi-hole, Nextcloud, Gitea, Forgejo를 네트워크나 Tailscale 주소로 연결해요. Kelo가 직접 물어보니 아무것도 네트워크 밖으로 나가지 않아요. “문 열어 줘”처럼 직접 말한 일은 바로 해요. Kelo 자신이나 클라우드 메타데이터를 가리키는 주소는 거절해요. 추후 예정: 자체 서명 인증서를 쓰는 https.</p></div></article><article id="models" class="tile tile--models" data-mood="thinking"><div class="tile__copy"><p class="kicker">AI 모델</p><h3>원하는 모델로, 로컬 모델까지</h3><p>약 30곳의 AI 회사 중에서 고르거나 LM Studio, Ollama 같은 로컬 모델을 연결해요. 비용은 고른 회사에 내 API 키로 직접 내요.</p></div><p class="tile__big" aria-hidden="true">30<span>+</span></p></article><article id="languages" class="tile tile--languages" data-mood="idle"><div class="tile__copy"><p class="kicker">언어</p><h3>20개 언어로</h3><p>앱과 서버 안내가 한국어, 영어를 비롯한 20개 언어로 나오고, Kelo는 내가 쓴 언어로 답해요.</p></div><p class="tile__big" aria-hidden="true">20</p></article>
+    </div>
+  </div>
+</section>
+
+<section id="connect" class="connect" data-tone="3" data-mood="browser" aria-labelledby="connect-h">
+  <div class="wrap split">
+    <div class="split__copy">
+      <header class="sec-head"><p class="kicker">커넥터</p><h2 id="connect-h">쓰던 서비스와 함께 일해요</h2></header>
+      <p>Notion, Linear, Todoist, Zapier, GitHub는 각 서비스의 로그인 화면으로 연결해요. Gmail과 네이버·다음·iCloud 메일은 앱 비밀번호로 연결해요.</p>
+      <ul class="logos"><li><img src="{{asset:logo-gmail.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Gmail</span></li><li><img src="{{asset:logo-github.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>GitHub</span></li><li><img src="{{asset:logo-notion.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Notion</span></li><li><img src="{{asset:logo-linear.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Linear</span></li><li><img src="{{asset:logo-todoist.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Todoist</span></li><li><img src="{{asset:logo-zapier.webp}}" width="32" height="32" alt="" loading="lazy" decoding="async"><span>Zapier</span></li></ul>
+      <p class="muted">휴대폰에서는 캘린더, 연락처, 전화 걸기 화면 열기, Health Connect(kelo.chat에서 받은 앱에서만)를 켤 수 있어요.</p>
+    </div>
+    <div class="split__media"><figure class="phone phone--solo"><img src="{{shot:ko-connectors}}" srcset="{{shot:ko-connectors-half}} 270w, {{shot:ko-connectors}} 540w" sizes="(min-width: 1024px) 300px, 70vw" width="540" height="1200" alt="커넥터 화면: Gmail과 GitHub이 연결돼 있고, Notion, Linear, Todoist, Zapier를 연결할 수 있어요." loading="lazy" decoding="async"></figure></div>
+  </div>
+</section>
+
+<section id="people" class="people" data-tone="3" data-mood="listening" aria-labelledby="people-h">
+  <div class="wrap people__grid">
+    <div><header class="sec-head"><p class="kicker">여러 사람이 쓰는 방법</p><h2 id="people-h">서버 하나에 한 사람, 휴대폰은 몇 대든</h2><p class="sec-intro">Kelo 서버 하나는 한 사람의 비서예요. 함께 쓰려면 사람마다 서버를 하나씩 두면 돼요.</p></header><figure class="dg" aria-label="컴퓨터 한 대에 Kelo 세 벌. 벌마다 데이터가 따로이고, 각자 자기 휴대폰을 연결해요."><div class="dg__machine"><span>서버를 설치한 컴퓨터 한 대</span></div><ul class="dg__copies" aria-hidden="true"><li class="dg__copy"><span class="dg__name">Kelo · 나</span><span class="dg__phones">휴대폰 2대</span></li><li class="dg__copy"><span class="dg__name">Kelo · 가족 1</span><span class="dg__phones">휴대폰 1대 · 데스크톱</span></li><li class="dg__copy"><span class="dg__name">Kelo · 가족 2</span><span class="dg__phones">휴대폰 1대</span></li></ul></figure></div>
+    <ul class="people__list"><li><h3>한 사람에 서버 하나</h3><p>대화, 기억, 키, 카드가 사람마다 완전히 나뉘어요. 서로의 대화는 보이지 않아요.</p></li><li><h3>휴대폰은 몇 대든</h3><p>서버 하나에 휴대폰과 데스크톱 앱을 몇 대든 연결해요. QR 코드 한 번이면 돼요.</p></li><li><h3>컴퓨터 한 대에 여러 벌</h3><p>서버를 설치한 컴퓨터 한 대에 Kelo를 여러 벌 띄울 수 있어요. 벌마다 주소와 데이터가 따로예요.</p></li><li><h3>자원은 숫자로 정해요</h3><p>벌마다 쓸 RAM, CPU, 디스크를 정하거나, 컴퓨터가 가진 만큼 쓰게 둘 수 있어요.</p></li></ul>
+  </div>
+</section>
+
+<section id="reach" class="reach" data-tone="4" data-mood="browser" aria-labelledby="reach-h">
+  <div class="wrap">
+    <header class="sec-head"><p class="kicker">연결 방법</p><h2 id="reach-h">밖에서 서버에 닿는 세 가지 방법</h2><p class="sec-intro">하나를 고르면 휴대폰이 집 밖에서도 Kelo 서버에 닿아요. 나중에 언제든 바꿀 수 있어요.</p></header>
+    <div class="table-wrap"><table class="compare"><thead><tr><td></td><th scope="col">Kelo 주소 (현재 한정 제공)</th><th scope="col">Tailscale</th><th scope="col">가진 도메인</th></tr></thead><tbody><tr><th scope="row">준비</th><td data-label="Kelo 주소 (현재 한정 제공)">명령 한 줄. 공유기 설정이 없어요.</td><td data-label="Tailscale">휴대폰마다 같은 계정의 Tailscale 앱.</td><td data-label="가진 도메인">가진 도메인. DuckDNS 같은 무료 주소도 돼요.</td></tr><tr><th scope="row">거쳐 가는 곳</th><td data-label="Kelo 주소 (현재 한정 제공)">Cloudflare 터널(https).</td><td data-label="Tailscale">밖에 공개되지 않아요.</td><td data-label="가진 도메인">직접 연결하면 없어요. 쓰던 프록시나 Cloudflare도 고를 수 있어요.</td></tr><tr><th scope="row">잘 맞는 경우</th><td data-label="Kelo 주소 (현재 한정 제공)">가장 쉽게 시작할 때</td><td data-label="Tailscale">나만 접속하고 싶을 때</td><td data-label="가진 도메인">이미 도메인이나 프록시를 쓸 때</td></tr></tbody></table></div>
+  </div>
+</section>
+
+<section id="privacy" class="privacy" data-tone="5" data-mood="sleeping" aria-labelledby="privacy-h">
+  <div class="wrap pv">
+    <div class="pv__lead">
+      <p class="kicker">개인정보</p>
+      <h2 id="privacy-h">당신의 정보는 당신의 서버에만 있어요</h2>
+      <p class="pv__big">대화, 메모, 저장한 키와 카드는 모두 당신이 운영하는 Kelo 서버에 저장돼요. 개발자에게는 그 서버에 들어갈 방법이 없고, 당신의 대화를 따로 받아 보관하지도 않아요.</p>
+      <p>대화는 당신이 고른 AI 서비스(예: Anthropic, Google)로 보내져 답을 받아요. 소스 코드가 공개되어 있어서 누구나 직접 확인할 수 있어요.</p>
+      <p class="links"><a class="link" href="{{href:privacy}}">개인정보 처리방침 읽기<svg class="i-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a><a class="link" href="{{github}}" rel="noopener">GitHub에서 소스 보기<svg class="i-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></p>
+    </div>
+    <div class="pv__card"><h3>kelo.chat은 몇 가지 일만 대신해 줘요</h3><dl class="pv__rows"><div class="pv__row"><dt>Kelo 주소</dt><dd>접속은 Cloudflare를 거쳐 당신의 서버로 바로 가요. 이 경로가 싫다면 Tailscale이나 직접 가진 도메인으로 연결하세요.</dd></div><div class="pv__row"><dt>알림</dt><dd>휴대폰에는 ‘새 소식이 있음’ 신호만 전달해요. 내용은 앱이 당신의 서버에서 직접 가져와요.</dd></div><div class="pv__row"><dt>Google·GitHub 연결</dt><dd>로그인을 중계하고 토큰을 발급받아 서버로 넘겨요. 토큰은 저장하지 않아요.</dd></div></dl></div>
+  </div>
+</section>
+
+<section id="install" class="install" data-tone="6" data-mood="working" aria-labelledby="install-h">
+  <div class="wrap install__grid">
+    <div>
+      <header class="sec-head"><p class="kicker">설치</p><h2 id="install-h">Docker로 Kelo 서버 설치하기</h2></header>
+      <ol class="steps-row"><li><b>서버 설치</b><span>명령 몇 줄로 Kelo를 띄워요. AI 모델은 앱에서 골라 내 키로 연결해요.</span></li><li><b>QR로 휴대폰 연결</b><span>서버가 보여 주는 QR 코드를 Kelo 앱으로 스캔해요. 휴대폰은 몇 대든 돼요.</span></li><li><b>어디서든 대화</b><span>현재 한정 제공 중인 Kelo 주소, Tailscale, 가진 도메인 중 하나로 밖에서도 닿아요.</span></li></ol>
+      <div class="term" data-tabs>
+          <div class="term-bar">
+            <div class="term-tabs" role="tablist" aria-label="운영체제">
+              <button type="button" role="tab" aria-selected="true" data-tab="sh">macOS · Linux</button>
+              <button type="button" role="tab" aria-selected="false" data-tab="ps">Windows</button>
+            </div>
+          </div>
+          <div class="term-line" data-panel="sh"><span class="pr" aria-hidden="true">$</span><code>{{install_sh}}</code><button type="button" class="copy" data-copy>복사</button></div>
+          <div class="term-line" data-panel="ps"><span class="pr" aria-hidden="true">&gt;</span><code>{{install_ps1}}</code><button type="button" class="copy" data-copy>복사</button></div>
+        </div>
+      <p class="note">Docker를 확인하고, 없으면 uv를 설치하고, Kelo를 ~/kelo에 내려받은 뒤 설정 화면을 열어요. 직접 하려면 <a href="{{href:install#steps}}">설치 안내</a>를 보세요.</p>
+    </div>
+    <div class="install__side">
+      <figure class="art-frame art-frame--server" role="img" aria-label="Kelo 앱이 깔린 휴대폰과, 집에 둔 작은 서버 위에서 일하는 Kelo 그림.">{{art:home-server}}</figure>
+      <h3>서버 사양</h3><ul class="reqs"><li><span class="reqs__k">최소</span><span>RAM 2GB · CPU 2코어 · 남은 디스크 10GB</span></li><li><span class="reqs__k">권장</span><span>RAM 4GB · CPU 4코어 · 남은 디스크 20GB</span></li></ul><p class="muted">Docker가 돌아가는 Mac, Linux, Windows 컴퓨터, 미니 PC, NAS, 클라우드 서버 어디든 돼요.</p>
+      <a class="link" href="{{href:install#requirements}}">설치 안내 전체 읽기<svg class="i-arrow" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 8h11M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    </div>
+  </div>
+</section>
+
+<section id="run-free" class="free" data-tone="6" data-mood="thinking" aria-labelledby="free-h">
+  <div class="wrap free__grid">
+    <div><h2 id="free-h" class="free__h">무료 클라우드 서버에 Kelo 올리기</h2><figure class="art-frame art-frame--cloud" role="img" aria-label="구름 속 작은 서버와 0이 적힌 가격표, 그 옆에서 생각하는 Kelo 그림.">{{art:free-cloud}}</figure></div>
+    <aside class="tip" id="free" aria-labelledby="free-title"><p class="tag">팁 · 무료로 운영하기</p><h3 id="free-title">Kelo를 위한 Oracle Cloud Always Free</h3><p>Oracle Cloud의 Always Free에는 계속 무료인 Arm 서버(2 OCPU · 메모리 12 GB)가 들어 있고, Kelo를 돌리기에 충분해요. 여기에 Kelo를 설치하고 Kelo 주소(현재 한정 제공)로 연결하세요. 옆에 <strong>FreeLLMAPI</strong>를 함께 띄우면 여러 AI 회사의 무료 사용량을 OpenAI 호환 주소 하나로 쓸 수 있어요. 그 주소는 앱의 마이 → 모델 → Custom endpoint에 넣어요.</p><ul><li>7일 동안 거의 쓰지 않은 무료 서버(CPU, 네트워크, 메모리 모두 20% 미만)는 Oracle이 회수할 수 있어요. 계정을 Pay As You Go로 업그레이드해도 Always Free 자원은 계속 무료이고, 업그레이드하면 회수되지 않는다는 경험담이 많아요.</li><li>무료 모델은 유료 모델보다 느리고, 도구를 쓰는 일이 덜 안정적이에요.</li><li>Oracle, FreeLLMAPI, 각 AI 회사의 약관이 그대로 적용돼요.</li></ul><p><a class="link" href="{{github}}/blob/main/README.ko.md#팁-kelo를-무료로-운영하기" rel="noopener">GitHub에서 단계별 설정 읽기</a></p></aside>
+  </div>
+</section>
+
+<section id="get-app" class="getapp" data-tone="7" data-mood="done" aria-labelledby="app-h">
+  <div class="wrap">
+    <header class="sec-head"><p class="kicker">앱 받기</p><h2 id="app-h">Kelo 앱을 받고, QR 하나로 시작해요</h2><p class="sec-intro">iPhone, Android, Windows, macOS 앱은 무료예요. 설치한 뒤 <a href="{{href:install}}">설치 안내</a>에 나오는 QR 코드나 링크로 Kelo 서버에 연결하세요. iPhone 앱은 App Store에서, Windows 앱은 Microsoft Store에서도 받을 수 있어요. Android 앱은 지금 베타 테스트 중이라 <a href="{{href:tester}}">테스터로 신청</a>하면 되고, Google Play에는 그 뒤에 올라와요.</p></header>
+    <div class="dl-grid"><div class="store-row"><a class="store-badge" href="https://apps.microsoft.com/detail/9P54HX2TX361?hl=ko-kr&amp;gl=KR"><img src="{{asset:badge-microsoft-ko.svg}}" width="146" height="40" alt="Microsoft Store에서 받기"></a><a class="store-badge" href="https://apps.apple.com/kr/app/kelo-ai/id6832422201"><img src="{{asset:badge-appstore-ko.svg}}" width="130" height="40" alt="App Store에서 다운로드"></a><a class="store-badge" href="{{href:tester}}"><img src="{{asset:badge-android-beta-ko.svg}}" width="146" height="40" alt="Android 베타 테스트 – 신청하기"></a></div><article class="dl-card"><img class="ic" src="{{asset:logo-android.svg}}" width="62" height="36" alt="" loading="lazy" decoding="async"><div class="dl-body"><p class="dl-kind">휴대폰</p><h3>Android</h3><div class="store-line"><a class="store-badge" href="{{href:tester}}"><img src="{{asset:badge-android-beta-ko.svg}}" width="146" height="40" alt="Android 베타 테스트 – 신청하기"></a></div><p class="dl-or">또는 APK 파일 직접 받기</p>{{dl:android}}<p class="dl-note">Google Play에는 베타 테스트가 끝난 뒤에 올라와요.</p><p class="dl-note">kelo.chat에서 받는 이 앱은 Google Play 앱과 달리 Health Connect 기록(걸음, 수면 등)을 읽고, 앱 안에서 새 버전으로 업데이트할 수 있어요. 받은 APK 파일을 여세요. Android가 물으면 이 출처(브라우저나 파일 앱)의 앱 설치를 허용한 뒤 설치를 누르면 돼요. Android 8.0 이상.</p></div></article><article class="dl-card"><img class="ic ic-ink" src="{{asset:logo-apple.svg}}" width="30" height="36" alt="" loading="lazy" decoding="async"><div class="dl-body"><p class="dl-kind">휴대폰</p><h3>iPhone</h3><div class="store-line"><a class="store-badge" href="https://apps.apple.com/kr/app/kelo-ai/id6832422201"><img src="{{asset:badge-appstore-ko.svg}}" width="130" height="40" alt="App Store에서 다운로드"></a></div><p class="dl-note">iOS 17 이상. 아이폰에서 App Store 앱이 열려요.</p></div></article><article class="dl-card"><img class="ic" src="{{asset:logo-windows.svg}}" width="36" height="36" alt="" loading="lazy" decoding="async"><div class="dl-body"><p class="dl-kind">데스크톱</p><h3>Windows</h3><div class="store-line"><a class="store-badge" href="https://apps.microsoft.com/detail/9P54HX2TX361?hl=ko-kr&amp;gl=KR"><img src="{{asset:badge-microsoft-ko.svg}}" width="146" height="40" alt="Microsoft Store에서 받기"></a></div><p class="dl-or">또는 설치 파일 직접 받기</p>{{dl:windows}}{{dl:windows-msi}}<p class="dl-note">Microsoft Store에서 받으면 이 경고는 없어요. 위의 설치 파일은 아직 코드 서명이 없어서 Windows SmartScreen이 막을 수 있어요. <strong>추가 정보 → 실행</strong>을 누르세요. Windows 10, 11.</p></div></article><article class="dl-card"><img class="ic ic-ink" src="{{asset:logo-apple.svg}}" width="30" height="36" alt="" loading="lazy" decoding="async"><div class="dl-body"><p class="dl-kind">데스크톱</p><h3>macOS</h3>{{dl:mac}}<p class="dl-note">Kelo를 응용 프로그램 폴더로 끌어 놓으세요. Apple 공증을 받은 앱이라 바로 열려요. Apple 실리콘(M1 이상) Mac용.</p></div></article></div>
+    <p class="note">빌드마다 버전, 크기, SHA-256은 <a href="/download/latest.json">/download/latest.json</a>에 있어요.</p>
+  </div>
+</section>
+
+<section id="faq" class="faq" data-tone="7" data-mood="thinking" aria-labelledby="faq-h">
+  <div class="wrap faq__grid">
+    <div><header class="sec-head"><p class="kicker">자주 묻는 질문</p><h2 id="faq-h">궁금한 점</h2></header><p class="muted">더 자세한 건 <a href="{{href:install}}">설치 안내</a>에 있어요.</p></div>
+    <div class="qa-list"><details class="qa"><summary><span>어떤 컴퓨터가 필요해요?</span><svg class="i-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary><p>Docker가 돌아가는 Mac, Linux, Windows 컴퓨터면 돼요. 최소 RAM 2GB · CPU 2코어 · 남은 디스크 10GB, 권장은 RAM 4GB · CPU 4코어 · 남은 디스크 20GB예요.</p></details><details class="qa"><summary><span>AI 모델 비용은 어떻게 내요?</span><svg class="i-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary><p>내가 고른 AI 회사에 내 API 키로 직접 내요. Kelo가 중간에서 받지 않아요. 로컬 모델을 쓰면 따로 낼 비용이 없어요.</p></details><details class="qa"><summary><span>서버를 설치한 컴퓨터를 끄면 어떻게 돼요?</span><svg class="i-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary><p>비서도 함께 쉬어요. 다시 켜면 두 시간 안에 놓친 예약 실행은 한 번 따라잡고, 그보다 오래된 건 다음 시간으로 넘겨요.</p></details><details class="qa"><summary><span>휴대폰 연결 링크를 눌렀더니 이 페이지가 열렸어요.</span><svg class="i-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary><p>Kelo 앱을 열고 연결 화면에서 QR 코드를 스캔하거나, 받은 링크를 ‘링크 붙여넣기’에 그대로 붙여 넣으세요. 링크는 10분 동안 한 번만 쓸 수 있어요.</p></details><details class="qa"><summary><span>내 대화가 Kelo 개발자에게 가나요?</span><svg class="i-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary><p>아니요. 대화는 Kelo 서버와 답을 만드는 AI 회사 사이에서만 오가요. 앱에서 답을 길게 눌러 ‘신고하기’로 직접 보낸 답만 개발자에게 가요.</p></details><details class="qa"><summary><span>가족이 함께 쓸 수 있어요?</span><svg class="i-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary><p>네. 서버를 설치한 컴퓨터 한 대에 사람마다 Kelo를 한 벌씩 띄우면, 대화와 키가 완전히 나뉘어요.</p></details><details class="qa"><summary><span>iPhone에서도 쓸 수 있어요?</span><svg class="i-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary><p>네. iPhone 앱은 <a href="https://apps.apple.com/kr/app/kelo-ai/id6832422201">App Store</a>에서 받을 수 있어요(iOS 17 이상). Android는 베타 테스트 중이고, Windows와 macOS 앱도 있어요.</p></details><details class="qa"><summary><span>어떤 언어로 쓸 수 있어요?</span><svg class="i-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></summary><p>앱과 서버 안내 모두 한국어, 영어를 비롯한 20개 언어로 나와요.</p></details></div>
+  </div>
+</section>

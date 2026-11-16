@@ -1,0 +1,175 @@
+<div class="doc">
+  <header class="doc-hero">
+    <div class="wrap doc-hero-in">
+      <div class="doc-hero-copy">
+        <p class="kicker"><span class="num">/privacy</span>Privacy policy</p>
+        <h1>Kelo privacy policy</h1>
+        <p class="lead">It describes what the Kelo app and server actually do today.</p>
+      </div>
+      <div class="doc-hero-art" aria-hidden="true">{{svg:reading}}</div>
+    </div>
+  </header>
+
+  <div class="wrap doc-grid">
+    <nav class="toc" aria-label="On this page">
+      <p class="toc-k">On this page</p>
+      <ol>
+        <li><a href="#scope">What this policy covers</a></li>
+        <li><a href="#model">The basic idea: your data is on your server</a></li>
+        <li><a href="#app">What the phone app handles</a></li>
+        <li><a href="#server">What your server handles</a></li>
+        <li><a href="#operator">What the operator server (kelo.chat) handles</a></li>
+        <li><a href="#third">Where data leaves your server</a></li>
+        <li><a href="#google">Google user data</a></li>
+        <li><a href="#keep">Keeping and deleting</a></li>
+        <li><a href="#security">Security</a></li>
+        <li><a href="#children">Children</a></li>
+        <li><a href="#changes">Changes</a></li>
+        <li><a href="#contact">Contact</a></li>
+        <li><a href="#credits">Photo credits</a></li>
+      </ol>
+    </nav>
+
+    <article class="prose">
+      <p class="note">Effective date: November 10, 2026 · Operator: Nam Ho Kang (Kelo)</p>
+
+      <section class="summary" aria-labelledby="summary">
+        <h2 id="summary">In short</h2>
+        <ul>
+          <li><strong>Your data is on your server.</strong> Chats, memory, files, keychain and cards are stored by the Kelo server you run. The operator has no way into it (<a href="#model">section 2</a>).</li>
+          <li><strong>Your messages go to the AI company you choose</strong>, to get a reply, and to the services you connect (<a href="#third">section 6</a>).</li>
+          <li><strong>kelo.chat helps with only a few things</strong>: the Kelo address (https through a Cloudflare Tunnel to your server), push notifications that carry only a signal, the Google and GitHub sign-in relay (tokens are not stored), the update check, and replies you choose to report (<a href="#operator">section 5</a>).</li>
+          <li><strong>No analytics.</strong> The apps have none. The only exception is Google ML Kit in the Android app, used to scan QR codes and cards, which sends anonymous diagnostics (<a href="#app">section 3</a>). This website sets no cookies.</li>
+          <li><strong>Nothing on your server expires on its own</strong>: it stays until you delete it. What kelo.chat keeps is deleted on a fixed schedule (<a href="#keep">section 8</a>).</li>
+        </ul>
+      </section>
+
+      <h2 id="scope">1. What this policy covers</h2>
+      <p>This policy applies to three things:</p>
+      <ul>
+        <li><strong>The Kelo app</strong>: the Android app (package <code>chat.kelo.app</code>) and the iPhone app.</li>
+        <li><strong>The Kelo server</strong>: software you install and run on a computer you choose.</li>
+        <li><strong>The operator server</strong>: this website at <code>kelo.chat</code> and the optional services the Kelo operator runs there (sign-in relay, push relay, Kelo address).</li>
+      </ul>
+
+      <h2 id="model">2. The basic idea: your data is on your server</h2>
+      <p>Kelo is a server you run yourself plus a phone app. Your chats, memory, files, keychain, cards and calendar copies are stored by the Kelo server you installed, and you are the one in charge of it. The operator has no access to your server and does not receive your conversations, except a reply you choose to report (section 5). The app talks to the server you connected it to and contains no analytics of its own. The one component that sends usage diagnostics is Google ML Kit, used to scan QR codes and cards (section 3).</p>
+
+      <h2 id="app">3. What the phone app handles</h2>
+      <p id="android-versions"><strong>There are two Android apps.</strong> One comes from Google Play; the other you download straight from kelo.chat (an APK file). The one from kelo.chat does two more things: it reads steps, sleep, heart rate, weight and exercise from Health Connect, and you can update it to a new version from inside the app. Everything else is the same. Rows marked “only in the app downloaded from kelo.chat” in the table below are that difference.</p>
+      <p id="iphone"><strong>The iPhone app</strong> follows the same rules, and the table below describes the Android app. The differences: its push notifications go through Apple's push service (APNs) and not Google FCM: when you allow notifications, iOS gives the app a push device token, the app sends it to your server only, and to notify you your server passes it through the operator server to Apple's push service, together with only the kind and ids of the notification, never a title or any text (the banner says just "Kelo has an update", worded on your phone, and the app then fetches the details from your own server); it adds no push SDK of any kind, and when push is not set up or you turn notifications off, it checks your server while it is open and when iOS lets it refresh in the background; it has no Google ML Kit, Firebase or analytics component, so no diagnostics are sent to anyone; it does not read health data; and the server address and access token are kept in the iPhone's Keychain. Camera scanning, Face ID and Touch ID are handled on the phone, and pictures and biometric data never reach the app's maker or any server.</p>
+      <div class="table-wrap">
+        <table class="stack">
+          <thead><tr><th scope="col">Data · permission</th><th scope="col">When, and what for</th><th scope="col">Where it goes</th></tr></thead>
+          <tbody>
+            <tr><td>Server address, device access token</td><td data-label="When, and what for">To reach your server. You get them from a QR code or a connect link.</td><td data-label="Where it goes">The phone's secure storage (Android Keystore). Excluded from device backups.</td></tr>
+            <tr><td>Messages, attachments, photos</td><td data-label="When, and what for">Only what you send or pick.</td><td data-label="Where it goes">Your server. Photos are re-saved without the location they were taken at, and the server strips location data again.</td></tr>
+            <tr><td>Camera</td><td data-label="When, and what for">Only while you scan a connect QR code or a card. Recognition happens on the phone, using Google ML Kit barcode scanning and text recognition.</td><td data-label="Where it goes">The camera picture and the QR contents go nowhere. ML Kit sends Google anonymous diagnostics: device model, OS and app version, how long scanning took, and a per-install identifier (<a href="https://developers.google.com/ml-kit/android-data-disclosure">Google's ML Kit data disclosure</a>).</td></tr>
+            <tr><td>Reports of a reply</td><td data-label="When, and what for">Only when you press and hold an AI reply, choose Report, and send. To find and fix offensive, harmful or wrong replies.</td><td data-label="Where it goes">Through your server to the operator server (section 5): the reported reply, your message before it only if you tick that box, the reason and comment you gave, the model name and the app version.</td></tr>
+            <tr><td>Microphone</td><td data-label="When, and what for">Only when you tap the voice input button.</td><td data-label="Where it goes">Your phone's speech recognition turns it into text. That is handled by the speech service set up on your phone; only the resulting text goes into the chat.</td></tr>
+            <tr><td>Calendar (read; write if you allow it)</td><td data-label="When, and what for">Only after you turn on Connectors → On this device → Calendar. It reads events from 7 days back to 60 days ahead (title, time, place, calendar name, number of attendees, event id). If you also turn on “allow adding and changing events”, the assistant can add, change or delete events in the calendar you pick, each one after you approve it on a card.</td><td data-label="Where it goes">Your server, where each new copy replaces the last one and is stored encrypted. Turning it off deletes the copy. Changes are made by your phone itself, only the ones you approved.</td></tr>
+            <tr><td>Contacts (read)</td><td data-label="When, and what for">Only after you turn on Contacts. Names, phone numbers, emails, company and job title, birthdays, used when the assistant needs to find someone.</td><td data-label="Where it goes">Your server (encrypted). Each new copy replaces the last; turning it off deletes it. Your contacts are never changed.</td></tr>
+            <tr><td>Text messages (read, send) — not in the apps you can download</td><td data-label="When, and what for">Only after you turn on Messages. Received and sent texts (number, text, time) from the last 7, 30 or 90 days (your choice). If you turn on “allow sending texts”, the assistant shows you the recipient and the whole message on an approval card and your phone sends only what you approve. Neither the Google Play app nor the app downloaded from kelo.chat has this. Only a test version that the developers install themselves does.</td><td data-label="Where it goes">Your server (encrypted). Each new copy replaces the last; turning it off deletes it. Texts you approve go out through your mobile carrier.</td></tr>
+            <tr><td>Call history (read) — not in the apps you can download</td><td data-label="When, and what for">Only after you turn on Call history. Calls from the last 30 days (number, saved name, incoming/outgoing/missed, time, length). Neither the Google Play app nor the app downloaded from kelo.chat has this. Only a test version that the developers install themselves does.</td><td data-label="Where it goes">Your server (encrypted). Each new copy replaces the last; turning it off deletes it.</td></tr>
+            <tr><td>Phone dialer</td><td data-label="When, and what for">Only after you turn on Phone dialer. When the assistant asks to call someone and you approve, the app opens your dialer with the number filled in. You press call yourself; Kelo cannot place or listen to calls (it has no call permission).</td><td data-label="Where it goes">Nothing is sent.</td></tr>
+            <tr><td>Notifications (notification access) — not in the apps you can download</td><td data-label="When, and what for">Only after you turn on Notifications, agree to the notice, and allow Kelo’s notification access in system settings. App name, title, text and time of new notifications. Kelo’s own, ongoing and system notifications and apps you leave out are not sent. Neither the Google Play app nor the app downloaded from kelo.chat has this. Only a test version that the developers install themselves does.</td><td data-label="Where it goes">Your server (each one encrypted). Deleted after 7 days, and at once when you turn it off.</td></tr>
+            <tr><td>Health Connect (read, only in the app downloaded from kelo.chat)</td><td data-label="When, and what for">Only the kinds you tick (steps, sleep, heart rate, weight, exercise), as daily summaries for the last 30 days, read while the app is open. Never used for ads, sale, credit or insurance decisions.</td><td data-label="Where it goes">Your server (encrypted). Each new copy replaces the last; turning it off deletes it. Nothing is written to Health Connect.</td></tr>
+            <tr><td>Notifications, push token</td><td data-label="When, and what for">To tell you about finished tasks, approval requests and similar. The Android app gets a Firebase Cloud Messaging (FCM) token; the iPhone app gets an Apple push (APNs) device token.</td><td data-label="Where it goes">Registered with your server. To send a notification, your server passes the token through the operator server to Google FCM (Android) or Apple's push service (iPhone) (section 5).</td></tr>
+            <tr><td>Card details</td><td data-label="When, and what for">When you add a card to the wallet. Card scanning happens only on the phone (Google Pay card recognition or ML Kit text recognition): it fills in the number and expiry date, sends no picture anywhere and never reads the CVC.</td><td data-label="Where it goes">A card without auto-pay is encrypted with a key only your phone holds before it goes to your server, so the server can't read it. Auto-pay can be turned on only while Keyguard is on: such a card is sent once to your server over TLS and encrypted there with the key your phones hold (Keyguard), so the server can't open it after a restart until a phone unlocks it.</td></tr>
+            <tr><td>Location</td><td data-label="When, and what for">Only when you allow location on your phone. To give the briefing's weather and answer questions like "a pharmacy near me", the app sends the position, its accuracy and the town's name when you open it (at most every 15 minutes): precise or approximate, whichever you chose on the phone. Location is never read while the app is closed.</td><td data-label="Where it goes">Your server. Only the newest one is kept. Weather services only get coordinates rounded to about 1 km; the place-name lookup only coordinates rounded to about 110 m.</td></tr>
+            <tr><td>Biometrics</td><td data-label="When, and what for">To approve payments, open the keychain and similar.</td><td data-label="Where it goes">Handled by Android. Fingerprint and face data never reach the app or any server.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="server">4. What your server handles</h2>
+      <p>The Kelo server you installed stores your conversations and their summaries, the assistant's memory and notes, files you upload and results it makes, its journal and the preference rules it has learned, task and approval history, tokens for connected services, keychain items, cards, and copies of what you turned on under On this device (calendar, contacts, texts, call history, notifications, health summaries).</p>
+      <ul>
+        <li>Passwords, API keys, service tokens and card numbers are stored encrypted on your server. The AI model can't see them, and they are never sent to the operator.</li>
+        <li>Calendar, contacts, texts, call history, notifications and health summaries from your phone are stored encrypted, per phone. When the assistant answers, the parts it needs go to the AI model you chose (section 6).</li>
+        <li>When it sends a push notification, your server includes a random install secret (install_id) it uses with the operator server. The operator server keeps only a hash of it.</li>
+        <li>Who can see this data depends on how you run your server. The operator has no part in it.</li>
+      </ul>
+
+      <h2 id="operator">5. What the operator server (kelo.chat) handles</h2>
+      <p>The operator server is involved only when you use the features below, and never receives your conversations, apart from a reply you choose to report.</p>
+      <p><strong>Update check</strong> — the Android app downloaded from kelo.chat and the desktop app (Windows, macOS) only fetch the public version list (<code>kelo.chat/download/latest.json</code>) at start and once a day. Nothing is sent but the app's name and version (User-Agent), and a new version is downloaded only when you tap Get. Google Play and the iPhone app are updated by their stores.</p>
+      <h3>Sign-in relay (Google, GitHub, MCP services)</h3>
+      <ul>
+        <li>After you sign in with Google or GitHub, the way back passes through <code>kelo.chat/oauth/relay</code> and on to your server. The operator server learns which server address to send you back to, but doesn't keep it.</li>
+        <li>Google and GitHub need a secret that only the operator holds to turn a sign-in code into a token (and, for Google, to renew it). So the operator server makes that request for your server and passes the token straight back. The token exists only in memory while this happens and is not stored.</li>
+        <li>For MCP service sign-ins, the operator server publishes a public document describing the Kelo app (<code>/oauth/client-metadata.json</code>). It contains no personal data.</li>
+        <li>Google sign-in beta request: only the Google email address you typed in the app (plus the services you chose, the app's language and version, and a hash of the install secret). It is used only to add you as a test user and to email you once about the result, kept until the request is handled and deleted 30 days after that (an unhandled request is deleted after 180 days).</li>
+      </ul>
+      <h3>Push relay</h3>
+      <ul>
+        <li>To send a notification, your server sends up to 10 push tokens (FCM tokens for Android phones, APNs device tokens for iPhones, each with the app's environment) and a payload holding only the notification's kind and ids. The operator server hands them to Google FCM or to Apple's push service (APNs). No titles, no text, nothing the assistant wrote; an iPhone banner is a fixed line ("Kelo has an update") that the phone words itself.</li>
+        <li>Stored: the SHA-256 hash of your install secret, when it was first and last used, and a request count. FCM and APNs tokens and payloads are not stored and never written to logs; the operator's APNs key is read from a file on the operator server and is never sent anywhere except as a signature to Apple; logs record only the kind of notification and counts.</li>
+      </ul>
+      <h3>Kelo address (an address under <code>kelo.chat</code>)</h3>
+      <ul>
+        <li>Stored: the name you chose, the SHA-256 hash of your install secret, the Cloudflare tunnel and DNS record ids, and when the name was created and last requested.</li>
+        <li>Traffic uses https and goes through a Cloudflare Tunnel to your server, not through the operator's computer.</li>
+        <li>A name with no connection for 30 days is released and its record deleted. You can also give it back yourself with <code>assistant connect off</code>.</li>
+      </ul>
+      <h3>Reports of AI replies</h3>
+      <ul>
+        <li>When you report a reply in the app, your server sends the operator server: the text of the reported reply, the message you sent just before it (only if you ticked that box), the reason you picked and any comment you wrote, the name of the AI model your server is set to use, and the app version.</li>
+        <li>Nothing else is sent: no other part of your chat history, no account data, and not your server's address. Your server identifies itself with a random install secret, of which the operator server keeps only a SHA-256 hash, to limit abuse.</li>
+        <li>Why: to find offensive, harmful, wrong or privacy-exposing replies and improve Kelo, as Google Play requires of apps with AI-generated content.</li>
+        <li>Kept for 1 year, then deleted automatically. Ask through the contact below to have a report deleted sooner. Only the operator reads them.</li>
+        <li><strong>Tester sign-ups</strong> (kelo.chat/tester): email, the phone model you typed, language and time. Used only to send the Google Play closed-test link and to contact you about the test. Emailed to the operator once; deleted when the test ends or on request, and after 180 days at the latest.</li>
+      </ul>
+      <h3>All requests</h3>
+      <ul>
+        <li>To prevent abuse, request counts per IP address are kept briefly in memory, then dropped.</li>
+        <li>The web server's standard access log (IP address, time, requested path) may be kept. Only the most recent 30 MB is kept; older lines are deleted first.</li>
+        <li>This website sets no cookies and loads no analytics, outside fonts or outside scripts.</li>
+      </ul>
+
+      <h2 id="third">6. Where data leaves your server</h2>
+      <ul>
+        <li><strong>The AI company you choose</strong>: to write a reply, your conversation and any material it needs go to that company, under its own privacy policy. Before the first message is sent to such a company, the app tells you what is sent (your messages, attachments and results from connected services) and to whom, and asks for your permission once; if you say Later, nothing is sent. The model picker always shows where chats go. You can withdraw your permission at any time, and the app then asks again before the next message. A model you run yourself on your own network sends nothing to a company, so it asks nothing.</li>
+        <li><strong>Services you connect</strong>: mail, calendar, GitHub and so on, as much as the assistant needs to use them.</li>
+        <li><strong>Websites the assistant visits</strong>: they receive requests like any ordinary visit.</li>
+        <li><strong>Google Firebase Cloud Messaging</strong>: delivers push notifications to Android phones (token, kind and ids only).</li>
+        <li><strong>Apple Push Notification service (APNs)</strong>: delivers push notifications to iPhones (device token, kind and ids only), under Apple's own privacy policy.</li>
+        <li><strong>Google ML Kit</strong> (in the phone app): QR and card scanning send Google anonymous diagnostics (device model, OS and app version, scanning time, a per-install identifier). Camera pictures, QR contents and card numbers are not sent.</li>
+        <li><strong>Weather services</strong>: for the morning briefing and weather questions, your Kelo server asks for the forecast at the last location your phone sent, rounded to about 1 km: Open-Meteo by default (no key), or the Korea Meteorological Administration (data.go.kr) or WeatherAPI.com when you add your own key. When you name a city in a weather question, that name goes to Open-Meteo. Weather data by Open-Meteo.com (CC BY 4.0).</li>
+        <li><strong>Place names</strong>: only when Kelo needs to know which neighbourhood a position is in, or to find places near it (for example "parking near me"), your Kelo server asks Photon by komoot, with coordinates rounded to about 110 m and the words searched for. No key and no account; answers are kept on your server for up to 30 days so the same spot is not asked again. Place data © OpenStreetMap contributors (ODbL).</li>
+        <li><strong>The operator</strong>: only a reply you choose to report, as described in section 5.</li>
+        <li><strong>Cloudflare</strong>: traffic passes through it when you use a Kelo address or the Cloudflare way to connect.</li>
+      </ul>
+      <p>The operator does not sell personal data.</p>
+
+      <h2 id="google">7. Google user data</h2>
+      <p>When you connect Gmail or Google Calendar with Google sign-in, Kelo asks for Gmail (<code>https://mail.google.com/</code>) and Calendar (<code>calendar.readonly</code>, <code>calendar.events</code>) access. Data received this way is stored only on your server and used only for what you ask the assistant to do (reading and sending mail, viewing, creating and changing events). Sending mail and changing or deleting events need your approval every time. This data is not passed to the operator, not used for advertising, and not read by people other than you. Kelo's use of Google data is designed to follow the Limited Use requirements of the Google API Services User Data Policy.</p>
+
+      <h2 id="keep">8. Keeping and deleting</h2>
+      <ul>
+        <li>Data on your server stays until you delete it. Results you delete in the app sit in the trash for 30 days, then go for good.</li>
+        <li>Removing a device in the app deletes that device's access token and push token.</li>
+        <li>Turning off an On this device item (calendar, contacts, messages, call history, notifications, Health Connect), or removing the phone, deletes that phone’s copy on your server. Notifications are deleted after 7 days even while it stays on.</li>
+        <li>Uninstalling the app deletes the server address and token on the phone.</li>
+        <li>Records on the operator server are deleted as described in section 5. Reports of replies are kept for 1 year and deleted sooner on request.</li>
+      </ul>
+
+      <h2 id="security">9. Security</h2>
+      <p>The app talks to your server over https only. Secrets are stored encrypted, the assistant's browser is walled off from your home network, and the work room where code runs has no internet and no secrets. Keeping the computer that runs your server safe (system updates, guarding the <code>.env</code> file and so on) is up to you.</p>
+      <p>What Kelo reads from web pages, mails and files is treated as data, never as instructions. When such text tries to move data or money, Kelo ignores it and tells the owner. Sending, changing or deleting anything waits for the owner's approval; outside text alone never starts those steps.</p>
+
+      <h2 id="children">10. Children</h2>
+      <p>Kelo is not meant for children under 14.</p>
+
+      <h2 id="changes">11. Changes</h2>
+      <p>When this policy changes, the new version is posted on this page with a new effective date.</p>
+
+      <h2 id="contact">12. Contact</h2>
+      <p>Privacy questions and requests: <a href="mailto:support@kelo.chat">support@kelo.chat</a> (operator: Nam Ho Kang)</p>
+
+      <h2 id="credits">13. Photo credits</h2>
+      <p>The photographs on the home page come from Wikimedia Commons. Each one, its photographer and its licence:</p>
+      {{credits}}
+    </article>
+  </div>
+</div>

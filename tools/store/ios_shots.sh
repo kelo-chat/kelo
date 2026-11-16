@@ -1,10 +1,10 @@
 #!/bin/bash
-# Raw App Store captures: ios/Kelo/UITests/KeloStoreShotsTests.swift on the kelo-ios-check simulator (iPhone 17, 1206x2622)
+# Raw App Store captures: apps/ios/Kelo/UITests/KeloStoreShotsTests.swift on the kelo-ios-check simulator (iPhone 17, 1206x2622)
 # against tools/store/store_mock.py, through tools/build/ios.sh sim (it builds, takes XCODE_LOCK and DEVICE_LOCK when
 # KELO_LOCK_DIR is set, and removes its DerivedData).
 #
 #   tools/store/ios_shots.sh OUT_DIR [en] [ko]        (default: en ko)
-#   then: uv run python tools/store/compose.py ios OUT_DIR ios/store/screenshots
+#   then: uv run python tools/store/compose.py ios OUT_DIR apps/ios/store/screenshots
 #
 # Writes OUT_DIR/{en,ko}-01.png .. -08.png. The app runs in a time zone where it is morning now (store_mock.py --print-tz, passed
 # to the app as TZ), and the simulator's status bar shows that zone's time, a full battery and Wi-Fi (simctl status_bar; cleared
@@ -20,9 +20,10 @@ UDID="$(xcrun simctl list devices | sed -n "s/^ *$SIM (\([0-9A-F-]*\)).*/\1/p" |
 mkdir -p "$OUT"
 RAW="$(mktemp -d "$(cd "$OUT" && pwd)/.ios-run.XXXXXX")"
 LOGS="$RAW/logs"
-MOCK_PID=""; RUN_PID=""
+MOCK_PID=""; RUN_PID=""; GW_PID=""
 cleanup() {
   [ -n "$RUN_PID" ] && kill "$RUN_PID" 2>/dev/null || true
+  [ -n "$GW_PID" ] && { kill "$GW_PID" 2>/dev/null || true; wait "$GW_PID" 2>/dev/null || true; }
   [ -n "$MOCK_PID" ] && { kill "$MOCK_PID" 2>/dev/null || true; wait "$MOCK_PID" 2>/dev/null || true; }
   xcrun simctl status_bar "$UDID" clear >/dev/null 2>&1 || true
   rm -rf "$RAW"
@@ -36,8 +37,13 @@ for L in "${LANGS[@]}"; do
   uv run python tools/store/store_mock.py --lang "$L" --port "$PORT" --tz "$TZ_NAME" --brief 07:00 > "$RAW/mock-$L.log" 2>&1 &
   MOCK_PID=$!
   for _ in $(seq 1 30); do curl -s -o /dev/null --max-time 1 "127.0.0.1:$PORT/healthz" && break; sleep 0.5; done
+  # the app talks to servers only through KE2E (since 0.9.0): the store mock is plain, so the gateway goes in front of it
+  GW_PORT=$((PORT + 1))
+  uv run --quiet python apps/ios/tools/mock_e2e_gateway.py --port "$GW_PORT" --upstream "$PORT" > "$RAW/gateway-$L.log" 2>&1 &
+  GW_PID=$!
+  for _ in $(seq 1 60); do curl -s -o /dev/null --max-time 2 "127.0.0.1:$GW_PORT/api/e2e/info" && break; sleep 0.5; done
   rm -f "$LOGS/ios-test.log"
-  KELO_BUILD_LOGS="$LOGS" TEST_RUNNER_KELO_STORE_SERVER="http://127.0.0.1:$PORT" TEST_RUNNER_KELO_STORE_TZ="$TZ_NAME" \
+  KELO_BUILD_LOGS="$LOGS" TEST_RUNNER_KELO_STORE_SERVER="http://127.0.0.1:$GW_PORT" TEST_RUNNER_KELO_STORE_TZ="$TZ_NAME" \
     tools/build/ios.sh sim --skip-packages --lang "$L" --only KeloUITests/KeloStoreShotsTests/testStoreShots --shots "$RAW/shots" &
   RUN_PID=$!
   # once the tests start (the build is done), the status bar shows the zone's time
@@ -49,6 +55,7 @@ for L in "${LANGS[@]}"; do
     echo "ios.sh reported a failure for $L (logs kept in $OUT/logs-$L)" >&2
   fi
   RUN_PID=""
+  kill "$GW_PID" 2>/dev/null || true; wait "$GW_PID" 2>/dev/null || true; GW_PID=""
   kill "$MOCK_PID" 2>/dev/null || true; wait "$MOCK_PID" 2>/dev/null || true; MOCK_PID=""
   for f in "$RAW/shots/$L-check-"[0-9][0-9]-*.png; do
     [ -e "$f" ] || continue

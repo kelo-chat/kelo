@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="notices_title">Ogłoszenia</string>
+    <string name="notices_important">Ważne</string>
+    <string name="notices_more">Zobacz więcej</string>
+    <string name="notices_close">Zamknij</string>
+</resources>

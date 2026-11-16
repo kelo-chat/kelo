@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nest_contents_open">설치될 내용 전체 보기</string>
+    <string name="nest_contents_title">설치될 내용</string>
+    <string name="nest_contents_warnings">불러오면서 나온 알림</string>
+    <string name="nest_contents_endpoints">접속하는 곳</string>
+    <string name="nest_contents_none">없음</string>
+    <string name="nest_contents_files">파일</string>
+    <string name="nest_contents_total">전체 %1$s</string>
+    <string name="nest_contents_cut">이 파일은 너무 길어서 일부만 보여요.</string>
+    <string name="nest_contents_back">전체 파일</string>
+    <string name="nest_contents_bytes">%1$d B</string>
+    <string name="nest_contents_kb">%1$d KB</string>
+    <string name="nest_changed_open">바뀐 내용 보기</string>
+    <string name="nest_update_changed">바뀐 파일 %1$d개</string>
+    <string name="nest_changed_title">이번 업데이트에서 바뀌는 것</string>
+    <string name="nest_changed_added">추가된 파일</string>
+    <string name="nest_changed_removed">삭제된 파일</string>
+    <string name="nest_changed_modified">바뀐 파일</string>
+</resources>

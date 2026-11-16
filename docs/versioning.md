@@ -57,8 +57,8 @@ Every app reads `version.json` at **build time** (never at run time from the net
 settings), and compiles in `min_server`.
 
 - **Android**: `versionName` = `version` (e.g. `0.9.0`). `versionCode` stays the store's rising number
-  (`android/kelo/version.properties`, set at release time), because Google Play needs it to grow and it is already above any
-  `build`. Gradle reads `../../version.json` (relative to `android/kelo/app`). The Android source is `android/kelo` plus `shared/` (the Kotlin module both apps use).
+  (`apps/android/kelo/version.properties`, set at release time), because Google Play needs it to grow and it is already above any
+  `build`. Gradle reads `../../version.json` (relative to `apps/android/kelo/app`). The Android source is `apps/android/kelo` plus `apps/shared/` (the Kotlin module both apps use).
 - **iPhone**: `CFBundleShortVersionString` = `version` and `CFBundleVersion` = the store's rising build number. If App Store
   Connect refuses a version lower than the published `1.0.0`, the short version stays `1.0.0` in the store and the app shows
   `version` from `version.json` in its About screen; the header below still says `0.9.0`.
@@ -112,8 +112,8 @@ desktop `major*100000000 + minor*100000 + patch`); `channel` is `download`, `pla
 
 **Recording a release.** `assistant publish-app` adds its entry by itself (a file at /download is live at once; on a copy
 without the repo it prints the exact line to add). A store release is recorded by the operator **when it is live**, never when
-it is submitted (review can take days): the store scripts (`android/play/upload.py`, `tools/build/asc.py`,
-`desktop/store/msstore.py`) print the command after a successful submission:
+it is submitted (review can take days): the store scripts (`apps/android/play/upload.py`, `tools/build/asc.py`,
+`apps/desktop/store/msstore.py`) print the command after a successful submission:
 
 ```
 assistant release-record <android|ios|desktop> <version> <build> <download|play|appstore|msstore> [--date YYYY-MM-DD]
@@ -122,9 +122,9 @@ assistant release-record <android|ios|desktop> <version> <build> <download|play|
 It checks its input, refuses a duplicate, and appends to `releases/apps.json`; commit the file. A minimum of `0.0.0` demands
 nothing.
 
-**What refuses anything else** (`src/assistant/app_releases.py`):
+**What refuses anything else** (`server/src/assistant/app_releases.py`):
 
-- `tests/test_min_app_released.py`: `version.json` `min_app` must not be above a released version of any platform (CI fails).
+- `server/tests/test_min_app_released.py`: `version.json` `min_app` must not be above a released version of any platform (CI fails).
 - `tools/release_manifest.py` and `assistant publish-server`: refuse a manifest whose `min_app` is above the newest released
   version of a platform, naming the platform and that version.
 - Server start: an operator minimum (`ASSISTANT_MIN_APP_*`) above the record is logged as an error and **ignored** for that

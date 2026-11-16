@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="android_device_title">Android-apparaat</string>
+    <string name="android_device_connected">Verbonden</string>
+    <string name="android_device_not_connected">Niet verbonden</string>
+    <string name="android_device_play_store">Play Store</string>
+    <string name="android_device_korean_input">Koreaanse invoer</string>
+    <string name="android_device_missing">Ontbreekt</string>
+    <string name="android_device_check">Verbinding controleren</string>
+    <string name="android_device_view">Scherm bekijken</string>
+    <string name="android_device_note">Het adres van het apparaat stel je in via de .env van de server. Zie ‘Een Android-apparaat dat Kelo kan gebruiken’ in de README.</string>
+    <string name="android_device_readme">README openen</string>
+</resources>

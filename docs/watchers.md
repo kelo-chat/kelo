@@ -2,7 +2,7 @@
 
 A watcher checks one thing every so often without a model call and wakes Kelo only when its condition holds (a seat that opens, a
 price that drops, a page that changes). It starts off; a dry run shows what it finds, and you approve turning it on. The full
-contract is in the docstring of `src/assistant/watchers.py` and next to `serialize()` in `server.py`.
+contract is in the docstring of `server/src/assistant/watchers.py` and next to `serialize()` in `server.py`.
 
 ## Three ways to look, cheapest first
 

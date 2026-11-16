@@ -1,8 +1,8 @@
 #!/bin/bash
 # Kelo server: build the image and run the test suite. Deploying is printed, never run. See tools/build/README.md.
 #
-#   tools/build/server.sh build             docker build -t assistant:local . (the image compose.yml runs)
-#   tools/build/server.sh test [-- ARGS]    the server tests (uv run pytest; ARGS go to pytest, e.g. -- tests/test_updates.py -q)
+#   tools/build/server.sh build             docker build -f docker/server.Dockerfile -t assistant:local . (the image compose.yml runs)
+#   tools/build/server.sh test [-- ARGS]    the server tests (uv run pytest; ARGS go to pytest, e.g. -- server/tests/test_updates.py -q)
 #   tools/build/server.sh all               build, then test (default)
 #
 # Options:
@@ -47,7 +47,7 @@ if [ "$MODE" != test ]; then
     with_timeout 30 docker info >/dev/null 2>&1 || die "Docker is not running (on this Mac: colima; do not restart it without asking the owner)"
   fi
   step "docker build -t $TAG" "${KELO_DOCKER_TIMEOUT:-3600}" "$LOGS/server-docker.log" \
-    docker build --build-arg "BROWSER=$BROWSER" --build-arg "KELO_VERSION=$VERSION" -t "$TAG" .
+    docker build -f docker/server.Dockerfile --build-arg "BROWSER=$BROWSER" --build-arg "KELO_VERSION=$VERSION" -t "$TAG" .
   if [ "$DRY_RUN" = 0 ]; then
     note "image: $TAG $(docker image inspect "$TAG" --format '{{.Id}} {{.Size}}' | awk '{printf "%s, %.0f MB", substr($1, 8, 12), $2 / 1e6}')"
     if [ "$REMOVE" = 1 ]; then

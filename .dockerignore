@@ -5,22 +5,22 @@
 __pycache__
 *.pyc
 .pytest_cache
-tests
+server/tests
 docs
 *.md
-web/node_modules
-web/dist
+server/web/node_modules
+server/web/dist
 dist
 instances
 
 # Android app: signing keys, build output, local SDK path
-android/keystore
-android/kelo/build
-android/kelo/app/build
-android/kelo/.gradle
-android/kelo/.kotlin
-android/kelo/local.properties
-android/dist
+apps/android/keystore
+apps/android/kelo/build
+apps/android/kelo/app/build
+apps/android/kelo/.gradle
+apps/android/kelo/.kotlin
+apps/android/kelo/local.properties
+apps/android/dist
 
 # keys, per-machine connection settings and the app sources never go into the image build context
 connect/cloudflared
@@ -36,4 +36,4 @@ GoogleService-Info.plist
 android
 ios
 desktop
-web/node_modules
+server/web/node_modules

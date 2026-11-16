@@ -4,9 +4,9 @@ Fixed inputs and outputs for the KE2E envelope in `e2e-and-phone-key.md` section
 in its unit tests, next to the RFC 9180 vectors for the same suite (Appendix A.2.1, base mode). All byte strings are lowercase hex
 unless the field name ends in `_text` (UTF-8 text) or `_b64url` (base64url, no padding).
 
-The file is made by `tests/e2e_vectors_gen.py` (deterministic: keys come from fixed seeds through RFC 9180 `DeriveKeyPair`, `ts` and
-nonces are fixed). `tests/test_e2e_core.py` fails if the file and the generator disagree. The server's own code is
-`src/assistant/e2e.py`; the reference client is `tests/e2e_client.py`.
+The file is made by `server/tests/e2e_vectors_gen.py` (deterministic: keys come from fixed seeds through RFC 9180 `DeriveKeyPair`, `ts` and
+nonces are fixed). `server/tests/test_e2e_core.py` fails if the file and the generator disagree. The server's own code is
+`server/src/assistant/e2e.py`; the reference client is `server/tests/e2e_client.py`.
 
 ## Top level
 
@@ -111,3 +111,14 @@ Cases: `tampered_frame`, `truncated_stream`, `partial_frame`, `counter_gap`, `da
 `replayed_nonce`, `old_timestamp`, `tampered_envelope`, `bad_version` (requests, server side; an app can use them to test its own
 envelope parser if it has one); `stream_body_truncated`, `stream_body_tampered` (a 0x02 upload missing its last body frame or with
 a flipped byte: the server answers 400); `ws_tampered`, `ws_unknown_type` (open with `key` as the receiving c2s key).
+
+## Checks
+
+- `docs/security/e2e-vectors.sha256` pins the file: one line, `<sha256>  e2e-vectors.json` (sha256sum format). Every platform's
+  vectors test computes the SHA-256 of `e2e-vectors.json` and fails when it differs from that line, with the message
+  "vectors file does not match e2e-vectors.sha256: regenerate with server/tests/e2e_vectors_gen.py --write".
+- `uv run python server/tests/e2e_vectors_gen.py --check` exits 1 with a short summary when the JSON or the pin differs from a fresh
+  build (CI runs it). `--write` rewrites both files; use it only when the format changes on purpose, and tell the app agents.
+- `KELO_REQUIRE_VECTORS=1` turns a missing file into a failure in the Kotlin (shared desktopTest, run by the Android and desktop
+  tests) and Swift (KeloCore tests) suites instead of a skip; CI and `tools/build/ios.sh` set it. The server test always requires the
+  file. Without the variable (a partial checkout) the apps skip, and a file that is present is still checked against the pin.

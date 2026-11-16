@@ -4,14 +4,14 @@ A package is a folder that adds a **skill** (a written guide the agent reads) or
 use) to Kelo. Drop the folder into the server's packages folder and the agent sees it on its next turn; the Connectors screen shows
 it on its next refresh. No code change and no restart. Delete the folder and it is gone the same way.
 
-New to this? Start with the short, copy-and-edit guide in [`examples/packages/README.md`](../examples/packages/README.md). To publish a
+New to this? Start with the short, copy-and-edit guide in [`server/examples/packages/README.md`](../server/examples/packages/README.md). To publish a
 package for every Kelo server, with permissions the owner approves and screens for the apps, see [Kelo Nest](nest.md).
 
 The server reads packages from these places:
 
 | Where | What | Who writes it |
 | --- | --- | --- |
-| `content/skills/<id>/` (in the repo) | built-in skills | Kelo |
+| `server/content/skills/<id>/` (in the repo) | built-in skills | Kelo |
 | code (`catalog.py`, `presets.py`, `mcp_oauth.py`, ...) | built-in connectors | Kelo |
 | `<state>/custom_skills/<id>/` | custom skills (source `custom`) | the owner, through the app's approval (see "Custom skills") |
 | `<state>/packages/<id>/` | installed skills and connectors | anyone |
@@ -186,11 +186,10 @@ at `POST /api/mcp-oauth/<id>/start`, the same as a built-in connector.
 
 ## Installing
 
-There is no install screen or endpoint yet. For now, copy the folder into `<state>/packages/`. The registry already has the calls a
-later install endpoint will use: `Registry.install_from_dir(folder, replace=False)` checks the package, copies only its plain files
-into place through a temporary folder and reloads; `Registry.remove(id)` deletes an installed package (built-ins cannot be removed).
-`Registry.install_from_index(entry)` installs one entry of a curated catalog (see "Catalog index" below). Every install records
-where the package came from and what the owner approved (next section).
+The owner installs a package from its GitHub link in the app (My -> Nest -> Install from link; see [`nest.md`](nest.md)). Copying the
+folder into `<state>/packages/` by hand also works. `Registry.install_from_dir(folder, replace=False)` checks the package, copies only
+its plain files into place through a temporary folder and reloads; `Registry.remove(id)` deletes an installed package (built-ins
+cannot be removed). Every install records where the package came from and what the owner approved (next section).
 
 ## Where a package came from, and what was approved
 
@@ -205,7 +204,7 @@ never inside one, so a package cannot write its own record):
 | `approved_hash` | the **content hash** the owner approved |
 | `files` | the sha256 of each file, by path (to show what changed) |
 | `sensitive` | the connector fields an approval is really about: `type`, `url`, `hosts`, `placement`, `base_url`, `verify`, `mcp_url` (a skill: `requires`) |
-| `reviewed` | `true` only for a curated catalog entry marked reviewed; everything else is **unreviewed** |
+| `reviewed` | always false: nobody reviews packages; everything is **unreviewed** |
 
 The **content hash** is one sha256 over every file of the package: each relative path (sorted, `/`-separated) with the sha256 of its
 bytes. Nothing is left out, hidden files included; a link or a special file refuses the package, as when loading it.
@@ -249,46 +248,9 @@ approved by the owner"); `GET /api/skills` lists every skill with its `source` (
 
 The endpoints are listed in `server.py` ("Custom skills") and `custom_skills.py`.
 
-## Catalog index
-
-A curated catalog is one JSON document, read by `package_index.parse_index()` / `load_index(path)`:
-
-```json
-{
-  "format": 1,
-  "name": "Example catalog",
-  "packages": [
-    {"id": "acme_notes", "kind": "connector", "name": "Acme Notes", "description": "Notes in Acme", "author": "Someone",
-     "version": "1.2.0", "reviewed": true,
-     "source": {"type": "git", "url": "https://github.com/someone/acme-notes", "commit": "<40 lower-case hex>", "path": "package"}},
-    {"id": "picnic", "kind": "skill", "name": "Picnic", "description": "Plan a picnic", "author": "Someone",
-     "version": "0.1.0", "reviewed": false,
-     "source": {"type": "archive", "url": "https://example.org/picnic-0.1.0.zip", "sha256": "<64 lower-case hex>"}}
-  ]
-}
-```
-
-It is checked strictly: an unknown field, a bad id or version, a duplicate id or a bad source refuses the whole index with the entry's
-number and the reason.
-
-- **git**: `url` is `https://<github.com | codeberg.org | gitlab.com>/<owner>/<repo>`; `commit` is a full 40-character commit id.
-  Tags and branches (`ref`, `tag`, `branch`, ...) are refused: they can be moved to other code after the entry was reviewed. The
-  server fetches the forge's archive of that commit (no git protocol) and checks the commit recorded in the archive (the pax header
-  `git archive` writes) against the entry.
-- **archive**: `url` is any public https address of a `.zip` or `.tar.gz`; `sha256` is the hash of the file. The bytes must match
-  before anything is unpacked.
-- `path` (optional): the package's folder inside the repository or archive.
-
-`Registry.install_from_index(entry, fetcher=None)` installs one entry: it fetches through `netguard` (https only, public addresses
-only, no redirects, 60 s, at most 20 MiB), checks the commit or the hash, unpacks only the package folder into a temporary folder —
-refusing absolute paths and `..` (zip-slip / tar-slip), links, devices, executables (an executable bit, a program header, a script
-or program file name), more than 5000 archive entries or 200 MiB declared in all, and anything over the package limits — checks that
-the package has the entry's id, kind and version, and then calls `install_from_dir` with the source record (`reviewed` from the
-entry). Tests pass a fake `fetcher`; there is no endpoint or screen for the catalog yet.
-
 ## Examples
 
-`examples/packages/` holds a skill (`trip-packing-list`), connectors of every way (`example_notes`, an MCP server; `example_weather`, an
+`server/examples/packages/` holds a skill (`trip-packing-list`), connectors of every way (`example_notes`, an MCP server; `example_weather`, an
 API key; `example_tasks`, OAuth; `example_market`, a browser site) and packages with screens (`habit-tracker`, a skill with a tab;
 `example_parcels`, a key connector with a tab; `daily-countdown`, a screens-only extension). Their addresses are placeholders on
 `example.com` and do not work.

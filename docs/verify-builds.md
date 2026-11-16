@@ -7,9 +7,9 @@ says plainly where that check is strong, where it is weaker, and where it is not
 
 | What you have | What you can check | How strong |
 |---|---|---|
-| Android app from Google Play | Build the tagged source yourself and compare it with the APKs on your phone | Same files, byte for byte, except the signature |
-| Android APK from kelo.chat | The same, with the one APK | Same file, byte for byte, except the signature |
-| Windows installers (MSI, EXE, MSIX) | `gh attestation verify` shows which workflow and commit built the file | Provenance. Not reproducible: you cannot rebuild the same bytes |
+| Android APK from kelo.chat | Build the tagged source yourself and compare it with the APK on your phone | Same file, byte for byte, except the signature |
+| Android app from Google Play | Not byte for byte: Google Play adds its own protection code to the apps it delivers (automatic protection, on for Kelo). Use the APK from kelo.chat to check | None for the Play build itself |
+| Windows installers (MSI, EXE, MSIX) or installed app | Every file of the app against the source, apart from the signatures (`tools/verify/windows-verify.ps1`) | Strong for the code, none for the signatures; second check: `gh attestation verify` (provenance) |
 | macOS disk image | Every file of the app against the source, apart from Apple's signature (`tools/verify/mac-verify.sh`) | Strong for the code, none for the signature itself |
 | iPhone app | The readable parts of the app against the source | Weak. A byte-for-byte check is impossible (see below) |
 | Server images | `cosign verify` (see `release-images.yml`) | Signed by the public workflow |
@@ -34,10 +34,12 @@ tools/verify/android-verify.sh                # finds the tag by the phone's ver
 The script:
 
 1. asks the phone for the app's version and where it was installed from (Google Play or a file);
-2. gets the source of the tag and checks that its `android/kelo/version.properties` has the same version as the phone;
-3. builds it with `tools/build/android-reproducible.sh` in the pinned Docker image (the source it builds is `android/kelo`, `shared/` and `version.json`) (the first build is long: a few hours on an
+2. gets the source of the tag and checks that its `apps/android/kelo/version.properties` has the same version as the phone;
+3. builds it with `tools/build/android-reproducible.sh` in the pinned Docker image (the source it builds is `apps/android/kelo`, `apps/shared/` and `version.json`) (the first build is long: a few hours on an
    Apple Silicon Mac, where the Linux x86-64 image runs emulated; much faster on an x86-64 PC);
-4. **Google Play version:** `bundletool build-apks --connected-device` makes the APKs your phone should get from the bundle, `adb`
+4. **Google Play version** (since Kelo turned on Google Play's automatic protection, 2026-11-15, Google adds its own checking code to
+   the Play build, so this comparison reports differences in the code: install the APK from kelo.chat to verify; the steps below stay
+   for builds without that protection): `bundletool build-apks --connected-device` makes the APKs your phone should get from the bundle, `adb`
    pulls the APKs installed on the phone (`base.apk` and the `split_config.*.apk` files) and `tools/verify/apkdiff.py` compares them
    pair by pair (a pair is the same split: base, `config.arm64_v8a`, `config.xxhdpi`, `config.en`, ...).
    **File version:** the one APK is compared with the one on the phone;
@@ -85,15 +87,15 @@ The SHA-256 of what the run built is in the run's summary and in `SHA256SUMS`. C
 
 | Source of difference | What Kelo does |
 |---|---|
-| Version from the build time | The version is `android/kelo/version.properties` (`build=N` gives versionCode N and versionName `0.1.N`), committed with each release. `tools/build/android.sh version` writes it. The minutes-since-late-2026 rule only picks the number when the owner starts a release |
-| JDK, Gradle, Android SDK, build tools | `android/reproducible/Dockerfile`: the JDK image by digest, Android platform 36 (r02) and build tools 36.0.0 by SHA-256; Gradle 8.11.1 by `distributionSha256Sum` in the wrapper properties |
+| Version from the build time | The version is `apps/android/kelo/version.properties` (`build=N` gives versionCode N and versionName `0.1.N`), committed with each release. `tools/build/android.sh version` writes it. The minutes-since-late-2026 rule only picks the number when the owner starts a release |
+| JDK, Gradle, Android SDK, build tools | `apps/android/reproducible/Dockerfile`: the JDK image by digest, Android platform 36 (r02) and build tools 36.0.0 by SHA-256; Gradle 8.11.1 by `distributionSha256Sum` in the wrapper properties |
 | The commit shown in My | The version line in My ends with the short commit the app was built from, a link to that commit on GitHub (`BuildConfig.SOURCE_COMMIT`, `ReleaseInfo.SOURCE_COMMIT`, Info.plist `KeloSourceCommit`). `tools/build/android-reproducible.sh` passes the sha of the commit it builds into the container (`-PkeloCommit`), so the same commit gives the same bytes; a `--worktree` build says "modified" and has no link. The sha is part of the file: an APK that `tools/build/android.sh` made at another commit differs from the tag's build in exactly that value |
 | Libraries and plugins | Exact versions in `gradle/libs.versions.toml`; every downloaded file is checked against `gradle/verification-metadata.xml` (strict in the reproducible build) |
 | R8's timing note in the bundle | R8 writes how long it ran and with how many threads into `BUNDLE-METADATA/com.android.tools/r8.json`; the two numbers are blanked (`app/build.gradle.kts`). This was the only difference between two builds of the bundle |
 | Encrypted dependency list in the APK | `dependenciesInfo { includeInApk = false }`: a file APK has no per-build random value (the bundle keeps its plain list) |
 | Source folder, user, time zone, machine | Tested: the same files from two different folders, a different folder inside the container, two time zones |
 | Native libraries | The image has no NDK, so native libraries are kept as shipped; an NDK would strip them (also deterministic, but the two must not be mixed) |
-| Firebase settings | `android/kelo/app/google-services.json` is part of the source (next section) |
+| Firebase settings | `apps/android/kelo/app/google-services.json` is part of the source (next section) |
 
 Not covered: the Google Play signature (Play signs with its own key), and anything Google Play itself changes after the upload
 beyond the stamp described above. I could not test against a real Play install yet: the comparison was tested with the bundle
@@ -102,7 +104,7 @@ and this page updated with the result.
 
 ### The Firebase file and your own build
 
-Push notifications need `android/kelo/app/google-services.json`. It is the Firebase **client** configuration, the same file that
+Push notifications need `apps/android/kelo/app/google-services.json`. It is the Firebase **client** configuration, the same file that
 sits inside every APK, so it is public and is committed with the source: that is why the source builds the same APK as the one in the
 store. It contains the project number and id, the app id, and a client API key (restrict it to the app in Google Cloud so that only
 Kelo can use it). It has no service-account key and nothing secret; the key that sends pushes lives only on the operator's server.
@@ -113,16 +115,54 @@ without push. Your build will then differ from the store's in exactly that file,
 
 ## Windows
 
-`release-build.yml` calls `desktop-windows.yml` on every release tag and attaches an attestation to the `.msi`, `.exe` and
-`.msix`:
+You can check an installed Kelo (`C:\Program Files\Kelo`), the downloaded MSI (`Kelo-<version>.msi`), or the MSIX for the
+Microsoft Store against the public source. The installer itself is not byte-for-byte reproducible (jpackage and the MSI tools
+write times and ids into the installer binaries), but **every file of the app inside it** is checked against what the public
+source builds to.
 
-```sh
-gh attestation verify Kelo-1.0.3.msi -R kelo-chat/kelo
+In Windows PowerShell (5.1+) or PowerShell 7, in a checkout of this repository:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\verify\windows-verify.ps1 <Kelo-1.0.9.msi | Kelo-1.0.9.0.msix | "C:\Program Files\Kelo">
 ```
 
-This proves that GitHub Actions built the file from a given commit of `kelo-chat/kelo` with that workflow, and that it was not
-changed afterwards. It does not let you rebuild the same bytes: the installer tools write times and ids into the files. Read
-the workflow file and the commit to see what was built. The installers are not code-signed yet, so Windows SmartScreen asks first.
+(The EXE installer wraps the same files as the MSI; test the MSI from `kelo.chat/download/windows-msi`).
+
+The script:
+
+1. unpacks the MSI (`msiexec /a`, an administrative install into a temporary folder: no administrator rights needed) or the MSIX
+   (as a zip), or reads the installed folder directly;
+2. reads from the app's own jar (`chat.kelo.desktop.core.ReleaseInfo`) which commit of the source it was built from, and its
+   package number (or takes `-Commit <40 hex>`);
+3. downloads that commit's source from GitHub (a zip: no `git` is needed on the PC) or takes an unpacked folder with `-Source <dir>`;
+4. builds it unsigned with the pinned Java runtime (`apps/desktop/packaging/windows/JDK`: Eclipse Temurin, downloaded once into
+   `%LOCALAPPDATA%\kelo\jdk` and checked against its SHA-256) and the fixed zip entry times of `tools/build/zipclock`:
+   `gradlew createDistributable`;
+5. compares the two app folders file by file, and inside every jar entry by entry (`tools/verify/appdiff.py --windows`). Python 3 is
+   taken from the PC, or a small pinned embeddable Python (`apps/desktop/packaging/windows/PYTHON`) is downloaded once.
+
+It ends with `every file is the same as the source at commit <hash>, apart from signatures` (exit 0) or lists what differs (exit 1).
+
+### What is left out and why
+
+- **Authenticode signatures:** `.exe` and `.dll` files (including those inside jars, like `skiko.dll`) have their certificate table
+  and PE header checksum stripped on both sides before comparing. The signature is made with the owner's certificate and cannot
+  be reproduced by anyone else, so only the code and data are compared.
+- **MSIX packaging files:** `AppxManifest.xml`, `AppxSignature.p7x`, `AppxBlockMap.xml`, `[Content_Types].xml`, `AppxMetadata/`,
+  and `Assets/` (the Store's images) are files that the MSIX packaging adds around the app; they are left out of the comparison
+  and listed on stderr as installer files.
+
+### Second check: build provenance
+
+Because the installer binaries themselves contain timestamps and UUIDs, GitHub Actions attaches a Sigstore build provenance
+attestation to each `.msi`, `.exe` and `.msix` in `release-build.yml`:
+
+```sh
+gh attestation verify Kelo-1.0.9.msi -R kelo-chat/kelo
+```
+
+This proves that GitHub Actions built the installer file from that commit with `desktop-windows.yml`, and that it was not
+modified afterwards. The installers are not code-signed yet, so Windows SmartScreen asks first.
 
 ## macOS
 
@@ -143,10 +183,10 @@ The script:
 
 1. opens the disk image read-only and copies `Kelo.app` out;
 2. asks macOS who signed it: `spctl` must say "Notarized Developer ID", and the app's team must be the one written in
-   `desktop/packaging/macos/TEAM_ID` (printed both ways);
+   `apps/desktop/packaging/macos/TEAM_ID` (printed both ways);
 3. reads the app's version and checks out the tag `mac-<version>` into a temporary folder;
 4. builds that tag without a signature (`./gradlew createDistributable`), with the one Java runtime pinned in
-   `desktop/packaging/macos/JDK` (Eclipse Temurin, downloaded once into `~/.cache/kelo/jdk` and checked against its SHA-256);
+   `apps/desktop/packaging/macos/JDK` (Eclipse Temurin, downloaded once into `~/.cache/kelo/jdk` and checked against its SHA-256);
 5. compares the two apps file by file, and inside every jar entry by entry (`tools/verify/macdiff.py`).
 
 It ends with "every file is the same as the source at mac-<version> (<commit>), apart from Apple's signature" or lists what differs.
@@ -170,22 +210,70 @@ What you can check instead:
 - **The readable parts.** An App Store app's `Info.plist`, entitlements, resources, localized strings and the list of linked
   frameworks are not encrypted. They show the app's identifier and team, the capabilities and permissions it asks for (with the
   reason texts) and which frameworks are linked, so you can see whether an analytics or ad framework is in it. Compare them with
-  `ios/` in the source.
+  `apps/ios/` in the source.
 - **What the app does.** Put the phone behind a proxy you control and look at where the app connects: it should be the server you
   gave it, plus kelo.chat for the things the privacy page lists.
-- **Build it yourself.** `ios/` builds in Xcode with your own signing; the app you build is the app of that source, which you
+- **Build it yourself.** `apps/ios/` builds in Xcode with your own signing; the app you build is the app of that source, which you
   can run next to the store one and compare.
 - **The server side.** What matters most for your data is the server you run: its images are signed and built in public.
 
 An idea we have not built: a CI-built iPhone archive with an attestation, for people who want a binary to inspect. It would still
 not be the App Store file.
 
+## The update inside the app
+
+The Android APK from kelo.chat and the Windows and macOS apps check kelo.chat for a newer version. They do not trust the website
+alone: each entry of `https://kelo.chat/download/latest.json` carries an Ed25519 signature, made on the owner's own computer
+with a key that never goes to the server. The apps carry the matching public key and **offer nothing whose signature does not
+check**: an entry that is unsigned, signed by another key or changed afterwards is treated like a missing one, and nothing is
+shown. A file is downloaded only from the address the list itself came from, over https (plain http only for a mock on your own
+computer), and its sha256 and size must equal the signed ones. The Google Play and App Store builds are updated by the stores.
+
+What the signature covers is exactly this text (UTF-8, `\n` line ends, one final `\n`):
+
+```
+kelo-release-v1
+platform=<android | windows | windows-msi | mac>
+file=<file name>
+version=<version>
+version_code=<build number, or empty>
+size=<bytes>
+sha256=<lowercase hex of the file>
+commit=<40 hex characters, or empty>
+```
+
+`commit` names the public source commit (in `kelo-chat/kelo`) the file was built from, so the update an app installs is tied to the
+source you can read and, for Android, rebuild (sections above). The row in `latest.json` repeats it as `"commit"`, next to
+`"sig"` (the signature, base64) and `"key"` (the key id: the first 16 hex characters of the sha256 of the raw public key). An
+entry published without a commit has an empty `commit=` line.
+
+The public keys are in `apps/shared/src/commonMain/kotlin/chat/kelo/app/update/ReleaseKeys.kt` (key id → base64 of the raw 32-byte
+key; the server has the same map in `server/src/assistant/release_keys.py`). Two keys can be listed at once, so a key can be
+replaced without a flag day.
+
+Check an entry by hand (`pip install cryptography`; put the public key from `ReleaseKeys.kt` in `PUB`):
+
+```python
+import base64, hashlib, json, urllib.request
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+PUB, platform = "<base64 public key from ReleaseKeys.kt>", "windows"       # android | windows | windows-msi | mac
+r = json.load(urllib.request.urlopen("https://kelo.chat/download/latest.json"))[platform]
+pub = base64.b64decode(PUB)
+assert hashlib.sha256(pub).hexdigest()[:16] == r["key"], "signed by another key"
+text = (f"kelo-release-v1\nplatform={platform}\nfile={r['file']}\nversion={r['version']}\nversion_code={r.get('version_code', '')}\n"
+        f"size={r['size']}\nsha256={r['sha256']}\ncommit={r.get('commit', '')}\n")
+Ed25519PublicKey.from_public_bytes(pub).verify(base64.b64decode(r["sig"]), text.encode())   # raises InvalidSignature if wrong
+print("signature ok;", "built from commit " + r["commit"] if r.get("commit") else "no commit named")
+```
+
+Then compare `sha256` with the file you download (`shasum -a 256 <file>`).
+
 ## For the maintainer: releasing
 
 1. Android only: when screens moved since the last release, regenerate the baseline profiles first (with the emulator from the android
-   notes): `./gradlew :app:generateReleaseBaselineProfile -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true` in `android/kelo`,
+   notes): `./gradlew :app:generateReleaseBaselineProfile -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true` in `apps/android/kelo`,
    and commit `app/src/release/generated/baselineProfiles`.
-2. `tools/build/android.sh version` (writes `android/kelo/version.properties`), update `CHANGELOG.md`, commit, tag.
+2. `tools/build/android.sh version` (writes `apps/android/kelo/version.properties`), update `CHANGELOG.md`, commit, tag.
 3. `tools/build/android-reproducible.sh --sign`: Play bundle and sideload APK from exactly that commit, then signed with the upload
    key. Upload the signed bundle to Play, offer the signed APK on kelo.chat.
 4. Push the tag to the public repository: `release-build.yml` builds and attests the same files; its `SHA256SUMS` must equal the
