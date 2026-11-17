@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Serveradres</string>
+    <string name="server_address_title">Serveradres wijzigen</string>
+    <string name="server_address_body">Verbonden adres: %1$s\nOm over te stappen naar een nieuw adres van dezelfde Kelo-server, typ je het nieuwe https-adres. Je chats en sleutels blijven zoals ze zijn en je hoeft niet opnieuw te verbinden.</string>
+    <string name="server_address_switch">Overstappen</string>
+    <string name="server_address_checking">Controleren…</string>
+    <string name="server_address_invalid">Dat lijkt geen https-adres. Typ het zo: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">Dat adres is niet bereikbaar. Controleer het en je verbinding en probeer het opnieuw.</string>
+    <string name="server_address_other">Dat adres hoort bij een andere server, dus er is niets gewijzigd. Om een andere server te verbinden, log je uit en verbind je die helemaal opnieuw.</string>
+    <string name="server_address_same">Deze telefoon gebruikt dat adres al.</string>
+    <string name="server_address_done">Serveradres gewijzigd.</string>
+</resources>

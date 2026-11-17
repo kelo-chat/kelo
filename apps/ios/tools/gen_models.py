@@ -29,7 +29,7 @@ MODELS = {
     "DeviceList": ("GET /api/devices.", ["devices:[Device]", "current:L?"]),
     "PairStart": ("POST /api/devices/pair. link is \"https://host/#pair=CODE\" (missing only when the server knows no address).", [
         "code:S", "expiresIn:I", "link:S?"]),
-    "About": ("GET /api/about.", ["version:S", "build:S"]),
+    "About": ("GET /api/about. appUpdate: a newer released app that works with this server (docs/version-notices.md); nil = none.", ["version:S", "build:S", "appUpdate:S?@app_update"]),
     "SeenAnswer": ("POST /api/tasks/seen, /api/notifications/seen.", ["ok:B", "marked:I", "unseen:I"]),
     # ---- chat ------------------------------------------------------------------------------------------------------------------
     "StoredMessage": ("GET /api/messages items. images: the screenshots Kelo showed with an agent reply (server chat_images.py).", [
@@ -65,9 +65,9 @@ MODELS = {
         "id:L!", "turnId:S", "title:S", "status:S", "result:S", "source:S", "scheduleId:L?", "startedAt:D", "finishedAt:D?",
         "seen:B=true", "day:S", "liveStatus:S?", "turnAvailable:B", "parentId:L?", "workerId:S?"]),
     "TaskPage": ("GET /api/tasks?limit=50&before=<id>&source=.", ["items:[AgentTask]", "unseen:I", "nextBefore:L?"]),
-    "ApprovalRecord": ("An approval as the history keeps it (never its arguments). decision: pending | allowed_once | allowed_always | allowed_by_rule | denied | expired | cancelled.", [
+    "ApprovalRecord": ("An approval as the history keeps it (never its arguments). decision: pending | allowed_once | allowed_always | allowed_by_rule | denied | expired | cancelled. kind: read | change | send | delete; via: app | notification | messenger (\"\" nobody); result: allow | deny | expired; edited: the owner fixed the message first.", [
         "id:S!", "taskId:L?", "tool:S", "label:S", "site:S", "detail:S", "decision:S", "askedAt:D", "answeredAt:D?", "ruleId:L?",
-        "unattended:B", "canRemember:B"]),
+        "unattended:B", "canRemember:B", "kind:S", "place:S@where", "via:S", "edited:B", "result:S"]),
     "TaskDetail": ("GET /api/tasks/{id}: the task with its answer and the approvals it asked for.", [
         "id:L!", "turnId:S", "title:S", "status:S", "result:S", "source:S", "startedAt:D", "finishedAt:D?", "liveStatus:S?",
         "answer:S", "error:S", "inputTokens:L", "outputTokens:L", "approvals:[ApprovalRecord]", "parentId:L?", "workerId:S?"]),
@@ -307,15 +307,28 @@ MODELS = {
         "removed:[S]", "skipped:[S]", "freed:L", "groups:[CleanupGroup]", "total:L"]),
     "CliStatus": ("A provider's command-line tool.", [
         "installed:B", "installable:B", "loggedIn:B?", "hint:S", "remote:B", "version:S?", "updateHint:S?", "updateAvailable:B", "latestVersion:S?", "updatable:B"]),
-    "ActionItem": ("GET /api/actions items.", [
-        "id:L!", "ts:D", "runId:S", "taskId:L?", "turnId:S", "source:S", "sourceName:S", "line:S",
-        "tool:S", "kind:S", "connector:S?", "targets:[S]", "state:S=\"done\"", "outsideId:S", "detail:S", "checkedAt:D?"]),
-    "ActionList": ("GET /api/actions.", ["items:[ActionItem]"]),
+    "ActionItem": ("GET /api/did items (the unified timeline: at, title, site, outcome; kind action | task | browser | reply) and the older "
+                   "GET /api/actions items (ts, line, state; kind send | change | delete). /api/did items carry no id.", [
+        "id:L", "at:D", "ts:D", "runId:S", "taskId:L?", "turnId:S", "source:S", "sourceName:S", "title:S", "line:S", "site:S?",
+        "tool:S", "kind:S", "connector:S?", "targets:[S]", "state:S", "outcome:S", "outsideId:S", "detail:S", "checkedAt:D?"]),
+    "ActionList": ("GET /api/did, GET /api/actions.", ["items:[ActionItem]", "nextBefore:D?"]),
+    # ---- follow-through (server follow/api.py): "What Kelo looks after" on the work page ----------------------------------------------
+    "FollowCheck": ("One thing Kelo checks for an upcoming item (kind, the fields, a window, the next time).", [
+        "kind:S", "fields:[S]", "from:S", "until:S", "state:S=\"active\"", "nextAt:D?"]),
+    "FollowPrep": ("One preparation Kelo runs ahead of time. state: later | running | done | failed. kind: check_in | other (the plan's own mark; empty from an older server).", [
+        "what:S", "when:S", "state:S=\"later\"", "kind:S"]),
+    "FollowPlanTell": ("What Kelo tells: lead offsets (\"-1d\", \"-3h\") and whether a change is told.", ["lead:[S]", "onChange:B=true"]),
+    "FollowPlanData": ("The plan of a followed item (only prep and tell are read).", ["prep:[FollowPrep]", "tell:FollowPlanTell?"]),
+    "FollowItem": ("GET /api/follow items. state: planned | watching | done | stopped; startsAt: epoch seconds.", [
+        "key:S", "kind:S", "title:S", "startsAt:D", "checks:[FollowCheck]", "prep:[FollowPrep]", "plan:FollowPlanData?", "state:S=\"planned\""]),
+    "FollowItemList": ("GET /api/follow.", ["items:[FollowItem]"]),
+    "FollowActionResponse": ("POST /api/follow/{key}/stop and /replan.", ["ok:B", "key:S", "state:S"]),
     "AndroidScreen": ("GET /api/android \"screen\": the device's screen in pixels.", ["width:I", "height:I"]),
     "AndroidDeviceInfo": ("GET /api/android, POST /api/android/check: the Android device Kelo drives (never its address; not configured: the rest is empty).", [
         "configured:B", "connected:B", "model:S", "androidVersion:S", "screen:AndroidScreen?", "playStore:B", "koreanInput:B", "checkedAt:D"]),
     # ---- push ------------------------------------------------------------------------------------------------------------------
     "PushRegistered": ("POST/DELETE /api/push/register.", ["ok:B", "push:B", "removed:B?"]),
+    "SettledItems": ("GET /api/notifications/settled?ids=: of the item ids asked about, the ones that do not wait any more.", ["ids:[S]"]),
 }
 
 NO_INIT = {  # models nothing builds by hand (neither the app nor its tests): decoded only, so no memberwise init

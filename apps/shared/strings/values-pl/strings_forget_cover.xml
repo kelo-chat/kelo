@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">Zapomniane tematy</string>
+    <string name="forget_intro">Tematy, które Kelo miał zapomnieć. Kelo usunął to, co znalazł, i nie będzie ich ponownie zapisywać.</string>
+    <string name="forget_empty">Nic jeszcze nie zapomniano. Gdy poprosisz Kelo o zapomnienie tematu, pojawi się tutaj.</string>
+    <string name="forget_date">Zapomniano %1$s</string>
+    <string name="forget_removed">Usunięto: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Nie znaleziono niczego do usunięcia.</string>
+    <string name="forget_cat_memory">Pamięć</string>
+    <string name="forget_cat_notes">Notatki</string>
+    <string name="forget_cat_reminders">Przypomnienia</string>
+    <string name="forget_cat_skills">Umiejętności</string>
+    <string name="forget_cat_history">Dzienniki</string>
+    <string name="forget_cat_other">Inne</string>
+    <string name="forget_allow_again">Zezwól ponownie</string>
+    <string name="forget_allow_confirm">Czy Kelo może znowu zapisywać coś o „%1$s”? Usunięte rzeczy nie wrócą.</string>
+    <string name="forget_allowed">Kelo może znowu o tym pisać.</string>
+    <string name="paycover_title">Płatności zatwierdzone z góry</string>
+    <string name="paycover_switch">Zezwalaj na płatności zatwierdzone z góry</string>
+    <string name="paycover_switch_note">Wyłączone: każda płatność najpierw pyta Ciebie.</string>
+    <string name="paycover_empty">Nic nie zatwierdzono z góry. Zamówienie lub zaplanowana płatność, które zatwierdzisz z góry, pojawią się tutaj.</string>
+    <string name="paycover_off_note">Wyłączone: pozycje zostają na liście, ale każda płatność pyta.</string>
+    <string name="paycover_orders">Zamówienia</string>
+    <string name="paycover_allows">Zaplanowane płatności</string>
+    <string name="paycover_cap">Do %1$s łącznie</string>
+    <string name="paycover_until">Do %1$s</string>
+    <string name="paycover_for_task">Dla jednego zadania</string>
+    <string name="paycover_for_schedule">Dla harmonogramu „%1$s”</string>
+    <string name="paycover_for_a_schedule">Dla zaplanowanego zadania</string>
+    <string name="paycover_one_order">jedno zamówienie</string>
+    <string name="paycover_allow_scope">Ten sam sklep, ta sama metoda płatności</string>
+    <string name="paycover_remove">Usuń: %1$s</string>
+    <string name="paycover_remove_order_confirm">Usunąć to zatwierdzenie? Zamówienie zapyta przed zapłatą.</string>
+    <string name="paycover_remove_allow_confirm">Usunąć zgodę dla „%1$s”? Jego płatności znów będą pytać za każdym razem.</string>
+    <string name="paycover_removed">Usunięto. Płatności znów będą pytać.</string>
+    <string name="preapprove_what">Zamówienie</string>
+    <string name="preapprove_cap">Maksymalna kwota</string>
+    <string name="preapprove_cap_value">%1$s łącznie (z podatkami i dostawą)</string>
+    <string name="preapprove_until">Do</string>
+    <string name="preapprove_covers">Obejmuje</string>
+    <string name="preapprove_covers_value">Tylko to jedno zamówienie</string>
+    <string name="preapprove_requirements">Wymagane</string>
+    <string name="preapprove_shipping">Dostawa</string>
+    <string name="preapprove_shops">Sklepy</string>
+    <string name="preapprove_delegated">Decyduje Kelo</string>
+    <string name="chat_payment_cover_order">Pokryte zamówieniem zatwierdzonym z góry</string>
+    <string name="chat_payment_cover_schedule">Pokryte Twoją zgodą na płatności tego harmonogramu</string>
+</resources>

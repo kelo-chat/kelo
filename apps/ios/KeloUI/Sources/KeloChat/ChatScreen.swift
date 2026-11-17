@@ -72,6 +72,8 @@ struct ChatPage: View {
     /// A secure entry's card a row in 답이 필요해요 led to: marked for a moment
     @State private var markedEntry: String?
     @State private var offersModel = OffersModel()
+    /// 소리 내어 읽기: one message speaks at a time; it stops when this screen is left
+    @State private var reader = ReadAloud()
 
     var body: some View {
         // The composer floats over the messages (a bottom safe-area inset: the list keeps room for its measured height and scrolls
@@ -120,6 +122,14 @@ struct ChatPage: View {
         .overlay(alignment: .top) {
             StaleHint(visible: model.offline && !model.busy, onRetry: model.reload)
         }
+        // the search screen (the magnifier is in the shell's header); a hit opens here, scrolled to and marked
+        .keloFullScreen(isPresented: Binding(get: { app.router.chatSearch }, set: { app.router.chatSearch = $0 })) {
+            ChatSearchView(api: { app.api }, agentName: agentName, onOpen: { id in
+                app.router.chatSearch = false
+                Task { await model.openSearchHit(id) }
+            }, onBack: { app.router.chatSearch = false })
+        }
+        .keloToast(Binding(get: { model.entryToast }, set: { model.entryToast = $0 }))
         .overlay(alignment: .bottom) {
             if thanks {
                 Text(L(R.string.report_thanks)).font(KeloFont.small).foregroundStyle(c.bg)
@@ -156,7 +166,9 @@ struct ChatPage: View {
         .onDisappear {
             app.router.hideChrome(Router.keyboardAsker, false)
             model.saveDraftNow()
+            reader.stop()
         }
+        .environment(\.readAloud, reader)
         .onChange(of: scenePhase) { _, p in
             if p != .active { model.saveDraftNow(); composerFocused = false }
             // back in the app: the open follow-ups, a waiting question and a fill-in card still open (Android ON_RESUME)
@@ -324,6 +336,10 @@ struct ChatPage: View {
                                 }
                                 .id(item.key)
                                 .modifier(RiseIn(active: model.takeFresh(item.key) && !reduce, fromEnd: item.isMine))
+                                // a message a search hit opened: marked for a moment, then the mark fades
+                                .background(RoundedRectangle(cornerRadius: 16).fill(c.accent.opacity(0.18)).padding(-6)
+                                    .opacity(item.asMsg != nil && item.asMsg?.id == model.markedMessage ? 1 : 0)
+                                    .animation(reduce ? nil : .easeOut(duration: 0.6), value: model.markedMessage))
                             }
                         }
                         LazyVStack(alignment: .leading, spacing: 8) {
@@ -340,13 +356,13 @@ struct ChatPage: View {
                                 ChatAskCard(ask: ask, onSolve: {
                                     Haptics.tick()
                                     app.router.openLive(ask.approval.tab, takeControl: true)
-                                }) { ok, rememberSite, rememberSchedule in
+                                }) { ok, rememberSite, rememberSchedule, rememberRecipient in
                                     if ok, let card = ask.approval.event.card, card.needsCard {
                                         Haptics.tick()
                                         model.answerAsk(ask.id, approve: true, cardId: card.card.id)
                                     } else {
                                         if ok { Haptics.success() } else { Haptics.warning() }
-                                        model.answerAsk(ask.id, approve: ok, rememberSite: rememberSite, rememberSchedule: rememberSchedule)
+                                        model.answerAsk(ask.id, approve: ok, rememberSite: rememberSite, rememberSchedule: rememberSchedule, rememberRecipient: rememberRecipient)
                                     }
                                 }
                                 .id("ask:" + ask.id)
@@ -354,7 +370,10 @@ struct ChatPage: View {
                             }
                             // pulled up a little: the list keeps only `listEnd` after its last row (ChatOverlayRules.listGap)
                             Color.clear.frame(height: 1).padding(.top, -3).id(ChatPage.bottomId)
-                                .onAppear { if !ChatScroll.measures { reachedBottom(true) } }
+                                .onAppear {
+                                    if !ChatScroll.measures { reachedBottom(true) }
+                                    model.loadNewer()   // a search window: the messages after it (nothing when the list is the newest)
+                                }
                                 .onDisappear { if !ChatScroll.measures { reachedBottom(false) } }
                         }
                     }
@@ -401,6 +420,7 @@ struct ChatPage: View {
                     Haptics.tick()
                     stick = true
                     unread = false
+                    model.leaveWindow()   // a search window: the newest page comes back (then the list is at its end)
                     proxy.scrollTo(ChatPage.bottomId, anchor: .bottom)
                     DispatchQueue.main.async { proxy.scrollTo(ChatPage.bottomId, anchor: .bottom) }
                 }
@@ -424,6 +444,14 @@ struct ChatPage: View {
                     guard let id = markedEntry else { return }
                     try? await Task.sleep(nanoseconds: 1_800_000_000)
                     if markedEntry == id { withAnimation(KeloMotionSpec.small(reduce)) { markedEntry = nil } }
+                }
+                // a search hit: scroll to its message (loaded with its window before, when it was not in the list)
+                .task(id: model.focusRequest) {
+                    guard model.focusRequest > 0, let id = model.focusTarget, let key = model.rowKey(forMessage: id) else { return }
+                    stick = false
+                    proxy.scrollTo(key, anchor: .center)
+                    // once more on the next turn of the run loop: the rows above it settle their heights first (as for "↓")
+                    DispatchQueue.main.async { proxy.scrollTo(key, anchor: .center) }
                 }
                 // a follow-up notification asked for one message: scroll to it once it is in the list
                 .task(id: "\(app.router.chatFocus ?? 0)-\(model.items.count)") {
@@ -502,14 +530,14 @@ struct ChatPage: View {
         case .tool(let t):
             ToolChip(tool: t)
         case .approval(let a):
-            ApprovalCard(approval: a, onAnswer: { ok, rememberSite in
+            ApprovalCard(approval: a, onAnswer: { ok, rememberSite, rememberRecipient in
                 if ok && a.pin != nil { model.pinAllowed(a.id) }   // its pin_needed row then asks for the owner's check at once
                 if ok, let card = a.card, card.needsCard {
                     Haptics.tick()
                     model.approveWithCard(a.id, cardId: card.card.id)
                 } else {
                     if ok { Haptics.success() } else { Haptics.warning() }
-                    model.approve(a.id, ok: ok, rememberSite: rememberSite)
+                    model.approve(a.id, ok: ok, rememberSite: rememberSite, rememberRecipient: rememberRecipient)
                 }
             }, onKeepForSchedule: { Haptics.success(); model.approve(a.id, ok: true, rememberSchedule: true) })
         case .browser(let b):
@@ -532,6 +560,7 @@ struct ChatPage: View {
             SecretEntryCard(request: sc.request, returnTo: .chat,
                             onSaved: { answer, result in
                                 app.activity.status = WorkBadge.entryClosed(app.activity.status, kind: sc.request.kind)
+                                if !sc.request.isCard && !sc.request.isPin { model.entryToast = L(LoginSheetRules.addedKey(login: sc.request.isLogin)) }
                                 model.secretSaved(sc.request, answer: answer, result: result)
                             },
                             onCancel: {
@@ -572,6 +601,7 @@ struct ChatPage: View {
         case .copy: Clipboard.copy(text)
         case .share: break   // ShareLink handles it in the menu
         case .select: composerFocused = false; sheet = .select(text)
+        case .readAloud: reader.toggle(text)
         case .retry: model.retry(item.key)
         case .edit: model.setInput(text); composerFocused = true
         case .report: composerFocused = false; sheet = .report(item.key)

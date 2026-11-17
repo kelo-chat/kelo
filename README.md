@@ -105,7 +105,7 @@ Beszel, AdGuard Home, Pi-hole (v6), Nextcloud, Gitea and Forgejo.
 Versions, sizes and SHA-256 of the current builds: [kelo.chat/download/latest.json](https://kelo.chat/download/latest.json).
 
 - **Android:** open the APK; if Android asks, allow installing apps from this source (your browser or file manager). Android 8.0 or later.
-- **Windows:** the Microsoft Store version has no such warning. The direct installer files aren't code-signed yet, so SmartScreen may stop them: **More info → Run anyway**. Windows 10 or 11.
+- **Windows:** the Microsoft Store version has no such warning. The direct installer files aren't code-signed yet. If a blue "Windows protected your PC" window (SmartScreen) appears, click **More info**, then **Run anyway**. On a PC with **Smart App Control** turned on (Windows 11, Settings → Privacy & security → Windows Security → App & browser control), Windows blocks the unsigned setup .exe, and there is no "Run anyway" for it. Install the Microsoft Store version there; direct installers are not supported with Smart App Control on yet. Windows 10 or 11.
 - **macOS:** drag Kelo to Applications. It is signed and notarized by Apple, so it opens right away. Apple silicon (M1 or later).
 
 <p align="center">
@@ -135,7 +135,7 @@ Steps, limits and what is not covered: [docs/verify-builds.md](docs/verify-build
 
 ## Install the server
 
-**Needs:** Docker (Docker Desktop on macOS/Windows, Docker Engine on Linux).
+**Needs:** on macOS and Linux, Docker (Docker Desktop on macOS, Docker Engine on Linux). On Windows, the one-line installer needs nothing else (Docker Desktop is only for the Docker route).
 
 | | RAM | CPU | Free disk |
 |---|---|---|---|
@@ -153,7 +153,14 @@ curl -fsSL https://kelo.chat/install.sh | bash
 ```
 
 ```powershell
-# Windows (PowerShell, Docker Desktop with WSL 2)
+# Windows (PowerShell): one line, no questions in the terminal; no Docker needed.
+# It asks for administrator permission once, installs Kelo Server (its own WSL 2 system) and opens the setup page.
+irm https://kelo.chat/install-windows.ps1 | iex
+```
+
+Windows with Docker Desktop instead (needs Docker Desktop with WSL 2):
+
+```powershell
 irm https://kelo.chat/install.ps1 | iex
 ```
 

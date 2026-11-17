@@ -26,14 +26,13 @@ When the main AND the fallback model fail for a reason of the provider (network,
 from __future__ import annotations
 
 import asyncio
-import re
 from typing import Any
 
 import httpx
 
 from .i18n import N_
 from .providers import ProviderError
-from .providers.types import ProviderStalled
+from .providers.types import CODES_LIMIT, CODES_OUTAGE, ProviderStalled
 
 MAX_RESTART_RESUMES = 3
 MODEL_WAIT_BACKOFF = (60.0, 300.0, 900.0, 3600.0)   # seconds before each check; the last one repeats
@@ -63,13 +62,6 @@ def with_language(note: str, lang: str) -> str:
             "above are Kelo's, not the user's words, so never answer in their language or style.]")
 
 
-_OUTAGE_WORDS = re.compile(r"time(?:d)?\s*out|timeout|unreachable|could not reach|connection|connect|overload|unavailable|"
-                           r"temporar|try again|rate.?limit|too many requests|bad gateway|gateway|server error|internal error|"
-                           r"network|reset by peer|broken pipe|eof|capacity|busy|\b5\d\d\b|\b429\b|\b408\b|\b529\b", re.I)
-_NOT_OUTAGE_WORDS = re.compile(r"context|too long|maximum.*tokens|invalid|not found|unauthori[sz]ed|forbidden|api key|sign(?:ed)? in|"
-                               r"log(?:ged)? in|permission|not installed|unsupported|content|safety|policy|refus", re.I)
-
-
 def is_outage(e: BaseException) -> bool:
     """Whether a turn's failure came from the provider being unreachable or overloaded (worth waiting for), not from what was asked
     (a content or context error, a sign-in or a setting the user must fix, a model that answered with nothing)."""
@@ -81,8 +73,7 @@ def is_outage(e: BaseException) -> bool:
         status = getattr(e, "status", None)
         if isinstance(status, int):
             return status in (408, 409, 425, 429, 529) or status >= 500
-        text = str(e)
-        return bool(_OUTAGE_WORDS.search(text)) and not _NOT_OUTAGE_WORDS.search(text)
+        return getattr(e, "code", "") in CODES_OUTAGE | CODES_LIMIT   # a stream error event: no status, the provider's own code
     cause = e.__cause__ or e.__context__
     return cause is not None and cause is not e and isinstance(cause, (asyncio.TimeoutError, TimeoutError, ConnectionError,
                                                                        httpx.TransportError))

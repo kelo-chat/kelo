@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">Duyệt thanh toán</string>
+    <string name="approval_sign_subtitle">Xác nhận bằng vân tay hoặc khuôn mặt</string>
+    <string name="approval_sign_failed">Không thể duyệt khoản thanh toán này trên điện thoại này. Hãy thử lại.</string>
+    <string name="approval_sign_key_lost">Không tìm thấy khóa duyệt của điện thoại này. Hãy ghép nối lại điện thoại này với máy chủ.</string>
+    <string name="approval_pay_on_phone">Duyệt thanh toán trong ứng dụng Kelo trên điện thoại.</string>
+</resources>

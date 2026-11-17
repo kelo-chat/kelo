@@ -35,26 +35,27 @@ SHOP = "https://shop.example.com/goods/123"
 
 # --------------------------------------------------------------------------- purchase_total
 def test_purchase_total():
-    # "총 결제금액 12,900원" -> 12900
-    assert purchase_total("총 결제금액 12,900원", "KRW") == 12900.0
+    # the page's order-total elements decide; no label word is read
+    assert purchase_total(["12,900원"], "KRW") == 12900.0
+    assert purchase_total(["$12.50"], "USD") == 12.5
+    # the same amount shown twice is one total
+    assert purchase_total(["12,900원", "₩12,900"], "KRW") == 12900.0
+    # two different totals, an unreadable one, none at all: no total
+    assert purchase_total(["12,900원", "15,900원"], "KRW") is None
+    assert purchase_total(["12,900원", "soon"], "KRW") is None
+    assert purchase_total([], "KRW") is None
+    # another currency named by the element or declared by the page: no total
+    assert purchase_total(["$12.50"], "KRW") is None
+    assert purchase_total(["12,900"], "KRW", declared="USD") is None
+    assert purchase_total(["12,900"], "KRW", declared="krw") == 12900.0
 
-    # a label line "총 결제금액" then the next line "12,900원" -> 12900
-    assert purchase_total("총 결제금액\n12,900원", "KRW") == 12900.0
 
-    # "Subtotal $10.00 / Order total $12.50" (USD) -> 12.5
-    assert purchase_total("Subtotal $10.00\nOrder total $12.50", "USD") == 12.5
+def test_a_label_in_the_page_text_is_not_a_total():
+    # the old reading took the amount after "Order total" / the Korean label out of the text; the text is not an input any more
+    import inspect
 
-    # "합계 9,000원" alone -> 9000
-    assert purchase_total("합계 9,000원", "KRW") == 9000.0
-
-    # strong 12,900원 + weak 9,000원 -> 12900
-    assert purchase_total("합계 9,000원\n총 결제금액 12,900원", "KRW") == 12900.0
-
-    # two strong labels with 12,900원 and 13,900원 -> None
-    assert purchase_total("총 결제금액 12,900원\n최종 결제 금액 13,900원", "KRW") is None
-
-    # no label -> None
-    assert purchase_total("상품 가격 12,900원", "KRW") is None
+    from assistant import buy_replay
+    assert "text" not in inspect.signature(buy_replay.purchase_total).parameters
 
 
 # --------------------------------------------------------------------------- find_ref
@@ -258,9 +259,11 @@ async def test_recorder():
 
 # --------------------------------------------------------------------------- ReplayStream in agent loop
 class FakeLoopSession:
-    def __init__(self, tab="buy:1", page_text="에어팟 프로\n총 결제금액 12,900원"):
+    def __init__(self, tab="buy:1", page_text="에어팟 프로\n총 결제금액 12,900원", totals=("12,900원",), currency=""):
         self.tab = tab
         self.page_text = page_text
+        self.totals = list(totals)
+        self.currency = currency
         self.ref_words = {
             tab: {
                 "e1": 'button "구매하기"',
@@ -276,6 +279,17 @@ class FakeLoopSession:
 
     def current_host(self):
         return "shop.example.com"
+
+    async def page(self):
+        me = self
+
+        class Page:
+            frames = [None]
+
+            async def evaluate(self, js, want=None):
+                return {"url": me.current_url(), "text": me.page_text, "payment_inputs": 0, "totals": me.totals, "controls": [],
+                        "marked": None, "currency": me.currency}
+        return Page()
 
     def ref_words_of(self, tab):
         return dict(self.ref_words.get(tab, {}))
@@ -432,7 +446,7 @@ async def test_replay_stream_missing_element_hands_over_to_model():
 @pytest.mark.asyncio
 async def test_replay_stream_ambiguous_totals_stops_before_confirm():
     tab = "buy:1"
-    session = FakeLoopSession(tab, page_text="에어팟 프로\n총 결제금액 12,900원\n최종 결제 금액 15,900원")
+    session = FakeLoopSession(tab, page_text="에어팟 프로\n총 결제금액 12,900원\n최종 결제 금액 15,900원", totals=["12,900원", "15,900원"])
     tools, calls_made = replay_tools(session)
     grant = {"what": "에어팟", "currency": "KRW"}
     grants = FakeGrants()
@@ -504,6 +518,7 @@ class FakeServerSession:
         }
         self.tabs = {tab}
         self.control_listeners = []
+        self.handback_listeners = []   # the take-over hand-back listeners (server.py wires workers.handed_back here)
 
     def current_url(self):
         return self._url
@@ -657,3 +672,34 @@ async def test_start_fast_buy_wiring_stream_wrap_and_save_plan(tmp_path, monkeyp
         app.state.watchers.on_fire(app.state.watchers.get(wid), {"detail": "in stock", "url": SHOP})
         await until(lambda: any(x["source"] == f"buy:{wid}" for x in calls))
         assert plans.find(SHOP)["fails"] == 1
+
+
+@pytest.mark.asyncio
+async def test_replay_stream_a_page_without_total_structure_stops_even_when_the_text_names_a_total():
+    tab = "buy:1"
+    session = FakeLoopSession(tab, page_text="에어팟 프로\nOrder total 12,900원", totals=[])
+    tools, calls_made = replay_tools(session)
+    replay = ReplayStream({"id": 1, "steps": [{"do": "confirm", "path": "/checkout"}]}, session, tab, {"what": "에어팟", "currency": "KRW"}, FakeGrants())
+
+    async def real(provider, request, **kw):
+        yield TextDelta("Handed over OK")
+        yield Done("stop")
+
+    [ev async for ev in run_agent("p", "m", [{"role": "user", "content": "buy"}], tools, stream_fn=replay.wrap(real))]
+    assert not any(name == "confirm_purchase" for name, _ in calls_made)
+    assert "the total on the page is not clear" in replay.why
+
+
+@pytest.mark.asyncio
+async def test_replay_stream_a_page_declaring_another_currency_stops():
+    tab = "buy:1"
+    session = FakeLoopSession(tab, currency="USD")
+    tools, calls_made = replay_tools(session)
+    replay = ReplayStream({"id": 1, "steps": [{"do": "confirm", "path": "/checkout"}]}, session, tab, {"what": "에어팟", "currency": "KRW"}, FakeGrants())
+
+    async def real(provider, request, **kw):
+        yield TextDelta("Handed over OK")
+        yield Done("stop")
+
+    [ev async for ev in run_agent("p", "m", [{"role": "user", "content": "buy"}], tools, stream_fn=replay.wrap(real))]
+    assert not any(name == "confirm_purchase" for name, _ in calls_made)

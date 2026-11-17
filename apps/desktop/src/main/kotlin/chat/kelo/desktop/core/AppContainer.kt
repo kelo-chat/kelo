@@ -43,6 +43,10 @@ class Settings(private val kv: KeyValueStore) {
     /** The newest app version whose "새 버전이 있어요" banner was closed or used (it shows once per version; My keeps the card) */
     val dismissedUpdate = MutableStateFlow(kv.getString(UPDATE_SEEN).orEmpty())
     fun setDismissedUpdate(v: String) { dismissedUpdate.value = v; kv.putString(UPDATE_SEEN, v) }
+    /** A newer released app that works with the server (X-Kelo-App-Update): its banner shows once per version; dismissed versions stay on this computer */
+    val appNotice = chat.kelo.app.update.AppNotice(load = { kv.getString(APP_NOTICE_SEEN) }, save = { kv.putString(APP_NOTICE_SEEN, it) })
+    /** The "new version" popup: once per version, "Later" = 3 days; its answers stay on this computer */
+    val updatePopup = chat.kelo.app.update.UpdatePopup(load = { kv.getString(POPUP_UNTIL) }, save = { kv.putString(POPUP_UNTIL, it) })
 
     /** The newest server notification already shown for [server] (null: none yet, so old ones are not replayed). */
     fun lastNote(server: String): Long? = kv.getString(NOTE + hash(server))?.toLongOrNull()
@@ -55,6 +59,8 @@ class Settings(private val kv: KeyValueStore) {
     fun shownLanguage(): String = Languages.override(language.value) ?: Languages.suggested(listOf(DesktopLocale.system.toLanguageTag()))
 
     companion object {
+        private const val APP_NOTICE_SEEN = "app.notice.seen"
+        private const val POPUP_UNTIL = "update.popup.until"
         private const val LANGUAGE = "language.pick"
         private const val THEME = "theme"
         private const val NOTIFY = "notifications"
@@ -70,6 +76,8 @@ data class DesktopNote(
     val title: String, val body: String, val kind: Kind = Kind.INFO,
     /** What a click on the notification (the tray's balloon or icon right after it) opens, as on the phone (NotifyRules.target) */
     val target: chat.kelo.app.notify.OpenTarget? = null,
+    /** The waiting item it is about (the server's approval id, the same id the phones tag their notification with); null for news */
+    val item: String? = null,
 ) {
     enum class Kind { INFO, WARNING }
 }
@@ -102,7 +110,9 @@ class AppContainer(
     val apiClient: okhttp3.OkHttpClient = KeloApi.defaultClient
     override val sessions = Sessions(store, apiClient, cache, requireE2e)
     override val appVersion: String = ReleaseInfo.VERSION
-    override val sourceCommit: String = ReleaseInfo.SOURCE_COMMIT
+    override val sourceTag: String? = chat.kelo.app.core.SourceLink.appTag(
+        if (DesktopPlatform.os == DesktopPlatform.Os.MAC) "macos" else "windows", ReleaseInfo.PACKAGE,
+    )
     override val sourceDirty: Boolean = ReleaseInfo.SOURCE_DIRTY
     /** The agent's picture: one holder per run, shared by the header and the status poll */
     override val agentAvatar = AgentAvatar(sessions)
@@ -167,6 +177,8 @@ class AppContainer(
     override val secretHandoff = chat.kelo.app.chat.SecretHandoff()
     /** The app's own update check (core/Updates.kt); tests put one pointed at a mock here */
     var updates: Updater = Updater.forThisApp(dataDir)
+    /** "Use this PC as the Kelo server" (Windows only: core/ServerInstall.kt); the page is in pages/ServerInstallPage.kt */
+    val serverInstaller: ServerInstaller by lazy { ServerInstaller(dir = ServerInstallRules.defaultDir()) }
     /** What the newest desktop notification opens when clicked (the tray gives no per-notification click) */
     @Volatile var lastNoteTarget: chat.kelo.app.notify.OpenTarget? = null
 
@@ -204,8 +216,28 @@ class AppContainer(
     fun notify(note: DesktopNote) {
         if (!settings.notifications.value) return
         lastNoteTarget = note.target
+        lastNoteItem = note.item
+        shelf.add(note)
         notes.tryEmit(note)
     }
+
+    /** What this app showed and has not taken back: its notifications by item (see [NoteShelf]). */
+    val shelf = NoteShelf()
+    @Volatile private var lastNoteItem: String? = null
+
+    /**
+     * These waiting items do not wait any more (answered here or on another device, ran out, cancelled): their notes leave the shelf, and
+     * a click on the tray icon or balloon no longer opens what the newest note pointed at when that was one of them. The operating
+     * system's own balloon cannot be recalled from Java (AWT has no such call); it goes away by itself within seconds.
+     */
+    fun settleItems(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        shelf.settle(ids)
+        if (lastNoteItem != null && lastNoteItem in ids) { lastNoteTarget = null; lastNoteItem = null }
+    }
+
+    /** The window came to the front: the notes that only told something have done their job (as on the phones). */
+    fun clearNews() = shelf.clearNews()
 
     /** Opens what the newest notification pointed at (a click on its balloon), once. */
     fun openLastNote() {
@@ -229,3 +261,29 @@ const val MY_PAGE_SERVER_UPDATE = "server-update"
 const val MY_PAGE_RESOURCES = "resources"
 const val MY_PAGE_CLEANUP = "cleanup"
 
+
+/**
+ * The notifications this app showed that may still matter, by the waiting item's id (the same scheme as the phones: the notification's
+ * identifier is the item's id). A waiting note stays until its item is settled; a news note (no item) until the window comes up.
+ */
+class NoteShelf {
+    private val items = LinkedHashMap<String, DesktopNote>()
+    private var news = 0
+
+    @Synchronized fun add(note: DesktopNote) {
+        val id = note.item
+        if (id == null) news++ else items[id] = note
+        while (items.size > MAX) items.remove(items.keys.first())
+    }
+
+    /** The ids of the waiting notes still on the shelf: asked of the server, which says which of them do not wait any more. */
+    @Synchronized fun shownItems(): Set<String> = items.keys.toSet()
+
+    @Synchronized fun settle(ids: Collection<String>) { ids.forEach { items.remove(it) } }
+
+    @Synchronized fun clearNews() { news = 0 }
+
+    @Synchronized fun newsCount(): Int = news
+
+    companion object { const val MAX = 50 }
+}

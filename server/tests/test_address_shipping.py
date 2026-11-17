@@ -15,7 +15,6 @@ from assistant.address import AddressError
 from assistant.server import create_app
 from assistant.shipping import ShippingBook, ShippingError
 from assistant.store import Store
-from assistant.tools.commits import order_step
 from assistant.tools.order import from_address, national_phone
 
 from test_server import AUTH, Running, scripted, settings
@@ -195,31 +194,6 @@ async def test_shipping_api(tmp_path):
         assert (await c.get("/api/shipping-forms")).json() == {"items": []}
 
 
-# ---------------------------------------------------------------- the judgement inside an order
-@pytest.mark.parametrize("label,url,info,step", [
-    ("구매하기", "https://s.example/product/1", {}, True),
-    ("주문하기", "https://s.example/cart", {"cart_page": True}, True),
-    ("Checkout", "https://s.example/cart", {"cart_page": True}, True),
-    ("Buy now", "https://s.example/p/9", {}, True),
-    ("다음", "https://s.example/checkout", {}, True),
-    ("Continue to payment", "https://s.example/checkout", {}, True),
-    ("선택상품 결제하기", "https://s.example/cart", {"cart_page": True}, True),    # opens the checkout from a cart
-    ("결제하기", "https://s.example/checkout", {"pay_page": True}, False),
-    ("결제하기", "https://s.example/order/form", {}, False),
-    ("Place order", "https://s.example/checkout/review", {}, False),
-    ("Pay now", "https://s.example/cart", {"cart_page": True}, False),
-    ("주문하기", "https://s.example/order", {"pay_page": True}, False),       # the order form asks how to pay: final
-    ("Continue", "https://s.example/checkout", {"pay_page": True}, False),
-    ("Buy with 1-Click", "https://s.example/p/9", {}, False),
-    ("Next", "https://s.example/pay/step2", {}, False),                       # a payment address
-    ("Subscribe", "https://s.example/plans", {}, False),
-    ("예약하기", "https://s.example/hotel/1", {}, False),                      # bookings always go through confirm_purchase
-])
-def test_order_step_or_final_payment(label, url, info, step):
-    full = {"text": label, "words": "", "url": url, "title": "", **info}
-    assert order_step(full, "", url=url) is step
-
-
 def test_typed_values_must_come_from_the_orders_address():
     prof = {**address.clean(KR), "label": "집", "note": "문 앞에 놓아 주세요"}
     for ok in ("홍길동", "010", "1234", "5678", "010-1234-5678", "01012345678", "06236", "10층", "서울특별시 강남구 테헤란로 152", "문 앞에 놓아 주세요"):
@@ -232,7 +206,7 @@ def test_typed_values_must_come_from_the_orders_address():
 def test_the_prompt_names_the_order_tools_and_no_site():
     text = (ROOT / "server" / "content" / "prompts" / "system.md").read_text(encoding="utf-8")
     section = text.split("**Buying, ordering, booking.**", 1)[1].split("\n\n**", 1)[0]
-    for word in ("begin_order", "browser_fill_shipping", "ask_shipping", "confirm_purchase"):
+    for word in ("begin_order", "browser_fill_shipping", "ask_shipping", "checkout_review"):
         assert word in section
     skill = (ROOT / "server" / "content" / "skills" / "shopping-and-bookings" / "SKILL.md").read_text(encoding="utf-8")
     from assistant.tools.order import order_tools, Orders

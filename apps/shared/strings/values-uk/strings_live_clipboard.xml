@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Вставити з телефона</string>
+    <string name="live_pasted">Вставлено. Перевірте поле.</string>
+    <string name="live_copy_from_browser">Скопіювати з браузера</string>
+    <string name="live_copied_to_phone">Скопійовано на телефон</string>
+</resources>

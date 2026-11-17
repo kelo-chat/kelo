@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">Dữ liệu của bạn</string>
+    <string name="data_intro">Tải về bản sao những gì Kelo lưu về bạn, mang ký ức từ trợ lý khác sang, hoặc bắt đầu lại từ đầu.</string>
+    <string name="data_export_title">Tải dữ liệu của bạn</string>
+    <string name="data_export_body">Một tệp ZIP gồm cuộc trò chuyện, những gì Kelo nhớ, lịch, những gì Kelo theo dõi, các dịch vụ đã kết nối và cài đặt của bạn. Mật khẩu, khóa và mã thông báo không bao giờ có trong đó.</string>
+    <string name="data_export_make">Tạo tệp</string>
+    <string name="data_export_making">Đang tạo tệp…</string>
+    <string name="data_export_ready">Tệp của bạn đã sẵn sàng (%1$s).</string>
+    <string name="data_export_save">Lưu tệp</string>
+    <string name="data_export_saved">Đã lưu.</string>
+    <string name="data_export_again">Tạo tệp mới</string>
+    <string name="data_export_failed">Không tạo được tệp. Hãy thử lại.</string>
+    <string name="data_import_title">Mang ký ức từ trợ lý khác sang</string>
+    <string name="data_import_private">Không có gì được gửi đi nơi khác. Mô hình bạn chọn trên máy chủ Kelo sẽ đọc văn bản và giữ lại những điều ngắn gọn về bạn.</string>
+    <string name="data_import_step1">1. Sao chép yêu cầu này và dán vào trợ lý cũ của bạn (ChatGPT, Claude, Gemini, …).</string>
+    <string name="data_import_copy">Sao chép yêu cầu</string>
+    <string name="data_import_copied">Đã sao chép.</string>
+    <string name="data_import_step2">2. Dán câu trả lời của nó vào đây.</string>
+    <string name="data_import_paste_hint">Dán câu trả lời</string>
+    <string name="data_import_add">Thêm vào bộ nhớ</string>
+    <string name="data_import_zip_body">Hoặc chọn tệp xuất cuộc trò chuyện bạn đã tải từ ChatGPT, Claude hoặc Gemini (tệp ZIP, tối đa 100 MB).</string>
+    <string name="data_import_zip">Chọn tệp ZIP</string>
+    <string name="data_import_running">Đang đọc… %1$d / %2$d</string>
+    <string name="data_import_reading">Đang mở tệp…</string>
+    <string name="data_import_cancel">Dừng</string>
+    <string name="data_import_failed">Chưa thêm gì: %1$s</string>
+    <string name="data_import_none">Không tìm thấy điều gì mới để thêm.</string>
+    <string name="data_import_added">Đã thêm vào bộ nhớ (%1$d):</string>
+    <string name="data_zip_too_big">Tệp này lớn hơn 100 MB.</string>
+    <string name="data_reset_title">Bắt đầu lại từ đầu</string>
+    <string name="data_reset_body">Xóa cuộc trò chuyện, những gì Kelo nhớ, những gì Kelo theo dõi và lịch của bạn. Kết nối, thông tin đăng nhập đã lưu, mô hình và điện thoại của bạn được giữ nguyên. Một bản sao được lưu thành tệp trước.</string>
+    <string name="data_reset_signout">Đăng xuất cả khỏi Kết nối và xóa thông tin đăng nhập đã lưu</string>
+    <string name="data_reset_type">Nhập %1$s để xác nhận</string>
+    <string name="data_reset_button">Bắt đầu lại từ đầu</string>
+    <string name="data_reset_wrong">Đó không phải từ đúng. Chưa có gì thay đổi.</string>
+    <string name="data_reset_confirm">Bắt đầu lại ngay? Bản sao được lưu trước, sau đó cuộc trò chuyện, bộ nhớ, mục theo dõi và lịch sẽ bị xóa. Không thể hoàn tác.</string>
+    <string name="data_reset_done">Xong. Mọi thứ ở trên đã được xóa. Bản sao được lưu với tên %1$s.</string>
+</resources>

@@ -1,6 +1,12 @@
-# Follow-through: Kelo looks after what is coming up (design, planned)
+# Follow-through: Kelo looks after what is coming up
 
-Status: planned (owner, 2026-11-14). Not started. Server only for phases 1-3; the apps need nothing new until phase 4.
+Status (2026-11-16):
+- Phase 1: done (server: items, plan, runner with flight_status and page checks; notifications).
+- Phase 2: partly. Done (server): the `weather` source (Open-Meteo, no key) and the AeroAPI monthly allowance (a setting, used/allowance in
+  `GET /api/follow`, stop at 90 %, fallback to the other flight source or a "paused" check). Done (server): parcel tracking (`parcel` source: the carrier's tracking
+  page read by the main model, no carrier or word list; shipping mails give the item). Open: re-planning on item changes, the operator page's usage line (the numbers are in `GET /api/follow` as `usage`).
+- Phase 3: done (server: preparations with existing task rules, "done ahead" and problem notices, missing-login advance notice).
+- Phase 4: open (apps: watching line and stop button in Work).
 
 ## Why
 
@@ -54,8 +60,9 @@ class UpcomingItem:
 
 `ItemFinder.find(now) -> list[UpcomingItem]` reuses what exists: `big_events.kind()` for calendar events (flight, stay, trip, days),
 the booking-confirmation reading the proactive pass already does for mail (its model output gets a `refs` object added), the order
-ledger for parcels, goals with a due date. Pure regexes pull refs where they are plain (flight numbers `[A-Z0-9]{2}\d{1,4}`, tracking
-numbers next to a carrier word). Items within `LOOK_AHEAD_DAYS = 14` are kept; one already planned (same key and same start) is not
+ledger for parcels, goals with a due date. Pure regexes pull refs where they are plain (flight numbers `[A-Z0-9]{2}\d{1,4}`); the
+mail read (`event_kinds.MailBookings`) also says when a mail is a shipping notice and copies its tracking number, carrier and tracking
+link (each must appear in the mail text): that makes a `parcel` item, kept for `PARCEL_DAYS = 14` after the mail. Items within `LOOK_AHEAD_DAYS = 14` are kept; one already planned (same key and same start) is not
 planned again.
 
 ### FollowPlan (plan.py)
@@ -82,20 +89,43 @@ class Source(ABC):
     def available(self) -> bool: ...         # a key is set, or the source is free and reachable
     def covers(self, refs: dict[str, str]) -> bool: ...
     async def read(self, refs: dict[str, str]) -> Reading: ...   # Reading = {"fields": {...}, "at": ts, "ok": bool, "detail": str}
+    def paused(self, refs) -> str: ...       # why it would cover refs but is stopped for the month (an allowance), else ""
+    def significant(self, field, old, new) -> bool: ...   # is a changed field worth telling (a forecast ignores small moves)
+    def usage(self) -> dict | None: ...      # this month's calls, for GET /api/follow
 ```
 
 | kind | first sources | fields compared |
 |---|---|---|
 | flight_status | `IncheonFlights` (data.go.kr, free key, departures and arrivals at ICN); `AeroApiFlights` (owner's FlightAware key, personal tier, stops at its free allowance) | gate, terminal, scheduled/estimated time, status (delayed, cancelled, boarding) |
-| weather | an open forecast API that needs no key (chosen when phase 2 starts; must not need a card) | rain chance, temperature, warnings at the place and hour |
-| parcel | a carrier tracking page through `page` (no paid aggregator) | status, last location, estimated day |
+| weather | `WeatherSource`: Open-Meteo (no key, no card; the briefing's forecast and place lookup, weather.py) | rain_chance, temperature, condition, warning at the place and hour |
+| parcel | `ParcelSource`: the carrier's tracking page (fetched like `page`), its text read by the main model (no word list, any carrier or language) | parcel: picked_up, in_transit, out_for_delivery, delivered (delivered ends the item) |
 | page | `watchers.py` as it is (light / tab / page levels, signed-in reads) | the field its selector or regex picks |
 
-Several sources of one kind are tried in order of `covers()`; the first that answers is kept for that check. A source that needs a key
-reads it from the keyring like a connector key (`keyring.py`); none of it is shown to the model.
+Several sources of one kind that `covers()` the check are tried in list order at every reading; the first that answers is used, a source
+that fails hands over to the next one. A source that is `paused()` is skipped. A source that needs a key reads it from the keyring like a
+connector key (`keyring.py`); none of it is shown to the model.
 
-`follow_usage` counts calls per source and month. A source with a free allowance (`AeroApiFlights.FREE_PER_MONTH`) refuses calls past
-`ALLOWANCE_STOP = 0.9` of it and says so once in the owner's notifications; nothing is billed by surprise.
+`follow_usage` counts calls per source and month (`flight_aeroapi`, `weather_open_meteo`).
+
+**Weather check.** Refs are `{"place": text, "at": epoch seconds or ISO 8601 with offset}`; the planner fills both from the item (its place
+and start) unless the plan names another place or hour, and drops the check when the item has no place. The place is looked up by the
+provider (the whole text, then its comma-separated parts from the last); the forecast is the hour containing `at` (Open-Meteo reaches 16
+days). Fields: `rain_chance` (%), `precip_mm`, `temperature` (whole °C), `condition` (rain, snow, sleet, thunder, fog, cloudy, partly,
+clear; shown as words in the owner's language), `warning` (comma-joined codes wind, heat, cold, thunder; Open-Meteo has no official
+feed, so these come from the same numbers the briefing uses). A forecast moves with every update, so only a real change is told
+(`significant`): rain chance by 20 points or more, temperature by 3 °C or more, a new condition or warning. A smaller move is not stored,
+so slow drift adds up against the last told value and ends in one message. The change goes through the same compare and notify path as
+every other kind (`follow_change`, template lines "Chance of rain 10% -> 70%"). Calls: one place lookup per place (cached) and one
+forecast per place per 20 minutes.
+
+**FlightAware allowance.** `Settings.aeroapi_allowance` (env `ASSISTANT_AEROAPI_ALLOWANCE`, a whole number, default 500, 0 = never call).
+The default is the free amount of FlightAware's personal tier as published when this was written (500 result sets a month); an owner on
+another plan sets the number from their plan, which applies at once. Every call is counted in `follow_usage` (`flight_aeroapi`, per UTC
+month). At `ALLOWANCE_STOP = 0.9` of the allowance (450 of 500) the source is `paused`: no call goes out, the owner is told once for the
+month (`follow_problem`), and the runner uses the next flight source that covers the flight (the Incheon one). When none is left the
+check is not an error: it keeps its place, shows `paused: true` with a `note` ("Flight lookups are paused until next month ..."), counts
+no errors, and reads again in the next month. The remaining 10 % absorbs calls that were under way at the limit; nothing is billed by
+surprise. A key alone makes the source `available()` (plans made while paused stay valid); `paused()` is the allowance.
 
 ### FollowRunner (runner.py)
 
@@ -127,7 +157,9 @@ owner once ahead of time instead of failing on the day.
 ### API (api.py) and agent tools
 
 ```
-GET    /api/follow                  {"items": [{"key", "kind", "title", "starts_at", "checks": [{"kind", "fields", "from", "until", "state", "last"}],
+GET    /api/follow                  {"usage": [{"source", "month", "used", "allowance" | null, "stop_at" | null, "paused"}],   (calls this month)
+                                     "items": [{"key", "kind", "title", "starts_at", "checks": [{"kind", "fields", "from", "until", "state", "last",
+                                      "paused", "note"}],
                                       "prep": [{"what", "when", "state"}], "state": planned|watching|done|stopped}]}
 POST   /api/follow/{key}/stop       stops its checks and preps
 POST   /api/follow/{key}/replan     plans it again
@@ -143,10 +175,11 @@ NOTIFY_PREFS like the proactive pass's other preferences. Quiet hours follow the
 ## Phases
 
 1. Items + plan + runner with `flight_status` (IncheonFlights, then AeroApiFlights with the allowance counter) and `page` checks;
-   notifications. Tests with fake sources and a fake clock.
-2. `weather` and `parcel`; re-planning on item changes; usage screen line in the operator page (calls per source this month).
-3. Preparations (PrepRunner) with the existing task rules; "done ahead" messages.
-4. Apps: the watching line and stop button in Work (Android first, then desktop and iOS).
+   notifications. Tests with fake sources and a fake clock. [DONE]
+2. `weather` and `parcel`; re-planning on item changes; usage screen line in the operator page (calls per source this month). [PARTLY: weather source,
+   parcel source and the AeroAPI allowance (setting, count, 90 % stop, fallback, paused check, `usage` in `GET /api/follow`) are done; re-planning on item changes and the operator page's line are open]
+3. Preparations (inside runner.py) with the existing task rules; "done ahead" messages; missing-login advance notice. [DONE]
+4. Apps: the watching line and stop button in Work (Android first, then desktop and iOS). [OPEN]
 
 ## Tests (server/tests/test_follow_*.py)
 
@@ -154,5 +187,11 @@ NOTIFY_PREFS like the proactive pass's other preferences. Quiet hours follow the
 - Planner.validate: unknown kinds dropped, intervals clamped, at most 6 checks, "nothing to do" kept.
 - Runner: a gate change fires one follow_change with the template line; the same reading again is quiet; errors stop after 5; the
   window end stops the check; quiet hours hold a change except near the start.
-- Usage: a source past 90 % of its free allowance refuses and tells once.
+- Usage: a source past 90 % of its allowance refuses and tells once (`test_follow_allowance.py`: the setting, the count per month, the
+  stop point, fallback to the other source in both directions, the paused check and `usage` in the API).
+- Weather (`test_follow_weather.py`, fake Open-Meteo HTTP): a reading is parsed; a rain change fires one `follow_change`; small moves are
+  quiet and slow drift adds up; place lookup falls back to the address parts; the planner fills place and hour from the item.
+- Parcel (`test_follow_parcel.py`, fake page and fake model): the status comes from the model's enum and nothing in code matches words; an
+  unknown answer or no model is a failed reading; delivered ends the item and its checks; a shipping mail becomes a parcel item for 14
+  days; the plan sets refs and window itself.
 - Push: every follow_* type is in push.NOTE_TYPES.

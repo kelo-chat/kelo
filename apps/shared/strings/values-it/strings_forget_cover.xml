@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- it text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">Argomenti dimenticati</string>
+    <string name="forget_intro">Argomenti che hai chiesto a Kelo di dimenticare. Kelo ha cancellato ciò che ha trovato e non li annoterà più.</string>
+    <string name="forget_empty">Ancora nulla di dimenticato. Quando chiedi a Kelo di dimenticare un argomento, compare qui.</string>
+    <string name="forget_date">Dimenticato il %1$s</string>
+    <string name="forget_removed">Rimosso: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Non è stato trovato nulla da rimuovere.</string>
+    <string name="forget_cat_memory">Memoria</string>
+    <string name="forget_cat_notes">Note</string>
+    <string name="forget_cat_reminders">Promemoria</string>
+    <string name="forget_cat_skills">Abilità</string>
+    <string name="forget_cat_history">Registri</string>
+    <string name="forget_cat_other">Altro</string>
+    <string name="forget_allow_again">Consenti di nuovo</string>
+    <string name="forget_allow_confirm">Kelo può scrivere di nuovo su “%1$s”? Ciò che è stato cancellato non torna.</string>
+    <string name="forget_allowed">Kelo può di nuovo scriverne.</string>
+    <string name="paycover_title">Pagamenti approvati in anticipo</string>
+    <string name="paycover_switch">Consenti pagamenti approvati in anticipo</string>
+    <string name="paycover_switch_note">Disattivato: ogni pagamento chiede prima a te.</string>
+    <string name="paycover_empty">Nulla approvato in anticipo. Un ordine o un pagamento programmato che approvi in anticipo compare qui.</string>
+    <string name="paycover_off_note">Disattivato: questi elementi restano nell\'elenco, ma ogni pagamento chiede.</string>
+    <string name="paycover_orders">Ordini</string>
+    <string name="paycover_allows">Pagamenti programmati</string>
+    <string name="paycover_cap">Fino a %1$s in totale</string>
+    <string name="paycover_until">Fino al %1$s</string>
+    <string name="paycover_for_task">Per un\'attività</string>
+    <string name="paycover_for_schedule">Per la pianificazione “%1$s”</string>
+    <string name="paycover_for_a_schedule">Per un\'attività pianificata</string>
+    <string name="paycover_one_order">un ordine</string>
+    <string name="paycover_allow_scope">Stesso negozio, stesso metodo di pagamento</string>
+    <string name="paycover_remove">Rimuovi %1$s</string>
+    <string name="paycover_remove_order_confirm">Rimuovere questa approvazione? L\'ordine chiederà prima di essere pagato.</string>
+    <string name="paycover_remove_allow_confirm">Rimuovere il permesso per “%1$s”? I suoi pagamenti chiederanno di nuovo ogni volta.</string>
+    <string name="paycover_removed">Rimosso. I pagamenti chiederanno di nuovo.</string>
+    <string name="preapprove_what">Ordine</string>
+    <string name="preapprove_cap">Massimo da pagare</string>
+    <string name="preapprove_cap_value">%1$s in totale (tasse e spedizione incluse)</string>
+    <string name="preapprove_until">Fino al</string>
+    <string name="preapprove_covers">Copre</string>
+    <string name="preapprove_covers_value">Solo questo ordine</string>
+    <string name="preapprove_requirements">Indispensabile</string>
+    <string name="preapprove_shipping">Consegna</string>
+    <string name="preapprove_shops">Negozi</string>
+    <string name="preapprove_delegated">Decide Kelo</string>
+    <string name="chat_payment_cover_order">Coperto dall\'ordine che hai approvato in anticipo</string>
+    <string name="chat_payment_cover_schedule">Coperto dal tuo permesso per i pagamenti di questa pianificazione</string>
+</resources>

@@ -129,6 +129,8 @@ log = logging.getLogger("uvicorn.error")
 DEFAULTS: dict[str, Any] = {"enabled": True, "time_mode": "auto", "fixed_time": "07:30", "offset_min": 0, "early_open": True,
                             "sections": {"weather": True, "calendar": True, "missed": True}, "quiet_days": "short"}
 SECTIONS = ("weather", "calendar", "missed")
+WEATHER_RETRY_WAITS = (0, 5, 20)       # seconds before each try of the forecast (the service timing out once left 11-17's card without weather)
+WEATHER_STALE_SECONDS = 12 * 3600     # still down after the tries: a forecast fetched for the same place within this time is used
 EARLY_WINDOW = 3600.0           # an app open this long before the start time may bring the briefing early
 REST_GAP = 4 * 3600.0           # ... only after the owner had been away at least this long (they slept)
 DELIVER_HOURS = 6               # a briefing not out within this long after it was due waits for tomorrow
@@ -227,7 +229,9 @@ class Briefing:
                  busy: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.time,
                  language: Callable[[], str] = lambda: "en", sources: Any = None, tone: Callable[[], str] | None = None,
                  consent: Callable[[], bool] = lambda: True,
-                 looking_after: Callable[[float], list[str]] | None = None):
+                 looking_after: Callable[[float], list[str]] | None = None,
+                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep):
+        self._sleep = sleep   # the wait between weather tries (tests pass a fake)
         self.looking_after = looking_after   # titles of the chat items follow-through made lately (follow/upcoming.py), for one line
         self.sources = sources   # briefing_sources.Sources: which accounts are read, and the labels shown when there are several
         self.store, self.weather, self.proactive, self.home, self.followups, self.mail = store, weather, proactive, home, followups, mail
@@ -410,6 +414,14 @@ class Briefing:
                     return f"Error: {e}"
                 return "Saved.\n" + show()
             return show()
+
+        def changes(a: dict[str, Any]) -> bool:
+            return a.get("enabled") is not None or bool(str(a.get("time") or "").strip()) or a.get("offset_min") is not None \
+                or isinstance(a.get("sections"), dict)
+
+        async def describe(a: dict[str, Any]) -> str:
+            return t("Change the morning briefing's settings?")
+
         return Tool("briefing",
                     "The built-in morning briefing (weather, today's events, coming up, what may have been missed): when the next one "
                     "comes, and turning it on or off, its time and sections when the user asks (never a schedule to imitate it). With no "
@@ -419,7 +431,7 @@ class Briefing:
                         "time": {"type": "string", "description": "HH:MM for a fixed time, or auto (the start of the contact hours)"},
                         "offset_min": {"type": "integer", "minimum": 0, "maximum": 60, "description": "auto: minutes after the start"},
                         "sections": {"type": "object", "properties": {k: {"type": "boolean"} for k in SECTIONS}}}},
-                    briefing)
+                    briefing, requires_approval=True, auto_approve=lambda a: not changes(a), describe=describe)
 
     def _window_end(self, due: float) -> float:
         """The latest moment today's briefing may still go out: DELIVER_HOURS after it was due, and not past the end of the contact hours
@@ -608,11 +620,16 @@ class Briefing:
         if sec["weather"]:
             place = self.weather.current_place()
             if place is not None:
-                try:
-                    fc = await self.weather.forecast(place, 2)
-                except WeatherError as e:
-                    log.info("briefing: no weather (%s)", str(e)[:160])
-                    fc = None
+                fc = None
+                for attempt, wait in enumerate(WEATHER_RETRY_WAITS):   # one slow answer must not leave the morning card without weather
+                    if wait:
+                        await self._sleep(wait)
+                    try:
+                        last = attempt == len(WEATHER_RETRY_WAITS) - 1   # an older forecast only when the fresh tries all failed
+                        fc = await self.weather.forecast(place, 2, stale_seconds=WEATHER_STALE_SECONDS if last else 0)
+                        break
+                    except WeatherError as e:
+                        log.warning("briefing: no weather on try %d (%s)", attempt + 1, str(e)[:160])
                 if fc is not None:
                     unit = units_for(place.country_code)
                     notes = notable(fc, now)
@@ -705,7 +722,7 @@ class Briefing:
         end = (datetime.fromtimestamp(now, tz).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)).timestamp()
         ahead = [{"title": str(ev.get("title") or t("Event"))[:120], "start": float(ev.get("start") or 0), "kind": ev["kind"],
                   "first": ev["first"].isoformat(), "last": ev["last"].isoformat(), "open": {"kind": "event", "start": float(ev.get("start") or 0)}}
-                 for ev in big_events.ahead(evs, now, tz, big_events.WEEK_DAYS)][:MAX_AHEAD]
+                 for ev in big_events.ahead(evs, now, tz, big_events.WEEK_DAYS, model=getattr(self.proactive, "kind_map", None))][:MAX_AHEAD]
         out, seen = [], set()
         for ev in sorted(evs, key=lambda e: float(e.get("start") or 0)):
             start = float(ev.get("start") or 0)

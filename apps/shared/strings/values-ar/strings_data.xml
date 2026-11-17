@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">بياناتك</string>
+    <string name="data_intro">نزّل نسخة مما يحتفظ به Kelo عنك، أو أحضر ذكريات من مساعد آخر، أو ابدأ من جديد.</string>
+    <string name="data_export_title">تنزيل بياناتك</string>
+    <string name="data_export_body">ملف ZIP واحد يضم محادثتك وما يتذكره Kelo والجداول وما يتابعه Kelo والخدمات المتصلة وإعداداتك. لا تدخل فيه كلمات المرور ولا المفاتيح ولا الرموز أبدًا.</string>
+    <string name="data_export_make">إنشاء الملف</string>
+    <string name="data_export_making">جارٍ إنشاء الملف…</string>
+    <string name="data_export_ready">ملفك جاهز (%1$s).</string>
+    <string name="data_export_save">حفظ الملف</string>
+    <string name="data_export_saved">تم الحفظ.</string>
+    <string name="data_export_again">إنشاء ملف جديد</string>
+    <string name="data_export_failed">تعذّر إنشاء الملف. حاول مرة أخرى.</string>
+    <string name="data_import_title">إحضار ذكريات من مساعد آخر</string>
+    <string name="data_import_private">لا يُرسل شيء إلى أي مكان آخر. النموذج الذي اخترته على خادم Kelo يقرأ النص ويحتفظ بحقائق قصيرة عنك.</string>
+    <string name="data_import_step1">1. انسخ هذا الطلب والصقه في مساعدك القديم (ChatGPT أو Claude أو Gemini وغيرها).</string>
+    <string name="data_import_copy">نسخ الطلب</string>
+    <string name="data_import_copied">تم النسخ.</string>
+    <string name="data_import_step2">2. الصق ردّه هنا.</string>
+    <string name="data_import_paste_hint">لصق الرد</string>
+    <string name="data_import_add">إضافة إلى الذاكرة</string>
+    <string name="data_import_zip_body">أو اختر ملف تصدير المحادثات الذي نزّلته من ChatGPT أو Claude أو Gemini (ملف ZIP حتى 100 ميغابايت).</string>
+    <string name="data_import_zip">اختيار ملف ZIP</string>
+    <string name="data_import_running">جارٍ القراءة… %1$d من %2$d</string>
+    <string name="data_import_reading">جارٍ فتح الملف…</string>
+    <string name="data_import_cancel">إيقاف</string>
+    <string name="data_import_failed">لم تتم إضافة شيء: %1$s</string>
+    <string name="data_import_none">لم يُعثر على شيء جديد لإضافته.</string>
+    <string name="data_import_added">أُضيف إلى الذاكرة (%1$d):</string>
+    <string name="data_zip_too_big">هذا الملف أكبر من 100 ميغابايت.</string>
+    <string name="data_reset_title">ابدأ من جديد</string>
+    <string name="data_reset_body">يمسح محادثتك وما يتذكره Kelo وما يتابعه وجداولك. تبقى الموصّلات وتسجيلات الدخول المحفوظة والنماذج وهواتفك. تُحفظ أولًا نسخة كملف.</string>
+    <string name="data_reset_signout">تسجيل الخروج أيضًا من الموصّلات وإزالة تسجيلات الدخول المحفوظة</string>
+    <string name="data_reset_type">اكتب %1$s للتأكيد</string>
+    <string name="data_reset_button">ابدأ من جديد</string>
+    <string name="data_reset_wrong">هذه ليست الكلمة. لم يتغير شيء.</string>
+    <string name="data_reset_confirm">هل تبدأ من جديد الآن؟ تُحفظ نسخة أولًا ثم تُمسح المحادثة والذاكرة والمتابعات والجداول. لا يمكن التراجع.</string>
+    <string name="data_reset_done">تم. مُسح كل ما سبق. حُفظت النسخة باسم %1$s.</string>
+</resources>

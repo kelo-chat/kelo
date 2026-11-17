@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from .. import secret_guard
+from ..tools.sites import registrable
 from .fence import data, split
 
 TTL = 3600.0
@@ -33,19 +34,10 @@ SAVEABLE = ("api_key", "token")
 _URL = re.compile(r"(?m)^URL:\s*(https?://\S+)")
 _ANY_URL = re.compile(r"https?://[^\s\"'<>)\]]+")
 
-# second-level suffixes under which the registrable domain has one more label (a small list: not the whole public suffix list)
-_SECOND_LEVEL = {"co", "com", "net", "org", "ac", "go", "or", "ne", "gov", "edu"}
-
-
 def registrable_domain(host: str) -> str:
-    """"dash.openai.com" -> "openai.com"; "api.example.co.uk" -> "example.co.uk"; an IP address or a single label as it is."""
-    host = (host or "").strip().lower().rstrip(".")
-    labels = host.split(".")
-    if len(labels) <= 2 or all(p.isdigit() for p in labels):
-        return host
-    if len(labels[-1]) == 2 and labels[-2] in _SECOND_LEVEL:
-        return ".".join(labels[-3:])
-    return ".".join(labels[-2:])
+    """"dash.openai.com" -> "openai.com"; "api.example.co.uk" -> "example.co.uk" (Public Suffix List, tools/sites.py); an IP address or
+    a single label as it is."""
+    return registrable(host)
 
 
 def host_of(url: str) -> str:

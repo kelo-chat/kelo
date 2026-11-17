@@ -175,3 +175,48 @@ def test_windows_says_plainly_what_is_not_there_yet(windows):
         channel.make_server(Echo)
     with pytest.raises(ChannelUnsupported):
         channel.make_http_transport()
+
+
+# ---- the network link used where containers cannot share a socket file (Apple container)
+def test_tcp_link_is_chosen_by_the_environment(monkeypatch, tmp_path):
+    from assistant.hosting.channels import LocalChannel, TcpChannel, workroom_agent_channel, workroom_proxy_channel
+    monkeypatch.delenv("WORKROOM_LINK", raising=False)
+    assert type(workroom_agent_channel(tmp_path)) is LocalChannel
+    monkeypatch.setenv("WORKROOM_LINK", "tcp")
+    agent, proxy = workroom_agent_channel(tmp_path), workroom_proxy_channel(tmp_path)
+    assert isinstance(agent, TcpChannel) and agent.address == "workroom:9710"
+    assert isinstance(proxy, TcpChannel) and proxy.address == "server:9711"
+
+
+def test_tcp_channel_serves_and_answers_http_and_raw(tmp_path):
+    import asyncio
+    import socketserver
+    import threading
+
+    import httpx
+    from assistant.hosting.channels import TcpChannel
+
+    class Hello(socketserver.StreamRequestHandler):
+        def handle(self):
+            self.rfile.readline()
+            self.wfile.write(b"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\n\r\n{\"ok\":true}\n")
+
+    channel = TcpChannel("t", "127.0.0.1", 0)
+    channel.BIND_ADDRESS = "127.0.0.1"
+    server = channel.make_server(Hello)
+    channel.port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        raw = channel.connect(timeout_seconds=3)
+        raw.sendall(b"GET /health HTTP/1.0\r\n\r\n")
+        assert b" 200 " in raw.recv(100)
+        raw.close()
+
+        async def call():
+            async with httpx.AsyncClient(transport=channel.make_http_transport(), base_url="http://workroom", trust_env=False) as c:
+                return (await c.get("/health")).json()
+        assert asyncio.run(call()) == {"ok": True}
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert channel.is_present() and channel.remove_leftover() is None

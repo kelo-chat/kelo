@@ -17,4 +17,6 @@
     <string name="perm_reset_q">इस कनेक्टर की सभी सेटिंग डिफ़ॉल्ट पर वापस करें?</string>
     <string name="perm_read_off_q">पढ़ना बंद होने पर Kelo इस कनेक्टर का लगभग उपयोग नहीं कर सकता। बंद करें?</string>
     <string name="perm_limited">सीमित</string>
+    <string name="perm_unattended">जब मैं चैट नहीं कर रहा हूँ तब भी इस्तेमाल करें</string>
+    <string name="perm_unattended_about">शेड्यूल, बैकग्राउंड जॉब और Kelo के खुद भेजे संदेश %1$s का इस्तेमाल नहीं करेंगे। आपकी अपनी चैट में यह अब भी चल सकता है।</string>
 </resources>

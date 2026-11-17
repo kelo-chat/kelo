@@ -831,6 +831,22 @@
     <string name="agent_perm_rules_empty">Nog niets. Kies “Altijd toestaan op deze site” op een goedkeuringskaart, dan verschijnt het hier.</string>
     <string name="agent_perm_history">Eerdere goedkeuringen</string>
     <string name="agent_perm_history_empty">Nog niets gevraagd.</string>
+    <string name="approval_edit_button">Aanpassen</string>
+    <string name="approval_edit_title">Bericht om te versturen</string>
+    <string name="approval_edit_save">Opslaan</string>
+    <string name="approval_edited_note">Je hebt het bericht aangepast</string>
+    <string name="approval_edit_empty">Schrijf een bericht.</string>
+    <string name="approval_edit_too_long">Te lang. Maak het korter.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Eerdere goedkeuringen</string>
+    <string name="approval_history_empty">Nog geen goedkeuringen.</string>
+    <string name="approval_history_error">Eerdere goedkeuringen konden niet worden geladen.</string>
+    <string name="approval_history_where">Waar</string>
+    <string name="approval_history_when">Wanneer</string>
+    <string name="approval_history_answered">Beantwoord</string>
+    <string name="approval_via_app">In de app</string>
+    <string name="approval_via_notification">Via een melding</string>
+    <string name="approval_via_messenger">In een messenger</string>
     <string name="agent_perm_asked">Gevraagd %1$s</string>
     <string name="approval_remember_site">Niet meer vragen op deze site</string>
     <string name="approval_remember_scope">Geldt voor %1$s en alle subadressen ervan</string>
@@ -942,6 +958,7 @@
     <string name="live_forward">Vooruit</string>
     <string name="live_reload">Opnieuw laden</string>
     <string name="live_page_not_responding">De pagina reageert niet</string>
+    <string name="live_touch_missed">De aanraking is niet aangekomen</string>
     <string name="live_type_hint">Tekst om op de pagina te typen</string>
     <string name="live_type_send">Typen</string>
     <string name="live_type_hide">Tekst verbergen</string>
@@ -1121,6 +1138,8 @@
     <string name="offer_reason_later">Later</string>
     <string name="offer_busy">Er wordt nu een ander antwoord geschreven. Tik opnieuw zodra dit klaar is</string>
     <string name="offer_failed">Kon niet starten</string>
+    <string name="offer_steps_show_all">Alle %1$d stappen tonen</string>
+    <string name="offer_steps_fewer">Minder stappen tonen</string>
     <string name="work_upcoming">Binnenkort</string>
     <string name="work_upcoming_unscheduled">Geen tijd ingesteld</string>
     <string name="work_past">Eerder</string>
@@ -1151,6 +1170,7 @@
     <string name="work_kind_browser">Browsertaak</string>
     <string name="work_kind_research">Onderzoek</string>
     <string name="work_kind_general">Algemene taak</string>
+    <string name="work_kind_phone">Telefoontaak</string>
     <string name="work_job_title">Achtergrondtaak</string>
     <string name="work_job_line">%1$s · Achtergrond</string>
     <string name="work_task_in_background">Op de achtergrond</string>
@@ -1455,6 +1475,7 @@
     <string name="handover_verify_title">%1$s vraagt je de aanmelding te bevestigen</string>
     <string name="handover_verify_body">Keur de aanmelding goed op je telefoon, of open live bekijken en typ daar de code. Daarna gaat Kelo verder.</string>
     <string name="handover_verify_open">Live bekijken openen</string>
+    <string name="handover_device_open">Telefoonscherm openen</string>
     <string name="handover_verify_done">Aangemeld — Kelo gaat verder</string>
     <string name="handover_verify_approve_body">Keur de aanmelding goed in de melding op je telefoon. Zodra deze is goedgekeurd, gaat Kelo verder.</string>
     <string name="handover_verify_approved">Ik heb het goedgekeurd</string>

@@ -8,4 +8,8 @@
     <string name="actions_state_failed">No se completó</string>
     <string name="actions_empty">Kelo aún no ha hecho nada fuera.</string>
     <string name="actions_outside_text_note">Lo que Kelo lee de páginas web, correos y archivos se trata como datos, nunca como instrucciones; no puede hacer que Kelo pague, envíe o elimine nada.</string>
+    <string name="did_filter_all">Todo</string>
+    <string name="did_filter_actions">Enviar y cambiar</string>
+    <string name="did_filter_browser">Navegador</string>
+    <string name="did_filter_tasks">Tareas</string>
 </resources>

@@ -9,13 +9,21 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import chat.kelo.app.R
+import chat.kelo.app.agent.PendingApproval
+import chat.kelo.app.appContainer
 import chat.kelo.app.chat.ReplyLive
 import chat.kelo.app.chat.ReplyLiveRules
 import chat.kelo.app.chat.TurnEvent
 import chat.kelo.app.chat.TurnWatch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonElement
 
 /** Whether any of the app's screens is on screen (counted from the activities' start / stop). */
 class AppVisibility : Application.ActivityLifecycleCallbacks {
@@ -47,7 +55,7 @@ object ReplyRules {
     sealed interface Post {
         data class Done(val firstLine: String) : Post
         data object Failed : Post
-        data class Approval(val label: String, val payment: Boolean) : Post
+        data class Approval(val label: String, val payment: Boolean, val approvalId: String = "") : Post
         /** The agent waits for a delivery address (an order); [what]: what is ordered, else the site */
         data class Shipping(val what: String, val formId: String) : Post
     }
@@ -61,7 +69,7 @@ object ReplyRules {
 
     /** An approval the followed reply asks for while the app is away. */
     fun onApproval(ev: TurnEvent.ApprovalRequest, visible: Boolean): Post? =
-        if (visible) null else Post.Approval(ev.label.ifEmpty { ev.name }, ev.payment != null)
+        if (visible) null else Post.Approval(ev.label.ifEmpty { ev.name }, ev.payment != null, ev.approvalId)
 
     /** An address question the followed reply waits on while the app is away. */
     fun onShipping(ev: TurnEvent.ShippingForm, visible: Boolean): Post? =
@@ -83,6 +91,7 @@ object ReplyRules {
 class ReplyWatch(private val context: Context, private val notifier: Notifier, private val visibility: AppVisibility) : TurnWatch {
     private val _following = MutableStateFlow(false)
     val following: StateFlow<Boolean> = _following.asStateFlow()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val answer = StringBuilder()
     private var sawError = false
 
@@ -156,17 +165,31 @@ class ReplyWatch(private val context: Context, private val notifier: Notifier, p
             is ReplyRules.Post.Done -> notifier.post(
                 Notifier.REPLY_ID, Channel.REPLIES, context.getString(R.string.notify_reply_done),
                 p.firstLine.ifEmpty { context.getString(R.string.notify_open_hint) }, OpenTarget.Chat,
+                buttons = listOf(notifier.replyButton(Notifier.REPLY_ID, null)),   // answer from the notification
             )
             ReplyRules.Post.Failed -> notifier.post(
                 Notifier.REPLY_ID, Channel.REPLIES, context.getString(R.string.notify_reply_failed),
                 context.getString(R.string.notify_reply_failed_body), OpenTarget.Chat,
             )
-            is ReplyRules.Post.Approval -> notifier.post(
-                NotifyRules.idFor("approval", p.label),
-                if (p.payment) Channel.PAYMENTS else Channel.APPROVALS,
-                context.getString(if (p.payment) R.string.notify_payment_waiting else R.string.notify_approval_waiting),
-                p.label, OpenTarget.Chat,
-            )
+            is ReplyRules.Post.Approval -> {
+                val noteId = NotifyRules.idFor("approval", p.label)
+                val channel = if (p.payment) Channel.PAYMENTS else Channel.APPROVALS
+                val title = context.getString(if (p.payment) R.string.notify_payment_waiting else R.string.notify_approval_waiting)
+                fun show(offered: List<String>, quiet: Boolean = false) = notifier.post(
+                    noteId, channel, title, p.label, OpenTarget.Chat,
+                    buttons = if (p.approvalId.isEmpty()) emptyList() else notifier.approvalButtons(p.approvalId, offered, noteId, null),
+                    quiet = quiet,
+                )
+                // the notification shows at once; the buttons the server allows for it follow (nothing if the item cannot be read)
+                show(emptyList())
+                val api = context.appContainer.sessions.api.value
+                if (api != null && p.approvalId.isNotEmpty()) scope.launch {
+                    val offered = withTimeoutOrNull(8_000) {
+                        runCatching { PendingApproval.notifyActionsFor(api.get<JsonElement>("/api/approvals/pending"), p.approvalId) }.getOrNull()
+                    }.orEmpty()
+                    if (offered.isNotEmpty()) show(offered, quiet = true)
+                }
+            }
             is ReplyRules.Post.Shipping -> notifier.post(
                 NotifyRules.idFor("shipping", p.formId), Channel.APPROVALS, context.getString(R.string.shipping_ask_title),
                 p.what.ifEmpty { context.getString(R.string.notify_open_hint) }, OpenTarget.Chat,

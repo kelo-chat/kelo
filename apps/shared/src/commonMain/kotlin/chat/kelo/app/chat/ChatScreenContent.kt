@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -152,10 +154,15 @@ fun ChatScreenContent(
     val snackbar = remember { SnackbarHostState() }
     val reportScope = rememberCoroutineScope()
     val reportThanks = string(Res.string.report_thanks)
+    // 소리 내어 읽기: one message speaks at a time, and reading stops when this screen is left
+    val speechEngine = LocalSpeechEngine.current
+    val reader = remember(speechEngine) { speechEngine?.let { e -> ReadAloud(e) { appLanguageTag() } } }
+    DisposableEffect(reader) { onDispose { reader?.stop() } }
     val onMessageAction: (ChatItem, String, MsgAction) -> Unit = { item, text, action ->
         when (action) {
             MsgAction.SHARE -> sharer?.share(text)
             MsgAction.SELECT -> { focus.clearFocus(); selecting = text }
+            MsgAction.READ_ALOUD -> reader?.toggle(text)
             MsgAction.RETRY -> vm.retry(item.key)
             MsgAction.EDIT -> { vm.setInput(text); editTick++ }
             MsgAction.REPORT -> { focus.clearFocus(); reporting = item.key }
@@ -174,12 +181,16 @@ fun ChatScreenContent(
     // the "↓" button: the list says when it shows; it is drawn after the composer, on the card's top border (ChatOverlayRules)
     val jump = remember { JumpButtonState() }
     // a window is wider than a phone: the chat keeps a readable column in the middle
-    val column = if (desktop) Modifier.widthIn(max = 860.dp) else Modifier
+    val shape = chat.kelo.app.ui.platform.LocalWindowShape.current
+    val column = if (desktop) Modifier.widthIn(max = 860.dp)
+    else chat.kelo.app.ui.platform.WindowRules.chatColumn(shape)?.let { Modifier.widthIn(max = it) } ?: Modifier
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Box(Modifier.fillMaxSize().then(column)) {
             Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.ime.union(WindowInsets(bottom = bar)))) {
-                Messages(state, profile.agentName, vm, hooks, onOpenConnector, onMessageAction, Modifier.fillMaxSize(), onOpenBrowser, bottom = composerHeight,
-                    onOpenCardForm = onOpenCardForm, onOpenGoals = onOpenGoals, jump = jump)
+                CompositionLocalProvider(LocalReadAloud provides reader) {
+                    Messages(state, profile.agentName, vm, hooks, onOpenConnector, onMessageAction, Modifier.fillMaxSize(), onOpenBrowser, bottom = composerHeight,
+                        onOpenCardForm = onOpenCardForm, onOpenGoals = onOpenGoals, jump = jump)
+                }
                 Column(
                     Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                         .onSizeChanged { composerHeight = with(density) { it.height.toDp() } }   // the pill (and tray) and the fade above it

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">メール</string>
+    <string name="trail_kind_file">ファイル</string>
+    <string name="trail_kind_memory">メモリ</string>
+    <string name="trail_kind_contacts">連絡先</string>
+    <string name="trail_kind_calendar">カレンダー</string>
+    <string name="trail_kind_photos">写真</string>
+    <string name="trail_kind_messages">メッセージ</string>
+    <string name="trail_kind_notes">ノート</string>
+    <string name="trail_kind_vault">保存済みのログイン</string>
+    <string name="trail_kind_profile">プロフィール</string>
+    <string name="trail_kind_web">ウェブページ</string>
+    <string name="trail_kind_channel">チャット</string>
+    <string name="trail_kind_device">端末のデータ</string>
+    <string name="trail_kind_connector">接続したサービス</string>
+    <string name="trail_kind_other">データ</string>
+    <string name="trail_recipient_link">公開リンク</string>
+    <string name="trail_goes_to">%2$s宛て: %1$s</string>
+    <string name="trail_allow_once">今回だけ許可</string>
+    <string name="trail_allow_always">この宛先は常に許可</string>
+    <string name="recipient_approval_always">許可しました。この宛先には今後確認しません。</string>
+    <string name="recipient_allows_title">常に許可した宛先</string>
+    <string name="recipient_allows_empty">まだありません。カードで「この宛先は常に許可」を選ぶと、ここに表示されます。</string>
+    <string name="recipient_allow_since">許可: %1$s</string>
+    <string name="recipient_allow_remove">%1$sを削除</string>
+    <string name="recipient_allow_remove_confirm">%2$sへ%1$sを送る前に、また確認しますか？</string>
+    <string name="recipient_allow_removed">今後そこへ送る前に、また確認します。</string>
+</resources>

@@ -8,4 +8,8 @@
     <string name="actions_state_failed">안 됨</string>
     <string name="actions_empty">아직 Kelo가 밖에서 한 일이 없어요.</string>
     <string name="actions_outside_text_note">웹페이지·메일·파일에서 읽은 글은 데이터로만 다루며 명령으로 받아들이지 않아요. 이런 글로 결제·전송·삭제를 시킬 수 없어요.</string>
+    <string name="did_filter_all">전체</string>
+    <string name="did_filter_actions">보내기·바꾸기</string>
+    <string name="did_filter_browser">브라우저</string>
+    <string name="did_filter_tasks">작업</string>
 </resources>

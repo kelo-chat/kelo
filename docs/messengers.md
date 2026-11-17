@@ -37,6 +37,14 @@ Kelo keeps the last 20 lines it was handed in a group (its own replies included)
 Ask Kelo "which groups do you answer in" or "stop answering in <group>"; removing the bot from the group also forgets the group.
 Photos, files and voice messages in a group get the answer "In groups I only read text."
 
+#### Other bots in a group
+
+Kelo's reply is posted in the group, so when you ask it to ask another bot or person there ("ask @some_bot ..."), it writes the
+question in its reply with their @name. That is its own reply, not acting for anyone; it still sends nothing to other chats or
+people outside the group, no mail, purchases or sign-ups. For another bot to hear it, turn on Telegram's bot-to-bot communication
+mode for both bots in BotFather. Messages from other bots are read like anyone's: kept as context, and answered when they mention
+Kelo or reply to it. Kelo adds no loop guard or reply cap for bots; keeping two bots from answering each other is up to you.
+
 ### What works
 
 - Text, photos and files (up to 20 MB, Telegram's own limit) in a private chat with the bot.

@@ -4,7 +4,7 @@ package chat.kelo.app.chat
  * Answer buttons under an agent message, apart from the UI (the phone, desktop and iPhone apps follow the same rules).
  *
  * An answer may mean "I will write it" ("Other", "직접 입력할게요", "있어요 (직접 입력)"): the server lists those in the question's
- * `typed`, and for an older server that does not, [asksTyping] tells them by their words. Picking one opens a text box under that
+ * `typed` (the app reads no words of any language; it adds its own "Other" to a choice question with none). Picking one opens a text box under that
  * question (placeholder: [placeholder]); what is typed is sent instead of the button's words, and nothing is sent while a picked one is
  * still empty.
  */
@@ -32,7 +32,7 @@ object QuickReplyRules {
     fun sendsAtOnce(set: ReplySet): Boolean = set.questions.size <= 1 && set.questions.none { ReplyFields.isField(it) }
 
     /** The answer [option] of [q] opens a text box instead of being the answer itself. */
-    fun isTyped(q: ReplyQuestion, option: String): Boolean = option == OTHER || option in q.typed || asksTyping(option)
+    fun isTyped(q: ReplyQuestion, option: String): Boolean = option == OTHER || option in q.typed
 
     /** A tap on [option] sends it straight away (a single question, and not an answer to write). */
     fun sendsOnTap(set: ReplySet, q: ReplyQuestion, option: String): Boolean = sendsAtOnce(set) && !isTyped(q, option)
@@ -87,30 +87,4 @@ object QuickReplyRules {
     }
 
     private fun oneLine(text: String?): String? = text?.trim()?.replace(Regex("\\s*\\n\\s*"), " ")?.ifEmpty { null }
-
-    /** Words of an answer that ask the user to write it: a typing phrase anywhere, or just "Other" (with "(...)" or "…" after it).
-     *  The same lists as the server's (goals.py TYPING_PHRASES / OTHER_WORDS); kept conservative. */
-    fun asksTyping(label: String): Boolean {
-        val s = label.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
-        if (TYPING_PHRASES.any { it in s }) return true
-        val bare = s.replace(Regex("\\s*\\([^)]*\\)\\s*$"), "").trim(' ', '.', '…', ':', '!', '?', '·', '-', '–', '—')
-        return bare in OTHER_WORDS
-    }
-
-    private val TYPING_PHRASES = listOf(
-        "type it", "i'll type", "let me type", "type my own", "write my own", "i'll write", "write it in", "(specify)", "please specify",
-        "직접 입력", "직접입력", "직접 쓸", "직접 쓰", "직접 적", "입력할게",
-        "直接入力", "自分で入力", "自由入力", "入力します", "自行输入", "手动输入", "自己输入", "自行輸入", "手動輸入", "自己輸入", "自定义", "自訂",
-        "lo escribo", "escribir", "(especificar)", "je l'écris", "saisir", "(préciser)", "selbst eingeben", "eingeben", "selbst schreiben",
-        "digitar", "vou escrever", "lo scrivo", "scrivere", "(specificare)", "zelf invullen", "zelf typen", "wpiszę", "wpisz", "napiszę",
-        "свой вариант", "введу", "ввести", "напишу", "свій варіант", "kendim yazacağım", "kendim yazayım", "yazacağım",
-        "tự nhập", "tự ghi", "tự viết", "ketik sendiri", "tulis sendiri", "พิมพ์เอง", "ระบุเอง", "سأكتب", "اكتب بنفسك",
-        "खुद लिखूँगा", "खुद लिखूंगा", "खुद लिखें",
-    )
-
-    private val OTHER_WORDS = setOf(
-        "other", "others", "something else", "기타", "다른 것", "その他", "其他", "其它", "otro", "otra", "otros", "autre", "autres", "andere",
-        "anderes", "sonstiges", "outro", "outra", "altro", "anders", "overig", "inne", "inny", "другое", "інше", "diğer", "khác", "lainnya",
-        "อื่นๆ", "อื่น ๆ", "أخرى", "غير ذلك", "अन्य",
-    )
 }

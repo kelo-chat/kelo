@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">Пошук у чаті</string>
+    <string name="chat_search_title">Пошук у чаті</string>
+    <string name="chat_search_field">Пошук у повідомленнях</string>
+    <string name="chat_search_clear">Очистити пошук</string>
+    <string name="chat_search_hint">Введіть слово або його частину. Торкніться результату, щоб відкрити чат на цьому повідомленні.</string>
+    <string name="chat_search_none">Немає повідомлень, що відповідають цьому пошуку.</string>
+    <string name="chat_search_failed">Пошуку не вдалося з’єднатися із сервером. Спробуйте трохи пізніше.</string>
+    <string name="chat_search_you">Ви</string>
+</resources>

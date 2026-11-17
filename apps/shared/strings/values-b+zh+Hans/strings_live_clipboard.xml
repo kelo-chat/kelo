@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">从手机粘贴</string>
+    <string name="live_pasted">已粘贴。请检查输入框。</string>
+    <string name="live_copy_from_browser">从浏览器复制</string>
+    <string name="live_copied_to_phone">已复制到手机</string>
+</resources>

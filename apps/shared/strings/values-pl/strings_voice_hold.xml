@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Przytrzymaj, aby mówić</string>
+    <string name="voice_hold_hint">Puść, aby zakończyć, przesuń poza przycisk, aby anulować</string>
+    <string name="voice_dictation_offline">Dyktowanie zatrzymało się, bo połączenie zostało przerwane.</string>
+    <string name="voice_dictation_failed">Nie udało się dokończyć dyktowania.</string>
+    <string name="msg_action_read_aloud">Przeczytaj na głos</string>
+    <string name="msg_action_read_stop">Przestań czytać</string>
+</resources>

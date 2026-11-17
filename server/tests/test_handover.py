@@ -22,7 +22,7 @@ from test_browser_more import CheckPage, probe
 from test_server import AUTH, Running, follow
 from test_workers import Brain, call, delegating, one_worker, say, tool_results, until
 
-CHECK = probe(title="Just a moment...")
+CHECK = probe(marks={"cf_running": {"w": 300, "h": 60, "shown": True}})
 
 
 def browsing(poll=0.02, tries=0):
@@ -68,7 +68,9 @@ async def waiting_item(c):
 
 
 def last_tool_output(fn):
-    return [m["content"] for m in fn.seen[-1].messages if m.get("role") == "tool"][-1]
+    from assistant.scheduled_runs import CLOSE_SYSTEM
+    work = [r for r in fn.seen if r.messages[0].get("content") != CLOSE_SYSTEM]   # not the closing request of a scheduled run
+    return [m["content"] for m in work[-1].messages if m.get("role") == "tool"][-1]
 
 
 # ------------------------------------------------------------------------------------------------ a chat reply
@@ -347,6 +349,32 @@ async def test_a_sign_in_verification_is_handed_over_with_its_own_words(tmp_path
         ko = (await c.get("/api/approvals/pending", headers={"Accept-Language": "ko"})).json()["items"][0]
         assert ko["label"] == "Sign-in verification"   # stored once, in the language of the reply that asked
         done.set()
+        events = await follow(c, tid)
+        assert [e["state"] for e in events if e["type"] == "human_check"] == ["waiting", "solved"]
+
+
+async def test_the_phone_screen_card_names_the_device_opens_the_phone_view_and_done_ends_it(tmp_path):
+    """android/handover.py hands over kind "device": the card's site is the device's name (never the word "phone"), its tab is the phone's
+    live view (key android), the server's own question and reason are the card's words, and Done (approve=true) ends it."""
+    from assistant.agent import handover
+    never = asyncio.Event()
+
+    async def show(args):
+        async def gone():
+            await never.wait()
+            return True
+        return await handover.get()({"tab": "android", "site": "Pixel 8", "vendor": "android", "kind": "device",
+                                     "name": "Solve the check on the phone"}, gone)
+
+    tool = Tool("browser_read", "read the page", {"type": "object"}, show)
+    app = create_app(app_settings(tmp_path), tools=[tool], stream_fn=scripted(*READ_THEN_ANSWER))
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        tid = (await c.post("/api/turns", json={"text": "휴대폰에서 해 줘"})).json()["id"]
+        item = await waiting_item(c)
+        assert item["site"] == "Pixel 8" and item["tab"] == "android" and item["check"]["kind"] == "device"
+        assert item["ask"] == "Kelo needs you at the phone screen" and item["detail"] == "Solve the check on the phone"
+        answered = await c.post(f"/api/approvals/{item['approval_id']}", json={"approve": True})
+        assert answered.status_code == 200
         events = await follow(c, tid)
         assert [e["state"] for e in events if e["type"] == "human_check"] == ["waiting", "solved"]
 

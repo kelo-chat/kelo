@@ -241,6 +241,26 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(NotifyRules.identifier(try note(1, NoteTypes.taskDone, task: 3)) == "task:3")
     }
 
+    @Test func aWaitingNotificationIsIdentifiedByItsItemId() throws {
+        let n = try JSON.decode(ServerNotification.self, from: .object(["id": .number(5), "type": .string("approval_waiting"), "task_id": .number(3), "approval_id": .string("ab12-x")]))
+        #expect(NotifyRules.itemId(n) == "ab12-x")
+        #expect(NotifyRules.identifier(n) == "ab12-x")   // the item's id wins over the task's: one scheme on all three apps
+        #expect(NotifyRules.itemId(try note(1, NoteTypes.taskDone, task: 3)) == nil)
+        // only notifications that carry an item id are asked about; news and follow-ups are never taken down by "unknown = settled"
+        let delivered: [(id: String, userInfo: [AnyHashable: Any])] = [("ab12-x", ["item": "ab12-x"]), ("task:3", ["channel": "replies"]), ("note:9", [:])]
+        #expect(NotifyRules.itemsToAskAbout(delivered) == ["ab12-x"])
+    }
+
+    @Test func aSettledPushCarriesItemIdsOnly() {
+        let p = PushRules.payload(["type": "settled", "id": "ap1", "ids": "ap1, ap2,ap1,bad id,<x>"])
+        #expect(p == PushPayload(type: "settled", id: 0, ids: ["ap1", "ap2"]))
+        #expect(PushRules.payload(["type": "settled", "id": "ap1"])?.ids == ["ap1"])
+        #expect(PushRules.payload(["type": "settled", "ids": (1...30).map { "i\($0)" }.joined(separator: ",")])?.ids.count == 10)
+        #expect(PushRules.payload(["type": "task_done", "id": "3", "ids": "a"])?.ids == [])
+        // a settled push is not a banner to take down or to open: it has no "open" text, and tapping would open the chat at most
+        #expect(PushRules.payload(["type": "task_done", "id": "x"]) == nil)   // other kinds still need a numeric id
+    }
+
     @Test func firstLine() {
         #expect(NotifyRules.firstLine("```\ncode\n```\n## **Done** [here](http://x)") == "Done here")
         #expect(NotifyRules.firstLine("- item one\nsecond") == "item one")

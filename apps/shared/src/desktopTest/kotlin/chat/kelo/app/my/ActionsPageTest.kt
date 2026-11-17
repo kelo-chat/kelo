@@ -67,4 +67,52 @@ class ActionsPageTest {
         onNodeWithText("Deleted in Slack").assertIsDisplayed()
         onNodeWithText("Didn't go through").assertIsDisplayed()
     }
+
+    @Test fun replyRowEmitsOnOpenChatOnClick() = runComposeUiTest {
+        var chatOpened = false
+        val item = ActionItem(
+            at = 1794744000.0,
+            title = "What is the weather?",
+            detail = "It is sunny.",
+            kind = "reply",
+            source = "chat",
+            outcome = "done",
+        )
+
+        setContent {
+            KeloTheme(dark = false) {
+                ActionRow(item = item, onOpenTask = {}, onOpenChat = { chatOpened = true })
+            }
+        }
+
+        onNodeWithText("What is the weather?").assertIsDisplayed()
+        onNodeWithText("It is sunny.").assertIsDisplayed()
+        onNodeWithText("What is the weather?").performClick()
+        assertEquals(true, chatOpened)
+    }
+
+    @Test fun didItemRendersTitleDetailAndSite() = runComposeUiTest {
+        var clickedTask: Long? = null
+        val item = ActionItem(
+            at = 1794744000.0,
+            taskId = 99L,
+            title = "Search flights",
+            detail = "Found 3 direct flights",
+            kind = "browser",
+            source = "job",
+            site = "airline.com",
+            outcome = "done",
+        )
+
+        setContent {
+            KeloTheme(dark = false) {
+                ActionRow(item = item, onOpenTask = { clickedTask = it })
+            }
+        }
+
+        onNodeWithText("Search flights").assertIsDisplayed()
+        onNodeWithText("Found 3 direct flights").assertIsDisplayed()
+        onNodeWithText("Search flights").performClick()
+        assertEquals(99L, clickedTask)
+    }
 }

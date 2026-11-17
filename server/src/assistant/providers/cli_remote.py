@@ -92,7 +92,7 @@ def decode_event(d: dict[str, Any]) -> Event:
         case "done":
             return Done(d.get("finish_reason", "stop"))
         case "error":
-            raise ProviderError(str(d.get("message", "runner error")), status=d.get("status"))
+            raise ProviderError(str(d.get("message", "runner error")), status=d.get("status"), code=str(d.get("code") or ""))
     raise ProviderError(f"unexpected runner event {d.get('type')!r}")
 
 

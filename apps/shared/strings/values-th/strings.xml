@@ -822,6 +822,22 @@
     <string name="agent_perm_rules_empty">ยังไม่มี เลือก “อนุญาตบนเว็บไซต์นี้เสมอ” ในการ์ดขออนุมัติ แล้วจะแสดงที่นี่</string>
     <string name="agent_perm_history">การอนุมัติที่ผ่านมา</string>
     <string name="agent_perm_history_empty">ยังไม่มีการถาม</string>
+    <string name="approval_edit_button">แก้ไข</string>
+    <string name="approval_edit_title">ข้อความที่จะส่ง</string>
+    <string name="approval_edit_save">บันทึก</string>
+    <string name="approval_edited_note">คุณแก้ไขข้อความแล้ว</string>
+    <string name="approval_edit_empty">เขียนข้อความ</string>
+    <string name="approval_edit_too_long">ยาวเกินไป ช่วยย่อให้สั้นลง</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">การอนุมัติที่ผ่านมา</string>
+    <string name="approval_history_empty">ยังไม่มีการอนุมัติ</string>
+    <string name="approval_history_error">โหลดการอนุมัติที่ผ่านมาไม่ได้</string>
+    <string name="approval_history_where">ที่ไหน</string>
+    <string name="approval_history_when">เมื่อไร</string>
+    <string name="approval_history_answered">ตอบแล้ว</string>
+    <string name="approval_via_app">ในแอป</string>
+    <string name="approval_via_notification">จากการแจ้งเตือน</string>
+    <string name="approval_via_messenger">ในแอปส่งข้อความ</string>
     <string name="agent_perm_asked">ถามเมื่อ %1$s</string>
     <string name="approval_remember_site">ไม่ต้องถามอีกบนไซต์นี้</string>
     <string name="approval_remember_scope">ใช้กับ %1$s และที่อยู่ย่อยทั้งหมด</string>
@@ -931,6 +947,7 @@
     <string name="live_forward">ไปข้างหน้า</string>
     <string name="live_reload">โหลดใหม่</string>
     <string name="live_page_not_responding">หน้าเว็บไม่ตอบสนอง</string>
+    <string name="live_touch_missed">การแตะไม่ถึงหน้าเว็บ</string>
     <string name="live_type_hint">ข้อความที่จะพิมพ์ลงในหน้าเว็บ</string>
     <string name="live_type_send">พิมพ์</string>
     <string name="live_type_hide">ซ่อนข้อความ</string>
@@ -1099,6 +1116,8 @@
     <string name="offer_reason_later">ไว้ทีหลัง</string>
     <string name="offer_busy">กำลังเขียนข้อความตอบกลับอื่นอยู่ แตะอีกครั้งเมื่อเสร็จสิ้น</string>
     <string name="offer_failed">ไม่สามารถเริ่มได้</string>
+    <string name="offer_steps_show_all">แสดงทั้ง %1$d ขั้นตอน</string>
+    <string name="offer_steps_fewer">แสดงขั้นตอนน้อยลง</string>
     <string name="work_upcoming">กำลังจะมาถึง</string>
     <string name="work_upcoming_unscheduled">ไม่ได้กำหนดเวลา</string>
     <string name="work_past">ก่อนหน้านี้</string>
@@ -1127,6 +1146,7 @@
     <string name="work_kind_browser">งานเบราว์เซอร์</string>
     <string name="work_kind_research">ค้นคว้า</string>
     <string name="work_kind_general">งานทั่วไป</string>
+    <string name="work_kind_phone">งานบนโทรศัพท์</string>
     <string name="work_job_title">งานเบื้องหลัง</string>
     <string name="work_job_line">%1$s · เบื้องหลัง</string>
     <string name="work_task_in_background">ในเบื้องหลัง</string>
@@ -1421,6 +1441,7 @@
     <string name="handover_verify_title">%1$s ขอให้ยืนยันการเข้าสู่ระบบ</string>
     <string name="handover_verify_body">อนุมัติการเข้าสู่ระบบบนโทรศัพท์ของคุณ หรือเปิดดูสดแล้วพิมพ์รหัสที่นั่น จากนั้น Kelo จะทำต่อ</string>
     <string name="handover_verify_open">เปิดดูสด</string>
+    <string name="handover_device_open">เปิดหน้าจอโทรศัพท์</string>
     <string name="handover_verify_done">เข้าสู่ระบบแล้ว — Kelo กำลังทำต่อ</string>
     <string name="handover_verify_approve_body">อนุมัติการเข้าสู่ระบบในการแจ้งเตือนบนโทรศัพท์ของคุณ เมื่ออนุมัติแล้ว Kelo จะทำต่อ</string>
     <string name="handover_verify_approved">อนุมัติแล้ว</string>

@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ..agent import Tool
+from ..agent import Tool, facts
 from ..mail import Mail
 from ..oauth_connect import PROVIDERS as DEVICE, DeviceFlows
 from ..packages import Registry, builtin
@@ -22,6 +22,17 @@ def oauth_tools(table: Callable[[], dict[str, dict[str, Any]]], flows: DeviceFlo
     reg = registry or builtin()
 
     async def connect_service(args: dict[str, Any]) -> str:
+        facts.put(**_already(args))
+        return await _connect_service(args)
+
+    def _already(args: dict[str, Any]) -> dict[str, Any]:
+        """{"already": True} when the service was connected before this call (the app then shows no connect card): the connection's own state."""
+        w = table().get(str(args.get("service", "")).strip().lower())
+        if not w or not w.get("connect") or w["connect"] == "browser":
+            return {}
+        return {"already": True} if w.get("connected") or (w["connect"] == "mail" and mail is not None and mail.accounts()) else {}
+
+    async def _connect_service(args: dict[str, Any]) -> str:
         sid = str(args.get("service", "")).strip().lower()
         ways = table()
         w = ways.get(sid)

@@ -113,6 +113,42 @@ class LiveMessagesTest {
         assertEquals("max_width=720&quality=55&fps=10", LiveQuality.WIFI.query())
     }
 
+    @Test fun `a meta line wins over the header of the last picture, until a picture comes again`() {
+        val header = FrameHeader(url = "https://old.example/", title = "Old")
+        assertEquals("Old", LiveHeader.title(null, header))
+        assertEquals("https://old.example/", LiveHeader.url(null, header))
+        val meta = LiveMeta("https://new.example/pay", "Pay")
+        assertEquals("Pay", LiveHeader.title(meta, header))
+        assertEquals("https://new.example/pay", LiveHeader.url(meta, header))
+        assertEquals("Old", LiveHeader.title(null, header))    // LiveClient clears the meta when a picture arrives
+        assertNull(LiveHeader.title(LiveMeta("https://a.b/", ""), null))   // a page without a title: the caller falls back to the host
+        assertNull(LiveHeader.title(null, null))
+    }
+
+    @Test fun `the keyboard rises on the meta line while frames are off, not on the old picture's header`() {
+        // frames off (VNC): the last picture's header says no field, the meta line says one has focus -> the keyboard comes up
+        val oldHeader = FrameHeader(editing = false, liveV = 2)
+        val focused = LiveMessages.parse("""{"type":"meta","url":"https://a.b/","title":"T","editing":true}""") as LiveIn.Meta
+        assertTrue(focused.meta.editing)
+        assertTrue(LiveHeader.editing(focused.meta, oldHeader))
+        assertTrue(EditingRule.raise(false, LiveHeader.editing(focused.meta, oldHeader)))
+        // the field lost focus: the next meta line says so even though an old header said editing
+        val gone = LiveMessages.parse("""{"type":"meta","url":"https://a.b/","title":"T","editing":false}""") as LiveIn.Meta
+        assertFalse(LiveHeader.editing(gone.meta, FrameHeader(editing = true)))
+        // no meta (frames on): the frame header decides, as before
+        assertTrue(LiveHeader.editing(null, FrameHeader(editing = true)))
+        assertFalse(LiveHeader.editing(null, null))
+        // a server from before `editing` leaves it out of the meta line: no keyboard, and no crash
+        assertFalse((LiveMessages.parse("""{"type":"meta","url":"https://a.b/","title":"T"}""") as LiveIn.Meta).meta.editing)
+    }
+
+    @Test fun `text for the page comes from the phone clipboard only when there is some and is cut at one entry`() {
+        assertNull(ClipboardRules.pasteText(null))
+        assertNull(ClipboardRules.pasteText(""))
+        assertEquals("  hi \n", ClipboardRules.pasteText("  hi \n"))    // typed as it is (a space or a newline may matter)
+        assertEquals(LiveMessages.MAX_TEXT, ClipboardRules.pasteText("x".repeat(LiveMessages.MAX_TEXT + 500))!!.length)
+    }
+
     @Test fun `server messages are sorted by type`() {
         val f = LiveMessages.parse("""{"type":"frame","seq":7,"w":720,"h":1280,"ts":1.5,"url":"https://a.b/c","title":"T","bytes":900,"css_w":390,"css_h":693}""")
         assertTrue(f is LiveIn.Frame)
@@ -129,9 +165,10 @@ class LiveMessagesTest {
         assertEquals(LiveIn.Ended("tab_closed"), LiveMessages.parse("""{"type":"ended","reason":"tab_closed"}"""))
         assertEquals(LiveIn.Error("not_controller"), LiveMessages.parse("""{"type":"error","code":"not_controller","message":"m","for":"tap"}"""))
         assertEquals(LiveIn.Pong, LiveMessages.parse("""{"type":"pong","ts":1}"""))
+        assertEquals(LiveIn.Meta(LiveMeta("https://a.b/x", "새 제목")), LiveMessages.parse("""{"type":"meta","url":"https://a.b/x","title":"새 제목"}"""))
         assertEquals(LiveIn.Other, LiveMessages.parse("not json"))
         assertEquals(LiveIn.Other, LiveMessages.parse("""[1,2]"""))
-        assertEquals(LiveIn.Other, LiveMessages.parse("""{"type":"input_ok"}"""))
+        assertEquals(LiveIn.Other, LiveMessages.parse("""{"type":"something_new"}"""))   // input_ok is read now (takeover-shared)
     }
 
     @Test fun `pointer messages are parsed and unknown fields are ignored`() {
@@ -383,27 +420,20 @@ class LookbackRulesTest {
 class LiveScreenGuardTest {
     private fun header(json: String): FrameHeader = (LiveMessages.parse(json) as LiveIn.Frame).header
 
-    @Test fun `a frame that says no secret field shows lets the live view be captured`() {
-        val h = header("""{"type":"frame","seq":1,"w":720,"h":450,"ts":1.0,"url":"","title":"","bytes":9,"secure":false}""")
-        assertEquals(false, h.secure)
-        assertFalse(LiveRules.guardScreen(h, typing = false))
+    @Test fun `the live view is capturable whatever the picture says`() {
+        assertFalse(LiveRules.guardScreen())
     }
 
-    @Test fun `a frame that says a secret field shows is guarded`() {
-        val h = header("""{"type":"frame","seq":1,"w":720,"h":450,"ts":1.0,"url":"","title":"","bytes":9,"secure":true}""")
-        assertTrue(LiveRules.guardScreen(h, typing = false))
+    @Test fun `the hint of a frame is still read, and still does not guard the live view`() {
+        val yes = header("""{"type":"frame","seq":1,"w":720,"h":450,"ts":1.0,"url":"","title":"","bytes":9,"secure":true}""")
+        val no = header("""{"type":"frame","seq":1,"w":720,"h":450,"ts":1.0,"url":"","title":"","bytes":9,"secure":false}""")
+        val none = header("""{"type":"frame","seq":1,"w":720,"h":450,"ts":1.0,"url":"","title":"","bytes":9}""")
+        assertEquals(true, yes.secure); assertEquals(false, no.secure); assertNull(none.secure)
+        assertFalse(LiveRules.guardScreen())
     }
 
-    @Test fun `a frame without the field (an older server) is guarded`() {
-        val h = header("""{"type":"frame","seq":1,"w":720,"h":450,"ts":1.0,"url":"","title":"","bytes":9}""")
-        assertNull(h.secure)
-        assertTrue(LiveRules.guardScreen(h, typing = false))
-        assertTrue(LiveRules.guardScreen(null, typing = false))   // no picture yet
-    }
-
-    @Test fun `typing is guarded even when the newest picture says no secret field`() {
-        val h = header("""{"type":"frame","seq":1,"w":720,"h":450,"ts":1.0,"url":"","title":"","bytes":9,"secure":false}""")
-        assertTrue(LiveRules.guardScreen(h, typing = true))
-        assertTrue(LiveRules.guardScreen(null, typing = true))
+    @Test fun `the live page does not ask for a secure window`() {
+        val src = java.io.File("src/commonMain/kotlin/chat/kelo/app/agent/LivePage.kt").readText()
+        assertFalse(src.contains("LocalSecureWindow"))
     }
 }

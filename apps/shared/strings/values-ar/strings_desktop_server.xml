@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<resources>
+    <string name="desktop_server_row">استخدام هذا الكمبيوتر كخادم Kelo</string>
+    <string name="desktop_server_row_hint">يثبّت خادم Kelo على هذا الكمبيوتر. سيطلب Windows إذن المسؤول مرة واحدة.</string>
+    <string name="desktop_server_checking">جارٍ التحقق</string>
+    <string name="desktop_server_downloading">جارٍ التنزيل</string>
+    <string name="desktop_server_installing">جارٍ التثبيت</string>
+    <string name="desktop_server_starting">جارٍ التشغيل</string>
+    <string name="desktop_server_done">تم</string>
+    <string name="desktop_server_restart">أعد تشغيل Windows لإكمال الإعداد. يستمر الإعداد بعد تسجيل الدخول.</string>
+    <string name="desktop_server_cancelled">أُلغي. لم يتغير شيء.</string>
+    <string name="desktop_server_failed">تعذّر التثبيت.</string>
+    <string name="desktop_server_show_log">عرض السجل</string>
+    <string name="desktop_server_installed">خادم Kelo موجود على هذا الكمبيوتر</string>
+    <string name="desktop_server_open_setup">فتح الإعداد</string>
+    <string name="desktop_server_update">تحديث</string>
+    <string name="desktop_server_install">تثبيت</string>
+    <string name="desktop_server_unavailable">خادم Kelo لنظام Windows غير متاح بعد.</string>
+</resources>

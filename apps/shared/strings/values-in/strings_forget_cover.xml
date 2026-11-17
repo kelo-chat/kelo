@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">Topik yang dilupakan</string>
+    <string name="forget_intro">Topik yang kamu minta Kelo lupakan. Kelo sudah menghapus yang ditemukan dan tidak akan mencatatnya lagi.</string>
+    <string name="forget_empty">Belum ada yang dilupakan. Saat kamu meminta Kelo melupakan suatu topik, topiknya muncul di sini.</string>
+    <string name="forget_date">Dilupakan pada %1$s</string>
+    <string name="forget_removed">Dihapus: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Tidak ada yang ditemukan untuk dihapus.</string>
+    <string name="forget_cat_memory">Memori</string>
+    <string name="forget_cat_notes">Catatan</string>
+    <string name="forget_cat_reminders">Pengingat</string>
+    <string name="forget_cat_skills">Keahlian</string>
+    <string name="forget_cat_history">Log</string>
+    <string name="forget_cat_other">Lainnya</string>
+    <string name="forget_allow_again">Izinkan lagi</string>
+    <string name="forget_allow_confirm">Izinkan Kelo menulis tentang “%1$s” lagi? Yang sudah dihapus tidak akan kembali.</string>
+    <string name="forget_allowed">Kelo boleh menulis tentang itu lagi.</string>
+    <string name="paycover_title">Pembayaran yang disetujui di muka</string>
+    <string name="paycover_switch">Izinkan pembayaran yang disetujui di muka</string>
+    <string name="paycover_switch_note">Mati: setiap pembayaran bertanya dulu kepadamu.</string>
+    <string name="paycover_empty">Belum ada yang disetujui di muka. Pesanan atau pembayaran terjadwal yang kamu setujui di muka muncul di sini.</string>
+    <string name="paycover_off_note">Dimatikan: daftar ini tetap ada, tetapi setiap pembayaran bertanya.</string>
+    <string name="paycover_orders">Pesanan</string>
+    <string name="paycover_allows">Pembayaran terjadwal</string>
+    <string name="paycover_cap">Maksimal %1$s total</string>
+    <string name="paycover_until">Sampai %1$s</string>
+    <string name="paycover_for_task">Untuk satu tugas</string>
+    <string name="paycover_for_schedule">Untuk jadwal “%1$s”</string>
+    <string name="paycover_for_a_schedule">Untuk tugas terjadwal</string>
+    <string name="paycover_one_order">satu pesanan</string>
+    <string name="paycover_allow_scope">Toko yang sama, metode pembayaran yang sama</string>
+    <string name="paycover_remove">Hapus %1$s</string>
+    <string name="paycover_remove_order_confirm">Hapus persetujuan ini? Pesanan akan bertanya sebelum dibayar.</string>
+    <string name="paycover_remove_allow_confirm">Hapus izin untuk “%1$s”? Pembayarannya akan bertanya lagi setiap kali.</string>
+    <string name="paycover_removed">Dihapus. Pembayaran akan bertanya lagi.</string>
+    <string name="preapprove_what">Pesanan</string>
+    <string name="preapprove_cap">Pembayaran maksimal</string>
+    <string name="preapprove_cap_value">%1$s total (termasuk pajak dan ongkir)</string>
+    <string name="preapprove_until">Sampai</string>
+    <string name="preapprove_covers">Mencakup</string>
+    <string name="preapprove_covers_value">Hanya satu pesanan ini</string>
+    <string name="preapprove_requirements">Harus ada</string>
+    <string name="preapprove_shipping">Pengiriman</string>
+    <string name="preapprove_shops">Toko</string>
+    <string name="preapprove_delegated">Kelo yang memutuskan</string>
+    <string name="chat_payment_cover_order">Ditanggung oleh pesanan yang kamu setujui di muka</string>
+    <string name="chat_payment_cover_schedule">Ditanggung oleh izinmu untuk pembayaran jadwal ini</string>
+</resources>

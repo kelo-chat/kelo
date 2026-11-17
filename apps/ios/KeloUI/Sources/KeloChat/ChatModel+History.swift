@@ -24,6 +24,7 @@ extension ChatModel {
         if busy { return }   // a reply started meanwhile: its own items are on screen
         lastId = ms.last?.id ?? 0
         items = afterReply ? ChatReducer.mergeStored(items, ms.map(ChatReducer.item)) : ms.map(ChatReducer.item)
+        hasNewer = false   // the newest page is in: a search window (if one was on screen) is gone
         secrets = SecretRules.settled(secrets)
         refreshAsks(force: true)   // a location card still waiting (it is not a stored message) comes back at the end
         loaded = true
@@ -34,7 +35,7 @@ extension ChatModel {
     }
 
     /// A server that cannot be reached leaves what is shown and only marks it as possibly old.
-    private func refreshing(_ block: () async throws -> Void) async {
+    func refreshing(_ block: () async throws -> Void) async {
         do {
             try await block()
             if offline { offline = false }
@@ -65,6 +66,7 @@ extension ChatModel {
         lastId = 0
         items = []
         hasOlder = false
+        hasNewer = false
         followups = [:]
         asks = []
         secrets = []
@@ -73,7 +75,7 @@ extension ChatModel {
 
     /// Another phone may have talked to the same assistant: while idle and in view, reload when the newest message changed.
     public func checkForNews() async {
-        if busy { return }
+        if busy || hasNewer { return }   // a search window stays as it is; the end of it loads what is newer
         await refreshing {
             let ms = try await fetch("/api/messages?limit=1")
             if (ms.last?.id ?? 0) != lastId && !busy {

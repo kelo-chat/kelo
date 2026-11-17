@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime
 import logging
 import random
@@ -12,10 +13,13 @@ from collections.abc import Callable
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ..credentials import clean_name
 from ..home import NOTIFY_PREFS
-from ..i18n import t
-from ..proactive import NEVER_HEADINGS, keywords, section
-from .checks import Source
+from ..i18n import N_, t
+from .sources.parcel import parcel_status_name
+from ..notify_block import has_rules
+from ..tools.vault_tools import login_site_ok, site_host
+from .checks import Reading, Source
 from .items import LOOK_AHEAD_DAYS, ItemFinder, UpcomingItem
 from .plan import MIN_EVERY, Planner, parse_offset
 from .store import FollowStore
@@ -30,6 +34,18 @@ MAX_PREP_JOBS_PER_ITEM = 2
 MAX_PREP_JOBS_PER_DAY = 4
 
 
+# What the weather source's codes are called when told (the source stores codes; the words come from here, in the owner's language)
+WEATHER_WORDS = {"rain": N_("rain"), "snow": N_("snow"), "sleet": N_("sleet"), "thunder": N_("thunderstorm"), "fog": N_("fog"),
+                 "cloudy": N_("cloudy"), "partly": N_("partly cloudy"), "clear": N_("clear"),
+                 "wind": N_("strong wind"), "heat": N_("heat"), "cold": N_("severe cold")}
+
+
+def weather_words(codes: str) -> str:
+    """"wind,heat" -> "strong wind, heat" in the owner's language; "" -> "none"."""
+    parts = [c.strip() for c in str(codes).split(",") if c.strip()]
+    return ", ".join(t(WEATHER_WORDS[c]) if c in WEATHER_WORDS else c for c in parts) or t("none")
+
+
 def format_change_line(field: str, old: str, new: str) -> str:
     """Template line per field: e.g. Gate A11 -> A6."""
     f = field.lower().strip()
@@ -39,6 +55,16 @@ def format_change_line(field: str, old: str, new: str) -> str:
         return t("Departure {old} -> {new}", old=old, new=new)
     if f == "status":
         return t("Status: {status}", status=new)
+    if f == "parcel":
+        return t("Status: {status}", status=parcel_status_name(new))
+    if f == "rain_chance":
+        return t("Chance of rain {old}% -> {new}%", old=old, new=new)
+    if f == "temperature":
+        return t("Temperature {old}° -> {new}°", old=old, new=new)
+    if f == "condition":
+        return t("Weather: {old} -> {new}", old=weather_words(old), new=weather_words(new))
+    if f == "warning":
+        return t("Weather warning: {new}", new=weather_words(new))
     return t("{field}: {old} -> {new}", field=field, old=old, new=new)
 
 
@@ -74,8 +100,11 @@ class FollowRunner:
                  workers: Any = None,
                  tz: ZoneInfo | None = None,
                  jitter: bool = True,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time,
+                 secret_requests: Any = None,
+                 vault: Any = None) -> None:
         self.store = store
+        self.notify_block: Any = None   # notify_block.NotifyBlock (server.py); None: the rules cannot be read
         self.finder = finder
         self.planner = planner
         self.sources = list(sources)
@@ -86,11 +115,59 @@ class FollowRunner:
         self.tz = tz or ZoneInfo("UTC")
         self.jitter = jitter
         self.clock = clock
+        self.secret_requests = secret_requests
+        if self.secret_requests is None:
+            if hasattr(self.store, "secret_requests"):
+                self.secret_requests = self.store.secret_requests
+            elif hasattr(self.store, "_store") and hasattr(self.store._store, "secret_requests"):
+                self.secret_requests = self.store._store.secret_requests
+        self.vault = vault
         self._sem = asyncio.Semaphore(PARALLEL)
         self._running_task: asyncio.Task[None] | None = None
         self._stopped = False
         self._found_at: float | None = None
         self._pending_notices: list[dict[str, Any]] = []
+
+    @staticmethod
+    def _extract_prep_site(entry: dict[str, Any]) -> str:
+        needs = entry.get("needs") or []
+        if isinstance(needs, str):
+            needs = [needs]
+        for n in needs:
+            n_str = str(n).strip()
+            if n_str.lower().startswith("login:"):
+                return n_str[6:].strip()
+            if n_str.lower().startswith("site:"):
+                return n_str[5:].strip()
+            if "://" in n_str:
+                return n_str
+            if "." in n_str and not n_str.startswith("app:"):
+                return n_str
+            if n_str.startswith("app:"):
+                return n_str
+        return ""
+
+    def _has_saved_login(self, host: str) -> bool:
+        if self.vault is not None and hasattr(self.vault, "has_login"):
+            return bool(self.vault.has_login(host))
+
+        creds: list[dict[str, Any]] = []
+        if isinstance(self.vault, list):
+            creds = self.vault
+        elif self.vault is not None and hasattr(self.vault, "credentials"):
+            creds = self.vault.credentials()
+        elif hasattr(self.store, "credentials"):
+            creds = self.store.credentials()
+        elif hasattr(self.store, "_store") and hasattr(self.store._store, "credentials"):
+            creds = self.store._store.credentials()
+
+        for c in creds:
+            if c.get("kind") == "login":
+                hosts = c.get("hosts") or []
+                if login_site_ok(host, hosts):
+                    if c.get("has_secret"):
+                        return True
+        return False
 
     def start(self) -> asyncio.Task[None]:
         """Start the background check loop."""
@@ -134,19 +211,18 @@ class FollowRunner:
         return True
 
     def _get_notify_prefs_text(self) -> str:
-        if self.home is not None and hasattr(self.home, "root"):
-            p = self.home.root / NOTIFY_PREFS
-            if p.is_file() and not p.is_symlink():
-                return p.read_text(encoding="utf-8", errors="replace")
+        """The owner's notification rules: their saved copy (owner_copies.py), never the file the agent may have written."""
+        if self.home is not None and hasattr(self.home, "policy"):
+            return self.home.policy(NOTIFY_PREFS)
         return ""
 
-    def _is_suppressed(self, item: UpcomingItem) -> bool:
+    async def _is_suppressed(self, item: UpcomingItem) -> bool | None:
+        """On the owner's do-not-tell list (read by the main model, notify_block.py)? None: not known now (no reader or no answer)."""
         text = self._get_notify_prefs_text()
-        if not text:
+        if not has_rules(text):
             return False
-        never = keywords(section(text, *NEVER_HEADINGS))
-        hay = f"{item.kind} {item.title} {item.place}".lower()
-        return any(k in hay for k in never)
+        nb = self.notify_block
+        return await nb.one(text, f"{item.kind} {item.title} {item.place}") if nb is not None else None
 
     def _count_prep_jobs_today(self, now: float) -> int:
         cutoff = now - 86400
@@ -177,10 +253,85 @@ class FollowRunner:
                     if w_status in ("done", "closed"):
                         entry["state"] = "done"
                         changed = True
+                        title = it_dict["title"]
+                        what = entry.get("what") or ""
+                        detail = t("{title}: {what} done ahead", title=title, what=what)
+                        starts_at = float(it_dict["starts_at"])
+                        tell_now = (cur_now >= starts_at - NOW_WINDOW) or self.is_awake(cur_now)
+                        if tell_now:
+                            self.notify("follow_done", title, detail)
+                        else:
+                            self._pending_notices.append({
+                                "type": "follow_done",
+                                "title": title,
+                                "detail": detail,
+                                "starts_at": starts_at,
+                            })
                     elif w_status in ("failed", "stopped"):
                         entry["state"] = "failed"
                         changed = True
+                        title = it_dict["title"]
+                        what = entry.get("what") or ""
+                        detail = t("{title}: {what} preparation failed", title=title, what=what)
+                        self.notify("follow_problem", title, detail)
                 continue
+
+            # Advance notice for missing login (1 day before prep time)
+            if state == "later":
+                when_str = entry.get("when") or ""
+                offset_sec = parse_offset(when_str)
+                fire_at = float(it_dict["starts_at"]) + offset_sec
+                notice_at = fire_at - 86400
+
+                site = self._extract_prep_site(entry)
+                if site and cur_now >= notice_at:
+                    try:
+                        host = site_host(site)
+                    except Exception:
+                        host = site.lower().strip()
+
+                    if not self._has_saved_login(host) and not entry.get("login_requested"):
+                        entry["login_requested"] = True
+                        changed = True
+
+                        title = it_dict["title"]
+                        detail = t("I need your {site} login to prepare for {title}", site=host, title=title)
+                        name = clean_name("login-" + host.replace(":", "-").replace(".", "-"))
+                        label = host
+
+                        entries = self.secret_requests
+                        if entries is None and hasattr(self.store, "secret_requests"):
+                            entries = self.store.secret_requests
+                        elif entries is None and hasattr(self.store, "_store") and hasattr(self.store._store, "secret_requests"):
+                            entries = self.store._store.secret_requests
+
+                        if entries is not None:
+                            existing = entries.find_open_matching("login", name=name, hosts=[host]) if hasattr(entries, "find_open_matching") else None
+                            if not existing:
+                                raw_store = getattr(self.store, "_store", self.store)
+                                if hasattr(raw_store, "save_credential"):
+                                    try:
+                                        raw_store.save_credential(name, label, [host], {}, "", kind="login")
+                                    except Exception:
+                                        pass
+                                if hasattr(raw_store, "add_vault_log"):
+                                    try:
+                                        raw_store.add_vault_log(name, "requested", f"website login for {host}")
+                                    except Exception:
+                                        pass
+                                entries.create("login", name=name, label=label, hosts=[host], reason=detail)
+
+                        starts_at = float(it_dict["starts_at"])
+                        tell_now = (cur_now >= starts_at - NOW_WINDOW) or self.is_awake(cur_now)
+                        if tell_now:
+                            self.notify("follow_reminder", title, detail)
+                        else:
+                            self._pending_notices.append({
+                                "type": "follow_reminder",
+                                "title": title,
+                                "detail": detail,
+                                "starts_at": starts_at,
+                            })
 
             # Start due prep jobs
             if state == "later" and self.workers is not None:
@@ -260,11 +411,23 @@ class FollowRunner:
                     state="active",
                 )
 
-    def _find_source(self, kind: str, refs: dict[str, str]) -> Source | None:
+    def _candidates(self, kind: str, refs: dict[str, str]) -> list[Source]:
+        """The sources of a kind that can read this check now, in order: the first that answers is used, the next ones are the fallback.
+        A source stopped for the month (`paused`) is left out."""
+        return [s for s in self.sources if s.kind == kind and s.available() and s.covers(refs) and not s.paused(refs)]
+
+    def _paused_reason(self, kind: str, refs: dict[str, str]) -> str:
+        """Why no source can read this check right now when one would cover it but is stopped for the month, else ""."""
         for s in self.sources:
             if s.kind == kind and s.available() and s.covers(refs):
-                return s
-        return None
+                reason = s.paused(refs)
+                if reason:
+                    return reason
+        return ""
+
+    def usage(self) -> list[dict[str, Any]]:
+        """This month's calls per counted source, for GET /api/follow."""
+        return [u for u in (s.usage() for s in self.sources) if u]
 
     async def tick(self, now: float | None = None) -> list[int]:
         """One check pass: find new items, plan them, run due checks, report changes."""
@@ -272,21 +435,42 @@ class FollowRunner:
 
         # 1. Discover items and plan new ones: the calendar is read at most every FIND_EVERY_SECONDS (the checks below run every
         #    minute; reading the calendars each minute would cost a calendar API call per minute for nothing)
+        looked = False
         if self._found_at is not None and cur_now - self._found_at < FIND_EVERY_SECONDS:
             new_items = []
         else:
+            looked = True
             self._found_at = cur_now
             new_items = await self.finder.find(cur_now)
         for it in new_items:
+            same = self.store.find_same(it)   # the same real-world thing, found through another source or under another key
+            if same is not None and same["key"] != it.key:
+                self.store.add_aliases(same["key"], [it.key, *it.aliases])
+                it = replace(it, key=same["key"], aliases=())   # the first key wins
+            elif same is not None and it.aliases:
+                self.store.add_aliases(same["key"], list(it.aliases))
             existing = self.store.get_item(it.key)
             if existing is not None:
                 # Same key and same start time: keep existing plan
                 if existing.get("starts_at") == it.starts_at:
                     continue
-            if self._is_suppressed(it):
+            stop = await self._is_suppressed(it)
+            if stop is None:
+                continue   # the rules could not be read: the item is found again at the next look
+            if stop:
                 self.store.save_item(it, state="stopped")
                 continue
             await self._plan_new(it, cur_now)
+
+        # 1a. An event gone from every calendar source it came from is no longer something to follow (only when the calendar read
+        #     worked: a failed read looks like an empty calendar)
+        if looked and getattr(self.finder, "calendar_ok", False):
+            seen = getattr(self.finder, "seen_keys", set())
+            for it_dict in self.store.list_items():
+                keys = [it_dict["key"], *it_dict.get("aliases", [])]
+                if (all(k.startswith("cal:") for k in keys) and not (set(keys) & seen)
+                        and cur_now < float(it_dict["starts_at"]) <= cur_now + LOOK_AHEAD_DAYS * 86400):
+                    self.store.delete_item(it_dict["key"])
 
         # 1b. Things said in chat (kept "later" by upcoming.py) are planned once they enter the look-ahead window
         for it_dict in self.store.list_items(state="later"):
@@ -296,7 +480,10 @@ class FollowRunner:
             if float(it_dict["starts_at"]) - cur_now > LOOK_AHEAD_DAYS * 86400:
                 continue
             item = item_from_dict(it_dict)
-            if self._is_suppressed(item):
+            stop = await self._is_suppressed(item)
+            if stop is None:
+                continue
+            if stop:
                 self.store.update_item_state(item.key, "stopped")
                 continue
             await self._plan_new(item, cur_now)
@@ -374,12 +561,26 @@ class FollowRunner:
     async def _run_one_check(self, ch: dict[str, Any], now: float) -> int | None:
         async with self._sem:
             cid = ch["id"]
-            source = self._find_source(ch["kind"], ch["refs"])
             jitter = random.uniform(0.8, 1.2) if self.jitter else 1.0
             every_sec = max(MIN_EVERY * 60, ch["every_minutes"] * 60)
             next_at = now + every_sec * jitter
 
-            if source is None:
+            # The first source of the kind that answers is used; a source that fails hands over to the next one that covers the check
+            source: Source | None = None
+            reading: Reading | None = None
+            failed: Reading | None = None
+            for candidate in self._candidates(ch["kind"], ch["refs"]):
+                tried = await candidate.read(ch["refs"])
+                if tried.ok:
+                    source, reading = candidate, tried
+                    break
+                failed = tried
+
+            if reading is None and failed is None:
+                paused = self._paused_reason(ch["kind"], ch["refs"])
+                if paused:   # a monthly allowance is used up and no other source covers this: wait, nothing is an error
+                    self.store.update_check(cid, next_at=next_at, consecutive_errors=0, last_error=paused, last_at=now)
+                    return cid
                 err_count = ch["consecutive_errors"] + 1
                 detail = f"no source available for {ch['kind']}"
                 self.store.save_reading(cid, now, False, {}, detail=detail)
@@ -392,55 +593,63 @@ class FollowRunner:
                     self.store.update_check(cid, next_at=next_at, consecutive_errors=err_count, last_error=detail, last_at=now)
                 return cid
 
-            reading = await source.read(ch["refs"])
-            if not reading.ok:
+            if reading is None or source is None:
+                failure = failed or Reading(ok=False)
                 err_count = ch["consecutive_errors"] + 1
-                self.store.save_reading(cid, now, False, reading.fields, detail=reading.detail)
+                self.store.save_reading(cid, now, False, failure.fields, detail=failure.detail)
                 if err_count >= MAX_ERRORS:
-                    self.store.update_check(cid, state="error", consecutive_errors=err_count, last_error=reading.detail, last_at=now)
+                    self.store.update_check(cid, state="error", consecutive_errors=err_count, last_error=failure.detail, last_at=now)
                     item = self.store.get_item(ch["item_key"])
                     title = item["title"] if item else ch["kind"]
-                    self.notify("follow_problem", title, t("Stopped checking after repeated errors: {detail}", detail=reading.detail))
+                    self.notify("follow_problem", title, t("Stopped checking after repeated errors: {detail}", detail=failure.detail))
                 else:
-                    self.store.update_check(cid, next_at=next_at, consecutive_errors=err_count, last_error=reading.detail, last_at=now)
+                    self.store.update_check(cid, next_at=next_at, consecutive_errors=err_count, last_error=failure.detail, last_at=now)
                 return cid
 
             # Successful reading
             last_good = self.store.last_reading(cid, ok_only=True)
-            self.store.save_reading(cid, now, True, reading.fields, detail=reading.detail)
-            self.store.update_check(cid, next_at=next_at, consecutive_errors=0, last_error="", last_at=now)
-
+            watch_fields = ch["fields"] or list(reading.fields.keys())
+            stored = dict(reading.fields)
+            changes: list[str] = []
             if last_good is not None:
-                # Compare fields
-                watch_fields = ch["fields"] or list(reading.fields.keys())
-                changes: list[str] = []
                 for f in watch_fields:
                     old_v = last_good["fields"].get(f)
                     new_v = reading.fields.get(f)
-                    if old_v is not None and new_v is not None and str(old_v).strip() != str(new_v).strip():
-                        changes.append(format_change_line(f, str(old_v).strip(), str(new_v).strip()))
+                    if old_v is None or new_v is None or str(old_v).strip() == str(new_v).strip():
+                        continue
+                    if not source.significant(f, old_v, new_v):
+                        stored[f] = old_v   # a small move (a forecast) is neither told nor kept: drift adds up against the told value
+                        continue
+                    changes.append(format_change_line(f, str(old_v).strip(), str(new_v).strip()))
+            self.store.save_reading(cid, now, True, stored, detail=reading.detail)
+            self.store.update_check(cid, next_at=next_at, consecutive_errors=0, last_error="", last_at=now)
 
-                if changes:
-                    change_detail = "\n".join(changes)
-                    item = self.store.get_item(ch["item_key"])
-                    title = item["title"] if item else ch["kind"]
-                    starts_at = item["starts_at"] if item else now
+            if reading.done:
+                # the source says the item is over (a parcel delivered): it is done and its checks end
+                self.store.update_item_state(ch["item_key"], "done")
+                for other in self.store.list_checks(item_key=ch["item_key"], state="active"):
+                    self.store.update_check(other["id"], state="done")
 
-                    # Quiet hours check
-                    tell_now = (now >= starts_at - NOW_WINDOW) or self.is_awake(now)
-                    if tell_now:
-                        self.notify("follow_change", title, change_detail)
-                    else:
-                        self._pending_notices.append({
-                            "type": "follow_change",
-                            "title": title,
-                            "detail": change_detail,
-                            "starts_at": starts_at,
-                        })
+            if changes:
+                change_detail = "\n".join(changes)
+                item = self.store.get_item(ch["item_key"])
+                title = item["title"] if item else ch["kind"]
+                starts_at = item["starts_at"] if item else now
 
-                    # If status is cancelled, update item
-                    status_val = str(reading.fields.get("status") or "").lower()
-                    if status_val in ("cancelled", "canceled", "결항", "취소"):
-                        self.store.update_item_state(ch["item_key"], "cancelled")
+                # Quiet hours check
+                tell_now = (now >= starts_at - NOW_WINDOW) or self.is_awake(now)
+                if tell_now:
+                    self.notify("follow_change", title, change_detail)
+                else:
+                    self._pending_notices.append({
+                        "type": "follow_change",
+                        "title": title,
+                        "detail": change_detail,
+                        "starts_at": starts_at,
+                    })
+
+                # If status is cancelled, update item
+                if reading.fields.get("cancelled") is True:   # the source says so in structure (a boolean it set from its API's own field)
+                    self.store.update_item_state(ch["item_key"], "cancelled")
 
             return cid

@@ -128,7 +128,7 @@ OWNER_GONE_NOTE = ("There are no owner devices any more: every device signed in 
 def _instance(m: Instances, args: Any, ask: Callable[[str], str] | None, ui: Any = None) -> None:
     c = args.icmd
     if c == "create":
-        draft = Instance(args.name, m.env_path(args.name), 0, 0, not args.no_browser, "")
+        draft = Instance(args.name, m.env_path(args.name), 0, not args.no_browser, "")
         profile = getattr(args, "profile", None)
         wanted = _wanted(args, limits.wanted_for(profile, draft) if profile else None)
         if not wanted and ask is not None:                     # nothing said on the command line: ask, with the recommended size pre-selected

@@ -21,13 +21,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -49,19 +52,19 @@ import chat.kelo.app.ui.theme.Motion
  * it says how it ended.
  */
 @Composable
-fun ApprovalCard(a: ChatItem.Approval, onAnswer: (String, Boolean, Boolean) -> Unit, onKeepForSchedule: (String) -> Unit = {}) {
+fun ApprovalCard(a: ChatItem.Approval, onAnswer: (String, Boolean, Boolean, Boolean) -> Unit, onKeepForSchedule: (String) -> Unit = {}) {
     val c = Kelo.colors
     CardBox {
         val payment = a.payment
         if (a.urgent && a.open) chat.kelo.app.agent.UrgentLine(a.missed)
         if (payment != null) {
-            PurchaseApproval(a, payment, onAnswer = { ok -> onAnswer(a.id, ok, false) })
+            PurchaseApproval(a, payment, onAnswer = { ok -> onAnswer(a.id, ok, false, false) })
             return@CardBox
         }
         val grant = a.grant
         if (grant != null) {
             // the setup card of a "when X happens, do Y" task: its own layout (trigger, action, limits, the card's auto-pay limit)
-            chat.kelo.app.agent.TaskGrantApproval(grant, a.open, outcome = { Outcomes.of(a)?.let { OutcomeChip(it) } }) { ok -> onAnswer(a.id, ok, false) }
+            chat.kelo.app.agent.TaskGrantApproval(grant, a.open, outcome = { Outcomes.of(a)?.let { OutcomeChip(it) } }) { ok -> onAnswer(a.id, ok, false, false) }
             return@CardBox
         }
         var rememberSite by remember(a.id) { mutableStateOf(false) }
@@ -70,15 +73,23 @@ fun ApprovalCard(a: ChatItem.Approval, onAnswer: (String, Boolean, Boolean) -> U
             Outcomes.of(a)?.let { OutcomeChip(it) }
         }
         // what it will do, in words: the readable pairs, else the server's sentence; the raw arguments are never shown
-        ApprovalFacts(a.lines, a.detail)
+        val editable = a.editable
+        a.preapproval?.let { chat.kelo.app.agent.PreapprovalFacts(it) }
+            ?: ApprovalFacts(if (editable != null) chat.kelo.app.agent.ApprovalEditRules.withoutMessage(a.lines, editable) else a.lines, a.detail.takeIf { editable == null })
+        if (editable != null) chat.kelo.app.agent.EditableMessageBlock(a.id, editable, enabled = a.open)
         if (a.items.isNotEmpty()) ApprovalItems(a.items)
+        if (a.forgetPlan.isNotEmpty()) chat.kelo.app.agent.ForgetPlanList(a.forgetPlan)
         if (a.open) {
             if (a.canRemember && a.site.isNotBlank()) {
                 chat.kelo.app.agent.RememberSiteCheck(a.site, rememberSite, enabled = true) { rememberSite = it }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SecondaryButton(string(Res.string.chat_approval_deny), onClick = { onAnswer(a.id, false, false) }, modifier = Modifier.weight(1f))
-                PrimaryButton(string(Res.string.chat_approval_allow), onClick = { onAnswer(a.id, true, rememberSite) }, modifier = Modifier.weight(1f))
+            if (chat.kelo.app.agent.RecipientRules.canAlways(a.offers)) {
+                chat.kelo.app.agent.RecipientChoices(a.offers, enabled = true) { answer ->
+                    onAnswer(a.id, answer.approve, false, answer == chat.kelo.app.agent.RecipientRules.Answer.ALWAYS)
+                }
+            } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SecondaryButton(string(Res.string.chat_approval_deny), onClick = { onAnswer(a.id, false, false, false) }, modifier = Modifier.weight(1f))
+                PrimaryButton(string(Res.string.chat_approval_allow), onClick = { onAnswer(a.id, true, rememberSite, false) }, modifier = Modifier.weight(1f))
             }
             if (a.canRememberSchedule) LinkButton(string(Res.string.approval_keep_for_schedule), onClick = { onKeepForSchedule(a.id) })
         }
@@ -116,11 +127,15 @@ fun ApprovalFacts(lines: List<ApprovalLine>, detail: String?) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             lines.forEach { l ->
-                if (l.full) {
-                    // the whole thing, as it will be sent (e.g. a text message): the label above, every word below
+                if (l.block) {
+                    // the whole thing, as it will be sent (e.g. a text message, a schedule's task): the label above, every word below;
+                    // past BLOCK_LINES lines it scrolls inside the card instead of growing or clipping
+                    val style = MaterialTheme.typography.bodyMedium
+                    val lineH = with(LocalDensity.current) { (if (style.lineHeight.isSpecified) style.lineHeight else 20.sp).toDp() }
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         if (l.label.isNotEmpty()) Text(l.label, style = MaterialTheme.typography.bodySmall, color = c.muted)
-                        Text(l.value, style = MaterialTheme.typography.bodyMedium, color = c.ink)
+                        Text(l.value, style = style, color = c.ink,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = lineH * ApprovalLine.BLOCK_LINES).verticalScroll(rememberScrollState()))
                     }
                 } else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (l.label.isNotEmpty()) Text(l.label, style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.widthIn(min = 56.dp, max = 110.dp))

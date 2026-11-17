@@ -237,6 +237,7 @@ enum WorkText {
         switch kind {
         case "browser": return L(R.string.work_kind_browser)
         case "research": return L(R.string.work_kind_research)
+        case "phone": return L(R.string.work_kind_phone)
         default: return L(R.string.work_kind_general)
         }
     }

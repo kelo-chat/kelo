@@ -2,7 +2,10 @@
 
 Frames: Chrome DevTools `Page.startScreencast` (JPEG) on the tab, one screencast per tab however many phones watch it. Every frame is
 acknowledged (`Page.screencastFrameAck`); acknowledgements are spaced 1/fps apart, which is what paces Chrome (it sends the next frame
-only after an acknowledgement), so a busy page never costs more than the asked frame rate. `everyNthFrame` stays 1 by default:
+only after an acknowledgement), so a busy page never costs more than the asked frame rate. While a device holds the tab (takes control)
+the rate is HELD_FPS (30) instead, so the owner's own screen moves smoothly; a tab that only people watch keeps its asked fps (at most
+MAX_FPS). After the owner's last input a sharper picture (SETTLE_QUALITY) is taken SETTLE_AFTER seconds later, once the page is still.
+`everyNthFrame` stays 1 by default:
 Chrome counts *painted* frames, not screen refreshes, so a larger value makes a slowly changing page look frozen. A page that paints
 nothing after the start (a still page) gets one picture taken with `Page.captureScreenshot` so a new viewer never stares at nothing.
 
@@ -37,7 +40,8 @@ log = logging.getLogger("uvicorn.error")
 DEFAULT_MAX_WIDTH, DEFAULT_QUALITY, DEFAULT_FPS = 720, 55, 10
 MIN_WIDTH, MAX_WIDTH = 360, 1080
 MIN_QUALITY, MAX_QUALITY = 40, 80
-MAX_FPS = 15
+MAX_FPS = 15               # the most a viewer who only watches may ask for
+HELD_FPS = 30              # the frame rate while a device holds the tab (LiveHub.rate): the owner's own screen
 VIEWER_TIMEOUT = 60.0      # a viewer silent this long is dropped (and the screencast stops when it was the last one)
 CONTROL_GRACE = 30.0       # a controlling device with no live connection and no request for this long hands the tab back
 TICKET_SECONDS = 30
@@ -52,6 +56,14 @@ WATCH_EVERY = 1.0
 SECURE_EVERY = 1.0         # a browser tab is looked at for a password or card field at most this often (Cast.secure is kept between)
 BUSY_NOTE = "the page is not responding"
 POINTER_EVERY = 0.05       # the agent's pointer goes out at most 20 times a second (PointerThrottle); a press or release always at once
+LIVE_V = 2                 # the live protocol version in every frame header (see docs/versioning.md): 2 = `view`, `frame_seq`, `editing`
+RECENT_FRAMES = 8          # frames whose size and metadata are kept, so an input is mapped with the frame the owner was looking at
+FLOOR_DESKTOP, FLOOR_MOBILE = 500, 320   # narrowest page (CSS px) the owner's screen may ask of a tab in each view: narrower is scaled up
+MAX_VIEW_W, MAX_VIEW_H = 1920, 4000      # widest and tallest page (CSS px) the owner's screen may ask of a tab
+EDITING_EVERY = 0.5        # a controlled tab is looked at for a focused text field at most this often (Cast.editing is kept between)
+SETTLE_AFTER = 0.25        # seconds without input after which the controlled tab gets a sharp picture (see LiveHub._settle)
+SETTLE_QUALITY = 85        # JPEG quality of that sharp picture (the live view itself uses the viewer's quality, 40..80)
+PRESS_AFTER_MOVE = 0.025   # a tap moves the pointer, waits this long, then presses: pages that react to the hover first see the press
 OWNER_TOUCH_ID = 2         # the agent's touches use id 1 (BrowserSession._tap): the user's can never be mistaken for a half-finished one
 
 # key -> (windowsVirtualKeyCode, text it types)
@@ -82,11 +94,13 @@ class Frame:
     title: str
     meta: dict[str, Any]
     secure: bool | None = None   # a secret field (password, card, one-time code) shows: None = not said (old frame)
+    editing: bool = False        # a text field has focus on the page (the app may raise the keyboard)
 
     def header(self) -> dict[str, Any]:
         m = self.meta
         out = {"type": "frame", "seq": self.seq, "w": self.w, "h": self.h, "ts": round(self.ts, 3), "url": self.url, "title": self.title,
-               "bytes": len(self.jpeg), "css_w": m.get("deviceWidth"), "css_h": m.get("deviceHeight")}
+               "bytes": len(self.jpeg), "css_w": m.get("deviceWidth"), "css_h": m.get("deviceHeight"), "live_v": LIVE_V,
+               "editing": self.editing}
         if self.secure is not None:
             out["secure"] = self.secure   # new and optional (see LIVE VIEW API in server.py)
         return out
@@ -114,30 +128,33 @@ def settings_from(max_width: Any = None, quality: Any = None, fps: Any = None, e
 
 
 def map_point(x: float, y: float, frame_w: int, frame_h: int, meta: dict[str, Any]) -> tuple[float, float]:
-    """A point of the frame picture (pixels of the JPEG, top-left 0,0) -> CSS pixels of the viewport, which is what
-    Input.dispatchMouseEvent takes. The picture shows the whole device screen (deviceWidth x deviceHeight CSS px, scaled down to the
-    JPEG's size); the page area starts `offsetTop` CSS px below its top. pageScaleFactor and scrollOffset do not enter: input
-    coordinates are relative to the visible viewport, whatever its zoom and scroll (see `page_point` for document coordinates).
-    The result is kept inside the viewport."""
+    """A point of the frame picture (pixels of the JPEG, top-left 0,0) -> the CSS pixels of the page's viewport, which is what
+    Input.dispatchMouseEvent / dispatchTouchEvent take. The picture shows the whole device screen (deviceWidth x deviceHeight screen
+    units, scaled down to the JPEG's size); the page area starts `offsetTop` screen units below its top. A page that is zoomed out
+    (a phone page with no viewport meta, or content wider than the screen: pageScaleFactor 0.42) shows `1 / pageScaleFactor` CSS
+    pixels per screen unit, and Chrome reads the input point in those CSS pixels (2026-11-16: taps landed 2.4 times too far in on such
+    pages). Scrolling does not enter: input is relative to the viewport. The result is kept inside the viewport."""
     dw, dh = float(meta.get("deviceWidth") or frame_w), float(meta.get("deviceHeight") or frame_h)
     top = float(meta.get("offsetTop") or 0.0)
-    sx, sy = dw / max(1, frame_w), dh / max(1, frame_h)
-    cx = min(max(x * sx, 0.0), dw - 1)
-    cy = min(max(y * sy - top, 0.0), max(0.0, dh - top - 1))
+    scale = float(meta.get("pageScaleFactor") or 1.0) or 1.0
+    sx, sy = dw / max(1, frame_w) / scale, dh / max(1, frame_h) / scale
+    cx = min(max(x * sx, 0.0), dw / scale - 1)
+    cy = min(max(y * sy - top / scale, 0.0), max(0.0, (dh - top) / scale - 1))
     return round(cx, 1), round(cy, 1)
 
 
 def page_point(cx: float, cy: float, meta: dict[str, Any]) -> tuple[float, float]:
-    """CSS viewport point -> document coordinates: scrollOffset + point / pageScaleFactor (for reports; input does not need it)."""
-    scale = float(meta.get("pageScaleFactor") or 1.0) or 1.0
-    return (round(float(meta.get("scrollOffsetX") or 0) + cx / scale, 1), round(float(meta.get("scrollOffsetY") or 0) + cy / scale, 1))
+    """CSS viewport point -> document coordinates: scrollOffset + point (for reports; input does not need it)."""
+    return (round(float(meta.get("scrollOffsetX") or 0) + cx, 1), round(float(meta.get("scrollOffsetY") or 0) + cy, 1))
 
 
 def map_delta(dx: float, dy: float, frame_w: int, frame_h: int, meta: dict[str, Any]) -> tuple[float, float]:
     """A scroll distance in frame pixels -> CSS pixels (wheel deltas)."""
     dw, dh = float(meta.get("deviceWidth") or frame_w), float(meta.get("deviceHeight") or frame_h)
+    scale = float(meta.get("pageScaleFactor") or 1.0) or 1.0
     lim = 20_000.0
-    return (round(max(-lim, min(lim, dx * dw / max(1, frame_w))), 1), round(max(-lim, min(lim, dy * dh / max(1, frame_h))), 1))
+    return (round(max(-lim, min(lim, dx * dw / max(1, frame_w) / scale)), 1),
+            round(max(-lim, min(lim, dy * dh / max(1, frame_h) / scale)), 1))
 
 
 def jpeg_size(data: bytes) -> tuple[int, int]:
@@ -147,6 +164,28 @@ def jpeg_size(data: bytes) -> tuple[int, int]:
         return Image.open(io.BytesIO(data)).size
     except Exception:  # noqa: BLE001 - a frame we cannot read the size of: unknown
         return 0, 0
+
+
+def viewer_css_size(width: Any, height: Any, density: Any, view: str = "desktop") -> tuple[int, int, float] | None:
+    """What the owner's screen asks of a tab: (CSS width, CSS height, device pixel ratio) for a live area of `width` x `height` physical
+    pixels at `density` (the screen's pixels per CSS pixel), or None when the numbers are not usable. The page is laid out as wide as
+    the screen is in CSS pixels (physical / density), so one picture pixel is about one dp and a finger covers a finger-sized target.
+    A screen narrower than the floor of the view (800 CSS px desktop, 320 mobile) is scaled up to it, keeping its shape; one wider or taller
+    than MAX_VIEW_W x MAX_VIEW_H is scaled down. The ratio keeps the picture as sharp as the screen is."""
+    def num(v: Any) -> float | None:
+        return float(v) if not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v) and v > 0 else None
+
+    w, h, d = num(width), num(height), num(density if density is not None else 1.0)
+    if w is None or h is None or d is None:
+        return None
+    d = min(8.0, d)
+    cw, ch = w / d, h / d
+    floor = FLOOR_MOBILE if view == "mobile" else FLOOR_DESKTOP
+    if cw < floor:
+        ch, cw = ch * floor / cw, float(floor)
+    over = max(cw / MAX_VIEW_W, ch / MAX_VIEW_H, 1.0)
+    cw, ch = cw / over, ch / over
+    return max(1, round(cw)), max(1, round(ch)), round(w / cw, 3)
 
 
 class PointerThrottle:
@@ -235,6 +274,11 @@ class Cast:
     secure: bool = True           # a secret field shows in the viewport (true until the first answer)
     secure_at: float | None = None   # clock() of the last look (None = never looked)
     secure_busy: bool = False     # a look is in flight
+    recent: dict[int, tuple[int, int, dict[str, Any]]] = field(default_factory=dict)   # frame seq -> (w, h, meta) of the newest RECENT_FRAMES
+    editing: bool = False         # a text field has focus (looked at only while a device controls the tab)
+    editing_at: float | None = None
+    editing_busy: bool = False
+    settle_task: asyncio.Task[Any] | None = None   # the sharp picture due SETTLE_AFTER the owner's last input (one at a time)
 
 
 # A page's secret fields: a password, a card number or a one-time code in the viewport or focused. One small script, by value.
@@ -258,6 +302,20 @@ SECURE_JS = """(() => {
 })()"""
 
 
+# A focused text field: an input that takes text (not a button, box or slider), a textarea or an editable region.
+EDITING_JS = """(() => {
+  let el = document.activeElement;
+  while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  if (el.tagName === 'TEXTAREA') return !el.readOnly && !el.disabled;
+  if (el.tagName !== 'INPUT') return false;
+  const t = (el.type || 'text').toLowerCase();
+  if (['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'range', 'color', 'hidden'].includes(t)) return false;
+  return !el.readOnly && !el.disabled;
+})()"""
+
+
 class LiveHub:
     """Screencasts and control of the browser's tabs, for the phone's live view."""
 
@@ -272,9 +330,13 @@ class LiveHub:
         self._cdps: dict[str, tuple[Any, Any]] = {}          # tab -> (page, CDP session)
         self._conns: dict[tuple[str, str], int] = {}          # (tab, device) -> live connections open
         self._seen: dict[tuple[str, str], float] = {}         # (tab, device) -> last request
+        self._screens: dict[tuple[str, str], tuple[Any, Any, Any]] = {}   # (tab, device) -> (width, height, density) the device last said (`view`)
+        self._fit_tasks: set[asyncio.Task[Any]] = set()
+        self._fitted: dict[str, tuple[Any, bool]] = {}        # tab -> (the DevTools session holding the size override, phone view?)
         self._reaper: asyncio.Task[None] | None = None
         self._use_reaper = reaper
         self.listeners: list[Callable[[str], Any]] = []       # tab -> something about it changed (control, end)
+        self.vnc: Any = None                                  # the VncScreen (tools/vnc.py) when the browser has an X screen to stream
         session.control_listeners.append(lambda key, _dev: self._changed(key))
         self.pointers: dict[str, dict[str, Any]] = {}         # tab -> {"x","y","down"}: where the agent's pointer is (humanize.pointer_listeners)
         self.pointer_listeners: list[Callable[[str, float, float, bool], Any]] = []   # (tab, x, y, down) for each live-view socket
@@ -364,7 +426,14 @@ class LiveHub:
         recent = time.monotonic() - cast.busy_at < 10.0 if cast.busy_at else False
         return {"page_busy": bool(cast.stale or recent), "stale": cast.stale}
 
+    @staticmethod
+    def _cancel_settle(cast: Cast) -> None:
+        if cast.settle_task is not None:
+            cast.settle_task.cancel()
+            cast.settle_task = None
+
     async def _stop(self, cast: Cast) -> None:
+        self._cancel_settle(cast)
         if cast.running:
             cast.running = False
             try:
@@ -386,6 +455,11 @@ class LiveHub:
         await asyncio.sleep(SEED_AFTER)
         if not cast.running or cast.started_at != started or cast.frames_since_start:
             return
+        await self._still(cast, cast.settings["quality"], guard_frames=True)
+
+    async def _still(self, cast: Cast, quality: int, *, guard_frames: bool = False) -> None:
+        """One picture of the tab's visible area, published as a frame (`seed`). With `guard_frames` it is dropped when a screencast frame
+        came meanwhile (a seed never overwrites a newer frame); otherwise it is the newest picture by definition (see _settle)."""
         try:
             m = await cast.cdp.send("Page.getLayoutMetrics", {})
             vv = m.get("cssVisualViewport") or m.get("visualViewport") or {}
@@ -394,15 +468,31 @@ class LiveHub:
                 return
             scale = min(1.0, cast.settings["max_width"] / cw)
             shot = await cast.cdp.send("Page.captureScreenshot", {
-                "format": "jpeg", "quality": cast.settings["quality"],
+                "format": "jpeg", "quality": quality,
                 "clip": {"x": float(vv.get("pageX") or 0), "y": float(vv.get("pageY") or 0), "width": cw, "height": ch, "scale": scale}})
         except Exception:  # noqa: BLE001 - no picture this time; the next painted frame will do
             return
-        if cast.frames_since_start or not cast.running:
+        if (guard_frames and cast.frames_since_start) or not cast.running:
             return
-        meta = {"offsetTop": 0, "pageScaleFactor": float(vv.get("scale") or 1), "deviceWidth": cw, "deviceHeight": ch,
+        scale = float(vv.get("scale") or 1) or 1.0   # page sizes are in CSS pixels; the frame size is in screen units
+        meta = {"offsetTop": 0, "pageScaleFactor": scale, "deviceWidth": round(cw * scale, 2), "deviceHeight": round(ch * scale, 2),
                 "scrollOffsetX": float(vv.get("pageX") or 0), "scrollOffsetY": float(vv.get("pageY") or 0), "seed": True}
         await self._publish(cast, base64.b64decode(shot.get("data") or b""), meta)
+
+    async def _settle(self, cast: Cast) -> None:
+        """The owner stopped for SETTLE_AFTER: the page is still, so its picture is taken again, sharper than the moving frames."""
+        await asyncio.sleep(SETTLE_AFTER)
+        await self._still(cast, SETTLE_QUALITY)
+
+    def _settle_later(self, cast: Cast | None) -> None:
+        """After an input: restart the wait for a sharp picture (one pending at a time, so three quick inputs make one picture)."""
+        if cast is None or not cast.running or cast.ended:
+            return
+        self._cancel_settle(cast)
+        t = asyncio.ensure_future(self._settle(cast))
+        cast.settle_task = t
+        cast.tasks.add(t)
+        t.add_done_callback(cast.tasks.discard)
 
     async def _on_frame(self, cast: Cast, params: dict[str, Any]) -> None:
         cast.frames_since_start += 1
@@ -414,7 +504,7 @@ class LiveHub:
         # acknowledgements spaced 1/fps apart: Chrome waits for them before the next frame, so this keeps it at the asked rate
         now = time.monotonic()
         due = max(now, cast.next_ack)
-        cast.next_ack = due + 1.0 / max(1, cast.settings["fps"])
+        cast.next_ack = due + 1.0 / max(1, self.rate(cast.key))
         if due > now:
             await asyncio.sleep(due - now)
         if cast.running and not cast.ended:
@@ -446,9 +536,13 @@ class LiveHub:
             cast.stale, cast.busy_at = False, 0.0
             self._changed(cast.key)
         self._look_for_secure(cast)
+        self._look_for_editing(cast)
         async with cast.cond:
             cast.seq += 1
-            cast.frame = Frame(cast.seq, data, w, h, time.time(), url, cast.title, meta, secure=cast.secure)
+            cast.frame = Frame(cast.seq, data, w, h, time.time(), url, cast.title, meta, secure=cast.secure, editing=cast.editing)
+            cast.recent[cast.seq] = (w, h, meta)
+            for old in [q for q in cast.recent if q <= cast.seq - RECENT_FRAMES]:
+                cast.recent.pop(old, None)
             cast.cond.notify_all()
 
     def _look_for_secure(self, cast: Cast) -> None:
@@ -473,12 +567,63 @@ class LiveHub:
         finally:
             cast.secure_busy = False
 
+    def _look_for_editing(self, cast: Cast) -> None:
+        """While a device controls the tab: is a text field focused? (the app raises its keyboard on it). At most one look per EDITING_EVERY."""
+        if self.session.controlled_by(cast.key) is None:
+            cast.editing = False
+            return
+        now = self.clock()
+        if cast.editing_busy or (cast.editing_at is not None and now - cast.editing_at < EDITING_EVERY):
+            return
+        cast.editing_busy, cast.editing_at = True, now
+        t = asyncio.ensure_future(self._refresh_editing(cast))
+        cast.tasks.add(t)
+        t.add_done_callback(cast.tasks.discard)
+
+    @staticmethod
+    async def _refresh_editing(cast: Cast) -> None:
+        try:
+            r = await asyncio.wait_for(cast.cdp.send("Runtime.evaluate", {"expression": EDITING_JS, "returnByValue": True}), PROBE_SECONDS)
+            value = (r.get("result") or {}).get("value")
+            if not r.get("exceptionDetails") and isinstance(value, bool):
+                cast.editing = value
+        except Exception:  # noqa: BLE001 - no answer: the last answer stands
+            pass
+        finally:
+            cast.editing_busy = False
+
     @staticmethod
     async def _refresh_title(cast: Cast) -> None:
         try:
             cast.title = str(await asyncio.wait_for(cast.page.title(), 2.0))[:200]
         except Exception:  # noqa: BLE001 - the old title will do
             pass
+
+    async def _editing_now(self, cast: Cast) -> bool:
+        """Is a text field focused, as of now? For a viewer whose frames are off: the frame path that normally keeps `cast.editing` fresh
+        is not what it reads. Looks at most once per EDITING_EVERY (the answer kept between), and only while a device controls the tab."""
+        if self.session.controlled_by(cast.key) is None:
+            cast.editing = False
+            return False
+        now = self.clock()
+        if not cast.editing_busy and (cast.editing_at is None or now - cast.editing_at >= EDITING_EVERY):
+            cast.editing_busy, cast.editing_at = True, now
+            await self._refresh_editing(cast)
+        return cast.editing
+
+    async def meta(self, key: str) -> dict[str, Any] | None:
+        """The tab's address, title and whether a text field has focus, as they are now (None: no live view of it). What a viewer whose
+        frames are off shows in its header and keys on: the frame headers carry them otherwise, and they are not sent then. Nothing of
+        the field's value, and a secret field counts like any other (the app's own type line hides what is typed)."""
+        cast = self.casts.get(key)
+        if cast is None or cast.ended:
+            return None
+        try:
+            url = str(cast.page.url or "")
+        except Exception:  # noqa: BLE001
+            url = ""
+        await self._refresh_title(cast)
+        return {"url": url, "title": cast.title, "editing": await self._editing_now(cast)}
 
     # ------------------------------------------------------------------ the LiveSource surface (live_source.py)
     def ticket(self, key: str, device: str) -> str:
@@ -498,6 +643,14 @@ class LiveHub:
 
     def holder(self, key: str) -> str | None:
         return self.session.controlled_by(key)
+
+    def rate(self, key: str) -> int:
+        """Frames a second the tab's acknowledgements allow: HELD_FPS while a device holds the tab, else the asked fps of the live view
+        (DEFAULT_FPS when nobody watches it)."""
+        if self.holder(key) is not None:
+            return HELD_FPS
+        cast = self.casts.get(key)
+        return int(cast.settings["fps"]) if cast is not None else DEFAULT_FPS
 
     @staticmethod
     def agent_turn(key: str, turns: Iterable[Any]) -> Any | None:
@@ -549,6 +702,7 @@ class LiveHub:
     async def _end(self, cast: Cast, *, notify: bool = True) -> None:
         if self.casts.get(cast.key) is cast:
             self.casts.pop(cast.key, None)
+        self._cancel_settle(cast)
         await self._stop(cast)
         cast.ended = True
         for t in list(cast.tasks):
@@ -621,15 +775,87 @@ class LiveHub:
         self.seen(key, device)
         self.session.take_control(key, device)
         self._ensure_reaper()
+        if (key, device) in self._screens:   # the screen size was told before the tab was taken
+            t = asyncio.ensure_future(self._fit_quietly(key, device))
+            self._fit_tasks.add(t)
+            t.add_done_callback(self._fit_tasks.discard)
 
-    async def give_back(self, key: str, device: str) -> None:
+    async def _fit_quietly(self, key: str, device: str) -> None:
+        try:
+            await self.fit(key, device)
+        except Exception:  # noqa: BLE001 - the tab keeps its own size; the next `view` tries again
+            pass
+
+    async def give_back(self, key: str, device: str, *, reason: str = "owner") -> None:
         holder = self.session.controlled_by(key)
         if holder is None:
             return
         if holder != device:
             raise LiveError(409, "held", "another device is controlling this tab")
-        await self.session.release_control(key)
+        await self.unfit(key)
+        await self.session.release_control(key, reason=reason)
         await self._drop_cdp(key)
+
+    # ------------------------------------------------------------------ the page takes the shape of the owner's screen
+    async def view(self, key: str, device: str, ev: dict[str, Any]) -> dict[str, Any]:
+        """`{"type": "view", "width", "height", "density"}`: the physical size of the owner's live area and its density, sent when the
+        owner starts controlling, on rotation and when the soft keyboard opens or closes. While `device` controls the tab, the tab's
+        viewport follows (viewer_css_size); a `view` that comes before the control (or from a device that does not hold it) is
+        remembered and applied when it takes the tab. The agent's own size comes back with the hand-back (`unfit`)."""
+        dims = (ev.get("width"), ev.get("height"), ev.get("density"))
+        if viewer_css_size(*dims) is None:
+            raise LiveError(422, "bad_event", "width, height and density must be positive numbers")
+        self.seen(key, device)
+        self._screens[(key, device)] = dims
+        if self.session.raw_page(key) is None:
+            raise LiveError(404, "no_tab", "no such tab")
+        if self.session.controlled_by(key) != device:
+            return {"ok": True, "applied": False}
+        return {"ok": True, "applied": True, **(await self.fit(key, device))}
+
+    async def fit(self, key: str, device: str) -> dict[str, Any]:
+        """Set the tab's viewport to what `device` last asked (nothing asked: nothing done). Only a phone-view tab follows the owner's
+        screen; a desktop-view tab keeps the viewport it has."""
+        dims = self._screens.get((key, device))
+        page = self.session.raw_page(key)
+        got = viewer_css_size(*dims, self.session.view(key)) if dims is not None else None
+        if got is None or page is None:
+            return {}
+        if self.vnc is not None and self.vnc.holds(key):   # the X screen is the size: an override at another pixel ratio would break it
+            cw, ch = self.vnc.size
+            return {"css_w": cw, "css_h": ch}
+        if self.session.view(key) != "mobile":   # a desktop-view tab keeps its desktop viewport: the phone only zooms in on the picture
+            return {}
+        mobile = True
+        cdp = self.session.phone_cdp(key)
+        if cdp is None:   # no phone emulation yet: the tab's own (non-mobile) connection, as before
+            mobile = False
+            cast = self.casts.get(key)
+            cdp = cast.cdp if cast is not None and cast.page is page else await self._cdp_for(key, page)
+        cw, ch, ratio = got
+        await cdp_send(cdp, "Emulation.setDeviceMetricsOverride", {"width": cw, "height": ch, "deviceScaleFactor": ratio, "mobile": mobile,
+                                                                   "screenWidth": cw, "screenHeight": ch}, INPUT_SECONDS)
+        self._fitted[key] = (cdp, mobile)
+        return {"css_w": cw, "css_h": ch}
+
+    async def unfit(self, key: str) -> None:
+        """Give the agent its own viewport back (the phone view's screen, or the browser window's size)."""
+        got = self._fitted.pop(key, None)
+        if got is None:
+            return
+        cdp, mobile = got
+        if mobile:
+            await self.session.keep_view(key)
+            if self.vnc is not None and self.vnc.holds(key):   # the screen still shows this tab: its phone view keeps the screen's size
+                await self.session._quietly(lambda: self.vnc.reapply(key))
+        else:
+            await self.session._quietly(lambda: cdp_send(cdp, "Emulation.clearDeviceMetricsOverride", {}, 3.0))
+
+    async def refit(self, key: str) -> None:
+        """The tab takes the shape of the holder's screen again (the X screen let go of it): `fit` for the device that holds the tab."""
+        holder = self.holder(key)
+        if holder is not None:
+            await self.fit(key, holder)
 
     async def input(self, key: str, device: str, ev: dict[str, Any]) -> dict[str, Any]:
         """One input event from the controlling device. Raises LiveError (404 no tab, 409 not the controller / no frame yet,
@@ -650,13 +876,15 @@ class LiveHub:
         if cast is not None and cast.stale:   # the page's main thread is blocked: an event now would land on another screen later
             return {"ok": False, "busy": True, "type": kind, "note": BUSY_NOTE}
         try:
-            return await self._input(cast, cdp, page, key, kind, ev, out)
+            result = await self._input(cast, cdp, page, key, kind, ev, out)
         except asyncio.TimeoutError:
             if cast is not None:
                 cast.busy_at = time.monotonic()
                 self._changed(key)
             await self.session._quietly(lambda: cdp_send(cdp, "Input.dispatchTouchEvent", {"type": "touchCancel", "touchPoints": []}, 1.0))
             return {"ok": False, "busy": True, "type": kind, "note": BUSY_NOTE}
+        self._settle_later(cast)   # the input went through: the picture is sharpened once the owner stops
+        return result
 
     async def _input(self, cast: Cast | None, cdp: Any, page: Any, key: str, kind: str, ev: dict[str, Any], out: dict[str, Any]) -> dict[str, Any]:
         send = lambda method, params: cdp_send(cdp, method, params, INPUT_SECONDS)  # noqa: E731
@@ -667,13 +895,19 @@ class LiveHub:
                 raise LiveError(422, "bad_event", f"{name} must be a number")
             return float(v)
 
-        def where() -> tuple[float, float, dict[str, Any], int, int]:
+        def seen_frame() -> tuple[int, int, dict[str, Any]]:
+            """(width, height, metadata) of the frame the owner was looking at (`frame_seq`), else of the newest one (`mapped_with`)."""
             frame = cast.frame if cast is not None else None
             if frame is None:
                 raise LiveError(409, "no_frame", "no frame yet: open the live view first")
-            fw = int(num("frame_w", frame.w)) or frame.w
-            fh = int(num("frame_h", frame.h)) or frame.h
-            return num("x"), num("y"), frame.meta, fw, fh
+            seq = ev.get("frame_seq")
+            known = cast.recent.get(seq) if cast is not None and isinstance(seq, int) and not isinstance(seq, bool) else None
+            out["mapped_with"] = "frame" if known is not None else "latest"
+            return known if known is not None else (frame.w, frame.h, frame.meta)
+
+        def where() -> tuple[float, float, dict[str, Any], int, int]:
+            w, h, meta = seen_frame()
+            return num("x"), num("y"), meta, int(num("frame_w", w)) or w, int(num("frame_h", h)) or h
 
         mouse = lambda typ, x, y, **kw: send("Input.dispatchMouseEvent", {"type": typ, "x": x, "y": y, **kw})  # noqa: E731
         if kind in ("tap", "long_press") and self.session.view(key) == "mobile":
@@ -692,6 +926,7 @@ class LiveHub:
             x, y, meta, fw, fh = where()
             cx, cy = map_point(x, y, fw, fh, meta)
             await mouse("mouseMoved", cx, cy)
+            await asyncio.sleep(PRESS_AFTER_MOVE)
             await mouse("mousePressed", cx, cy, button="left", buttons=1, clickCount=1)
             if kind == "long_press":
                 hold = num("ms", LONG_PRESS_MS)
@@ -699,14 +934,11 @@ class LiveHub:
             await mouse("mouseReleased", cx, cy, button="left", buttons=0, clickCount=1)
             out.update(x=cx, y=cy, page=list(page_point(cx, cy, meta)))
         elif kind == "scroll":
-            frame = cast.frame if cast is not None else None
-            if frame is None:
-                raise LiveError(409, "no_frame", "no frame yet: open the live view first")
-            fw = int(num("frame_w", frame.w)) or frame.w
-            fh = int(num("frame_h", frame.h)) or frame.h
+            w, h, meta = seen_frame()
+            fw, fh = int(num("frame_w", w)) or w, int(num("frame_h", h)) or h
             x, y = num("x", fw / 2), num("y", fh / 2)
-            cx, cy = map_point(x, y, fw, fh, frame.meta)
-            dx, dy = map_delta(num("dx", 0), num("dy", 0), fw, fh, frame.meta)
+            cx, cy = map_point(x, y, fw, fh, meta)
+            dx, dy = map_delta(num("dx", 0), num("dy", 0), fw, fh, meta)
             await mouse("mouseWheel", cx, cy, deltaX=dx, deltaY=dy)
             out.update(x=cx, y=cy, dx=dx, dy=dy)
         elif kind == "text":
@@ -795,9 +1027,11 @@ class LiveHub:
         for key, device in self.session.controls().items():
             k = (key, device)
             if self.session.raw_page(key) is None:
+                self._fitted.pop(key, None)
                 await self.session.release_control(key)
             elif not self._conns.get(k) and now - self._seen.get(k, now) > CONTROL_GRACE:
-                await self.session.release_control(key)
+                await self.unfit(key)
+                await self.session.release_control(key, reason="timeout")
                 await self._drop_cdp(key)
         return dropped
 
@@ -810,17 +1044,73 @@ class LiveHub:
             await self._end(cast, notify=False)
 
 
+class FrameGate:
+    """One viewer's switch for pictures (`{"type":"frames","on":false|true}` on the live socket): while it is off the viewer shows the
+    browser's X screen (tools/vnc.py) and is sent no frames. Turning it on again makes the newest frame go out at once."""
+
+    def __init__(self) -> None:
+        self.enabled = True
+        self.resend = False        # on again after off: the pump sends the newest frame whether or not it is new
+        self.version = 0           # counts every change
+        self._woke = asyncio.Event()
+
+    def set(self, on: bool) -> None:
+        if on and not self.enabled:
+            self.resend = True
+        if on != self.enabled:
+            self.enabled = on
+            self.version += 1
+            self._woke.set()
+
+    async def changed(self, seen: int) -> None:
+        """Wait until the gate is not at version `seen` any more."""
+        while self.version == seen:
+            self._woke.clear()
+            await self._woke.wait()
+
+
+async def _frame_or_switch(hub: Any, key: str, after: int, gate: FrameGate | None, seen: int) -> Frame | None:
+    """`hub.wait_frame`, cut short (None) when `gate` is switched meanwhile."""
+    if gate is None:
+        return await hub.wait_frame(key, after, 1.0)
+    waiting = asyncio.ensure_future(hub.wait_frame(key, after, 1.0))
+    switched = asyncio.ensure_future(gate.changed(seen))
+    try:
+        await asyncio.wait({waiting, switched}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        switched.cancel()
+        if not waiting.done():
+            waiting.cancel()
+        await asyncio.gather(waiting, switched, return_exceptions=True)
+    return waiting.result() if waiting.done() and not waiting.cancelled() else None
+
+
 async def pump_frames(hub: Any, key: str, send: Callable[[Frame], Awaitable[None]], *, fps: Callable[[], int],
-                      idle: Callable[[], Awaitable[None]] | None = None, after: int = 0) -> None:
+                      idle: Callable[[], Awaitable[None]] | None = None, after: int = 0, gate: FrameGate | None = None) -> None:
     """Send the newest frame of a tab to one viewer, at most `fps()` a second, until the live view ends (LiveEnded). Only the newest
     frame is ever sent: while `send` is slow, frames that come and go meanwhile are skipped, never queued. `idle` runs about once
-    a second when there is nothing new."""
+    a second when there is nothing new. While `gate` is given and off nothing is sent; when it is on again the newest frame goes
+    out at once, even when it is the one sent before."""
     last_sent = 0.0
     while True:
-        frame = await hub.wait_frame(key, after, 1.0)
+        seen = gate.version if gate is not None else 0
+        if gate is not None and not gate.enabled:
+            await gate.changed(seen)
+            continue
+        if gate is not None and gate.resend:
+            gate.resend = False
+            frame = hub.latest(key)
+            if frame is not None:
+                await send(frame)
+                last_sent = time.monotonic()
+                after = frame.seq
+            continue
+        frame = await _frame_or_switch(hub, key, after, gate, seen)
         if frame is None:
-            if idle is not None:
+            if idle is not None and (gate is None or gate.version == seen):
                 await idle()
+            continue
+        if gate is not None and not gate.enabled:   # switched off while this frame was awaited: it is not sent
             continue
         gap = 1.0 / max(1, fps()) - (time.monotonic() - last_sent)
         if gap > 0:
@@ -829,3 +1119,28 @@ async def pump_frames(hub: Any, key: str, send: Callable[[Frame], Awaitable[None
         await send(frame)
         last_sent = time.monotonic()
         after = frame.seq
+
+
+META_EVERY = 0.5   # seconds between two looks at the tab's address, title and focused field while a viewer's frames are off
+
+
+async def pump_meta(hub: Any, key: str, send: Callable[[dict[str, Any]], Awaitable[None]], gate: FrameGate, *, every: float = META_EVERY) -> None:
+    """While `gate` (the viewer's frame switch) is off, tell it the tab's address and title, and whether a text field has focus
+    ({"type":"meta","url","title","editing"}), whenever any of them changes: the picture headers that normally carry them are not sent
+    then, so its header would show the page it had when the X screen began and its keyboard would never come up. The first look after
+    the switch goes off is sent at once. Nothing is sent while the gate is on (the frames carry it)."""
+    last: dict[str, Any] | None = None
+    while True:
+        seen = gate.version
+        if gate.enabled:
+            last = None
+            await gate.changed(seen)
+            continue
+        meta = await hub.meta(key)
+        if meta is not None and meta != last:
+            last = meta
+            await send({"type": "meta", **meta})
+        try:
+            await asyncio.wait_for(gate.changed(seen), every)
+        except asyncio.TimeoutError:
+            pass

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Colar do celular</string>
+    <string name="live_pasted">Colado. Confira o campo.</string>
+    <string name="live_copy_from_browser">Copiar do navegador</string>
+    <string name="live_copied_to_phone">Copiado para o celular</string>
+</resources>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">잊은 주제</string>
+    <string name="forget_intro">Kelo에게 잊어 달라고 한 주제예요. Kelo가 찾은 내용을 지웠고, 다시 적어 두지 않아요.</string>
+    <string name="forget_empty">아직 잊은 주제가 없어요. Kelo에게 어떤 주제를 잊어 달라고 하면 여기에 나와요.</string>
+    <string name="forget_date">%1$s에 잊음</string>
+    <string name="forget_removed">지운 것: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">지울 내용을 찾지 못했어요.</string>
+    <string name="forget_cat_memory">기억</string>
+    <string name="forget_cat_notes">메모</string>
+    <string name="forget_cat_reminders">알림</string>
+    <string name="forget_cat_skills">스킬</string>
+    <string name="forget_cat_history">기록</string>
+    <string name="forget_cat_other">기타</string>
+    <string name="forget_allow_again">다시 허용</string>
+    <string name="forget_allow_confirm">Kelo가 “%1$s”에 대해 다시 적어도 될까요? 지운 내용은 돌아오지 않아요.</string>
+    <string name="forget_allowed">Kelo가 다시 적을 수 있어요.</string>
+    <string name="paycover_title">미리 승인한 결제</string>
+    <string name="paycover_switch">미리 승인한 결제 허용</string>
+    <string name="paycover_switch_note">끄면 모든 결제를 먼저 물어봐요.</string>
+    <string name="paycover_empty">미리 승인한 것이 없어요. 주문이나 예약 결제를 미리 승인하면 여기에 나와요.</string>
+    <string name="paycover_off_note">꺼져 있어요. 아래 목록은 그대로 두지만 모든 결제를 먼저 물어봐요.</string>
+    <string name="paycover_orders">주문</string>
+    <string name="paycover_allows">예약 결제</string>
+    <string name="paycover_cap">총 %1$s까지</string>
+    <string name="paycover_until">%1$s까지</string>
+    <string name="paycover_for_task">이번 작업용</string>
+    <string name="paycover_for_schedule">예약 “%1$s”용</string>
+    <string name="paycover_for_a_schedule">예약 작업용</string>
+    <string name="paycover_one_order">주문 1건</string>
+    <string name="paycover_allow_scope">같은 쇼핑몰, 같은 결제 수단</string>
+    <string name="paycover_remove">%1$s 삭제</string>
+    <string name="paycover_remove_order_confirm">이 승인을 지울까요? 이 주문은 결제 전에 다시 물어봐요.</string>
+    <string name="paycover_remove_allow_confirm">“%1$s”의 허용을 지울까요? 이 예약의 결제는 다시 매번 물어봐요.</string>
+    <string name="paycover_removed">지웠어요. 결제 전에 다시 물어봐요.</string>
+    <string name="preapprove_what">주문</string>
+    <string name="preapprove_cap">최대 금액</string>
+    <string name="preapprove_cap_value">%1$s (세금·배송비 포함)</string>
+    <string name="preapprove_until">기한</string>
+    <string name="preapprove_covers">범위</string>
+    <string name="preapprove_covers_value">주문 1건만</string>
+    <string name="preapprove_requirements">꼭 필요한 것</string>
+    <string name="preapprove_shipping">배송</string>
+    <string name="preapprove_shops">쇼핑몰</string>
+    <string name="preapprove_delegated">Kelo가 정해요</string>
+    <string name="chat_payment_cover_order">미리 승인한 주문으로 결제했어요</string>
+    <string name="chat_payment_cover_schedule">이 예약의 결제 허용으로 결제했어요</string>
+</resources>

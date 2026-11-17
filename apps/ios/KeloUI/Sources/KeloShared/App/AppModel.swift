@@ -58,6 +58,14 @@ public final class AppModel {
     /// The server is older than this app needs (`X-Kelo-Server` below the compiled-in min_server, or a pinned server that no
     /// longer speaks KE2E): the "update your server" screen. The text is the server's version ("" when unknown).
     public private(set) var serverTooOld: String?
+    /// A newer released app that works with this server (`X-Kelo-App-Update` on /api/about and /api/profile; docs/version-notices.md part 3).
+    public private(set) var appUpdate: String?
+    /// The versions whose banner was closed or used on this phone.
+    public private(set) var dismissedAppNotices: Set<String>
+    /// When the update popup was last answered on this phone.
+    public private(set) var popupShownAt: Date?
+    @ObservationIgnored private let noticeStore: AppNoticeStore
+    @ObservationIgnored private var leftAt: Date?
     /// The server's KE2E key changed (409 e2e_key_changed): this phone must be paired again.
     public private(set) var pairAgain = false
     /// Keyguard: the server holds no key for the owner's passwords, keys and cards (423 {"code": "locked"}, /api/agent/status
@@ -80,7 +88,11 @@ public final class AppModel {
     public private(set) var historyCleared = 0
 
     public init(store: SessionStore = KeychainSessionStore(), prefs: Prefs = .shared, strings: Strings? = nil,
-                transport: HTTPTransport = URLSessionTransport.shared, cache: ScreenCache = ScreenCache(), strictE2E: Bool? = nil) {
+                transport: HTTPTransport = URLSessionTransport.shared, cache: ScreenCache = ScreenCache(), strictE2E: Bool? = nil,
+                noticeStore: AppNoticeStore = .defaults) {
+        self.noticeStore = noticeStore
+        self.dismissedAppNotices = noticeStore.dismissed()
+        self.popupShownAt = noticeStore.lastShown()
         self.store = store
         self.prefs = prefs
         self.strings = strings ?? Strings.shared
@@ -135,6 +147,19 @@ public final class AppModel {
         open(session)
     }
 
+    /// "Change address" in My: the same Kelo server at another address (checked by its KE2E key, `ServerMove`); only then the session
+    /// moves, keeping the device token and the key. The row's button shows only while `canMoveServer`.
+    public var canMoveServer: Bool { ServerMove.canMove(session) }
+
+    public func moveServer(to raw: String) async -> AddressMove {
+        guard let current = session else { return .invalid }
+        let r = await ServerMove.check(raw, from: current, transport: transport)
+        guard case .moved(let next) = r else { return r }
+        guard session == current else { return .unreachable }   // signed out or changed while asking: nothing is switched
+        signIn(next)
+        return r
+    }
+
     /// Called with the signed-in API just before it is dropped (the push token is taken back from the server).
     public var onSignOut: ((KeloApi) -> Void)?
 
@@ -152,6 +177,7 @@ public final class AppModel {
         pairAgain = false
         serverTooOld = nil
         appTooOld = false
+        appUpdate = nil
         profileState = .signedOut
         nest = nil
         activity.reset()
@@ -176,6 +202,8 @@ public final class AppModel {
             Task { @MainActor in self?.failed(e) }
         }, onServerVersion: { [weak self] v in
             Task { @MainActor in self?.serverVersion(v) }
+        }, onAppUpdate: { [weak self] v in
+            Task { @MainActor in if self?.appUpdate != v { self?.appUpdate = v } }
         })
         cache.use(server: s.serverUrl)
         if let api { nest = NestModel(api: api) }
@@ -227,6 +255,29 @@ public final class AppModel {
             serverTooOld = nil   // updated meanwhile
         }
     }
+
+    /// The newer app to tell about now (once per version, never one that was dismissed here), or nil.
+    public var appNotice: String? { AppNoticeRules.show(appUpdate, dismissed: dismissedAppNotices) ? appUpdate : nil }
+
+    /// The newer app to ask about in a popup now: named by the server and not asked in the last 24 hours (`now` is read at each
+    /// redraw of the shell).
+    public func appPopup(now: Date = Date()) -> String? {
+        AppNoticeRules.popup(appUpdate, lastShown: popupShownAt, now: now) ? appUpdate : nil
+    }
+
+    /// The popup was answered (Update, Later or anything else): it waits 24 hours.
+    public func popupAnswered(now: Date = Date()) { noticeStore.shown(now: now); popupShownAt = now }
+
+    /// The app went to the background / came back: after more than an hour away the server is asked again, so a newer app is found.
+    public func appLeft(now: Date = Date()) { leftAt = now }
+    public func appCameBack(now: Date = Date()) {
+        defer { leftAt = nil }
+        guard let t = leftAt, api != nil, AppNoticeRules.recheck(away: now.timeIntervalSince(t)) else { return }
+        retryProfile()
+    }
+
+    /// Closed or used: this version does not come back on this phone.
+    public func dismissAppNotice(_ version: String) { dismissedAppNotices = noticeStore.add(version) }
 
     /// "Try again" on the server-update screen: the next answer decides again.
     public func recheckServer() {

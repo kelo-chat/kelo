@@ -196,7 +196,7 @@ async def test_a_renumbered_folder_falls_back_to_the_date(tmp_path):
     assert [r["subject"] for r in got["rows"]] == ["after renumbering"] and got["cursor"]["v"] == 8
 
 
-async def test_the_spam_folder_is_found_by_its_junk_mark_or_a_usual_name_and_skipped_when_there_is_none(tmp_path):
+async def test_the_spam_folder_is_found_by_its_junk_mark_and_skipped_when_there_is_none(tmp_path):
     fake = FakeImap()
     st, mail, acct = mailbox(tmp_path, fake)
     cur = (await mail.arrivals(acct, None, "junk"))["cursor"]
@@ -206,9 +206,13 @@ async def test_the_spam_folder_is_found_by_its_junk_mark_or_a_usual_name_and_ski
     assert [r["subject"] for r in got["rows"]] == ["Your invoice is overdue", "win a prize"]
     (tmp_path / "n").mkdir()
     (tmp_path / "x").mkdir()
-    named = FakeImap(gmail=False, spam_name="스팸메일함", spam_flag=False)                          # no \Junk mark: a usual name
+    named = FakeImap(gmail=False, spam_name="스팸메일함", spam_flag=False)                          # no \Junk mark: no guess from the name
     st2, mail2, acct2 = mailbox(tmp_path / "n", named, "naver")
-    assert (await mail2.arrivals(acct2, None, "junk"))["rows"] == []
+    assert await mail2.arrivals(acct2, None, "junk") is None
+    marked = FakeImap(gmail=False, spam_name="Anything")
+    (tmp_path / "m").mkdir()
+    st4, mail4, acct4 = mailbox(tmp_path / "m", marked, "naver")
+    assert (await mail4.arrivals(acct4, None, "junk"))["rows"] == []
     none = FakeImap(gmail=False, spam_name=None)
     st3, mail3, acct3 = mailbox(tmp_path / "x", none, "naver")
     assert await mail3.arrivals(acct3, None, "junk") is None

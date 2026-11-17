@@ -54,6 +54,12 @@ def router(ctx: AppContext) -> APIRouter:
     async def get_notifications(after: int = 0, limit: int = 50) -> dict[str, Any]:
         return activity.notifications(after, limit)
 
+    @router.get("/api/notifications/settled", dependencies=[Depends(require_auth)])
+    async def settled_notifications(ids: str = "") -> dict[str, Any]:
+        """?ids=a,b,c: the item ids (a notification's approval_id) a phone still shows. Answers {"ids": [...]}: those that do not wait
+        any more (answered on any device, ran out, cancelled), so the phone takes their notifications down."""
+        return {"ids": activity.settled_items([i.strip() for i in ids.split(",")])}
+
     @router.post("/api/notifications/seen", dependencies=[Depends(require_auth)])
     async def seen_notifications(body: SeenIn) -> dict[str, Any]:
         marked, pays = activity.mark_notifications_seen(body.up_to)

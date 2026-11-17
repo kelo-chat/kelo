@@ -137,9 +137,10 @@ fi
 [ -f "$SRC/apps/android/kelo/app/google-services.json" ] || warn "apps/android/kelo/app/google-services.json is not in the source: this build has NO push notifications (and will not match the owner's)"
 
 # --- 3. the build
-# The commit the source came from goes INTO the container build (the copy has no .git), as Gradle properties through the environment
-# (ORG_GRADLE_PROJECT_<name> = -P<name>; the image stays the same): the version line in My links to that commit. The same commit
-# gives the same bytes. A build of the working tree says "modified" (no link); a --from folder has no commit to name.
+# Only "modified" goes INTO the container build (the copy has no .git), as a Gradle property through the environment
+# (ORG_GRADLE_PROJECT_<name> = -P<name>; the image stays the same). The version line in My links by release tag (android-<version>),
+# so no commit is inside the app: the same source gives the same bytes, whatever commit it sits at. A build of the working tree says
+# "modified" (no link). SRC_COMMIT is only checked to exist and printed.
 if [ -n "$FROM" ]; then SRC_COMMIT="" SRC_DIRTY=false
 else
   SRC_COMMIT="$(git -C "$REPO" rev-parse HEAD)"
@@ -154,7 +155,7 @@ for task in "${TASKS[@]}"; do
   step "gradle $task in the container" "${KELO_GRADLE_TIMEOUT:-14400}" "$LOGS/android-repro-$task.log" \
     docker run --rm --memory="${KELO_REPRO_MEMORY:-6g}" --memory-swap="${KELO_REPRO_MEMORY:-6g}" --platform linux/amd64 -u "$(id -u):$(id -g)" \
       -v "$SRC:$ROOT_MOUNT" -w "$MOUNT" -v "$CACHE:/gradle-home" -e GRADLE_USER_HOME=/gradle-home \
-      -e KELO_WRITE_VERIFICATION="$WRITE_VERIFY" -e ORG_GRADLE_PROJECT_keloCommit="$SRC_COMMIT" -e ORG_GRADLE_PROJECT_keloDirty="$SRC_DIRTY" \
+      -e KELO_WRITE_VERIFICATION="$WRITE_VERIFY" -e ORG_GRADLE_PROJECT_keloDirty="$SRC_DIRTY" \
       "$IMAGE" "$task"
 done
 if [ "$WRITE_VERIFY" = 1 ]; then

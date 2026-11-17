@@ -2,7 +2,7 @@ import Foundation
 import KeloCore
 
 /// What a long press on a chat bubble offers.
-public enum MsgAction: Sendable { case copy, share, select, retry, edit, report }
+public enum MsgAction: Sendable { case copy, share, select, readAloud, retry, edit, report }
 
 /// Which actions a bubble's menu shows, and what 다시 시도 sends (Android chat/MessageActions.kt).
 public enum MessageActions {
@@ -12,7 +12,7 @@ public enum MessageActions {
         switch item {
         case .msg(let m):
             if m.mine { return [.copy, .share, .select, .edit] }
-            return [.copy, .share, .select] + (retry ? [.retry] : []) + [.report]
+            return [.copy, .share, .select, .readAloud] + (retry ? [.retry] : []) + [.report]
         case .error: return [.copy] + (retry ? [.retry] : [])
         default: return []
         }
@@ -60,10 +60,10 @@ public enum ChatScroll {
     }
 }
 
-/// Answer buttons under an agent message (Android chat/QuickReplyRules.kt, the same rules and word lists).
+/// Answer buttons under an agent message (Android chat/QuickReplyRules.kt, the same rules).
 ///
 /// An answer may mean "I will write it" ("Other", "직접 입력할게요", "있어요 (직접 입력)"): the server lists those in the question's
-/// `typed`, and for an older server that does not, `asksTyping` tells them by their words. Picking one opens a text box under that
+/// `typed` (the app reads no words of any language; it adds its own "Other" to a choice question with none). Picking one opens a text box under that
 /// question; what is typed is sent instead of the button's words, and nothing is sent while a picked one is still empty.
 public enum QuickReplyRules {
     /// The app's own "Other" answer, added to every choice question that has no answer to write (`choices`); it opens a text box.
@@ -88,7 +88,7 @@ public enum QuickReplyRules {
     public static func sendsAtOnce(_ set: ReplySet) -> Bool { set.questions.count <= 1 && !set.questions.contains(where: ReplyFields.isField) }
 
     /// The answer `option` of `q` opens a text box instead of being the answer itself.
-    public static func isTyped(_ q: ReplyQuestion, _ option: String) -> Bool { option == other || q.typed.contains(option) || asksTyping(option) }
+    public static func isTyped(_ q: ReplyQuestion, _ option: String) -> Bool { option == other || q.typed.contains(option) }
 
     /// A tap on `option` sends it straight away (a single question, and not an answer to write).
     public static func sendsOnTap(_ set: ReplySet, _ q: ReplyQuestion, _ option: String) -> Bool { sendsAtOnce(set) && !isTyped(q, option) }
@@ -156,33 +156,6 @@ public enum QuickReplyRules {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t
     }
-
-    /// Words of an answer that ask the user to write it: a typing phrase anywhere, or just "Other" (with "(...)" or "…" after it).
-    public static func asksTyping(_ label: String) -> Bool {
-        let s = label.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        if typingPhrases.contains(where: { s.contains($0) }) { return true }
-        var bare = s
-        if let r = bare.range(of: #"\s*\([^)]*\)\s*$"#, options: .regularExpression) { bare.removeSubrange(r) }
-        bare = bare.trimmingCharacters(in: CharacterSet(charactersIn: " .…:!?·-–—"))
-        return otherWords.contains(bare)
-    }
-
-    private static let typingPhrases = [
-        "type it", "i'll type", "let me type", "type my own", "write my own", "i'll write", "write it in", "(specify)", "please specify",
-        "직접 입력", "직접입력", "직접 쓸", "직접 쓰", "직접 적", "입력할게",
-        "直接入力", "自分で入力", "自由入力", "入力します", "自行输入", "手动输入", "自己输入", "自行輸入", "手動輸入", "自己輸入", "自定义", "自訂",
-        "lo escribo", "escribir", "(especificar)", "je l'écris", "saisir", "(préciser)", "selbst eingeben", "eingeben", "selbst schreiben",
-        "digitar", "vou escrever", "lo scrivo", "scrivere", "(specificare)", "zelf invullen", "zelf typen", "wpiszę", "wpisz", "napiszę",
-        "свой вариант", "введу", "ввести", "напишу", "свій варіант", "kendim yazacağım", "kendim yazayım", "yazacağım",
-        "tự nhập", "tự ghi", "tự viết", "ketik sendiri", "tulis sendiri", "พิมพ์เอง", "ระบุเอง", "سأكتب", "اكتب بنفسك",
-        "खुद लिखूँगा", "खुद लिखूंगा", "खुद लिखें",
-    ]
-
-    private static let otherWords: Set<String> = [
-        "other", "others", "something else", "기타", "다른 것", "その他", "其他", "其它", "otro", "otra", "otros", "autre", "autres", "andere",
-        "anderes", "sonstiges", "outro", "outra", "altro", "anders", "overig", "inne", "inny", "другое", "інше", "diğer", "khác", "lainnya",
-        "อื่นๆ", "อื่น ๆ", "أخرى", "غير ذلك", "अन्य",
-    ]
 }
 
 /// Shared text joining what is already typed.

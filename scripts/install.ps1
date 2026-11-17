@@ -19,6 +19,13 @@
                   pull fails they are built here instead, with a warning. The Claude/agy containers are always built here
                   (their CLIs are never published)
     -BuildHere    build the images on this PC instead (KELO_FROM_RELEASE=0); slow, and it can fail on small machines
+    -Version X.Y.Z  install exactly this release instead of the newest (KELO_VERSION): its files from the release-X.Y.Z tag of
+                  kelo-chat/kelo-server, and with -FromRelease the signed images of that version. A version that does not exist
+                  stops the installer before anything changes (all versions: the releases page of github.com/kelo-chat/kelo-server).
+                  Signed images of an older version need that version to know `--release-version`; otherwise its images are
+                  built here from its files, with a warning
+    -AllowDowngrade  an update to a version OLDER than the installed one is refused without this (KELO_ALLOW_DOWNGRADE=1):
+                  data written by a newer version may not go back
     -NoStart      save the answers but do not start the containers (KELO_NO_START=1)
     -AutoUpdate   let Kelo update the server by itself at night (KELO_AUTO_UPDATE=1); -NoAutoUpdate: only when the owner
                   presses Update in the app (the default; asked when there is a terminal)
@@ -31,6 +38,8 @@ param(
   [string]$Dir,
   [string]$Source,
   [switch]$NoStart,
+  [string]$Version,
+  [switch]$AllowDowngrade,
   [switch]$FromRelease,
   [switch]$BuildHere,
   [switch]$AutoUpdate,
@@ -45,6 +54,9 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 if (-not $Dir) { $Dir = if ($env:KELO_HOME) { $env:KELO_HOME } else { Join-Path $env:USERPROFILE 'kelo' } }
 if (-not $Source -and $env:KELO_SOURCE) { $Source = $env:KELO_SOURCE }
+if (-not $Version -and $env:KELO_VERSION) { $Version = $env:KELO_VERSION }
+if ($env:KELO_ALLOW_DOWNGRADE -eq '1') { $AllowDowngrade = $true }
+$ReleasesBase = if ($env:KELO_RELEASES_BASE) { $env:KELO_RELEASES_BASE } else { 'https://github.com/kelo-chat/kelo-server' }   # the public source repository (tests point it at a local server)
 if ($env:KELO_YES -eq '1') { $Yes = $true }
 if ($env:KELO_NO_START -eq '1') { $NoStart = $true }
 if ($env:KELO_FROM_RELEASE -eq '1') { $FromRelease = $true }
@@ -243,9 +255,28 @@ function Copy-Tree([string]$from, [string]$to) {
 
 # Where the Kelo files come from: KELO_SOURCE (a local folder, a .zip / .tar.gz URL or a git URL), else the public source's newest
 # release (github.com/kelo-chat/kelo-server: the server part of each release; its main branch is the newest release).
-$DefaultSource = 'https://github.com/kelo-chat/kelo-server/archive/refs/heads/main.zip'
+$DefaultSource = "$ReleasesBase/archive/refs/heads/main.zip"
+function Get-VersionSource { "$ReleasesBase/archive/refs/tags/release-$Version.zip" }
+
+# The "version" in a version.json, or $null.
+function Read-JsonVersion([string]$file) {
+  if (-not (Test-Path $file)) { return $null }
+  try { return [string]((Get-Content -Raw $file | ConvertFrom-Json).version) } catch { return $null }
+}
+
+# With -Version, the files about to be copied must be that release (a custom -Source too): checked before anything is copied.
+function Test-FilesVersion([string]$top, [string]$stage) {
+  if (-not $Version) { return }
+  $got = Read-JsonVersion (Join-Path $top 'version.json')
+  if (-not $got -or $got -eq $Version) { return }
+  if ($stage -and (Test-Path $stage)) { Remove-Item -Recurse -Force $stage }
+  Die (Say "These files are Kelo $got, not $Version. Nothing was changed." "이 파일은 Kelo $got 이고 $Version 이 아닙니다. 아무것도 바꾸지 않았습니다.")
+}
+
 function Fetch-Kelo {
-  if (-not $Source) {
+  if (-not $Source -and $Version) {
+    $script:Source = Get-VersionSource
+  } elseif (-not $Source) {
     if (Test-Path (Join-Path $Dir 'compose.yml')) { Note (Say "No KELO_SOURCE given: keeping the Kelo files already in $Dir." "KELO_SOURCE가 없어 $Dir 에 있는 Kelo 파일을 그대로 사용합니다."); return }
     $script:Source = $DefaultSource
   }
@@ -254,6 +285,7 @@ function Fetch-Kelo {
   if ($Source -match '\.git$' -or $Source -like 'git@*') {
     Step (Say 'Downloading Kelo' 'Kelo 내려받는 중') ([scriptblock]::Create("git clone --depth 1 '$Source' '$stage'"))
     $top = $stage
+    Test-FilesVersion $top $stage
   } elseif ($Source -match '^https?://') {
     New-Item -ItemType Directory -Force -Path $stage | Out-Null
     $archive = if ($Source -match '\.zip($|\?)') { Join-Path $stage 'kelo.zip' } else { Join-Path $stage 'kelo.tar.gz' }
@@ -266,6 +298,7 @@ function Fetch-Kelo {
     $top = $Source
   }
   if (-not (Test-Path (Join-Path $top 'compose.yml'))) { Die (Say "$Source does not look like Kelo (no compose.yml)." "$Source 는 Kelo가 아닌 것 같습니다 (compose.yml 없음).") }
+  Test-FilesVersion $top $(if ($top -ne $Source) { $stage } else { '' })
   Note (Say "Putting the files in $Dir" "$Dir 에 파일 넣는 중")
   Copy-Tree $top $Dir
   Ok (Say "Kelo files are in $Dir" "Kelo 파일을 $Dir 에 넣었습니다")
@@ -291,6 +324,75 @@ exit /b %rc%
     [Environment]::SetEnvironmentVariable('Path', ($userPath.TrimEnd(';') + ';' + $BinDir), 'User')
     Note (Say "Added $BinDir to your PATH (new terminals will find kelo)." "$BinDir 를 PATH에 추가했습니다 (새 터미널부터 kelo를 쓸 수 있습니다).")
   }
+}
+
+# ------------------------------------------------------------------------------------------------------------- -Version
+# Compare-Version A B: -1, 0 or 1. X.Y.Z compares number by number; a pre-release (0.5.0-rc.1) is older than its release;
+# a +build suffix is ignored.
+function Compare-Version([string]$a, [string]$b) {
+  $a = ($a -replace '^v', '') -replace '\+.*$', ''; $b = ($b -replace '^v', '') -replace '\+.*$', ''
+  $pa = ''; $pb = ''
+  if ($a -match '^([^-]*)-(.+)$') { $a = $Matches[1]; $pa = $Matches[2] }
+  if ($b -match '^([^-]*)-(.+)$') { $b = $Matches[1]; $pb = $Matches[2] }
+  $av = $a.Split('.'); $bv = $b.Split('.')
+  for ($i = 0; $i -lt 3; $i++) {
+    $x = [bigint]0; $y = [bigint]0
+    if ($i -lt $av.Count) { [void][bigint]::TryParse($av[$i], [ref]$x) }
+    if ($i -lt $bv.Count) { [void][bigint]::TryParse($bv[$i], [ref]$y) }
+    if ($x -lt $y) { return -1 }
+    if ($x -gt $y) { return 1 }
+  }
+  if (-not $pa -and -not $pb) { return 0 }
+  if (-not $pa) { return 1 }
+  if (-not $pb) { return -1 }
+  $ap = $pa.Split('.'); $bp = $pb.Split('.')
+  for ($i = 0; $i -lt [Math]::Max($ap.Count, $bp.Count); $i++) {
+    if ($i -ge $ap.Count) { return -1 }
+    if ($i -ge $bp.Count) { return 1 }
+    $x = $ap[$i]; $y = $bp[$i]
+    $xn = $x -match '^\d+$'; $yn = $y -match '^\d+$'
+    if ($xn -and $yn) {
+      if ([bigint]$x -lt [bigint]$y) { return -1 }
+      if ([bigint]$x -gt [bigint]$y) { return 1 }
+    } elseif ($xn) { return -1 }
+    elseif ($yn) { return 1 }
+    else {
+      $c = [string]::CompareOrdinal($x, $y)
+      if ($c -lt 0) { return -1 }
+      if ($c -gt 0) { return 1 }
+    }
+  }
+  return 0
+}
+
+# Checks -Version before anything is changed: its form, that it is not older than what is installed (unless -AllowDowngrade), and,
+# for the official source, that the release exists. Each failure is one line and stops the installer.
+function Test-Version {
+  if (-not $Version) { return }
+  $script:Version = $Version -replace '^v', ''
+  if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]{1,30})?$') {
+    Die (Say "'$Version' is not a release number (example: -Version 0.10.2). Versions: $ReleasesBase/releases" "'$Version' 은 릴리스 번호가 아닙니다 (예: -Version 0.10.2). 버전 목록: $ReleasesBase/releases")
+  }
+  $have = Read-JsonVersion (Join-Path $Dir 'version.json')
+  if ((Test-Path (Join-Path $Dir 'compose.yml')) -and $have -and (Compare-Version $Version $have) -lt 0 -and -not $AllowDowngrade) {
+    Die (Say "Kelo $have is installed; $Version is older and data may not go back. Nothing was changed. To go back anyway add -AllowDowngrade." "Kelo $have 이(가) 설치되어 있고 $Version 은 더 오래된 버전이라 데이터가 되돌아가지 않을 수 있습니다. 아무것도 바꾸지 않았습니다. 그래도 되돌리려면 -AllowDowngrade 를 붙이세요.")
+  }
+  if ($Source) { return }     # a source of your own is checked by its version.json when it is copied
+  $code = 0
+  try { $code = [int](Invoke-WebRequest -UseBasicParsing -Method Head -Uri (Get-VersionSource)).StatusCode }
+  catch {
+    $response = $_.Exception.PSObject.Properties['Response']
+    if ($response -and $response.Value) { $code = [int]$response.Value.StatusCode }
+  }
+  if ($code -eq 404) {
+    Die (Say "Kelo version $Version was not found. Nothing was changed. All versions: $ReleasesBase/releases" "Kelo $Version 버전을 찾을 수 없습니다. 아무것도 바꾸지 않았습니다. 전체 버전 목록: $ReleasesBase/releases")
+  }
+}
+
+# Does the Kelo code in $Dir know this option? (a release from before an option cannot be asked to use it)
+function Test-CodeKnows([string]$option, [string[]]$command) {
+  $help = (& $Uv run --quiet --no-dev --frozen assistant @command --help 2>$null) -join "`n"
+  return [bool]($help -match [regex]::Escape($option))
 }
 
 # ------------------------------------------------------------------------------------------------------------- uninstall
@@ -364,15 +466,25 @@ function Setup-Updater {
 # Without a terminal, the first install pulls the official images before Kelo starts (the updater's settings come with the pull).
 # If the pull fails, the images are built here instead, as before, with a warning.
 function Pull-FirstInstall {
-  Run-UpdaterSetup (Say 'Downloading the official Kelo images and checking their signatures' '공식 Kelo 이미지를 내려받고 서명을 확인하는 중') -Extra @('--no-start', '--pull-release') -Soft
-  if ($script:StepCode -eq 0) {
-    if (-not $NoStart) { Step (Say 'Starting Kelo' 'Kelo 시작 중') { $env:BUILDKIT_PROGRESS = 'plain'; docker compose up -d --remove-orphans } }
-    return
+  $pullArgs = @('--no-start', '--pull-release'); $try = $true
+  if ($Version) {
+    if (Test-CodeKnows '--release-version' @('updater', 'setup')) { $pullArgs += @('--release-version', $Version) }
+    else {
+      $try = $false
+      Warn (Say "Kelo $Version cannot pull its own signed images by version; building them here from its files instead." "Kelo $Version 은 자기 서명 이미지를 버전으로 내려받을 수 없어, 그 파일로 이 PC에서 직접 빌드합니다.")
+    }
   }
-  $why = @(Get-Content $Log | Where-Object { $_ -like 'error:*' }) | Select-Object -Last 1
-  $why = if ($why) { ($why -replace '^error:\s*', '') } else { '' }
-  $head = if ($why) { ": $why" } else { '' }
-  Warn (Say "Could not get the official images$head. Building them here instead." "공식 이미지를 받지 못했습니다$head. 이 PC에서 직접 빌드합니다.")
+  if ($try) {
+    Run-UpdaterSetup (Say 'Downloading the official Kelo images and checking their signatures' '공식 Kelo 이미지를 내려받고 서명을 확인하는 중') -Extra $pullArgs -Soft
+    if ($script:StepCode -eq 0) {
+      if (-not $NoStart) { Step (Say 'Starting Kelo' 'Kelo 시작 중') { $env:BUILDKIT_PROGRESS = 'plain'; docker compose up -d --remove-orphans } }
+      return
+    }
+    $why = @(Get-Content $Log | Where-Object { $_ -like 'error:*' }) | Select-Object -Last 1
+    $why = if ($why) { ($why -replace '^error:\s*', '') } else { '' }
+    $head = if ($why) { ": $why" } else { '' }
+    Warn (Say "Could not get the official images$head. Building them here instead." "공식 이미지를 받지 못했습니다$head. 이 PC에서 직접 빌드합니다.")
+  }
   if (-not $NoStart) {
     Step (Say 'Building and starting Kelo (the first time takes a few minutes)' 'Kelo를 빌드하고 시작하는 중 (처음에는 몇 분 걸립니다)') { $env:BUILDKIT_PROGRESS = 'plain'; docker compose up -d --build --remove-orphans }
   }
@@ -383,11 +495,13 @@ function Invoke-KeloInstall {
   if ($Uninstall) { Remove-Kelo; return }
   Show-Banner
   Test-Platform
+  Test-Version
   $mode = if (Test-Path (Join-Path $Dir 'compose.yml')) { Say 'update (data kept)' '업데이트 (데이터 유지)' } else { Say 'new install' '새로 설치' }
   Write-Host ''
   Note ("{0,-12} {1}" -f (Say 'server' '서버'), "$Platform · $Arch")
   Note ("{0,-12} {1}" -f (Say 'folder' '폴더'), $Dir)
   Note ("{0,-12} {1}" -f (Say 'what' '작업'), $mode)
+  if ($Version) { Note ("{0,-12} {1}" -f (Say 'version' '버전'), $Version) }
   if ($Source) { Note ("{0,-12} {1}" -f (Say 'from' '가져올 곳'), $Source) }
 
   Section 'Docker'
@@ -409,10 +523,12 @@ function Invoke-KeloInstall {
     if ($FromRelease) {
       $help = (& $Uv run --quiet --no-dev --frozen assistant setup --help 2>$null) -join "`n"
       $wizardPulls = $help -match '--from-release'
+      if ($wizardPulls -and $Version) { $wizardPulls = Test-CodeKnows '--release-version' @('setup') }
     }
     $setupArgs = @('run', '--quiet', '--no-dev', '--frozen', 'assistant', 'setup')
     if ($NoStart -or ($FromRelease -and -not $wizardPulls)) { $setupArgs += '--no-start' }
     if ($wizardPulls) { $setupArgs += '--from-release' }   # the guided screen pulls the official images, then starts Kelo
+    if ($wizardPulls -and $Version) { $setupArgs += @('--release-version', $Version) }
     & $Uv @setupArgs
     if ($LASTEXITCODE) { Stop-Install $LASTEXITCODE }
     if ($FromRelease -and -not $wizardPulls) {

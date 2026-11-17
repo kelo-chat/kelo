@@ -25,4 +25,4 @@ description: Reminders, recurring jobs, watching a page, and "when X happens, do
 
 ## Small recurring checks and notifications
 - CHECKLIST.md holds short things to look at now and then, one per line starting with "- ".
-- NOTIFY_PREFS.md holds what the user wants to be told or not, and when. Update it whenever they say so.
+- NOTIFY_PREFS.md is your notes on what the user wants to be told or not, and when. The rules Kelo follows are the user's own copy, saved in the app: you cannot change them with a file edit. When they ask to be told or not told about something, say so and tell them to set it in NOTIFY_PREFS.md in the app.

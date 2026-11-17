@@ -179,8 +179,15 @@ class DraftManager:
                 else "lower-case letters, digits and '-'"
             )
             raise DraftError(f"id {pid!r} is not valid ({msg}, 2-48 characters)", 422)
-        if pid in builtin_ids():
+        self.registry.refresh()
+        if pid in builtin_ids() or (pid in getattr(self.registry, "_skills", {}) and self.registry._skills[pid].source == "builtin"):
             raise DraftError(f"id {pid!r} belongs to a built-in package", 422)
+        if pid in getattr(self.registry, "_installed", {}) or pid in getattr(self.registry, "pending", {}):
+            raise DraftError(f"id {pid!r} already exists as an installed package", 409)
+        if (pid in getattr(self.registry, "_custom", {})
+                or pid in getattr(self.registry, "custom_pending", {})
+                or pid in (self.registry.custom_ids() if hasattr(self.registry, "custom_ids") else ())):
+            raise DraftError(f"id {pid!r} already exists as an approved custom skill", 409)
         folder = self.draft_folder(pid)
         if folder.exists():
             raise DraftError(f"Draft {pid!r} already exists", 409)
@@ -293,8 +300,17 @@ class DraftManager:
         if not folder.exists():
             return False
         shutil.rmtree(folder)
+        if self.drafts_dir and hasattr(self.registry, "_read_records") and hasattr(self.registry, "_write_records"):
+            records = self.registry._read_records(self.drafts_dir)
+            if pid in records:
+                records.pop(pid, None)
+                self.registry._write_records(records, self.drafts_dir)
         self.registry.refresh()
         return True
+
+    def approve_draft(self, pid: str, *, content: str | None = None) -> Package:
+        """Approve a draft skill so it can go live."""
+        return self.registry.approve_draft(pid)
 
     def details(self, pid: str) -> dict[str, Any]:
         """Return the files (text) and the validator's findings for GET /api/nest/drafts/{id}."""
@@ -780,10 +796,54 @@ def draft_tools(
     async def handle_write(args: dict[str, Any]) -> str:
         try:
             res = manager.write(args["id"], args["path"], args["content"])
+            path = (args.get("path") or "").strip()
+            pid = (args.get("id") or "").strip()
+            pkg = manager.registry.draft(pid)
+            if path == "SKILL.md" or (pkg is not None and pkg.kind == "skill"):
+                manager.approve_draft(pid)
             await emit_change(args["id"])
             return f"Updated {res['path']} in draft {res['id']!r} (version {res['version']})."
         except (DraftError, ValueError, FileNotFoundError) as e:
             return f"Could not write draft file: {e}"
+
+    def auto_approve_write(args: dict[str, Any]) -> bool:
+        path = (args.get("path") or "").strip()
+        pid = (args.get("id") or "").strip()
+        pkg = manager.registry.draft(pid)
+        if pkg is not None and pkg.kind != "skill":
+            return True
+        if path != "SKILL.md" and not path.endswith(".md"):
+            return True
+        return False
+
+    async def describe_write(args: dict[str, Any]) -> str:
+        from .i18n import t
+        pid = str(args.get("id") or "")
+        path = str(args.get("path") or "")
+        return t("Save as a skill: “{name}”. {description}", name=pid, description=path)
+
+    def write_approval_extra(approval_id: str, args: dict[str, Any]) -> dict[str, Any]:
+        from .agent.loop import outside_seen
+        from .i18n import t
+        pid = str(args.get("id") or "")
+        path = str(args.get("path") or "")
+        content = str(args.get("content") or "")
+        seen = outside_seen.get()
+        outside = bool(seen and seen[0])
+        lines: list[dict[str, Any]] = [
+            {"label": t("Name"), "value": pid},
+            {"label": t("Files"), "value": path},
+            {"label": t("Content"), "value": content, "full": True},
+        ]
+        if outside:
+            lines.append({"label": t("Why it asks"), "value": t("Kelo read outside text (a page, mail or message) before this step, and you did not name {target}.", target=pid)})
+        return {
+            "id": pid,
+            "path": path,
+            "outside_text": outside,
+            "lines": lines,
+            "full_text": content,
+        }
 
     async def handle_check(args: dict[str, Any]) -> str:
         try:
@@ -888,6 +948,10 @@ def draft_tools(
                 "required": ["id", "path", "content"],
             },
             handle_write,
+            requires_approval=True,
+            auto_approve=auto_approve_write,
+            describe=describe_write,
+            approval_extra=write_approval_extra,
         ),
         Tool(
             "nest_draft_check",

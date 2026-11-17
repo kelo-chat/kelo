@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Coller depuis le téléphone</string>
+    <string name="live_pasted">Collé. Vérifiez le champ.</string>
+    <string name="live_copy_from_browser">Copier depuis le navigateur</string>
+    <string name="live_copied_to_phone">Copié sur votre téléphone</string>
+</resources>

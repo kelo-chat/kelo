@@ -375,14 +375,16 @@ async def test_other_providers_archive_and_trash_by_folder(tmp_path):
     assert (await upd({"action": "move", "uids": ["4"], "to": "work"})) == "Moved 1 message from INBOX to Work."
     assert fake.commands("SEARCH")[0] == ("SEARCH", "UID", "1:2")                        # no Gmail words on another server
     no_deletion(fake)
-    # no Archive folder: said plainly, nothing moved; no special-use marks: the Trash is found by its usual name
+    # no Archive folder: said plainly, nothing moved; no special-use marks: no guess from folder names, the folders are listed
     bare = FakeImap(gmail=False, special=False, archive=False)
     bare.add(Msg(1))
     (tmp_path / "b").mkdir()
     _, _, tools = await connected(tmp_path / "b", bare, "naver")
     out = await tools["email_update"].handler({"action": "archive", "uids": ["1"]})
     assert out.startswith("error: this mailbox has no Archive folder, so archiving is not available here") and "Work" in out
-    assert (await tools["email_update"].handler({"action": "trash", "uids": ["1"]})).startswith("Moved 1 message from INBOX to the trash (Deleted Messages)")
+    out = await tools["email_update"].handler({"action": "trash", "uids": ["1"]})
+    assert out.startswith("error: this mailbox marks no Trash folder, so nothing was moved") and "Deleted Messages" in out
+    assert (await tools["email_update"].handler({"action": "move", "uids": ["1"], "to": "Deleted Messages"})).startswith("Moved 1 message")
     no_deletion(bare)
     # a server without MOVE: refused, never emulated with a delete
     old = FakeImap(gmail=False, move=False)

@@ -50,11 +50,15 @@ fun KeloFrame(app: AppContainer, content: @Composable () -> Unit) {
             override val lifecycle = androidx.lifecycle.LifecycleRegistry(this).apply { currentState = androidx.lifecycle.Lifecycle.State.RESUMED }
         }
     }
+    // "Read aloud": the computer's own voice where there is one (macOS, Windows); stopped when the window's content leaves
+    val speech = remember { chat.kelo.desktop.core.DesktopSpeechEngine.create() }
+    DisposableEffect(speech) { onDispose { speech?.stop() } }
     CompositionLocalProvider(
         androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner provides viewModels,
         androidx.lifecycle.compose.LocalLifecycleOwner provides lifecycle,
         LocalTextLocale provides locale, LocalReduceMotion provides reduce,
         LocalFormFactor provides FormFactor.Desktop, LocalHaptics provides Haptics.None,
+        chat.kelo.app.chat.LocalSpeechEngine provides speech,
         chat.kelo.app.ui.text.LocalWordJoiner provides chat.kelo.app.ui.text.WordJoin::join,
         androidx.compose.ui.platform.LocalClipboardManager provides chat.kelo.app.ui.text.JoinerFreeClipboard(androidx.compose.ui.platform.LocalClipboardManager.current),
         chat.kelo.app.LocalAppServices provides app,

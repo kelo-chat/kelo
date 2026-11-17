@@ -150,7 +150,7 @@ async def test_tools_report_errors_as_text_not_exceptions(home, tmp_path):
 def test_an_absolute_path_from_another_tool_is_re_rooted_but_never_escapes(home, tmp_path):
     home.write("memory/people/kim.md", "# Kim")
     assert home.relativize("/tmp/hermes_agy_abc/memory/people/kim.md") == "memory/people/kim.md"
-    assert home.relativize("/tmp/hermes_agy_abc/USER.md") == "USER.md"
+    assert home.relativize("/tmp/hermes_agy_abc/user.md") == "user.md"   # the stored name is exact-case: USER.md only matches on a case-insensitive disk
     assert home.relativize("/etc/passwd") == "/etc/passwd"             # nothing of ours matches: left alone, then refused
     r = home.relativize("/tmp/x/../../MEMORY.md")
     assert r == "MEMORY.md" and ".." not in r and not r.startswith("/")   # only ever a plain path inside the area
@@ -316,3 +316,28 @@ async def test_search_skills_tool_returns_matches_or_a_hint():
     assert t["search_skills"].read_only
     assert "shopping-and-bookings" in await t["search_skills"].handler({"query": "book a hotel"})
     assert "No skill matches" in await t["search_skills"].handler({"query": "zzzzqqq"})
+
+
+def test_memory_log_refuses_agent_writes_and_deletes_allows_system(tmp_path):
+    from assistant.home import Home, HomeError, NotDeletable
+    home = Home(tmp_path / "home")
+    # Agent write is refused
+    with pytest.raises(HomeError):
+        home.write("memory/log/2026-11-16.md", "agent text", by="agent")
+    with pytest.raises(HomeError):
+        home.write("memory/log/2026-11-16.md", "default text")
+
+    # System write is allowed
+    saved = home.write("memory/log/2026-11-16.md", "system text", by="system")
+    assert saved == "memory/log/2026-11-16.md"
+    assert home.read("memory/log/2026-11-16.md") == "system text"
+
+    # Agent / user trash is refused
+    with pytest.raises(NotDeletable):
+        home.trash("memory/log/2026-11-16.md", by="agent")
+    with pytest.raises(NotDeletable):
+        home.trash("memory/log/2026-11-16.md")
+
+    # File is still there
+    assert home.read("memory/log/2026-11-16.md") == "system text"
+

@@ -107,3 +107,56 @@ def no_background_task_names(request, monkeypatch):
     if request.module.__name__ != "test_task_names":
         from assistant.task_names import TaskNamer
         monkeypatch.setattr(TaskNamer, "name_later", lambda self, *a, **kw: False)
+
+
+@pytest.fixture(autouse=True)
+def no_app_list_lookups(monkeypatch):
+    """No test reads kelo.chat/download/latest.json (app_updates.py); a test that wants it passes app_list_fetcher."""
+    from assistant import app_updates
+
+    async def offline():
+        raise OSError("offline in tests")
+
+    monkeypatch.setattr(app_updates, "fetch_latest", offline)
+
+
+@pytest.fixture(autouse=True)
+def no_promise_check(monkeypatch):
+    """The promise check (scheduled_runs.py) is one more model request after a chat reply: off, so a test's scripted model keeps its
+    order; the tests of the check turn it on."""
+    from assistant import scheduled_runs
+    monkeypatch.setattr(scheduled_runs, "PROMISE_CHECK", False)
+
+
+@pytest.fixture(autouse=True)
+def a_stand_in_step_judge(monkeypatch):
+    """A browser or phone session built in a test has a fake step judge that answers by the words of the test pages (fake_judge.py), the
+    way the owner's model does in life. A test that wants another verdict, or none, sets session.step_judge itself."""
+    from assistant.android.tools import AndroidSession
+    from assistant.tools.browser import BrowserSession
+    from fake_judge import FakeJudge, by_page_words
+
+    for cls in (BrowserSession, AndroidSession):
+        real = cls.__init__
+
+        def init(self, *a, __real=real, **kw):
+            __real(self, *a, **kw)
+            self.step_judge = FakeJudge(by_page_words)
+        monkeypatch.setattr(cls, "__init__", init)
+
+
+@pytest.fixture(autouse=True)
+def weather_dns_is_fake(monkeypatch):
+    """The weather's alternate route asks this machine's DNS for the normal answer and remembers the other servers it found. No test
+    looks up a real name, and no test sees the answers another test kept: the local answer is the North American server (the owner's
+    network on 2026-11-17), and the cache starts empty."""
+    from assistant import weather
+
+    async def local(host):
+        return {"51.81.167.44"}
+    monkeypatch.setattr(weather, "_local_ips", local)
+    weather._ALT.clear()
+    weather._NORMAL_DOWN_UNTIL.clear()
+    yield
+    weather._ALT.clear()
+    weather._NORMAL_DOWN_UNTIL.clear()

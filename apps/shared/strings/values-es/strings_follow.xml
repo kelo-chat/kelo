@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">De lo que se encarga Kelo</string>
+    <string name="follow_stop">Dejar de seguir</string>
+    <string name="follow_stop_confirm">¿Dejar de seguir este elemento?</string>
+    <string name="follow_stop_confirm_detail">Kelo ya no comprobará cambios ni preparará nada con antelación.</string>
+    <string name="follow_stop_yes">Dejar de seguir</string>
+    <string name="follow_keep_watching">Seguir cuidando</string>
+    <string name="follow_replan">Replanificar</string>
+    <string name="follow_sheet_title">Plan de seguimiento</string>
+    <string name="follow_plan_checks">Puntos a verificar</string>
+    <string name="follow_plan_prep">Preparativos</string>
+    <string name="follow_plan_tell">Notificaciones</string>
+    <string name="follow_plan_tell_change">Avisar si hay cambios</string>
+    <string name="follow_next_check">Próxima comprobación: %1$s</string>
+    <string name="follow_last_check">Última comprobación: %1$s</string>
+    <string name="follow_prep_later">Previsto</string>
+    <string name="follow_prep_running">En curso</string>
+    <string name="follow_prep_done">Preparado</string>
+    <string name="follow_prep_failed">Error</string>
+    <string name="follow_state_watching">En seguimiento</string>
+    <string name="follow_state_stopped">Detenido</string>
+    <string name="follow_state_done">Completado</string>
+    <string name="follow_summary_lead_flight">Aviso 1 día antes de la salida</string>
+    <string name="follow_summary_lead_general">Aviso 1 día antes</string>
+    <string name="follow_summary_lead_hours">Aviso %1$d horas antes</string>
+    <string name="follow_summary_prep_checkin">Preparar check-in al abrirse</string>
+    <string name="follow_summary_prep_general">Preparar %1$s</string>
+    <string name="follow_summary_watch_changes">Comprobar cambios</string>
+    <string name="follow_summary_default">Cuidar del itinerario</string>
+</resources>

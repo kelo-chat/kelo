@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">What Kelo looks after</string>
+    <string name="follow_stop">Stop watching</string>
+    <string name="follow_stop_confirm">Stop watching this item?</string>
+    <string name="follow_stop_confirm_detail">Kelo won\'t check for changes or prepare ahead anymore.</string>
+    <string name="follow_stop_yes">Stop watching</string>
+    <string name="follow_keep_watching">Keep watching</string>
+    <string name="follow_replan">Replan</string>
+    <string name="follow_sheet_title">Follow-through plan</string>
+    <string name="follow_plan_checks">Things to watch</string>
+    <string name="follow_plan_prep">Preparations</string>
+    <string name="follow_plan_tell">Notifications</string>
+    <string name="follow_plan_tell_change">Alert on changes</string>
+    <string name="follow_next_check">Next check: %1$s</string>
+    <string name="follow_last_check">Last check: %1$s</string>
+    <string name="follow_prep_later">Scheduled</string>
+    <string name="follow_prep_running">In progress</string>
+    <string name="follow_prep_done">Done ahead</string>
+    <string name="follow_prep_failed">Failed</string>
+    <string name="follow_state_watching">Watching</string>
+    <string name="follow_state_stopped">Stopped</string>
+    <string name="follow_state_done">Done</string>
+    <string name="follow_summary_lead_flight">Notification 1 day before</string>
+    <string name="follow_summary_lead_general">Notification 1 day before</string>
+    <string name="follow_summary_lead_hours">Notification %1$d hours before</string>
+    <string name="follow_summary_prep_checkin">Prepare check-in when open</string>
+    <string name="follow_summary_prep_general">Prepare %1$s</string>
+    <string name="follow_summary_watch_changes">Watch for changes</string>
+    <string name="follow_summary_default">Look after schedule</string>
+</resources>

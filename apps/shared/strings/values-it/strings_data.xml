@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- it text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">I tuoi dati</string>
+    <string name="data_intro">Scarica una copia di ciò che Kelo conserva su di te, porta i ricordi di un altro assistente o ricomincia da capo.</string>
+    <string name="data_export_title">Scarica i tuoi dati</string>
+    <string name="data_export_body">Un file ZIP con la tua conversazione, ciò che Kelo ricorda, le pianificazioni, ciò che Kelo segue, i servizi collegati e le impostazioni. Password, chiavi e token non ci sono mai.</string>
+    <string name="data_export_make">Crea il file</string>
+    <string name="data_export_making">Creazione del file…</string>
+    <string name="data_export_ready">Il tuo file è pronto (%1$s).</string>
+    <string name="data_export_save">Salva il file</string>
+    <string name="data_export_saved">Salvato.</string>
+    <string name="data_export_again">Crea un nuovo file</string>
+    <string name="data_export_failed">Non è stato possibile creare il file. Riprova.</string>
+    <string name="data_import_title">Porta i ricordi di un altro assistente</string>
+    <string name="data_import_private">Non viene inviato nulla altrove. Il modello scelto sul tuo server Kelo legge il testo e tiene brevi fatti su di te.</string>
+    <string name="data_import_step1">1. Copia questa richiesta e incollala nel tuo vecchio assistente (ChatGPT, Claude, Gemini, …).</string>
+    <string name="data_import_copy">Copia la richiesta</string>
+    <string name="data_import_copied">Copiato.</string>
+    <string name="data_import_step2">2. Incolla qui la sua risposta.</string>
+    <string name="data_import_paste_hint">Incolla la risposta</string>
+    <string name="data_import_add">Aggiungi alla memoria</string>
+    <string name="data_import_zip_body">Oppure scegli l’esportazione delle chat scaricata da ChatGPT, Claude o Gemini (un file ZIP fino a 100 MB).</string>
+    <string name="data_import_zip">Scegli un file ZIP</string>
+    <string name="data_import_running">Lettura… %1$d di %2$d</string>
+    <string name="data_import_reading">Apertura del file…</string>
+    <string name="data_import_cancel">Ferma</string>
+    <string name="data_import_failed">Non è stato aggiunto nulla: %1$s</string>
+    <string name="data_import_none">Non è stato trovato nulla di nuovo da aggiungere.</string>
+    <string name="data_import_added">Aggiunto alla memoria (%1$d):</string>
+    <string name="data_zip_too_big">Questo file supera i 100 MB.</string>
+    <string name="data_reset_title">Ricomincia da capo</string>
+    <string name="data_reset_body">Cancella la conversazione, ciò che Kelo ricorda, ciò che Kelo segue e le pianificazioni. Connettori, gli accessi salvati, i modelli e i tuoi telefoni restano. Prima viene salvata una copia come file.</string>
+    <string name="data_reset_signout">Esci anche da Connettori e rimuovi gli accessi salvati</string>
+    <string name="data_reset_type">Scrivi %1$s per confermare</string>
+    <string name="data_reset_button">Ricomincia da capo</string>
+    <string name="data_reset_wrong">Non è la parola giusta. Non è cambiato nulla.</string>
+    <string name="data_reset_confirm">Ricominciare da capo ora? Prima viene salvata una copia, poi vengono cancellati conversazione, memoria, cose seguite e pianificazioni. Non si può annullare.</string>
+    <string name="data_reset_done">Fatto. Tutto quanto sopra è stato cancellato. La copia è salvata come %1$s.</string>
+</resources>

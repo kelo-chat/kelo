@@ -44,4 +44,15 @@ class PermissionRulesTest {
     @Test fun `a kind body is the kind and its mode`() {
         assertEquals(json.parseToJsonElement("""{"send":"off"}""") as JsonObject, PermissionRules.kindBody("send", "off"))
     }
+
+    @Test fun `the use-when-not-chatting switch is on without the field, off when the server says off, and is put back as null or off`() {
+        val p = parsed()
+        assertTrue(PermissionRules.unattendedOn(p))                                       // an older server sends none: on
+        val off = json.decodeFromString<ConnectorPermissions>("""{"connector":"gmail","name":"Gmail","unattended":{"mode":"off","default":"allow"},"kinds":[]}""")
+        assertFalse(PermissionRules.unattendedOn(off))
+        assertTrue(PermissionRules.changed(off))
+        assertFalse(PermissionRules.changed(p))
+        assertEquals(json.parseToJsonElement("""{"unattended":"off"}""") as JsonObject, PermissionRules.unattendedBody(false))
+        assertEquals(json.parseToJsonElement("""{"unattended":null}""") as JsonObject, PermissionRules.unattendedBody(true))
+    }
 }

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">휴대폰에서 붙여넣기</string>
+    <string name="live_pasted">붙여넣었어요. 칸에 들어갔는지 확인해 주세요.</string>
+    <string name="live_copy_from_browser">브라우저에서 복사한 글 가져오기</string>
+    <string name="live_copied_to_phone">휴대폰에 복사했어요</string>
+</resources>

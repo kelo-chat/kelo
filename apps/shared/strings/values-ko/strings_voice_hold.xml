@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">누른 채 말하기</string>
+    <string name="voice_hold_hint">손을 떼면 끝, 밖으로 밀면 취소</string>
+    <string name="voice_dictation_offline">인터넷이 끊겨 받아쓰기를 멈췄어요.</string>
+    <string name="voice_dictation_failed">받아쓰기를 끝내지 못했어요.</string>
+    <string name="msg_action_read_aloud">소리 내어 읽기</string>
+    <string name="msg_action_read_stop">읽기 멈추기</string>
+</resources>

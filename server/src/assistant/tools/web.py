@@ -240,12 +240,12 @@ class WebTools:
             Tool("web_search", "Search the web: results with title, address and snippet. Read the best ones with web_fetch.",
                  {"type": "object", "properties": {"query": {"type": "string"},
                                                    "count": {"type": "integer", "description": f"results, 1-{MAX_RESULTS} (default 8)"}},
-                  "required": ["query"]}, self.web_search, untrusted=True, source="web", read_only=True),
+                  "required": ["query"]}, self.web_search, untrusted=True, source="web", read_only=True, trail="web"),
             Tool("web_fetch", "Read one public web page as plain text. A page that needs JavaScript or refuses: browser_open.",
                  {"type": "object", "properties": {"url": {"type": "string"},
                                                    "start": {"type": "integer", "description": "read on from this character"}},
                   "required": ["url"]},
-                 self.web_fetch, untrusted=True, source="web", read_only=True),
+                 self.web_fetch, untrusted=True, source="web", read_only=True, trail="web"),
         ]
 
 

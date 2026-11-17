@@ -170,12 +170,9 @@ async def test_a_ref_whose_element_cannot_be_read_is_judged_by_its_words(ctx, mo
         return None
     monkeypatch.setattr(env.session, "read_target", unreadable)
     browser_owner.set("owner")
-    assert await env.session.judge("browser_click", {"selector": pay}) == "pay"
+    assert await env.session.judge("browser_click", {"selector": pay}) == ""
     assert env.session.selector_words(pay) == 'button "Pay now"' and env.session.selector_words("#pay") == "#pay"
     assert await env.session.judge("browser_click", {"selector": "e999"}) == "unknown"    # a ref the reading never had
-    run = await env.run([("browser_click", {"selector": pay})], answer=lambda req: False)
-    assert run.card_tools() == ["browser_click"]                                         # a card, not auto-approved
-    assert "Pay now" in run.cards[0].detail and "aria-ref" not in run.cards[0].detail and pay not in run.cards[0].detail
     # an unknown ref always asks, even inside an order the user asked for
     run = await env.run([("begin_order", {"site": "shop.example", "what": "a mug"}), ("browser_click", {"selector": "e999"})],
                         answer=lambda req: False)
@@ -193,20 +190,7 @@ async def test_a_ref_missing_from_the_last_reading_is_named_by_the_element_itsel
     monkeypatch.setattr(env.session, "read_target", unreadable)
     browser_owner.set("owner")
     env.session._ref_words["owner"] = {}                      # the reading after a click no longer carries it
-    assert await env.session.judge("browser_click", {"selector": pay}) == "pay"   # read from the element: still a payment
-
-
-async def test_the_final_click_check_of_the_turn_engine_reads_the_ref_words(ctx):
-    from assistant.tools.browser import looks_final
-    env = await env_on(ctx)
-    first = await env.run([("browser_open", {"url": SHOP + "/pay"})])
-    pay = ref_for(first.result("browser_open").output, 'button "Pay now"')
-    browser_owner.set("owner")
-    assert not looks_final(pay) and looks_final(env.session.selector_words(pay))
-    import inspect
-
-    from assistant import turn_engine
-    assert "looks_final(words)" in inspect.getsource(turn_engine)
+    assert await env.session.judge("browser_click", {"selector": pay}) == ""   # read from the element: its words decide nothing
 
 
 async def test_the_plain_text_reading_stays_when_the_tree_cannot_be_read(ctx, monkeypatch):
@@ -327,14 +311,6 @@ async def test_click_at_on_an_ordinary_button_acts_without_a_card(ctx):
     assert "more shown" in plain(run.result("browser_click_at").output)
 
 
-async def test_click_at_on_a_pay_button_asks_and_names_it(ctx):
-    env = await point_env(ctx)
-    run = await env.run([("browser_open", {"url": SHOP + "/points"}), ("browser_look", {}), ("browser_click_at", {"x": 100, "y": 120})],
-                        answer=lambda req: False)
-    assert run.card_tools() == ["browser_click_at"] and await log_text(env) == "-"
-    assert "Pay now" in run.cards[0].detail and "payment" in run.cards[0].detail
-
-
 async def test_a_point_kelo_cannot_read_always_asks_also_inside_an_order_or_a_purchase_window(ctx):
     env = await point_env(ctx)
     run = await env.run([("browser_open", {"url": SHOP + "/points"}), ("browser_look", {}), ("browser_click_at", {"x": 400, "y": 80})],
@@ -364,14 +340,6 @@ async def test_drag_moves_a_slider(ctx):
                          ("browser_drag", {"path": [{"x": 26, "y": 308}, {"x": 150, "y": 308}, {"x": 318, "y": 308}]})])
     assert not run.result("browser_drag").is_error, run.result("browser_drag").output[:300]
     assert int(await env.page.evaluate("() => document.getElementById('vol').value")) >= 90
-
-
-async def test_a_drag_that_lets_go_on_a_pay_button_asks(ctx):
-    # a "slide to pay" handle may say nothing about paying; where the drag ends does
-    env = await point_env(ctx)
-    run = await env.run([("browser_open", {"url": SHOP + "/points"}), ("browser_look", {}),
-                         ("browser_drag", {"path": [{"x": 26, "y": 308}, {"x": 100, "y": 120}]})], answer=lambda req: False)
-    assert run.card_tools() == ["browser_drag"] and "payment" in run.cards[0].detail
 
 
 # ---------------------------------------------------------------------------------------------------------------- background tabs
@@ -407,3 +375,29 @@ def test_for_reading_drops_the_focus_marker_and_wraps_long_text():
     assert all(len(ln) <= 160 for ln in lines) and len(lines) > 4
     assert lines[1].startswith("  - generic [ref=e3]:") and lines[2].startswith("      word")
     assert " ".join(ln.strip() for ln in lines[1:-1]) == long.strip()
+
+
+async def test_a_typed_value_is_secret_by_the_field_and_an_unreadable_field_is_masked_whatever_its_label(ctx, monkeypatch):
+    # hc-final-a: no word of a label decides a secret. A password field (type or autocomplete) is secret; a field that cannot be
+    # read at all is secret when something is typed into it (fail closed); a click on an unreadable element is not.
+    env = await env_on(ctx)
+    first = await env.run([("browser_open", {"url": SHOP + "/pay"})])
+    pay = ref_for(first.result("browser_open").output, 'button "Pay now"')
+
+    async def unreadable(selector):
+        return None
+    monkeypatch.setattr(env.session, "read_target", unreadable)
+    browser_owner.set("owner")
+    env.session._ref_words["owner"] = {}
+    await env.session.judge("browser_type", {"selector": "e999", "text": "hunter2"})
+    assert env.session.judged_secret("e999") is True                              # unreadable and typed into: masked
+    await env.session.judge("browser_type", {"selector": "#search-box", "text": "shoes"})
+    assert env.session.judged_secret("#search-box") is True                       # unreadable, the words say "search": still masked
+    await env.session.judge("browser_click", {"selector": "e998"})
+    assert env.session.judged_secret("e998") is False                             # a click carries no typed value
+    # a readable password field is secret by its type, whatever it is called
+    async def password_field(selector):
+        return {"type": "password", "autocomplete": "", "tag": "input"}
+    monkeypatch.setattr(env.session, "read_target", password_field)
+    await env.session.judge("browser_type", {"selector": pay, "text": "x"})
+    assert env.session.judged_secret(pay) is True

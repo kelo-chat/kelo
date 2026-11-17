@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">서버 업데이트</string>
+    <string name="server_old_failed">업데이트가 끝나지 않았어요. 다시 시도하거나 서버가 있는 기기에서 업데이트해 주세요.</string>
+    <string name="server_old_manual">서버를 업데이트하려면 서버가 있는 기기에서 업데이트 방법을 따라 주세요.</string>
+    <string name="server_old_guide">업데이트 안내 열기</string>
+    <string name="app_notice_new">새 Kelo 앱(%1$s)이 내 서버와 가장 잘 맞아요</string>
+    <string name="app_notice_store">스토어 열기</string>
+    <string name="update_popup_title">새 버전이 있어요 (%1$s)</string>
+    <string name="update_popup_update">업데이트</string>
+    <string name="update_popup_later">나중에</string>
+</resources>

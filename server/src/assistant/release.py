@@ -213,6 +213,35 @@ def fetch(url: str = DEFAULT_RELEASES_URL, registry: str = DEFAULT_REGISTRY, *, 
     return from_latest(latest, registry)
 
 
+def by_version(version: str, registry: str = DEFAULT_REGISTRY, run: Callable[..., Any] = subprocess.run) -> Release:
+    """The release of one exact version (the installer's --version), for a first install of an older release.
+
+    The public list names the newest release only. Each image of a version is also tagged `<registry>/<component>:<version>`, so the
+    tag is read once to learn the digest the registry has for it. The tag proves nothing: the caller still checks every image with
+    Verifier (the same digest after the download, a valid signature of the release workflow for that digest, and the version label),
+    so a tag that points at anything but the signed images of this very version is refused there. Raises ReleaseError."""
+    registry = check_registry(registry)
+    version = (version or "").strip().removeprefix("v")
+    if not VERSION.fullmatch(version):
+        raise ReleaseError(f"{version[:40]!r} is not a release version (example: 0.10.2)")
+    images: dict[str, Image] = {}
+    for comp in REQUIRED:
+        repo = f"{registry}/{comp}"
+        r = run(["docker", "pull", "--quiet", f"{repo}:{version}"], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise ReleaseError(f"release {version} has no published image {comp} ({Verifier._why(r)})")
+        r = run(["docker", "image", "inspect", "-f", "{{json .RepoDigests}}", f"{repo}:{version}"], capture_output=True, text=True)
+        try:
+            known = json.loads((r.stdout or "").strip() or "[]") if r.returncode == 0 else []
+        except ValueError:
+            known = []
+        digests = [d.split("@", 1)[1] for d in known or [] if isinstance(d, str) and d.startswith(repo + "@")]
+        if not digests or not DIGEST.fullmatch(digests[0]):
+            raise ReleaseError(f"release {version}: the registry gave no digest for {comp}")
+        images[comp] = Image(repo, digests[0])
+    return Release(version, DEFAULT_CHANNEL, "", registry, images)
+
+
 def _get(url: str, timeout: float) -> bytes:
     import urllib.error
     import urllib.request
@@ -267,7 +296,9 @@ class Verifier:
         if r.returncode != 0:
             raise ReleaseError(f"{image.repo}: the signature does not verify as an official Kelo release ({self._why(r)})")
         try:
-            rows = json.loads((r.stdout or "").strip().splitlines()[-1])
+            # the answer is the last line that opens a JSON list of objects; a runner that joins cosign's messages (stderr, Apple container's
+            # progress lines "[6/6] Starting container") to it adds lines after it
+            rows = json.loads([ln for ln in (r.stdout or "").strip().splitlines() if ln.lstrip().startswith("[{")][-1])
         except (ValueError, IndexError):
             rows = None
         signed = {((row.get("critical") or {}).get("image") or {}).get("docker-manifest-digest") for row in rows or [] if isinstance(row, dict)}

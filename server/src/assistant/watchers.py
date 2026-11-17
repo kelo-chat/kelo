@@ -23,8 +23,8 @@ times as late, and the owner is told once a day to open the page in Kelo's brows
 A watcher that is READY TO BUY (it has a purchase permission with count and money left, buy_ready.py, docs/instant-buy.md) may look
 every 2 minutes (ARMED_MIN_MINUTES) and its hit fires at once, without the 30 s look: at the hit a short buying run starts on its parked tab.
 Internal APIs: `method` GET|POST, `body` (POST, at most 4 KB), `headers` (at most 8: Accept, Content-Type, X-Requested-With, Referer, Origin or
-X-...; never Cookie or Authorization), `signed_in`. A watcher only reads: a POST whose address or body names an action (order, pay, book,
-cancel, ...) is refused.
+X-...; never Cookie or Authorization), `signed_in`. A watcher only reads: it is a GET unless the owner approves a POST: the agent's
+watch_dry_run and watch_enable of a POST watcher are cards showing the method, the address and the body (no word of the address decides).
 
 kind "script"  a short Python snippet run in the work room (no network, no secrets): it gets the fetched page (when `url` is set) as
                  page.html and page.txt in its folder and prints a last line of JSON {"hit": true|false, "value": "..."}.
@@ -70,7 +70,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import unquote_plus, urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException
@@ -135,10 +135,6 @@ NEW_COLUMNS = (("signed_in", "INTEGER NOT NULL DEFAULT 0"), ("method", "TEXT NOT
                ("headers", "TEXT NOT NULL DEFAULT ''"), ("level", "TEXT NOT NULL DEFAULT ''"), ("level_until", "REAL"),
                ("backoff", "INTEGER NOT NULL DEFAULT 1"), ("human_notice_at", "REAL"), ("confirming", "INTEGER NOT NULL DEFAULT 0"))
 
-ACTION_WORDS = frozenset("order pay payment checkout purchase buy book booking reserve reservation cancel delete remove apply submit send "
-                         "confirm".split())
-ACTION_KO = ("결제", "주문", "구매", "예약", "예매", "신청", "취소", "삭제", "발송")
-READ_KO = ("조회", "검색", "목록")
 HEADER_OK = frozenset({"accept", "content-type", "x-requested-with", "referer", "origin"})
 HEADER_NEVER = frozenset({"cookie", "authorization", "proxy-authorization", "x-http-method-override", "x-method-override"})
 CHECK_MARKS = ("challenges.cloudflare.com", "_cf_chl_opt", "cf-browser-verification", "captcha-delivery.com", "px-captcha")
@@ -256,23 +252,9 @@ def default_content_type(body: str) -> str:
 
 
 # ---------------------------------------------------------------------------------------------------------------- what a watcher may send
-def action_word(text: str) -> str | None:
-    """The first word in `text` (a url path or a body) that names an action (order, book, cancel, 결제, ...), else None. Whole words only:
-    words split at anything but letters and digits and at camelCase; a plural counts; a Korean run counts when it holds an action word and
-    no reading word (조회, 검색, 목록)."""
-    spread = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", unquote_plus(text or ""))
-    for tok in re.findall(r"[A-Za-z]+|[가-힣]+", spread):
-        low = tok.lower()
-        if low.isascii():
-            if low in ACTION_WORDS:
-                return low
-            if low.endswith("s") and low[:-1] in ACTION_WORDS:
-                return low[:-1]
-        elif not any(r in tok for r in READ_KO):
-            for a in ACTION_KO:
-                if a in tok:
-                    return a
-    return None
+# A watcher's own request is a GET unless the owner approves a POST: the agent's watch_dry_run of a POST watcher (the first time its
+# request is made) and its watch_enable are cards that show the method, the address and the body (watch_tools). No word in the address
+# or the body decides anything (docs/no-word-lists.md, H7).
 
 
 def clean_headers(raw: Any) -> dict[str, str]:
@@ -362,6 +344,19 @@ def parse_html(html: str) -> _Tree:
     except Exception:  # noqa: BLE001 - a broken page still gives what was read
         pass
     return t
+
+
+def has_password_box(html: str) -> bool:
+    """The page holds an input of type password: the structure of a sign-in form (signin_state.sign_in_address reads the address)."""
+    stack = [parse_html(html).root]
+    while stack:
+        n = stack.pop()
+        for c in n.children:
+            if isinstance(c, Node):
+                if c.tag == "input" and c.attrs.get("type", "").lower() == "password":
+                    return True
+                stack.append(c)
+    return False
 
 
 def text_of(node: Node) -> str:
@@ -833,8 +828,6 @@ class Watchers:
                     raise WatchError(f"body is too long (at most {MAX_BODY} characters)")
                 if use_browser:
                     raise WatchError("use_browser loads the page itself, so it cannot POST; use method GET, or drop use_browser")
-                if word := action_word(urlsplit(url).path) or action_word(body):
-                    raise WatchError(f"a watcher only reads; that address looks like it does something ('{word}')")
         else:
             signed_in = 0
         return {"name": name, "kind": kind, "url": url, "mode": mode, "match": match, "selector": selector, "regex": regex,
@@ -1001,7 +994,7 @@ class Watchers:
                     raise WatchError(f"the site asks for a check that a background look cannot pass ({why})")
                 if page.status >= 400:
                     raise WatchError(f"the page answered HTTP {page.status}")
-                if sign_in_address(page.url) and not sign_in_address(r["url"]):
+                if (sign_in_address(page.url) or has_password_box(page.body)) and not sign_in_address(r["url"]) and page.url != r["url"]:
                     return self._signed_out(r, page, level, first)   # never evaluate the condition on a sign-in page (a false "gone")
             if r["kind"] == "script":
                 if self.script_runner is None:
@@ -1255,13 +1248,24 @@ def watch_tools(watchers: Watchers) -> list[Tool]:
             return "run watch_dry_run first and show the user its result; then call watch_enable"
         return None
 
+    def request_text(w: dict[str, Any]) -> str:
+        """What the watcher sends: the method and the address, and the body of a POST."""
+        if not w.get("url"):
+            return ""
+        return (f"{w['method']} {w['url']}" + (" · " + t("body: {body}", body=w["body"][:200]) if w.get("method") == "POST" and w.get("body") else "") +
+                (" · " + t("signed in") if w.get("signed_in") else ""))
+
+    def is_get(args: dict[str, Any]) -> bool:
+        return ((watchers.get(wid(args)) or {}).get("method") or "GET") == "GET"
+
+    async def describe_dry_run(args: dict[str, Any]) -> str:
+        w = watchers.get(wid(args)) or {}
+        return t("Check watcher '{name}' once with this request: {request}", name=w.get("name", ""), request=request_text(w) or "-")[:700]
+
     async def describe_enable(args: dict[str, Any]) -> str:
         w = watchers.get(wid(args)) or {}
         dry = w.get("dry_run") or {}
-        request = ""
-        if w.get("url"):   # what it sends: the method and the address, and the body of a POST
-            request = (f"{w['method']} {w['url']}" + (" · " + t("body: {body}", body=w["body"][:200]) if w.get("method") == "POST" and w.get("body") else "") +
-                       (" · " + t("signed in") if w.get("signed_in") else ""))
+        request = request_text(w)
         return t("Turn on watcher '{name}' · {description} · {request} · result of the check just now: {detail}", name=w.get("name", ""),
                  description=w.get("description", ""), request=request or "-", detail=str(dry.get("detail", "-"))[:150])[:700]
 
@@ -1287,8 +1291,7 @@ def watch_tools(watchers: Watchers) -> list[Tool]:
              "signed_in": {"type": "boolean", "description": "the page or address shows the owner's own data and needs their sign-in "
                                                              "(looked at inside the browser)"},
              "method": {"type": "string", "enum": ["GET", "POST"], "description": "GET (default) or POST to a site's own JSON address that "
-                                                                                  "only reads (search, list, status); an address that orders, "
-                                                                                  "books, pays, cancels... is refused"},
+                                                                                  "only reads (search, list, status); a POST asks the user first"},
              "body": {"type": "string", "description": "POST only: JSON or form text, at most 4096 characters"},
              "headers": {"type": "object", "additionalProperties": {"type": "string"},
                          "description": "at most 8: Accept, Content-Type, X-Requested-With, Referer, Origin, X-...; never Cookie or Authorization"},
@@ -1310,9 +1313,10 @@ def watch_tools(watchers: Watchers) -> list[Tool]:
              {"type": "object", "properties": {"id": {"type": "integer"}, **bare}, "required": ["id"]}, update, validate=validate_id),
         Tool("watch_remove", "Remove a watcher.", {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}, remove,
              validate=validate_id),
-        Tool("watch_dry_run", "Check a watcher once now without turning it on, and show the user what it found.",
+        Tool("watch_dry_run", "Check a watcher once now without turning it on, and show the user what it found. A watcher that POSTs asks the "
+             "user first (it shows the method, the address and the body).",
              {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}, dry_run, validate=validate_id,
-             untrusted=True, source="page"),
+             untrusted=True, source="page", requires_approval=True, describe=describe_dry_run, auto_approve=is_get),
         Tool("watch_enable", "Turn a watcher on after a dry run the user saw (they approve), or off.",
              {"type": "object", "properties": {"id": {"type": "integer"}, "enabled": {"type": "boolean"}}, "required": ["id"]}, enable,
              requires_approval=True, validate=validate_enable, describe=describe_enable,

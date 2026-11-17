@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">आपका डेटा</string>
+    <string name="data_intro">Kelo आपके बारे में जो रखता है उसकी एक प्रति डाउनलोड करें, किसी दूसरे असिस्टेंट की यादें लाएँ, या नए सिरे से शुरू करें।</string>
+    <string name="data_export_title">अपना डेटा डाउनलोड करें</string>
+    <string name="data_export_body">एक ZIP फ़ाइल जिसमें आपकी बातचीत, Kelo की याद रखी बातें, शेड्यूल, Kelo जो देख रहा है वह, जुड़ी सेवाएँ और आपकी सेटिंग हैं। पासवर्ड, कुंजियाँ और टोकन इसमें कभी नहीं होते।</string>
+    <string name="data_export_make">फ़ाइल बनाएँ</string>
+    <string name="data_export_making">फ़ाइल बन रही है…</string>
+    <string name="data_export_ready">आपकी फ़ाइल तैयार है (%1$s)।</string>
+    <string name="data_export_save">फ़ाइल सहेजें</string>
+    <string name="data_export_saved">सहेज ली गई।</string>
+    <string name="data_export_again">नई फ़ाइल बनाएँ</string>
+    <string name="data_export_failed">फ़ाइल नहीं बन सकी। फिर से कोशिश करें।</string>
+    <string name="data_import_title">दूसरे असिस्टेंट की यादें लाएँ</string>
+    <string name="data_import_private">कुछ भी कहीं और नहीं भेजा जाता। आपके Kelo सर्वर पर आपका चुना मॉडल पाठ पढ़ता है और आपके बारे में छोटे तथ्य रखता है।</string>
+    <string name="data_import_step1">1. इस अनुरोध को कॉपी करें और अपने पुराने असिस्टेंट (ChatGPT, Claude, Gemini आदि) में चिपकाएँ।</string>
+    <string name="data_import_copy">अनुरोध कॉपी करें</string>
+    <string name="data_import_copied">कॉपी हो गया।</string>
+    <string name="data_import_step2">2. उसका जवाब यहाँ चिपकाएँ।</string>
+    <string name="data_import_paste_hint">जवाब चिपकाएँ</string>
+    <string name="data_import_add">याद में जोड़ें</string>
+    <string name="data_import_zip_body">या ChatGPT, Claude या Gemini से डाउनलोड किया चैट एक्सपोर्ट चुनें (ZIP फ़ाइल, अधिकतम 100 MB)।</string>
+    <string name="data_import_zip">ZIP फ़ाइल चुनें</string>
+    <string name="data_import_running">पढ़ रहा है… %1$d / %2$d</string>
+    <string name="data_import_reading">फ़ाइल खुल रही है…</string>
+    <string name="data_import_cancel">रोकें</string>
+    <string name="data_import_failed">कुछ भी नहीं जोड़ा गया: %1$s</string>
+    <string name="data_import_none">जोड़ने के लिए कुछ नया नहीं मिला।</string>
+    <string name="data_import_added">याद में जोड़ा गया (%1$d):</string>
+    <string name="data_zip_too_big">यह फ़ाइल 100 MB से बड़ी है।</string>
+    <string name="data_reset_title">नए सिरे से शुरू करें</string>
+    <string name="data_reset_body">आपकी बातचीत, Kelo की याद रखी बातें, Kelo जो देख रहा है वह और आपके शेड्यूल मिटा देता है। कनेक्टर, सहेजे हुए लॉगिन, मॉडल और आपके फ़ोन बने रहते हैं। पहले एक प्रति फ़ाइल के रूप में सहेजी जाती है।</string>
+    <string name="data_reset_signout">कनेक्टर से भी साइन आउट करें और सहेजे हुए लॉगिन हटाएँ</string>
+    <string name="data_reset_type">पुष्टि के लिए %1$s लिखें</string>
+    <string name="data_reset_button">नए सिरे से शुरू करें</string>
+    <string name="data_reset_wrong">यह वह शब्द नहीं है। कुछ भी नहीं बदला।</string>
+    <string name="data_reset_confirm">अभी नए सिरे से शुरू करें? पहले एक प्रति सहेजी जाती है, फिर बातचीत, याद, देखी जा रही चीज़ें और शेड्यूल मिटा दिए जाते हैं। इसे वापस नहीं किया जा सकता।</string>
+    <string name="data_reset_done">हो गया। ऊपर की सारी चीज़ें मिटा दी गईं। प्रति %1$s नाम से सहेजी गई है।</string>
+</resources>

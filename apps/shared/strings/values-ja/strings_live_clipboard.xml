@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">スマホから貼り付け</string>
+    <string name="live_pasted">貼り付けました。入力欄を確認してください。</string>
+    <string name="live_copy_from_browser">ブラウザからコピー</string>
+    <string name="live_copied_to_phone">スマホにコピーしました</string>
+</resources>

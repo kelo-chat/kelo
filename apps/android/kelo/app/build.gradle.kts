@@ -28,10 +28,11 @@ val keystoreProps = Properties().apply {
 }
 
 /**
- * Which commit this build's source came from, for the version line in My (it links to that commit on GitHub; docs/versioning.md):
- * the full sha and whether tracked files under the app's inputs differ from it. The build scripts pass them (-PkeloCommit=<sha>
- * -PkeloDirty=true|false; the reproducible build has no .git inside its container); without them git answers, and with no git (a
- * source tarball) the commit is "" and nothing is shown. Never fails the build.
+ * Which commit this build's source came from, for build info only. The version line in My links by RELEASE TAG
+ * (android-<version>, windows-<package version>; docs/versioning.md), so the commit is NOT put into the app unless -PkeloCommit=<sha>
+ * is given (for people who build the public repository and want it): a build of the public tag has the same bytes as the release.
+ * Whether tracked files under the app's inputs differ from HEAD ("modified", no link) comes from -PkeloDirty=true|false, else from git;
+ * with no git (a source tarball) it is false. Never fails the build.
  */
 fun gitAnswer(vararg args: String): String {
     val root = rootProject.file("../../..")
@@ -42,7 +43,7 @@ fun gitAnswer(vararg args: String): String {
         ""
     }
 }
-val sourceCommit: String = ((project.findProperty("keloCommit") as String?) ?: gitAnswer("rev-parse", "HEAD")).filter { it.isLetterOrDigit() }
+val sourceCommit: String = ((project.findProperty("keloCommit") as String?) ?: "").filter { it.isLetterOrDigit() }
 val sourceDirty: Boolean = (project.findProperty("keloDirty") as String?)?.trim()?.lowercase()?.let { it == "true" }
     ?: gitAnswer("status", "--porcelain", "--untracked-files=no", "--", "apps/android/kelo", "apps/shared", "version.json").isNotEmpty()
 
@@ -83,7 +84,7 @@ android {
         val release = groovy.json.JsonSlurper().parse(rootProject.file("../../../version.json")) as Map<*, *>
         versionName = release["version"] as String
         buildConfigField("String", "MIN_SERVER", "\"${release["min_server"]}\"")
-        // the commit the source came from, and whether files differed from it (the version line in My links to it; see sourceCommit above)
+        // "" unless -PkeloCommit is given; and whether files differed from the release (the version line in My links by tag; see sourceCommit above)
         buildConfigField("String", "SOURCE_COMMIT", "\"$sourceCommit\"")
         buildConfigField("boolean", "SOURCE_DIRTY", sourceDirty.toString())
         // where the builds handed out as a file look for a newer version (update/UpdateRules.kt); a Play build never looks

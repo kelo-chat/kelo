@@ -9,6 +9,22 @@ from assistant.tools.task_permission import STEPS_PER_ITEM, TaskGrants, task_per
 from assistant.workers import current_turn, current_worker
 
 
+class Field:
+    """A text field read by its structure (what TARGET_JS gives a plain input). A step on a field that cannot be read fails closed
+    (hc-final-a: a typed value there is treated as a password), so the fake page must say what the field is."""
+
+    def __init__(self, page, sel):
+        self.page, self.sel = page, sel
+
+    async def evaluate(self, js, timeout=None):
+        if not self.sel.startswith("#"):
+            raise LookupError(self.sel)   # buttons and links: unreadable here, judged by their words (the fake judge)
+        return {"structure_read": True, "handler_src": "", "link_target": "", "secure_form": False, "in_form": False, "tag": "input",
+                "type": "text", "role": "", "text": "", "words": self.sel, "attrs": "", "href": "", "editable": True, "autocomplete": "",
+                "name": self.sel.lstrip("#"), "submits": False, "search_form": False, "form_personal": 0, "form_message": 0,
+                "url": self.page.url, "title": "체험단"}
+
+
 class Page:
     def __init__(self, url):
         self.url, self.calls = url, []
@@ -19,6 +35,12 @@ class Page:
     async def goto(self, url, **kw): self.url = url
     async def click(self, sel, **kw): self.calls.append(sel)
     async def wait_for_load_state(self, *a, **kw): pass
+    def locator(self, sel): return Locator(self, sel)
+
+
+class Locator:
+    def __init__(self, page, sel):
+        self.first = Field(page, sel)
 
 
 async def setup(url="https://www.musinsa.com/campaign", alive=None):
@@ -51,13 +73,11 @@ async def test_covered_steps_go_through_without_a_card_and_payments_still_ask(in
     assert await click({"selector": "text=제출"})                               # the form's own submit is part of applying
     assert await type_({"selector": "#phone", "text": "010-1234-5678"})        # the applicant's details
     assert used[0] == ("browser_click", "apply", "www.musinsa.com")
-    # never covered: paying, signing up, account changes, passwords, deleting
-    assert not await click({"selector": "text=결제하기"})
+    # never covered: paying, signing up, account changes, deleting (a password field asks by its type: test_commits)
     assert not await click({"selector": "text=회원가입"})
     assert not await click({"selector": "text=비밀번호 변경"})
     assert not await click({"selector": "text=삭제"})
-    assert not await type_({"selector": "input[name=password]", "text": "hunter22"})
-    assert grants.active()[0]["used"] == 2
+    assert grants.active()[0]["used"] == 1     # the apply click; a submit the judge says does nothing of the kinds needs no grant
 
 
 async def test_the_count_is_the_limit(in_turn):
@@ -74,8 +94,8 @@ async def test_every_covered_step_counts_towards_a_hard_cap(in_turn):
     grants.add(site="musinsa.com", kind="apply", action="체험단 신청", max_count=1)
     type_ = tools["browser_type"].auto_approve
     for _ in range(STEPS_PER_ITEM):
-        assert await type_({"selector": "#email", "text": "a@b.co"})
-    assert not await type_({"selector": "#email", "text": "a@b.co"})
+        assert await type_({"selector": "#email", "text": "4111 1111 1111 1111"})
+    assert not await type_({"selector": "#email", "text": "4111 1111 1111 1111"})
 
 
 async def test_another_site_asks(in_turn):
@@ -137,12 +157,11 @@ async def test_the_tool_asks_once_and_refuses_payments(in_turn):
     page, sess, grants, _, _ = await setup()
     tool = task_permission_tools(grants, sess.current_host, lambda: 7)[0]
     assert tool.requires_approval
-    assert await tool.auto_approve({"site": "musinsa.com", "kind": "apply", "action": "체험단 신청", "max_count": 30}) is False   # no request: a card
+    assert tool.auto_approve is None                              # no auto-approve: the card always shows, whatever the words
     ok = {"site": "musinsa.com", "kind": "apply", "action": "체험단 신청", "max_count": 30}
     assert tool.validate(ok) is None
-    assert "confirm_purchase" in tool.validate({**ok, "kind": "pay"})
-    assert "never covers paying" in tool.validate({**ok, "action": "상품 구매"})
-    assert "never covers paying" in tool.validate({**ok, "action": "회원가입"})
+    assert "checkout_review" in tool.validate({**ok, "kind": "pay"})
+    assert "sign-ups and account changes always ask" in tool.validate({**ok, "kind": "account"})   # the kind is an enum: no word of the action decides
     assert "max_count" in tool.validate({**ok, "max_count": 0})
     assert "not on other-shop.example" in tool.validate({**ok, "site": "other-shop.example"})
     tok = current_approval.set(("", ""))
@@ -154,16 +173,14 @@ async def test_the_tool_asks_once_and_refuses_payments(in_turn):
     assert "30" in await tool.describe(ok)
 
 
-async def test_no_card_when_the_owners_own_words_already_ask_for_it(in_turn):
-    # 2026-11-11: "카카오체험단 … 전체보기 … 다 신청해", then the job asked "471개 모두 … 진행할까요?" once more
+async def test_the_owners_words_never_skip_the_card_of_a_permission(in_turn):
+    # 2026-11-11 "다 신청해" skipped the card; 2026-11-16 (docs/no-word-lists.md): the Allow is the owner's word, never their chat text
     page, sess, grants, _, _ = await setup()
     said = ["카카오체험단 처음 체험단 페이지에서 맨 아래 내리면 전체보기있어. 최신등록순으로 다 신청해"]
     tool = task_permission_tools(grants, sess.current_host, lambda: 7, owner_request=lambda: said[0])[0]
+    assert tool.auto_approve is None
     ok = {"site": "musinsa.com", "kind": "apply", "action": "체험단 신청", "max_count": 471, "all": True, "targets": ["a"] * 471}
-    assert await tool.auto_approve(ok) is True
-    assert await tool.auto_approve({**ok, "kind": "delete"}) is False          # not what they asked for: a card
-    said[0] = "체험단 목록 좀 보여줘"                                              # only looking: a card
-    assert await tool.auto_approve(ok) is False
+    assert "471" in await tool.describe(ok)
 
 
 def test_the_card_asks_a_whole_question_with_the_plan():
@@ -300,15 +317,13 @@ async def readable_setup(url, elements):
 
 
 async def test_opting_out_is_its_own_low_risk_kind_judged_the_same_on_every_retry():
-    from assistant.tools.commits import judge_click, judge_words
-    assert judge_words("Unsubscribe from all deal emails") == "optout"
-    assert judge_words("수신 거부") == "optout" and judge_words("配信停止") == "optout" and judge_words("Turn off notifications") == "optout"
-    assert judge_words("Delete my account") == "delete" and judge_words("Cancel subscription") == "delete"   # paid plans stay deletions
-    # a plain "Submit" on a page made for opting out is the opt-out itself, not "sending something in your name"
+    from assistant.tools.commits import kind_of_verdict
+    from fake_judge import verdict
     info = {"url": "https://news.example/email-preferences", "title": "", "text": "Submit", "tag": "button", "submits": True, "in_form": True}
-    assert judge_click(info, "button") == "optout"
-    assert judge_click(None, "button, input[type=submit], a:has-text('Unsubscribe from all emails')") == "optout"
-    assert judge_click({**info, "url": "https://news.example/contact"}, "button") == "send"  # elsewhere "Submit" sends a form
+    assert kind_of_verdict(verdict("opts_out"), info) == "optout"
+    assert kind_of_verdict(verdict("deletes"), info) == "delete"                 # closing a paid plan stays a deletion
+    assert kind_of_verdict(verdict("opts_out", "deletes"), info) == "delete"
+    assert kind_of_verdict(verdict(), info) == ""                                # a button the judge says does nothing of the kinds goes on
 
 
 async def test_one_permission_covers_the_same_step_across_many_sites_with_the_real_count(in_turn):

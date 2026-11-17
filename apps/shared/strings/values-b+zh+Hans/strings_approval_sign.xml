@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hans text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">确认付款</string>
+    <string name="approval_sign_subtitle">使用指纹或面部确认</string>
+    <string name="approval_sign_failed">无法在此手机上批准这笔付款，请重试。</string>
+    <string name="approval_sign_key_lost">找不到此手机的付款批准密钥。请将此手机重新与服务器配对。</string>
+    <string name="approval_pay_on_phone">付款请在 Kelo 手机应用中批准。</string>
+</resources>

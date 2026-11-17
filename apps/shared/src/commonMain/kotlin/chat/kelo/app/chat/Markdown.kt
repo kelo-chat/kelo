@@ -299,6 +299,60 @@ object Markdown {
      */
     fun plain(text: String): String = blocks(text).mapNotNull(::plainBlock).joinToString("\n\n")
 
+    /**
+     * The text as a voice should read it ([SpokenText.from]): like [plain], but a link says only its words, a bare address and code
+     * blocks are left out, list items and table rows end like sentences, emoji and symbols are dropped.
+     */
+    fun spoken(text: String): String {
+        val cleaned = text.replace(BREAK_RE, "\n\n")
+        return blocks(cleaned).mapNotNull(::spokenBlock).joinToString("\n\n").trim()
+    }
+
+    private fun spokenBlock(b: Block): String? = when (b) {
+        is Block.Para -> sentence(spokenInline(b.text))
+        is Block.Heading -> sentence(spokenInline(b.text))
+        is Block.Code -> null
+        is Block.Items -> b.entries.mapNotNull { sentence(spokenInline(it.text)) }.joinToString("\n").ifBlank { null }
+        is Block.Quote -> b.blocks.mapNotNull(::spokenBlock).joinToString("\n\n").ifBlank { null }
+        is Block.Table -> (listOf(b.header) + b.rows).mapNotNull { r -> sentence(r.joinToString(", ") { spokenInline(it) }) }.joinToString("\n").ifBlank { null }
+        Block.Rule -> null
+    }
+
+    private fun spokenInline(text: String): String = withoutPictographs(inline(text).joinToString("") { s ->
+        when (s) {
+            is Span.Plain -> s.text
+            is Span.Code -> s.text
+            is Span.Bold -> s.text
+            is Span.Italic -> s.text
+            is Span.Link -> if (s.text == s.url) "" else s.text
+        }
+    }).replace(Regex("[ \\t]+"), " ").replace(Regex(" +([,.!?;:])"), "$1").trim()
+
+    /** [t] with a full stop at its end when it has no closing mark, so a voice pauses between lines; null when it has no letters or digits. */
+    private fun sentence(t: String): String? {
+        val s = t.trim()
+        if (s.none { it.isLetterOrDigit() }) return null
+        return if (s.last() in SENTENCE_END) s else "$s."
+    }
+
+    private val SENTENCE_END = setOf('.', '!', '?', ':', ';', '。', '！', '？', '…', '"', '”', ')', '」')
+
+    /** [t] without emoji and pictographs (surrogate pairs of the symbol planes, the dingbat and symbol blocks, joiners and variation selectors). */
+    private fun withoutPictographs(t: String): String {
+        val sb = StringBuilder()
+        var i = 0
+        while (i < t.length) {
+            val ch = t[i]
+            val code = ch.code
+            when {
+                ch.isHighSurrogate() && code in 0xD83C..0xD83E && i + 1 < t.length -> i += 2
+                code in 0x2600..0x27BF || code == 0xFE0F || code == 0x200D || code in 0x2B00..0x2BFF -> i++
+                else -> { sb.append(ch); i++ }
+            }
+        }
+        return sb.toString()
+    }
+
     private fun plainBlock(b: Block): String? = when (b) {
         is Block.Para -> plainInline(b.text)
         is Block.Heading -> plainInline(b.text)

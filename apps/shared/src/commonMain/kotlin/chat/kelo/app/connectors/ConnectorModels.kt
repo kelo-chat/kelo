@@ -353,7 +353,15 @@ object ConnectorIconRules {
 
 /** GET /api/connectors/{id}/permissions (server permissions.py): what Kelo may do with this connector. */
 @Serializable
-data class ConnectorPermissions(val connector: String = "", val name: String = "", val kinds: List<PermissionKind> = emptyList())
+data class ConnectorPermissions(
+    val connector: String = "", val name: String = "",
+    /** "Use when I'm not chatting": allow (the default) or off for schedules, background jobs and messages Kelo sends first */
+    val unattended: PermissionUnattended = PermissionUnattended(),
+    val kinds: List<PermissionKind> = emptyList(),
+)
+
+@Serializable
+data class PermissionUnattended(val mode: String = "allow", val default: String = "allow")
 
 /** One kind of action (read / change / send / delete) with its mode now, its default and its single actions. */
 @Serializable
@@ -366,7 +374,14 @@ object PermissionRules {
     val MODES = listOf("allow", "ask", "off")
 
     /** Anything set away from its default (the "back to the defaults" link shows then). */
-    fun changed(p: ConnectorPermissions): Boolean = p.kinds.any { k -> k.mode != k.default || k.actions.any { it.mode != it.default } }
+    fun changed(p: ConnectorPermissions): Boolean =
+        p.unattended.mode != p.unattended.default || p.kinds.any { k -> k.mode != k.default || k.actions.any { it.mode != it.default } }
+
+    /** "Use when I'm not chatting" is on while the server has it as allow. */
+    fun unattendedOn(p: ConnectorPermissions): Boolean = p.unattended.mode != "off"
+
+    /** The PUT body for the switch: on is the default again, so it clears the setting (null); off sends "off". */
+    fun unattendedBody(on: Boolean): JsonObject = buildJsonObject { if (on) put("unattended", JsonNull) else put("unattended", "off") }
 
     /** The PUT body for one kind's new mode. */
     fun kindBody(kind: String, mode: String): JsonObject = buildJsonObject { put(kind, mode) }

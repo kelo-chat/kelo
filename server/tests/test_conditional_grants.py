@@ -19,7 +19,8 @@ from assistant.tools.purchase import purchase_tools
 from assistant.wallet import CardDeliveries, Wallet
 from assistant.workers import current_turn, current_worker
 
-from test_agent_profile import app_settings, approval_tool
+from split_pay import SHOP, Split, job
+from test_agent_profile import ShotPage, app_settings, approval_tool
 from test_server import AUTH, Running, follow
 from test_vault import KEY
 from test_wallet import auto_card, e2e_card
@@ -49,11 +50,30 @@ class in_scope:
         current_worker.reset(self.wtok)
 
 
+ACCOUNT_TEXTS = ("change the account password", "회원가입 이벤트", "sign up for a new account")   # what the fake model reads as an account step
+
+
+def text_judge(*, up: bool = True):
+    """The step judge behind a permission's words, with a fake model (no network): the texts in ACCOUNT_TEXTS are sign-ups / account
+    security, everything else changes none of them; `up=False` is a model that does not answer."""
+    from assistant.step_judge import StepJudge
+
+    async def ask(system, user):
+        if not up:
+            return None
+        said = json.loads(user)["described_action"]
+        bad = any(x in said for x in ACCOUNT_TEXTS)
+        return {"spends_money": False, "sends": False, "deletes": False, "account_security": bad, "signs_up": False, "applies": False, "opts_out": False}
+
+    return StepJudge(ask)
+
+
 def world(tmp_path):
     store = Store(tmp_path / "a.db", KEY.decode())
     wallet = Wallet(store)
     schedules = Schedules(store)
     grants = ConditionalGrants(store, schedules, wallet)
+    grants.judge = text_judge()
     poll = schedules.create("Seat poll", "look for a cancelled seat and buy it", every_minutes=5, created_by="agent")
     return store, wallet, schedules, grants, poll
 
@@ -181,7 +201,7 @@ async def test_the_setup_card_shows_the_cards_auto_pay_limit_next_to_the_amount_
     assert v["purchase"]["card"]["phone_only"] and "each payment will still ask" in v["purchase"]["card_note"]
 
 
-def test_the_setup_question_is_never_asked_inside_a_run_and_needs_a_real_task(tmp_path):
+async def test_the_setup_question_is_never_asked_inside_a_run_and_needs_a_real_task(tmp_path):
     store, wallet, schedules, grants, poll = world(tmp_path)
     tool = {t.name: t for t in task_allow_tools(grants, wallet)}["task_allow"]
     args = {"watcher_id": 99, "trigger": "x", "action": "y", "send": {"to": ["a@example.com"]}}
@@ -191,8 +211,13 @@ def test_the_setup_question_is_never_asked_inside_a_run_and_needs_a_real_task(tm
         assert "never inside a run" in tool.validate({**args, "watcher_id": None, "schedule_id": poll["id"]})
     assert "action is required" in tool.validate({"schedule_id": poll["id"], "trigger": "x", "send": {"to": ["a@example.com"]}})
     assert "change.where" in tool.validate({"schedule_id": poll["id"], "trigger": "x", "action": "y", "change": {"what": "z"}})
-    assert "account" in tool.validate({"schedule_id": poll["id"], "trigger": "x", "action": "y",
-                                       "change": {"what": "change the account password", "where": ["calendar"]}})
+    bad = {"schedule_id": poll["id"], "trigger": "x", "action": "y", "change": {"what": "change the account password", "where": ["calendar"]}}
+    assert "never covers sign-ups" in await tool.hold(bad)                                  # read by the step judge before the card
+    assert await tool.hold({**bad, "change": {"what": "move the run to the evening", "where": ["calendar"]}}) is None
+    grants.judge = text_judge(up=False)                                                     # no answer: fail closed, nothing allowed
+    assert "could not be checked" in await tool.hold({**bad, "change": {"what": "move the run", "where": ["calendar"]}})
+    grants.judge = None
+    assert "could not be checked" in await tool.hold({**bad, "change": {"what": "move the run", "where": ["calendar"]}})
 
 
 # ---------------------------------------------------------------------------------------------------------------- what a grant covers
@@ -487,7 +512,7 @@ async def test_deleting_not_allowed_and_a_second_time_ask_and_a_revoked_grant_as
 async def test_a_purchase_through_a_watchers_hit_is_bought_notified_and_the_watcher_ends(tmp_path, monkeypatch):
     monkeypatch.setattr("assistant.server.UNATTENDED_APPROVAL_SECONDS", 0.3)
     plan = Plan(("confirm_purchase", TICKET), ("confirm_purchase", TICKET))   # the second one asks (nobody answers): never twice
-    app = create_app(app_settings(tmp_path), tools=[], stream_fn=server_model(plan))
+    app = create_app(app_settings(tmp_path, payment_specialist=False), tools=[], stream_fn=server_model(plan))   # the watcher's run pays (switch off)
     grants: ConditionalGrants = app.state.schedule_grants
     app.state.tools.extend(t for t in purchase_tools(None, grants.wallet, CardDeliveries(), grants=grants) if t.name == "confirm_purchase")
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
@@ -505,6 +530,34 @@ async def test_a_purchase_through_a_watchers_hit_is_bought_notified_and_the_watc
         assert (await c.get(f"/api/watchers/{wid}")).json()["enabled"] is False
         assert grants.list(scope=scope) == [] and (await c.get(f"/api/watchers/{wid}/grants")).json()["items"] == []
         assert (await c.get("/api/task-grants")).json()["items"] == []
+
+
+async def test_a_watchers_hit_bought_by_a_checkout_job_is_covered_by_the_watchers_grant(tmp_path, monkeypatch):
+    """The payment split (the default): the watcher's run cannot pay, so it hands the ticket to a checkout job. The purchase the watcher's
+    grant covers must go through in that job too, without a card, and the watcher ends like the chat-paid case."""
+    from assistant.tools.browser import BrowserSession
+    monkeypatch.setattr("assistant.server.UNATTENDED_APPROVAL_SECONDS", 0.3)
+
+    async def connect():
+        return ShotPage(SHOP)
+    model = Split(job(("confirm_purchase", TICKET)), closing="done")
+    app = create_app(app_settings(tmp_path, payment_specialist=True), tools=[], stream_fn=model, with_worker_tools=True,
+                     browser=BrowserSession(connect=connect))
+    grants: ConditionalGrants = app.state.schedule_grants
+    app.state.tools.extend(t for t in purchase_tools(None, grants.wallet, CardDeliveries(), grants=grants) if t.name == "confirm_purchase")
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        card = auto_card(grants.wallet)
+        scope, fire, wid = await start(c, app, "watcher")
+        grants.add_purchase(None, "tickets.example.com", "concert ticket", 50000, "KRW", scope=scope, max_count=1, card_id=card["id"],
+                            once=True, trigger="a cancelled seat shows up", action="buy it")
+        await fire()
+        pays = grants.wallet.payments()
+        assert len(pays) == 1 and pays[0]["amount"] == 50000 and pays[0]["kind"] == "auto"
+        notes = (await c.get("/api/notifications")).json()["items"]
+        assert any(n["type"] == "payment_auto" for n in notes)
+        assert any(n["type"] == "watch_disabled" for n in notes)
+        assert (await c.get(f"/api/watchers/{wid}")).json()["enabled"] is False
+        assert grants.list(scope=scope) == []
 
 
 async def test_a_watchers_expired_card_tried_again_still_works_under_the_watchers_grant(tmp_path, monkeypatch):
@@ -552,5 +605,6 @@ async def test_the_runs_instructions_say_what_was_allowed(tmp_path):
         grants.add_action(scope, "send", "tell my wife", ["wife@example.com"], max_count=1, once=True, trigger="the package is delivered",
                           action="text my wife")
         await fire()
-    text = json.dumps(seen[-1], ensure_ascii=False)
+    from assistant.scheduled_runs import CLOSE_SYSTEM
+    text = json.dumps([m for m in seen if m[0].get("content") != CLOSE_SYSTEM][-1], ensure_ascii=False)   # not the closing request
     assert "Allowed by the user when this task was set up" in text and "the package is delivered" in text and "wife@example.com" in text

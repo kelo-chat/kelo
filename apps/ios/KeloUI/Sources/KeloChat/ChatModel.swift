@@ -30,6 +30,16 @@ public final class ChatModel {
     public private(set) var modelList: ModelList?
     public internal(set) var hasOlder = false
     public internal(set) var loadingOlder = false
+    /// A search hit's window is on screen: the messages after it are not loaded yet (`loadNewer` as the end comes; `leaveWindow`
+    /// brings the newest page back). False for the normal history.
+    public internal(set) var hasNewer = false
+    public internal(set) var loadingNewer = false
+    /// The message a search hit opened: lit for a moment (`openSearchHit`), then it fades (Android HIGHLIGHT_HOLD_MS / FADE_MS).
+    public internal(set) var markedMessage: Int64?
+    /// The message the list scrolls to; `focusRequest` counts the asks, so the same message can be asked for again.
+    public internal(set) var focusTarget: Int64?
+    public internal(set) var focusRequest = 0
+    @ObservationIgnored var markTask: Task<Void, Never>?
     /// The last refresh did not reach the server: what shows may be old (kept from last time)
     public internal(set) var offline = false
     public internal(set) var attachments: [Attachment] = []
@@ -48,6 +58,8 @@ public final class ChatModel {
     public internal(set) var consentError: String?
     /// Secure entries the agent asked for (GET /api/secret-requests, open ones; plus the ones answered on this phone, folded until
     /// the next load). The chat shows each under the agent message it belongs to, or at the end (`rows`).
+    /// The short message after a login or key was added from its card or sheet (the chat shows it for a moment and clears it).
+    public var entryToast: String?
     public internal(set) var secrets: [SecretRequest] = [] { didSet { rows = Self.rowsOf(items, secrets) } }
 
     /// Payment steps that need the user (approve in another app, a code, the page's PIN keypad), shown at the bottom (Android

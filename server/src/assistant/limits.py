@@ -76,7 +76,7 @@ def whole(opt: str, cap: Capacity) -> str:
     if opt in ("disk", "workroom_disk"):
         return f"whole disk ({fmt_size(cap.disk_free)} free)" if cap.disk_free is not None else "whole disk"
     if opt == "browser_cache":
-        return "browser default"
+        return "browser default (1 GB)"
     if kind == "cpus":
         return f"all {cap.cpus} CPUs" if cap.cpus else "all CPUs"
     return f"whole computer ({fmt_size(cap.ram)})" if cap.ram else "whole computer"
@@ -92,13 +92,8 @@ PROFILE_LABEL = profiles.LABEL
 
 
 def host_capacity(m: Instances) -> tuple[int | None, int | None]:
-    """(CPUs, RAM bytes) that Docker can hand out on this computer."""
-    r = m.run(["docker", "info", "--format", "{{.NCPU}} {{.MemTotal}}"], capture_output=True, text=True)
-    try:
-        cpus, mem = (r.stdout or "").split()[:2]
-        return int(cpus), int(mem)
-    except (ValueError, TypeError):
-        return None, None
+    """(CPUs, RAM bytes) that the runtime (Docker, or Apple container on a Mac with the Kelo Server package) can hand out here."""
+    return m.host_capacity()
 
 
 def prepare(m: Instances, wanted: dict[str, str | None]) -> tuple[dict[str, str], list[str], list[str]]:
@@ -125,14 +120,14 @@ def prepare(m: Instances, wanted: dict[str, str | None]) -> tuple[dict[str, str]
             looked = True
         if kind == "cpus":
             if host_cpus and value > host_cpus:
-                raise LimitError(f"--{opt.replace('_', '-')}: this computer's Docker has {host_cpus} CPUs, so {value:g} is too many.")
+                raise LimitError(f"--{opt.replace('_', '-')}: this computer's {m.runtime_name} has {host_cpus} CPUs, so {value:g} is too many.")
             set_[key] = f"{value:g}"
         else:
             if opt not in ("disk", "browser_cache", "workroom_disk"):
                 if value < DOCKER_MIN_MEMORY:
-                    raise LimitError(f"--{opt.replace('_', '-')}: Docker needs at least {fmt_size(DOCKER_MIN_MEMORY)} of RAM.")
+                    raise LimitError(f"--{opt.replace('_', '-')}: {m.runtime_name} needs at least {fmt_size(DOCKER_MIN_MEMORY)} of RAM.")
                 if host_mem and value > host_mem:
-                    raise LimitError(f"--{opt.replace('_', '-')}: this computer's Docker has {fmt_size(host_mem)} of RAM, so {fmt_size(value)} is too much.")
+                    raise LimitError(f"--{opt.replace('_', '-')}: this computer's {m.runtime_name} has {fmt_size(host_mem)} of RAM, so {fmt_size(value)} is too much.")
             set_[key] = str(max(1, round(value / MB))) if kind == "mb" else str(value)
         low = profiles.FLOOR[opt]
         if value < low:          # still allowed: the person may know better, but they are told what was measured

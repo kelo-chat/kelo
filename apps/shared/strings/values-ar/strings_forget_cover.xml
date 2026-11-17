@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">المواضيع المنسية</string>
+    <string name="forget_intro">مواضيع طلبت من Kelo نسيانها. حذف Kelo ما وجده ولن يدوّنها مرة أخرى.</string>
+    <string name="forget_empty">لم يُنسَ شيء بعد. عندما تطلب من Kelo نسيان موضوع، سيظهر هنا.</string>
+    <string name="forget_date">نُسي في %1$s</string>
+    <string name="forget_removed">تم حذف: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">لم يُعثر على شيء للحذف.</string>
+    <string name="forget_cat_memory">الذاكرة</string>
+    <string name="forget_cat_notes">الملاحظات</string>
+    <string name="forget_cat_reminders">التذكيرات</string>
+    <string name="forget_cat_skills">المهارات</string>
+    <string name="forget_cat_history">السجلات</string>
+    <string name="forget_cat_other">أخرى</string>
+    <string name="forget_allow_again">السماح مجددًا</string>
+    <string name="forget_allow_confirm">هل تسمح لـ Kelo بالكتابة عن «%1$s» مجددًا؟ لن يعود ما تم حذفه.</string>
+    <string name="forget_allowed">يمكن لـ Kelo الكتابة عنه مجددًا.</string>
+    <string name="paycover_title">المدفوعات المعتمدة مسبقًا</string>
+    <string name="paycover_switch">السماح بالمدفوعات المعتمدة مسبقًا</string>
+    <string name="paycover_switch_note">عند الإيقاف: تسألك كل عملية دفع أولًا.</string>
+    <string name="paycover_empty">لا شيء معتمد مسبقًا. الطلب أو الدفعة المجدولة التي تعتمدها مسبقًا تظهر هنا.</string>
+    <string name="paycover_off_note">متوقف: تبقى هذه العناصر في القائمة لكن كل عملية دفع ستسأل.</string>
+    <string name="paycover_orders">الطلبات</string>
+    <string name="paycover_allows">المدفوعات المجدولة</string>
+    <string name="paycover_cap">حتى %1$s في المجموع</string>
+    <string name="paycover_until">حتى %1$s</string>
+    <string name="paycover_for_task">لمهمة واحدة</string>
+    <string name="paycover_for_schedule">للجدول «%1$s»</string>
+    <string name="paycover_for_a_schedule">لمهمة مجدولة</string>
+    <string name="paycover_one_order">طلب واحد</string>
+    <string name="paycover_allow_scope">المتجر نفسه وطريقة الدفع نفسها</string>
+    <string name="paycover_remove">إزالة %1$s</string>
+    <string name="paycover_remove_order_confirm">إزالة هذا الاعتماد؟ سيسأل الطلب قبل دفعه.</string>
+    <string name="paycover_remove_allow_confirm">إزالة السماح لـ «%1$s»؟ ستسأل مدفوعاته في كل مرة من جديد.</string>
+    <string name="paycover_removed">تمت الإزالة. ستسأل المدفوعات من جديد.</string>
+    <string name="preapprove_what">الطلب</string>
+    <string name="preapprove_cap">أقصى مبلغ تدفعه</string>
+    <string name="preapprove_cap_value">%1$s في المجموع (شامل الضريبة والشحن)</string>
+    <string name="preapprove_until">حتى</string>
+    <string name="preapprove_covers">النطاق</string>
+    <string name="preapprove_covers_value">هذا الطلب الواحد فقط</string>
+    <string name="preapprove_requirements">يجب توفر</string>
+    <string name="preapprove_shipping">التوصيل</string>
+    <string name="preapprove_shops">المتاجر</string>
+    <string name="preapprove_delegated">يقرر Kelo</string>
+    <string name="chat_payment_cover_order">تمت التغطية بالطلب الذي اعتمدته مسبقًا</string>
+    <string name="chat_payment_cover_schedule">تمت التغطية بسماحك لمدفوعات هذا الجدول</string>
+</resources>

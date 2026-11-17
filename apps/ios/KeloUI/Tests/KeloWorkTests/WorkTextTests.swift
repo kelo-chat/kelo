@@ -8,6 +8,14 @@ import KeloTestSupport
 /// The work page's words: schedules are always said in words (never their cron expression), and the server's lists are read
 /// with the extra fields KeloCore's models leave out.
 @Suite struct WorkTextTests {
+    @MainActor @Test func aPhoneJobHasItsOwnKindWord() {
+        withLanguage("en") {
+            #expect(WorkText.jobKind("phone") == "Phone task")
+            #expect(WorkText.jobKind("phone") != WorkText.jobKind("general"))
+            #expect(WorkText.jobKind("browser") == "Browser task")
+        }
+    }
+
     @MainActor @Test func schedulesAreNeverShownAsCron() {
         withLanguage("en") {
         let cases: [Schedule] = [

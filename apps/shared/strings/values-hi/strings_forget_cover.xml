@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">भुलाए गए विषय</string>
+    <string name="forget_intro">वे विषय जिन्हें आपने Kelo से भूलने को कहा। Kelo ने जो मिला उसे हटा दिया है और इन्हें दोबारा नहीं लिखेगा।</string>
+    <string name="forget_empty">अभी कुछ भुलाया नहीं गया है। जब आप Kelo से किसी विषय को भूलने को कहेंगे, वह यहाँ दिखेगा।</string>
+    <string name="forget_date">%1$s को भुलाया गया</string>
+    <string name="forget_removed">हटाया गया: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">हटाने लायक कुछ नहीं मिला।</string>
+    <string name="forget_cat_memory">मेमोरी</string>
+    <string name="forget_cat_notes">नोट्स</string>
+    <string name="forget_cat_reminders">रिमाइंडर</string>
+    <string name="forget_cat_skills">स्किल</string>
+    <string name="forget_cat_history">लॉग</string>
+    <string name="forget_cat_other">अन्य</string>
+    <string name="forget_allow_again">फिर से अनुमति दें</string>
+    <string name="forget_allow_confirm">क्या Kelo को “%1$s” के बारे में फिर से लिखने दें? जो हटाया गया वह वापस नहीं आता।</string>
+    <string name="forget_allowed">Kelo अब इसके बारे में फिर से लिख सकता है।</string>
+    <string name="paycover_title">पहले से स्वीकृत भुगतान</string>
+    <string name="paycover_switch">पहले से स्वीकृत भुगतान की अनुमति दें</string>
+    <string name="paycover_switch_note">बंद होने पर हर भुगतान पहले आपसे पूछेगा।</string>
+    <string name="paycover_empty">पहले से कुछ स्वीकृत नहीं है। जिस ऑर्डर या निर्धारित भुगतान को आप पहले से स्वीकृत करेंगे, वह यहाँ दिखेगा।</string>
+    <string name="paycover_off_note">बंद है: ये सूची में रहेंगे, पर हर भुगतान पूछेगा।</string>
+    <string name="paycover_orders">ऑर्डर</string>
+    <string name="paycover_allows">निर्धारित भुगतान</string>
+    <string name="paycover_cap">कुल अधिकतम %1$s</string>
+    <string name="paycover_until">%1$s तक</string>
+    <string name="paycover_for_task">एक कार्य के लिए</string>
+    <string name="paycover_for_schedule">शेड्यूल “%1$s” के लिए</string>
+    <string name="paycover_for_a_schedule">एक निर्धारित कार्य के लिए</string>
+    <string name="paycover_one_order">एक ऑर्डर</string>
+    <string name="paycover_allow_scope">वही दुकान, वही भुगतान तरीका</string>
+    <string name="paycover_remove">%1$s हटाएँ</string>
+    <string name="paycover_remove_order_confirm">यह स्वीकृति हटाएँ? यह ऑर्डर भुगतान से पहले पूछेगा।</string>
+    <string name="paycover_remove_allow_confirm">“%1$s” की अनुमति हटाएँ? इसके भुगतान फिर हर बार पूछेंगे।</string>
+    <string name="paycover_removed">हटा दिया गया। भुगतान फिर पूछेंगे।</string>
+    <string name="preapprove_what">ऑर्डर</string>
+    <string name="preapprove_cap">अधिकतम भुगतान</string>
+    <string name="preapprove_cap_value">कुल %1$s (टैक्स और शिपिंग सहित)</string>
+    <string name="preapprove_until">तक</string>
+    <string name="preapprove_covers">दायरा</string>
+    <string name="preapprove_covers_value">केवल यही एक ऑर्डर</string>
+    <string name="preapprove_requirements">ज़रूरी बातें</string>
+    <string name="preapprove_shipping">डिलीवरी</string>
+    <string name="preapprove_shops">दुकानें</string>
+    <string name="preapprove_delegated">Kelo तय करेगा</string>
+    <string name="chat_payment_cover_order">आपके पहले से स्वीकृत ऑर्डर से भुगतान हुआ</string>
+    <string name="chat_payment_cover_schedule">इस शेड्यूल के भुगतान की आपकी अनुमति से भुगतान हुआ</string>
+</resources>

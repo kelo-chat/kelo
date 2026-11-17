@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">從手機貼上</string>
+    <string name="live_pasted">已貼上。請檢查欄位。</string>
+    <string name="live_copy_from_browser">從瀏覽器複製</string>
+    <string name="live_copied_to_phone">已複製到手機</string>
+</resources>

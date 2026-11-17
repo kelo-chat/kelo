@@ -2,7 +2,7 @@
 
 `payment_step_wait`: the page asks the payer to approve outside the page (a card company's or bank's app with a code to compare, often a
 QR code and a time limit; a one-time code; a 3-D Secure push; a passkey or fingerprint prompt; a payment app's confirmation). The page
-is read here, generically: the words that ask for it, a short code shown large, a QR-like square picture, a countdown or expiry time.
+is read here, generically and by STRUCTURE (a one-time-code input, a QR-like square picture, a short code shown large, a countdown element); what structure cannot tell (which approval, whether it ran out, which control asks for a new code) is read by the page judge (page_judge.py, docs/no-word-lists.md hc-pagefields), and with no answer the page is taken for an approval step.
 ONE card then shows in the chat (payment_steps.PaymentSteps: what is paid, the code, the QR cut out of the page, the time left counting
 down, the page's instruction in one line in the user's language, [I approved it] / [Cancel]) and the call waits:
 - "approved": the purchase window of the approval the user already gave is opened again for two clicks, and the agent is told to check the
@@ -42,7 +42,7 @@ from ..payment_steps import PaymentSteps
 from ..wallet import site_key
 from . import humanize as human
 from . import keypad
-from .browser import BrowserPolicyError, BrowserSession, browser_owner, extra_auth
+from .browser import BrowserPolicyError, BrowserSession, browser_owner
 
 POLL_SECONDS = 2.0           # how often the page is looked at while a card waits
 WAIT_SECONDS = 600.0         # how long a card waits in a followed chat reply...
@@ -62,27 +62,18 @@ DEFAULT_LINE = {
     "pin_pad": N_("Enter your payment PIN on the keypad below."),
 }
 
-# Words of a page that asks for the payment to be approved outside it. Generic: no site, card company or payment app is named.
-APP_WORDS = ("앱에서 승인", "앱에서 확인", "앱에서 인증", "앱을 열어", "앱 알림", "푸시 알림", "알림을 확인", "승인 요청", "인증 요청을 보냈",
-             "휴대폰에서 승인", "휴대폰으로 전송", "승인번호", "인증번호", "확인 번호", "아래 번호", "qr코드", "qr 코드", "큐알",
-             "approve in", "approve the payment", "approve this payment", "approve on your", "open your", "app to confirm", "app to approve",
-             "push notification", "confirm in your", "confirm on your phone", "check your phone", "sent to your phone", "scan the qr",
-             "scan this code", "verification number", "matching number", "number shown", "アプリで承認", "アプリで認証", "認証番号", "承認番号")
-PASSKEY_WORDS = ("passkey", "패스키", "생체 인증", "생체인증", "지문", "fingerprint", "face id", "touch id", "biometric", "windows hello",
-                 "security key", "보안키", "パスキー", "生体認証")
-OTP_WORDS = ("one-time password", "one time password", "one-time code", "otp", "인증번호 입력", "인증번호를 입력", "verification code",
-             "security code", "enter the code", "sms code", "문자로 받은", "ワンタイム")
-EXPIRED = re.compile(r"만료|시간이\s*(초과|지났)|유효\s*시간이\s*지|expired|timed?\s*out|has run out|期限切れ|タイムアウト", re.I)
+MAX_LINES = 40               # numbered text lines the page judge may point at
 
-# The step as the page shows it, in one frame. Nothing is typed or clicked; the QR element and a "send again" button are only marked.
+# The step as the page shows it, in one frame, by STRUCTURE (docs/no-word-lists.md, hc-pagefields): no word of any language is read here.
+# Nothing is typed or clicked; the QR element, the short-code candidates and the clickable controls are only marked
+# (data-kelo-qr, data-kelo-ctl="i"). The page judge (page_judge.py) reads the text for what structure cannot tell: which approval it is,
+# which candidate is the code, which control asks for a new one, whether the time ran out.
 STEP_JS = r"""() => {
-  document.querySelectorAll('[data-kelo-qr],[data-kelo-resend]').forEach((e) => { e.removeAttribute('data-kelo-qr'); e.removeAttribute('data-kelo-resend'); });
+  document.querySelectorAll('[data-kelo-qr],[data-kelo-resend],[data-kelo-ctl]').forEach((e) => { e.removeAttribute('data-kelo-qr'); e.removeAttribute('data-kelo-resend'); e.removeAttribute('data-kelo-ctl'); });
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
     return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none' && parseFloat(c.opacity || '1') > 0.05; };
   const text = (document.body ? document.body.innerText : '').slice(0, 6000);
-  const codeCtx = /인증번호|승인번호|확인\s*번호|코드|번호|숫자|code|number|digits|番号|コード/i;
-  const notCode = /주문|order|금액|total|합계|가격|price|전화|phone|tel|사업자|우편|zip|postal|날짜|date|카드번호|card number|会員|注文/i;
-  let code = null;
+  const codes = [];
   for (const e of document.querySelectorAll('body *')) {
     if (!shown(e) || e.closest('script,style,input,textarea,select,option,button,a')) continue;
     if ([...e.children].some((c) => (c.innerText || '').trim())) continue;
@@ -91,95 +82,92 @@ STEP_JS = r"""() => {
     if (/^\d{1,2}:\d{2}$/.test(raw) || /^\d{4}-\d{2}-\d{2}$/.test(raw) || /^\d{2,3}-\d{3,4}-\d{4}$/.test(raw)) continue;
     const compact = raw.replace(/[ \-]/g, '');
     if (compact.length < 2 || compact.length > 10 || !/\d/.test(compact) || /^[A-Za-z]+$/.test(compact)) continue;
-    const ctx = ((e.parentElement && e.parentElement.parentElement ? e.parentElement.parentElement.innerText : '') || '').slice(0, 240);
-    const own = (e.getAttribute('class') || '') + ' ' + (e.id || '');
     const fs = parseFloat(getComputedStyle(e).fontSize) || 0;
-    let score = fs + (codeCtx.test(ctx) || /code|otp|auth|verify|confirm/i.test(own) ? 14 : 0) - (notCode.test(ctx) ? 30 : 0);
-    if (fs < 18 && !codeCtx.test(ctx)) continue;
-    if (!code || score > code.score) code = { text: compact, shown: raw, score };
+    if (fs < 18) continue;   // a code to compare or type is shown large
+    codes.push({ text: compact, shown: raw, fs });
   }
-  let qr = null;
-  const qrWords = /qr|큐알|二次元/i.test(text);
+  codes.sort((a, b) => b.fs - a.fs);
+  let qr = null, hint = false;
   for (const e of document.querySelectorAll('img,canvas,svg,[role=img]')) {
     if (!shown(e)) continue;
     const r = e.getBoundingClientRect();
     const ratio = r.width / r.height;
     if (r.width < 72 || ratio < 0.8 || ratio > 1.25) continue;
-    const hint = [e.getAttribute('src'), e.getAttribute('alt'), e.getAttribute('class'), e.id, e.getAttribute('aria-label')].join(' ');
-    if (!/qr/i.test(hint) && !qrWords) continue;
-    if (!qr || r.width > qr.w) qr = { el: e, w: r.width };
+    const named = /qr/i.test([e.getAttribute('src'), e.getAttribute('alt'), e.getAttribute('class'), e.id, e.getAttribute('aria-label')].join(' '));   // "qr" names a format, not a word of a language
+    if (!qr || (named && !qr.named) || (named === qr.named && r.width > qr.w)) qr = { el: e, w: r.width, named };
   }
-  if (qr) qr.el.setAttribute('data-kelo-qr', '1');
+  if (qr) { qr.el.setAttribute('data-kelo-qr', '1'); hint = qr.named; }
+  // a countdown by structure (hc-final-a: no class or id word): an ARIA timer or a <time> element, or a leaf element whose whole text is a
+  // clock shape (m:ss, mm:ss, h:mm:ss). A shape, not a word: the label around it decides nothing.
   const timers = [];
-  const timeRe = /(\d{1,2}\s*:\s*\d{2})|(\d+\s*분\s*\d+\s*초)|(\d+\s*초)|(\d+\s*분)|(\d+\s*min(?:utes?)?(?:\s*\d+\s*s(?:ec(?:onds?)?)?)?)|(\d+\s*s(?:ec(?:onds?)?)?\b)/i;
-  for (const e of document.querySelectorAll('body *')) {
-    if (!shown(e) || [...e.children].some((c) => (c.innerText || '').trim())) continue;
+  for (const e of document.querySelectorAll('*')) {
+    const timed = e.matches('[role=timer],time');
+    if (!timed && e.children.length) continue;
+    if (!shown(e)) continue;
     const raw = (e.innerText || '').trim();
-    if (!raw || raw.length > 60 || !timeRe.test(raw)) continue;
-    const own = ((e.getAttribute('class') || '') + ' ' + (e.id || '')).toLowerCase();
-    const ctx = ((e.parentElement ? e.parentElement.innerText : '') || '').slice(0, 160);
-    if (/timer|countdown|remain|expire|count|time/.test(own) || /남은|유효|이내|안에|까지|remaining|left|expire|within|valid|残り|有効/i.test(ctx + ' ' + raw))
-      timers.push(ctx.length < 120 ? ctx : raw);
+    if (!raw || raw.length > 60) continue;
+    if (timed) {
+      if ([...e.children].some((c) => (c.innerText || '').trim() && shown(c) && c.matches('[role=timer],time'))) continue;
+    } else if (!/^\d{1,2}:\d{2}(:\d{2})?$/.test(raw)) continue;
+    timers.push(raw);
   }
-  const clickable = [...document.querySelectorAll('button,[role=button],a,input[type=button],input[type=submit]')].filter(shown);
-  const resend = clickable.find((e) => /재요청|재전송|재발급|다시\s*(받|요청|발급|보내|전송)|새로\s*받|resend|send again|new code|get a new|request again|refresh|retry|再送|再発行/i
-    .test((e.innerText || e.value || e.getAttribute('aria-label') || '').trim()));
-  if (resend) resend.setAttribute('data-kelo-resend', '1');
-  const otpBox = [...document.querySelectorAll('input')].some((e) => shown(e) && !e.disabled && ((e.getAttribute('autocomplete') || '') === 'one-time-code'
-    || /otp|one.?time|verif|auth.?code|security.?code|인증번호|인증 번호/i.test([e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label')].join(' '))));
-  return { text, code: code ? { text: code.text, shown: code.shown } : null, qr: !!qr, timers: timers.slice(0, 6), resend: !!resend, otp_box: otpBox };
+  const clickable = [...document.querySelectorAll('button,[role=button],a,input[type=button],input[type=submit]')].filter(shown).slice(0, 16);
+  clickable.forEach((e, i) => e.setAttribute('data-kelo-ctl', String(i)));
+  const controls = clickable.map((e) => (e.innerText || e.value || e.getAttribute('aria-label') || '').trim().slice(0, 60));
+  const inputs = [...document.querySelectorAll('input')].filter((e) => shown(e) && !e.disabled);
+  const otpBox = inputs.some((e) => (e.getAttribute('autocomplete') || '') === 'one-time-code'
+    || (['', 'text', 'tel', 'number'].includes((e.getAttribute('type') || '').toLowerCase()) && /numeric|decimal/.test(e.getAttribute('inputmode') || '')
+        && e.maxLength >= 5 && e.maxLength <= 8 && !/(^|\s)(cc-[a-z-]+|tel[a-z-]*|postal-code)(\s|$)/.test(e.getAttribute('autocomplete') || '')));
+  return { text, codes: codes.slice(0, 4).map((c) => ({ text: c.text, shown: c.shown })), qr: hint, qr_shape: !!qr, timers: timers.slice(0, 6), controls, otp_box: otpBox };
 }"""
 
-UNMARK_STEP_JS = ("() => document.querySelectorAll('[data-kelo-qr],[data-kelo-resend]').forEach((e) => { e.removeAttribute('data-kelo-qr'); "
-                  "e.removeAttribute('data-kelo-resend'); })")
+UNMARK_STEP_JS = ("() => document.querySelectorAll('[data-kelo-qr],[data-kelo-resend],[data-kelo-ctl]').forEach((e) => { e.removeAttribute('data-kelo-qr'); "
+                  "e.removeAttribute('data-kelo-resend'); e.removeAttribute('data-kelo-ctl'); })")
+MARK_RESEND_JS = "(i) => { const e = document.querySelector(`[data-kelo-ctl=\"${i}\"]`); if (!e) return false; e.setAttribute('data-kelo-resend', '1'); return true; }"
 
 
 def seconds_left(texts: list[str]) -> int | None:
-    """The time left that a countdown or expiry text says ("02:59", "2분 59초", "180초", "3분 이내", "4 min 10 s", "90 seconds"), or None."""
+    """The time left that a countdown text shows as minutes:seconds ("02:59"), or None. Units written in words are the page judge's."""
     for raw in texts:
         s = " ".join(str(raw or "").split())
         if m := re.search(r"(\d{1,2})\s*:\s*(\d{2})(?!\s*:)", s):
-            if not re.search(r"(오전|오후|am|pm|까지|until|by)\s*$", s[:m.start()].strip(), re.I) and not re.search(
-                    r"^\s*(까지|am|pm)", s[m.end():], re.I):
-                return int(m.group(1)) * 60 + int(m.group(2))
-        if m := re.search(r"(\d+)\s*분\s*(\d+)\s*초", s):
             return int(m.group(1)) * 60 + int(m.group(2))
-        if m := re.search(r"(\d+)\s*min(?:utes?)?\s*(\d+)\s*s", s, re.I):
-            return int(m.group(1)) * 60 + int(m.group(2))
-        if m := re.search(r"(\d+)\s*(?:초|s(?:ec(?:onds?)?)?\b|秒)", s, re.I):
-            return int(m.group(1))
-        if m := re.search(r"(\d+)\s*(?:분|min(?:utes?)?\b|分)", s, re.I):
-            return int(m.group(1)) * 60
     return None
 
 
 def classify(read: dict[str, Any]) -> str:
-    """Which kind of step a page reading shows ("" = none): app | otp | passkey."""
-    low = str(read.get("text") or "").lower()
-    if any(w in low for w in PASSKEY_WORDS):
-        return "passkey"
-    app = any(w in low for w in APP_WORDS)
-    if read.get("otp_box") and any(w in low for w in OTP_WORDS) and not (read.get("code") and app):
-        return "otp"
-    if app or read.get("qr") or (read.get("code") and (read.get("timers") or extra_auth(low))) or extra_auth(low):
-        return "app"
-    return ""
+    """Which kind of step a page reading shows ("" = none): app | otp | passkey. Structure first: a QR picture named as one, a shown
+    code with a countdown (app), a one-time-code input (otp). The page judge's verdict (read["judged"]) names the kind when it says one
+    (a passkey prompt has no structure at all); a structure that is present is never overruled by a "none"."""
+    judged = read.get("judged") if isinstance(read.get("judged"), dict) else None
+    structural = ""
+    if read.get("qr") or (read.get("code") and read.get("timers")):
+        structural = "app"
+    elif read.get("otp_box"):
+        structural = "otp"
+    if judged is not None and judged.get("kind") not in (None, "none"):
+        return str(judged["kind"])
+    return structural
 
 
-def page_line(text: str, kind: str) -> str:
-    """The page's own sentence that asks for the step (for when the agent gave none), short."""
-    words = {"app": APP_WORDS, "otp": OTP_WORDS, "passkey": PASSKEY_WORDS}.get(kind, APP_WORDS)
-    for line in str(text or "").splitlines():
-        low = line.lower().strip()
-        if 8 <= len(low) <= 200 and any(w in low for w in words):
-            return " ".join(line.split())[:MAX_INSTRUCTION]
-    return ""
+def page_line(read: dict[str, Any]) -> str:
+    """The page's own sentence that asks for the step (for when the agent gave none): the line the page judge pointed at, short."""
+    line = str(read.get("line_text") or "")
+    return " ".join(line.split())[:MAX_INSTRUCTION] if 8 <= len(line.strip()) <= 200 else ""
 
 
-async def read_step(page: Any) -> tuple[dict[str, Any], Any]:
-    """The step on the page or one of its frames: (reading with "kind", the frame it was found in or None)."""
+def _lines(text: str) -> list[str]:
+    return [ln.strip() for ln in str(text or "").splitlines() if 8 <= len(ln.strip()) <= 200][:MAX_LINES]
+
+
+async def read_step(page: Any, judge: Any = None) -> tuple[dict[str, Any], Any]:
+    """The step on the page or one of its frames: (reading with "kind", the frame it was found in or None). `judge`: the page judge;
+    asked once per distinct page text (digits ignored) for what structure cannot tell. Without it, or when it cannot answer, only the
+    structure counts (`judged` is None in the reading: step_wait then takes the page for an approval step, the safer side)."""
     best: tuple[dict[str, Any], Any] | None = None
     texts: list[str] = []
+    asked = 0
+    answered = False
     for frame in [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]:
         try:
             got = await frame.evaluate(STEP_JS)
@@ -188,11 +176,37 @@ async def read_step(page: Any) -> tuple[dict[str, Any], Any]:
         if not isinstance(got, dict):
             continue
         texts.append(str(got.get("text") or ""))
+        codes = [c for c in (got.get("codes") or []) if isinstance(c, dict) and c.get("text")]
+        got["code"] = codes[0] if codes else None
+        got["judged"], got["resend"], got["line_text"] = None, False, ""
+        lines = _lines(got.get("text") or "")
+        if judge is not None and len(texts[-1].strip()) >= 8 and asked < 4:
+            asked += 1
+            verdict = await judge.payment_step({"text": got.get("text"), "codes": [c["shown"] for c in codes],
+                                                "controls": got.get("controls") or [], "lines": lines})
+            if verdict is not None:
+                answered = True
+                got["judged"] = verdict
+                if verdict["code"] is not None:
+                    got["code"] = codes[verdict["code"]]
+                elif verdict["kind"] != "app":
+                    got["code"] = None   # a code to compare belongs to an approval in another app
+                got["qr"] = bool(got.get("qr") or (verdict["qr"] and got.get("qr_shape")))
+                if verdict["resend"] is not None:
+                    try:
+                        got["resend"] = bool(await frame.evaluate(MARK_RESEND_JS, verdict["resend"]))
+                    except Exception:  # noqa: BLE001
+                        got["resend"] = False
+                if verdict["line"] is not None and verdict["line"] < len(lines):
+                    got["line_text"] = lines[verdict["line"]]
+                if verdict["seconds"] is not None and not got.get("timers"):
+                    got["timers"] = [f"{verdict['seconds'] // 60:02d}:{verdict['seconds'] % 60:02d}"]
         kind = classify(got)
         if kind and (best is None or (got.get("code") and not best[0].get("code")) or (got.get("qr") and not best[0].get("qr"))):
             best = ({**got, "kind": kind}, frame)
     if best is None:
-        return {"kind": "", "text": "\n".join(texts)[:6000], "code": None, "qr": False, "timers": [], "resend": False}, None
+        return {"kind": "", "text": "\n".join(texts)[:6000], "code": None, "qr": False, "timers": [], "resend": False,
+                "judged": {"kind": "none"} if answered else None}, None
     return best
 
 
@@ -225,7 +239,7 @@ PAD_RECT_JS = r"""() => {
            vw: window.innerWidth, vh: window.innerHeight };
 }"""
 
-# Marks the keypad region (its grid of keys, or its canvas) and the page's own clear / delete key next to it.
+# Marks the keypad region (its grid of keys, or its canvas) and the controls around it (data-kelo-near); the page judge picks the erase key.
 MARK_PAD_JS = r"""() => {
   document.querySelectorAll('[data-kelo-pad],[data-kelo-clear]').forEach((e) => { e.removeAttribute('data-kelo-pad'); e.removeAttribute('data-kelo-clear'); });
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
@@ -246,12 +260,17 @@ MARK_PAD_JS = r"""() => {
   else marked = [...document.querySelectorAll('canvas')].filter(shown).slice(0, 1);
   if (!marked.length) return false;
   marked.forEach((e) => e.setAttribute('data-kelo-pad', '1'));
-  const near = [...document.querySelectorAll('button,[role=button],a,input[type=button],input[type=image],img,span,div,td')].filter(shown);
-  const clear = near.find((e) => /^(지우기|전체\s*삭제|삭제|clear|delete|del|reset|←|⌫|取消|クリア)$/i
-    .test((e.innerText || e.value || e.getAttribute('alt') || e.getAttribute('aria-label') || '').trim()));
-  if (clear) { clear.setAttribute('data-kelo-clear', '1'); if (!clear.closest('[data-kelo-pad]')) clear.setAttribute('data-kelo-pad', '1'); }
+  // the controls around the pad that are not its keys: the page judge says which of them erases what was entered
+  const rs = marked.map((e) => e.getBoundingClientRect());
+  const box = { l: Math.min(...rs.map((r) => r.left)) - 80, t: Math.min(...rs.map((r) => r.top)) - 80, r: Math.max(...rs.map((r) => r.right)) + 80, b: Math.max(...rs.map((r) => r.bottom)) + 80 };
+  document.querySelectorAll('[data-kelo-near]').forEach((e) => e.removeAttribute('data-kelo-near'));
+  const near = [...document.querySelectorAll('button,[role=button],a,input[type=button],input[type=image],img,span,div,td')].filter((e) => shown(e) && clickable(e)
+    && !marked.includes(e) && !e.closest('[data-kelo-pad]') && !marked.some((m) => e.contains(m))).filter((e) => { const r = e.getBoundingClientRect();
+      return r.right > box.l && r.left < box.r && r.bottom > box.t && r.top < box.b; }).filter((e, _i, all) => !all.some((o) => o !== e && e.contains(o))).slice(0, 8);
+  near.forEach((e, i) => e.setAttribute('data-kelo-near', String(i)));
+  const labels = near.map((e) => (e.innerText || e.value || e.getAttribute('alt') || e.getAttribute('aria-label') || e.getAttribute('title') || '').trim().slice(0, 30));
   marked[0].scrollIntoView({ block: 'center', inline: 'center' });
-  return true;
+  return { ok: true, near: labels };
 }"""
 
 
@@ -283,7 +302,7 @@ class PinPad:
         try:
             return await self._marked(page)
         except BrowserPolicyError:
-            if not await mark_pad(page):
+            if not await mark_pad(page, self.session.page_judge):
                 raise
             return await self._marked(page)
 
@@ -319,7 +338,7 @@ class PinPad:
         except BrowserPolicyError:
             pass
         _frame, got = await keypad.find(page)
-        if got.get("mode") != "protected" or not await mark_pad(page):
+        if got.get("mode") != "protected" or not await mark_pad(page, self.session.page_judge):
             return False
         try:
             await self._region(page)
@@ -388,12 +407,24 @@ class PinPad:
             await self.session.release_control(self.owner)
 
 
-async def mark_pad(page: Any) -> bool:
-    """Marks the protected keypad on the page (or a frame) for the in-card view; True when one was found."""
+MARK_CLEAR_JS = ("(i) => { const e = document.querySelector(`[data-kelo-near=\"${i}\"]`); if (!e) return false; e.setAttribute('data-kelo-clear', '1'); "
+                 "if (!e.closest('[data-kelo-pad]')) e.setAttribute('data-kelo-pad', '1'); return true; }")
+
+
+async def mark_pad(page: Any, judge: Any = None) -> bool:
+    """Marks the protected keypad on the page (or a frame) for the in-card view; True when one was found. With a page judge, the
+    control around the pad that erases the entered digits is marked too (none is marked when it cannot say)."""
     for frame in [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]:
         try:
-            if await frame.evaluate(MARK_PAD_JS):
-                return True
+            got = await frame.evaluate(MARK_PAD_JS)
+            if not got:
+                continue
+            near = [str(x) for x in (got.get("near") or [])] if isinstance(got, dict) else []
+            if judge is not None and near:
+                idx = await judge.erase_key(near)
+                if idx is not None:
+                    await frame.evaluate(MARK_CLEAR_JS, idx)
+            return True
         except Exception:  # noqa: BLE001
             continue
     return False
@@ -503,10 +534,10 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
                     page = session.raw_page(browser_owner.get())
                     clicked = False
                     if page is not None:
-                        for fr in [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]:
+                        _read, fr = await read_step(page, session.page_judge)   # marks the control the judge named (data-kelo-resend)
+                        for frame in [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]:
                             try:
-                                await fr.evaluate(STEP_JS)
-                                loc = fr.locator('[data-kelo-resend="1"]')
+                                loc = frame.locator('[data-kelo-resend="1"]')
                                 if await loc.count():
                                     await loc.first.click(timeout=5000)
                                     clicked = True
@@ -537,7 +568,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
             page = session.raw_page(browser_owner.get())
             if page is None:
                 continue
-            read, fr = await read_step(page)
+            read, fr = await read_step(page, session.page_judge)
             if not read["kind"]:
                 missing += 1
                 if missing >= GONE_READS:
@@ -553,7 +584,8 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
             secs = seconds_left(read.get("timers") or [])
             if secs is not None and (ev.get("expires_at") is None or changes.get("code") or state == "renewing"):
                 changes.update(expires_at=int(time.time() + secs), seconds_total=secs)
-            expired = bool(EXPIRED.search(str(read.get("text") or ""))) or (
+            judged = read.get("judged") or {}
+            expired = bool(judged.get("expired")) or secs == 0 or (
                 ev.get("expires_at") is not None and time.time() >= ev["expires_at"] and (secs in (None, 0) or secs == ev.get("seconds_total")))
             new_state = "expired" if expired and not changes.get("code") else "waiting"
             if new_state != ev.get("state"):
@@ -604,7 +636,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
     # ---------------------------------------------------------------- payment_step_wait
     def step_validate(args: dict[str, Any]) -> str | None:
         if approved_here() is None:
-            return ("no approved payment on this site: payment_step_wait belongs to a payment confirm_purchase approved on the site the "
+            return ("no approved payment on this site: payment_step_wait belongs to a payment checkout_review approved on the site the "
                     "browser is on")
         if steps is not None and steps.open_for(browser_owner.get()):
             return "a payment card for this tab is already open; wait for it"
@@ -616,12 +648,15 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
         payment = approved_here()
         assert payment is not None
         page = await session.page()
-        read, frame = await read_step(page)
+        read, frame = await read_step(page, session.page_judge)
+        if not read["kind"] and read.get("judged") is None:
+            read["kind"] = "app"   # structure is silent and nothing could read the page: the safer side is a card the user can cancel
         if not read["kind"]:
-            return ("No step that asks to approve the payment elsewhere was found on this page or its frames (no approval words, code, QR "
-                    "or countdown). Read the page: maybe it already went through, or it needs a click first.\n\n" + await page_text())
+            return ("No step that asks to approve the payment elsewhere was found on this page or its frames (no code, QR or countdown, "
+                    "and the page's text asks for none). Read the page: maybe it already went through, or it needs a click first.\n\n"
+                    + await page_text())
         kind = read["kind"]
-        line = " ".join(str(args.get("instruction") or "").split())[:MAX_INSTRUCTION] or page_line(read.get("text") or "", kind)
+        line = " ".join(str(args.get("instruction") or "").split())[:MAX_INSTRUCTION] or page_line(read)
         if steps is None:
             return ("The page asks to approve the payment outside it, and no app is connected to show a card. Tell the user in one line what "
                     "to do (from the page), show any code the page shows, and wait for them to say it is done; do not click meanwhile.")
@@ -646,7 +681,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
         payment = approved_here()
         host = session.current_host()
         if payment is None:
-            return "no approved payment on this site: a payment PIN is entered only right after confirm_purchase approved paying here"
+            return "no approved payment on this site: a payment PIN is entered only right after checkout_review approved paying here"
         pin = pins.for_host(host)
         if pin is None:
             return (f"no payment PIN is saved for {site_key(host)}. Ask the user to save one (request_payment_pin), or let them enter it "
@@ -657,7 +692,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
         if not payment.pin_slot or pin_deliveries.slot_pin(payment.pin_slot) is None:
             pins.log(pin, "pin-refused", f"no release for this payment on {host}", False)
             if payment.pin_used:
-                return "the payment PIN was already entered once for this approval; it is never entered twice. Call confirm_purchase again"
+                return "the payment PIN was already entered once for this approval; it is never entered twice. Call checkout_review again"
             return ("the payment PIN was not released for this payment (it is released only with the user's approval of a payment on this "
                     "site, or for a task allowed to use it, and once)")
         if site_key(host) != pin["site"] or site_key(payment.host) != pin["site"]:
@@ -665,7 +700,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
             return f"the browser is on {host}, but the PIN belongs to {pin['site']}. It is entered only there"
         if not session.purchase_active(host):
             pins.log(pin, "pin-refused", "outside the approved purchase window", False)
-            return "the approval for this payment ran out (time or steps). Call confirm_purchase again"
+            return "the approval for this payment ran out (time or steps). Call checkout_review again"
         return None
 
     async def type_pin(args: dict[str, Any]) -> str:
@@ -726,7 +761,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
         if pin is not None and pins is not None:
             pins.log(pin, "pin-handed", f"the keypad on {payment.host} is protected; the user enters the PIN in the card")
         note_path(payment, payment.path or "site_method", "protected")
-        if steps is None or not await mark_pad(page):
+        if steps is None or not await mark_pad(page, session.page_judge):
             return ("This PIN keypad is entered by the user. Nothing was typed; do not click its keys. Tell the user to enter their PIN "
                     "on the page (live view), and wait for them to say it is done.")
         pad = PinPad(session, browser_owner.get(), site_key(payment.host))
@@ -761,14 +796,14 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
 
     def pad_validate(args: dict[str, Any]) -> str | None:
         if approved_here() is None:
-            return "no approved payment on this site: the PIN keypad card belongs to a payment confirm_purchase approved here"
+            return "no approved payment on this site: the PIN keypad card belongs to a payment checkout_review approved here"
         if steps is not None and steps.open_for(browser_owner.get()):
             return "a payment card for this tab is already open; wait for it"
         return None
 
     out = [
         Tool("payment_step_wait",
-             "After confirm_purchase approved a payment, when the page asks the payer to approve it outside the page (a card or bank "
+             "After checkout_review approved a payment, when the page asks the payer to approve it outside the page (a card or bank "
              "app with a code or QR code and a time limit, a one-time code, a 3-D Secure or push confirmation, a passkey or fingerprint "
              "prompt): show the user ONE card with the code, the QR code, the time left and the page's instruction, and wait for their "
              "answer. Do not click anything meanwhile.",
@@ -777,7 +812,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
                                                                   "user's language (no codes or numbers from the page)"}}, "required": []},
              step_wait, validate=step_validate, untrusted=True, source="page"),
         Tool("browser_pin_keypad_card",
-             "After confirm_purchase approved a payment, when the page asks for a PIN on a keypad that hides or scrambles its digits "
+             "After checkout_review approved a payment, when the page asks for a PIN on a keypad that hides or scrambles its digits "
              "(pictures, canvas, a security keyboard): this shows that keypad inside the user's chat card so they enter the PIN "
              "themselves (do not click its keys), and waits until the page moves on.",
              {"type": "object", "properties": {}, "required": []}, pin_pad, validate=pad_validate, untrusted=True, source="page"),
@@ -786,7 +821,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
         out.append(Tool(
             "browser_type_payment_pin",
             "Enter the payment PIN the user saved for this site into the checkout's PIN box or plain digit keypad, once, only right after "
-            "confirm_purchase approved this payment here. You never see the PIN. A protected keypad is shown to the user in a card "
+            "checkout_review approved this payment here. You never see the PIN. A protected keypad is shown to the user in a card "
             "instead.",
             {"type": "object", "properties": {}, "required": []}, type_pin, validate=pin_validate, untrusted=True, source="page"))
     return out

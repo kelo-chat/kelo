@@ -19,10 +19,12 @@ from assistant.android.device import DeviceClient
 from assistant.android.screen import ScreenReader
 from assistant.android.tools import AndroidSession, android_tools
 from assistant.done_once import ActionLedger, DoneOnce
+from assistant.i18n import t
 from assistant.providers import Done, TextDelta
 from assistant.server import create_app
 from assistant.store import Store
 from assistant.tools.browser import browser_owner
+from assistant.workers import current_turn
 
 from test_agent_profile import app_settings
 from test_toolbox import scripted
@@ -96,7 +98,7 @@ def ref_of(session, words):
 def test_the_seven_tools_of_the_doc_and_which_ask():
     _, _, tools = make()
     assert list(tools) == ["android_look", "android_tap", "android_type", "android_swipe", "android_key", "android_open", "android_apps"]
-    assert {n for n, t in tools.items() if t.requires_approval} == {"android_tap", "android_type"}
+    assert {n for n, t in tools.items() if t.requires_approval} == {"android_tap", "android_type", "android_swipe", "android_key", "android_open"}
     assert all(t.untrusted and t.source == "page" for t in tools.values())
 
 
@@ -143,8 +145,8 @@ async def test_swipe_key_open_and_apps():
     await run(tools, "android_look")
     await run(tools, "android_swipe", direction="down")
     assert bridge.calls("/swipe") == [{"x1": 360, "y1": 960, "x2": 360, "y2": 320, "ms": 300}]      # the finger moves up
-    await run(tools, "android_swipe", x1=1, y1=2, x2=3, y2=4)
-    assert bridge.calls("/swipe")[-1] == {"x1": 1, "y1": 2, "x2": 3, "y2": 4, "ms": 300}
+    await run(tools, "android_swipe", x1=1, y1=2, x2=3, y2=400)
+    assert bridge.calls("/swipe")[-1] == {"x1": 1, "y1": 2, "x2": 3, "y2": 400, "ms": 300}
     assert str(await run(tools, "android_swipe", direction="sideways")).startswith("Error")
     await run(tools, "android_key", key="back")
     assert bridge.calls("/key") == [{"key": "back"}] and str(await run(tools, "android_key", key="power")).startswith("Error")
@@ -192,11 +194,11 @@ async def test_a_tap_that_pays_asks_and_a_tap_that_only_looks_does_not():
     bridge, session, tools = make(Bridge("pay", "com.example.shop/.PayActivity"))
     await run(tools, "android_look")
     pay, tap = tools["android_tap"], ref_of(session, "결제하기")
-    assert session.judge("android_tap", {"ref": tap}) == "pay"
-    assert await pay.auto_approve({"ref": tap}) is False
+    await session.settle("android_tap", {"ref": tap})
+    assert session.judge("android_tap", {"ref": tap}) == ""        # no word makes a tap a payment (the step judge says what it does)
+    assert await pay.auto_approve({"ref": tap}) is True
     assert await pay.auto_approve({"ref": ref_of(session, "선물 포장")}) is True               # words with no commit: no card
     assert "결제하기" in await pay.describe({"ref": tap}) and "com.example.shop" in await pay.describe({"ref": tap})
-    assert "payment" in await pay.describe({"ref": tap})
 
 
 async def test_a_settings_tap_does_not_ask():
@@ -211,13 +213,14 @@ async def test_a_point_with_nothing_readable_under_it_always_asks():
     assert await tools["android_tap"].auto_approve({"x": 700, "y": 1270}) is False
 
 
-async def test_typing_a_review_does_not_ask_but_personal_details_do():
+async def test_typing_a_review_or_personal_details_does_not_ask_but_a_card_number_does():
     _, session, tools = make()
     await run(tools, "android_look")
     kind = tools["android_type"].auto_approve
     assert await kind({"ref": "a3", "text": "소스가 맛있어요"}) is True
-    assert await kind({"ref": "a3", "text": "전화는 010-1234-5678"}) is False
-    assert await kind({"text": "kim@example.org"}) is False and await kind({"text": "hello"}) is True
+    assert await kind({"ref": "a3", "text": "전화는 010-1234-5678"}) is True      # a phone number typed asks nothing (ask-less)
+    assert await kind({"text": "kim@example.org"}) is True and await kind({"text": "hello"}) is True
+    assert await kind({"text": "4111 1111 1111 1111"}) is False                                  # a card number by value still asks
 
 
 async def test_a_task_grant_covers_its_kind_on_that_app_only():
@@ -236,6 +239,120 @@ async def test_the_owners_every_step_asks_setting_makes_every_tap_ask():
     _, session, tools = make(Bridge("settings", "com.android.settings/.Settings"), approve_actions=True)
     await run(tools, "android_look")
     assert await tools["android_tap"].auto_approve({"ref": ref_of(session, "Navigate up")}) is False
+
+
+class PayJudge:
+    """A fake step judge (step_judge.StepJudge.phone): the node named 결제하기 spends money, nothing else does."""
+    async def phone(self, package, activity, item, screen):
+        from assistant.step_judge import StepVerdict
+        return StepVerdict(item.get("text") == "결제하기", False, False, False, False)
+
+
+async def test_a_swipe_of_a_few_pixels_is_a_tap_and_is_judged_like_one():
+    bridge, session, tools = make(Bridge("pay", "com.example.shop/.PayActivity"))
+    session.step_judge = PayJudge()
+    await run(tools, "android_look")
+    swipe = tools["android_swipe"]
+    pay = next(i for i in session.screen().items if i.words == "결제하기")
+    cx, cy = pay.center
+    tiny = {"x1": cx, "y1": cy, "x2": cx + 2, "y2": cy}
+    assert await swipe.auto_approve(tiny) is False                           # the pay button: asks
+    assert "결제하기" in await swipe.describe(tiny)
+    gift = next(i for i in session.screen().items if i.words == "선물 포장")
+    assert await swipe.auto_approve({"x1": gift.center[0], "y1": gift.center[1], "x2": gift.center[0] + 1, "y2": gift.center[1]}) is True
+    await run(tools, "android_swipe", **tiny)                                # the handler taps, it does not swipe
+    assert bridge.calls("/swipe") == [] and bridge.calls("/tap")[-1] == {"x": cx, "y": cy}
+
+
+async def test_a_real_swipe_needs_no_card_and_a_tiny_one_on_nothing_readable_asks():
+    _, _, tools = make(Bridge("pay", "com.example.shop/.PayActivity"))
+    await run(tools, "android_look")
+    swipe = tools["android_swipe"]
+    assert await swipe.auto_approve({"x1": 1, "y1": 2, "x2": 3, "y2": 400}) is True
+    assert await swipe.auto_approve({"direction": "down"}) is True
+    assert await swipe.auto_approve({"x1": 1, "y1": 2, "x2": 3, "y2": 4}) is False   # a tap on a point with nothing readable under it
+
+
+async def test_enter_presses_the_focused_item_so_it_is_judged_as_its_tap():
+    import dataclasses
+    _, session, tools = make(Bridge("pay", "com.example.shop/.PayActivity"))
+    session.step_judge = PayJudge()
+    key = tools["android_key"]
+    assert await key.auto_approve({"key": "back"}) is True and await key.auto_approve({"key": "tab"}) is True
+    assert await key.auto_approve({"key": "enter"}) is False                 # nothing read yet: it may press anything
+    await run(tools, "android_look")
+    screen = session.screen()
+
+    def focus(ref, **change):
+        screen.items = [dataclasses.replace(i, focused=(i.ref == ref), **(change if i.ref == ref else {})) for i in screen.items]
+    focus(ref_of(session, "선물 포장"))
+    assert await key.auto_approve({"key": "enter"}) is True                  # the focused item only looks
+    focus(ref_of(session, "결제하기"))
+    assert await key.auto_approve({"key": "enter"}) is False                 # the focused item pays
+    assert "Enter" in await key.describe({"key": "enter"})
+
+
+class EnterJudge:
+    """A fake step judge: what Enter in a field does is told by the field's hint, never by words in the code under test."""
+    def __init__(self, by_hint):
+        self.by_hint, self.calls = by_hint, []
+
+    async def phone(self, package, activity, item, screen):
+        from assistant.step_judge import StepVerdict
+        self.calls.append(item)
+        flags = self.by_hint.get(item.get("hint"), None)
+        return None if flags is None else StepVerdict(*(f in flags for f in ("pay", "sends", "deletes", "sec", "signs")))
+
+
+async def _enter_in_field(judge, *, approve_actions=False, **change):
+    import dataclasses
+    _, session, tools = make(Bridge("pay", "com.example.shop/.PayActivity"), approve_actions=approve_actions)
+    session.step_judge = judge
+    await run(tools, "android_look")
+    screen = session.screen()
+    target = next(i for i in screen.items if i.words == "선물 포장")
+    screen.items = [dataclasses.replace(i, focused=(i.ref == target.ref), **(change if i.ref == target.ref else {}))
+                    for i in screen.items]
+    return await tools["android_key"].auto_approve({"key": "enter"}), judge
+
+
+async def test_enter_in_a_search_field_asks_nothing():
+    judge = EnterJudge({"쿠팡에서 검색하세요!": ()})
+    ok, judge = await _enter_in_field(judge, editable=True, hint="쿠팡에서 검색하세요!", text="", desc="")
+    assert ok is True
+    assert judge.calls and judge.calls[0]["editable"] is True
+
+
+async def test_enter_in_a_message_field_asks():
+    judge = EnterJudge({"메시지 입력": ("sends",)})
+    ok, _ = await _enter_in_field(judge, editable=True, hint="메시지 입력", text="hello", desc="")
+    assert ok is False
+
+
+async def test_enter_in_a_password_field_asks_without_asking_the_judge():
+    judge = EnterJudge({"x": ()})
+    ok, judge = await _enter_in_field(judge, editable=True, password=True, hint="x", text="", desc="")
+    assert ok is False and judge.calls == []
+
+
+async def test_enter_in_a_field_asks_when_there_is_no_judge_or_it_is_unsure():
+    ok, _ = await _enter_in_field(None, editable=True, hint="쿠팡에서 검색하세요!", text="", desc="")
+    assert ok is False
+    ok, _ = await _enter_in_field(EnterJudge({}), editable=True, hint="쿠팡에서 검색하세요!", text="", desc="")
+    assert ok is False
+
+
+async def test_enter_in_a_search_field_asks_when_every_step_asks():
+    ok, _ = await _enter_in_field(EnterJudge({"s": ()}), approve_actions=True, editable=True, hint="s", text="", desc="")
+    assert ok is False
+
+
+async def test_opening_an_app_asks_only_when_every_step_asks():
+    _, _, tools = make()
+    assert await tools["android_open"].auto_approve({"app": "com.android.settings"}) is True
+    _, _, every = make(approve_actions=True)
+    assert await every["android_open"].auto_approve({"app": "com.android.settings"}) is False
+    assert "Settings" in await every["android_open"].describe({"app": "Settings"})
 
 
 # ---- the effect and the ledger: done once
@@ -286,21 +403,17 @@ def phone_app(tmp_path, **kw):
 def test_the_tools_exist_only_with_a_device_a_long_token_and_the_bridge_address(tmp_path):
     on = {"android_url": "http://android:8090", "android_token": TOKEN, "android_device": "192.168.1.50:5555"}
     names = lambda app: {t.name for t in app.state.tools if t.name.startswith("android_")}   # noqa: E731
-    assert len(names(phone_app(tmp_path / "a", **on))) == 9      # the seven steps, android_login and android_send_screenshot (android_show needs the browser)
+    assert len(names(phone_app(tmp_path / "a", **on))) == 10     # the seven steps, android_login and android_send_screenshot (android_show needs the live view, so it is there too)
     assert names(phone_app(tmp_path / "b", **{**on, "android_device": ""})) == set()
     assert names(phone_app(tmp_path / "c", **{**on, "android_token": "short"})) == set()
     assert names(phone_app(tmp_path / "d", **{**on, "android_url": ""})) == set()
     assert names(phone_app(tmp_path / "e")) == set()
 
 
-def test_the_mirror_tool_comes_with_a_browser(tmp_path):
+def test_the_phone_handover_tool_comes_with_the_device(tmp_path):
     on = {"android_url": "http://android:8090", "android_token": TOKEN, "android_device": "192.168.1.50:5555"}
-    names = lambda app: {t.name for t in app.state.tools if t.name.startswith("android_")}   # noqa: E731
-    assert "android_show" not in names(phone_app(tmp_path / "a", **on))
-    settings = app_settings(tmp_path / "b", home_dir=str(tmp_path / "b" / "home"), **on)
-    with_browser = names(create_app(dataclasses.replace(settings, cdp_host="browser"), stream_fn=scripted([TextDelta("ok"), Done("stop")]),
-                                    with_schedule_check=False))
-    assert {"android_show", "android_login", "android_send_screenshot"} <= with_browser and len(with_browser) == 10
+    names = {t.name for t in phone_app(tmp_path / "a", **on).state.tools if t.name.startswith("android_")}
+    assert {"android_show", "android_login", "android_send_screenshot"} <= names and len(names) == 10
 
 
 def test_find_tools_finds_them_by_android_and_by_phone_app_and_they_are_not_in_the_core(tmp_path):
@@ -308,11 +421,11 @@ def test_find_tools_finds_them_by_android_and_by_phone_app_and_they_are_not_in_t
     app = phone_app(tmp_path, android_url="http://android:8090", android_token=TOKEN, android_device="192.168.1.50:5555")
     hidden = [t for t in app.state.tools if t.name not in CORE_TOOLS]
     assert not any(t.name.startswith("android_") for t in app.state.tools if t.name in CORE_TOOLS)
-    assert {t.name for t in search(hidden, "android")[:20] if t.name.startswith("android_")} == {t.name for t in hidden if t.name.startswith("android_") and t.name != "android_login"}   # the sign-in is found by "sign in"
+    assert {t.name for t in search(hidden, "android", limit=9) if t.name.startswith("android_")} == {t.name for t in hidden if t.name.startswith("android_") and t.name != "android_login"}   # the sign-in is found by "sign in"
     for query in ("phone app", "android phone app", "open an app on the phone"):
         assert search(hidden, query)[0].name.startswith("android_"), query
     finder = next(t for t in app.state.tools if t.name == "find_tools")
-    assert "android_*" in finder.description
+    assert "android_tap" not in finder.description and "android_*" in finder.description   # the chat has its own two (picture, hand-over); the rest is the phone job's (tool_roles.py)
     for t in (x for x in hidden if x.name.startswith("android_")):
         assert search(hidden, t.name)[0] is t and t in search(hidden, t.name.replace("_", " "))
 
@@ -352,3 +465,132 @@ async def test_without_a_dump_no_phone_screenshot_is_sent():
 
     jpeg, *_ , problem = await phone_grab(Client(), ScreenReader())("")
     assert jpeg is None and problem
+
+
+# ---- the safety net (docs/payments-v2.md): every tap on a clickable node is judged by the step judge
+async def test_a_pay_looking_tap_judged_as_spending_money_is_a_payment_card_and_the_judge_down_is_a_card():
+    _, session, tools = make(Bridge("pay", "com.example.shop/.PayActivity"))
+    session.step_judge = PayJudge()
+    await run(tools, "android_look")
+    pay = ref_of(session, "결제하기")
+    tap = tools["android_tap"]
+    assert await tap.auto_approve({"ref": pay}) is False
+    assert tap.approval_extra("ap_1", {"ref": pay}) == {"commit": "pay"}            # the phone signs this card (approval_sign.is_payment)
+    from assistant import approval_sign
+    assert approval_sign.is_payment({"name": "android_tap", **tap.approval_extra("ap_1", {"ref": pay})})
+    assert (await session.judge_ahead("android_tap", {"ref": pay}))[0] == "pay"      # the privacy guard and the ledger see it too
+    gift = ref_of(session, "선물 포장")
+    assert await tap.auto_approve({"ref": gift}) is True and tap.approval_extra("ap_1", {"ref": gift}) == {}
+
+    class Down:
+        async def phone(self, *a):
+            return None
+    session.step_judge = Down()
+    session._net.clear()
+    assert await tap.auto_approve({"ref": gift}) is False                           # the judge is unavailable: a card
+
+
+async def test_a_task_permission_never_covers_a_tap_judged_as_spending_money():
+    from assistant.tools.task_permission import TaskGrants
+    grants = TaskGrants()
+    _, session, tools = make(Bridge("pay", "com.example.shop/.PayActivity"), grants=grants)
+    session.step_judge = PayJudge()
+    await run(tools, "android_look")
+    assert await tools["android_tap"].auto_approve({"ref": ref_of(session, "결제하기")}) is False
+
+
+async def test_enter_in_a_field_that_spends_money_is_a_payment_card():
+    import dataclasses
+    judge = EnterJudge({"카드번호": ("pay",)})
+    _, session, tools = make(Bridge("pay", "com.example.shop/.PayActivity"))
+    session.step_judge = judge
+    await run(tools, "android_look")
+    screen = session.screen()
+    target = next(i for i in screen.items if i.words == "선물 포장")
+    screen.items = [dataclasses.replace(i, focused=(i.ref == target.ref), **({"editable": True, "hint": "카드번호", "text": "", "desc": ""}
+                                                                           if i.ref == target.ref else {})) for i in screen.items]
+    key = tools["android_key"]
+    assert await key.auto_approve({"key": "enter"}) is False
+    assert key.approval_extra("x", {"key": "enter"}) == {"commit": "pay"}
+
+
+# ---- one approval card per task before the first phone step (PhoneUse): the rest of the task goes on without it
+async def test_the_phone_asks_once_per_task_and_the_rest_of_that_task_goes_on():
+    clock = [1000.0]
+    phone_use = android.PhoneUse(clock=lambda: clock[0])
+    _, _, tools = make(phone_use=phone_use)
+    once = t(android.PHONE_ONCE)
+    look = tools["android_look"]
+    token = current_turn.set({"task_id": 7})
+    try:
+        assert look.requires_approval is True
+        assert await look.auto_approve({}) is False
+        assert (await look.describe({})).startswith(once + "\n")
+        assert await look.auto_approve({}) is False                       # looking at the card again is not a yes
+        await run(tools, "android_look")                                  # the owner allowed the card: the handler ran
+        assert await look.auto_approve({}) is True
+        assert once not in await look.describe({})
+    finally:
+        current_turn.reset(token)
+    token = current_turn.set({"task_id": 8})                              # another task asks again
+    try:
+        assert await look.auto_approve({}) is False
+    finally:
+        current_turn.reset(token)
+    clock[0] += android.PhoneUse.KEEP + 1                                 # and an allowance goes stale after its time
+    token = current_turn.set({"task_id": 7})
+    try:
+        assert await look.auto_approve({}) is False
+    finally:
+        current_turn.reset(token)
+
+
+async def test_a_phone_job_asks_once_on_its_first_phone_step_and_its_next_steps_go_on():
+    # a phone job runs as its own turn (turn_engine sets current_turn with its task_id and turn id): its first phone tool asks the
+    # once-per-task card, its later phone tools do not, and a job with no task id is keyed by its own turn
+    phone_use = android.PhoneUse()
+    _, _, tools = make(phone_use=phone_use)
+    once = t(android.PHONE_ONCE)
+    job = {"task_id": 42, "turn_id": "job-turn-1", "unattended": True}
+    token = current_turn.set(job)
+    try:
+        assert await tools["android_look"].auto_approve({}) is False                  # the first phone step of the job: a card
+        assert (await tools["android_look"].describe({})).startswith(once + "\n")
+        await run(tools, "android_look")                                              # the owner allowed it: the handler ran
+        assert await tools["android_look"].auto_approve({}) is True                   # the job's next look: no card
+        assert once not in await tools["android_tap"].describe({"ref": "r1"})          # later phone steps carry no once-per-task line
+    finally:
+        current_turn.reset(token)
+    token = current_turn.set({"turn_id": "job-turn-2"})                               # a job without a task id: its own key
+    try:
+        assert await tools["android_look"].auto_approve({}) is False
+    finally:
+        current_turn.reset(token)
+
+
+async def test_a_paying_tap_still_asks_after_the_phone_was_allowed_for_the_task():
+    _, session, tools = make(Bridge("pay", "com.example.shop/.PayActivity"), phone_use=android.PhoneUse())
+    session.step_judge = PayJudge()
+    token = current_turn.set({"task_id": 7})
+    try:
+        await run(tools, "android_look")                                  # allows the phone for task 7
+        pay = ref_of(session, "결제하기")
+        assert await tools["android_tap"].auto_approve({"ref": pay}) is False
+        assert tools["android_tap"].approval_extra("ap_1", {"ref": pay}) == {"commit": "pay"}
+        gift = ref_of(session, "선물 포장")
+        assert await tools["android_tap"].auto_approve({"ref": gift}) is True
+    finally:
+        current_turn.reset(token)
+
+
+async def test_show_is_not_gated_and_the_card_only_comes_once_the_handler_ran():
+    _, _, tools = make(handover=object(), phone_use=android.PhoneUse())   # the show tool is only built here, not run
+    assert tools["android_show"].requires_approval is False and tools["android_show"].auto_approve is None
+    assert "android_send_screenshot" not in tools                          # it is added by server.py, not by android_tools
+    token = current_turn.set({"task_id": 9})
+    try:
+        assert await tools["android_look"].auto_approve({}) is False      # nothing ran yet: the card has not been allowed
+    finally:
+        current_turn.reset(token)
+    _, _, plain = make()
+    assert plain["android_look"].requires_approval is False and plain["android_look"].auto_approve is None

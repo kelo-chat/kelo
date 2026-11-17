@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">poczta</string>
+    <string name="trail_kind_file">plik</string>
+    <string name="trail_kind_memory">pamięć</string>
+    <string name="trail_kind_contacts">kontakty</string>
+    <string name="trail_kind_calendar">kalendarz</string>
+    <string name="trail_kind_photos">zdjęcia</string>
+    <string name="trail_kind_messages">wiadomości</string>
+    <string name="trail_kind_notes">notatki</string>
+    <string name="trail_kind_vault">zapisane loginy</string>
+    <string name="trail_kind_profile">profil</string>
+    <string name="trail_kind_web">strona internetowa</string>
+    <string name="trail_kind_channel">czat</string>
+    <string name="trail_kind_device">dane urządzenia</string>
+    <string name="trail_kind_connector">połączona usługa</string>
+    <string name="trail_kind_other">dane</string>
+    <string name="trail_recipient_link">publiczny link</string>
+    <string name="trail_goes_to">Do %2$s: %1$s</string>
+    <string name="trail_allow_once">Zezwól raz</string>
+    <string name="trail_allow_always">Zawsze dla tego odbiorcy</string>
+    <string name="recipient_approval_always">Zezwolono. Nie zapytam już o tego odbiorcę.</string>
+    <string name="recipient_allows_title">Zawsze dozwoleni odbiorcy</string>
+    <string name="recipient_allows_empty">Na razie brak. Gdy wybierzesz na karcie \"Zawsze dla tego odbiorcy\", pojawi się tutaj.</string>
+    <string name="recipient_allow_since">Zezwolono %1$s</string>
+    <string name="recipient_allow_remove">Usuń %1$s</string>
+    <string name="recipient_allow_remove_confirm">Pytać ponownie przed wysłaniem (%1$s) do %2$s?</string>
+    <string name="recipient_allow_removed">Zapytam ponownie przed wysłaniem tam.</string>
+</resources>

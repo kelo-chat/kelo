@@ -73,6 +73,24 @@ fun UpdateBanner(app: AppContainer, onOpenMy: () -> Unit, modifier: Modifier = M
     )
 }
 
+/**
+ * A newer released app that works with the server (X-Kelo-App-Update): once per version, never over the update banner. The button is the
+ * app's own update when it knows the offer (the download starts, My shows it), else My (its "check for updates").
+ */
+@Composable
+fun AppNoticeHost(app: AppContainer, onOpenMy: () -> Unit, modifier: Modifier = Modifier) {
+    val offered by chat.kelo.app.core.AppVersion.update.collectAsStateWithLifecycle()
+    val dismissed by app.settings.appNotice.dismissed.collectAsStateWithLifecycle()
+    val s = app.sharedUpdateState()
+    val version = offered?.takeIf { chat.kelo.app.update.AppNoticeRules.show(it, dismissed) } ?: return
+    if (s.showBanner) return
+    chat.kelo.app.update.AppNoticeBanner(
+        version, store = false, modifier = modifier,
+        onAction = { app.settings.appNotice.dismiss(version); if (s.offer != null) app.scope.launch { app.updates.download() }; onOpenMy() },
+        onClose = { app.settings.appNotice.dismiss(version) },
+    )
+}
+
 /** My's card while a newer build is known. */
 @Composable
 fun UpdateCard(app: AppContainer, modifier: Modifier = Modifier) {
@@ -89,5 +107,36 @@ fun UpdateRequiredScreen(app: AppContainer, modifier: Modifier = Modifier) {
         onGet = { app.scope.launch { app.updates.updateNow() } },
         onInstall = { app.scope.launch { app.updates.reopen() } },
         onLeave = {},
+    )
+}
+
+/**
+ * The "new version" popup (shared rules: once per version, Later = 3 days). Armed at start and when the window comes back after more
+ * than an hour; the action is the app's own update (the download starts, My shows it). A store build has no page of ours to open, so
+ * it shows no popup (its banner and My stay).
+ */
+@Composable
+fun updatePopupOpen(app: AppContainer): chat.kelo.app.update.UpdateCandidate? {
+    val open by app.settings.updatePopup.open.collectAsStateWithLifecycle()
+    return open
+}
+
+@Composable
+fun UpdatePopupHost(app: AppContainer, onOpenMy: () -> Unit) {
+    val s = app.sharedUpdateState()
+    val offered by chat.kelo.app.core.AppVersion.update.collectAsStateWithLifecycle()
+    val candidate = chat.kelo.app.update.UpdatePopupRules.candidate(s, offered, chat.kelo.app.core.AppVersion.channel)
+        ?.takeIf { it.source == chat.kelo.app.update.UpdatePopupRules.Source.UPDATER && !s.required }
+    val focused = androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
+    androidx.compose.runtime.LaunchedEffect(focused) {
+        if (!focused) app.settings.updatePopup.left()
+        else if (app.settings.updatePopup.returned()) { app.updates.check(); app.settings.updatePopup.consider(candidate) }
+    }
+    androidx.compose.runtime.LaunchedEffect(candidate) { app.settings.updatePopup.consider(candidate) }
+    val shown = updatePopupOpen(app) ?: return
+    chat.kelo.app.update.UpdatePopupDialog(
+        shown,
+        onUpdate = { app.settings.updatePopup.close(); if (s.offer != null) app.scope.launch { app.updates.download() }; onOpenMy() },
+        onLater = { app.settings.updatePopup.close() },
     )
 }

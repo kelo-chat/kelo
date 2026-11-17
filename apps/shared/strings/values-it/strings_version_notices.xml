@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- it text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">Aggiorna il server</string>
+    <string name="server_old_failed">L\'aggiornamento non è andato a buon fine. Riprova oppure aggiorna il server sulla macchina su cui gira.</string>
+    <string name="server_old_manual">Per aggiornare il server, segui i passaggi di aggiornamento sulla macchina su cui gira.</string>
+    <string name="server_old_guide">Apri la guida all\'aggiornamento</string>
+    <string name="app_notice_new">Una nuova app Kelo (%1$s) funziona meglio con il tuo server</string>
+    <string name="app_notice_store">Apri lo store</string>
+    <string name="update_popup_title">È disponibile una nuova versione (%1$s)</string>
+    <string name="update_popup_update">Aggiorna</string>
+    <string name="update_popup_later">Più tardi</string>
+</resources>

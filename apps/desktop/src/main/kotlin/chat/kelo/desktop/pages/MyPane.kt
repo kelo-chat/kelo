@@ -27,6 +27,7 @@ import chat.kelo.app.ui.text.*
 import chat.kelo.desktop.core.AppContainer
 import chat.kelo.desktop.core.Autostart
 import chat.kelo.desktop.core.ReleaseInfo
+import chat.kelo.desktop.core.ServerInstallRules
 import chat.kelo.desktop.ui.SwitchRow
 import chat.kelo.desktop.ui.UpdateCard
 import chat.kelo.desktop.ui.updateRowValue
@@ -71,13 +72,19 @@ private fun desktopMyHooks(app: AppContainer, hiddenTabs: List<chat.kelo.app.she
             MenuRow(KeloIcons.Phone, string(Res.string.desktop_section), { go(MY_DESKTOP_PAGE) },
                 value = string(Res.string.desktop_theme) + " · " + string(themeLabel(theme)))
         }
+        if (ServerInstallRules.available()) row {
+            MenuRow(KeloIcons.Chip, string(Res.string.desktop_server_row), { go(MY_SERVER_PAGE) })
+        }
         if (app.updates.enabled) row {
             val scope = rememberCoroutineScope()
             val update by app.updates.state.collectAsState()
             MenuRow(KeloIcons.Retry, string(Res.string.update_check), { scope.launch { app.updates.check() } }, value = updateRowValue(update))
         }
     },
-    extraPages = mapOf(MY_DESKTOP_PAGE to { onBack -> DesktopPage(app, onBack) }),
+    extraPages = mapOf(
+        MY_DESKTOP_PAGE to { onBack -> DesktopPage(app, onBack) },
+        MY_SERVER_PAGE to { onBack -> ServerInstallPage(app.serverInstaller, onBack) },
+    ),
 )
 
 private fun themeLabel(v: String): StringResource = when (v) {

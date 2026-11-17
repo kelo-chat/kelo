@@ -66,6 +66,11 @@ class BriefingSmartShotsTest {
             ui.waitUntil("the chat loaded", timeout = 15_000) { chat.state.value.items.any { it is ChatItem.Msg && it.briefing != null } }
             val card = chat.state.value.items.filterIsInstance<ChatItem.Msg>().first { it.briefing != null }.briefing!!
             assertTrue(card.connections.size == 2 && card.suggestions.size == 2)
+            // The mock's waiting cards (GET /api/approvals/pending) arrive with the status poll, a moment after the history. A card that
+            // arrives while the list sits at its newest message pulls the list down (ChatMessageList: LaunchedEffect(openAsks)), which
+            // moved the briefing out of view in about 1 run in 4 when the scroll below came first. So wait for them, then scroll.
+            ui.waitUntil("the waiting cards", timeout = 15_000) { chat.state.value.asks.any { it.open } }
+            ui.settle(12)
             compose.onAllNodes(hasScrollToKeyAction()).onFirst().performScrollToKey("m3")
             ui.settle(12)
             ui.waitText(words.get(Res.string.briefing_connections))

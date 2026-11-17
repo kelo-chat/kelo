@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Kelo जिसका ध्यान रख रहा है</string>
+    <string name="follow_stop">देखभाल बंद करें</string>
+    <string name="follow_stop_confirm">क्या इस मद की देखभाल बंद करनी है?</string>
+    <string name="follow_stop_confirm_detail">Kelo अब बदलावों की जांच या पहले से तैयारी नहीं करेगा।</string>
+    <string name="follow_stop_yes">देखभाल बंद करें</string>
+    <string name="follow_keep_watching">देखभाल जारी रखें</string>
+    <string name="follow_replan">फिर से योजना बनाएं</string>
+    <string name="follow_sheet_title">देखभाल की योजना</string>
+    <string name="follow_plan_checks">जांच करने योग्य बातें</string>
+    <string name="follow_plan_prep">तैयारियां</string>
+    <string name="follow_plan_tell">सूचनाएं</string>
+    <string name="follow_plan_tell_change">बदलाव होने पर सूचित करें</string>
+    <string name="follow_next_check">अगली जांच: %1$s</string>
+    <string name="follow_last_check">अंतिम जांच: %1$s</string>
+    <string name="follow_prep_later">नियोजित</string>
+    <string name="follow_prep_running">प्रगति पर</string>
+    <string name="follow_prep_done">पहले से तैयार</string>
+    <string name="follow_prep_failed">विफल</string>
+    <string name="follow_state_watching">निगरानी में</string>
+    <string name="follow_state_stopped">रोका गया</string>
+    <string name="follow_state_done">पूर्ण</string>
+    <string name="follow_summary_lead_flight">प्रस्थान से 1 दिन पहले सूचना</string>
+    <string name="follow_summary_lead_general">1 दिन पहले सूचना</string>
+    <string name="follow_summary_lead_hours">%1$d घंटे पहले सूचना</string>
+    <string name="follow_summary_prep_checkin">चेक-इन खुलने पर तैयारी</string>
+    <string name="follow_summary_prep_general">%1$s तैयार करें</string>
+    <string name="follow_summary_watch_changes">बदलावों की जांच</string>
+    <string name="follow_summary_default">शेड्यूल का ध्यान रखें</string>
+</resources>

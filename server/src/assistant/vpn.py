@@ -37,6 +37,7 @@ from .i18n import N_, t
 from .keyguard import Locked
 from .netguard import NetGuardError, is_public, resolve_public
 from .store import Store
+from .tools.sites import in_public_dns
 
 log = logging.getLogger("assistant.vpn")
 
@@ -161,7 +162,7 @@ def _endpoint(value: str) -> tuple[str, int]:
         if not is_public(str(ipaddress.ip_address(host))):
             raise VpnError(t("The Endpoint is a private or local address. Kelo only uses a VPN that is outside your home network."))
     except ValueError:
-        if not _HOSTNAME.match(host) or host.lower().endswith((".local", ".lan", ".internal", ".localhost", ".home", ".corp")):
+        if not _HOSTNAME.match(host) or not in_public_dns(host):
             raise VpnError(t("The Endpoint in the WireGuard file must look like vpn.example.com:51820.")) from None
     return host.lower(), port
 

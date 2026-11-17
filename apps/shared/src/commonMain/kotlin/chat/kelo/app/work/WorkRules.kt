@@ -162,6 +162,31 @@ object Timeline {
         tabs.firstOrNull { it.taskId == task.id && it.status != "ended" }?.id
             ?: task.workerId?.let { id -> workers.firstOrNull { it.id == id }?.tab }
 
+    /**
+     * The tabs the 지금 하는 일 cards already offer a live view of: a running task's own tab (its cards show it only while it runs)
+     * and the tab of a job that is going.
+     */
+    fun shownTabs(now: Now, tabs: List<BrowserTab>, workers: List<Worker> = emptyList()): Set<String> {
+        val ids = HashSet<String>()
+        now.tasks.forEach { node ->
+            if (node.task.running) tabFor(node.task, tabs, workers)?.let { ids += it }
+            node.jobs.forEach { j -> tabFor(j.worker)?.let { ids += it } }
+        }
+        now.jobs.forEach { j -> tabFor(j.worker)?.let { ids += it } }
+        return ids
+    }
+
+    /**
+     * 열린 브라우저: every browser tab that is open (not ended) and that no running task or job already shows, so a tab the agent
+     * left open after its task was done does not vanish from the app (owner report 2026-11-17: the chat's tab was open on the server
+     * but listed nowhere). Not the Android device; working tabs first, then the most recently used.
+     */
+    fun openTabs(tabs: List<BrowserTab>, now: Now, workers: List<Worker> = emptyList()): List<BrowserTab> {
+        val shown = shownTabs(now, tabs, workers)
+        return tabs.filter { it.isBrowserTab && it.status != "ended" && it.id !in shown }
+            .sortedWith(compareBy<BrowserTab> { if (it.status == "working") 0 else 1 }.thenByDescending { it.lastActivity ?: 0.0 })
+    }
+
     /** A job's tab, when it works in a browser: only while the job is going: a finished job's tab is closed. */
     fun tabFor(worker: Worker): String? = worker.tab?.takeIf {
         it.isNotBlank() && (worker.kind == "browser" || worker.thumbnail != null) && worker.status in JOB_GOING

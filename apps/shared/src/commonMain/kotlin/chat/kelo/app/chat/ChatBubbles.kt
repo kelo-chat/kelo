@@ -9,9 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -25,6 +26,7 @@ import chat.kelo.app.ui.theme.Kelo
 fun errorText(e: ChatError): String = when (e) {
     ChatError.StepLimit -> string(Res.string.chat_error_step_limit)
     is ChatError.Message -> e.text
+    is ChatError.Localized -> string(e.res)
     is ChatError.PickModel -> string(Res.string.chat_error_pick_model)
     ChatError.Network -> string(Res.string.chat_error_network)
     is ChatError.Unsupported -> string(Res.string.share_unsupported, e.name)
@@ -34,6 +36,11 @@ fun errorText(e: ChatError): String = when (e) {
 }
 
 private val BubbleShape = RoundedCornerShape(20.dp)
+
+/** A bubble is at most [chat.kelo.app.ui.platform.WindowRules.BUBBLE_MAX] wide once the window is not narrow (a phone keeps today's width). */
+@Composable
+private fun bubbleCap(): Modifier =
+    chat.kelo.app.ui.platform.WindowRules.bubbleMax(chat.kelo.app.ui.platform.LocalWindowShape.current)?.let { Modifier.widthIn(max = it) } ?: Modifier
 
 /**
  * The user's own message; a long press opens its menu (복사, 공유, 텍스트 선택, 수정해서 다시 보내기). [reaction]: the emoji Kelo put on
@@ -47,7 +54,7 @@ fun UserBubble(text: String, reaction: String, actions: List<MsgAction>, onActio
             ActionBubble(actions, copyText = { text }, shape = BubbleShape, fromEnd = true, onAction = onAction) {
                 JoinedText(
                     AnnotatedString(text), color = Kelo.colors.ink, style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.clip(BubbleShape).background(Kelo.colors.mine).padding(horizontal = 15.dp, vertical = 11.dp),
+                    modifier = Modifier.then(bubbleCap()).clip(BubbleShape).background(Kelo.colors.mine).padding(horizontal = 15.dp, vertical = 11.dp),
                 )
             }
         }
@@ -79,7 +86,7 @@ fun AssistantBubbles(text: String, streaming: Boolean, actions: List<MsgAction>,
                     onAction = { a -> onAction(plain(i), a) }) {
                     StyledMarkdown(
                         blocks,
-                        Modifier.clip(BubbleShape).background(c.bubble).padding(horizontal = 15.dp, vertical = 11.dp),
+                        Modifier.then(bubbleCap()).clip(BubbleShape).background(c.bubble).padding(horizontal = 15.dp, vertical = 11.dp),
                         visible = if (revealed >= total) null else visible,
                     )
                 }
@@ -97,7 +104,7 @@ fun ErrorBubble(text: String, actions: List<MsgAction>, onAction: (MsgAction) ->
             Text(
                 text, style = MaterialTheme.typography.bodyLarge,
                 color = c.dangerInk,
-                modifier = Modifier.clip(BubbleShape).background(c.dangerSoft)
+                modifier = Modifier.then(bubbleCap()).clip(BubbleShape).background(c.dangerSoft)
                     .padding(horizontal = 15.dp, vertical = 11.dp),
             )
         }

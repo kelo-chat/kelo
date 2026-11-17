@@ -14,7 +14,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
@@ -25,6 +29,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,7 +44,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +57,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.isCtrlPressed
@@ -90,13 +102,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat.kelo.app.LocalAppServices
 import chat.kelo.app.ui.platform.LocalNetworkInfo
 import chat.kelo.app.ui.platform.rememberPageViewModelStoreOwner
-import chat.kelo.app.ui.platform.LocalSecureWindow
 import chat.kelo.app.ui.components.KeloTextField
 import chat.kelo.app.ui.components.PrimaryButton
 import chat.kelo.app.ui.icons.KeloIcons
 import chat.kelo.app.ui.platform.LocalHaptics
 import chat.kelo.app.ui.theme.Kelo
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.net.URI
@@ -116,12 +128,13 @@ fun LiveTabPage(
     onBack: () -> Unit,
     onCloseTab: (() -> Unit)?,
     takeControl: Boolean = false,
+    onDone: (() -> Unit)? = null,
     fallback: @Composable () -> Unit,
 ) {
     // the page's view models (the live connection) live exactly as long as the page: they are cleared when it leaves
     val owner = rememberPageViewModelStoreOwner(tabId)
     CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
-        LiveTabContent(tabId, tab, onBack, onCloseTab, takeControl, fallback)
+        LiveTabContent(tabId, tab, onBack, onCloseTab, takeControl, onDone, fallback)
     }
 }
 
@@ -132,6 +145,7 @@ private fun LiveTabContent(
     onBack: () -> Unit,
     onCloseTab: (() -> Unit)?,
     takeControl: Boolean,
+    onDone: (() -> Unit)?,
     fallback: @Composable () -> Unit,
 ) {
     val c = Kelo.colors
@@ -140,15 +154,37 @@ private fun LiveTabContent(
     val api = LocalAppServices.current.sessions.api.collectAsStateWithLifecycle().value ?: return
     val scope = rememberCoroutineScope()
     val haptics = LocalHaptics.current
+    val clipboard = LocalClipboardManager.current
     // the connection lives in the view model (one per tab): it closes when the page is gone for good
     val client: LiveViewModel = viewModel(key = "live-$tabId") { liveViewModel(api, tabId, network) }
+    // the VNC screen (Android only: a host is provided): tried first once the page is live and knows its size; the JPEG picture is the
+    // fallback. A screen that closed or failed is replaced when the page comes back on screen, so it is tried again.
+    val vncHost = LocalVncScreenHost.current
+    var vnc by remember(client) { mutableStateOf(vncRelay(api, tabId)) }
     // off screen (another app, the screen off): the connection closes; the tab stays held for a short while
     LifecycleStartEffect(client) {
         client.start()
-        onStopOrDispose { client.stop() }
+        if (vnc.state.value != VncState.Idle) vnc = vncRelay(api, tabId)
+        onStopOrDispose { client.stop(); vnc.close() }
     }
     val frame by client.frame.collectAsStateWithLifecycle()
     val state by client.state.collectAsStateWithLifecycle()
+    val vncState by vnc.state.collectAsStateWithLifecycle()
+    val density = LocalDensity.current.density
+    var area by remember { mutableStateOf<ViewSize?>(null) }
+    LaunchedEffect(vnc, vncHost != null, area, state.mode == LiveMode.ENDED) {
+        val a = area
+        if (VncRules.shouldConnect(vnc.state.value, vncHost != null, a, state.mode == LiveMode.ENDED)) vnc.connectOnce(a!!)
+    }
+    LaunchedEffect(vncState) { if (vncHost != null) client.setFrames(VncRules.framesOn(vncState)) }
+    // a rotation or split screen: the /vnc socket is opened again at the new size (300 ms after the area settles, the last picture stays
+    // meanwhile). The keyboard shortens the area too, but the screen stays and the keyboard covers it: no reconnect for that.
+    val opened by vnc.openedWith.collectAsStateWithLifecycle()
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(vnc, vncState, opened, area, imeVisible) {
+        val a = area ?: return@LaunchedEffect
+        if (vncHost != null && vncState is VncState.Showing) vnc.reconnectIfResized(a, imeVisible)
+    }
     val activity = LocalAppServices.current.agentActivity
     // the tab is gone (closed, or the job behind it stopped): the lists that still show it as running load again now
     LaunchedEffect(state.mode, state.end) {
@@ -159,9 +195,7 @@ private fun LiveTabContent(
     LaunchedEffect(notice) { if (notice != null) { delay(3_500); notice = null } }
 
     val controlling = state.status.youControl
-    // a page may show a password or a card: out of screenshots and the recent-apps preview, unless the newest picture says no secret
-    // field shows and the user is not typing (the text row is open while the user holds the tab)
-    if (LiveRules.guardScreen(frame?.header, typing = controlling)) LocalSecureWindow.current()
+    // the live view is always capturable (owner decision): no secure window here, see LiveRules.guardScreen
     // opened to solve a human check: take the tab over once, as soon as the first picture is there and nobody else holds it
     var autoTaken by remember(client) { mutableStateOf(false) }
     LaunchedEffect(client, takeControl, frame != null, state.status.someoneElse, controlling) {
@@ -175,10 +209,11 @@ private fun LiveTabContent(
         }
     }
     val header = frame?.header
+    val meta by client.meta.collectAsStateWithLifecycle()
     val device = LiveKinds.isDevice(tabId)   // the Android device: a portrait screen, Back / Home / Recents, no tab to close
-    val title = if (device) string(Res.string.chat_phone_title)
-        else header?.title?.ifBlank { null } ?: tab?.title?.ifBlank { null } ?: tab?.host?.ifBlank { null } ?: string(Res.string.agent_tab_browser)
-    val host = if (device) "" else header?.url?.let(::hostOf)?.ifBlank { null } ?: tab?.host.orEmpty()
+    val title = if (device) tab?.title?.ifBlank { null } ?: string(Res.string.chat_phone_title)   // the phone's own name when the server says it
+        else LiveHeader.title(meta, header) ?: tab?.title?.ifBlank { null } ?: tab?.host?.ifBlank { null } ?: string(Res.string.agent_tab_browser)
+    val host = if (device) "" else LiveHeader.url(meta, header)?.let(::hostOf)?.ifBlank { null } ?: tab?.host.orEmpty()
 
     Column(Modifier.fillMaxSize().background(c.bg).safeDrawingPadding()) {
         LiveTop(title, host, onBack, onCloseTab.takeIf { !device && !controlling && state.mode != LiveMode.ENDED })
@@ -187,6 +222,7 @@ private fun LiveTabContent(
             scope.launch { client.control(false) }
         }
         Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)) {
+          Box(Modifier.fillMaxSize().onSizeChanged { area = ViewSize(it.width, it.height, density) }) {
             when {
                 state.mode == LiveMode.ENDED && state.end != LiveEnd.NO_BROWSER -> Column(
                     Modifier.fillMaxSize().padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -195,8 +231,13 @@ private fun LiveTabContent(
                     Box(Modifier.weight(1f)) { fallback() }
                 }
                 state.mode == LiveMode.ENDED -> fallback()
-                else -> LiveCanvas(client, frame, controlling, device, onTapped = { haptics.tick() })
+                else -> {
+                    val host = vncHost
+                    if (host != null && VncRules.showsVnc(vncState)) host.Screen(vnc, controlling, Modifier.fillMaxSize())
+                    else LiveCanvas(client, frame, controlling, device, onTapped = { haptics.tick() })
+                }
             }
+          }
             notice?.let { n ->
                 Text(
                     string(n), color = c.bg, style = MaterialTheme.typography.bodySmall,
@@ -210,7 +251,20 @@ private fun LiveTabContent(
             Text(string(Res.string.desktop_chat_zoom_hint, key), style = MaterialTheme.typography.bodySmall, color = c.muted,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         }
-        if (controlling) ControlBar(client, device)
+        // the phone was handed over to the owner (a card waits for "Done"): the same answer as the card's button, always in reach
+        if (onDone != null) PrimaryButton(string(Res.string.live_done), modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), onClick = { haptics.confirm(); onDone() })
+        if (controlling) {
+            // text the browser copied (VNC screen only): a chip above the keys; the owner taps it to take it, nothing is copied on its own
+            val offered by vnc.clipboard.collectAsStateWithLifecycle()
+            if (vncHost != null && VncRules.showsVnc(vncState)) offered?.let { text ->
+                CopyChip(string(Res.string.live_copy_from_browser)) {
+                    clipboard.setText(AnnotatedString(text))
+                    vnc.clearClipboard()
+                    notice = Res.string.live_copied_to_phone
+                }
+            }
+            ControlBar(client, device, editing = LiveHeader.editing(meta, header), canPaste = vncHost != null) { notice = it }
+        }
         else if (state.mode != LiveMode.ENDED) {
             val other = state.status.someoneElse
             Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -354,14 +408,27 @@ fun LiveCanvas(
     LaunchedEffect(controlling) {
         while (controlling) {
             delay(50)
-            val f = current ?: continue
             if (pending[0] == 0f && pending[1] == 0f) continue
             val w = size.width.toFloat(); val h = size.height.toFloat()
-            val d = LiveGeometry.scrollDelta(pending[0], pending[1], w, h, f.header.w, f.header.h, zoomNow)
-            val at = LiveGeometry.toFrame(pending[2], pending[3], w, h, f.header.w, f.header.h, zoomNow, panNow.x, panNow.y)
+            val dx = pending[0]; val dy = pending[1]
             pending[0] = 0f; pending[1] = 0f
-            if (d.x != 0 || d.y != 0) client.send(LiveMessages.scroll(d, at, f.header.w, f.header.h))
+            client.scroll(dx, dy, pending[2], pending[3], w, h)
         }
+    }
+    // the live area's size goes to the server while controlling: when it starts, after a rotation, when the soft keyboard moves the
+    // picture (a short wait so one keyboard animation is one message). Not controlling: nothing is wanted (the page gets its size back).
+    val density = LocalDensity.current.density
+    LaunchedEffect(controlling, size, density, frame?.header?.liveV) {
+        if (!controlling || size.width <= 0 || size.height <= 0) { client.reportView(null); return@LaunchedEffect }
+        delay(150)
+        client.reportView(ViewSize(size.width, size.height, density))
+    }
+    val touch by client.touch.collectAsStateWithLifecycle()
+    val markFade = remember { Animatable(1f) }
+    LaunchedEffect(touch.mark?.id) {
+        val m = touch.mark ?: return@LaunchedEffect
+        markFade.snapTo(0f)
+        markFade.animateTo(1f, tween(durationMillis = TouchMarkLook.fadeMs(m), easing = LinearEasing))
     }
     val desc = string(Res.string.agent_tab_picture)
     val zoomKeyIsMeta = remember { System.getProperty("os.name").orEmpty().lowercase().contains("mac") }
@@ -419,43 +486,56 @@ fun LiveCanvas(
     Box(
         Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(c.bubble).onSizeChanged { size = it }
             .then(
-                if (controlling) Modifier
-                    .pointerInput("control") {
-                        detectTapGestures(
-                            onTap = { p ->
-                                val f = current ?: return@detectTapGestures
-                                LiveGeometry.toFrame(p.x, p.y, size.width.toFloat(), size.height.toFloat(), f.header.w, f.header.h, zoomNow, panNow.x, panNow.y)
-                                    ?.let { onTapped(); client.send(LiveMessages.tap(it, f.header.w, f.header.h)) }
-                            },
-                            onLongPress = if (device) null else { p ->
-                                val f = current ?: return@detectTapGestures
-                                LiveGeometry.toFrame(p.x, p.y, size.width.toFloat(), size.height.toFloat(), f.header.w, f.header.h, zoomNow, panNow.x, panNow.y)
-                                    ?.let { onTapped(); client.send(LiveMessages.longPress(it, f.header.w, f.header.h)) }
-                            },
-                        )
-                    }
-                    .pointerInput("scroll", device) {
-                        if (device) {
-                            // the device has no wheel scroll: a drag is one swipe from where the finger went down to where it came up
-                            var from = Offset.Zero; var to = Offset.Zero; var downAt = kotlin.time.TimeSource.Monotonic.markNow()
-                            detectDragGestures(
-                                onDragStart = { p -> from = p; to = p; downAt = kotlin.time.TimeSource.Monotonic.markNow() },
-                                onDragEnd = {
-                                    val f = current
-                                    if (f != null) {
-                                        val w = size.width.toFloat(); val h = size.height.toFloat()
-                                        val a = LiveGeometry.toFrame(from.x, from.y, w, h, f.header.w, f.header.h, zoomNow, panNow.x, panNow.y)
-                                        val b = LiveGeometry.toFrame(to.x, to.y, w, h, f.header.w, f.header.h, zoomNow, panNow.x, panNow.y)
-                                        if (a != null && b != null) client.send(LiveMessages.swipe(a, b, f.header.w, f.header.h, LiveKinds.swipeMs(downAt.elapsedNow().inWholeMilliseconds)))
-                                    }
-                                },
-                            ) { change, _ -> change.consume(); to = change.position }
-                        } else detectDragGestures { change, drag ->
-                            change.consume()
-                            pending[0] += drag.x; pending[1] += drag.y
-                            pending[2] = change.position.x; pending[3] = change.position.y
+                if (controlling) Modifier.pointerInput("control", device) {
+                    // tap = at the DOWN point; long press; one finger drags (scrolls the page / swipes the phone); two fingers pinch
+                    // and pan the picture. The finger's ring shows at once.
+                    val machine = TouchMachine(TouchRules.SLOP_DP * density, longPress = !device)
+                    val clock = kotlin.time.TimeSource.Monotonic.markNow()
+                    fun now() = clock.elapsedNow().inWholeMilliseconds
+                    fun apply(a: TouchAction?) {
+                        val w = size.width.toFloat(); val h = size.height.toFloat()
+                        when (a) {
+                            is TouchAction.Tap -> if (client.tap(a.at, w, h)) onTapped()
+                            is TouchAction.LongPress -> if (client.tap(a.at, w, h, longPress = true)) onTapped()
+                            is TouchAction.Drag -> {
+                                if (!device) { pending[0] += a.dx; pending[1] += a.dy; pending[2] = a.at.x; pending[3] = a.at.y }
+                            }
+                            is TouchAction.DragEnd -> if (device) client.swipe(a.from, a.to, a.ms, w, h)
+                            null -> {}
                         }
                     }
+                    awaitEachGesture {
+                        val first = awaitFirstDown(requireUnconsumed = false)
+                        machine.down(first.position, now())
+                        client.fingerDown(first.position)
+                        try {
+                            do {
+                                val wait = machine.longPressIn(now())
+                                val ev = if (wait != null) withTimeoutOrNull(wait) { awaitPointerEvent() } else awaitPointerEvent()
+                                if (ev == null) { apply(machine.tick(now())); continue }
+                                val down = ev.changes.filter { it.pressed }
+                                if (down.size >= 2) {
+                                    if (!machine.multi) { machine.second(); client.fingerUp() }
+                                    client.transform(ev.calculateZoom(), ev.calculatePan(), size.width.toFloat(), size.height.toFloat(), ev.calculateCentroid())
+                                    ev.changes.forEach { it.consume() }
+                                } else if (machine.oneFinger) {
+                                    val ch = ev.changes.first()
+                                    if (ch.pressed) {
+                                        val act = machine.move(ch.position, now())
+                                        if (act != null) { apply(act); ch.consume() }
+                                    } else {
+                                        client.fingerUp()
+                                        apply(machine.up(ch.position, now()))
+                                        ch.consume()
+                                    }
+                                }
+                            } while (ev == null || ev.changes.any { it.pressed })
+                        } finally {
+                            machine.reset()
+                            client.fingerUp()
+                        }
+                    }
+                }
                 else Modifier
                     .pointerInput("zoom") {
                         detectTransformGestures { _, panBy, zoomBy, _ ->
@@ -493,7 +573,7 @@ fun LiveCanvas(
                         val step = 100f * (if (f.header.cssW > 0) f.header.w.toFloat() / f.header.cssW else 1f) / zoomNow
                         val d = FramePoint((ch.scrollDelta.x * step).roundToInt(), (ch.scrollDelta.y * step).roundToInt())
                         val at = LiveGeometry.toFrame(ch.position.x, ch.position.y, w, h, f.header.w, f.header.h, zoomNow, panNow.x, panNow.y)
-                        client.send(LiveMessages.scroll(d, at, f.header.w, f.header.h))
+                        client.send(LiveMessages.scroll(d, at, f.header.w, f.header.h, LiveProtocol.seqFor(f.header)))
                         ch.consume()
                     }
                 }
@@ -552,6 +632,8 @@ fun LiveCanvas(
                 )
             }
         }
+        // the owner's own touch (only while controlling: the agent's pointer shows when not)
+        if (controlling) TouchMarksLayer(touch.down, touch.mark, markFade.value, c.accent)
         if (isBusy) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.22f)))
             PageBusyBanner(
@@ -619,11 +701,28 @@ private fun PageBusyBanner(canReload: Boolean, onReload: () -> Unit, modifier: M
 
 /** Keys, back / forward / reload, and a line to type into the page (nothing typed is kept or logged). */
 @Composable
-private fun ControlBar(client: LiveViewModel, device: Boolean) {
+private fun ControlBar(client: LiveViewModel, device: Boolean, editing: Boolean, canPaste: Boolean, onNotice: (StringResource) -> Unit) {
     val c = Kelo.colors
+    // a text field took focus on the page / phone (the server says so): the keyboard comes up, once per focus
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    var wasEditing by remember { mutableStateOf(false) }
+    LaunchedEffect(editing) {
+        if (EditingRule.raise(wasEditing, editing)) { runCatching { focus.requestFocus() }; keyboard?.show() }
+        wasEditing = editing
+    }
     var text by remember { mutableStateOf("") }
     var hidden by remember { mutableStateOf(false) }
     fun sendText() { if (text.isNotEmpty()) { client.type(text); text = "" } }
+    // the phone's clipboard, typed into the page on a tap (never read on its own); the key is off while there is nothing on it
+    val clipboard = LocalClipboardManager.current
+    var clipHasText by remember { mutableStateOf(false) }
+    if (canPaste) LaunchedEffect(Unit) { while (true) { clipHasText = clipboard.hasText(); delay(1_000) } }
+    fun paste() {
+        val clip = ClipboardRules.pasteText(clipboard.getText()?.text) ?: return
+        client.type(clip)
+        onNotice(Res.string.live_pasted)
+    }
     Column(Modifier.fillMaxWidth().background(c.card).padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (device) PhoneKeys { client.send(LiveMessages.deviceKey(it)) }
         else Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -634,7 +733,7 @@ private fun ControlBar(client: LiveViewModel, device: Boolean) {
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             KeloTextField(
-                text, { text = it }, string(if (device) Res.string.live_phone_type_hint else Res.string.live_type_hint), modifier = Modifier.weight(1f), password = hidden,
+                text, { text = it }, string(if (device) Res.string.live_phone_type_hint else Res.string.live_type_hint), modifier = Modifier.weight(1f).focusRequester(focus), password = hidden,
                 maxLength = LiveMessages.MAX_TEXT,
                 keyboardOptions = KeyboardOptions(
                     autoCorrectEnabled = false, imeAction = ImeAction.Send,
@@ -642,12 +741,31 @@ private fun ControlBar(client: LiveViewModel, device: Boolean) {
                 ),
                 keyboardActions = KeyboardActions(onSend = { sendText() }),
             )
+            if (canPaste) IconButton(onClick = { paste() }, enabled = clipHasText, modifier = Modifier.size(40.dp)) {
+                Icon(KeloIcons.Paste, contentDescription = string(Res.string.live_paste), tint = if (clipHasText) c.ink else c.muted)
+            }
             IconButton(onClick = { hidden = !hidden }) {
                 Icon(if (hidden) KeloIcons.Lock else KeloIcons.Eye, contentDescription = string(if (hidden) Res.string.live_type_show else Res.string.live_type_hide), tint = c.muted)
             }
             IconButton(onClick = { sendText() }, enabled = text.isNotEmpty()) {
                 Icon(KeloIcons.Send, contentDescription = string(Res.string.live_type_send), tint = if (text.isNotEmpty()) c.accent else c.muted)
             }
+        }
+    }
+}
+
+/** The browser's copied text, offered above the keys: wraps in any language, never wider than the screen. */
+@Composable
+private fun CopyChip(label: String, onClick: () -> Unit) {
+    val c = Kelo.colors
+    Row(Modifier.fillMaxWidth().background(c.card).padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Row(
+            Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(20.dp)).background(c.bubble)
+                .clickable(role = Role.Button, onClickLabel = label, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(KeloIcons.Copy, contentDescription = null, tint = c.ink, modifier = Modifier.size(18.dp))
+            Text(label, style = MaterialTheme.typography.labelLarge, color = c.ink, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         }
     }
 }

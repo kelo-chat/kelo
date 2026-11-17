@@ -26,7 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -214,6 +214,7 @@ fun kindWord(kind: String): String = string(
     when (kind) {
         "browser" -> Res.string.work_kind_browser
         "research" -> Res.string.work_kind_research
+        "phone" -> Res.string.work_kind_phone
         else -> Res.string.work_kind_general
     },
 )
@@ -226,6 +227,14 @@ fun CardAction(text: String, icon: androidx.compose.ui.graphics.vector.ImageVect
         if (icon != null) Icon(icon, contentDescription = null, tint = if (danger) c.danger else c.accent, modifier = Modifier.size(16.dp).padding(end = 2.dp))
         Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = MaterialTheme.typography.bodySmall.fontSize), color = if (danger) c.danger else c.accent)
     }
+}
+
+/** An open browser tab no running task shows: its picture, page title and site; a tap opens it live. */
+@Composable
+fun OpenTabCard(t: BrowserTab, onOpen: () -> Unit) {
+    val c = Kelo.colors
+    val shape = RoundedCornerShape(12.dp)
+    Column(Modifier.fillMaxWidth().clip(shape).background(c.card).border(1.dp, c.line, shape)) { chat.kelo.app.agent.TabRow(t, onOpen) }
 }
 
 // ---- 지금 하는 일

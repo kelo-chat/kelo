@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">Zahlung freigeben</string>
+    <string name="approval_sign_subtitle">Bestätigen Sie mit Fingerabdruck oder Gesicht</string>
+    <string name="approval_sign_failed">Diese Zahlung konnte auf diesem Telefon nicht freigegeben werden. Bitte versuchen Sie es erneut.</string>
+    <string name="approval_sign_key_lost">Der Freigabeschlüssel dieses Telefons fehlt. Koppeln Sie dieses Telefon erneut mit dem Server.</string>
+    <string name="approval_pay_on_phone">Zahlungen bitte in der Kelo-App auf dem Telefon freigeben.</string>
+</resources>

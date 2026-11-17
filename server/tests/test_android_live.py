@@ -72,7 +72,8 @@ class Bridge:
             return httpx.Response(200, json={"connected": True, "size": [1080, 2340], "app": "", "android": "15", "device": "x"})
         if path == "/screen":
             assert request.url.params["image"] in ("only", "0", "1")
-            self.frames += 1
+            if request.url.params["image"] != "0":   # a read of the screen's items (the owner-holds-phone look) is no picture
+                self.frames += 1
             return httpx.Response(200, json={"png": self.png})
         self.log.append((path, body))
         if path == "/text" and self.fail_text:
@@ -295,7 +296,7 @@ async def test_the_sessions_list_shows_the_device_only_when_it_is_set_up(tmp_pat
         body = (await c.get("/api/browser/sessions")).json()
         assert body["available"] is True
         (item,) = body["items"]
-        assert (item["key"], item["kind"], item["title"], item["width"], item["height"]) == ("android", "device", "Android", 1080, 2340)
+        assert (item["key"], item["kind"], item["title"], item["width"], item["height"]) == ("android", "device", "x", 1080, 2340)
         assert item["id"] == "android" and item["source"] == "device" and item["controller"] == "agent"
 
 
@@ -391,7 +392,7 @@ async def test_the_android_tools_show_the_card_after_a_step_and_the_server_wires
     bridge = Bridge()
     client = client_of(bridge)
     tools = {t.name: t for t in android_tools(client, session=AndroidSession(client, ScreenReader()), card=DeviceCard(client, interval=0),
-                                              mirror=object())}
+                                              handover=object())}
     assert "phone card" in tools["android_show"].description
     got = []
 

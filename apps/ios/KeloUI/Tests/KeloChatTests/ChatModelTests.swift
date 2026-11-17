@@ -154,6 +154,64 @@ private func until(_ cond: @MainActor () -> Bool) async {
         #expect(m.items.first?.asApproval?.answer == true)
     }
 
+    @MainActor @Test func alwaysForThisRecipientSendsRememberRecipientOnlyWhenTheCardOfferedIt() async {
+        let (app, t) = makeApp { _, _, _ in (200, "{}") }
+        let m = ChatModel(app: app, uploader: FakeUploader())
+        m.apply(.approvalRequest(.init(approvalId: "r1", name: "send_email", offers: [TrailOffer(recipient: "lee@else.example", kind: "mail", titles: ["Trip plan"])])))
+        #expect(m.items.first?.asApproval?.offers.count == 1)
+        m.approve("r1", ok: true, rememberRecipient: true)
+        m.apply(.approvalRequest(.init(approvalId: "r2", name: "send_email")))   // no offers: the flag is ignored
+        m.approve("r2", ok: true, rememberRecipient: true)
+        await until { t.requests.contains { $0.url?.path == "/api/approvals/r1" } && t.requests.contains { $0.url?.path == "/api/approvals/r2" } }
+        let b1 = String(decoding: t.requests.first { $0.url?.path == "/api/approvals/r1" }?.httpBody ?? Data(), as: UTF8.self)
+        let b2 = String(decoding: t.requests.first { $0.url?.path == "/api/approvals/r2" }?.httpBody ?? Data(), as: UTF8.self)
+        #expect(b1.contains("\"approve\":true") && b1.contains("\"remember\":\"recipient\""))
+        #expect(!b2.contains("remember"))
+    }
+
+    @MainActor @Test func aPaymentAllowIsSignedAndAnOwnerWhoBacksOutSendsNothing() async {
+        let (app, t) = makeApp { _, _, _ in (200, "{}") }
+        let m = ChatModel(app: app, uploader: FakeUploader())
+        let keep = ApprovalHooks.signer
+        defer { ApprovalHooks.signer = keep }
+        let defaults = UserDefaults(suiteName: "approval-chat-\(UUID().uuidString)")!
+        // the owner says no to the check: nothing goes to the server, the card stays open
+        ApprovalHooks.signer = SoftwareApprovalSigner(defaults: defaults, allow: { _ in false })
+        m.apply(.approvalRequest(.init(approvalId: "p1", name: "confirm_purchase", issuedAt: 1789000000, signable: true)))
+        m.approve("p1", ok: true)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let sent = t.requests.filter { $0.url?.path == "/api/approvals/p1" }
+        #expect(sent.isEmpty)
+        #expect(m.items.first?.asApproval?.open == true)
+        // the owner agrees: the Allow carries a signature that verifies, and the card is answered
+        let signer = SoftwareApprovalSigner(defaults: defaults)
+        ApprovalHooks.signer = signer
+        m.approve("p1", ok: true)
+        await until { t.requests.contains { $0.url?.path == "/api/approvals/p1" } }
+        let body = String(decoding: t.requests.first { $0.url?.path == "/api/approvals/p1" }?.httpBody ?? Data(), as: UTF8.self)
+        let json = try? JSON.parse(Data(body.utf8))
+        let sig = json?["sig"]?.stringValue ?? ""
+        #expect(ApprovalSignRules.verify(publicKey: signer.publicKey()!, message: ApprovalSignRules.message(approvalId: "p1", approve: true, issuedAt: 1789000000), sig: sig))
+        await until { m.items.first?.asApproval?.answer == true }
+        #expect(m.items.first?.asApproval?.answer == true)
+    }
+
+    @MainActor @Test func aDenyAndAnUnsignedCardAreNeverSigned() async {
+        let (app, t) = makeApp { _, _, _ in (200, "{}") }
+        let m = ChatModel(app: app, uploader: FakeUploader())
+        let keep = ApprovalHooks.signer
+        defer { ApprovalHooks.signer = keep }
+        ApprovalHooks.signer = SoftwareApprovalSigner(defaults: UserDefaults(suiteName: "approval-chat-\(UUID().uuidString)")!)
+        m.apply(.approvalRequest(.init(approvalId: "p2", name: "confirm_purchase", issuedAt: 5, signable: true)))
+        m.approve("p2", ok: false)
+        m.apply(.approvalRequest(.init(approvalId: "p3", name: "calendar_add")))
+        m.approve("p3", ok: true)
+        await until { t.requests.filter { $0.url?.path.hasPrefix("/api/approvals/p") == true }.count == 2 }
+        for r in t.requests where r.url?.path.hasPrefix("/api/approvals/p") == true {
+            #expect(!String(decoding: r.httpBody ?? Data(), as: UTF8.self).contains("\"sig\""))
+        }
+    }
+
     @MainActor @Test func withoutAWalletACardCannotBeSentFromThisPhone() async {
         let (app, _) = makeApp { _, path, _ in (200, path == "/api/profile" ? "{}" : "{}") }
         let m = ChatModel(app: app, uploader: FakeUploader())

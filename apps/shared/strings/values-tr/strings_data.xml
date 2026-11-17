@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">Verilerin</string>
+    <string name="data_intro">Kelo’nun senin hakkında tuttuklarının bir kopyasını indir, başka bir asistandan anıları getir ya da baştan başla.</string>
+    <string name="data_export_title">Verilerini indir</string>
+    <string name="data_export_body">Konuşman, Kelo’nun hatırladıkları, zamanlamalar, Kelo’nun takip ettikleri, bağlı hizmetler ve ayarlarınla tek bir ZIP dosyası. İçinde parola, anahtar ve belirteç asla olmaz.</string>
+    <string name="data_export_make">Dosya oluştur</string>
+    <string name="data_export_making">Dosya oluşturuluyor…</string>
+    <string name="data_export_ready">Dosyan hazır (%1$s).</string>
+    <string name="data_export_save">Dosyayı kaydet</string>
+    <string name="data_export_saved">Kaydedildi.</string>
+    <string name="data_export_again">Yeni dosya oluştur</string>
+    <string name="data_export_failed">Dosya oluşturulamadı. Tekrar dene.</string>
+    <string name="data_import_title">Başka bir asistandan anıları getir</string>
+    <string name="data_import_private">Başka hiçbir yere bir şey gönderilmez. Kelo sunucunda seçtiğin model metni okur ve senin hakkında kısa bilgiler tutar.</string>
+    <string name="data_import_step1">1. Bu isteği kopyala ve eski asistanına yapıştır (ChatGPT, Claude, Gemini, …).</string>
+    <string name="data_import_copy">İsteği kopyala</string>
+    <string name="data_import_copied">Kopyalandı.</string>
+    <string name="data_import_step2">2. Cevabını buraya yapıştır.</string>
+    <string name="data_import_paste_hint">Cevabı yapıştır</string>
+    <string name="data_import_add">Belleğe ekle</string>
+    <string name="data_import_zip_body">Ya da ChatGPT, Claude veya Gemini’den indirdiğin sohbet dışa aktarımını seç (ZIP dosyası, en çok 100 MB).</string>
+    <string name="data_import_zip">ZIP dosyası seç</string>
+    <string name="data_import_running">Okunuyor… %1$d / %2$d</string>
+    <string name="data_import_reading">Dosya açılıyor…</string>
+    <string name="data_import_cancel">Durdur</string>
+    <string name="data_import_failed">Hiçbir şey eklenmedi: %1$s</string>
+    <string name="data_import_none">Eklenecek yeni bir şey bulunamadı.</string>
+    <string name="data_import_added">Belleğe eklendi (%1$d):</string>
+    <string name="data_zip_too_big">Bu dosya 100 MB’tan büyük.</string>
+    <string name="data_reset_title">Baştan başla</string>
+    <string name="data_reset_body">Konuşmanı, Kelo’nun hatırladıklarını, Kelo’nun takip ettiklerini ve zamanlamalarını siler. Bağlayıcılar, kayıtlı girişler, modeller ve telefonların kalır. Önce bir kopya dosya olarak kaydedilir.</string>
+    <string name="data_reset_signout">Bağlayıcılar oturumlarını da kapat ve kayıtlı girişleri kaldır</string>
+    <string name="data_reset_type">Onaylamak için %1$s yaz</string>
+    <string name="data_reset_button">Baştan başla</string>
+    <string name="data_reset_wrong">Kelime bu değil. Hiçbir şey değişmedi.</string>
+    <string name="data_reset_confirm">Şimdi baştan başlansın mı? Önce bir kopya kaydedilir, sonra konuşma, bellek, takip edilenler ve zamanlamalar silinir. Geri alınamaz.</string>
+    <string name="data_reset_done">Tamam. Yukarıdakilerin hepsi silindi. Kopya %1$s olarak kaydedildi.</string>
+</resources>

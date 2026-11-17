@@ -10,7 +10,9 @@ import httpx
 import pytest
 
 from assistant.home import Home
-from assistant.proactive import NEVER_HEADINGS, Proactive, find_date, in_waking_hours, keywords, section
+from assistant.owner_copies import OwnerCopies
+from notify_fake import FakeRules
+from assistant.proactive import Proactive, find_date, in_waking_hours, section
 from assistant.providers import Done, TextDelta
 from assistant.schedules import Schedules
 from assistant.server import Settings, create_app
@@ -100,16 +102,15 @@ def test_waking_hours_dates_and_preference_sections():
     assert not in_waking_hours(ts(2026, 11, 7, 6, 59), "07:00", "22:00", SEOUL)
     assert in_waking_hours(ts(2026, 11, 7, 1, 0), "22:00", "02:00", SEOUL) and not in_waking_hours(ts(2026, 11, 7, 3, 0), "22:00", "02:00", SEOUL)
     now = ts(2026, 11, 7, 9, 0)
-    assert find_date("치과 예약 11월 9일 오후 3시", now, SEOUL) == ("2026-11-09", ts(2026, 11, 9, 15, 0))
+    assert find_date("치과 예약 11월 9일 오후 3시", now, SEOUL) is None        # a date in words is not read by a pattern
+    assert find_date("치과 예약 2026-11-09 15:00", now, SEOUL) == ("2026-11-09", ts(2026, 11, 9, 15, 0))
     assert find_date("보고서 2026-11-08 마감", now, SEOUL) == ("2026-11-08", None)
     assert find_date("회의 2026-11-07 14:30", now, SEOUL) == ("2026-11-07", ts(2026, 11, 7, 14, 30))
-    assert find_date("1월 3일 여행", now, SEOUL)[0] == "2027-01-03"            # a date without a year that has passed: next year
     assert find_date("날짜 없음", now, SEOUL) is None
     prefs = "# NOTIFY_PREFS.md\n\n## 알려 줘\n- 택배\n\n## 알리지 마\n- 광고\n- 뉴스레터는 절대 알려주지 말고 그냥 넘어가 줘 제발\n\n## 시간대\n"
-    assert section(prefs, "알려 줘") == "- 택배" and keywords(section(prefs, "알리지 마")) == ["광고"]
-    assert keywords(section(prefs, *NEVER_HEADINGS)) == ["광고"]                    # an older file with Korean headings
+    assert section(prefs, "알려 줘") == "- 택배"
     english = "# NOTIFY_PREFS.md\n\n## Tell me\n- parcels\n\n## Do not tell me\n- ads\n\n## When\n\n## How\n"
-    assert keywords(section(english, *NEVER_HEADINGS)) == ["ads"] and section(english, "Missing", "Tell me") == "- parcels"
+    assert section(english, "Do not tell me") == "- ads" and section(english, "Missing", "Tell me") == "- parcels"
     assert section(english, "Missing") == ""
 
 
@@ -151,10 +152,10 @@ async def test_daily_caps_two_regular_three_with_today_and_now_goes_out_at_once(
     mail = FakeMail(mails("m1", "m2", "m3", "m4", "m5"))
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
     r = await p.run()
-    assert r["sent"] == 2 and r["dropped"] == 3 and [s["urgency"] for s in sent] == ["보통"]   # the two items are one message
+    assert r["sent"] == 2 and r["held"] == 3 and [s["urgency"] for s in sent] == ["보통"]   # the two items are one message
     log = p.log()
     assert [x["urgency"] for x in log if x["status"] == "sent"] == ["보통", "보통"]                 # limits count per item
-    assert sum(x["status"] == "dropped" and "Over the number that can be sent today" in x["reason"] for x in log) == 3
+    assert [x["why"] for x in p.held()] == ["over_cap"] * 3 and not any(x["status"] == "dropped" for x in log)
     # an 오늘 item still fits (3 together), a second one does not
     mail.items = mails("m1", "m2", "m3", "m4", "m5") + [{"uid": "9", "from": "x", "subject": "오늘 답장", "date": "", "unread": True},
                                                         {"uid": "10", "from": "x", "subject": "오늘 또", "date": "", "unread": True}]
@@ -165,7 +166,9 @@ async def test_daily_caps_two_regular_three_with_today_and_now_goes_out_at_once(
     # 지금 with a concrete time within 3 hours goes out over the regular caps
     mail.items = mail.items + [{"uid": "11", "from": "x", "subject": "회의 장소 변경", "date": "", "unread": True}]
     clock.t += 3 * 3600
-    p.stream_fn = all_as("지금", due=datetime.fromtimestamp(clock.t + 3600, SEOUL).strftime("%H:%M"))
+    soon = datetime.fromtimestamp(clock.t + 3600, SEOUL).strftime("%H:%M")
+    p.stream_fn = Judge(lambda items: [{"n": n, "urgency": "지금" if "회의" in t else "보통", "due": soon, "reason": "테스트", "message": f"알림 {n}"}
+                                       for n, t in items])                  # (the held leftovers are judged again too: regular, still over the cap)
     r = await p.run()
     assert r["sent"] == 1 and sent[-1]["urgency"] == "지금" and sent[-1]["title"] == "회의 장소 변경"
     # the next day the leftovers are looked at again
@@ -217,17 +220,35 @@ async def test_nothing_is_told_twice_and_dropped_items_are_not_judged_again(tmp_
     assert len(judge.requests) == 2
 
 
-async def test_the_users_preferences_drop_items_in_code_and_reach_the_model(tmp_path):
+async def test_the_users_preferences_are_read_by_the_model_and_drop_items_in_code(tmp_path):
     mail = FakeMail(mails("주말 특가 광고 모음", "택배 도착 예정"))
     judge = all_as("보통")
     store, home, clock, p, sent = setup(tmp_path, judge, mail)
-    (home.root / "NOTIFY_PREFS.md").write_text("# NOTIFY_PREFS.md\n\n## 알려 줘\n- 택배\n\n## 알리지 마\n- 광고\n\n## 시간대\n\n## 방식\n- 짧게\n",
-                                               encoding="utf-8")
+    rules = FakeRules("광고")
+    p.notify_block = rules.block   # the main model's reading of the don't-tell rules (notify_block.py), faked
+    home.owner_copies = OwnerCopies(store)   # the rules are the owner's saved copy (owner_copies.py): written as the owner's editor does
+    home.write("NOTIFY_PREFS.md", "# NOTIFY_PREFS.md\n\n## 알려 줘\n- 택배\n\n## 알리지 마\n- 광고\n\n## 시간대\n\n## 방식\n- 짧게\n", by="user")
     await p.run()
     shown = judge.requests[0].messages[-1]["content"]
     assert "광고 모음" not in shown.split("Items:")[1] and "택배 도착 예정" in shown and "## 알려 줘" in shown
     assert [s["title"] for s in sent] == ["택배 도착 예정"]
     assert any(x["reason"] == "It is on your don't-tell-me list" for x in p.log())
+    assert len(rules.calls) == 1 and [x["text"] for x in rules.calls[0]["items"]][0].startswith("주말 특가 광고 모음")
+
+
+async def test_rules_nobody_can_read_hold_proactive_items_back_unrecorded(tmp_path):
+    mail = FakeMail(mails("택배 도착 예정"))
+    judge = all_as("보통")
+    store, home, clock, p, sent = setup(tmp_path, judge, mail)
+    p.notify_block = FakeRules(down=True).block
+    home.owner_copies = OwnerCopies(store)
+    home.write("NOTIFY_PREFS.md", "# NOTIFY_PREFS.md\n\n## Do not tell me\n- ads\n", by="user")
+    await p.run()
+    assert sent == [] and not any("택배" in str(x) for x in p.log())     # not told, not recorded: asked again next pass
+    p.notify_block = FakeRules("ads").block
+    clock.t += 3 * 3600
+    await p.run()
+    assert [s["title"] for s in sent] == ["택배 도착 예정"]
 
 
 async def test_goals_commitments_and_already_told_runs_are_candidates(tmp_path):
@@ -236,7 +257,7 @@ async def test_goals_commitments_and_already_told_runs_are_candidates(tmp_path):
     clock = Clock(ts(2026, 11, 7, 9, 0))
     home = Home(tmp_path / "home")
     (home.root / "MEMORY.md").write_text("# MEMORY.md\n\n## Facts\n- 2026-11-08 생일 (작년)\n\n## Commitments\n"
-                                         "- 11월 7일 오후 1시 엄마와 점심\n- 2026-12-25 여행\n", encoding="utf-8")
+                                         "- 2026-11-07 13:00 엄마와 점심\n- 2026-12-25 여행\n", encoding="utf-8")
     store.add_goal("자격증 시험", "공부", "2026-11-09 시험")
     store.add_goal("먼 목표", "", "2027-05-01")
     sch = Schedules(store, clock)
@@ -254,7 +275,7 @@ async def test_goals_commitments_and_already_told_runs_are_candidates(tmp_path):
     p.update(enabled=True)
     found, _ = await p.gather(clock.t - 3600)
     by = {c.source: c for c in found}
-    assert {c.title for c in found if c.source == "memory"} == {"11월 7일 오후 1시 엄마와 점심"}
+    assert {c.title for c in found if c.source == "memory"} == {"2026-11-07 13:00 엄마와 점심"}
     assert by["memory"].due == ts(2026, 11, 7, 13, 0) and by["goal"].title == "자격증 시험" and by["goal"].day == "2026-11-09"
     assert by["schedule"].told
     await p.run()
@@ -295,7 +316,7 @@ async def test_api_switch_log_and_delivery_as_a_chat_message_with_a_notification
         assert (await c.put("/api/proactive", json={"wake_start": "25:00"})).status_code == 422
         pro = srv.server.config.app.state.proactive
         pro.mail = FakeMail(mails("계약서 회신 요청"))
-        on = (await c.put("/api/proactive", json={"enabled": True, "daily_regular": 1, "daily_total": 2})).json()
+        on = (await c.put("/api/proactive", json={"enabled": True, "research": False, "daily_regular": 1, "daily_total": 2})).json()
         assert on["enabled"] and on["daily_total"] == 2
         r = (await c.post("/api/proactive/run")).json()
         assert r["status"] == "done" and r["sent"] == 1
@@ -359,7 +380,7 @@ async def test_every_skip_leaves_one_record_with_a_code_and_a_time(tmp_path):
 async def test_unanswered_messages_stop_then_back_off_doubling_up_to_a_week(tmp_path):
     mail = FakeMail([])
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
-    p.update(wake_start="00:00", wake_end="00:00", every_minutes=30, daily_regular=10, daily_total=20,   # awake all day, caps aside
+    p.update(wake_start="00:00", wake_end="00:00", every_minutes=30, daily_regular=10, daily_total=20, daily_deliveries=10,   # awake all day, caps aside
              change_alerts=False)                                  # (with change alerts on, a held pass still reads mail: test_proactive_mail.py)
     n = 0
 
@@ -401,10 +422,10 @@ async def test_unanswered_messages_stop_then_back_off_doubling_up_to_a_week(tmp_
 async def test_one_pass_sends_no_more_than_the_guard_allows_and_settings_change_it(tmp_path):
     mail = FakeMail(mails("a", "b", "c", "d", "e"))
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
-    p.update(daily_regular=10, daily_total=20, unanswered_limit=2, pause_hours=2, pause_max_days=1)
+    p.update(daily_regular=10, daily_total=20, unanswered_limit=2, pause_hours=2, pause_max_days=1, daily_deliveries=10)
     r = await p.tick()
     assert r["sent"] == 2 and r["backoff_level"] == 1 and r["next_allowed_at"] == clock.t + 2 * 3600
-    assert sum(x["reason"] == "Waiting for your reply to the earlier messages" for x in p.log()) == 3
+    assert [x["why"] for x in p.held()] == ["waiting_for_reply"] * 3                      # kept, not dropped
     assert p.public()["unanswered_limit"] == 2 and p.public()["pause_hours"] == 2
     assert p.pause_seconds(5) == 86400                       # capped at pause_max_days
     for bad in ({"unanswered_limit": 0}, {"pause_hours": 0}, {"pause_max_days": 31}):

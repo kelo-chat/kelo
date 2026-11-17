@@ -47,7 +47,7 @@ class TypedAnswerTest {
     private val form = ReplySet(listOf(
         ReplyQuestion("체중 (현재 → 목표)", listOf("직접 입력할게요", "말하고 싶지 않아요"), typed = listOf("직접 입력할게요"), hint = "현재 체중과 목표 체중"),
         ReplyQuestion("기간", listOf("1개월", "3개월", "6개월", "정해두지 않았어요")),
-        ReplyQuestion("식단 제한", listOf("없어요", "있어요 (직접 입력)", "말하고 싶지 않아요")),
+        ReplyQuestion("식단 제한", listOf("없어요", "있어요 (직접 입력)", "말하고 싶지 않아요"), typed = listOf("있어요 (직접 입력)")),
     ), goalId = 1)
 
     @Test fun typedAnswersOpenABoxAndAreSent() {

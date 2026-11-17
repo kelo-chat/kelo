@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">सर्वर अपडेट करें</string>
+    <string name="server_old_failed">अपडेट पूरा नहीं हुआ। फिर कोशिश करें, या जिस मशीन पर सर्वर चलता है उस पर उसे अपडेट करें।</string>
+    <string name="server_old_manual">सर्वर अपडेट करने के लिए, जिस मशीन पर वह चलता है उस पर अपडेट के चरण अपनाएँ।</string>
+    <string name="server_old_guide">अपडेट गाइड खोलें</string>
+    <string name="app_notice_new">नया Kelo ऐप (%1$s) आपके सर्वर के साथ सबसे अच्छा चलता है</string>
+    <string name="app_notice_store">स्टोर खोलें</string>
+    <string name="update_popup_title">नया संस्करण उपलब्ध है (%1$s)</string>
+    <string name="update_popup_update">अपडेट करें</string>
+    <string name="update_popup_later">बाद में</string>
+</resources>

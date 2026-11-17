@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">عنوان الخادم</string>
+    <string name="server_address_title">تغيير عنوان الخادم</string>
+    <string name="server_address_body">العنوان المتصل: %1$s\nللانتقال إلى عنوان جديد لخادم Kelo نفسه، اكتب عنوان https الجديد. تبقى محادثاتك ومفاتيحك كما هي، ولا تحتاج إلى الاتصال من جديد.</string>
+    <string name="server_address_switch">تغيير</string>
+    <string name="server_address_checking">جارٍ التحقق…</string>
+    <string name="server_address_invalid">لا يبدو هذا عنوان https. اكتبه هكذا: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">تعذّر الوصول إلى هذا العنوان. تحقق منه ومن اتصالك ثم حاول مرة أخرى.</string>
+    <string name="server_address_other">هذا العنوان يخص خادمًا آخر، لذا لم يتغير شيء. للاتصال بخادم آخر، سجّل الخروج ثم اتصل به من البداية.</string>
+    <string name="server_address_same">يستخدم هذا الهاتف هذا العنوان بالفعل.</string>
+    <string name="server_address_done">تم تغيير عنوان الخادم.</string>
+</resources>

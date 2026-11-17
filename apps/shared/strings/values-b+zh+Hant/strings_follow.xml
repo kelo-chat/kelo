@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Kelo 關注的事項</string>
+    <string name="follow_stop">停止關注</string>
+    <string name="follow_stop_confirm">確定要停止關注此事項嗎？</string>
+    <string name="follow_stop_confirm_detail">Kelo 將不再檢查變更或提前準備。</string>
+    <string name="follow_stop_yes">停止關注</string>
+    <string name="follow_keep_watching">繼續關注</string>
+    <string name="follow_replan">重新規劃</string>
+    <string name="follow_sheet_title">關注計畫</string>
+    <string name="follow_plan_checks">確認項目</string>
+    <string name="follow_plan_prep">提前準備</string>
+    <string name="follow_plan_tell">提醒</string>
+    <string name="follow_plan_tell_change">有變動時提醒</string>
+    <string name="follow_next_check">下次確認：%1$s</string>
+    <string name="follow_last_check">上次確認：%1$s</string>
+    <string name="follow_prep_later">預計</string>
+    <string name="follow_prep_running">進行中</string>
+    <string name="follow_prep_done">已準備好</string>
+    <string name="follow_prep_failed">失敗</string>
+    <string name="follow_state_watching">關注中</string>
+    <string name="follow_state_stopped">已停止</string>
+    <string name="follow_state_done">已完成</string>
+    <string name="follow_summary_lead_flight">出發前一天提醒</string>
+    <string name="follow_summary_lead_general">前一天提醒</string>
+    <string name="follow_summary_lead_hours">提前 %1$d 小時提醒</string>
+    <string name="follow_summary_prep_checkin">報到開放後準備</string>
+    <string name="follow_summary_prep_general">準備 %1$s</string>
+    <string name="follow_summary_watch_changes">確認變更事項</string>
+    <string name="follow_summary_default">關注行程</string>
+</resources>

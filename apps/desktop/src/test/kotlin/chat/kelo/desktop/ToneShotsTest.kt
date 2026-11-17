@@ -84,6 +84,8 @@ class ToneShotsTest {
             compose.onNodeWithText(polite).performClick()
             waitChosen(polite)
             ui.waitUntil("the server has polite") { call("GET", "/api/profile").contains("\"tone\": \"polite\"") }
+            // the app's own copy of the profile follows the server's answer to the save, a moment after the server has it
+            ui.waitUntil("the app's profile has polite") { app.profile.value?.tone == "polite" }
             assertEquals("polite", app.profile.value?.tone)
         } catch (e: Throwable) {
             runCatching { ui.shot("tone-$lang-zz-failed") }

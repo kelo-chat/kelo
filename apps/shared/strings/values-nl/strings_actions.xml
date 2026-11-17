@@ -8,4 +8,8 @@
     <string name="actions_state_failed">Niet gelukt</string>
     <string name="actions_empty">Kelo heeft buiten nog niets gedaan.</string>
     <string name="actions_outside_text_note">Wat Kelo leest van webpagina\'s, e-mails en bestanden wordt behandeld als gegevens, nooit als instructies; dergelijke tekst kan Kelo nergens voor laten betalen, verzenden of verwijderen.</string>
+    <string name="did_filter_all">Alles</string>
+    <string name="did_filter_actions">Verzenden en wijzigen</string>
+    <string name="did_filter_browser">Browser</string>
+    <string name="did_filter_tasks">Taken</string>
 </resources>

@@ -23,6 +23,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from .tools.sites import in_public_dns
+
 VPN_DOWN = "the VPN is not connected right now"   # what a refused read or connection says while the VPN connector is on (vpn.py)
 MAX_BODY = 1_000_000
 TIMEOUT = 30.0
@@ -36,7 +38,7 @@ class NetGuardError(Exception):
 def valid_host(name: str) -> str:
     """A bare lower-case DNS name (no scheme, port, path, wildcard or IP literal)."""
     h = (name or "").strip().lower()
-    if not _HOST.match(h) or h.endswith((".local", ".internal", ".localhost", ".lan", ".home", ".corp")):
+    if not _HOST.match(h) or not in_public_dns(h):
         raise NetGuardError(f"{name!r} is not a bare public host name (example: api.example.com)")
     try:
         ipaddress.ip_address(h)
@@ -79,6 +81,12 @@ class Reply:
     truncated: bool
 
 
+def _observe(reply: "Reply") -> None:
+    """A connector's service may be asking Kelo to slow down (connector_cooldown.py)."""
+    from .connector_cooldown import observe
+    observe(reply.status, reply.headers, reply.body)
+
+
 async def fetch(method: str, url: str, *, allowed_hosts: list[str], headers: dict[str, str] | None = None,
                 content: bytes | None = None, resolver: Callable[..., list] | None = None,
                 transport: httpx.AsyncBaseTransport | None = None, timeout: float = TIMEOUT,
@@ -110,7 +118,9 @@ async def fetch(method: str, url: str, *, allowed_hosts: list[str], headers: dic
                         truncated = True
                         break
                     chunks.append(chunk)
-                return Reply(r.status_code, {k.lower(): v for k, v in r.headers.items()}, b"".join(chunks), truncated)
+                reply = Reply(r.status_code, {k.lower(): v for k, v in r.headers.items()}, b"".join(chunks), truncated)
+                _observe(reply)
+                return reply
         except httpx.TimeoutException:
             raise NetGuardError("the request timed out; if it was a write, check the state before retrying") from None
         except httpx.HTTPError as e:
@@ -229,7 +239,9 @@ async def fetch_local(method: str, url: str, *, origin: str, headers: dict[str, 
                         truncated = True
                         break
                     chunks.append(chunk)
-                return Reply(r.status_code, {k.lower(): v for k, v in r.headers.items()}, b"".join(chunks), truncated)
+                reply = Reply(r.status_code, {k.lower(): v for k, v in r.headers.items()}, b"".join(chunks), truncated)
+                _observe(reply)
+                return reply
         except httpx.TimeoutException:
             raise NetGuardError("the request timed out; if it was a write, check the state before retrying") from None
         except httpx.HTTPError as e:

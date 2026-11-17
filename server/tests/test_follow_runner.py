@@ -366,6 +366,7 @@ async def test_lead_reminders_fire_once_each_and_done_after_end():
     start_ts = 1763500000.0
     clock = FakeClock(start_ts)
     db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.executescript("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, role TEXT);")
     store = FollowStore(db, clock=clock)
     activity = FakeActivity()
 
@@ -375,7 +376,7 @@ async def test_lead_reminders_fire_once_each_and_done_after_end():
     item = UpcomingItem(
         key="cal:trip-tokyo",
         kind="trip",
-        title="Trip to Tokyo",
+        title="Flight ICN-HND",
         starts_at=item_start,
         ends_at=item_end,
         place="Haneda",
@@ -385,7 +386,7 @@ async def test_lead_reminders_fire_once_each_and_done_after_end():
 
     finder = ItemFinder(calendar=lambda: [{
         "id": "trip-tokyo",
-        "title": "Trip to Tokyo",
+        "title": "Flight ICN-HND",
         "start": item_start,
         "end": item_end,
         "where": "Haneda",
@@ -424,8 +425,8 @@ async def test_lead_reminders_fire_once_each_and_done_after_end():
     assert len(activity.notifications) == 1
     n1_type, n1_title, n1_detail = activity.notifications[0]
     assert n1_type == "follow_reminder"
-    assert n1_title == "Trip to Tokyo"
-    assert "Trip to Tokyo" in n1_detail
+    assert n1_title == "Flight ICN-HND"
+    assert "Flight ICN-HND" in n1_detail
     assert "Haneda" in n1_detail
 
     # Tick again: first lead does NOT fire again
@@ -440,8 +441,8 @@ async def test_lead_reminders_fire_once_each_and_done_after_end():
     assert len(activity.notifications) == 2
     n2_type, n2_title, n2_detail = activity.notifications[1]
     assert n2_type == "follow_reminder"
-    assert n2_title == "Trip to Tokyo"
-    assert "Trip to Tokyo" in n2_detail
+    assert n2_title == "Flight ICN-HND"
+    assert "Flight ICN-HND" in n2_detail
 
     # Still watching
     saved = store.get_item("cal:trip-tokyo")
@@ -484,6 +485,7 @@ async def test_prep_starts_background_job_and_updates_state():
     start_ts = 1763500000.0
     clock = FakeClock(start_ts)
     db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.executescript("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, role TEXT);")
     store = FollowStore(db, clock=clock)
     activity = FakeActivity()
     workers = FakeWorkers()
@@ -578,6 +580,7 @@ async def test_prep_safety_caps():
     start_ts = 1763500000.0
     clock = FakeClock(start_ts)
     db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.executescript("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, role TEXT);")
     store = FollowStore(db, clock=clock)
     workers = FakeWorkers()
 
@@ -657,3 +660,425 @@ async def test_prep_safety_caps():
 
     # Total jobs across all items today must not exceed MAX_PREP_JOBS_PER_DAY = 4
     assert len(workers.delegated) == 4
+
+
+@pytest.mark.asyncio
+async def test_prep_completion_notices_done_and_failed():
+    start_ts = 1763500000.0
+    clock = FakeClock(start_ts)
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.executescript("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, role TEXT);")
+    store = FollowStore(db, clock=clock)
+    activity = FakeActivity()
+    workers = FakeWorkers()
+
+    item_start = start_ts + 2 * 86400
+    item = UpcomingItem(
+        key="cal:flight-notice-test",
+        kind="flight",
+        title="Flight KE123",
+        starts_at=item_start,
+        ends_at=item_start + 7200,
+        place="Incheon",
+        refs={"flight": "KE123"},
+        source="calendar",
+    )
+
+    store.save_item(
+        item,
+        plan={"checks": [], "prep": [{"what": "online check-in", "when": "-24h"}], "tell": {}},
+        state="watching",
+        prep=[{"what": "online check-in", "when": "-24h", "state": "later", "needs": ["browser"]}],
+    )
+
+    runner = FollowRunner(
+        store=store,
+        finder=ItemFinder(tz=ZoneInfo("UTC")),
+        planner=Planner(sources=[], clock=clock),
+        sources=[],
+        activity=activity,
+        workers=workers,
+        jitter=False,
+        clock=clock,
+    )
+
+    # 1. Advance to 24h before flight -> prep job starts
+    clock.advance(86400 + 60)
+    await runner.tick()
+    assert len(workers.delegated) == 1
+    assert len(activity.notifications) == 0
+    saved = store.get_item("cal:flight-notice-test")
+    assert saved["prep"][0]["state"] == "running"
+    job_id = saved["prep"][0]["job_id"]
+
+    # 2. Worker finishes as done -> send ONE follow_done notice
+    workers.finish_job(job_id, "done")
+    clock.advance(60)
+    await runner.tick()
+
+    saved = store.get_item("cal:flight-notice-test")
+    assert saved["prep"][0]["state"] == "done"
+    assert len(activity.notifications) == 1
+    n_type, n_title, n_detail = activity.notifications[0]
+    assert n_type == "follow_done"
+    assert n_title == "Flight KE123"
+    assert "Flight KE123: online check-in done ahead" in n_detail or "미리 해 뒀어요" in n_detail
+
+    # 3. Next tick: no double notice!
+    clock.advance(600)
+    await runner.tick()
+    assert len(activity.notifications) == 1
+
+    # 4. Failed prep job sends follow_problem notice
+    item2 = UpcomingItem(
+        key="cal:hotel-fail-test",
+        kind="stay",
+        title="Hotel Booking",
+        starts_at=item_start,
+        ends_at=item_start + 7200,
+        place="Tokyo",
+        refs={},
+        source="calendar",
+    )
+    store.save_item(
+        item2,
+        plan={"checks": [], "prep": [{"what": "confirm booking", "when": "-24h"}], "tell": {}},
+        state="watching",
+        prep=[{"what": "confirm booking", "when": "-24h", "state": "later", "needs": []}],
+    )
+
+    # Start the second job
+    await runner.tick()
+    assert len(workers.delegated) == 2
+    saved2 = store.get_item("cal:hotel-fail-test")
+    assert saved2["prep"][0]["state"] == "running"
+    job2_id = saved2["prep"][0]["job_id"]
+
+    # Finish worker with failure
+    workers.finish_job(job2_id, "failed")
+    clock.advance(60)
+    await runner.tick()
+
+    saved2 = store.get_item("cal:hotel-fail-test")
+    assert saved2["prep"][0]["state"] == "failed"
+    assert len(activity.notifications) == 2
+    n2_type, n2_title, n2_detail = activity.notifications[1]
+    assert n2_type == "follow_problem"
+    assert n2_title == "Hotel Booking"
+    assert "preparation failed" in n2_detail or "준비에 실패했어요" in n2_detail
+
+    # 5. Next tick: no double notice for failed prep either
+    clock.advance(600)
+    await runner.tick()
+    assert len(activity.notifications) == 2
+
+
+@pytest.mark.asyncio
+async def test_prep_done_quiet_hours():
+    start_ts = 1763500000.0
+    clock = FakeClock(start_ts)
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.executescript("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, role TEXT);")
+    store = FollowStore(db, clock=clock)
+    activity = FakeActivity()
+    workers = FakeWorkers()
+
+    # Event starts in 2 days (outside 3h NOW_WINDOW)
+    item_start = start_ts + 2 * 86400
+    item = UpcomingItem(
+        key="cal:quiet-flight",
+        kind="flight",
+        title="Flight KE123",
+        starts_at=item_start,
+        ends_at=item_start + 7200,
+        place="Incheon",
+        refs={"flight": "KE123"},
+        source="calendar",
+    )
+    store.save_item(
+        item,
+        plan={"checks": [], "prep": [{"what": "online check-in", "when": "-24h"}], "tell": {}},
+        state="watching",
+        prep=[{"what": "online check-in", "when": "-24h", "state": "later", "needs": ["browser"]}],
+    )
+
+    runner = FollowRunner(
+        store=store,
+        finder=ItemFinder(tz=ZoneInfo("UTC")),
+        planner=Planner(sources=[], clock=clock),
+        sources=[],
+        activity=activity,
+        workers=workers,
+        jitter=False,
+        clock=clock,
+    )
+
+    # User is asleep
+    awake = False
+    runner.is_awake = lambda _ts: awake
+
+    # Advance to -24h: job starts
+    clock.advance(86400 + 60)
+    await runner.tick()
+    job_id = workers.delegated[0]["task"]
+    saved = store.get_item("cal:quiet-flight")
+    job_id = saved["prep"][0]["job_id"]
+
+    # Worker finishes while user is asleep
+    workers.finish_job(job_id, "done")
+    clock.advance(60)
+    await runner.tick()
+
+    # Notice is held due to quiet hours!
+    assert len(activity.notifications) == 0
+    assert len(runner._pending_notices) == 1
+
+    # User wakes up -> notice delivered
+    awake = True
+    clock.advance(60)
+    await runner.tick()
+    assert len(activity.notifications) == 1
+    assert activity.notifications[0][0] == "follow_done"
+
+
+@pytest.mark.asyncio
+async def test_missing_login_advance_notice():
+    from assistant.secret_requests import SecretRequests
+    from assistant.i18n import use
+
+    start_ts = 1763500000.0
+    clock = FakeClock(start_ts)
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.executescript("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, role TEXT);")
+    store = FollowStore(db, clock=clock)
+    entries = SecretRequests(store, clock=clock)
+    activity = FakeActivity()
+    workers = FakeWorkers()
+
+    # Event starts in 3 days. Prep is at -24h (2 days from now).
+    # 1 day before prep time is at 1 day from now.
+    item_start = start_ts + 3 * 86400
+    item = UpcomingItem(
+        key="cal:flight-missing-login",
+        kind="flight",
+        title="Flight KE123",
+        starts_at=item_start,
+        ends_at=item_start + 7200,
+        place="Incheon",
+        refs={"flight": "KE123"},
+        source="calendar",
+    )
+
+    store.save_item(
+        item,
+        plan={"checks": [], "prep": [{"what": "online check-in", "when": "-24h"}], "tell": {}},
+        state="watching",
+        prep=[{"what": "online check-in", "when": "-24h", "state": "later", "needs": ["browser", "login:airline.com"]}],
+    )
+
+    runner = FollowRunner(
+        store=store,
+        finder=ItemFinder(tz=ZoneInfo("UTC")),
+        planner=Planner(sources=[], clock=clock),
+        sources=[],
+        activity=activity,
+        workers=workers,
+        secret_requests=entries,
+        jitter=False,
+        clock=clock,
+    )
+
+    # 1. At start_ts (2 days before prep time): too early, nothing asked
+    await runner.tick()
+    assert len(activity.notifications) == 0
+    assert len(entries.pending()) == 0
+
+    # 2. Advance to 1 day before prep time (start_ts + 86400 + 60)
+    clock.advance(86400 + 60)
+    await runner.tick()
+
+    # Login card created and notice sent!
+    assert len(activity.notifications) == 1
+    n_type, n_title, n_detail = activity.notifications[0]
+    assert n_type == "follow_reminder"
+    assert n_title == "Flight KE123"
+    assert "airline.com" in n_detail
+    assert "Flight KE123" in n_detail
+
+    open_cards = entries.pending()
+    assert len(open_cards) == 1
+    assert open_cards[0]["kind"] == "login"
+    assert "airline.com" in open_cards[0]["hosts"]
+    assert "airline.com" in open_cards[0]["reason"]
+
+    # 3. Next tick: does not fire again (no double card, no double notice)
+    clock.advance(600)
+    await runner.tick()
+    assert len(activity.notifications) == 1
+    assert len(entries.pending()) == 1
+
+    # 4. In Korean locale: translates to "<제목> 준비에 <사이트> 로그인이 필요해요"
+    from assistant.i18n import reset
+    token = use("ko")
+    try:
+        from assistant.i18n import t
+        ko_text = t("I need your {site} login to prepare for {title}", site="대한항공", title="도쿄 비행편")
+        assert ko_text == "도쿄 비행편 준비에 대한항공 로그인이 필요해요"
+    finally:
+        reset(token)
+
+
+@pytest.mark.asyncio
+async def test_missing_login_advance_notice_skipped_when_login_saved():
+    from assistant.secret_requests import SecretRequests
+
+    start_ts = 1763500000.0
+    clock = FakeClock(start_ts)
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.executescript("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, role TEXT);")
+    store = FollowStore(db, clock=clock)
+    entries = SecretRequests(store, clock=clock)
+    activity = FakeActivity()
+    workers = FakeWorkers()
+
+    item_start = start_ts + 3 * 86400
+    item = UpcomingItem(
+        key="cal:flight-saved-login",
+        kind="flight",
+        title="Flight KE123",
+        starts_at=item_start,
+        ends_at=item_start + 7200,
+        place="Incheon",
+        refs={"flight": "KE123"},
+        source="calendar",
+    )
+
+    store.save_item(
+        item,
+        plan={"checks": [], "prep": [{"what": "online check-in", "when": "-24h"}], "tell": {}},
+        state="watching",
+        prep=[{"what": "online check-in", "when": "-24h", "state": "later", "needs": ["browser", "login:airline.com"]}],
+    )
+
+    # Vault HAS a saved login for airline.com
+    fake_vault = [{"kind": "login", "hosts": ["airline.com"], "has_secret": True}]
+
+    runner = FollowRunner(
+        store=store,
+        finder=ItemFinder(tz=ZoneInfo("UTC")),
+        planner=Planner(sources=[], clock=clock),
+        sources=[],
+        activity=activity,
+        workers=workers,
+        secret_requests=entries,
+        vault=fake_vault,
+        jitter=False,
+        clock=clock,
+    )
+
+    # Advance to 1 day before prep time
+    clock.advance(86400 + 60)
+    await runner.tick()
+
+    # Nothing asked because login is already saved!
+    assert len(activity.notifications) == 0
+    assert len(entries.pending()) == 0
+
+
+@pytest.mark.asyncio
+async def test_missing_login_dedupe_rules_apply():
+    from assistant.secret_requests import SecretRequests
+
+    start_ts = 1763500000.0
+    clock = FakeClock(start_ts)
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    db.executescript("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, role TEXT);")
+    store = FollowStore(db, clock=clock)
+    entries = SecretRequests(store, clock=clock)
+    activity = FakeActivity()
+    workers = FakeWorkers()
+
+    # Two items both needing login for airline.com
+    item_start = start_ts + 3 * 86400
+    item1 = UpcomingItem(
+        key="cal:flight-dedupe-1",
+        kind="flight",
+        title="Flight KE123",
+        starts_at=item_start,
+        ends_at=item_start + 7200,
+        place="Incheon",
+        refs={"flight": "KE123"},
+        source="calendar",
+    )
+    store.save_item(
+        item1,
+        plan={"checks": [], "prep": [{"what": "online check-in", "when": "-24h"}], "tell": {}},
+        state="watching",
+        prep=[{"what": "online check-in", "when": "-24h", "state": "later", "needs": ["browser", "login:airline.com"]}],
+    )
+
+    item2 = UpcomingItem(
+        key="cal:flight-dedupe-2",
+        kind="flight",
+        title="Flight KE124",
+        starts_at=item_start,
+        ends_at=item_start + 7200,
+        place="Tokyo",
+        refs={"flight": "KE124"},
+        source="calendar",
+    )
+    store.save_item(
+        item2,
+        plan={"checks": [], "prep": [{"what": "seat selection", "when": "-24h"}], "tell": {}},
+        state="watching",
+        prep=[{"what": "seat selection", "when": "-24h", "state": "later", "needs": ["browser", "login:airline.com"]}],
+    )
+
+    runner = FollowRunner(
+        store=store,
+        finder=ItemFinder(tz=ZoneInfo("UTC")),
+        planner=Planner(sources=[], clock=clock),
+        sources=[],
+        activity=activity,
+        workers=workers,
+        secret_requests=entries,
+        jitter=False,
+        clock=clock,
+    )
+
+    # Advance to 1 day before prep time
+    clock.advance(86400 + 60)
+    await runner.tick()
+
+    # Login-dedupe rules ensure exactly ONE open card exists for airline.com!
+    open_cards = entries.pending()
+    assert len(open_cards) == 1
+    assert "airline.com" in open_cards[0]["hosts"]
+
+
+
+
+class _RulesHome:
+    def __init__(self, text):
+        self.text = text
+
+    def policy(self, rel):
+        return self.text
+
+
+async def test_the_do_not_tell_rules_are_read_by_the_main_model_and_unknown_means_not_planned():
+    from notify_fake import FakeRules
+    item = UpcomingItem(key="cal:x", kind="dining", title="Dinner at the sushi bar", starts_at=1.0, ends_at=2.0, place="Seoul", refs={}, source="calendar")
+    prefs = "# NOTIFY_PREFS.md\n\n## Do not tell me\n- anything about sushi\n"
+    clock = FakeClock(1763500000.0)
+
+    def runner(text, rules):
+        r = FollowRunner(FollowStore(sqlite3.connect(":memory:", check_same_thread=False), clock=clock), ItemFinder(tz=ZoneInfo("UTC")),
+                         Planner(stream_fn=None, model=lambda: None, key_args=lambda p: {}, sources=[]), [], home=_RulesHome(text), tz=ZoneInfo("UTC"))
+        r.notify_block = rules.block if rules else None
+        return r
+    assert await runner(prefs, FakeRules("sushi"))._is_suppressed(item) is True
+    assert await runner(prefs, FakeRules("pizza"))._is_suppressed(item) is False
+    assert await runner(prefs, FakeRules(down=True))._is_suppressed(item) is None       # unknown: the item is not planned or stopped now
+    assert await runner(prefs, None)._is_suppressed(item) is None
+    assert await runner("# NOTIFY_PREFS.md\n\n## Do not tell me\n\n## Tell me\n", FakeRules("sushi"))._is_suppressed(item) is False   # no rules written

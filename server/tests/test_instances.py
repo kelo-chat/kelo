@@ -3,7 +3,6 @@ import subprocess
 
 import pytest
 
-from assistant import instances as inst_mod
 from assistant.cli import read_env
 from assistant.instances import InstanceError, Instances
 
@@ -31,7 +30,9 @@ def make(tmp_path, **kw):
 def test_each_copy_gets_its_own_secrets_ports_and_private_files(tmp_path):
     m, _, _ = make(tmp_path)
     a, b = m.create("alice"), m.create("bob", browser=False, domain="example.com")
-    assert (a.server_port, a.viewer_port, b.server_port, b.viewer_port) == (8100, 6100, 8101, 6101)
+    assert (a.server_port, b.server_port) == (8100, 8101)
+    # the old browser viewer page (6080) is gone: no copy has a viewer port, in the object or in its env file
+    assert not hasattr(a, "viewer_port") and "VIEWER_PORT" not in m.env_path("alice").read_text()
     ta, tb = m.token("alice"), m.token("bob")
     ka, kb = (read_env(m.env_path(n), "ASSISTANT_SECRET_KEY") for n in ("alice", "bob"))
     assert len(ta) >= 32 and ta != tb and ka and kb and ka != kb and ta != "owner-token-owner-token-1234"
@@ -47,18 +48,9 @@ def test_the_number_of_copies_on_one_computer_is_not_capped(tmp_path):
     m, _, _ = make(tmp_path)
     made = [m.create(f"user{i:03d}") for i in range(150)]
     server = [i.server_port for i in made]
-    viewer = [i.viewer_port for i in made]
-    assert len(set(server)) == len(set(viewer)) == 150 and not set(server) & set(viewer)
-    assert not ({8080, 6080} & (set(server) | set(viewer)))              # the main copy's ports are never reused
+    assert len(set(server)) == 150
+    assert 8080 not in server                                            # the main copy's port is never reused
     assert max(server) < 65536 and len(m.names()) == 150
-
-
-def test_server_and_viewer_ports_never_collide_even_if_their_ranges_overlap(tmp_path, monkeypatch):
-    m, _, _ = make(tmp_path)
-    monkeypatch.setattr(inst_mod, "VIEWER_PORT_BASE", inst_mod.SERVER_PORT_BASE)
-    made = [m.create(f"u{i}x") for i in range(20)]
-    ports = [p for i in made for p in (i.server_port, i.viewer_port)]
-    assert len(set(ports)) == 40
 
 
 def test_ports_skip_ones_in_use_by_other_programs_and_a_freed_port_is_reused(tmp_path):
@@ -98,7 +90,7 @@ def test_duplicates_and_bad_domains_are_refused_and_unknown_names_explain(tmp_pa
 def test_the_main_copy_is_managed_the_same_way_without_a_project_name(tmp_path):
     m, run, _ = make(tmp_path)
     main = m.load()
-    assert main.is_main and main.project is None and main.server_port == 8080 and main.viewer_port == 6080 and main.browser
+    assert main.is_main and main.project is None and main.server_port == 8080 and main.browser
     m.start()
     up = next(c for c in run.calls if "up" in c)
     assert up == ["docker", "compose", "-f", str(tmp_path / "compose.yml"), "up", "-d", "--no-build"]

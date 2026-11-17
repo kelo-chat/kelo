@@ -28,9 +28,14 @@ class Settings:
     allow_private_browsing: bool = False
     max_steps: int = 30                  # steps of one chat turn (longer work goes to a background job: workers.py)
     workers_max: int = 3                 # background jobs running at once (ASSISTANT_WORKERS_MAX)
+    aeroapi_allowance: int = 500         # flight lookups a month on the owner's FlightAware key (ASSISTANT_AEROAPI_ALLOWANCE; the free
+                                         # personal tier's amount); lookups stop at 90 % of it (docs/follow-through.md)
     worker_steps: int = 200              # steps of a browser job; research gets half, general under a third (ASSISTANT_WORKER_STEPS)
     worker_minutes: int = 60             # minutes of a browser job; the others half (ASSISTANT_WORKER_MINUTES)
     worker_tokens: int = 4_000_000       # input + output tokens of one job from its last start (ASSISTANT_WORKER_TOKENS)
+    payment_specialist: bool = True      # (owner 2026-11-17: on, as the reference agent does) only a job of kind "checkout" has the payment tools (ASSISTANT_PAYMENT_SPECIALIST; tool_roles.py)
+    phone_worker: bool = True            # only a job of kind "phone" has the phone (android_*) tools (ASSISTANT_PHONE_WORKER; tool_roles.py)
+    browser_worker: bool = True          # the chat does not click or type on websites: a job of kind browser does, the chat keeps reading pages (ASSISTANT_BROWSER_WORKER; tool_roles.py)
     worker_resume_on_start: bool = True  # a job a restart cut off goes on by itself when the server is back
     task_resume_on_start: bool = True    # a background turn a restart cut off goes on by itself; a chat turn gets a Continue button
     db_path: str = ":memory:"
@@ -93,9 +98,9 @@ class Settings:
         "below your message: tell the user to fill it in below (never in chat, never on another page); once saved you go on by "
         "yourself. A key you find shows as [secret #N]: save_found_secret saves it; never ask the user to copy it.\n\n"
         "Buying or booking: ask every missing choice in one message, call begin_order on the shop's site, prepare the order there "
-        "(address: the site's saved one, browser_fill_shipping, or ask_shipping once), call confirm_purchase once with the items, "
-        "total and address, and press the final button only if it returns APPROVED. Pay with a saved card via wallet_cards, "
-        "confirm_purchase(card=...) and browser_fill_card; with no usable card, request_card; never ask for card numbers.\n\n"
+        "(address: the site's saved one, browser_fill_shipping, or ask_shipping once), call checkout_review draft (items, total, "
+        "currency, address), then ready once it confirms; pay only with checkout_submit once approved. Saved card: wallet_cards, "
+        "checkout_review(card=...), browser_fill_card; with no usable card, request_card; never ask for card numbers.\n\n"
         "Later or repeated work: schedule_create, or watch_add to wait for a condition; for 'when X, do Y' also task_allow once at "
         "setup. Long work: delegate it and say in one line that it started (never a quick lookup). A document the user uploaded: "
         "extract_document; if they mention one that is not there, ask them to attach it."
@@ -138,10 +143,14 @@ class Settings:
             browser_lang=env.get("BROWSER_LANG", "").strip().split(",")[0],
             max_steps=_count(env, "ASSISTANT_MAX_STEPS", 30, 4, 200),
             workers_max=_count(env, "ASSISTANT_WORKERS_MAX", 3, 0, 20),
+            aeroapi_allowance=_count(env, "ASSISTANT_AEROAPI_ALLOWANCE", 500, 0, 1_000_000_000),
             worker_steps=_count(env, "ASSISTANT_WORKER_STEPS", 200, 10, 2000),
             worker_minutes=_count(env, "ASSISTANT_WORKER_MINUTES", 60, 1, 1440),
             worker_tokens=_count(env, "ASSISTANT_WORKER_TOKENS", 4_000_000, 10_000, 100_000_000),
             worker_resume_on_start=flag("ASSISTANT_WORKER_RESUME", "1"),
+            payment_specialist=flag("ASSISTANT_PAYMENT_SPECIALIST", "1"),
+            phone_worker=flag("ASSISTANT_PHONE_WORKER", "1"),
+            browser_worker=flag("ASSISTANT_BROWSER_WORKER", "1"),
             task_resume_on_start=flag("ASSISTANT_TASK_RESUME", "1"),
             unofficial_providers=flag("ASSISTANT_UNOFFICIAL_PROVIDERS", "0") and not review.enabled(env),   # never on a review copy
             review_mode=review.enabled(env),

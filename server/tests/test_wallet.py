@@ -227,10 +227,9 @@ def test_auto_pay_decision():
     card = auto_card(wallet)
     e2e = e2e_card(wallet)
     host = "pay.shop.example.com"
-    assert wallet.decide(card, host, 10_000, "KRW").reason == "first_site"        # never paid here: the phone asks
-    assert wallet.decide(card, host, 10_000, "KRW", asked_here=True).auto         # ...unless the owner asked to buy there
-    assert wallet.decide(card, host, 999_999, "KRW", asked_here=True).reason == "over_per_payment"   # the limits still decide
-    assert not wallet.decide(e2e, host, 10_000, "KRW", asked_here=True).auto       # and a card without auto-pay still asks
+    assert wallet.decide(card, host, 10_000, "KRW").reason == "first_site"        # never paid here: the phone asks (a grant is the caller's)
+    assert wallet.decide(card, host, 999_999, "KRW").reason == "over_per_payment"   # the limits still decide
+    assert not wallet.decide(e2e, host, 10_000, "KRW").auto                         # and a card without auto-pay still asks
     wallet.mark_site("shop.example.com")
     d = wallet.decide(card, host, 10_000, "KRW")
     assert d.auto and d.reason == "auto"                                          # a subdomain of a known site is the same site
@@ -325,13 +324,15 @@ class Locator:
 class CardFrame:
     """A checkout frame: answers the field-marking script with what it 'has' and records what is typed into each marked field."""
 
-    def __init__(self, url, found=None, broken=False):
-        self.url, self.found, self.broken, self.typed = url, found, broken, []
+    def __init__(self, url, found=None, broken=False, otp=False):
+        self.url, self.found, self.broken, self.typed, self.otp = url, found, broken, [], otp
 
-    async def evaluate(self, js):
+    async def evaluate(self, js, arg=None):
         if self.broken:
             raise RuntimeError("frame was detached")
-        return self.found if "kindOf" in js else None
+        if "kindOf" in js:
+            return self.found
+        return self.otp if "one-time-code" in js else None   # the extra-authentication reading: a one-time-code input is shown (structure)
 
     def locator(self, sel):
         return Locator(self, sel)
@@ -491,11 +492,11 @@ async def test_end_to_end_card_not_sent_in_time_means_no_payment():
     await session.page()
     run, asked, shown = agent(session, wallet, deliveries, [
         call(1, "confirm_purchase", {**ORDER, "card": card["label"]}), call(2, "browser_fill_card", {"card": card["label"]}),
-        call(3, "browser_click", {"selector": "text=Pay now"}), END], [True, False], card_wait=0.05)
-    approved, fill, click = await run()
+        END], [True, False], card_wait=0.05)
+    approved, fill = await run()
     assert approved.is_error and "did not send the card" in approved.output and "Do NOT click pay" in approved.output
     assert fill.is_error and "no approved payment" in fill.output
-    assert click.approved is False and ("click", "text=Pay now") not in page.calls             # no purchase window was opened
+    assert ("click", "text=Pay now") not in page.calls                                          # no purchase window was opened
     assert not session.purchase_active() and wallet.payments() == [] and deliveries.pending() == []
     assert any(e["action"] == "card-not-sent" for e in store.vault_log())
 
@@ -554,9 +555,9 @@ async def test_fill_card_reports_split_fields_frames_it_cannot_reach_and_extra_a
     split = {"any": True, "card": True, "number": [4, 6, 5], "exp": None, "cvc": True, "name": False, "postal": False,
              "exp_month": {"max": 0, "placeholder": "", "options": [["", "월"], ["01", "1월"], [f"{future()[0]:02d}", f"{future()[0]}월"]]},
              "exp_year": {"max": 0, "placeholder": "", "options": [[str(future()[1]), str(future()[1])]]}}
-    frames = [CardFrame("https://shop.example.com/checkout", None), CardFrame("https://pay.provider.example/form", split),
+    frames = [CardFrame("https://shop.example.com/checkout", None), CardFrame("https://pay.provider.example/form", split, otp=True),
               CardFrame("https://ads.example.org/x", broken=True)]
-    page = CheckoutPage(frames, text="Please complete 3-D Secure verification in your card app")
+    page = CheckoutPage(frames)
     session, _ = checkout(page)
     await session.page()
     run, *_ = agent(session, wallet, CardDeliveries(), [
@@ -565,7 +566,7 @@ async def test_fill_card_reports_split_fields_frames_it_cannot_reach_and_extra_a
     out = filled.output
     assert "number (pay.provider.example)" in out and "cvc (pay.provider.example)" in out and "expiry (pay.provider.example)" in out
     assert "could not be reached: ads.example.org" in out
-    assert "extra authentication" in out and "WAIT" in out and "3-d secure" in out
+    assert "extra authentication" in out and "WAIT" in out and "a one-time-code box" in out   # by structure, never by the words of the page
     typed = frames[1].typed
     assert [v for s, v in typed if s.startswith('[data-kelo-cc="number')] == ["3782", "822463", "10005"]
     assert ('[data-kelo-cc="exp_month"]', f"select:{future()[0]:02d}") in typed
@@ -588,7 +589,7 @@ async def test_no_card_form_found_says_so_and_types_nothing():
 
 
 async def test_a_click_that_leads_to_card_authentication_tells_the_agent_to_wait():
-    session, page = checkout(CheckoutPage(text="카드사 앱에서 결제를 승인해 주세요"))
+    session, page = checkout(CheckoutPage([CardFrame("https://shop.example.com/checkout", None, otp=True)], text="카드사 앱에서 결제를 승인해 주세요"))
     await session.page()
     session.allow_purchase("shop.example.com")
     click = {t.name: t for t in browser_tools(session)}["browser_click"]
@@ -653,7 +654,8 @@ def all_logs():
 def browser_app(tmp_path, monkeypatch, script, page=None):
     session, page = checkout(page)
     monkeypatch.setattr(server_mod, "BrowserSession", lambda *a, **k: session)
-    s = Settings(token=TOKEN, provider="p", model="m", cdp_host="browser", db_path=str(tmp_path / "a.db"))
+    s = Settings(token=TOKEN, provider="p", model="m", cdp_host="browser", db_path=str(tmp_path / "a.db"),
+                 payment_specialist=False, browser_worker=False)   # these tests pay from the chat run: the pipeline, not the splits
     return create_app(s, stream_fn=scripted(*script)), page
 
 
@@ -776,6 +778,12 @@ async def test_paying_over_http_first_site_then_auto_with_notification(tmp_path,
 
 
 async def test_end_to_end_card_over_http_allow_then_phone_delivery(tmp_path, monkeypatch, all_logs):
+    from assistant.step_judge import StepJudge
+    from fake_judge import verdict
+
+    async def says_nothing(self, info):    # the step judge's model is the scripted one here: the click is judged as doing none of the kinds
+        return verdict()
+    monkeypatch.setattr(StepJudge, "web", says_nothing)
     m, y = future()
     script = [call(0, "browser_open", {"url": "https://shop.example.com/checkout"}),
               call(1, "confirm_purchase", {**ORDER, "card": "MC"}), call(2, "browser_fill_card", {"card": "MC"}),
@@ -848,9 +856,10 @@ async def test_stopping_a_reply_drops_a_waiting_card_slot(tmp_path, monkeypatch)
 def test_the_prompt_tells_how_to_pay_with_a_card_without_naming_any_site():
     from pathlib import Path
     import re as _re
-    text = (Path(__file__).resolve().parents[2] / "server" / "content" / "prompts" / "system.md").read_text(encoding="utf-8")
+    from assistant.prompt import PromptBuilder
+    text = PromptBuilder.load(Path(__file__).resolve().parents[2] / "server" / "content", None, None, pay_split=True).base   # the split's wording
     section = text.split("**Buying, ordering, booking.**", 1)[1].split("\n\n**", 1)[0]
-    for word in ("wallet_cards", "browser_fill_card", "card=", "Extra verification", "phone"):
+    for word in ("wallet_cards", "browser_fill_card", "delegate", "checkout", "Extra verification", "phone"):
         assert word in section, word
     assert "card numbers never go through chat" in text.split("**Logins and keys", 1)[1].split("\n\n**", 1)[0]
     assert not _re.search(r"https?://|www\.|\.co\.kr|\.com\b", section)

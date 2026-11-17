@@ -76,13 +76,24 @@ interface LiveSource {
     val state: StateFlow<LiveState>
     val pointer: StateFlow<LivePointer?>
     val notices: SharedFlow<StringResource>
+    /** The tab's address and title from a `meta` line (frames off); null while the frame headers carry them. */
+    val meta: StateFlow<LiveMeta?> get() = NoMeta
+    /** The server's answers to inputs sent with "ack" (live_v 2): where it landed, busy, which frame it mapped with. */
+    val replies: SharedFlow<InputReply> get() = NoReplies
     fun start()
     fun stop(giveBack: Boolean)
     fun close()
     suspend fun control(take: Boolean): LiveClient.ControlResult
     fun send(event: JsonObject)
     fun type(text: String)
+    /** The live area's size while controlling (null when not): sent as `view` to a server that takes it. */
+    fun setView(v: ViewSize?) {}
+    /** JPEG frames over the WebSocket on or off (off while the VNC screen shows; the control and input stay). */
+    fun setFrames(on: Boolean) {}
 }
+
+private val NoMeta: StateFlow<LiveMeta?> = MutableStateFlow<LiveMeta?>(null).asStateFlow()
+private val NoReplies: SharedFlow<InputReply> = MutableSharedFlow<InputReply>().asSharedFlow()
 
 class LiveClient(
     private val api: KeloApi,
@@ -94,11 +105,17 @@ class LiveClient(
     override val frame: StateFlow<LiveFrame?> = _frame.asStateFlow()
     private val _state = MutableStateFlow(LiveState())
     override val state: StateFlow<LiveState> = _state.asStateFlow()
+    private val _meta = MutableStateFlow<LiveMeta?>(null)
+    override val meta: StateFlow<LiveMeta?> = _meta.asStateFlow()
     private val _pointer = MutableStateFlow<LivePointer?>(null)
     override val pointer: StateFlow<LivePointer?> = _pointer.asStateFlow()
     private val _notices = MutableSharedFlow<StringResource>(extraBufferCapacity = 4)
     /** Short lines for the user (string resources): "someone else is controlling", "the browser could not do that" */
     override val notices: SharedFlow<StringResource> = _notices.asSharedFlow()
+
+    private val _replies = MutableSharedFlow<InputReply>(extraBufferCapacity = 8)
+    override val replies: SharedFlow<InputReply> = _replies.asSharedFlow()
+    private val viewReporter = ViewReporter()
 
     private val machine = LiveMachine()
     private val path = "/api/browser/sessions/${KeloApi.segment(tabId)}"
@@ -116,6 +133,8 @@ class LiveClient(
     private var tapBusyJob: Job? = null
     private var running = false
     private val inputLock = Mutex()
+    /** Whether the server should send JPEG frames over the WebSocket (false while the VNC screen shows) */
+    @Volatile private var framesOn = true
     private val frames = Channel<Pair<FrameHeader, ByteArray>>(Channel.CONFLATED)
 
     override fun start() {
@@ -153,6 +172,7 @@ class LiveClient(
         tapBusyJob?.cancel(); tapBusyJob = null
         socket?.close(1000, null)
         socket = null
+        synchronized(viewReporter) { viewReporter.connectionLost() }
         pendingHeader = null
         _pointer.value = null
         _state.update { it.copy(tapBusy = false) }
@@ -214,6 +234,9 @@ class LiveClient(
                 machine.opened()
                 _state.update { it.copy(mode = LiveMode.LIVE) }
                 webSocket.send(quality().message().toString())
+                if (!framesOn) webSocket.send(LiveMessages.frames(false).toString())
+                synchronized(viewReporter) { viewReporter.connectionLost() }
+                pumpView()
                 pingJob?.cancel()
                 pingJob = scope.launch {
                     while (isActive && mine()) {
@@ -235,6 +258,8 @@ class LiveClient(
                     }
                 }
                 is LiveIn.Pointer -> _pointer.value = m.pointer
+                is LiveIn.Meta -> _meta.value = m.meta
+                is LiveIn.InputOk -> { _replies.tryEmit(m.reply); if (m.reply.busy) notifyTapBusy() }
                 is LiveIn.Ended -> { closed = true; scope.launch { if (mine()) run(machine.ended(m.reason)) } }
                 is LiveIn.Error -> onServerError(m.code)
                 else -> {}
@@ -264,6 +289,7 @@ class LiveClient(
                 if (!mine() || !running) return@launch
                 pingJob?.cancel()
                 socket = null
+                synchronized(viewReporter) { viewReporter.connectionLost() }
                 run(if (code == -1) machine.connectFailed() else machine.closed(code))
             }
         }
@@ -360,7 +386,28 @@ class LiveClient(
             if (h.seq > 0) lastSeq = maxOf(lastSeq, h.seq)
             val header = if (h.w > 0 && h.h > 0) h else h.copy(w = bmp.width, h = bmp.height)
             _frame.value = LiveFrame(bmp, header)
+            _meta.value = null   // a picture came: its header carries the address and title again
+            pumpView()
         }
+    }
+
+    override fun setFrames(on: Boolean) {
+        framesOn = on
+        val ws = socket
+        if (ws != null && machine.mode == LiveMode.LIVE) ws.send(LiveMessages.frames(on).toString())
+    }
+
+    override fun setView(v: ViewSize?) {
+        synchronized(viewReporter) { viewReporter.want(v) }
+        pumpView()
+    }
+
+    /** Sends the live area's size when the rules say it is due (controlling, a server with live_v 2, an open connection). */
+    private fun pumpView() {
+        val ws = socket
+        val open = ws != null && machine.mode == LiveMode.LIVE
+        val due = synchronized(viewReporter) { viewReporter.next(_frame.value?.header?.liveV ?: 0, open) } ?: return
+        if (ws == null || !ws.send(LiveMessages.view(due).toString())) synchronized(viewReporter) { viewReporter.connectionLost() }
     }
 
     // ---- control and input
@@ -396,9 +443,9 @@ class LiveClient(
             inputLock.withLock {
                 try {
                     val res = api.post<JsonObject>("$path/input", event)
-                    if ((res["busy"] as? JsonPrimitive)?.booleanOrNull == true) {
-                        notifyTapBusy()
-                    }
+                    val reply = InputReply.of(res)
+                    _replies.tryEmit(reply)
+                    if (reply.busy) notifyTapBusy()
                 } catch (e: ApiError) {
                     when (e.status) {
                         409 -> onServerError("not_controller")

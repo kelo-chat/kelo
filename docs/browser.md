@@ -4,6 +4,11 @@ The agent browses in its own browser (the `browser` container): Google Chrome, o
 below), driven by the server over the Chrome DevTools Protocol. This page
 explains how that browser is fenced off from your home network, how it is set up, and the tools built on it.
 
+> Who drives the browser (2026-11-17): the chat does not click or type on websites. The tools below that act on a page (click, type, drag,
+> upload, login, look, human check, ...) belong to a background job of kind browser (`delegate`); the chat keeps `browser_open`, `browser_read`,
+> `browser_view`, the download tools, `browser_site_state` and `browser_forget_site`. Switch `ASSISTANT_BROWSER_WORKER=0` gives the chat every
+> tool again; see [browser-workers.md](browser-workers.md).
+
 > Browsing can also go out through your own VPN or proxy (Connectors → Network): see [vpn.md](vpn.md). The LAN block below stays in force.
 
 ## The LAN block (network level)
@@ -29,8 +34,15 @@ explains how that browser is fenced off from your home network, how it is set up
 - **The code guard stays** (`check_url` in `tools/browser.py`): the agent's own navigations are checked before they happen, and a redirect
   into a private address resets the tab. The network layer is what catches everything the page does by itself.
 - Policy adds `WebRtcIPHandling: disable_non_proxied_udp` and `QuicAllowed: false`, so nothing tries to go around the proxy.
-- The noVNC viewer (`127.0.0.1:${VIEWER_PORT:-6080}`) is now published by `egress` (a container on an internal network cannot publish
-  ports); it relays to `browser:6080`.
+- **The live view is the browser's own X screen (2026-11-17).** The browser container runs TigerVNC's `Xvnc` (a real X display that also
+  speaks RFB) on loopback `:5900`; `socat` republishes it on `:5901` for the server on `browser-net`, like DevTools on `:9223`, never
+  published. The old noVNC page (`6080`, `VIEWER_PORT`, `EGRESS_RELAY=6080=browser:6080`) is gone: it was an unauthenticated control page
+  of the signed-in browser. The only way to the screen is the server's ticketed `/api/browser/sessions/{key}/vnc` socket
+  (`api/browser.py`, `tools/vnc.py`), which drops pointer, key and clipboard messages of anyone who does not hold the tab. One tab owns
+  the screen at a time (`VncScreen`); a second tab gets `busy` and the apps show the CDP picture stream (`tools/live.py`) instead.
+  While a viewer's frames are off (`{"type":"frames","on":false}` on the live socket) its picture headers, which carry the page's address and
+  title, are not sent, so the live socket sends `{"type":"meta","url","title"}` instead: once at once, then whenever either changes.
+  When the screen's size changes (rotation) the app closes `/vnc` and opens it again with the new width, height and density.
 
 Why this design: it needs no `iptables`, no `NET_ADMIN` capability and no host networking, so it works the same on Docker Desktop (Mac,
 Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
@@ -43,7 +55,7 @@ Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
   set to **ask** (`DefaultNotificationsSetting: 3`: a site's permission reads "default", like a normal Chrome; nobody answers the
   prompt, so no site is ever granted); location, sensors, USB/serial/Bluetooth/HID and local fonts denied by default; PDFs open in the browser (`AlwaysOpenPdfExternally:
   false`) and nothing asks for a download folder; Google update/variations/autofill/optimization hosts blocked (also refused by the proxy).
-  Check it at `chrome://policy` in the viewer.
+  Check it at `chrome://policy` in a tab.
 - **Language and time zone**: `BROWSER_LANG` (default `ko-KR`) sets `--lang` and `--accept-lang` (`ko-KR,ko,en-US,en`): what sites see in
   `Accept-Language` and `navigator.languages`; the server also gives every tab the same locale for dates and numbers. The time zone of
   every tab is the user's profile time zone (`Emulation.setTimezoneOverride`), so it follows a change in the app without a restart; the
@@ -69,7 +81,7 @@ Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
     `navigator.userAgentData` (incl. `getHighEntropyValues`) and the `User-Agent` / `Sec-CH-UA*` request headers all say the same Chrome.
     Known gap: a DevTools client that creates a tab *directly at a URL* (`Target.createTarget` with a URL) sends that first request with
     Chromium's own brand list (the UA string is still right); Kelo never opens tabs that way (Playwright opens `about:blank` first).
-  - Both: headful on a 1440×900 screen (Xvfb), no "Headless" anywhere, `navigator.webdriver` `false` (Chrome only sets it with
+  - Both: headful on a 1440×900 screen (Xvnc, kiosk window), no "Headless" anywhere, `navigator.webdriver` `false` (Chrome only sets it with
     `--enable-automation`/headless, which are not used), language and time zone are the user's own (below).
 - **WebGL and notifications (2026-11-15)**: the browser has a WebGL context like a desktop Chrome without a GPU: the entrypoint passes
   `--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist` (software GL, the renderer string is SwiftShader's).
@@ -85,27 +97,34 @@ Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
   `navigator.userAgent`, brands and high-entropy values, and every request carried the matching `User-Agent`, `Sec-CH-UA`,
   `Sec-CH-UA-Full-Version-List`, `-Arch`, `-Bitness`, `-Platform`, `-Platform-Version`, `-Model` and `Accept-Language`, for both real
   Chrome 157 and Chromium 156 with the identity; the Chromium result was compared against what real Chrome reports.
-- **Restart fix**: a restarted container kept Xvfb's `/tmp/.X99-lock` and could never start the display again; the entrypoint now removes it.
+- **Restart fix**: a restarted container kept the X server's `/tmp/.X99-lock` and could never start the display again; the entrypoint now removes it.
 
 ## What asks for approval
 
 Looking things up never asks. `browser_open`, `browser_read`, ordinary clicks (links, tabs, filters, sorting, date pickers, "more"
-buttons, cookie banners) and typing into search fields (a search box, the destination, dates or guests of a search form) run without a
-card. A step that commits something in the user's name shows an Allow/Deny card (`tools/commits.py`):
+buttons, cookie banners), typing into any field (a search box, the destination, dates, an e-mail address, a phone number, a name, an
+address, a message) and ordinary form submits run without a card. Ask on what the step DOES, never on what is typed (the reference agent's
+rule: "an ordinary browser form submit is currently allowed by default"). A step that commits something in the user's name shows an Allow/Deny card, by the step judge's flags (`tools/commits.py`, `step_judge.py`):
 
-- **pay**: pay, buy, order, book, reserve, subscribe, donate, top up, transfer money, and a plain "Confirm" / "OK" / "Next" on a page
-  whose path or title says checkout, payment, order, booking or cart;
-- **send**: send, post, publish, comment, reply, submit (except "submit" on a search form);
-- **delete**: delete, cancel an order / booking / subscription, close an account;
-- **account**: sign up, register, change a password or account details, a plain "Save" on a settings page;
-- **form**: a button that sends a form holding personal details (e-mail, phone, name, address, password, file) or a message;
-- **typing**: personal details (by field type, `autocomplete`, name, label or placeholder; or text that is an e-mail address, a phone
-  number or a card number) or a message (a text area or an editable box).
+- **pay**: spends money (buy, order, book, subscribe, donate, top up, transfer);
+- **apply**: submits an application, a registration for a program, event or benefit, an official record or a draw entry;
+- **send**: sends or posts something to people or services (a contact form that sends a message asks here);
+- **delete**: deletes or cancels something (an order, a booking, a subscription, an account);
+- **optout**: unsubscribes, withdraws consent, closes a membership;
+- **account**: signs up or registers;
+- **security**: changes how the account is protected or reached (an app password, 2-step verification, a device); always asks;
+- **typing** asks in exactly two cases, both tied to money or sign-in, not to words: a card number (by value: 13-19 digits that pass the
+  Luhn check; payments go through the checkout tools) and a field of input type `password` or autocomplete `current-password`,
+  `new-password` or `one-time-code` (sign-ins go through `browser_login` and the vault).
+
+The judge being unavailable (or answering badly) asks too: a step Kelo could not judge is never passed. Ordinary form submits run without
+a card unless the step judge finds they spend, send, delete, sign up, apply, opt out or change account security, as in the reference. The
+privacy guard is separate: secrets and the owner's own details in typed text are still checked where they were.
 
 The judgement reads the element just before the step (`TARGET_JS`, at most 1.5 s): its visible words, `aria-label`, role, whether it is
 a link to another page (a long link text is a result or a product card, so following it only looks), the form it belongs to and the
-page it is on. When the element cannot be read, the selector's own words are judged. The words are generic (no site has a rule of its
-own), in English and Korean, and lean towards asking: a missed commit is worse than an extra card. "Allow on this site" rules never
+page it is on. When the element cannot be read, the selector's own words are judged by the step judge. The judgement is generic (no
+site has a rule of its own). "Allow on this site" rules never
 cover a payment-like click. Payments still go through `confirm_purchase`; after it is approved the few committing steps that finish the
 purchase on the same site need no second card. Sign-ins (`browser_login`), uploads and one-time codes ask exactly as before.
 

@@ -830,6 +830,22 @@
     <string name="agent_perm_rules_empty">Henüz yok. Bir onay kartında “Bu sitede her zaman izin ver”i seçersen burada görünür.</string>
     <string name="agent_perm_history">Geçmiş onaylar</string>
     <string name="agent_perm_history_empty">Henüz bir şey sorulmadı.</string>
+    <string name="approval_edit_button">Düzenle</string>
+    <string name="approval_edit_title">Gönderilecek mesaj</string>
+    <string name="approval_edit_save">Kaydet</string>
+    <string name="approval_edited_note">Mesajı değiştirdin</string>
+    <string name="approval_edit_empty">Bir mesaj yaz.</string>
+    <string name="approval_edit_too_long">Çok uzun. Kısalt.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Geçmiş onaylar</string>
+    <string name="approval_history_empty">Henüz onay yok.</string>
+    <string name="approval_history_error">Geçmiş onaylar yüklenemedi.</string>
+    <string name="approval_history_where">Nerede</string>
+    <string name="approval_history_when">Ne zaman</string>
+    <string name="approval_history_answered">Yanıtlandı</string>
+    <string name="approval_via_app">Uygulamada</string>
+    <string name="approval_via_notification">Bildirimden</string>
+    <string name="approval_via_messenger">Bir mesajlaşma uygulamasında</string>
     <string name="agent_perm_asked">Soruldu: %1$s</string>
     <string name="approval_remember_site">Bu sitede bir daha sorma</string>
     <string name="approval_remember_scope">%1$s ve tüm alt adresleri için geçerlidir</string>
@@ -941,6 +957,7 @@
     <string name="live_forward">İleri</string>
     <string name="live_reload">Yenile</string>
     <string name="live_page_not_responding">Sayfa yanıt vermiyor</string>
+    <string name="live_touch_missed">Dokunuş sayfaya ulaşmadı</string>
     <string name="live_type_hint">Sayfaya yazılacak metin</string>
     <string name="live_type_send">Yaz</string>
     <string name="live_type_hide">Metni gizle</string>
@@ -1120,6 +1137,8 @@
     <string name="offer_reason_later">Daha sonra</string>
     <string name="offer_busy">Şu anda başka bir yanıt yazılıyor. Bittiğinde tekrar dokunun</string>
     <string name="offer_failed">Başlatılamadı</string>
+    <string name="offer_steps_show_all">%1$d adımın tümünü göster</string>
+    <string name="offer_steps_fewer">Daha az adım göster</string>
     <string name="work_upcoming">Yaklaşanlar</string>
     <string name="work_upcoming_unscheduled">Saat belirlenmedi</string>
     <string name="work_past">Önceki</string>
@@ -1150,6 +1169,7 @@
     <string name="work_kind_browser">Tarayıcı görevi</string>
     <string name="work_kind_research">Araştırma</string>
     <string name="work_kind_general">Genel görev</string>
+    <string name="work_kind_phone">Telefon görevi</string>
     <string name="work_job_title">Arka plan görevi</string>
     <string name="work_job_line">%1$s · Arka plan</string>
     <string name="work_task_in_background">Arka planda</string>
@@ -1455,6 +1475,7 @@
     <string name="handover_verify_title">%1$s girişi onaylamanızı istiyor</string>
     <string name="handover_verify_body">Girişi telefonunuzda onaylayın ya da canlı görünümü açıp kodu orada yazın. Sonra Kelo devam eder.</string>
     <string name="handover_verify_open">Canlı görünümü aç</string>
+    <string name="handover_device_open">Telefon ekranını aç</string>
     <string name="handover_verify_done">Giriş yapıldı — Kelo devam ediyor</string>
     <string name="handover_verify_approve_body">Girişi telefonunuzdaki bildirimden onaylayın. Onaylandıktan sonra Kelo devam eder.</string>
     <string name="handover_verify_approved">Onayladım</string>

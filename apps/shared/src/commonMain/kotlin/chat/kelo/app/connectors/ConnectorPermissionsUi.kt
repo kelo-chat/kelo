@@ -11,7 +11,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,12 +60,31 @@ internal fun PermissionsSection(id: String) {
                 p.kinds.forEach { k ->
                     KindRow(k, enabled = !ui.permsBusy, onKind = { m -> vm.setKind(id, k.kind, m) }, onAction = { a, m -> vm.setAction(id, a, m) })
                 }
+                UnattendedRow(p.name.ifBlank { id }, PermissionRules.unattendedOn(p), enabled = !ui.permsBusy, onChange = { vm.setUnattended(id, it) })
                 if (PermissionRules.changed(p)) LinkButton(string(Res.string.perm_reset), onClick = { confirmReset = true })
             }
         }
     }
     if (confirmReset) ConfirmDialog(string(Res.string.perm_reset_q), string(Res.string.perm_reset), danger = false,
         onYes = { confirmReset = false; vm.resetPermissions(id) }, onDismiss = { confirmReset = false })
+}
+
+/** One switch for the connector as a whole: schedules, background jobs and messages Kelo sends first use it only while this is on. */
+@Composable
+private fun UnattendedRow(name: String, on: Boolean, enabled: Boolean, onChange: (Boolean) -> Unit) {
+    val c = Kelo.colors
+    val title = string(Res.string.perm_unattended)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, color = c.ink, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            MutedText(string(Res.string.perm_unattended_about, name), small = true)
+        }
+        Switch(
+            checked = on, enabled = enabled, onCheckedChange = onChange,
+            modifier = Modifier.semantics { contentDescription = title },
+            colors = SwitchDefaults.colors(checkedTrackColor = c.accent, checkedThumbColor = c.onAccent),
+        )
+    }
 }
 
 private fun kindName(kind: String): StringResource = when (kind) {

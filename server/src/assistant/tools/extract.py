@@ -14,6 +14,7 @@ from typing import Any
 
 from ..agent import Ours, Tool
 from ..agent.fence import data, marked
+from ..data_trail import note_item
 from ..home import Home, HomeError
 from ..media import kind_of
 
@@ -78,6 +79,7 @@ def extract_tool(home: Home) -> Tool:
             got = await run(str(args.get("path", "")), bool(args.get("layout")), str(args.get("sheets") or ""))
         except HomeError as e:
             return Ours(f"error: {e}")
+        note_item(str(args.get("path", "")), title=str(args.get("path", "")).rsplit("/", 1)[-1])
         return got if marked(got) else Ours(got)
 
     return Tool("extract_document",
@@ -85,4 +87,4 @@ def extract_tool(home: Home) -> Tool:
                 {"type": "object", "properties": {"path": {"type": "string", "description": "file name or uploads/<name>"},
                                                   "layout": {"type": "boolean", "description": "keep PDF columns side by side"},
                                                   "sheets": {"type": "string", "description": "comma-separated sheet names"}},
-                 "required": ["path"]}, handler, read_only=True, untrusted=True, source="file")
+                 "required": ["path"]}, handler, read_only=True, untrusted=True, source="file", trail="file")

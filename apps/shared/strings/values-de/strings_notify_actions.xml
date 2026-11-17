@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_notify_actions.xml (generated from values/strings_notify_actions.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="notify_action_reply">Antworten</string>
+    <string name="notify_unlock_retry">Entsperre dein Handy und versuche es dann noch einmal.</string>
+    <string name="notify_send_failed_open">Senden fehlgeschlagen. Öffne Kelo, um zu antworten.</string>
+    <string name="notify_send_failed_tap">Senden fehlgeschlagen. Tippe, um Kelo zu öffnen.</string>
+</resources>

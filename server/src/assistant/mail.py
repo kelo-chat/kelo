@@ -28,6 +28,7 @@ from email.utils import getaddresses, make_msgid, parseaddr
 from html import unescape
 from typing import Any
 
+from . import mail_html
 from .i18n import N_, t
 from .store import Store
 from .vault import VaultError
@@ -38,9 +39,6 @@ UPDATE_TIMEOUT = 600   # a change over thousands of messages: many STORE/MOVE co
 CHUNK = 500            # UIDs per STORE/MOVE command (keeps each command line a few KB)
 ACTIONS = ("read", "unread", "flag", "unflag", "archive", "move", "trash")
 # folder names to fall back on when a server marks no special-use folders (RFC 6154): compared case-insensitively, last segment
-TRASH_NAMES = ("trash", "deleted messages", "deleted items", "deleted", "bin", "휴지통")
-ARCHIVE_NAMES = ("archive", "archives", "보관함")
-JUNK_NAMES = ("spam", "junk", "junk email", "junk e-mail", "bulk mail", "스팸", "스팸메일함", "스팸 메일함")
 ARRIVALS_WAIT = 300    # what arrived since the last look (a long gap can be thousands of messages, read in chunks)
 FETCH_CHUNK = 100      # UIDs per FETCH of those
 SNIPPET_BYTES = 2000   # how much of a body is fetched for the snippet
@@ -304,16 +302,11 @@ def _find_folder(folders: list[Folder], wanted: str) -> Folder | None:
     return None
 
 
-def _special(folders: list[Folder], flag: str, names: tuple[str, ...]) -> Folder | None:
-    """The server's folder for a use (\\Trash, \\Archive, \\All), by its RFC 6154 mark, else by a usual name."""
-    marked = [f for f in folders if flag in f.flags]
-    if marked:
-        return marked[0]
-    for n in names:
-        hits = [f for f in folders if f.leaf.casefold() == n and "\\noselect" not in f.flags]
-        if hits:
-            return hits[0]
-    return None
+def _special(folders: list[Folder], flag: str) -> Folder | None:
+    """The server's folder for a use (\\Trash, \\Archive, \\Junk), by its RFC 6154 special-use mark. A server that marks none gets
+    no guess from folder names: the error names its folders and the agent moves the messages to the one it picks (action move)."""
+    marked = [f for f in folders if flag in f.flags and "\\noselect" not in f.flags]
+    return marked[0] if marked else None
 
 
 def _caps(conn: Any) -> set[str]:
@@ -608,7 +601,7 @@ class Mail:
             gmail = p.id == "gmail"
             raw = "INBOX"
             if kind == "junk":
-                found = _special(_folders(conn), "\\junk", JUNK_NAMES)
+                found = _special(_folders(conn), "\\junk")
                 if found is None:
                     return None
                 raw = found.raw
@@ -762,11 +755,11 @@ class Mail:
             raise MailError(f"there is no folder {sel.folder!r}; the folders are: {names}")
         dest: Folder | None = None
         if action == "trash":
-            dest = _special(folders, "\\trash", TRASH_NAMES)
+            dest = _special(folders, "\\trash")
             if dest is None:
-                raise MailError("this mailbox has no Trash folder, so nothing was moved (messages are never deleted for good)")
+                raise MailError(f"this mailbox marks no Trash folder, so nothing was moved (messages are never deleted for good); move them to a folder of your choice instead. The folders are: {names}")
         elif action == "archive" and not gm:
-            dest = _special(folders, "\\archive", ARCHIVE_NAMES)
+            dest = _special(folders, "\\archive")
             if dest is None:
                 raise MailError("this mailbox has no Archive folder, so archiving is not available here; moving them to a folder "
                                 f"works instead. The folders are: {names}")
@@ -901,18 +894,28 @@ class Mail:
                 pass
 
     async def send(self, account: str, to: list[str], subject: str, body: str, cc: list[str] | None = None, reply_to_uid: str = "",
-                   folder: str = "INBOX", reply_to: str = "") -> str:
-        """`reply_to`: an address answers should go to instead of the sender (the beta mails: support@kelo.chat)."""
-        people = [a for _, a in getaddresses([", ".join(to)] + ([", ".join(cc)] if cc else []))]
+                   folder: str = "INBOX", reply_to: str = "",
+                   bcc: list[str] | None = None, html: str = "") -> str:
+        """`reply_to`: an address answers should go to instead of the sender (the beta mails: support@kelo.chat).
+        `html`: a designed version, sanitized by mail_html.clean; the message is multipart/alternative (plain text first). An empty
+        `body` is then the HTML's own text."""
+        people = [a for _, a in getaddresses([", ".join(to)] + ([", ".join(cc)] if cc else []) + ([", ".join(bcc)] if bcc else []))]
         if not to or not all(re.fullmatch(r"[^@\s,<>]+@[^@\s,<>]+\.[^@\s,<>]+", a) for a in people):
             raise MailError("every recipient must be a plain email address")
         if len(people) > 20:
             raise MailError("at most 20 recipients")
+        designed = mail_html.clean(html) if html.strip() else ""
+        if html.strip() and not designed:
+            raise MailError("the designed (HTML) version has nothing left to send once its unsafe parts are removed")
+        if designed and not body.strip():
+            body = mail_html.to_text(designed)
         p, name, user, pw = await self._signin(account, "email_send", f"to {len(people)} recipient(s)")
         msg = EmailMessage()
         msg["From"], msg["To"], msg["Subject"] = user, ", ".join(to), subject[:300]
         if cc:
             msg["Cc"] = ", ".join(cc)
+        if bcc:
+            msg["Bcc"] = ", ".join(bcc)   # smtplib's send_message sends to it and leaves the header out of what goes out
         if reply_to and re.fullmatch(r"[^@\s,<>]+@[^@\s,<>]+\.[^@\s,<>]+", reply_to):
             msg["Reply-To"] = reply_to
         msg["Message-ID"] = make_msgid(domain=parseaddr(user)[1].split("@")[-1] or None)
@@ -922,6 +925,8 @@ class Mail:
                 msg["In-Reply-To"] = orig["message_id"]
                 msg["References"] = (orig["references"] + " " + orig["message_id"]).strip()
         msg.set_content(body[:50_000])
+        if designed:
+            msg.add_alternative(designed, subtype="html")
         await self._run(self._send_sync, p, user, pw, msg)
         self.store.add_vault_log(name, "used", f"email sent to {len(people)} recipient(s)")
         return f"sent to {', '.join(people)}"

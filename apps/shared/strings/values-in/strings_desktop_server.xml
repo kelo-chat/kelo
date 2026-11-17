@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<resources>
+    <string name="desktop_server_row">Gunakan PC ini sebagai server Kelo</string>
+    <string name="desktop_server_row_hint">Memasang server Kelo di komputer ini. Windows meminta izin administrator sekali.</string>
+    <string name="desktop_server_checking">Memeriksa</string>
+    <string name="desktop_server_downloading">Mengunduh</string>
+    <string name="desktop_server_installing">Memasang</string>
+    <string name="desktop_server_starting">Memulai</string>
+    <string name="desktop_server_done">Selesai</string>
+    <string name="desktop_server_restart">Mulai ulang Windows untuk menyelesaikan. Pengaturan lanjut setelah Anda masuk.</string>
+    <string name="desktop_server_cancelled">Dibatalkan. Tidak ada yang berubah.</string>
+    <string name="desktop_server_failed">Gagal memasang.</string>
+    <string name="desktop_server_show_log">Lihat log</string>
+    <string name="desktop_server_installed">Server Kelo ada di PC ini</string>
+    <string name="desktop_server_open_setup">Buka pengaturan</string>
+    <string name="desktop_server_update">Perbarui</string>
+    <string name="desktop_server_install">Pasang</string>
+    <string name="desktop_server_unavailable">Server Kelo untuk Windows belum tersedia.</string>
+</resources>

@@ -131,8 +131,10 @@ pwsh packaging\windows\make_msix.ps1 -AppDir build\compose\binaries\main\app\Kel
   installed one. Version numbers (docs/versioning.md): the app shows the release from the root `version.json` (`0.9.0`); the installers carry
   their own rising package number from `apps/desktop/version.properties` (three parts for MSI/EXE, `1.0.8`; four ending in `.0` for
   MSIX, `1.0.8.0`), raised for every desktop release; `-PkeloVersion=X.Y.Z` overrides it for one build.
-- The MSI/EXE are not code-signed here; Windows SmartScreen will warn on download until they are signed with a code-signing
-  certificate (`signtool sign /fd SHA256 /f cert.pfx ...`).
+- The MSI/EXE are not code-signed here (owner decision: they stay unsigned for now). SmartScreen shows a blue "Windows protected
+  your PC" window: More info, then Run anyway. Smart App Control (Windows 11, when On) blocks unsigned executables outright, with
+  no "Run anyway": there the Microsoft Store version is the supported route. See `docs/install.md`, "Windows: SmartScreen and
+  Smart App Control".
 - The MSIX (`packaging/windows/AppxManifest.xml`) is a full-trust desktop package with a start-at-sign-in task (off until the
   user turns it on in Settings → Apps → Startup). In the Store version the app's own switch points there instead.
 

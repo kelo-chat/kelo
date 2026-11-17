@@ -126,10 +126,10 @@ def test_the_owners_override_wins_and_learned_limits_hold_until_the_provider_say
 
 
 def test_context_length_errors_are_recognised():
-    assert is_context_error(ProviderError("This model's maximum context length is 128000 tokens", status=400))
-    assert is_context_error(ProviderError("prompt is too long: 210000 tokens > 200000 maximum", status=400))
+    assert is_context_error(ProviderError("anything", status=400, code="context_length_exceeded"))
+    assert is_context_error(ProviderError("prompt is too long", status=400), 199_000, 200_000)       # a 400 for a request that big
+    assert not is_context_error(ProviderError("prompt is too long", status=400), 20_000, 200_000)    # its words decide nothing
     assert is_context_error(ProviderError("anything", status=413))
-    assert is_context_error(RuntimeError("context_length_exceeded"))
     assert not is_context_error(ProviderError("invalid api key", status=401))
     assert not is_context_error(ProviderError("rate limited: too many requests", status=429))
 
@@ -327,7 +327,7 @@ async def test_a_turn_that_grows_past_the_threshold_digests_old_results_before_t
 
 async def test_a_context_length_error_from_the_provider_becomes_context_overflow():
     async def fn(provider, request, **kw):
-        raise ProviderError("This model's maximum context length is 8192 tokens", status=400)
+        raise ProviderError("This model's maximum context length is 8192 tokens", status=400, code="context_length_exceeded")
         yield
 
     with pytest.raises(ContextOverflow) as e:
@@ -432,7 +432,7 @@ async def test_the_fallback_model_gets_a_conversation_rebuilt_for_its_own_smalle
 
 
 async def test_a_context_length_error_lowers_the_window_retries_once_compacted_and_is_remembered(tmp_path):
-    err = ProviderError("This model's maximum context length is 3000 tokens. However, your messages resulted in 4200 tokens", status=400)
+    err = ProviderError("This model's maximum context length is 3000 tokens. However, your messages resulted in 4200 tokens", status=400, code="context_length_exceeded")
     fake = Fake(summaries=["요약 L"], fail_turn=[err])
     s = app_settings(tmp_path, scheduler=False, context_overrides={})
     async with Running(create_app(s, tools=[], stream_fn=fake)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
@@ -485,3 +485,32 @@ async def test_scheduled_runs_read_the_summary_but_do_not_start_a_fold_afterward
         assert [m["content"] for m in sent[6:-1]] == [msg_text(i) for i in range(6, 10)]     # after the summary's last message
         await asyncio.sleep(0.05)
         assert fake.of("summary") == []
+
+
+# ------------------------------------------------------------------------------------------------------ absolute dates in a fold
+
+
+def stamped(store: Store, ids: list[int], utc: str) -> None:
+    from datetime import datetime, timezone
+    t = datetime.fromisoformat(utc).replace(tzinfo=timezone.utc).timestamp()
+    for n, i in enumerate(ids):
+        store._run("UPDATE messages SET created_at = ? WHERE id = ?", (t + 60 * n, i))
+
+
+async def test_a_fold_input_carries_each_messages_send_time_in_the_profile_timezone_and_the_prompt_asks_for_absolute_dates():
+    store, fake = Store(), Fake(summaries=["요약 A"])
+    store.set_profile(timezone="Asia/Seoul")
+    ids = seed(store, 40)
+    stamped(store, ids, "2026-11-17T06:00:00")             # 15:00 in Seoul, one minute apart
+    res = await Compactor(store, fake).compact("p", "m", W, 500)
+    assert res["status"] == "done"
+    body = fake.of("summary")[0].messages[1]["content"]
+    assert "[2026-11-17 15:04] User: m004" in body and "[2026-11-17 15:05] Assistant: m005" in body     # m004 is the first folded one
+    assert "absolute date and time (for example 2026-11-17 15:00), never 'today', 'tomorrow' or 'next week'" in system_of(fake.of("summary")[0])
+    assert "work them out from the time each message was sent" in compaction.SUMMARY_PROMPT
+
+
+def test_a_fold_line_without_a_timezone_uses_utc_and_one_without_a_time_has_no_stamp():
+    from assistant.compaction import _line
+    assert _line({"role": "user", "content": "hi", "created_at": 0}) == "[1970-01-01 00:00] User: hi"
+    assert _line({"role": "assistant", "content": "ok"}) == "Assistant: ok"

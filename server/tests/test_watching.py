@@ -52,7 +52,7 @@ def make(t=None):
 
 
 def settings(tmp_path, **kw):
-    return Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "a.db"), scheduler=False, **kw)
+    return Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "a.db"), scheduler=False, **{"payment_specialist": False, **kw})   # these tests pay from the run itself
 
 
 def call(name, args=None, cid=None):
@@ -191,11 +191,11 @@ async def test_schedule_pause_tool_needs_a_reason_defaults_to_the_running_job_an
     s.on_paused = paused.append
     tools = {t.name: t for t in schedule_tools(s)}
     j = s.create("주문", "주문 상태 확인", cron="0 9 * * *")
-    assert not tools["schedule_pause"].requires_approval
     assert "reason" in tools["schedule_pause"].validate({"id": j["id"]})
     from assistant.workers import current_turn
     tok = current_turn.set({"source": f"schedule:{j['id']}"})
     try:
+        assert tools["schedule_pause"].requires_approval and tools["schedule_pause"].auto_approve({"reason": "x"}) is True   # its own job: no card
         assert tools["schedule_pause"].validate({"reason": "계정이 잠겼어요"}) is None
         out = await tools["schedule_pause"].handler({"reason": "계정이 잠겼어요"})
     finally:
@@ -545,7 +545,7 @@ def test_conditions_read_text_numbers_and_changes():
     assert gone["satisfied"] and gone["detail"] == "'품절' is gone"
     tok = i18n.use("ko")                                          # the same finding in the Korean app
     try:
-        assert evaluate({**base, "mode": "text_disappears", "match": "품절"}, PAGE)["detail"] == "'품절'이(가) 사라졌어요"
+        assert evaluate({**base, "mode": "text_disappears", "match": "품절"}, PAGE)["detail"] == "'품절' 글자가 사라졌어요"
     finally:
         i18n.reset(tok)
     below = evaluate({**base, "mode": "number_below", "selector": ".price", "threshold": 1_300_000}, PAGE)

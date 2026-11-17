@@ -7,6 +7,8 @@ import KeloTestSupport
 /// A server that answers every call with `status` and `body`, and `X-Kelo-Server: server` when given.
 private final class GateTransport: HTTPTransport, @unchecked Sendable {
     let status: Int, body: String, server: String?
+    /// `X-Kelo-App-Update` answered on /api/profile
+    var appUpdate: String?
     private let lock = NSLock()
     private var log: [URLRequest] = []
     init(_ status: Int, _ body: String, server: String? = nil) { self.status = status; self.body = body; self.server = server }
@@ -14,7 +16,7 @@ private final class GateTransport: HTTPTransport, @unchecked Sendable {
     func send(_ request: URLRequest) async throws -> (Int, Data) { let r = try await exchange(request); return (r.status, r.body) }
     func exchange(_ request: URLRequest) async throws -> HTTPReply {
         lock.withLock { log.append(request) }
-        return HTTPReply(status: status, body: Data(body.utf8), headers: server.map { ["x-kelo-server": $0] } ?? [:])
+        return HTTPReply(status: status, body: Data(body.utf8), headers: (server.map { ["x-kelo-server": $0] } ?? [:]).merging(appUpdate.map { ["x-kelo-app-update": $0] } ?? [:]) { a, _ in a })
     }
     func stream(_ request: URLRequest) async throws -> (Int, AsyncThrowingStream<UInt8, Error>) {
         let r = try await exchange(request)
@@ -22,10 +24,10 @@ private final class GateTransport: HTTPTransport, @unchecked Sendable {
     }
 }
 
-@MainActor private func app(_ t: HTTPTransport, pin: KE2EPin? = nil) -> AppModel {
+@MainActor private func app(_ t: HTTPTransport, pin: KE2EPin? = nil, notices: AppNoticeStore? = nil) -> AppModel {
     AppModel(store: MemorySessionStore(Session(serverUrl: "https://kelo.test", token: "tok", e2e: pin)),
              prefs: Prefs(defaults: UserDefaults(suiteName: "kelo-gate-\(UUID().uuidString)")!), transport: t,
-             cache: ScreenCache(directory: nil, key: { nil }))
+             cache: ScreenCache(directory: nil, key: { nil }), noticeStore: notices ?? AppNoticeStore(load: { nil }, save: { _ in }))
 }
 
 @MainActor private func until(_ cond: () -> Bool) async -> Bool {
@@ -55,6 +57,27 @@ private final class GateTransport: HTTPTransport, @unchecked Sendable {
         #expect(await until { a.profile != nil })
         let header = t.requests.first?.value(forHTTPHeaderField: "X-Kelo-App") ?? ""
         #expect(header.hasPrefix("ios/\(KeloVersion.version)"))
+    }
+
+    @MainActor @Test func aNewerCompatibleAppShowsOncePerVersionAndStaysClosedOnThisPhone() async {
+        let t = GateTransport(200, #"{"agent_name": "Kelo"}"#, server: "0.10.2+18")
+        t.appUpdate = "0.10.3"
+        final class Saved: @unchecked Sendable { var text: String? }
+        let saved = Saved()
+        let store = AppNoticeStore(load: { saved.text }, save: { saved.text = $0 })
+        let a = app(t, notices: store)
+        #expect(await until { a.appNotice == "0.10.3" })
+        a.dismissAppNotice("0.10.3")
+        #expect(a.appNotice == nil && saved.text == "0.10.3")
+        // the same version does not come back after a restart; a newer one does
+        let b = app(t, notices: store)
+        #expect(await until { b.appUpdate == "0.10.3" })
+        #expect(b.appNotice == nil)
+        t.appUpdate = "0.10.4"
+        b.retryProfile()
+        #expect(await until { b.appNotice == "0.10.4" })
+        b.signOut()
+        #expect(b.appUpdate == nil)
     }
 
     @MainActor @Test func aChangedKeyAsksToPairAgain() async {

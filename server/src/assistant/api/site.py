@@ -25,7 +25,7 @@ def router(ctx: AppContext) -> APIRouter:
     # page carries the "open the Kelo app" panel that site.js shows when the address has #pair=.
     def site_page(page: str, request: Request, notice: str | None = None) -> Response:
         lang = website.pick_lang(request.query_params.get("lang"), request.headers.get("accept-language"))
-        apps = downloads.latest() if page == "index" else None
+        apps = downloads.latest() if page in ("index", "download") else None
         html = website.render(page, lang, apps, notice=notice)
         tag = '"' + hashlib.sha256(html.encode()).hexdigest()[:16] + '"'
         csp = website.CSP_FORM if page == "tester" else website.CSP
@@ -61,6 +61,18 @@ def router(ctx: AppContext) -> APIRouter:
             raise HTTPException(404, "not found")
         return Response(f.read_bytes(), media_type="text/plain; charset=utf-8", headers={"Cache-Control": "public, max-age=300"})
 
+    # the Windows one-line installer (irm https://kelo.chat/install-windows.ps1 | iex): scripts/windows/kelo-get.ps1; the UTF-8 byte
+    # order mark is kept in the repository (Windows PowerShell 5.1 reads a -File script as ANSI without it) and not served
+    @router.get("/install-windows.ps1", include_in_schema=False)
+    async def site_install_windows_ps1() -> Response:
+        f = installers / "windows" / "kelo-get.ps1"
+        if not f.is_file():
+            raise HTTPException(404, "not found")
+        body = f.read_bytes()
+        if body.startswith(b"\xef\xbb\xbf"):
+            body = body[3:]
+        return Response(body, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "public, max-age=300"})
+
     @router.get("/privacy", include_in_schema=False)
     async def site_privacy(request: Request) -> Response:
         return site_page("privacy", request)
@@ -68,6 +80,10 @@ def router(ctx: AppContext) -> APIRouter:
     @router.get("/support", include_in_schema=False)
     async def site_support(request: Request) -> Response:
         return site_page("support", request)
+
+    @router.get("/download", include_in_schema=False)
+    async def site_download(request: Request) -> Response:
+        return site_page("download", request)
 
     @router.get("/tester", include_in_schema=False)
     async def site_tester(request: Request) -> Response:

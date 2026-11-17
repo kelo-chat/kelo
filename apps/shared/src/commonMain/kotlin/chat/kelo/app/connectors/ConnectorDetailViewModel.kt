@@ -53,6 +53,8 @@ class ConnectorDetailViewModel(private val sessions: Sessions) : ViewModel() {
 
     fun setAction(id: String, action: PermissionAction, mode: String) = put(id, PermissionRules.actionBody(action, mode))
 
+    fun setUnattended(id: String, on: Boolean) = put(id, PermissionRules.unattendedBody(on))
+
     fun resetPermissions(id: String) = run(id) { ConnectorCalls.resetPermissions(sessions.requireApi(), id) }
 
     private fun put(id: String, body: JsonObject) = run(id) { ConnectorCalls.putPermissions(sessions.requireApi(), id, body) }

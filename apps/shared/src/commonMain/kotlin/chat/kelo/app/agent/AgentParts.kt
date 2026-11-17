@@ -50,7 +50,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -209,8 +209,8 @@ fun AgentSubPage(
             Modifier
                 .fillMaxWidth()
                 .background(barColor)
+                .onSizeChanged { barH = with(density) { it.height.toDp() } }   // measured WITH the status bar: the page's top spacer is this whole height
                 .statusBarsPadding()
-                .onSizeChanged { barH = with(density) { it.height.toDp() } }
                 .align(Alignment.TopCenter)
         ) {
             chat.kelo.app.ui.components.BackTitleBar(title, onBack, actions = { actions() })

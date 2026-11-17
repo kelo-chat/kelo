@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">Twoje dane</string>
+    <string name="data_intro">Pobierz kopię tego, co Kelo o Tobie przechowuje, przenieś wspomnienia z innego asystenta albo zacznij od nowa.</string>
+    <string name="data_export_title">Pobierz swoje dane</string>
+    <string name="data_export_body">Jeden plik ZIP z Twoją rozmową, tym, co Kelo pamięta, harmonogramami, tym, co Kelo śledzi, połączonymi usługami i ustawieniami. Nigdy nie ma w nim haseł, kluczy ani tokenów.</string>
+    <string name="data_export_make">Utwórz plik</string>
+    <string name="data_export_making">Tworzenie pliku…</string>
+    <string name="data_export_ready">Plik jest gotowy (%1$s).</string>
+    <string name="data_export_save">Zapisz plik</string>
+    <string name="data_export_saved">Zapisano.</string>
+    <string name="data_export_again">Utwórz nowy plik</string>
+    <string name="data_export_failed">Nie udało się utworzyć pliku. Spróbuj ponownie.</string>
+    <string name="data_import_title">Przenieś wspomnienia z innego asystenta</string>
+    <string name="data_import_private">Nic nie jest wysyłane gdzie indziej. Model wybrany na Twoim serwerze Kelo czyta tekst i zachowuje krótkie fakty o Tobie.</string>
+    <string name="data_import_step1">1. Skopiuj tę prośbę i wklej ją w swoim dawnym asystencie (ChatGPT, Claude, Gemini, …).</string>
+    <string name="data_import_copy">Kopiuj prośbę</string>
+    <string name="data_import_copied">Skopiowano.</string>
+    <string name="data_import_step2">2. Wklej tutaj jego odpowiedź.</string>
+    <string name="data_import_paste_hint">Wklej odpowiedź</string>
+    <string name="data_import_add">Dodaj do pamięci</string>
+    <string name="data_import_zip_body">Albo wybierz eksport czatów pobrany z ChatGPT, Claude lub Gemini (plik ZIP do 100 MB).</string>
+    <string name="data_import_zip">Wybierz plik ZIP</string>
+    <string name="data_import_running">Czytanie… %1$d z %2$d</string>
+    <string name="data_import_reading">Otwieranie pliku…</string>
+    <string name="data_import_cancel">Zatrzymaj</string>
+    <string name="data_import_failed">Nic nie dodano: %1$s</string>
+    <string name="data_import_none">Nie znaleziono niczego nowego do dodania.</string>
+    <string name="data_import_added">Dodano do pamięci (%1$d):</string>
+    <string name="data_zip_too_big">Ten plik jest większy niż 100 MB.</string>
+    <string name="data_reset_title">Zacznij od nowa</string>
+    <string name="data_reset_body">Usuwa Twoją rozmowę, to, co Kelo pamięta, to, co Kelo śledzi, i harmonogramy. Łączniki, zapisane loginy, modele i Twoje telefony zostają. Najpierw zapisywana jest kopia jako plik.</string>
+    <string name="data_reset_signout">Wyloguj też z: Łączniki i usuń zapisane loginy</string>
+    <string name="data_reset_type">Wpisz %1$s, aby potwierdzić</string>
+    <string name="data_reset_button">Zacznij od nowa</string>
+    <string name="data_reset_wrong">To nie to słowo. Nic nie zmieniono.</string>
+    <string name="data_reset_confirm">Zacząć od nowa teraz? Najpierw zapisywana jest kopia, potem usuwane są rozmowa, pamięć, śledzone sprawy i harmonogramy. Tego nie można cofnąć.</string>
+    <string name="data_reset_done">Gotowe. Wszystko powyżej usunięto. Kopia zapisana jako %1$s.</string>
+</resources>

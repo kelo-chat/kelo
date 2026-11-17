@@ -129,7 +129,7 @@ def _create(m: Instances, args: Any) -> None:
     name = name_of(args.store)
     if m.env_path(name).exists():
         raise InstanceError(f"{name} already exists. See it with: assistant review status {args.store}")
-    draft = Instance(name, m.env_path(name), 0, 0, True, "")
+    draft = Instance(name, m.env_path(name), 0, True, "")
     set_, clear, warn = limits.prepare(m, limits.wanted_for("recommended", draft))   # checked first: a bad value leaves nothing made
     inst = m.create(name, browser=True)
     limits.save(inst, set_, clear)

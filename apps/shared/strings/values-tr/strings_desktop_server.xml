@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<resources>
+    <string name="desktop_server_row">Bu bilgisayarı Kelo sunucusu olarak kullan</string>
+    <string name="desktop_server_row_hint">Kelo sunucusunu bu bilgisayara kurar. Windows bir kez yönetici izni ister.</string>
+    <string name="desktop_server_checking">Denetleniyor</string>
+    <string name="desktop_server_downloading">İndiriliyor</string>
+    <string name="desktop_server_installing">Kuruluyor</string>
+    <string name="desktop_server_starting">Başlatılıyor</string>
+    <string name="desktop_server_done">Tamamlandı</string>
+    <string name="desktop_server_restart">Bitirmek için Windows\'u yeniden başlatın. Kurulum oturum açınca devam eder.</string>
+    <string name="desktop_server_cancelled">İptal edildi. Hiçbir şey değişmedi.</string>
+    <string name="desktop_server_failed">Kurulamadı.</string>
+    <string name="desktop_server_show_log">Günlüğü göster</string>
+    <string name="desktop_server_installed">Kelo sunucusu bu bilgisayarda</string>
+    <string name="desktop_server_open_setup">Kurulumu aç</string>
+    <string name="desktop_server_update">Güncelle</string>
+    <string name="desktop_server_install">Kur</string>
+    <string name="desktop_server_unavailable">Windows için Kelo sunucusu henüz hazır değil.</string>
+</resources>

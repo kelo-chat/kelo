@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">मेल</string>
+    <string name="trail_kind_file">फ़ाइल</string>
+    <string name="trail_kind_memory">स्मृति</string>
+    <string name="trail_kind_contacts">संपर्क</string>
+    <string name="trail_kind_calendar">कैलेंडर</string>
+    <string name="trail_kind_photos">फ़ोटो</string>
+    <string name="trail_kind_messages">संदेश</string>
+    <string name="trail_kind_notes">नोट्स</string>
+    <string name="trail_kind_vault">सहेजे गए लॉगिन</string>
+    <string name="trail_kind_profile">प्रोफ़ाइल</string>
+    <string name="trail_kind_web">वेब पेज</string>
+    <string name="trail_kind_channel">चैट</string>
+    <string name="trail_kind_device">डिवाइस डेटा</string>
+    <string name="trail_kind_connector">जुड़ी हुई सेवा</string>
+    <string name="trail_kind_other">डेटा</string>
+    <string name="trail_recipient_link">सार्वजनिक लिंक</string>
+    <string name="trail_goes_to">%2$s को: %1$s</string>
+    <string name="trail_allow_once">एक बार अनुमति दें</string>
+    <string name="trail_allow_always">इस प्राप्तकर्ता के लिए हमेशा</string>
+    <string name="recipient_approval_always">अनुमति दी गई। इस प्राप्तकर्ता के लिए दोबारा नहीं पूछूँगा।</string>
+    <string name="recipient_allows_title">हमेशा अनुमत प्राप्तकर्ता</string>
+    <string name="recipient_allows_empty">अभी कोई नहीं। जब आप किसी कार्ड पर \"इस प्राप्तकर्ता के लिए हमेशा\" चुनेंगे, वह यहाँ दिखेगा।</string>
+    <string name="recipient_allow_since">अनुमति दी %1$s</string>
+    <string name="recipient_allow_remove">%1$s हटाएँ</string>
+    <string name="recipient_allow_remove_confirm">%2$s को %1$s भेजने से पहले फिर पूछूँ?</string>
+    <string name="recipient_allow_removed">वहाँ भेजने से पहले मैं फिर पूछूँगा।</string>
+</resources>

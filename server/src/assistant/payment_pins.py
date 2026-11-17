@@ -339,6 +339,7 @@ class ApprovedPayment:
     task_id: int | None = None     # the task (reply or run) that paid; its end warns when the receipt was never checked
     state: str = "open"            # purchase_result's check: open (not checked) | closed (checked, kept, or cancelled) | cancel (waiting for the cancel)
     warned: bool = False           # the end of the task already said the receipt was not confirmed
+    asked_receipt: bool = False    # the reply already had its one more round to check the receipt (turn_engine.receipt_rounds)
 
     def order(self) -> dict[str, Any]:
         return {"site": self.host, "summary": self.summary, "amount_text": self.amount_text, "items": self.items, "pay_with": self.pay_with}

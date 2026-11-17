@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from assistant.goals import GOAL_MARK, KICKOFF, RESUME, GoalBook, GoalError, asks_typing
+from assistant.goals import GOAL_MARK, KICKOFF, RESUME, GoalBook, GoalError
 from assistant.home import Home
 from assistant.prompt import goals_block
 from assistant.providers import Done, TextDelta, ToolCall
@@ -151,16 +151,10 @@ def test_answers_that_ask_for_typing_open_a_text_box():
         {"question": "Diet", "options": ["None", "Some (I'll write)", "Rather not say"], "typed": ["Some (I'll write)", "not an option"]},
         {"question": "Sport", "options": ["Running", "Swimming", "Something"], "typed": ["Something"]},
         {"question": "When", "options": ["Today", "Tomorrow"], "hint": "dropped without a typed answer"}])
-    assert qs[0] == {"question": "Weight (now -> target)", "options": ["I'll type it", "Rather not say"], "typed": ["I'll type it"],
-                     "hint": "now and target weight"}
+    assert qs[0] == {"question": "Weight (now -> target)", "options": ["I'll type it", "Rather not say"]}   # no mark: no words read, so the hint is dropped
     assert qs[1]["typed"] == ["Some (I'll write)"] and "hint" not in qs[1]
     assert qs[2]["typed"] == ["Something"]                       # the model's own mark, words that say nothing about typing
     assert qs[3] == {"question": "When", "options": ["Today", "Tomorrow"]}
-    for label in ("직접 입력할게요", "있어요 (직접 입력)", "Other", "기타", "Other (please specify)", "Something else…", "その他", "其他",
-                  "Otro", "Свой вариант", "Tự nhập"):
-        assert asks_typing(label), label
-    for label in ("말하고 싶지 않아요", "없어요", "Rather not say", "Prefiero no decirlo", "Otra vez", "1개월", "Another time", "직접 할게요"):
-        assert not asks_typing(label), label
 
 
 def test_quick_replies_says_whole_sentence():
@@ -185,7 +179,7 @@ def test_quick_replies_says_whole_sentence():
     assert qs[0]["says"] == ["Go with A, the cheaper one", ""]
 
     # a typed option ("Other (write it)") gets ""
-    qs = b.clean_questions([{"question": "Q", "options": ["A", "Other (write it)"], "says": ["Go with A, the cheaper one", "I'll type it"]}])
+    qs = b.clean_questions([{"question": "Q", "options": ["A", "Other (write it)"], "typed": ["Other (write it)"], "says": ["Go with A, the cheaper one", "I'll type it"]}])
     assert qs[0]["says"] == ["Go with A, the cheaper one", ""]
 
 

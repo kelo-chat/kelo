@@ -30,7 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -128,7 +128,7 @@ fun SelectField(
         ) {
             Text(
                 string(Res.string.chat_chip_menu, shown), modifier = Modifier.weight(1f),
-                maxLines = if (wrap) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge,
+                maxLines = if (wrap) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge,
             )
         }
         if (!sheet) {

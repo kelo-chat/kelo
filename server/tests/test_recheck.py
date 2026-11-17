@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from notify_fake import FakeRules
 from assistant.activity import Activity
 from assistant.home import Home
 from assistant.proactive import Proactive
@@ -56,7 +57,7 @@ def answer(status="changed", now="이제 60일 전부터 가능합니다", since
 class Kit:
     """A service with a fake research turn, a fake handoff and a fake clock."""
 
-    def __init__(self, *answers, awake=True, prefs="", per_day=4, replied=True):
+    def __init__(self, *answers, awake=True, prefs="", per_day=4, replied=True, rules=None):
         self.store = Store()
         self.store.set_profile(timezone="Asia/Seoul")
         self.clock = Clock(ts(2026, 11, 13, 9, 0))
@@ -79,6 +80,8 @@ class Kit:
                                   config=lambda: {"rechecks": True, "recheck_per_day": self.per_day}, busy=lambda: False,
                                   ready=lambda: True, tz=lambda: SEOUL, turn_id=lambda: "turn-1", clock=self.clock)
         self.repo, self.service = self.kit.repo, self.kit.service
+        if rules is not None:
+            self.service.notify_block = rules.block   # the main model's reading of the don't-tell rules (notify_block.py), faked
 
     def add(self, topic="visa", **kw):
         return self.repo.add(**{"claim": "비자 연장은 90일 전부터 가능합니다", "why": "연장 시기", "how": HOW, "topic": topic, **kw})
@@ -216,8 +219,8 @@ async def test_changed_with_good_sources_hands_off_with_the_mark_and_fenced_sour
     assert "비자 연장은 90일 전부터 가능합니다" in claim_block.split("[END UNTRUSTED CONTENT")[0]     # Kelo's earlier words are data too
     fenced = research_block.split("[END UNTRUSTED CONTENT")[0]
     assert '"official":true' in fenced and "이제 60일 전부터" in fenced                      # the research is data inside the fence
-    for step in ("open at least one of the sources (web_fetch) or search again", "what you said and when", "since when", "still unconfirmed",
-                 "that nothing has to be decided now", "one offer of the next step", "NO_REPLY", f"recheck_result({r.id}, \"not_confirmed\")"):
+    for step in ("open at least one of the sources (web_fetch) or search again", "what changed since you said it", "at most three short sentences",
+                 "one offer of the next step", "the source as one link", "NO_REPLY", f"recheck_result({r.id}, \"not_confirmed\")"):
         assert step in text
     assert k.repo.get(r.id).state == "sent" and k.repo.get(r.id).draft and len(k.repo.get(r.id).draft) <= DRAFT_MAX   # a reply was written: sent
 
@@ -285,19 +288,34 @@ async def test_a_handoff_outside_waking_hours_waits_for_the_next_waking_start():
 
 
 async def test_a_topic_on_the_do_not_tell_list_is_closed_and_not_sent():
-    k = Kit(answer(), prefs="# NOTIFY_PREFS.md\n\n## Do not tell me\n- 비자\n\n## Tell me\n- 택배\n")
+    rules = FakeRules("비자")
+    k = Kit(answer(), prefs="# NOTIFY_PREFS.md\n\n## Do not tell me\n- 비자\n\n## Tell me\n- 택배\n", rules=rules)
     r = k.add().row
     await k.later()
     got = k.repo.get(r.id)
     assert k.sent == [] and got.state == "closed" and got.skip_reason == "on the do-not-tell list"
-    k2 = Kit(answer(), prefs="## Do not tell me\n- visa\n")                       # matched on the slug too
+    assert len(rules.calls) == 1 and "visa" in rules.calls[0]["items"][0]["text"]           # the slug and the claim go to the reader
+    k2 = Kit(answer(), prefs="## Do not tell me\n- visa\n", rules=FakeRules("visa"))       # matched on the slug too
     r2 = k2.add("visa-rules", claim="Extensions open 90 days before expiry").row
     await k2.later()
     assert k2.sent == [] and k2.repo.get(r2.id).state == "closed"
-    k3 = Kit(answer(), prefs="## Do not tell me\n- 광고\n")
+    k3 = Kit(answer(), prefs="## Do not tell me\n- 광고\n", rules=FakeRules("광고"))
     k3.add()
     await k3.later()
     assert len(k3.sent) == 1
+
+
+async def test_rules_that_cannot_be_read_tell_nothing_and_close_nothing():
+    for rules in (FakeRules(down=True), None):
+        k = Kit(answer(), prefs="## Do not tell me\n- visa\n", rules=rules)
+        r = k.add().row
+        await k.later()
+        got = k.repo.get(r.id)
+        assert k.sent == [] and got.state != "closed" and got.state != "sent" and got.next_at > k.clock.t
+    k = Kit(answer(), prefs="# NOTIFY_PREFS.md\n\n## Do not tell me\n\n## Tell me\n", rules=FakeRules(down=True))   # no rules written: nothing to read
+    k.add()
+    await k.later()
+    assert len(k.sent) == 1
 
 
 async def test_recheck_result_sent_and_not_confirmed_and_the_fallback_from_the_reply():
@@ -565,3 +583,16 @@ async def test_the_whole_path_through_the_app_research_turn_then_a_hidden_handof
         assert not any(RECHECK_MARK in m["content"] for m in shown) and not any("You check whether" in m["content"] for m in shown)
         types = [n["type"] for n in (await c.get("/api/notifications")).json()["items"]]
         assert types.count("task_done") == 1                                          # the correction: one normal Kelo message; the research told nobody
+
+
+
+async def test_a_claim_about_one_day_is_dropped_once_that_day_is_over_before_a_later_look(tmp_path):
+    """'Today it is ...' said on the 12th: the look-back runs on the 13th at 03:50, so that day is over: nothing to correct later."""
+    k = Kit("")
+    today = {"claim": "비자 연장은 만료 90일 전부터 가능", "why": "w", "how": HOW, "topic": "visa-today", "about": "2026-11-12",
+             "quote": "만료 90일 전부터 가능합니다"}
+    later = {"claim": "비자 연장은 만료 90일 전부터 가능", "why": "w", "how": HOW, "topic": "visa-next-week", "about": "2026-11-20",
+             "quote": "만료 90일 전부터 가능합니다"}
+    r, _ = reflect(tmp_path, k, {"new": [], "update": [], "drop": [], "goals": [], "rechecks": [today, later], "reasons": ["x"]})
+    await r.run()
+    assert [x.slug for x in k.repo.list()] == ["visa-next-week"]

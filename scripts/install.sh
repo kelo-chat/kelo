@@ -20,6 +20,13 @@
 #                      If the pull fails they are built here instead, with a warning. The Claude/agy containers are always
 #                      built here (their CLIs are never published)
 #   --build-here       build the images on this computer instead (KELO_FROM_RELEASE=0); slow, and it can fail on small machines
+#   --version X.Y.Z    install exactly this release instead of the newest (KELO_VERSION): its files from the release-X.Y.Z tag
+#                      of kelo-chat/kelo-server, and with --from-release the signed images of that version. A version that
+#                      does not exist stops the installer before anything changes (all versions: the releases page of
+#                      github.com/kelo-chat/kelo-server). Signed images of an older version need that version to know
+#                      `--release-version`; otherwise its images are built here from its files, with a warning
+#   --allow-downgrade  an update to a version OLDER than the installed one is refused without this (KELO_ALLOW_DOWNGRADE=1):
+#                      data written by a newer version may not go back
 #   --no-start         save the answers but do not start the containers (KELO_NO_START=1)
 #   --auto-update      let Kelo update the server by itself at night (KELO_AUTO_UPDATE=1); --no-auto-update: only when the owner
 #                      presses Update in the app (the default; asked when there is a terminal)
@@ -39,10 +46,13 @@ UNINSTALL=0
 DELETE_DATA=0
 BIN_DIR="${KELO_BIN_DIR:-$HOME/.local/bin}"
 ADD_NAME="${KELO_ADD:-}"
+KELO_VERSION="${KELO_VERSION:-}"
+ALLOW_DOWNGRADE="${KELO_ALLOW_DOWNGRADE:-0}"
+RELEASES_BASE="${KELO_RELEASES_BASE:-https://github.com/kelo-chat/kelo-server}"   # the public source repository (tests point it at a local server)
 
 usage() {
   if [ -f "$0" ]; then sed -n '2,/^# NO_COLOR/p' "$0" | sed 's/^# \{0,1\}//'
-  else printf 'Kelo installer. Options: --yes --add NAME --dir DIR --source SRC --from-release --build-here --no-start --auto-update --uninstall [--delete-data] --help\n'; fi
+  else printf 'Kelo installer. Options: --yes --add NAME --dir DIR --source SRC --from-release --build-here --version X.Y.Z --allow-downgrade --no-start --auto-update --uninstall [--delete-data] --help\n'; fi
 }
 
 while [ $# -gt 0 ]; do
@@ -54,6 +64,9 @@ while [ $# -gt 0 ]; do
     --dir=*) KELO_HOME="${1#*=}" ;;
     --source) KELO_SOURCE="${2:?--source needs a folder or URL}"; shift ;;
     --source=*) KELO_SOURCE="${1#*=}" ;;
+    --version) KELO_VERSION="${2:?--version needs a release number, e.g. 0.10.2}"; shift ;;
+    --version=*) KELO_VERSION="${1#*=}" ;;
+    --allow-downgrade) ALLOW_DOWNGRADE=1 ;;
     --no-start) START=0 ;;
     --from-release) FROM_RELEASE=1 ;;
     --build-here) FROM_RELEASE=0 ;;
@@ -314,11 +327,28 @@ copy_tree() {   # copy_tree FROM TO
 }
 
 # Where the Kelo files come from: KELO_SOURCE (a local folder, a .tar.gz URL or a git URL), else the public source's newest release
-# (github.com/kelo-chat/kelo-server: the server part of each release; its main branch is the newest release).
-DEFAULT_SOURCE="https://github.com/kelo-chat/kelo-server/archive/refs/heads/main.tar.gz"
+# (github.com/kelo-chat/kelo-server: the server part of each release; its main branch is the newest release), or with --version
+# the release-X.Y.Z tag of it.
+DEFAULT_SOURCE="$RELEASES_BASE/archive/refs/heads/main.tar.gz"
+version_source() { printf '%s/archive/refs/tags/release-%s.tar.gz' "$RELEASES_BASE" "$KELO_VERSION"; }
+
+# The "version" in a version.json (stdin), or nothing.
+json_version() { sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1; }
+
+# With --version, the files about to be copied must be that release (a custom --source too): checked before anything is copied.
+check_files_version() {   # check_files_version FOLDER [STAGE-TO-REMOVE]
+  [ -n "$KELO_VERSION" ] && [ -f "$1/version.json" ] || return 0
+  local got; got="$(json_version <"$1/version.json")"
+  [ "$got" = "$KELO_VERSION" ] && return 0
+  [ -n "${2:-}" ] && rm -rf "$2"
+  die "$(say "These files are Kelo ${got:-?}, not $KELO_VERSION. Nothing was changed." "이 파일은 Kelo ${got:-?} 이고 $KELO_VERSION 이 아닙니다. 아무것도 바꾸지 않았습니다.")"
+}
+
 fetch_kelo() {
   local src="$KELO_SOURCE" stage
-  if [ -z "$src" ]; then
+  if [ -z "$src" ] && [ -n "$KELO_VERSION" ]; then
+    src="$(version_source)"
+  elif [ -z "$src" ]; then
     if [ -f "$KELO_HOME/compose.yml" ]; then
       note "$(say "No KELO_SOURCE given: keeping the Kelo files already in $KELO_HOME." "KELO_SOURCE가 없어 $KELO_HOME 에 있는 Kelo 파일을 그대로 사용합니다.")"
       return 0
@@ -330,6 +360,7 @@ fetch_kelo() {
     *.git|git@*)
       stage="$(mktemp -d)"
       step "$(say "Downloading Kelo" "Kelo 내려받는 중")" git clone --depth 1 "$src" "$stage/kelo"
+      check_files_version "$stage/kelo" "$stage"
       step "$(say "Putting the files in $KELO_HOME" "$KELO_HOME 에 파일 넣는 중")" copy_tree "$stage/kelo" "$KELO_HOME"
       rm -rf "$stage" ;;
     http://*|https://*)
@@ -340,6 +371,7 @@ fetch_kelo() {
       local top="$stage/x"
       [ "$(ls -A "$stage/x" | wc -l | tr -d ' ')" = 1 ] && [ -d "$stage/x/$(ls -A "$stage/x")" ] && top="$stage/x/$(ls -A "$stage/x")"
       [ -f "$top/compose.yml" ] || die "$(say "That archive does not look like Kelo (no compose.yml)." "그 압축 파일은 Kelo가 아닌 것 같습니다 (compose.yml 없음).")"
+      check_files_version "$top" "$stage"
       step "$(say "Putting the files in $KELO_HOME" "$KELO_HOME 에 파일 넣는 중")" copy_tree "$top" "$KELO_HOME"
       rm -rf "$stage" ;;
     *.tar.gz|*.tgz|*.tar)
@@ -349,10 +381,12 @@ fetch_kelo() {
       local top="$stage/x"
       [ "$(ls -A "$stage/x" | wc -l | tr -d ' ')" = 1 ] && [ -d "$stage/x/$(ls -A "$stage/x")" ] && top="$stage/x/$(ls -A "$stage/x")"
       [ -f "$top/compose.yml" ] || die "$(say "That archive does not look like Kelo (no compose.yml)." "그 압축 파일은 Kelo가 아닌 것 같습니다 (compose.yml 없음).")"
+      check_files_version "$top" "$stage"
       step "$(say "Putting the files in $KELO_HOME" "$KELO_HOME 에 파일 넣는 중")" copy_tree "$top" "$KELO_HOME"
       rm -rf "$stage" ;;
     *)
       [ -f "$src/compose.yml" ] || die "$(say "$src does not look like a Kelo folder (no compose.yml)." "$src 는 Kelo 폴더가 아닌 것 같습니다 (compose.yml 없음).")"
+      check_files_version "$src"
       step "$(say "Copying Kelo into $KELO_HOME" "$KELO_HOME 에 Kelo 복사 중")" copy_tree "$src" "$KELO_HOME" ;;
   esac
 }
@@ -372,6 +406,71 @@ EOF
     *) note "$(say "$BIN_DIR is not on your PATH yet. Add it, e.g.: echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.profile" \
                    "$BIN_DIR 가 아직 PATH에 없습니다. 예: echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.profile")" ;;
   esac
+}
+
+# ---------------------------------------------------------------------------------------------------------------- --version
+# version_cmp A B: prints -1, 0 or 1. X.Y.Z compares number by number; a pre-release (0.5.0-rc.1) is older than its release;
+# a +build suffix is ignored.
+version_cmp() {
+  local a="${1#v}" b="${2#v}" pa="" pb="" i x y
+  a="${a%%+*}"; b="${b%%+*}"
+  case "$a" in *-*) pa="${a#*-}"; a="${a%%-*}" ;; esac
+  case "$b" in *-*) pb="${b#*-}"; b="${b%%-*}" ;; esac
+  local -a av bv ap bp
+  IFS=. read -r -a av <<<"$a"; IFS=. read -r -a bv <<<"$b"
+  for i in 0 1 2; do
+    x="${av[$i]:-0}"; y="${bv[$i]:-0}"
+    [[ "$x" =~ ^[0-9]+$ ]] || x=0; [[ "$y" =~ ^[0-9]+$ ]] || y=0
+    if [ $((10#$x)) -lt $((10#$y)) ]; then echo -1; return; fi
+    if [ $((10#$x)) -gt $((10#$y)) ]; then echo 1; return; fi
+  done
+  if [ -z "$pa" ] && [ -z "$pb" ]; then echo 0; return; fi
+  if [ -z "$pa" ]; then echo 1; return; fi
+  if [ -z "$pb" ]; then echo -1; return; fi
+  IFS=. read -r -a ap <<<"$pa"; IFS=. read -r -a bp <<<"$pb"
+  for ((i = 0; i < ${#ap[@]} || i < ${#bp[@]}; i++)); do
+    x="${ap[$i]-}"; y="${bp[$i]-}"
+    if [ -z "$x" ]; then echo -1; return; fi
+    if [ -z "$y" ]; then echo 1; return; fi
+    if [[ "$x" =~ ^[0-9]+$ ]] && [[ "$y" =~ ^[0-9]+$ ]]; then
+      if [ $((10#$x)) -lt $((10#$y)) ]; then echo -1; return; fi
+      if [ $((10#$x)) -gt $((10#$y)) ]; then echo 1; return; fi
+    elif [[ "$x" =~ ^[0-9]+$ ]]; then echo -1; return
+    elif [[ "$y" =~ ^[0-9]+$ ]]; then echo 1; return
+    elif [[ "$x" < "$y" ]]; then echo -1; return
+    elif [[ "$x" > "$y" ]]; then echo 1; return
+    fi
+  done
+  echo 0
+}
+
+installed_version() { [ -f "$KELO_HOME/version.json" ] && json_version <"$KELO_HOME/version.json" || true; }
+
+# Checks --version before anything is changed: its form, that it is not older than what is installed (unless --allow-downgrade),
+# and, for the official source, that the release exists. Each failure is one line and stops the installer.
+prepare_version() {
+  [ -n "$KELO_VERSION" ] || return 0
+  KELO_VERSION="${KELO_VERSION#v}"
+  [[ "$KELO_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]{1,30})?$ ]] ||
+    die "$(say "'$KELO_VERSION' is not a release number (example: --version 0.10.2). Versions: $RELEASES_BASE/releases" \
+               "'$KELO_VERSION' 은 릴리스 번호가 아닙니다 (예: --version 0.10.2). 버전 목록: $RELEASES_BASE/releases")"
+  local have; have="$(installed_version)"
+  if [ -f "$KELO_HOME/compose.yml" ] && [ -n "$have" ] && [ "$(version_cmp "$KELO_VERSION" "$have")" = -1 ] && [ "$ALLOW_DOWNGRADE" != 1 ]; then
+    die "$(say "Kelo $have is installed; $KELO_VERSION is older and data may not go back. Nothing was changed. To go back anyway add --allow-downgrade." \
+               "Kelo $have 이(가) 설치되어 있고 $KELO_VERSION 은 더 오래된 버전이라 데이터가 되돌아가지 않을 수 있습니다. 아무것도 바꾸지 않았습니다. 그래도 되돌리려면 --allow-downgrade 를 붙이세요.")"
+  fi
+  [ -z "$KELO_SOURCE" ] || return 0     # a source of your own is checked by its version.json when it is copied
+  local code; code="$(curl -sSIL -o /dev/null -w '%{http_code}' --proto '=https,http' "$(version_source)" 2>/dev/null || true)"
+  if [ "$code" = 404 ]; then
+    die "$(say "Kelo version $KELO_VERSION was not found. Nothing was changed. All versions: $RELEASES_BASE/releases" \
+               "Kelo $KELO_VERSION 버전을 찾을 수 없습니다. 아무것도 바꾸지 않았습니다. 전체 버전 목록: $RELEASES_BASE/releases")"
+  fi
+}
+
+# Does the Kelo code in $KELO_HOME know this option? (a release from before an option cannot be asked to use it)
+code_knows() {   # code_knows OPTION command...
+  local opt="$1"; shift
+  "$UV" run --quiet --no-dev --frozen assistant "$@" --help 2>/dev/null | grep -q -- "$opt"
 }
 
 # ---------------------------------------------------------------------------------------------------------------- uninstall
@@ -458,16 +557,25 @@ setup_updater() {
 # If the pull fails, the images are built here instead, as before, with a warning. Only the Claude / agy containers are built
 # when the official images are used (their CLIs are never published).
 pull_first_install() {
-  if STEP_SOFT=1 run_updater_setup "$(say "Downloading the official Kelo images and checking their signatures" \
-                                       "공식 Kelo 이미지를 내려받고 서명을 확인하는 중")" --no-start --pull-release; then
+  local pull_args=(--no-start --pull-release) pulled=0
+  if [ -z "$KELO_VERSION" ]; then pulled=1
+  elif code_knows --release-version updater setup; then pull_args+=(--release-version "$KELO_VERSION"); pulled=1
+  else
+    warn "$(say "Kelo $KELO_VERSION cannot pull its own signed images by version; building them here from its files instead." \
+                "Kelo $KELO_VERSION 은 자기 서명 이미지를 버전으로 내려받을 수 없어, 그 파일로 이 서버에서 직접 빌드합니다.")"
+  fi
+  if [ "$pulled" = 1 ] && STEP_SOFT=1 run_updater_setup "$(say "Downloading the official Kelo images and checking their signatures" \
+                                       "공식 Kelo 이미지를 내려받고 서명을 확인하는 중")" "${pull_args[@]}"; then
     if [ "$START" = 1 ]; then
       step "$(say "Starting Kelo" "Kelo 시작 중")" env BUILDKIT_PROGRESS=plain docker compose up -d --remove-orphans
     fi
   else
-    local why
-    why="$(grep '^error' "$LOG" 2>/dev/null | tail -n 1 | sed 's/^error: //' || true)"   # the reason assistant printed, if any
-    warn "$(say "Could not get the official images${why:+: $why}. Building them here instead." \
-                "공식 이미지를 받지 못했습니다${why:+: $why}. 이 서버에서 직접 빌드합니다.")"
+    if [ "$pulled" = 1 ]; then
+      local why
+      why="$(grep '^error' "$LOG" 2>/dev/null | tail -n 1 | sed 's/^error: //' || true)"   # the reason assistant printed, if any
+      warn "$(say "Could not get the official images${why:+: $why}. Building them here instead." \
+                  "공식 이미지를 받지 못했습니다${why:+: $why}. 이 서버에서 직접 빌드합니다.")"
+    fi
     if [ "$START" = 1 ]; then
       step "$(say "Building and starting Kelo (the first time takes a few minutes)" "Kelo를 빌드하고 시작하는 중 (처음에는 몇 분 걸립니다)")" \
         env BUILDKIT_PROGRESS=plain docker compose up -d --build --remove-orphans
@@ -641,12 +749,14 @@ main() {
     die "$(say "Kelo is not installed in $KELO_HOME yet. Install it first without --add." \
                 "Kelo가 아직 $KELO_HOME 에 설치되어 있지 않습니다. 먼저 --add 없이 설치하세요.")"
   fi
+  prepare_version
   local mode
   if [ -f "$KELO_HOME/compose.yml" ]; then mode="$(say "update (data kept)" "업데이트 (데이터 유지)")"; else mode="$(say "new install" "새로 설치")"; fi
   printf '\n'
   printf '    %s%-12s%s %s\n' "$D" "$(say "server" "서버")" "$R" "$PLATFORM · $ARCH_NAME"
   printf '    %s%-12s%s %s\n' "$D" "$(say "folder" "폴더")" "$R" "$KELO_HOME"
   printf '    %s%-12s%s %s\n' "$D" "$(say "what" "작업")" "$R" "$mode"
+  [ -n "$KELO_VERSION" ] && printf '    %s%-12s%s %s\n' "$D" "$(say "version" "버전")" "$R" "$KELO_VERSION"
   [ -n "$KELO_SOURCE" ] && printf '    %s%-12s%s %s\n' "$D" "$(say "from" "가져올 곳")" "$R" "$KELO_SOURCE"
 
   section "$(say "Docker" "Docker")"
@@ -662,12 +772,13 @@ main() {
   # Kelo files from before 0.10.2 have no `setup --from-release`: their guided screen saves the answers only, and the images are
   # pulled (or built) after it, as before (no QR step then: the closing note says how to connect a phone).
   local wizard_pulls=0
-  if [ "$FROM_RELEASE" = 1 ] && "$UV" run --quiet --no-dev --frozen assistant setup --help 2>/dev/null | grep -q -- '--from-release'; then
+  if [ "$FROM_RELEASE" = 1 ] && code_knows --from-release setup && { [ -z "$KELO_VERSION" ] || code_knows --release-version setup; }; then
     wizard_pulls=1
   fi
   local args=(setup)
   if [ "$START" = 0 ] || { [ "$FROM_RELEASE" = 1 ] && [ "$wizard_pulls" = 0 ]; }; then args+=(--no-start); fi
   if [ "$wizard_pulls" = 1 ]; then args+=(--from-release); fi   # the guided screen pulls the official images, then starts Kelo
+  if [ "$wizard_pulls" = 1 ] && [ -n "$KELO_VERSION" ]; then args+=(--release-version "$KELO_VERSION"); fi
   if [ "$INTERACTIVE" = 1 ]; then
     printf '\n'
     KELO_CMD=kelo "$UV" run --quiet --no-dev --frozen assistant "${args[@]}" <"$TTY_IN"

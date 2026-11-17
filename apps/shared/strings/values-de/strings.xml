@@ -832,6 +832,22 @@
     <string name="agent_perm_rules_empty">Noch nichts. Wähle auf einer Freigabekarte „Auf dieser Seite immer erlauben“, dann erscheint es hier.</string>
     <string name="agent_perm_history">Frühere Freigaben</string>
     <string name="agent_perm_history_empty">Noch nichts gefragt.</string>
+    <string name="approval_edit_button">Bearbeiten</string>
+    <string name="approval_edit_title">Nachricht zum Senden</string>
+    <string name="approval_edit_save">Speichern</string>
+    <string name="approval_edited_note">Du hast die Nachricht geändert</string>
+    <string name="approval_edit_empty">Schreib eine Nachricht.</string>
+    <string name="approval_edit_too_long">Zu lang. Kürze sie.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Frühere Freigaben</string>
+    <string name="approval_history_empty">Noch keine Freigaben.</string>
+    <string name="approval_history_error">Frühere Freigaben konnten nicht geladen werden.</string>
+    <string name="approval_history_where">Wohin</string>
+    <string name="approval_history_when">Wann</string>
+    <string name="approval_history_answered">Beantwortet</string>
+    <string name="approval_via_app">In der App</string>
+    <string name="approval_via_notification">Über eine Benachrichtigung</string>
+    <string name="approval_via_messenger">In einem Messenger</string>
     <string name="agent_perm_asked">Gefragt %1$s</string>
     <string name="approval_remember_site">Auf dieser Seite nicht mehr fragen</string>
     <string name="approval_remember_scope">Gilt für %1$s und alle Unteradressen</string>
@@ -943,6 +959,7 @@
     <string name="live_forward">Vorwärts</string>
     <string name="live_reload">Neu laden</string>
     <string name="live_page_not_responding">Die Seite reagiert nicht</string>
+    <string name="live_touch_missed">Die Berührung ist nicht angekommen</string>
     <string name="live_type_hint">Text, der auf der Seite getippt wird</string>
     <string name="live_type_send">Tippen</string>
     <string name="live_type_hide">Text ausblenden</string>
@@ -1122,6 +1139,8 @@
     <string name="offer_reason_later">Später</string>
     <string name="offer_busy">Es wird gerade eine andere Antwort geschrieben. Danach erneut tippen</string>
     <string name="offer_failed">Konnte nicht gestartet werden</string>
+    <string name="offer_steps_show_all">Alle %1$d Schritte anzeigen</string>
+    <string name="offer_steps_fewer">Weniger Schritte anzeigen</string>
     <string name="work_upcoming">Demnächst</string>
     <string name="work_upcoming_unscheduled">Ohne Zeit</string>
     <string name="work_past">Früher</string>
@@ -1152,6 +1171,7 @@
     <string name="work_kind_browser">Browser-Aufgabe</string>
     <string name="work_kind_research">Recherche</string>
     <string name="work_kind_general">Allgemeine Aufgabe</string>
+    <string name="work_kind_phone">Handy-Aufgabe</string>
     <string name="work_job_title">Hintergrundaufgabe</string>
     <string name="work_job_line">%1$s · Hintergrund</string>
     <string name="work_task_in_background">Im Hintergrund</string>
@@ -1457,6 +1477,7 @@
     <string name="handover_verify_title">%1$s möchte, dass du die Anmeldung bestätigst</string>
     <string name="handover_verify_body">Bestätige die Anmeldung auf deinem Handy oder öffne die Live-Ansicht und gib dort den Code ein. Danach macht Kelo weiter.</string>
     <string name="handover_verify_open">Live-Ansicht öffnen</string>
+    <string name="handover_device_open">Telefonbildschirm öffnen</string>
     <string name="handover_verify_done">Angemeldet — Kelo macht weiter</string>
     <string name="handover_verify_approve_body">Bestätige die Anmeldung in der Benachrichtigung auf deinem Handy. Sobald sie bestätigt ist, macht Kelo weiter.</string>
     <string name="handover_verify_approved">Ich habe bestätigt</string>

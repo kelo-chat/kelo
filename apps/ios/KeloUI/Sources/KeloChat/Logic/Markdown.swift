@@ -295,6 +295,60 @@ public enum Markdown {
         }.joined()
     }
 
+    /// The text as a voice should read it (SpokenText.from): like `plain`, but a link says only its words, a bare address and code
+    /// blocks are left out, list items and table rows end like sentences, emoji and symbols are dropped (Android Markdown.spoken).
+    public static func spoken(_ text: String) -> String {
+        let cleaned = breakRe.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "\n\n")
+        return blocks(cleaned).compactMap(spokenBlock).joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func spokenBlock(_ b: Block) -> String? {
+        switch b {
+        case .para(let t), .heading(_, let t): return sentence(spokenInline(t))
+        case .code: return nil
+        case .items(let entries):
+            let lines = entries.compactMap { sentence(spokenInline($0.text)) }
+            return lines.isEmpty ? nil : lines.joined(separator: "\n")
+        case .quote(let blocks):
+            let parts = blocks.compactMap(spokenBlock)
+            return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+        case .table(let header, _, let rows):
+            let lines = ([header] + rows).compactMap { r in sentence(r.map(spokenInline).joined(separator: ", ")) }
+            return lines.isEmpty ? nil : lines.joined(separator: "\n")
+        case .rule: return nil
+        }
+    }
+
+    private static func spokenInline(_ text: String) -> String {
+        let joined = inline(text).map { s -> String in
+            switch s {
+            case .plain(let t), .code(let t), .bold(let t), .italic(let t): return t
+            case .link(let t, let url): return t == url ? "" : t
+            }
+        }.joined()
+        var out = withoutPictographs(joined)
+        out = out.replacingOccurrences(of: "[ \\t]+", with: " ", options: .regularExpression)
+        out = out.replacingOccurrences(of: " +([,.!?;:])", with: "$1", options: .regularExpression)
+        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// `t` with a full stop at its end when it has no closing mark, so a voice pauses between lines; nil when it has no letters or digits.
+    private static func sentence(_ t: String) -> String? {
+        let s = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard s.contains(where: { $0.isLetter || $0.isNumber }), let last = s.last else { return nil }
+        let ends: Set<Character> = [".", "!", "?", ":", ";", "。", "！", "？", "…", "\"", "”", ")", "」"]
+        return ends.contains(last) ? s : s + "."
+    }
+
+    /// `t` without emoji and pictographs (the symbol planes, the dingbat and symbol blocks, joiners and variation selectors).
+    private static func withoutPictographs(_ t: String) -> String {
+        String(String.UnicodeScalarView(t.unicodeScalars.filter { u in
+            let v = u.value
+            if (0x1F000...0x1FBFF).contains(v) || (0x2600...0x27BF).contains(v) || (0x2B00...0x2BFF).contains(v) { return false }
+            return v != 0xFE0F && v != 0x200D
+        }))
+    }
+
     private static let breakTag = "<message_break/>"
     private static let breakRe = re(#"<message_break\s*/?>"#)
 

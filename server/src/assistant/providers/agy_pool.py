@@ -11,7 +11,10 @@ was thrown away far more often than needed:
    the two ran at once. Here each system prompt gets a client of its own (own workspace and GEMINI.md); a few are kept.
 2. The next turn is not a strict extension of the previous request: this turn's lines (TURN_NOTE) are rebuilt every turn and the
    previous turn's tool rounds are stored only as its final text. `continuation` recognises exactly that shape, so the session goes
-   on and only the new turn is sent.
+   on and only the new turn is sent. What it does not hold against the session (2026-11-16, found by replaying real turns, test_agy_replay.py):
+   a stored reply that leaves out the short lines before the middle tool steps (reply_text.py) or joins its parts with other white
+   space; a user message that went to the model with the app's own lines after it; an older tool result or picture the agent loop
+   made smaller inside the turn (the live session still has the original). Anything else that differs still starts a new session.
 3. A worker that ends while the conversation goes on (agy tried a tool of its own, a cancel, an error, a request that does not
    continue the session) is replaced at once, so the next call finds a process that has its start-up behind it or under way.
 
@@ -25,11 +28,12 @@ import hashlib
 import json
 import logging
 import os
+import re
 import threading
 import time
 from typing import Any
 
-from .types import TURN_NOTE
+from .types import DIGEST_PREFIX, OLD_PICTURE, TURN_NOTE
 
 log = logging.getLogger(__name__)
 
@@ -83,10 +87,32 @@ def warm_enabled() -> bool:
 
 # ---------------------------------------------------------------- which session a request continues (pure functions)
 
+# A reply is checked paragraph by paragraph: this many characters (without spaces) at each end of a paragraph must be what the session wrote.
+CHECK_CHARS = 80
+_PARAGRAPH_BREAK = re.compile(r"\n\s*\n|<message_break\s*/?>")
+_MESSAGE_BREAK = re.compile(r"<message_break\s*/?>")
+
+
 def _same(a: Any, b: Any) -> bool:
     """The plugin's own test for "the same message" (prompt._messages_match_prefix)."""
     return (isinstance(a, dict) and isinstance(b, dict) and a.get("role") == b.get("role") and a.get("content") == b.get("content")
             and a.get("tool_calls") == b.get("tool_calls"))
+
+
+def _same_or_shortened(a: Any, b: Any) -> bool:
+    """`b` is `a`, or `a` after the agent loop made the request smaller: an older tool result as one line, an older picture as a note
+    (agent/loop.py). The live session still holds the full original, so such a request goes on from it; the next one is compared with
+    the short form."""
+    if _same(a, b):
+        return True
+    if not (isinstance(a, dict) and isinstance(b, dict)) or a.get("role") != b.get("role") or a.get("tool_calls") != b.get("tool_calls"):
+        return False
+    short = b.get("content")
+    if not isinstance(short, str):
+        return False
+    if a.get("role") == "tool":
+        return a.get("tool_call_id") == b.get("tool_call_id") and short.startswith(DIGEST_PREFIX)
+    return a.get("role") == "user" and isinstance(a.get("content"), list) and short.startswith(OLD_PICTURE.split("{")[0])
 
 
 def _is_turn_note(m: Any) -> bool:
@@ -97,39 +123,78 @@ def _last_turn_note(msgs: list[dict[str, Any]]) -> int | None:
     return next((i for i in range(len(msgs) - 1, -1, -1) if _is_turn_note(msgs[i])), None)
 
 
-def _flat(text: Any) -> str:
-    return " ".join(str(text or "").split())
+def _squeezed(text: Any) -> str:
+    """The text without any whitespace: where a line break, a paragraph or nothing joins two pieces is not what makes it the same text."""
+    return "".join(str(text or "").split())
 
 
-def _next_turn(prev: list[dict[str, Any]], incoming: list[dict[str, Any]], said: str) -> int | None:
-    """Where the new turn starts in `incoming` when it is the turn after `prev` in the same conversation, else None.
+def _written_by(reply: Any, wrote: str) -> bool:
+    """The stored reply `reply` is made of what the session wrote (`wrote` = _squeezed, no <message_break/>). The conversation keeps a
+    finished reply's opener and answer but not the short line before each middle tool step (reply_text.py), and joins the kept parts
+    with other white space than the session's text had: so the reply is not one stretch of what the session wrote, but every paragraph
+    of it is. A reply the session did not write (another job's message) has paragraphs that are not there."""
+    for part in _PARAGRAPH_BREAK.split(str(reply or "")):
+        s = _squeezed(part)
+        if s and not (s[:CHECK_CHARS] in wrote and s[-CHECK_CHARS:] in wrote):
+            return False
+    return True
+
+
+def _sent_as(stored: Any, sent: Any) -> bool:
+    """The user's message as the conversation stores it (`stored`) is the one the session was sent (`sent`): the same, or the same
+    with the app's own lines after it (a messenger's note, the values of a filled-in form: server.prepare_talk adds them for the model
+    only, after a blank line)."""
+    if stored == sent:
+        return True
+    return isinstance(stored, str) and isinstance(sent, str) and bool(stored.strip()) and sent.startswith(stored + "\n\n")
+
+
+def _parting(prev: list[dict[str, Any]] | None, incoming: list[dict[str, Any]], said: str) -> tuple[int | None, str]:
+    """(where the new turn starts in `incoming`, "") when it is the turn after `prev` in the same conversation, else (None, why) with
+    the first test that failed, in a few words.
 
     prev     = [... base ..., TURN_NOTE(n), user(n), (tool rounds of turn n)]
     incoming = [... base ..., user(n), assistant(n) ..., TURN_NOTE(n+1), user(n+1)]
     The base must be unchanged (no summary rewritten, no history dropped), the user messages in between must be the ones turn n was
     sent, and every assistant message in between must be text this session wrote itself (`said`): anything else, such as a message
     another job added to the conversation, means the session has not seen it and has to start over."""
+    if not prev:
+        return None, "no earlier request"
     k = _last_turn_note(prev)
-    if k is None or len(incoming) <= k or not all(_same(a, b) for a, b in zip(prev[:k], incoming[:k])):
-        return None
+    if k is None:
+        return None, "earlier request had no turn note"
+    if len(incoming) <= k:
+        return None, "history shorter than before"
+    for i, (a, b) in enumerate(zip(prev[:k], incoming[:k])):
+        if not _same(a, b):
+            role = a.get("role") if isinstance(a, dict) else "?"
+            what = "system" if role == "system" else ("summary" if i <= 2 and role != "system" else role)
+            return None, f"base changed at {i}/{k} ({what})"
     j = _last_turn_note(incoming)
-    if j is None or j <= k:
-        return None
+    if j is None or j < k:
+        return None, "no new turn note"
+    if j == k:   # still the same turn: it went on from the previous request unless something before its end changed
+        i = next((i for i, (a, b) in enumerate(zip(prev, incoming)) if not _same_or_shortened(a, b)), None)
+        what = "" if i is None else str(prev[i].get("role") if isinstance(prev[i], dict) else "?")
+        return None, "no new turn note" if i is None else f"same turn changed at {i}/{len(prev)} ({what})"
     asked = [m.get("content") for m in prev[k + 1:] if isinstance(m, dict) and m.get("role") == "user"]
     gap = incoming[k:j]
-    if not asked or not gap or not isinstance(gap[0], dict) or gap[0].get("role") != "user" or gap[0].get("content") != asked[0]:
-        return None
-    wrote, rest, answered = _flat(said), iter(asked), False
+    if not asked or not gap or not isinstance(gap[0], dict) or gap[0].get("role") != "user" or not _sent_as(gap[0].get("content"), asked[0]):
+        return None, "earlier question not where it was"
+    wrote, rest, answered = _squeezed(_MESSAGE_BREAK.sub("", said)), iter(asked), False
     for m in gap:
         role = m.get("role") if isinstance(m, dict) else None
         if role == "assistant" and not m.get("tool_calls"):
-            head = _flat(m.get("content"))[:200]
-            if head and head not in wrote:
-                return None
+            if not _written_by(m.get("content"), wrote):
+                return None, "reply in history differs from what the session wrote"
             answered = True
-        elif role != "user" or not any(m.get("content") == c for c in rest):   # in order: `rest` is consumed as it is searched
-            return None
-    return j if answered else None
+        elif role == "assistant":
+            return None, "tool call in the gap"
+        elif role != "user":
+            return None, f"{role} message in the gap"
+        elif not any(_sent_as(m.get("content"), c) for c in rest):   # in order: `rest` is consumed as it is searched
+            return None, "other user message in the gap or no reply"
+    return (j, "") if answered else (None, "other user message in the gap or no reply")
 
 
 def continuation(prev_req: list[dict[str, Any]] | None, prev_sent: list[dict[str, Any]] | None,
@@ -141,46 +206,16 @@ def continuation(prev_req: list[dict[str, Any]] | None, prev_sent: list[dict[str
     `prev_sent` + the new messages meets that test, and the new messages are what it sends."""
     if not prev_req or not prev_sent:
         return None
-    if len(incoming) > len(prev_req) and all(_same(a, b) for a, b in zip(prev_req, incoming)):
+    if len(incoming) > len(prev_req) and all(_same_or_shortened(a, b) for a, b in zip(prev_req, incoming)):
         return [*prev_sent, *incoming[len(prev_req):]], False   # the next tool round of the same turn
-    j = _next_turn(prev_req, incoming, said)
+    j, _why = _parting(prev_req, incoming, said)
     return None if j is None else ([*prev_sent, *incoming[j:]], True)
 
 
 def why_not_continued(prev_req: list[dict[str, Any]] | None, incoming: list[dict[str, Any]], said: str = "") -> str:
     """Which test of `continuation` failed, in a few words for the usage note (2026-11-15: half of the chat calls started a new
     session as "conversation changed"; this says where they part). Only called after `continuation` returned None."""
-    if not prev_req:
-        return "no earlier request"
-    k = _last_turn_note(prev_req)
-    if k is None:
-        return "earlier request had no turn note"
-    if len(incoming) <= k:
-        return "history shorter than before"
-    for i, (a, b) in enumerate(zip(prev_req[:k], incoming[:k])):
-        if not _same(a, b):
-            role = a.get("role") if isinstance(a, dict) else "?"
-            what = "system" if role == "system" else ("summary" if i <= 2 and role != "system" else role)
-            return f"base changed at {i}/{k} ({what})"
-    j = _last_turn_note(incoming)
-    if j is None or j <= k:
-        return "no new turn note"
-    asked = [m.get("content") for m in prev_req[k + 1:] if isinstance(m, dict) and m.get("role") == "user"]
-    gap = incoming[k:j]
-    if not asked or not gap or not isinstance(gap[0], dict) or gap[0].get("role") != "user" or gap[0].get("content") != asked[0]:
-        return "earlier question not where it was"
-    wrote = _flat(said)
-    for m in gap:
-        role = m.get("role") if isinstance(m, dict) else None
-        if role == "assistant" and not m.get("tool_calls"):
-            head = _flat(m.get("content"))[:200]
-            if head and head not in wrote:
-                return "reply in history differs from what the session wrote"
-        elif role == "assistant":
-            return "tool call in the gap"
-        elif role != "user":
-            return f"{role} message in the gap"
-    return "other user message in the gap or no reply"
+    return _parting(prev_req, incoming, said)[1] or "continuation refused"
 
 
 def session_chars(messages: list[dict[str, Any]]) -> int:

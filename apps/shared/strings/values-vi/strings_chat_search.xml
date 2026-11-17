@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">Tìm trong trò chuyện</string>
+    <string name="chat_search_title">Tìm trong trò chuyện</string>
+    <string name="chat_search_field">Tìm trong tin nhắn của bạn</string>
+    <string name="chat_search_clear">Xóa tìm kiếm</string>
+    <string name="chat_search_hint">Nhập một từ hoặc một phần của từ. Chạm vào kết quả để mở trò chuyện tại tin nhắn đó.</string>
+    <string name="chat_search_none">Không có tin nhắn nào khớp với tìm kiếm này.</string>
+    <string name="chat_search_failed">Không thể kết nối máy chủ để tìm kiếm. Thử lại sau ít phút.</string>
+    <string name="chat_search_you">Bạn</string>
+</resources>

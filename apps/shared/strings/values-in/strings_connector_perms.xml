@@ -17,4 +17,6 @@
     <string name="perm_reset_q">Kembalikan semua pengaturan konektor ini ke default?</string>
     <string name="perm_read_off_q">Jika membaca dimatikan, Kelo hampir tidak bisa memakai konektor ini. Matikan?</string>
     <string name="perm_limited">Dibatasi</string>
+    <string name="perm_unattended">Pakai saat saya tidak mengobrol</string>
+    <string name="perm_unattended_about">Jadwal, pekerjaan latar belakang, dan pesan yang dikirim Kelo lebih dulu tidak akan memakai %1$s. Obrolan Anda sendiri tetap bisa.</string>
 </resources>

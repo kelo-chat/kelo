@@ -44,7 +44,7 @@ class MyFakeServer(private val answer: (method: String, path: String, body: Stri
         return Sessions(store, requireE2e = false)
     }
 
-    fun saw(prefix: String) = requests.any { it.startsWith(prefix) }
+    fun saw(prefix: String) = synchronized(requests) { requests.any { it.startsWith(prefix) } }   // the server thread appends while we read
 
     fun shutdown() = server.shutdown()
 

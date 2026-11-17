@@ -15,7 +15,7 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl tini procps socat dbus-x11 poppler-utils \
-      xvfb openbox x11vnc novnc websockify \
+      tigervnc-standalone-server openbox \
       fonts-liberation fonts-noto-cjk fonts-noto-color-emoji \
     && rm -rf /var/lib/apt/lists/*
 
@@ -83,6 +83,8 @@ COPY version.json ./
 COPY releases ./releases
 # the one-line installers kelo.chat serves at /install.sh and /install.ps1 (api/site.py)
 COPY scripts/install.sh scripts/install.ps1 ./scripts/
+# the Windows one-line installer at /install-windows.ps1 (api/site.py)
+COPY scripts/windows/kelo-get.ps1 ./scripts/windows/
 ARG KELO_VERSION=""
 LABEL org.opencontainers.image.version="${KELO_VERSION}"
 
@@ -96,5 +98,5 @@ COPY docker/chromium-policy.json /etc/opt/chrome/policies/managed/kelo.json
 
 ENV DISPLAY=:99 SCREEN=1440x900x24 ASSISTANT_HOME=/state ASSISTANT_CONTENT_DIR=/app/content
 USER assistant
-EXPOSE 8080 6080
+EXPOSE 8080
 ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

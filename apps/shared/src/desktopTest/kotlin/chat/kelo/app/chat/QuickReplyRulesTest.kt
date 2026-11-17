@@ -12,18 +12,15 @@ class QuickReplyRulesTest {
     private val form = ReplySet(listOf(
         ReplyQuestion("체중 (현재 → 목표)", listOf("직접 입력할게요", "말하고 싶지 않아요"), typed = listOf("직접 입력할게요"), hint = "현재 체중과 목표 체중"),
         ReplyQuestion("기간", listOf("1개월", "3개월", "6개월")),
-        ReplyQuestion("식단 제한", listOf("없어요", "있어요 (직접 입력)", "말하고 싶지 않아요")),   // an older server: no "typed"
+        ReplyQuestion("식단 제한", listOf("없어요", "있어요 (직접 입력)", "말하고 싶지 않아요"), typed = listOf("있어요 (직접 입력)")),
     ))
 
-    @Test fun theServersMarkAndTheWordsBothOpenATextBox() {
-        assertTrue(QuickReplyRules.isTyped(form.questions[0], "직접 입력할게요"))
+    @Test fun onlyTheServersMarkOpensATextBox() {
+        assertTrue(QuickReplyRules.isTyped(form.questions[0], "직접 입력할게요"))   // the server marked it
         assertTrue(QuickReplyRules.isTyped(form.questions[2], "있어요 (직접 입력)"))
+        assertFalse(QuickReplyRules.isTyped(ReplyQuestion("Q", listOf("Other", "기타")), "Other"))   // no mark: its words say nothing to the app
         assertFalse(QuickReplyRules.isTyped(form.questions[2], "없어요"))
         assertTrue(QuickReplyRules.isTyped(ReplyQuestion("Sport", listOf("Run", "Anything"), typed = listOf("Anything")), "Anything"))
-        for (l in listOf("Other", "기타", "Other (please specify)", "Something else…", "その他", "其他", "Otro", "Свой вариант", "Tự nhập", "I'll type it"))
-            assertTrue(l, QuickReplyRules.asksTyping(l))
-        for (l in listOf("말하고 싶지 않아요", "없어요", "Rather not say", "Prefiero no decirlo", "Otra vez", "1개월", "Another time", "직접 할게요"))
-            assertFalse(l, QuickReplyRules.asksTyping(l))
     }
 
     @Test fun aTypedAnswerIsSentInsteadOfItsLabelAndNeverEmpty() {
@@ -41,7 +38,7 @@ class QuickReplyRulesTest {
     }
 
     @Test fun aLoneQuestionSendsOnTapUnlessTheAnswerIsOneToWrite() {
-        val one = ReplySet(listOf(ReplyQuestion("Diet", listOf("None", "Other"))))
+        val one = ReplySet(listOf(ReplyQuestion("Diet", listOf("None", "Other"), typed = listOf("Other"))))
         assertTrue(QuickReplyRules.sendsOnTap(one, one.questions[0], "None"))
         assertFalse(QuickReplyRules.sendsOnTap(one, one.questions[0], "Other"))
         assertFalse(QuickReplyRules.showsSend(one, emptyMap()))

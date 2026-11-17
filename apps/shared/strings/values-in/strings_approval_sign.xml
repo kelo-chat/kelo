@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">Setujui pembayaran</string>
+    <string name="approval_sign_subtitle">Konfirmasi dengan sidik jari atau wajah</string>
+    <string name="approval_sign_failed">Pembayaran ini tidak dapat disetujui di ponsel ini. Coba lagi.</string>
+    <string name="approval_sign_key_lost">Kunci persetujuan ponsel ini hilang. Pasangkan ulang ponsel ini dengan server.</string>
+    <string name="approval_pay_on_phone">Setujui pembayaran di aplikasi Kelo di ponsel.</string>
+</resources>

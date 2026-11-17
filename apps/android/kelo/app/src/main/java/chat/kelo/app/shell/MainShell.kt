@@ -84,6 +84,7 @@ import chat.kelo.app.R
 import chat.kelo.app.agent.AgentPicture
 import chat.kelo.app.chat.AgentActivityRules
 import chat.kelo.app.chat.ChatScreen
+import chat.kelo.app.chat.ChatSearchScreen
 import chat.kelo.app.connectors.ConnectorsScreen
 import chat.kelo.app.core.Profile
 import chat.kelo.app.goals.GoalsScreen
@@ -176,14 +177,21 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
         if (shared != null && nav.currentDestination?.route != Routes.CHAT) go(Routes.CHAT)
     }
 
-    // a browser tab live over everything (back returns to where it was opened from)
+    // a browser tab live over everything (back returns to where it was opened from); in a wide window (two panes) the chat tab shows it beside the chat
+    val shape = chat.kelo.app.ui.platform.LocalWindowShape.current
+    val routeNow = nav.currentBackStackEntryAsState().value?.destination?.route
     var liveTab by rememberSaveable { mutableStateOf<String?>(null) }
+    val side = chat.kelo.app.ui.platform.WindowRules.side(shape, onChatTab = routeNow == Routes.CHAT, liveOpen = liveTab != null)
+    val sideShown = side != chat.kelo.app.ui.platform.WindowRules.Side.None
     var liveControl by rememberSaveable { mutableStateOf(false) }   // opened to solve a human check: take the tab over at once
     var livePicture by remember { mutableStateOf<String?>(null) }   // the chat card's last picture, for a tab that has closed
-    HideShellChrome(LIVE_CHROME_KEY, liveTab != null)
+    HideShellChrome(LIVE_CHROME_KEY, liveTab != null && !sideShown)
     // the agent's work (what it does, asks, has planned), opened from the header over whatever tab is showing
     var workOpen by rememberSaveable { mutableStateOf(false) }
-    HideShellChrome(WORK_CHROME_KEY, workOpen)
+    HideShellChrome(WORK_CHROME_KEY, workOpen && !sideShown)
+    // the chat's search page, opened from the chat header over everything; a result opens the chat at that message
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    HideShellChrome(SEARCH_CHROME_KEY, searchOpen && !sideShown)
     // a place in the 작업 tab a notification asked for, handed to it once it shows
     var workStart by remember { mutableStateOf<OpenTarget?>(null) }
     // the keyguard_locked notification was tapped: the locked banner starts the unlock check by itself
@@ -228,19 +236,45 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
             LocalTopBarScroll provides topBarScroll,
             chat.kelo.app.keyguard.LocalKeyguardEnableHost provides keyguardEnable,
         ) {
-            NavHost(
-                nav, startDestination = Routes.CHAT,
-                modifier = Modifier.fillMaxSize(),
-                enterTransition = { EnterTransition.None }, exitTransition = { ExitTransition.None },
-                popEnterTransition = { EnterTransition.None }, popExitTransition = { ExitTransition.None },
-            ) {
-                // the tabs as data: each tab's page is its own content; a connector's detail is a sub route of 커넥터
-                tabs.forEach { tab -> composable(tab.id) { tab.content() } }
-                composable(Routes.CONNECTOR_OPEN) { entry -> ConnectorsScreen(openId = entry.arguments?.getString("id"), frame = rememberTabPageFrame(Routes.CONNECTORS)) }
-            }
+            val splitPrefs = androidx.compose.ui.platform.LocalContext.current.getSharedPreferences("kelo.ui", android.content.Context.MODE_PRIVATE)
+            val splitState = chat.kelo.app.ui.components.rememberSplitState(runCatching { splitPrefs.getFloat("split", chat.kelo.app.ui.platform.WindowRules.DEFAULT_SPLIT) }.getOrDefault(chat.kelo.app.ui.platform.WindowRules.DEFAULT_SPLIT))
+            val workHooks = rememberAndroidWorkHooks()
+            val dockedHooks = remember(workHooks) { DockedWorkHooks(workHooks) }
+            chat.kelo.app.ui.components.TwoPane(
+                first = {
+                NavHost(
+                    nav, startDestination = Routes.CHAT,
+                    modifier = Modifier.fillMaxSize(),
+                    enterTransition = { EnterTransition.None }, exitTransition = { ExitTransition.None },
+                    popEnterTransition = { EnterTransition.None }, popExitTransition = { ExitTransition.None },
+                ) {
+                    // the tabs as data: each tab's page is its own content; a connector's detail is a sub route of 커넥터
+                    tabs.forEach { tab -> composable(tab.id) { tab.content() } }
+                    composable(Routes.CONNECTOR_OPEN) { entry -> ConnectorsScreen(openId = entry.arguments?.getString("id"), frame = rememberTabPageFrame(Routes.CONNECTORS)) }
+                }
+                },
+                second = {
+                    // below the header and above the bar, beside the chat
+                    Box(Modifier.fillMaxSize().background(c.bg).padding(top = header, bottom = bar)) {
+                        CompositionLocalProvider(LocalHeaderHeight provides 0.dp, LocalBottomBarHeight provides 0.dp) {
+                            if (side == chat.kelo.app.ui.platform.WindowRules.Side.Live) {
+                                androidx.activity.compose.BackHandler { liveTab = null }
+                                liveTab?.let { id ->
+                                    chat.kelo.app.work.LiveOverlay(id, takeControl = liveControl, picture = livePicture,
+                                        onClose = { liveTab = null; liveControl = false; livePicture = null })
+                                }
+                            } else if (side == chat.kelo.app.ui.platform.WindowRules.Side.Work) {
+                                WorkScreen(start = workStart, onStartUsed = { workStart = null }, onOpenLive = { liveControl = false; livePicture = null; liveTab = it }, onClose = null, hooks = dockedHooks)
+                            }
+                        }
+                    }
+                },
+                split = splitState,
+                showSecond = shape.twoPane && sideShown,
+                onSplit = { share -> runCatching { splitPrefs.edit().putFloat("split", share).apply() } },
+            )
         }
-        val entry by nav.currentBackStackEntryAsState()
-        val route = entry?.destination?.route
+        val route = routeNow
         val isScrolled = topBarScroll.isScrolled(route)
         // the top area (status bar + header) tints on scroll (Material 3 surfaceContainer), content scrolls under it
         if (!chrome.headerHidden) HeaderScrim(statusTop, headerH, isScrolled, Modifier.align(Alignment.TopCenter))
@@ -252,6 +286,7 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
                 profile, shell,
                 onAgent = { workOpen = true },
                 modifier = Modifier.onSizeChanged { headerH = with(density) { it.height.toDp() } },
+                onSearch = if (route == Routes.CHAT && !sideShown) ({ searchOpen = true }) else null,
             )
         }
         AnimatedVisibility(
@@ -259,7 +294,7 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
             enter = fadeIn(Motion.small(reduce)) + slideInVertically(Motion.enter(reduce)) { it / 2 },
             exit = fadeOut(Motion.small(reduce)) + slideOutVertically(Motion.exit(reduce)) { it / 2 },
         ) {
-            TabBar(nav, tabs, reselect, shell, Modifier.onSizeChanged { barH = with(density) { it.height.toDp() } })
+            TabBar(nav, tabs, reselect, shell, Modifier.then(if (shape.centred) Modifier.widthIn(max = chat.kelo.app.ui.platform.WindowRules.TAB_BAR_MAX.dp) else Modifier).onSizeChanged { barH = with(density) { it.height.toDp() } })
         }
         // a new server has no model yet (the terminal setup does not ask for one): the chat leads to the model settings
         if (ModelGate.needsModel(profile) && route == Routes.CHAT && !workOpen && liveTab == null) {
@@ -279,9 +314,37 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
                 kotlinx.coroutines.delay(60 * 60 * 1000L)
             }
         }
+        // the popup (once per version; Later = 3 days) and its hold on the banners below
+        val popupOffered by chat.kelo.app.core.AppVersion.update.collectAsStateWithLifecycle()
+        val popupCandidate = chat.kelo.app.update.UpdatePopupRules.candidate(update, popupOffered, chat.kelo.app.core.AppVersion.channel)
+        val popupOpen by container.updatePopup.open.collectAsStateWithLifecycle()
+        androidx.compose.runtime.LaunchedEffect(popupCandidate, update.required) { container.updatePopup.consider(popupCandidate.takeIf { !update.required }) }
+        val popupUp = popupOpen != null
+        val popupNow by androidx.compose.runtime.rememberUpdatedState(popupCandidate.takeIf { !update.required })
+        val popupLifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current
+        androidx.compose.runtime.DisposableEffect(popupLifecycle) {
+            val watcher = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) container.updatePopup.left()
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_START && container.updatePopup.returned()) { container.updater.check(force = true); container.updatePopup.consider(popupNow) }
+            }
+            popupLifecycle.lifecycle.addObserver(watcher)
+            onDispose { popupLifecycle.lifecycle.removeObserver(watcher) }
+        }
+        val popupUri = androidx.compose.ui.platform.LocalUriHandler.current
+        popupOpen?.let { popupCandidate ->
+            chat.kelo.app.update.UpdatePopupDialog(
+                popupCandidate,
+                onUpdate = {
+                    container.updatePopup.close()
+                    if (popupCandidate.source == chat.kelo.app.update.UpdatePopupRules.Source.STORE) popupUri.openUri(chat.kelo.app.update.AppNoticeRules.PLAY_URL)
+                    else { container.updater.get(); go(Routes.MY) }
+                },
+                onLater = { container.updatePopup.close() },
+            )
+        }
         val offered = update.offer
         val modelCard = ModelGate.needsModel(profile) && route == Routes.CHAT
-        if (offered != null && update.showBanner && route != Routes.MY && !workOpen && liveTab == null && !chrome.headerHidden && !modelCard) {
+        if (!popupUp && offered != null && update.showBanner && route != Routes.MY && !workOpen && liveTab == null && !chrome.headerHidden && !modelCard) {
             chat.kelo.app.update.UpdateBanner(
                 update,
                 onGet = { container.updater.get(); go(Routes.MY) },
@@ -290,10 +353,28 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = header + 8.dp, start = 12.dp, end = 12.dp),
             )
         }
+        // a newer released app that works with the server (X-Kelo-App-Update; store builds too): once per version, never over another banner
+        val offeredApp by chat.kelo.app.core.AppVersion.update.collectAsStateWithLifecycle()
+        val dismissedApps by container.appNotice.dismissed.collectAsStateWithLifecycle()
+        val noticeVersion = offeredApp?.takeIf { chat.kelo.app.update.AppNoticeRules.show(it, dismissedApps) }
+        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+        val storeNotice = chat.kelo.app.update.AppNoticeRules.action(chat.kelo.app.core.AppVersion.channel) == chat.kelo.app.update.AppNoticeRules.Action.STORE
+        if (!popupUp && noticeVersion != null && !(offered != null && update.showBanner) && route != Routes.MY && !workOpen && liveTab == null && !chrome.headerHidden && !modelCard) {
+            chat.kelo.app.update.AppNoticeBanner(
+                noticeVersion, store = storeNotice,
+                onAction = {
+                    container.appNotice.dismiss(noticeVersion)
+                    if (storeNotice) uriHandler.openUri(chat.kelo.app.update.AppNoticeRules.PLAY_URL)
+                    else { if (offered != null) container.updater.get(); go(Routes.MY) }
+                },
+                onClose = { container.appNotice.dismiss(noticeVersion) },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = header + 8.dp, start = 12.dp, end = 12.dp),
+            )
+        }
         if (update.needsPermission) {
             chat.kelo.app.update.InstallPermissionDialog(onOpen = { container.updater.openInstallSetting() }, onDismiss = { container.updater.dismissPermission() })
         }
-        if (workOpen) {
+        if (workOpen && !sideShown) {
             androidx.activity.compose.BackHandler { workOpen = false }   // the work page's own sub pages step back first
             Box(Modifier.fillMaxSize().background(c.bg)) {
                 CompositionLocalProvider(
@@ -305,7 +386,7 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
             }
         }
         AnimatedVisibility(
-            visible = liveTab != null,
+            visible = liveTab != null && !sideShown,
             enter = fadeIn(Motion.enter(reduce)) + slideInHorizontally(Motion.enter(reduce)) { it / 10 },
             exit = fadeOut(Motion.exit(reduce)) + slideOutHorizontally(Motion.exit(reduce)) { it / 10 },
         ) {
@@ -315,6 +396,18 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
                 androidx.activity.compose.BackHandler { liveTab = null }
                 chat.kelo.app.work.LiveOverlay(shown, takeControl = liveControl, picture = livePicture,
                     onClose = { liveTab = null; liveControl = false; livePicture = null })
+            }
+        }
+        if (searchOpen && !sideShown) {
+            androidx.activity.compose.BackHandler { searchOpen = false }
+            Box(Modifier.fillMaxSize().background(c.bg)) {
+                CompositionLocalProvider(LocalHeaderHeight provides 0.dp, LocalBottomBarHeight provides 0.dp) {
+                    ChatSearchScreen(
+                        agentName = profile.agentName.ifBlank { "Kelo" },
+                        onOpen = { id -> searchOpen = false; container.chatFocus.value = id },
+                        onBack = { searchOpen = false },
+                    )
+                }
             }
         }
         chat.kelo.app.keyguard.KeyguardEnableOverlay(keyguardEnable)
@@ -341,7 +434,11 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
         val serverSeen by chat.kelo.app.core.AppVersion.server.collectAsStateWithLifecycle()
         val serverOld by container.sessions.serverOld.collectAsStateWithLifecycle()
         if (serverOld || chat.kelo.app.core.AppVersion.serverTooOld(serverSeen)) {
-            ServerTooOldScreen(serverSeen, onRetry = { container.sessions.recheckServer() })
+            val oldScope = androidx.compose.runtime.rememberCoroutineScope()
+            val oldUpdater = remember(container.sessions) {
+                chat.kelo.app.shell.ServerOldUpdater(oldScope, { container.sessions.api.value }, onDone = { container.sessions.recheckServer() })
+            }
+            ServerTooOldScreen(serverSeen, onRetry = { container.sessions.recheckServer(); oldUpdater.probe() }, updater = oldUpdater)
         }
         // the server needs a newer build (min_app_version): this covers everything until the app is updated
         if (update.required) {
@@ -356,6 +453,7 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
 
 private const val LIVE_CHROME_KEY = "live-view"
 private const val WORK_CHROME_KEY = "work-page"
+private const val SEARCH_CHROME_KEY = "chat-search"
 
 /** Until the tab bar has been measured once. */
 private val BAR_ESTIMATE = 80.dp
@@ -364,8 +462,9 @@ private const val HEADER_BADGE = 68
 private val BADGE_CREAM = androidx.compose.ui.graphics.Color(0xFFFFF3D6)
 
 /**
- * The top header area (status bar + Kelo's header): uses the surface colour (c.bg) at rest and the tonal surfaceContainer
- * colour (c.card) once content scrolls under it (Material 3 TopAppBar scroll behaviour). Content is never visible behind the status bar.
+ * Only the strip under the clock is solid (the page's own colour), with a short fade below it. The rest of the header is see-through:
+ * the floating agent badge and name tag sit on the page, and the chat shows around and up to them instead of under a solid band
+ * (owner 2026-11-16: "위에 다 쳐 가리냐" after a solid header-high band replaced the fade). `isScrolled` keeps the strip's tint.
  */
 @Composable
 private fun HeaderScrim(
@@ -377,13 +476,23 @@ private fun HeaderScrim(
     if (statusTop <= 0.dp && headerH <= 0.dp) return
     val c = Kelo.colors
     val reduce = LocalReduceMotion.current
-    val barColor by animateColorAsState(if (isScrolled) c.card else c.bg, Motion.small(reduce), label = "headerAreaBg")
-    val totalHeight = if (headerH > 0.dp) headerH else statusTop + 96.dp
-    Box(modifier.fillMaxWidth().height(totalHeight).background(barColor))
+    val bg by animateColorAsState(if (isScrolled) c.card else c.bg, Motion.small(reduce), label = "headerAreaBg")
+    val shape = headerScrimShape(statusTop, headerH)
+    Column(modifier.fillMaxWidth()) {
+        if (shape.solid > 0.dp) Box(Modifier.fillMaxWidth().height(shape.solid).background(bg))
+        Box(Modifier.fillMaxWidth().height(shape.fade).background(Brush.verticalGradient(listOf(bg, bg.copy(alpha = 0f)))))
+    }
 }
 
-private const val STATUS_FADE = 10
-private const val TOP_FADE_SHARE = 0.9f
+private const val STATUS_FADE = 16
+
+/** The scrim's two parts: the solid strip under the clock and the fade below it. Their sum must never reach the header's height. */
+internal data class HeaderScrimShape(val solid: androidx.compose.ui.unit.Dp, val fade: androidx.compose.ui.unit.Dp)
+
+/** Only the status-bar strip is solid; the header itself is see-through so the chat shows around the badge and name tag. */
+@Suppress("UNUSED_PARAMETER")
+internal fun headerScrimShape(statusTop: androidx.compose.ui.unit.Dp, headerH: androidx.compose.ui.unit.Dp) =
+    HeaderScrimShape(solid = statusTop.coerceAtLeast(0.dp), fade = STATUS_FADE.dp)
 
 /** Five destinations; the chosen one sits in a tinted pill (Material 3 navigation bar). 작업 carries a badge. */
 @Composable
@@ -462,4 +571,10 @@ private fun rememberMyHooks(hiddenTabs: List<TabSpec>, openTab: (String) -> Unit
             keyguardPage = { onBack, startWithCode -> chat.kelo.app.keyguard.KeyguardPage(onBack, startWithCode = startWithCode) },
         )
     }
+}
+
+/** The work list in the side pane: its sub pages must not hide the bars (the chat stays beside it). */
+private class DockedWorkHooks(private val base: chat.kelo.app.work.WorkScreenHooks) : chat.kelo.app.work.WorkScreenHooks by base {
+    override val bottomInset: androidx.compose.ui.unit.Dp = 0.dp
+    override fun hideChrome(key: String, hidden: Boolean) {}
 }

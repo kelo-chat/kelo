@@ -130,6 +130,54 @@ class WorkRulesTest {
         assertEquals("task:w1", Timeline.tabFor(Worker("w1", kind = "browser", status = Worker.BLOCKED, tab = "task:w1")))
     }
 
+    // ---- 열린 브라우저 (owner report 2026-11-17: the chat's tab was open on the server but shown nowhere once its task was done)
+    private val chatTab = BrowserTab("16", label = "Namho's phone", kind = "device", title = "쿠팡", url = "https://www.coupang.com/", host = "www.coupang.com",
+        status = "idle", taskId = 509, lastActivity = 100.0, source = "browser")
+    private val androidDevice = BrowserTab("android", label = "Pixel", kind = "device", status = "idle", source = "device")
+    private val noRunning = Timeline.Now(emptyList(), emptyList())
+
+    @Test fun anIdleOpenTabWhoseTaskIsDoneIsListed() {
+        val done = AgentTask(509, title = "쿠팡", status = AgentTask.STATUS_DONE, startedAt = at(7, 9))
+        val now = Timeline.now(Timeline.nest(listOf(done), emptyList()))
+        assertEquals(listOf("16"), Timeline.openTabs(listOf(chatTab), now, emptyList()).map { it.id })
+    }
+
+    @Test fun anEndedTabIsNotListed() {
+        assertTrue(Timeline.openTabs(listOf(chatTab.copy(status = "ended")), noRunning).isEmpty())
+    }
+
+    @Test fun theAndroidDeviceIsNotAnOpenBrowserEvenThoughItsKindIsTheSameAsAPhonesChatTab() {
+        assertEquals(chatTab.kind, androidDevice.kind)                     // the kind cannot tell them apart
+        assertTrue(chatTab.isBrowserTab)
+        assertFalse(androidDevice.isBrowserTab)
+        assertFalse(androidDevice.copy(source = "").isBrowserTab)           // an older server sends no source: the id still says it
+        assertEquals(listOf("16"), Timeline.openTabs(listOf(androidDevice, chatTab), noRunning).map { it.id })
+    }
+
+    @Test fun aTabARunningTaskAlreadyShowsIsNotListedAgain() {
+        val running = AgentTask(509, title = "쿠팡", status = AgentTask.STATUS_RUNNING, startedAt = at(7, 9))
+        val now = Timeline.now(Timeline.nest(listOf(running), emptyList()))
+        assertTrue(Timeline.openTabs(listOf(chatTab.copy(status = "working")), now, emptyList()).isEmpty())
+        val jobTab = BrowserTab("task:w1", taskId = 12, status = "working", source = "browser")
+        val nowJob = Timeline.now(Timeline.nest(listOf(run2), listOf(job)))
+        assertEquals(listOf("16"), Timeline.openTabs(listOf(jobTab, chatTab), nowJob, listOf(job)).map { it.id })
+    }
+
+    @Test fun workingTabsComeFirstThenTheNewest() {
+        val a = chatTab.copy(id = "a", lastActivity = 5.0)
+        val b = chatTab.copy(id = "b", lastActivity = 9.0)
+        val c = chatTab.copy(id = "c", lastActivity = 1.0, status = "working")
+        assertEquals(listOf("c", "b", "a"), Timeline.openTabs(listOf(a, b, c), noRunning).map { it.id })
+    }
+
+    @Test fun theServersListingDecodesWithItsSource() {
+        val json = """{"available":true,"items":[
+            {"id":"android","kind":"device","source":"device","label":"Pixel","title":"Pixel","status":"idle"},
+            {"id":"16","kind":"device","source":"browser","label":"Phone","title":"쿠팡","url":"https://www.coupang.com/","host":"www.coupang.com","status":"idle","task_id":509}]}"""
+        val tabs = Json { ignoreUnknownKeys = true }.decodeFromString(chat.kelo.app.agent.BrowserTabs.serializer(), json).items
+        assertEquals(listOf("16"), Timeline.openTabs(tabs, noRunning).map { it.id })
+    }
+
     private fun sched(id: Long, next: Double?, enabled: Boolean = true, paused: Boolean = false, name: String = "s$id") =
         Schedule(id, name = name, enabled = enabled, paused = paused, nextRunTs = next)
 

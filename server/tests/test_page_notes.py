@@ -8,7 +8,7 @@ import pytest
 from assistant.agent.fence import plain
 from assistant.tools import humanize
 from assistant.tools.browser import BrowserSession, browser_tools
-from assistant.tools.page_notes import masked_values, overlays
+from assistant.tools.page_notes import OVERLAY_JS, masked_values, overlays
 
 from test_purchase import PUBLIC
 
@@ -17,9 +17,18 @@ NOTICE = """<h1>Shop</h1><p>Today's deals: apples 3,000원</p>
   <div style="margin:20vh auto;width:300px;background:#fff"><h3>서버 점검 안내</h3><p>11월 12일 02:00-04:00 점검합니다.</p>
   <label><input type=checkbox id=today> 오늘 그만 보기</label>
   <button onclick="window.saidToday=1;document.getElementById('layer').remove()">오늘 그만 보기</button>
-  <button onclick="document.getElementById('layer').remove()">닫기</button></div></div>"""
+  <button onclick="document.getElementById('layer').remove()">닫기</button>
+  <button data-dismiss="layer" onclick="document.getElementById('layer').remove()"><svg width=10 height=10></svg></button></div></div>"""
+# the same layer with controls that have words only: nothing can tell "close" from "accept" in a language the code does not read
+WORDS_ONLY = """<h1>Shop</h1><p>Today's deals: apples, pears and plums, with many more offers listed below for you to look at.</p><p>More about delivery and returns.</p><div id=layer style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999"><div style="margin:20vh auto;width:300px;background:#fff">
+  <h3>서버 점검 안내</h3><button onclick="window.said='today';document.getElementById('layer').remove()">오늘 그만 보기</button>
+  <button onclick="window.said='close';document.getElementById('layer').remove()">닫기</button></div></div>"""
 PAGES = {
     "https://shop.example.com/notice": NOTICE,
+    "https://shop.example.com/words": WORDS_ONLY,
+    # an icon-only control declared a close control by the framework's attribute, with no class and no label of its own
+    "https://shop.example.com/dismiss": """<p>Article</p><div role=dialog aria-modal=true style="position:fixed;inset:25%;background:#fff;z-index:100"><p>Sign up for our letter</p>
+        <button data-bs-dismiss="modal" onclick="window.shut=1;this.parentNode.remove()"><svg width=10 height=10></svg></button></div>""",
     # a dialog that can only be confirmed: reported, never pressed
     "https://shop.example.com/confirm": """<p>Account</p><div role=dialog aria-modal=true style="position:fixed;top:30%;left:20%;
         width:60%;height:40%;background:#fff;z-index:50"><p>Your session will end soon.</p><button onclick="window.ok=1">확인</button></div>""",
@@ -30,10 +39,31 @@ PAGES = {
     "https://shop.example.com/cookies": """<p>News today</p><div class=cookie-banner style="position:fixed;bottom:0;left:0;right:0;
         z-index:1000;background:#eee">We use cookies. <button onclick="window.cookies='all';this.parentNode.remove()">Accept all</button>
         <button onclick="window.cookies='none';this.parentNode.remove()">Reject all</button></div>""",
-    # an icon-only close button labelled for screen readers
+    # an icon-only close button labelled for screen readers: a label is a word, so it is reported, and no class name makes it a close control
     "https://shop.example.com/icon": """<p>Article</p><div role=dialog aria-modal=true aria-label="Newsletter" style="position:fixed;
-        inset:25%;background:#fff;z-index:100"><p>Sign up for our letter</p><button aria-label="Close" onclick="this.parentNode.remove()">
+        inset:25%;background:#fff;z-index:100"><p>Sign up for our letter</p><button class="modal-close" aria-label="Close" onclick="window.pressed=1">
         <svg width=10 height=10></svg></button></div>""",
+    # an icon-only close button in the top corner with no words and no label: pressed by structure
+    "https://shop.example.com/icon2": """<p>Article</p><div role=dialog aria-modal=true style="position:fixed;inset:25%;background:#fff;z-index:100">
+        <p>Sign up for our letter</p><button style="position:absolute;top:0;right:0" onclick="window.shut=1;this.parentNode.remove()"><svg width=10 height=10></svg></button></div>""",
+    # a dialog whose only close is a button with words (a class name says close): reported, never pressed
+    "https://shop.example.com/wordclose": """<p>Article</p><div role=dialog aria-modal=true style="position:fixed;inset:25%;background:#fff;z-index:100">
+        <p>Sign up for our letter</p><button class="close" onclick="window.pressed=1">Close</button></div>""",
+    # a full-width bar along the bottom edge with no class or id at all, its controls with words only: found as a bar, nothing pressed
+    # a site's own sticky header, full width at the top, an icon-only button (a cart) in its top-right corner: never a layer to close
+    "https://shop.example.com/sticky-header": """<header style="position:sticky;top:0;left:0;width:100%;height:56px;background:#fff;z-index:1000">
+<span>Shop</span><button onclick="window.pressed=true" style="position:absolute;top:4px;right:4px;width:40px;height:40px"><svg width="20" height="20"><rect width="20" height="20"/></svg></button></header>
+<main style="height:3000px"><p>Products</p></main>""",
+    "https://shop.example.com/bar": """<p>News today</p><div style="position:fixed;bottom:0;left:0;width:100%;height:80px;background:#eee;z-index:1000">
+        We use cookies. <button onclick="window.pressed=1">Accept all</button></div>""",
+    # a consent block that is not fixed and not a window: part of the page, never a layer
+    "https://shop.example.com/consent-static": """<p>News today</p><div class="cookie-consent"><p>We use cookies.</p><button onclick="window.pressed=1">Accept all</button></div>""",
+    # a small fixed element named as a consent block, not a bar (narrow, away from the edges): not a layer either
+    "https://shop.example.com/consent-corner": """<p>News today</p><div class="cookie-consent" style="position:fixed;bottom:0;right:0;width:200px;height:60px;background:#eee;z-index:1000">
+        <button onclick="window.pressed=1">OK</button></div>""",
+    # the same layer with a labelled icon control that nothing declares a close control (a menu, a back arrow): never pressed
+    "https://shop.example.com/labelled": """<p>Article</p><div role=dialog aria-modal=true aria-label="Newsletter" style="position:fixed;inset:25%;background:#fff;z-index:100">
+        <p>Sign up for our letter</p><button aria-label="Menu" style="position:absolute;top:0;right:0" onclick="window.pressed=1"><svg width=10 height=10></svg></button></div>""",
     # a date picker the agent's own click opens on the same page
     "https://shop.example.com/picker": """<p>Booking</p><button id=open onclick="document.getElementById('cal').style.display='block'">
         날짜 선택</button><div id=cal role=dialog style="display:none;position:fixed;inset:20%;background:#fff;z-index:100">
@@ -105,10 +135,28 @@ async def session_on(ctx):
 async def test_a_notice_window_is_closed_with_its_own_close_button_never_dont_show_today(ctx):
     s, page = await session_on(ctx)
     out = plain(await s.open("https://shop.example.com/notice"))
-    assert "A layer covered the page" in out and "서버 점검 안내" in out and "Closed it with its own 닫기 button" in out
-    assert "not its 오늘 그만 보기 option" in out
+    assert "A layer covered the page" in out and "서버 점검 안내" in out and "Closed it with its own X button" in out   # the icon-only control, not a word button
     assert await page.evaluate("() => !document.getElementById('layer') && !window.saidToday")
     assert "Today's deals" in out and "점검합니다" not in out.split("]\n", 2)[-1]   # the text is the page behind it
+
+
+async def test_a_layer_whose_controls_all_have_words_is_reported_and_no_word_button_is_pressed(ctx):
+    s, page = await session_on(ctx)
+    out = plain(await s.open("https://shop.example.com/words"))
+    assert "A layer still covers the page" in out and "no plain close button" in out and "서버 점검 안내" in out
+    assert await page.evaluate("() => !!document.getElementById('layer') && !window.said")
+
+
+async def test_a_declared_icon_close_control_is_pressed_whatever_the_language(ctx):
+    s, page = await session_on(ctx)
+    out = plain(await s.open("https://shop.example.com/dismiss"))
+    assert "A pop-up window covered the page" in out and await page.evaluate("() => window.shut === 1")
+
+
+async def test_a_labelled_icon_control_nothing_declares_is_never_pressed(ctx):
+    s, page = await session_on(ctx)
+    out = plain(await s.open("https://shop.example.com/labelled"))
+    assert "still covers the page" in out and await page.evaluate("() => !window.pressed")
 
 
 async def test_a_window_without_a_plain_close_button_is_reported_not_pressed(ctx):
@@ -125,17 +173,48 @@ async def test_a_sign_in_window_is_left_alone(ctx):
     assert await page.evaluate("() => !!document.querySelector('input[type=password]')")
 
 
-async def test_a_cookie_banner_is_closed_by_rejecting_never_accepting(ctx):
+async def test_a_cookie_banner_with_word_buttons_is_reported_neither_accepted_nor_rejected_by_code(ctx):
     s, page = await session_on(ctx)
     out = plain(await s.open("https://shop.example.com/cookies"))
-    assert "A cookie banner covered the page" in out and "Reject all" in out
-    assert await page.evaluate("() => window.cookies") == "none"
+    assert "covers the page" not in out and "covered the page" not in out   # an edge bar is not a layer: the agent reads it in the page
+    assert await page.evaluate("() => window.cookies") is None
 
 
-async def test_an_icon_close_button_counts(ctx):
+async def test_a_bar_along_an_edge_is_not_a_layer_and_nothing_in_it_is_pressed(ctx):
+    """A consent bar and a sticky header with an icon in its corner look alike by geometry; pressing that icon would be a wrong click."""
+    s, page = await session_on(ctx)
+    for url in ("https://shop.example.com/bar", "https://shop.example.com/sticky-header"):
+        await page.goto(url)
+        assert (await page.evaluate(OVERLAY_JS))["found"] == [], url
+        assert await page.evaluate("() => !window.pressed"), url
+
+
+async def test_a_consent_block_that_is_not_a_fixed_window_or_a_bar_is_never_reported(ctx):
+    s, page = await session_on(ctx)
+    for url in ("https://shop.example.com/consent-static", "https://shop.example.com/consent-corner"):
+        await page.goto(url)
+        assert (await page.evaluate(OVERLAY_JS))["found"] == [], url
+        assert await page.evaluate("() => !window.pressed"), url
+
+
+async def test_a_dialog_whose_close_has_words_is_reported_and_not_pressed_whatever_its_class(ctx):
+    s, page = await session_on(ctx)
+    out = plain(await s.open("https://shop.example.com/wordclose"))
+    assert "A pop-up window still covers the page" in out and "no plain close button" in out
+    assert await page.evaluate("() => !window.pressed")
+
+
+async def test_an_icon_only_close_button_in_the_top_corner_of_a_dialog_is_pressed(ctx):
+    s, page = await session_on(ctx)
+    out = plain(await s.open("https://shop.example.com/icon2"))
+    assert "A pop-up window covered the page" in out and await page.evaluate("() => window.shut === 1")
+
+
+async def test_a_labelled_icon_close_is_reported_not_pressed_because_a_class_name_decides_nothing(ctx):
     s, page = await session_on(ctx)
     out = plain(await s.open("https://shop.example.com/icon"))
-    assert "A pop-up window covered the page: Newsletter" in out and "Closed it with its own Close button" in out
+    assert "A pop-up window still covers the page: Newsletter" in out and "no plain close button" in out
+    assert await page.evaluate("() => !window.pressed")
 
 
 async def test_a_window_the_agents_own_click_opened_stays_open(ctx):
@@ -148,9 +227,9 @@ async def test_a_window_the_agents_own_click_opened_stays_open(ctx):
     assert "covered" not in out and await page.evaluate("() => getComputedStyle(document.getElementById('cal')).display") == "block"
 
 
-async def test_payment_and_embedded_windows_are_never_closed(ctx):
+async def test_embedded_windows_are_never_closed(ctx):   # a /checkout address alone decides nothing any more (docs/no-word-lists.md)
     s, page = await session_on(ctx)
-    for url in ("https://shop.example.com/checkout", "https://shop.example.com/embed"):
+    for url in ("https://shop.example.com/embed",):
         out = plain(await s.open(url))
         assert "covered" not in out and "covers" not in out
         assert await page.evaluate("() => !!document.querySelector('div[style*=fixed]')"), url
@@ -160,7 +239,7 @@ async def test_a_notice_on_the_page_a_click_leads_to_is_closed(ctx):
     s, page = await session_on(ctx)
     await s.open("https://shop.example.com/home")
     out = plain(await s.click("#go"))
-    assert "Closed it with its own 닫기 button" in out and await page.evaluate("() => !document.getElementById('layer')")
+    assert "Closed it with its own X button" in out and await page.evaluate("() => !document.getElementById('layer')")
 
 
 async def test_a_masked_value_and_a_guessed_address_are_flagged(ctx):
@@ -176,7 +255,7 @@ def test_masked_values_are_found_and_plain_numbers_are_not():
     assert masked_values("내 계좌\n예치금 0* 원\n보유 예치금 40,000원") == ["예치금 0* 원"]
     assert masked_values("잔액 1,2**원") == ["잔액 1,2**원"]
     assert masked_values("Card ****-****-1234") and masked_values("PIN ●●●●") and masked_values("Balance $--")
-    assert masked_values("Points: - 원") == ["Points: - 원"]
+    assert masked_values("Points: --$") == ["Points: --$"]
     for fine in ("보유 예치금 40,000원", "Total $12.50", "5 - 3 = 2", "* first item\n* second", "2026-11-09 10:00", "1 • 2 km"):
         assert masked_values(fine) == [], fine
 

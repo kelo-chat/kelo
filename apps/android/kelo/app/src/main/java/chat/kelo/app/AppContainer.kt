@@ -5,6 +5,7 @@ import android.os.Build
 import chat.kelo.app.core.AcceptLanguage
 import chat.kelo.app.core.Languages
 import chat.kelo.app.core.KeloApi
+import chat.kelo.app.core.SourceLink
 import chat.kelo.app.core.KeystoreCipher
 import chat.kelo.app.core.PairingClient
 import chat.kelo.app.core.ScreenCache
@@ -20,7 +21,7 @@ import java.io.File
 /** The app's long-lived objects, made once in [KeloApp]. Screens reach it through [LocalAppContainer] or [Context.appContainer]. */
 class AppContainer(context: Context) : AppServices {
     override val appVersion: String = BuildConfig.VERSION_NAME
-    override val sourceCommit: String = BuildConfig.SOURCE_COMMIT
+    override val sourceTag: String? = SourceLink.appTag("android", BuildConfig.VERSION_NAME)
     override val sourceDirty: Boolean = BuildConfig.SOURCE_DIRTY
     val appContext: Context = context.applicationContext
     val httpClient = KeloApi.defaultClient
@@ -77,6 +78,16 @@ class AppContainer(context: Context) : AppServices {
     /** The app's updates: the file builds' own check and download, or Google Play's In-App Updates in the Play build (update/AppUpdates.kt) */
     val updater: chat.kelo.app.update.AppUpdates = chat.kelo.app.update.AppUpdatesFactory.create(appContext)
     override val appUpdates get() = updater
+    /** A newer released app that works with the server (X-Kelo-App-Update): the banner shows once per version; dismissed versions stay on this phone */
+    val appNotice = chat.kelo.app.update.AppNotice(
+        load = { appContext.getSharedPreferences("kelo_update", android.content.Context.MODE_PRIVATE).getString("app_notice_seen", null) },
+        save = { appContext.getSharedPreferences("kelo_update", android.content.Context.MODE_PRIVATE).edit().putString("app_notice_seen", it).apply() },
+    )
+    /** The "new version" popup: once per version, "Later" = 3 days; its answers stay on this phone */
+    val updatePopup = chat.kelo.app.update.UpdatePopup(
+        load = { appContext.getSharedPreferences("kelo_update", android.content.Context.MODE_PRIVATE).getString("popup_until", null) },
+        save = { appContext.getSharedPreferences("kelo_update", android.content.Context.MODE_PRIVATE).edit().putString("popup_until", it).apply() },
+    )
 
     // ---- what the My and wallet pages need from the phone (shared interfaces in chat.kelo.app.platform / wallet)
     /** The activity on screen, for the services below that open a picker, ask for a permission or run the owner's check */

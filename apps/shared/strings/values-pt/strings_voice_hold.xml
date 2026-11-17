@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pt text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Segure para falar</string>
+    <string name="voice_hold_hint">Solte para terminar, deslize para fora para cancelar</string>
+    <string name="voice_dictation_offline">O ditado parou porque a conexão caiu.</string>
+    <string name="voice_dictation_failed">Não foi possível concluir o ditado.</string>
+    <string name="msg_action_read_aloud">Ler em voz alta</string>
+    <string name="msg_action_read_stop">Parar a leitura</string>
+</resources>

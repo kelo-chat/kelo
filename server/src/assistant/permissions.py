@@ -7,25 +7,30 @@ of its tools does). For each kind, and for single actions (a tool, or an MCP ser
   ask    an approval card every time, even where a standing rule or a task's permission would have allowed the step
   off    the step is not run; the model is told the owner turned it off and not to try another way (a connector whose every kind of
          a tool is off does not even show that tool to the model)
+Besides the kinds there is one more switch per connector, "unattended" (allow | off): "Use when I'm not chatting". Off = schedules,
+background jobs, follow-ups, proactive runs and watchers (a turn with `unattended` set, schedule_grants.unattended_now) neither see nor
+may use this connector; the owner's own chats are never affected. Unset = allow (today's behaviour).
 Nothing set = today's behaviour: reads run, and a change, send or delete asks where the tool asks today and runs where it does not
 (`default`, computed from the tools themselves, never hard-coded). An action's mode beats its kind's.
 
 Stored in the meta table as `permissions:<connector id>` = {"read": mode, "change": mode, "send": mode, "delete": mode,
-"actions": {"<action id>": mode}} (only what was set).
+"actions": {"<action id>": mode}, "unattended": "off"} (only what was set).
 
 Gate(permissions, guard) is what agent/loop.py asks before a tool call runs, for chat, schedules and background jobs alike
 (`await gate.check(tool, args)` -> Verdict; `gate.hides(tool_name)`; `gate.limits_line()` for "This Turn").
 
 PERMISSIONS API (api/connectors.py; under the app's bearer token):
-GET    /api/connectors/{id}/permissions   {"connector": id, "name": str, "kinds": [{"kind": read|change|send|delete, "mode", "default",
+GET    /api/connectors/{id}/permissions   {"connector": id, "name": str, "unattended": {"mode": allow|off, "default": "allow"}, "kinds": [{"kind": read|change|send|delete, "mode", "default",
                                             "actions": [{"id", "label", "mode", "default"}]}]}  only the kinds this connector has (a
                                             read-only CalDAV calendar: just "read"). Labels are short and translated. "mode" is what
                                             applies now (what was set, else the default). The ids: Gmail, Outlook and IMAP mailboxes, Google
                                             Calendar, "phone" (the shared phone), key services, apps on the owner's network, MCP services (their
                                             own tools appear as Kelo learns them), Nest packages that keep entries.
-PUT    /api/connectors/{id}/permissions   body as GET, partial: {"read"?: mode, "change"?: ..., "actions"?: {"<id>": mode|null}}; a null
+PUT    /api/connectors/{id}/permissions   body as GET, partial: {"read"?: mode, "change"?: ..., "actions"?: {"<id>": mode|null},
+                                            "unattended"?: "allow"|"off"|null}; a null
                                             clears that setting back to the default; -> the same as GET; 404 unknown connector; 422 for a
-                                            kind the connector does not have, an unknown action id or a mode other than allow|ask|off
+                                            kind the connector does not have, an unknown action id, a mode other than allow|ask|off (or
+                                            other than allow|off for "unattended")
 DELETE /api/connectors/{id}/permissions   every setting of this connector back to the default -> the same as GET
 GET    /api/connectors rows gain "limited": true when anything set differs from the default (off, or ask where it was allow, or an
                                             "ask" that overrides a standing rule)
@@ -35,13 +40,14 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from . import effects, forbidden
+from . import effects, forbidden, form_values
 from .effects import FAMILIES, KINDS, ActionInfo, Effect, all_actions
 from .i18n import N_, t
 from .privacy_guard import URL_TOOLS
@@ -49,10 +55,14 @@ from .privacy_guard import URL_TOOLS
 log = logging.getLogger("uvicorn.error")
 
 MODES = ("allow", "ask", "off")
+UNATTENDED_MODES = ("allow", "off")   # "Use when I'm not chatting"
 PREFIX = "permissions:"
 MCP_PREFIX = "permissions-mcp:"
 OFF_MESSAGE = ("The owner turned this off for {name} in the app (Connectors → {name} → What Kelo may do). Tell them if it matters; "
                "do not try another way.")
+SLOW_DOWN_MESSAGE = "{name} asked Kelo to slow down; try again after {when}."
+JOB_RETRY_NOTE = " If this stops the job, report it as blocked with retry_after_min={minutes} so it resumes by itself."
+UNATTENDED_OFF_MESSAGE = ("The owner turned off using {name} when they are not chatting. Do not try another way; say so in the result.")
 LIMIT_WORDS = {"read": ("no reading", "reading asks"), "change": ("no changes", "changes ask"), "send": ("no sending", "sending asks"),
                "delete": ("no deleting", "deleting asks")}
 LIMITS_MAX = 200
@@ -79,6 +89,7 @@ class Verdict:
     card: str = ""                # ask: a line for the approval card (the privacy guard says what goes where)
     connector: str = ""
     kind: str = ""
+    trail: list[dict[str, Any]] = field(default_factory=list)   # the data trail's offers for "always for this recipient" (data_trail.py)
 
 
 def family_of(cid: str, row: dict[str, Any] | None = None, *, package: Any = None) -> str | None:
@@ -124,7 +135,8 @@ def connected_by_family(table: dict[str, dict[str, Any]], accounts: list[dict[st
 class Permissions:
     def __init__(self, store: Any, *, tools: Callable[[], list[Any]] | None = None, names: Callable[[str], str] | None = None,
                  accounts: Callable[[], list[dict[str, Any]]] | None = None, aliases: Callable[[str], str | None] | None = None,
-                 connected: Callable[[], dict[str, list[str]]] | None = None, clock: Callable[[], float] = time.time):
+                 connected: Callable[[], dict[str, list[str]]] | None = None, clock: Callable[[], float] = time.time,
+                 unattended: Callable[[], bool] | None = None, cooldowns: Any = None):
         self.store = store
         self.tools = tools or (lambda: [])                # the run's tools: what asks today comes from them
         self.names = names or (lambda cid: cid)           # connector id -> the name shown to the owner and the model
@@ -132,6 +144,9 @@ class Permissions:
         self.aliases = aliases                            # vault item -> catalog id (installed packages)
         self.connected = connected or (lambda: {})        # family -> the ids of the connectors connected now (hides a tool)
         self.clock = clock
+        from .connector_cooldown import cooldowns as shared
+        self.cooldowns = cooldowns if cooldowns is not None else shared   # connector_cooldown.py: services that asked Kelo to slow down
+        self.unattended_now = unattended or _unattended_now   # whether the turn running now is one nobody is chatting in
         self._cfg: dict[str, dict[str, Any]] | None = None
         self.version = 0                                  # counts changes of the settings (a running turn re-reads its tool list)
         effects.on_mcp_tools = self._mcp_listed
@@ -164,6 +179,8 @@ class Permissions:
         acts = v.get("actions")
         if isinstance(acts, dict):
             out["actions"] = {str(k): m for k, m in acts.items() if m in MODES}
+        if v.get("unattended") in UNATTENDED_MODES:
+            out["unattended"] = v["unattended"]
         return {k: x for k, x in out.items() if x}
 
     def _save(self, cid: str, cfg: dict[str, Any]) -> None:
@@ -235,7 +252,8 @@ class Permissions:
             known = effects.known_mcp_tools(info.id)
             for alias in {info.id, *self._item_names(info.id)}:
                 known.update(effects.known_mcp_tools(alias))
-            out += [ActionInfo(n, _pretty(n), effects.mcp_kind(n, a)) for n, a in sorted(known.items())]
+            out += [ActionInfo(n, _pretty(n), max((effects.mcp_kind(n, a, c) for c in {info.id, *self._item_names(info.id)}),
+                                                  key=effects.KIND_RANK.__getitem__)) for n, a in sorted(known.items())]
         return out
 
     def _item_names(self, cid: str) -> set[str]:
@@ -258,7 +276,8 @@ class Permissions:
                      "default": self.default(info, kind, a.id)}
                     for a in acts if a.kind == kind]
             out.append({"kind": kind, "mode": cfg.get(kind) or self.default(info, kind), "default": self.default(info, kind), "actions": rows})
-        return {"connector": info.id, "name": info.name, "kinds": out}
+        return {"connector": info.id, "name": info.name, "unattended": {"mode": cfg.get("unattended") or "allow", "default": "allow"},
+                "kinds": out}
 
     def put(self, info: Info, body: dict[str, Any]) -> None:
         """A (partial) change: {"read"?: mode|None, ..., "actions"?: {id: mode|None}}. PermissionsError for anything unknown."""
@@ -278,6 +297,10 @@ class Permissions:
                     if aid not in acts:
                         raise PermissionsError(f"unknown action {aid!r}")
                     _set(cfg.setdefault("actions", {}), aid, mode)
+            elif key == "unattended":
+                if value is not None and value not in UNATTENDED_MODES:
+                    raise PermissionsError(f"unattended must be allow or off (not {value!r})")
+                _set(cfg, key, value, UNATTENDED_MODES)
             elif key not in ("connector", "name"):
                 raise PermissionsError(f"unknown field {key!r}")
         self._save(info.id, cfg)
@@ -290,6 +313,8 @@ class Permissions:
         cfg = self._load().get(cid)
         if not cfg:
             return False
+        if cfg.get("unattended") == "off":
+            return True
         for kind in KINDS:
             if cfg.get(kind) in ("off", "ask") or (cfg.get(kind) == "allow" and info is not None and self.default(info, kind) != "allow"):
                 return True
@@ -304,6 +329,31 @@ class Permissions:
             return None
         return (cfg.get("actions") or {}).get(action) or cfg.get(kind)
 
+    def unattended_off(self, cid: str) -> bool:
+        """The owner turned "Use when I'm not chatting" off for this connector."""
+        return (self._load().get(cid) or {}).get("unattended") == "off"
+
+    def slow_down_note(self, cid: str) -> str:
+        """What the model is told for a call to a connector whose service asked Kelo to slow down ("" = not cooling down). No request is made."""
+        until = self.cooldowns.blocked(cid)
+        if until is None:
+            return ""
+        note = SLOW_DOWN_MESSAGE.format(name=self.names(cid), when=self._clock_time(until))
+        from .workers import current_worker
+        if current_worker.get():   # a background job: blocked + retry_after_min makes it resume by itself (workers.py)
+            note += JOB_RETRY_NOTE.format(minutes=max(1, math.ceil((until - self.cooldowns.clock()) / 60)))
+        return note
+
+    def _clock_time(self, ts: float) -> str:
+        """HH:MM in the owner's time zone."""
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        try:
+            zone: Any = ZoneInfo(str(self.store.profile().get("timezone") or "UTC"))
+        except Exception:  # noqa: BLE001 - no profile or an unknown zone: UTC
+            zone = timezone.utc
+        return datetime.fromtimestamp(ts, zone).strftime("%H:%M")
+
     def effect(self, tool: Any, args: dict[str, Any]) -> Effect | None:
         return effects.effect_of(tool, args, accounts=self.accounts, aliases=self.aliases)
 
@@ -317,7 +367,10 @@ class Permissions:
         if not targets:
             return False
         acts = [a for a in FAMILIES[family] if effects.ACTION_TOOL.get(a.id, a.id) == tool_name]
+        quiet = self.unattended_now()   # nobody is chatting: a connector switched off for such runs counts as off for every kind
         for cid in targets:
+            if quiet and self.unattended_off(cid):
+                continue
             if family == "mcp" or not acts:
                 if any(self.mode_of(cid, k, tool_name) != "off" for k in kinds):
                     return False
@@ -331,12 +384,18 @@ class Permissions:
             return Verdict()
         mode = self.mode_of(e.connector, e.kind, e.action)
         v = Verdict(connector=e.connector, kind=e.kind)
+        if self.unattended_off(e.connector) and self.unattended_now():
+            return Verdict("off", UNATTENDED_OFF_MESSAGE.format(name=self.names(e.connector)), connector=e.connector, kind=e.kind)
         if mode == "off":
             return Verdict("off", OFF_MESSAGE.format(name=self.names(e.connector)), connector=e.connector, kind=e.kind)
+        slow = self.slow_down_note(e.connector)
+        if slow:
+            return Verdict("off", slow, connector=e.connector, kind=e.kind)
         if mode == "ask":
             v.action = "ask"
         elif mode == "allow" and not effects.keeps_own_checks(tool, args):
-            v.action = "allow"
+            # a method declared "task" or "fresh" (connector_rules.json) is never switched to "no card" by a connector-wide setting
+            v.action = "allow" if e.policy in ("", "standing") else "ask"
         return v
 
     def limits_line(self) -> str:
@@ -369,6 +428,12 @@ def flat_body(body: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(body, dict):
         raise PermissionsError("the body must be an object")
     flat = {k: v for k, v in body.items() if k != "kinds"}
+    if isinstance(flat.get("unattended"), dict):   # the GET shape: {"mode", "default"}; unchanged = nothing to set
+        mode = flat["unattended"].get("mode")
+        if mode is None or mode != (current.get("unattended") or {}).get("mode"):
+            flat["unattended"] = mode
+        else:
+            del flat["unattended"]
     kinds = body.get("kinds")
     if kinds is None:
         return flat
@@ -395,13 +460,18 @@ def flat_body(body: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
     return flat
 
 
-def _set(into: dict[str, Any], key: str, value: Any) -> None:
+def _set(into: dict[str, Any], key: str, value: Any, modes: tuple[str, ...] = MODES) -> None:
     if value is None:
         into.pop(key, None)
-    elif value in MODES:
+    elif value in modes:
         into[key] = value
     else:
-        raise PermissionsError(f"mode must be allow, ask or off (not {value!r})")
+        raise PermissionsError(f"mode must be {', '.join(modes[:-1])} or {modes[-1]} (not {value!r})")
+
+
+def _unattended_now() -> bool:
+    from .schedule_grants import unattended_now
+    return unattended_now()
 
 
 def _pretty(tool: str) -> str:
@@ -418,16 +488,21 @@ class Gate:
     steps after outside text (outside_rule.py)."""
 
     def __init__(self, permissions: Permissions, guard: Any = None, *, browser_step: Any = None, apply_covers: Any = None,
-                 outside: Any = None, on_stopped: Any = None, once: Any = None):
+                 outside: Any = None, on_stopped: Any = None, once: Any = None, trail: Any = None,
+                 form_field: Any = None, site_named: Any = None, flagged: Any = None, first_chat: Any = None):
         """`guard`: privacy_guard.PrivacyGuard. `browser_step(tool, args)` (async): (commit kind, site) of a browser click or typing
         step, as commits.py judges it. `apply_covers(site)`: a task's "apply" permission covers this site's form (schedule_grants).
         `outside`: outside_rule.OutsideReview (a send, change or delete after outside text asks unless the owner named the target).
         `on_stopped()`: told when the guard or that rule turned a step into a card or refused it (injection_watch.step_stopped).
         `once`: done_once.DoneOnce; its tool action_result is offered only while some step's result is unknown."""
+        self.form_field, self.site_named = form_field, site_named   # private form values (form_values.py): the typed field's facts, the task's site
         self.once = once
+        self.first_chat = first_chat   # first_chat.FirstChat: its two tools are offered only while the first conversation is open
+        self.trail = trail   # data_trail.DataTrail: labels of results, and the review of what leaves (decisions 1-7)
         self.permissions, self.guard = permissions, guard
         self.browser_step, self.apply_covers = browser_step, apply_covers
         self.outside, self.on_stopped = outside, on_stopped
+        self.flagged = flagged   # () -> bool: the injection watch's judge found instructions aimed at the assistant in this run's outside text
 
     async def check(self, tool: Any, args: dict[str, Any]) -> Verdict:
         """The owner's limits and the privacy guard, plus forbidden.py: a call Kelo never makes is not run (whoever asks, even where the
@@ -442,21 +517,59 @@ class Gate:
 
     async def _check(self, tool: Any, args: dict[str, Any]) -> Verdict:
         name = str(getattr(tool, "name", tool))
+        await effects.ensure_judged(tool, args)   # an MCP tool or REST request nothing declares: the tool judge says what it does
         e = self.permissions.effect(tool, args)
         v = self.permissions.verdict(tool, args) if e is not None else Verdict()
         if v.action == "off":
             return v
         commit, site = await self._browser_judgement(name, args) if (self.guard or self.outside) else ("", "")
-        hit = self._guard_hit(tool, name, args, e, commit, site)
+        hit = await self._guard_hit(tool, name, args, e, commit, site)
+        form_ok = False
+        if hit is not None and not hit.leak and name == "browser_type" and self._form_value_ok(hit, args, site):
+            hit, form_ok = None, True   # the owner's own value typed into a field made for it, on the task's site (T2)
         if hit is not None and hit.leak:   # Kelo's private marker on its way out: not run, whatever is allowed
             return Verdict("off", hit.line, connector=v.connector, kind=v.kind)
         line = self.outside.line(e, name, args, commit=commit, site=site) if self.outside is not None else None
-        if hit is None and line is None:
+        if line is None and self.outside is not None and self.flagged is not None and self.flagged():   # judged hostile text this run: acting steps ask
+            line = self.outside.line(e, name, args, commit=commit, site=site, strict=True)
+        seen = self._trail_review(tool, name, args, e, commit, site, form_ok)
+        if seen is not None and seen.action == "refuse":   # a saved key or password on its way to a place it does not belong to
+            return Verdict("off", seen.message, connector=v.connector, kind=v.kind)
+        if hit is None and line is None and seen is None:
             return v
         if self.on_stopped is not None:
             self.on_stopped()
-        card = "\n".join(x for x in (hit.line if hit is not None else "", line or "") if x)
-        return Verdict("ask", card=card, connector=v.connector, kind=v.kind)   # even where "allow" is set or a grant covers it
+        card = "\n".join(x for x in (hit.line if hit is not None else "", line or "", seen.card if seen is not None else "") if x)
+        # even where "allow" is set or a grant covers it
+        return Verdict("ask", card=card, connector=v.connector, kind=v.kind, trail=seen.offers if seen is not None else [])
+
+    def _trail_review(self, tool: Any, name: str, args: dict[str, Any], e: Any, commit: str, site: str, form_ok: bool = False) -> Any:
+        """The data trail's review of what this call sends (data_trail.py): None = nothing to say; else a Review (ask / refuse)."""
+        if self.trail is None:
+            return None
+        try:
+            ob = self.trail.outbound(tool, name, args, e, commit, site)
+        except Exception:  # noqa: BLE001 - a call that cannot be read asks
+            log.exception("the data trail could not read %s", name)
+            from .data_trail import Review
+            return Review("ask", self.trail.unreadable_line())
+        if ob is None:
+            return None
+        ob.form_ok = form_ok
+        r = self.trail.review(ob)
+        return r if r.action != "pass" else None
+
+    def _form_value_ok(self, hit: Any, args: dict[str, Any], site: str) -> bool:
+        """The owner's private values typed here pass when the field's autocomplete token is of their kind and the page is the task's site
+        or covered by a grant (docs/data-trail.md, private form values). Any doubt (a field that was not read) asks."""
+        if self.form_field is None or self.site_named is None or not site:
+            return False
+        try:
+            info = self.form_field(str(args.get("selector") or ""))
+            return bool(info) and form_values.vouches(hit.categories, info.get("autocomplete")) and bool(self.site_named(site))
+        except Exception:  # noqa: BLE001 - fail closed: a card
+            log.exception("could not check the form field")
+            return False
 
     async def _browser_judgement(self, name: str, args: dict[str, Any]) -> tuple[str, str]:
         """(commit kind, site) of typing into a page, as commits.py judges it; ("", "") for any other step or without a browser."""
@@ -467,9 +580,15 @@ class Gate:
         except Exception:  # noqa: BLE001 - a step that cannot be judged here is judged by its own tool
             return "", ""
 
-    def _guard_hit(self, tool: Any, name: str, args: dict[str, Any], e: Any, commit: str, site: str) -> Any:
+    async def _guard_hit(self, tool: Any, name: str, args: dict[str, Any], e: Any, commit: str, site: str) -> Any:
         if self.guard is None:
             return None
+        prepare = getattr(self.guard, "prepare", None)   # the model's part of the check, ahead of the sync one (privacy_guard.prepare)
+        if prepare is not None:
+            try:
+                await prepare(tool, args, e, commit=commit, site=site)
+            except Exception:  # noqa: BLE001 - not judged: the check takes the safe side
+                log.warning("privacy guard: could not prepare the check")
         if e is not None and e.kind in ("send", "change", "delete"):
             return self.guard.check(tool, args, e)
         if name in URL_TOOLS:
@@ -482,12 +601,15 @@ class Gate:
     def hides(self, tool_name: str) -> bool:
         if self.once is not None and self.once.hides(tool_name):
             return True
+        if self.first_chat is not None and self.first_chat.hides(tool_name):
+            return True
         return self.permissions.hides(tool_name)
 
     def hidden_key(self) -> tuple[int, ...]:
         """Changes when the owner changes a setting (or a step's result becomes unknown or known): a running turn then works out its
         tool list again."""
-        return (self.permissions.version, self.once.version if self.once is not None else 0)
+        return (self.permissions.version, self.once.version if self.once is not None else 0,
+                self.first_chat.version if self.first_chat is not None else 0)
 
     def limits_line(self) -> str:
         return self.permissions.limits_line()

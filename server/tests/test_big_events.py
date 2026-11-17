@@ -24,11 +24,11 @@ def ev(title, start, end=None, *, all_day=False, where="", day=None):
 
 def test_what_counts_as_big():
     k = lambda e: big_events.kind(e, SEOUL)   # noqa: E731
-    assert k(ev("상하이 여행", ts(2026, 11, 16), ts(2026, 11, 19), all_day=True)) == "trip"
+    assert k(ev("상하이 여행", ts(2026, 11, 16), ts(2026, 11, 19), all_day=True)) == "days"            # a trip is a several-day event
     assert k(ev("KE893 ICN-PVG", ts(2026, 11, 16, 9), ts(2026, 11, 16, 11))) == "flight"
-    assert k(ev("대한항공 KE893", ts(2026, 11, 16, 9), ts(2026, 11, 16, 11))) == "flight"
-    assert k(ev("Check in", ts(2026, 11, 16, 15), ts(2026, 11, 16, 16), where="Hotel Nikko")) == "stay"
-    assert k(ev("숙소 체크인", ts(2026, 11, 16, 15), ts(2026, 11, 16, 16))) == "stay"
+    assert k(ev("대한항공 KE893", ts(2026, 11, 16, 9), ts(2026, 11, 16, 11))) is None                # no word of a language is read
+    assert k(ev("Check in", ts(2026, 11, 16, 15), ts(2026, 11, 16, 16), where="Hotel Nikko")) is None
+    assert k(ev("숙소", ts(2026, 11, 16, 15), ts(2026, 11, 18, 11))) == "days"                         # a stay is a several-day event
     assert k(ev("Workshop", ts(2026, 11, 16), ts(2026, 11, 18), all_day=True)) == "days"          # two all-day days
     assert k(ev("Camp", ts(2026, 11, 13, 18), ts(2026, 11, 15, 12))) == "days"                    # Friday evening to Sunday
     assert k(ev("Late dinner", ts(2026, 11, 13, 22), ts(2026, 11, 14, 1))) is None                # past midnight, but short
@@ -58,7 +58,7 @@ async def test_a_trip_two_weeks_away_is_told_once_at_seven_days_and_once_the_day
     clock.t = ts(2026, 11, 9, 9)
     assert (await p.run())["sent"] == 1
     shown = judge.requests[-1].messages[-1]["content"]
-    assert "coming up: a trip, in 7 days (2026-11-16 to 2026-11-19)" in shown and "what to prepare" in shown
+    assert "coming up: an event over several days, in 7 days (2026-11-16 to 2026-11-19)" in shown and "what to prepare" in shown
     assert '"coming up"' in judge.requests[-1].messages[0]["content"]
     assert sent[-1]["message"].startswith("상하이 여행 준비")
     # the next passes and days before the day before: nothing again, no model call
@@ -82,7 +82,7 @@ async def test_a_flight_added_late_is_told_at_the_nearest_lead_and_counts_toward
     store, home, clock, p, sent = setup(tmp_path, judge, t=ts(2026, 11, 9, 9), calendar=calendar([flight]))
     p.update(daily_regular=0)       # no room for a 보통 message today
     assert (await p.run())["sent"] == 0
-    assert any(r["key"].startswith("ahead:") and r["status"] == "dropped" and "Over the number" in r["reason"] for r in p.log())
+    assert [x["why"] for x in p.held()] == ["over_cap"] and not any(r["status"] == "dropped" for r in p.log())   # kept until its deadline, not dropped
     p.update(daily_regular=2)
     clock.t = ts(2026, 11, 10, 9)   # the next day it may go: still at the 7-day lead (2 days away)
     assert (await p.run())["sent"] == 1 and "a flight, in 2 days" in judge.requests[-1].messages[-1]["content"]
@@ -90,7 +90,7 @@ async def test_a_flight_added_late_is_told_at_the_nearest_lead_and_counts_toward
 
 async def test_the_flight_is_not_also_a_timed_alert_the_day_before(tmp_path):
     judge = Judge(lambda items: [{"n": n, "urgency": "오늘", "reason": "x", "message": f"m{n}"} for n, _ in items])
-    flight = ev("Flight to Shanghai", ts(2026, 11, 10, 8), ts(2026, 11, 10, 10))
+    flight = ev("Flight ICN-PVG", ts(2026, 11, 10, 8), ts(2026, 11, 10, 10))
     store, home, clock, p, sent = setup(tmp_path, judge, t=ts(2026, 11, 9, 12), calendar=calendar([flight]))
     assert (await p.run())["sent"] == 1
     assert [r["key"].split(":")[0] for r in p.log()] == ["ahead"]       # one message, not a second one for the same flight
@@ -130,10 +130,10 @@ async def test_the_briefing_has_a_short_coming_up_line_for_this_week(tmp_path):
     evs = [ev("Standup", ts(2026, 11, 9, 10), ts(2026, 11, 9, 10, 15)),
            ev("상하이 여행", ts(2026, 11, 12), ts(2026, 11, 15), all_day=True),
            ev("Company holiday", ts(2026, 11, 9), ts(2026, 11, 10), all_day=True),
-           ev("Flight to Osaka", ts(2026, 11, 20, 9), ts(2026, 11, 20, 11))]          # past this week: not in the line
+           ev("Flight ICN-KIX", ts(2026, 11, 20, 9), ts(2026, 11, 20, 11))]          # past this week: not in the line
     b = Briefing(store, NoWeather(), p, calendar=calendar(evs), clock=lambda: now)
     card = await b.build(now)
     assert [e["title"] for e in card["events"]] == ["Standup"]                          # today's timed events only
-    assert [(a["title"], a["kind"], a["first"], a["last"]) for a in card["ahead"]] == [("상하이 여행", "trip", "2026-11-12", "2026-11-14")]
+    assert [(a["title"], a["kind"], a["first"], a["last"]) for a in card["ahead"]] == [("상하이 여행", "days", "2026-11-12", "2026-11-14")]
     assert "Coming up: 상하이 여행 (11-12–11-14)" in b.plain(card)
     assert date.fromisoformat(card["ahead"][0]["first"]) > datetime.fromtimestamp(now, SEOUL).date()

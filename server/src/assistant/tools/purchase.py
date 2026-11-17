@@ -23,17 +23,23 @@ nothing more; a second payment in the same order always asks (reason "order_agai
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import re
 import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
-from ..agent import Tool, approval_of_current_call, approval_timeout, current_box, current_call, emit_ui
+from ..agent import Ours, Tool, ToolOutput, approval_of_current_call, approval_timeout, current_box, current_call, emit_ui
 from ..agent.fence import data
-from ..i18n import t
+from ..i18n import N_, t
 from ..wallet import CARD_TTL, EXPLAIN, CardDeliveries, CardSecret, Decision, Wallet, WalletError, money_text
 from .browser import EXTRA_AUTH_NOTE, PURCHASE_WINDOW_SECONDS, BrowserPolicyError, BrowserSession, browser_owner
+from .. import order_check, pay_terms
+from ..pay_preapprovals import COVER_SOURCES, SOURCE_ALLOW, SOURCE_PREAPPROVAL, Preapprovals
+from .checkout import CHECKING, DESCRIBE_JS, MARK, Reviews, amount_over, origin_of, read_page, total_shown
+from .page_tree import ref_selector
 from .sites import registrable as site_key, same_site
 
 MAX_ITEMS = 20
@@ -41,7 +47,7 @@ MAX_ITEMS = 20
 CARD_NUMBER = re.compile(r"(?:\d[ -]?){13,19}")   # a run of 13-19 digits (spaces/dashes allowed) looks like a card number
 MAX_SUMMARY = 400
 APPROVAL_WAIT = 300.0   # how long the app's approval card waits (server.APPROVAL_TIMEOUT_SECONDS); a card slot lives that long plus CARD_TTL
-DECLINED = ("The user did NOT approve this payment (they said no, or did not answer in time). Do NOT click pay, order, book or confirm, "
+DECLINED = ("The user did NOT approve this payment (they said no, or did not answer in time). Do NOT click pay, order, book or confirm and do not call checkout_submit, "
             "and do not try another way to pay. Leave the order unpaid and tell the user plainly; ask what they want to change if anything.")
 NO_CARD_SENT = ("The user allowed the payment, but their phone did not send the card in time, so nothing can be paid with it. Do NOT click "
                 "pay and do not try another way to pay. Tell the user and ask them to try again (Allow, then confirm with fingerprint/face "
@@ -126,16 +132,23 @@ def clean_items(raw: Any) -> list[dict[str, Any]]:
 
 def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None, deliveries: CardDeliveries | None = None,
                    *, card_wait: float = CARD_TTL, grants: Any = None, orders: Any = None, pins: Any = None, pin_deliveries: Any = None,
-                   ledger: Any = None, paths: Any = None, notify: Any = None, timezone: Any = None, clock: Any = time.time) -> list[Tool]:
+                   ledger: Any = None, paths: Any = None, notify: Any = None, timezone: Any = None, clock: Any = time.time,
+                   reviews: Reviews | None = None, pay_ledger: pay_terms.PayLedger | None = None, ask: Any = None,
+                   preapprovals: Preapprovals | None = None) -> list[Tool]:
     """`grants`: the standing permissions of conditional tasks (schedule_grants.ConditionalGrants): a run of a task (a schedule, a
     watcher's hit, a job) the user allowed at setup to buy on its own completes a purchase within its limits without a card.
     `orders`: the order going on (tools/order.Orders). `pins` / `pin_deliveries` (payment_pins.py): a payment PIN saved for the site is
     released by the phone for an approved payment (with the approval's Allow, or a `pin_needed` card when there was none) and kept in
     `pin_deliveries` for one use. `ledger`: the approved payment of each tab (the payment-step card shows it). `paths`: PaymentPaths. `notify(title, body, task_id)`: an urgent notice to the owner (purchase_result's wrong charge). `timezone()`: the
-    owner's timezone name (a cancel deadline the page gave without one)."""
+    owner's timezone name (a cancel deadline the page gave without one). `pay_ledger`: the order terms and payment approvals
+    (pay_terms.py; an in-memory one when none is given). `ask(system, user)` -> dict | None: the order check's one model request
+    (model_json.ModelJson.ask; None = no model: every order check ends in open_choice). `preapprovals`: phase P3 (pay_preapprovals.py):
+    the owner's one-order pre-approval and a schedule's payment allow cover a payment with no card."""
     arms: dict[str, _Arm] = {}               # device -> the card of the payment approved last on its tab
     # (device, tool call id) -> (the decision taken for it, the covering schedule grant, the reason in words): read back by the handler
     decided: dict[tuple[str, str], tuple[Decision, Any, str]] = {}
+    # (device, call id) -> the P3 cover found for the checkout_review being decided: (source, preapproval / allow id)
+    covers: dict[tuple[str, str], tuple[str, str]] = {}
 
     def card_of(args: dict[str, Any]) -> dict[str, Any] | None:
         """The card named in `card`; with neither a card nor another payment way named, the card a task's purchase permission
@@ -197,17 +210,6 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
                 return f"the card '{card['label']}' has no stored details yet; ask the user to finish adding it in the app, or use another card"
         return None
 
-    def asked_to_buy_here(order: Any, host: str) -> bool:
-        """The owner's own words (never page or mail text: Orders.request reads only their messages) ask to buy, and the order the
-        agent runs for them is on this payment's site."""
-        if order is None or orders is None or not host or site_key(host.lower()) != order.site or orders.request is None:
-            return False
-        from .order import buy_request
-        try:
-            return buy_request(" ".join(str(orders.request() or "").split()))
-        except Exception:  # noqa: BLE001 - when in doubt the first payment on a site asks
-            return False
-
     def judge(args: dict[str, Any]) -> tuple[Decision, Any, str]:
         """Whether this payment goes ahead without a card, and if not, why: first a task's standing permission (only in a run of that
         task, only within its limits; a card kept on the phone only still needs the phone; the wallet's pause and the vault lock
@@ -217,6 +219,15 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
         order = orders.current() if orders is not None else None
         if order is not None and order.paid:
             return Decision(False, "order_again"), None, ""   # one payment per order: another one always asks
+        cover = covers.get((browser_owner.get(), current_call.get()))
+        if cover is not None:   # the owner's pre-approval or schedule allow (phase P3): the same stops as a task's permission
+            if card is not None and not card["server_copy"]:
+                return Decision(False, "phone_needed"), None, ""
+            if wallet is not None and wallet.paused():
+                return Decision(False, "paused"), None, ""
+            if wallet is not None and wallet.store.vault_locked():
+                return Decision(False, "vault_locked"), None, ""
+            return Decision(True, cover[0]), None, ""
         check = grants.purchase_check(host, amount, cur, str(args.get("summary") or ""), card=card) if grants is not None else None
         if check is not None and check.grant is not None:
             if card is not None and not card["server_copy"]:
@@ -230,7 +241,7 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
             return Decision(False, check.reason), None, check.note
         if not wallet or card is None:
             return Decision(False, "no_card"), None, ""
-        return wallet.decide(card, host, amount, cur, asked_here=asked_to_buy_here(order, host)), None, ""
+        return wallet.decide(card, host, amount, cur), None, ""
 
     def auto(args: dict[str, Any]) -> bool:
         """Approved without a card only by the user's own rules: a task's standing permission, or auto-pay for this card."""
@@ -389,7 +400,7 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
         verdict = decided.pop((browser_owner.get(), current_call.get()), None)
         decision, grant, note = verdict if verdict else (None, None, "")
         why = why_text(decision, note)
-        after = ("Do not add or change anything: if the total on the page is not exactly this, stop and call confirm_purchase again with "
+        after = ("Do not add or change anything: if the total on the page is not exactly this, stop and call checkout_review again with "
                  "the new total. Afterwards read the confirmation page and call purchase_result with what it shows (order number, charged "
                  "total, items, cancel terms); then tell the user.")
         if decision is not None and decision.auto and grant is not None:
@@ -406,15 +417,33 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
             if session:
                 session.allow_purchase(host)
             fill = (f" If the page asks for card details, fill them with browser_fill_card(card={card['label']!r}) (never type a card "
-                    "number yourself), then make the final pay click." if card else
-                    " Now make the final pay / order click on that site (it needs no second card for the next few minutes).")
+                    "number yourself), then call checkout_submit with the review_id." if card else
+                    " Now call checkout_submit with the review_id (it needs no second card).")
             return (f"APPROVED by the standing permission the user gave this task at setup (within its cap of "
                     f"{grant['max_amount_text']} per time): {summary}, total {amount}, on {host}. The user is notified.{fill} "
                     "If anything differs from what was expected (another total, new terms, an extra step that asks for money or an "
-                    f"account change), stop and call confirm_purchase again or ask the user. {after}" + await after_ok(args, card, grant))
+                    f"account change), stop and call checkout_review again or ask the user. {after}" + await after_ok(args, card, grant))
+        if decision is not None and decision.auto and decision.reason in COVER_SOURCES:
+            # the owner's pre-approval of this one order, or the allow they gave this schedule's payments: no card now
+            payment = wallet.record("approved", card, host, summary, amount_value, cur) if wallet else {}
+            via = card["label"] if card else (str(args.get("pay_with") or "").strip()[:60] or host)
+            await emit_ui({"type": "payment_auto", "payment": {**payment, **order_extra(args)}, **({"card": _brief(card)} if card else {}),
+                           "preapproval": {"kind": decision.reason, "via": via}})
+            if card:
+                arm(card, host, "server", None)
+            if session:
+                session.allow_purchase(host)
+            why_cover = ("the order the user approved in advance (one order, within its maximum)" if decision.reason == SOURCE_PREAPPROVAL
+                         else "the Allow the user gave this schedule's payments (same shop, same payment method)")
+            fill = (f" If the page asks for card details, fill them with browser_fill_card(card={card['label']!r}) (never type a card "
+                    "number yourself), then call checkout_submit with the review_id." if card else
+                    " Now call checkout_submit with the review_id (it needs no second card).")
+            return (f"APPROVED by {why_cover}: {summary}, total {amount}, on {host}. The user is notified.{fill} If anything differs from "
+                    f"what was approved (another total, new terms, an extra step that asks for money), stop and call checkout_review "
+                    f"again. {after}" + await after_ok(args, card, None))
         if wallet and card:
             fill = (f"If the page asks for card details, fill them with browser_fill_card(card={card['label']!r}) (never type a card "
-                    "number yourself), then make the final pay click.")
+                    "number yourself), then call checkout_submit with the review_id.")
             if decision is not None and decision.auto:
                 payment = wallet.record("auto", card, host, summary, amount_value, cur)
                 await emit_ui({"type": "payment_auto", "payment": {**payment, **order_extra(args)}, "card": _brief(card)})
@@ -450,8 +479,22 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
             wallet.record("approved", None, host, summary, amount_value, cur)
         if session:
             session.allow_purchase(host)
-        return (f"APPROVED by the user: {summary}, total {amount}, on {host}.{why} Now make the final pay / order / book "
-                f"click on that site (it needs no second card for the next few minutes). {after}" + await after_ok(args, None, None))
+        return (f"APPROVED by the user: {summary}, total {amount}, on {host}.{why} Now call checkout_submit "
+                f"with the review_id (it needs no second card). {after}" + await after_ok(args, None, None))
+
+    def pay_label(args: dict[str, Any]) -> str:
+        """The payment method of a checkout_review in words: the wallet card's nickname, else the payment way the page showed."""
+        card = card_of(args)
+        return card["label"] if card else " ".join(str(args.get("pay_with") or "").split())[:60]
+
+    def source_of() -> str:
+        """What covers the payment being approved now: the task's grant, the auto-pay rule, or the owner's card answer."""
+        verdict = decided.get((browser_owner.get(), current_call.get()))
+        if verdict is not None and verdict[0].auto:
+            if verdict[0].reason in COVER_SOURCES:
+                return verdict[0].reason
+            return "task_grant" if verdict[1] is not None else "auto_rule"
+        return "card"
 
     tools = [Tool(
         "confirm_purchase",
@@ -474,8 +517,16 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
         confirm, requires_approval=True, describe=describe, validate=validate, declined=declined,
         auto_approve=auto if (wallet or grants is not None) else None, approval_extra=approval_extra,
     )]
+    if session is not None:
+        if pay_ledger is None:
+            from ..store import Store
+            pay_ledger = pay_terms.PayLedger(Store(":memory:"), clock)
+        tools.extend(_checkout_tools(session, reviews if reviews is not None else Reviews(), confirm=confirm, validate=validate, auto=auto,
+                                     describe=describe, declined=declined, approval_extra=approval_extra, money_args=money_args,
+                                     ledger=pay_ledger, ask=ask, source_of=source_of, preapprovals=preapprovals, covers=covers,
+                                     pay_label=pay_label))
     if ledger is not None and session is not None:
-        tools.append(_result_tool(session, ledger, notify=notify, timezone=timezone, clock=clock))
+        tools.append(_result_tool(session, ledger, notify=notify, timezone=timezone, clock=clock, attempts=pay_ledger.attempts))
     if wallet is None:
         return tools
 
@@ -501,7 +552,7 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
         default = next((c for c in cards if c.get("default")), None)
         which = (f"Pay with the default card '{default['label']}' unless the user or the task names another card"
                  if default else "Use the card the user named; if they named none and there is more than one, ask which")
-        return (head + "\n".join(lines) + f"\n{which}. Pass its nickname as confirm_purchase(card=...) (leaving card and pay_with out "
+        return (head + "\n".join(lines) + f"\n{which}. Pass its nickname as checkout_review(card=...) (leaving card and pay_with out "
                 "uses the default card). When you tell the user whether a card pays automatically, repeat only what this list says; "
                 "never claim anything else about their settings.")
 
@@ -515,10 +566,10 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
             return f"no card {str(args.get('card') or '')[:40]!r} in the wallet. Cards: {names() or 'none'}"
         a = arms.get(browser_owner.get())
         if a is None or a.card_id != card["id"] or not a.live():
-            return (f"no approved payment with '{card['label']}' is open. Call confirm_purchase with card={card['label']!r} first; "
+            return (f"no approved payment with '{card['label']}' is open. Call checkout_review with card={card['label']!r} first; "
                     "the card can be typed only right after that")
         if not session.purchase_active(a.host):
-            return "the approval for this payment ran out (time or steps). Call confirm_purchase again"
+            return "the approval for this payment ran out (time or steps). Call checkout_review again"
         here = session.current_host()
         if not _same_site(here, a.host):
             return f"the browser is on {here or 'a blank page'}, but the payment was approved on {a.host}. Card details go only to that site"
@@ -530,7 +581,7 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
         assert card is not None and a is not None and session is not None   # checked by fill_validate
         secret = a.secret if a.source == "phone" else wallet.open_secret(card["id"])
         if secret is None or not secret.number:
-            return ("error: the card details are no longer here (a card the phone sends is typed once). Call confirm_purchase again "
+            return ("error: the card details are no longer here (a card the phone sends is typed once). Call checkout_review again "
                     "if the payment still needs them")
         try:
             result = await session.fill_card(secret.number, secret.cvc, card["exp_month"], card["exp_year"], card["holder"], card["postal_code"])
@@ -559,7 +610,7 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
                 head += f" Not found: {', '.join(result.missing)} (they may come on the next step, or the site may not need them)."
             if result.unreachable:
                 head += f" Frames that could not be reached: {', '.join(result.unreachable)}."
-            head += " Check the page, then make the final pay click (covered by the approval)."
+            head += " Check the page, then call checkout_submit with the review_id."
         if result.auth:
             head += "\n" + EXTRA_AUTH_NOTE.format(words=result.auth)
         return head + "\n\n" + data(result.text)   # only the page is data (fenced by the loop); the lines above are this app's own
@@ -568,7 +619,7 @@ def purchase_tools(session: BrowserSession | None, wallet: Wallet | None = None,
                       "is the default, and whether each pays automatically or needs approval.",
                       {"type": "object", "properties": {}}, wallet_cards, read_only=True))
     tools.append(Tool("browser_fill_card", "Type a wallet card into the checkout form of the page you are on, only right after "
-                      "confirm_purchase approved paying with that card on that site. You never see the values.",
+                      "checkout_review approved paying with that card on that site. You never see the values.",
                       {"type": "object", "properties": {"card": {"type": "string", "description": "the card's nickname"}}, "required": ["card"]},
                       fill_card, validate=fill_validate))
     return tools
@@ -580,11 +631,432 @@ def _same_site(a: str, b: str) -> bool:
     return same_site(a, b)
 
 
+# ---------------------------------------------------------------- checkout_review / checkout_submit (tools/checkout.py, pay_terms.py)
+def _confirm_args(args: dict[str, Any]) -> dict[str, Any]:
+    """checkout_review's arguments in the shape the approval machinery above reads (summary, amount, pay_with, items with quantity)."""
+    raw = [{"name": it.get("name"), "options": ", ".join(str(v) for v in it.get("variants") or []) if isinstance(it.get("variants"), list) else it.get("options"),
+            "quantity": it.get("qty", it.get("quantity")), "price": it.get("unit_price", it.get("price"))}
+           for it in (args.get("items") if isinstance(args.get("items"), list) else []) if isinstance(it, dict)]
+    merchant = " ".join(str(args.get("merchant") or "").split())[:80]
+    lines = ", ".join(f"{i['name']} x{i['quantity']}" for i in clean_items(raw))
+    out: dict[str, Any] = {"summary": ": ".join(x for x in (merchant, lines) if x)[:MAX_SUMMARY], "amount": args.get("total"),
+                           "currency": args.get("currency"), "site": args.get("site"), "pay_with": args.get("payment_method"), "items": raw}
+    for key in ("card", "ship_to", "coupon"):
+        if key in args:
+            out[key] = args[key]
+    return out
+
+
+def current_turn_unattended() -> bool:
+    """The run going on is one nobody watches (a schedule, a job)."""
+    from ..workers import current_turn
+    return bool((current_turn.get() or {}).get("unattended"))
+
+
+def _task_key() -> str:
+    from ..workers import current_turn
+    return str((current_turn.get() or {}).get("task_id") or "")
+
+
+def _owner_request() -> str:
+    """The owner's own request words for this task (its request, or a saved job's request): never outside text."""
+    from ..workers import current_turn
+    return str((current_turn.get() or {}).get("request") or "")
+
+
+# the line a payment card of a scheduled run adds: what its Allow also covers (phase P3)
+SCHEDULE_ALLOW_NOTE = N_("Allow also covers this schedule's later orders from this shop with this payment method")
+
+
+# what the model is told for each way the press is refused: nothing was paid, and what to do
+PRESS_REFUSALS = {
+    pay_terms.ORIGIN: "Nothing was paid: the page is on another site than the one the order was approved for. Go back to the approved shop "
+                      "and call checkout_review again.",
+    pay_terms.AMOUNT: "Nothing was paid: the amount due on the page is higher than the approved total. Read the page, find out why, and "
+                      "call checkout_review again with the total the page really shows (never state a higher total to get it through; "
+                      "the owner approves it again).",
+    pay_terms.CURRENCY_CHANGED: "Nothing was paid: the page's currency is not the approved one. Call checkout_review again with what the "
+                                "page shows now.",
+    pay_terms.CONDITIONAL: "Nothing was paid: a conditional charge on the page is higher than approved. Call checkout_review again.",
+    pay_terms.EXPIRED: "Nothing was paid: the approval has expired. Call checkout_review again (status ready) to ask again.",
+    pay_terms.STATE: "Nothing was paid: that approval is no longer valid (used, declined or revoked). Call checkout_review again.",
+    pay_terms.SUPERSEDED: "Nothing was paid: the order terms were changed after the approval. Call checkout_review with status draft for "
+                          "the current terms, then ready.",
+    pay_terms.DIGEST: "Nothing was paid: the order terms differ from the approved ones. Review the order again.",
+    pay_terms.PREAPPROVAL: "Nothing was paid: the owner's advance approval for this order was removed or switched off. Call checkout_review "
+                           "again (status ready) to ask for the payment as usual.",
+}
+
+
+# the blocks while an order of this task may have gone through (a press happened and its outcome is not settled)
+ORDER_MAY_EXIST = ("An order may already have gone through: a pay control of this task was pressed and its outcome is {state}. "
+                   "Find it first (the confirmation page, the shop's order list, the owner's mail), then call purchase_result with the "
+                   "outcome and the evidence you saw. ")
+BLOCK_REVIEW = ORDER_MAY_EXIST + "No new payment approval is asked until it is recorded as not placed, with its evidence."
+BLOCK_SUBMIT = ORDER_MAY_EXIST + "Nothing was pressed. A second press or a replacement purchase waits for not_placed with its evidence."
+BLOCK_NAVIGATE = ORDER_MAY_EXIST + "This tab is not reloaded or navigated meanwhile: the confirmation may be on it. Read it with browser_read."
+
+
+def _checkout_tools(session: BrowserSession, store: Reviews, *, confirm: Any, validate: Any, auto: Any, describe: Any, declined: Any,
+                    approval_extra: Any, money_args: Any, ledger: pay_terms.PayLedger, ask: Any, source_of: Any,
+                    preapprovals: Preapprovals | None = None, covers: dict[tuple[str, str], tuple[str, str]] | None = None,
+                    pay_label: Any = None) -> list[Tool]:
+    """The two tools that replace the final pay click.
+
+    checkout_review(status=draft) records the order terms and runs the ORDER CHECK (order_check.py); no card. checkout_review(status=ready)
+    needs a passed check on the same terms (or a change of only the total after one), then finds cover (the owner's task grant or
+    auto-pay rule, else the approval card: a payment card, signed on the phone) and writes the payment approval; its id is the review_id.
+    Phase P3 (`preapprovals`, pay_preapprovals.py): a one-order pre-approval the order check matched, or a schedule's payment allow
+    (same origin, same payment method), covers the payment with no card; `covers` hands that to the purchase judge.
+    checkout_submit re-reads the live page and refuses (nothing pressed) when the approval no longer covers it, then presses the control
+    recorded at the review. P2 hook: the attempt journal row is written between the re-check and the press."""
+    found: dict[tuple[str, str], tuple[Any, str, str]] = {}   # (device, call id) -> (page probe, control role, control label)
+    attempts = ledger.attempts
+    covers = covers if covers is not None else {}
+
+    def open_attempt() -> dict[str, Any] | None:
+        return attempts.open(browser_owner.get(), _task_key())
+
+    def nav_block() -> str | None:
+        if CHECKING.get():   # the later check of an unknown order reads and opens the tab itself
+            return None
+        a = open_attempt()
+        return BLOCK_NAVIGATE.format(state=a["state"]) if a is not None else None
+
+    session.nav_block = nav_block
+
+    def key() -> tuple[str, str]:
+        return browser_owner.get(), current_call.get()
+
+    async def describe_ref(ref: str) -> dict[str, str] | None:
+        try:
+            page = await session.page()
+            owner = await session.frame_for(page, ref)
+            got = await owner.locator(ref_selector(ref)).first.evaluate(DESCRIBE_JS, timeout=3000)
+        except Exception:  # noqa: BLE001 - a ref that cannot be read is refused below
+            return None
+        return got if isinstance(got, dict) and got.get("label") else None
+
+    def is_ready(args: dict[str, Any]) -> bool:
+        return str(args.get("status") or "draft") == "ready"
+
+    def schedule_run() -> int | None:
+        from ..schedules import current_schedule_id
+        return current_schedule_id()
+
+    def my_spec() -> dict[str, Any] | None:
+        """The owner's active one-order pre-approval for this schedule's run, or for this task (None: none, or the switch is off)."""
+        if preapprovals is None or not preapprovals.enabled():
+            return None
+        sid = schedule_run()
+        return preapprovals.active("schedule", str(sid)) if sid else preapprovals.active("task", _task_key())
+
+    def cover_for(args: dict[str, Any]) -> tuple[str, str] | None:
+        """(source, id) when the owner's pre-approval or this schedule's payment allow covers these terms with no card, else None."""
+        if preapprovals is None or not preapprovals.enabled() or key() not in found:
+            return None
+        terms, _ = terms_of(args)
+        if terms is None:
+            return None
+        spec = my_spec()
+        if spec is not None and preapprovals.covers(spec, terms):
+            return SOURCE_PREAPPROVAL, spec["id"]
+        sid = schedule_run()
+        if sid and pay_label is not None:
+            allow = preapprovals.allow_for(sid, terms.merchant_origin, pay_label(_confirm_args(args)), terms.currency)
+            if allow is not None:
+                return SOURCE_ALLOW, allow["id"]
+        return None
+
+    def set_cover(args: dict[str, Any]) -> None:
+        if len(covers) > 50:
+            covers.clear()
+        found_cover = cover_for(args)
+        if found_cover is None:
+            covers.pop(key(), None)
+        else:
+            covers[key()] = found_cover
+
+    async def review_hold(args: dict[str, Any]) -> str | None:
+        held = await session.hold_for_user(args)
+        if held:
+            return held
+        total = _amount(args.get("total"))
+        if total is None or total < 0:
+            return None   # validate names the missing total
+        probe = await read_page(session)
+        if probe is None:
+            return "The page could not be read. Open the checkout page and read it, then call checkout_review again."
+        if total and not total_shown(probe.text, total):
+            return (f"The page shows no total of {args.get('total')}. Read the page and call checkout_review with the total it shows "
+                    "(copy it as written), or stop if the page does not show the order's total yet.")
+        if not is_ready(args):   # a draft records the terms; no control is needed yet
+            if len(found) > 50:
+                found.clear()
+            found[key()] = (probe, "", "")
+            return None
+        ref = str(args.get("ref") or "").strip()
+        if ref:
+            chosen = await describe_ref(ref)
+            if chosen is None:
+                return f"The control {ref!r} could not be read on this page. Read the page again and pass the ref of the pay control."
+        else:
+            submits = [c for c in probe.controls if c.get("submit") and c.get("pay_form")] or [c for c in probe.controls if c.get("submit")] \
+                or probe.controls
+            if not submits:
+                return ("No pay control was found by the page's structure (a submit button of the checkout form, or a button next to the "
+                        "order total). Pass `ref`: the ref of the pay control from your last reading. If the pay button is inside the "
+                        "payment provider's frame, the user finishes the payment themselves.")
+            chosen = submits[-1]
+        want = {"role": str(chosen.get("role") or ""), "label": str(chosen.get("label") or "")}
+        pinned = await read_page(session, want)
+        if pinned is None or pinned.marked is not True:
+            return ("The pay control could not be pinned down: more than one control has the same role and name, or it is not "
+                    "visible. Pass `ref` of the one that pays, after reading the page again.")
+        if len(found) > 50:
+            found.clear()
+        found[key()] = (probe, want["role"], want["label"])
+        return None
+
+    def terms_of(args: dict[str, Any]) -> tuple[pay_terms.Terms | None, str]:
+        probe = found[key()][0]
+        return pay_terms.terms_from_args(args, origin_of(probe.url))
+
+    def review_validate(args: dict[str, Any]) -> str | None:
+        if str(args.get("status") or "draft") not in ("draft", "ready"):
+            return "status must be draft (record the terms and run the order check) or ready (ask for the payment approval)"
+        if _amount(args.get("total")) is None or _amount(args.get("total")) < 0:   # type: ignore[operator]
+            return "total is required: the order's total the page shows, as a number (0 if it is free)"
+        if not isinstance(args.get("items"), list) or not args["items"]:
+            return "items is required: every line of the order as the page shows it, [{name, qty, unit_price, variants, obligations}]"
+        if args.get("merchant") is not None and not str(args.get("merchant")).strip():
+            return "merchant must name the shop or leave it out"
+        if key() not in found:
+            return "the page was not checked: open the checkout page, read it, and call checkout_review again"
+        terms, why = terms_of(args)
+        if terms is None:
+            return why
+        if (problem := validate(_confirm_args(args))) is not None:
+            return problem
+        if is_ready(args):
+            if (a := open_attempt()) is not None:
+                return BLOCK_REVIEW.format(state=a["state"])
+            sid = schedule_run()
+            if (preapprovals is not None and sid and preapprovals.enabled() and preapprovals.lapsed("schedule", str(sid))
+                    and (current_turn_unattended()) and cover_for(args) is None):
+                return ("The owner's pre-approval for this schedule's order has expired and nothing else covers this payment. Nothing was "
+                        "paid. Stop here and say so in the run's report; a scheduled run never asks for a new approval.")
+            latest = ledger.latest(browser_owner.get(), _task_key())
+            if pay_terms.check_needed(latest, terms):
+                return ("the order check has not passed for these terms (items, variants, quantities, delivery, dates, address, "
+                        "cancellation, other obligations). Call checkout_review with status draft first, act on its answer, then call "
+                        "it with status ready and the same terms")
+        return None
+
+    async def draft(args: dict[str, Any]) -> str:
+        terms, _ = terms_of(args)
+        assert terms is not None
+        found.pop(key(), None)
+        owner, task = browser_owner.get(), _task_key()
+        latest = ledger.latest(owner, task)
+        spec = my_spec()
+        unmatched = spec is not None and (spec["matched_digest"] != terms.digest or spec["matched_origin"] != terms.merchant_origin)
+        if not pay_terms.check_needed(latest, terms) and not unmatched:   # only the total (or the payment way) changed after a passed check: a terms update
+            ledger.add_terms(owner, task, terms, "draft", float(latest["checked_at"]))   # type: ignore[index]
+            return json.dumps({"status": "draft", "verdict": "confirm", "reason": "terms update: only the total changed after a passed "
+                               "order check"}) + "\nNow call checkout_review with status ready and the same terms to ask for the payment approval."
+        tid = ledger.add_terms(owner, task, terms, "draft", None)
+        verdict = await order_check.run(ask, _owner_request(), terms, spec["spec"] if spec is not None else None)
+        if verdict["verdict"] == "confirm":
+            ledger.mark_checked(tid)
+            if spec is not None and verdict.get("within_spec") is True:   # the one place a pre-approved spec is compared to a cart
+                preapprovals.matched(spec["id"], terms.digest, terms.merchant_origin)   # type: ignore[union-attr]
+            nxt = ("Now call checkout_review with status ready and the same terms to ask for the payment approval. Nothing is paid or "
+                   "approved yet.")
+        elif verdict["verdict"] == "change":
+            nxt = ("The cart does not match the request. Fix the cart as described in `change` (never pay it as it is), read the page, "
+                   "and call checkout_review with status draft again.")
+        else:
+            nxt = ("The request leaves a choice open that only the owner decides: ask the owner in the chat and wait for the answer; in a "
+                   "run nobody watches, stop here, leave the order unpaid and name the open choice in your report. Do not pick for them.")
+        return json.dumps({"status": "draft", **verdict}, ensure_ascii=False) + "\n" + nxt
+
+    async def ready(args: dict[str, Any]) -> str:
+        terms, _ = terms_of(args)
+        assert terms is not None
+        prior = prior_cover(args)
+        probe, role, label = found.pop(key())
+        owner, task = browser_owner.get(), _task_key()
+        latest = ledger.latest(owner, task)
+        if prior is not None:   # only the total (or the payment way) changed and it is within what the owner approved: no new ask
+            out = "The approval you already have covers this total; the owner is not asked again."
+            tid = ledger.add_terms(owner, task, terms, "ready", float(latest["checked_at"]))   # type: ignore[index]
+            pid = ledger.add_approval(terms, tid, owner, task, prior["source"], prior["approval_id"], bool(prior["signed"]),
+                                      float(prior["expires_at"]), prior["approved_total_minor"], prior["approved_conditional_minor"])
+            ledger.set_state(prior["id"], "revoked")   # one live approval per order: the new row replaces it
+        else:
+            source = source_of()   # task_grant / auto_rule / card, or a P3 cover (preapproval, schedule_allow)
+            cover = covers.pop(key(), None) if source in COVER_SOURCES else None
+            covers.pop(key(), None)
+            out = await confirm(_confirm_args(args))
+            tid = ledger.add_terms(owner, task, terms, "ready", float(latest["checked_at"]))   # type: ignore[index]
+            card = approval_of_current_call() or None
+            expires = ledger.clock() + pay_terms.APPROVAL_SECONDS
+            if cover is not None:   # the approval carries the cover's id; a pre-approval lives until the spec's expiry
+                card = cover[1]
+                if source == SOURCE_PREAPPROVAL and (row := preapprovals.get(cover[1])) is not None:   # type: ignore[union-attr]
+                    expires = float(row["expires_at"])
+            pid = ledger.add_approval(terms, tid, owner, task, source, card, bool(card) and source == "card", expires)
+            sid = schedule_run()
+            if (source == "card" and sid and preapprovals is not None and preapprovals.enabled() and pay_label is not None):
+                # the owner's Allow on a scheduled task's payment card also covers its later purchases: same shop, same payment method
+                preapprovals.allow_add(sid, terms.merchant_origin, pay_label(_confirm_args(args)), terms.currency, card or "")
+        host, total, cur = money_args(_confirm_args(args))
+        store.add(owner, host, probe, role, label, total, cur, rid=pid).approved = True
+        return (json.dumps({"review_id": pid, "approved": True}) + f"\nRecorded pay control: {role} {label!r} on {probe.path}. "
+                f"Pay with checkout_submit(review_id={pid!r}); never with a plain click. " + out)
+
+    async def review(args: dict[str, Any]) -> str:
+        return await (ready(args) if is_ready(args) else draft(args))
+
+    def prior_cover(args: dict[str, Any]) -> dict[str, Any] | None:
+        """An approval of this task that still covers these (ready) terms: same order, same site and currency, total within it."""
+        if key() not in found:
+            return None
+        terms, _ = terms_of(args)
+        prior = ledger.live_approval(browser_owner.get(), _task_key())
+        return prior if terms is not None and prior is not None and pay_terms.covers_terms(prior, terms, ledger.clock()) else None
+
+    def gate_args(fn: Any) -> Any:
+        # a draft asks for nothing (the approval comes with ready); a ready inside an earlier approval's amounts asks nothing again;
+        # a ready the owner's pre-approval or this schedule's allow covers is decided by the purchase judge (covers)
+        def gate(args: dict[str, Any]) -> bool:
+            if not is_ready(args) or prior_cover(args) is not None:
+                return True
+            set_cover(args)
+            return bool(fn(_confirm_args(args)))
+        return gate
+
+    async def describe_review(args: dict[str, Any]) -> str:
+        line = await describe(_confirm_args(args))
+        if preapprovals is not None and schedule_run() and preapprovals.enabled():   # the owner is told what Allow also covers
+            line += " · " + t(SCHEDULE_ALLOW_NOTE)
+        return line
+
+    def review_extra(approval_id: str, args: dict[str, Any]) -> dict[str, Any]:
+        return approval_extra(approval_id, _confirm_args(args))
+
+    item = {"type": "object", "properties": {
+        "name": {"type": "string"}, "qty": {"type": "integer"}, "unit_price": {"type": "string"},
+        "variants": {"type": "array", "items": {"type": "string"}, "description": "size, colour, plan: every choice made for the line"},
+        "obligations": {"type": "array", "items": {"type": "string"}, "description": "what the line commits to (a subscription, a deposit)"}},
+        "required": ["name"]}
+    review_tool = Tool(
+        "checkout_review",
+        "Required before paying, ordering or booking anything with a cost, in two calls with the same terms. status draft (default): "
+        "records the order terms and checks the cart against what the owner asked; answers confirm, change or open_choice; asks nobody. "
+        "status ready (only after confirm): asks for the payment approval unless the owner's standing permission or auto-pay covers it; "
+        "returns {review_id, approved: true}; then pay with checkout_submit. The page must show the total. A change of items, variants, "
+        "quantities, delivery, dates, address or cancellation terms needs a new draft; a higher total, another currency or another site "
+        "needs a new approval. On a checkout page the plain click and press tools refuse.",
+        {"type": "object", "properties": {
+            "status": {"type": "string", "enum": ["draft", "ready"]},
+            "site": {"type": "string", "description": "the shop's address"},
+            "merchant": {"type": "string", "description": "the shop's name"},
+            "items": {"type": "array", "description": "each line of the order as the page shows it", "items": item},
+            "total": {"type": "number", "description": "the total the page shows (what is due now, with shipping and tax)"},
+            "currency": {"type": "string", "description": "ISO 4217 code of the page's currency (never guessed from a symbol)"},
+            "conditional_total": {"type": "number", "description": "the most that may be charged later under conditions (a deposit, a fee), if any"},
+            "conditional_terms": {"type": "string", "description": "when that conditional charge applies"},
+            "delivery": {"type": "string", "description": "the delivery way and speed as the page shows it"},
+            "dates": {"type": "string", "description": "dates of the order (delivery, stay, event)"},
+            "cancellation": {"type": "string", "description": "the cancellation or return terms as the page shows them"},
+            "other_obligations": {"type": "array", "items": {"type": "string"}, "description": "any other commitment the order makes"},
+            "payment_method": {"type": "string", "description": "the payment way in words, never a card number"},
+            "card": {"type": "string", "description": "a wallet card's nickname (default card if neither card nor payment_method)"},
+            "ship_to": {"type": "string", "description": "the address the order goes to as the page shows it (kept only as a digest)"},
+            "coupon": {"type": "string", "description": "a coupon or code applied, if any"},
+            "ref": {"type": "string", "description": "only for ready, when the pay control is not the checkout form's submit button: its ref"}},
+         "required": ["site", "items", "total", "currency"]},
+        review, requires_approval=True, hold=review_hold, validate=review_validate, describe=describe_review, declined=declined_review(declined),
+        auto_approve=gate_args(auto), approval_extra=review_extra)
+
+    def submit_validate(args: dict[str, Any]) -> str | None:
+        rv = store.get(str(args.get("review_id") or ""))
+        if rv is None:
+            return "no such review (or it is older than 20 minutes): call checkout_review again"
+        if rv.owner != browser_owner.get():
+            return "that review belongs to another browser tab"
+        if not rv.approved:
+            return "that review was not approved"
+        if rv.used:
+            return "that review was already submitted: read the confirmation page and call purchase_result"
+        if (a := open_attempt()) is not None:
+            return BLOCK_SUBMIT.format(state=a["state"])
+        return None
+
+    def refused(code: str) -> Any:
+        return Ours(PRESS_REFUSALS[code])
+
+    async def submit(args: dict[str, Any]) -> Any:
+        rv = store.get(str(args["review_id"]))
+        assert rv is not None
+        approval = ledger.approval(rv.id)
+        if approval is None:
+            return Ours("Nothing was paid: no payment approval is recorded for that review. Call checkout_review again.")
+        changed = Ours("Nothing was paid: the page changed: review again (call checkout_review once more with what the page shows now)")
+        probe = await read_page(session, {"role": rv.role, "label": rv.label})
+        if probe is None:
+            return changed
+        origin = origin_of(probe.url)
+        cur = pay_terms.iso_currency(probe.currency)
+        over = amount_over(probe.totals, approval["approved_total_minor"] / 10 ** pay_terms.exponent(approval["currency"]))
+        amount = pay_terms.minor_units(over, approval["currency"]) if over is not None else None
+        code = pay_terms.refusal_code(approval, ledger.terms(approval["terms_id"]), origin=origin, amount_minor=amount, currency=cur,
+                                      conditional_minor=None, now=ledger.clock())   # no page shows a conditional charge in its structure
+        if code is not None:
+            return refused(code)
+        if preapprovals is not None and not preapprovals.still_valid(approval):   # removed, revoked or switched off since the review
+            return refused(pay_terms.PREAPPROVAL)
+        if probe.path != rv.path or probe.marked is not True or (rv.total and not total_shown(probe.text, rv.total) and over is None):
+            return changed
+        aid = attempts.reserve(approval, browser_owner.get(), _task_key())   # the journal row comes before the press
+        if preapprovals is not None and approval["source"] == SOURCE_PREAPPROVAL:
+            preapprovals.mark_used(approval["approval_id"])   # one order
+        try:
+            text = await session.click(f'[{MARK}="1"]')
+        except BaseException:
+            attempts.settle(aid, "unknown", "the press was started and then failed or was cut off: nobody saw whether it went through")
+            rv.used = True
+            ledger.set_state(approval["id"], "used")
+            raise
+        attempts.pressed(aid)
+        rv.used = True
+        ledger.set_state(approval["id"], "used")
+        await session.card(t("Placing the order"), force=True)
+        return ToolOutput(text=text, head=f"Pressed the recorded pay control ({rv.role} {rv.label!r}). ",
+                          tail=" Read the confirmation page and call purchase_result with the outcome (placed only when the shop's own confirmation shows "
+                               "the order; not_placed with what you saw; unknown when neither is clear), then tell the user.")
+
+    submit_tool = Tool(
+        "checkout_submit", "Press the pay control recorded by an approved checkout_review (status ready). Before it presses, it re-reads the "
+        "page and refuses (nothing is paid) when the site, the amount due, the currency or the order terms differ from what was approved, "
+        "or the approval expired. Returns the page after the press.",
+        {"type": "object", "properties": {"review_id": {"type": "string"}}, "required": ["review_id"]},
+        submit, untrusted=True, source="page", validate=submit_validate, hold=session.hold_for_user)
+    return [review_tool, *session.with_deadline([submit_tool])]
+
+
+def declined_review(declined: Any) -> Any:
+    return lambda args: declined(_confirm_args(args))
+
+
 # ---------------------------------------------------------------- purchase_result: the receipt against what was approved
 RESULT_CHECKED = "Checked: matches what was approved."
 
 
-def _result_tool(session: BrowserSession, ledger: Any, *, notify: Any = None, timezone: Any = None, clock: Any = time.time) -> Tool:
+def _result_tool(session: BrowserSession, ledger: Any, *, notify: Any = None, timezone: Any = None, clock: Any = time.time,
+                 attempts: Any = None) -> Tool:
     """After a payment: the confirmation page's order number, total, items and cancel terms, checked against what was approved
     (assistant.receipt). Owner's rules: a charge that differs (higher total, another item, option or quantity) is cancelled at once when
     cancelling is free now (the cancel window of BrowserSession.allow_cancel opens, the owner gets an urgent notice); with a fee, or when
@@ -605,10 +1077,35 @@ def _result_tool(session: BrowserSession, ledger: Any, *, notify: Any = None, ti
         except Exception:  # noqa: BLE001
             return ""
 
+    def outcome_of(args: dict[str, Any]) -> str:
+        return str(args.get("outcome") or "placed")
+
+    def journal_open() -> dict[str, Any] | None:
+        """The attempt of this owner/task that still waits for its outcome (pressed or unknown), None when there is none."""
+        return attempts.open(browser_owner.get(), _task_key()) if attempts is not None else None
+
     def validate(args: dict[str, Any]) -> str | None:
+        out = outcome_of(args)
+        if out not in ("placed", "not_placed", "unknown"):
+            return "outcome must be placed, not_placed or unknown"
+        if out != "placed" and journal_open() is None:
+            return "no pressed or unknown attempt of this task is waiting for an outcome"
+        if out == "placed" and not str(args.get("order_no") or "").strip() and args.get("cancelled") is not True:
+            return "order_no is required: the order, booking or receipt number as the page shows it"
+        if out != "placed" or (journal_open() is not None and args.get("cancelled") is not True):
+            evidence = " ".join(str(args.get("evidence") or "").split())
+            if not evidence:
+                return ("evidence is required: for placed, the words of the SHOP's own confirmation (an order number or confirmation "
+                        "text on the shop's page; a spinner, an accepted card or a payment provider's success page is not one); for "
+                        "not_placed, what you saw that shows nothing was ordered (e.g. the cart is still full, an error on the page); "
+                        "for unknown, what you saw")
+            if CARD_NUMBER.search(evidence):
+                return "it contains what looks like a card number. Never put card numbers in a request"
+        if out != "placed":
+            return None
         p = pay()
         if p is None:
-            return ("no approved payment here: purchase_result checks the receipt of a payment that confirm_purchase approved in this "
+            return ("no approved payment here: purchase_result checks the receipt of a payment that checkout_review approved in this "
                     "task (within the last half hour), on this browser tab")
         if any(CARD_NUMBER.search(str(args.get(k) or "")) for k in ("order_no", "charged_total", "items", "cancel")):
             return "it contains what looks like a card number. Never put card numbers in a request"
@@ -640,7 +1137,16 @@ def _result_tool(session: BrowserSession, ledger: Any, *, notify: Any = None, ti
         return ("free" if terms.free_now or p.state == "cancel" else "ask"), (chk, terms)
 
     def auto(args: dict[str, Any]) -> bool:
-        return judge(args)[0] != "ask"
+        return outcome_of(args) != "placed" or judge(args)[0] != "ask"
+
+    def settle(args: dict[str, Any], state: str) -> None:
+        """Record the outcome of the open attempt with its evidence (the merchant's confirmation for placed)."""
+        a = journal_open()
+        if a is None or attempts is None:
+            return
+        text = " ".join(str(args.get("evidence") or "").split())
+        digest = hashlib.sha256(f"{args.get('order_no') or ''}|{args.get('charged_total') or ''}|{text}".encode()).hexdigest()
+        attempts.settle(a["id"], state, text, receipt=text, digest=digest)
 
     def _diff_text(p: Any, chk: Any) -> str:
         parts = list(chk.problems)
@@ -692,8 +1198,20 @@ def _result_tool(session: BrowserSession, ledger: Any, *, notify: Any = None, ti
         return f"approved {p.amount_text} ({p.summary}), charged {chk.charged_text}; {_diff_text(p, chk)}"
 
     async def result(args: dict[str, Any]) -> str:
+        if (out := outcome_of(args)) != "placed":
+            a = journal_open()
+            settle(args, out)
+            if out == "not_placed":
+                return ("Recorded: the order was NOT placed (evidence kept). A retry is allowed now: call checkout_review again, "
+                        "a new payment approval is asked for. Tell the owner what happened.")
+            if a is not None and attempts.get(a["id"])["state"] == "unknown":
+                return ("Recorded: the outcome is UNKNOWN. Do NOT press again, do NOT buy again and do NOT reload the tab. Kelo looks for "
+                        "the order in this browser task in about 10 minutes and again later; tell the owner it is being checked.")
+            return "Recorded."
         p = pay()
         kind, data = judge(args)
+        if kind not in ("cancelled", "closed"):
+            settle(args, "placed")
         order_no = " ".join(str(args.get("order_no") or "").split())[:60]
         if kind == "cancelled":
             p.state = "closed"
@@ -741,11 +1259,15 @@ def _result_tool(session: BrowserSession, ledger: Any, *, notify: Any = None, ti
             "items": {"type": "array", "description": "each line of the receipt as the page shows it", "items": {"type": "object", "properties": {
                 "name": {"type": "string"}, "options": {"type": "string"}, "quantity": {"type": "integer"}}}},
             "cancel": {"type": ["object", "null"], "description": "the cancel terms the page gives, null if none",
-                       "properties": {"free_until": {"type": "string", "description": "until when cancelling is free: ISO time, or the page's words"},
-                                      "fee": {"type": "string", "description": "the cancel fee as the page says it"},
+                       "properties": {"free_until": {"type": "string", "description": "until when cancelling is free, as an ISO 8601 time (a date alone is fine); leave out when the page gives no deadline"},
+                                      "fee": {"type": ["number", "string"], "description": "the cancel fee as an amount, 0 when the page says cancelling costs nothing; leave out when unknown"},
                                       "how": {"type": "string", "description": "the words of the page's cancel button or link"}}},
-            "cancelled": {"type": "boolean", "description": "true on the second call, after the order was cancelled"}},
-         "required": ["order_no"]},
+            "cancelled": {"type": "boolean", "description": "true on the second call, after the order was cancelled"},
+            "outcome": {"type": "string", "enum": ["placed", "not_placed", "unknown"],
+                        "description": "after checkout_submit: placed only when the shop's own confirmation shows the order; not_placed when "
+                                       "you saw it was not ordered; unknown when neither is clear (default placed)"},
+            "evidence": {"type": "string", "description": "what shows the outcome: the shop's confirmation words, or what you saw"}},
+         "required": []},
         result, requires_approval=True, describe=describe, validate=validate, declined=declined, auto_approve=auto,
         approval_extra=approval_extra,
     )

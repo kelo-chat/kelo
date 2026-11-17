@@ -17,7 +17,7 @@ from assistant.home import Home, HomeError
 from assistant.prompt import PromptBuilder
 from assistant.providers import Done, TextDelta
 from assistant import i18n
-from assistant.reflection import INPUT_TOKENS, PROMPT, Reflection, is_correction, parse_output, tidy_evidence, tidy_rule
+from assistant.reflection import INPUT_TOKENS, PROMPT, Reflection, parse_output, tidy_evidence, tidy_rule
 from assistant.server import Settings, create_app
 from assistant.store import Store
 
@@ -191,23 +191,12 @@ async def test_last_run_has_structured_fields_and_the_free_text_is_only_a_log(tm
     assert r.last_run()["code"] == "no_messages"
 
 
-def test_rules_read_as_preferences_not_orders():
-    assert tidy_rule("캘린더에 일정을 직접 등록하지 마라") == "캘린더에 일정을 직접 등록하지 않기"
-    assert tidy_rule("정기 점검 일정을 등록하지 마세요.") == "정기 점검 일정을 등록하지 않기"
-    assert tidy_rule("결론부터 말하라") == "결론부터 말하기" and tidy_rule("답을 짧게 해라") == "답을 짧게 하기"
-    assert tidy_rule("Don't add events to my calendar on its own") == "Don't add events to my calendar on its own"
-    assert tidy_evidence("근거: 캘린더 일정 등록 허락을 3번 거절했어요") == "캘린더 일정 등록 허락을 3번 거절했어요"
+def test_rules_are_kept_as_the_model_wrote_them_and_the_prompt_asks_for_plain_statements():
+    for text in ("캘린더에 일정을 직접 등록하지 마라", "결론부터 말하라", "Don't add events to my calendar on its own"):
+        assert tidy_rule(text) == text                                       # no rewrite of any language's ending
+    assert tidy_rule("  Ask   before sending.  ") == "Ask before sending"
+    assert tidy_evidence("근거: 캘린더 일정 등록 허락을 3번 거절했어요") == "근거: 캘린더 일정 등록 허락을 3번 거절했어요"   # the quote is not re-labelled
     assert "imperative" not in PROMPT and "never give an order" in PROMPT and "캘린더에 일정을 직접 넣지 않기" in PROMPT
-
-
-def test_suggestions_an_older_version_wrote_as_orders_are_reworded_at_start(tmp_path):
-    store, home, r, clock = setup(tmp_path, answering(""))
-    store._run("INSERT INTO learned_rules(rule, evidence, date, confidence, status, updated_at) VALUES(?,?,?,?,?,?)",
-               ("캘린더에 일정을 직접 등록하지 마라", "", "2026-11-08", 0.6, "proposed", 0))
-    store._run("INSERT INTO learned_rules(rule, evidence, date, confidence, status, updated_at) VALUES(?,?,?,?,?,?)",
-               ("짧게 답해라", "", "2026-11-08", 0.9, "accepted", 0))
-    Reflection(store, home, r.activity, r.stream_fn, lambda: ("p", "m"), clock=clock)
-    assert {x["rule"] for x in r.rules()} == {"캘린더에 일정을 직접 등록하지 않기", "짧게 답해라"}   # the user's own choices stay as they are
 
 
 async def test_the_request_names_the_app_language(tmp_path):
@@ -298,14 +287,6 @@ def test_suggestions_an_older_version_inferred_from_behaviour_go_once_at_start(t
 
 
 # ---------------------------------------------------------------------------------------------------------- signals
-def test_corrections_are_spotted_in_a_few_languages_and_ordinary_words_are_not():
-    for said in ("아니 그게 아니라 금요일이야", "그게 아니고 내일", "틀렸어", "다시 찾아줘", "내가 말했잖아", "No, that's wrong", "no it's tuesday",
-                 "That's not what I asked", "not what I meant", "違うよ", "不对"):
-        assert is_correction(said), said
-    for said in ("아니면 내일은 어때?", "안녕", "고마워 잘했어", "notes for tomorrow", "nothing else", "다시마 사야 해"):
-        assert not is_correction(said), said
-
-
 async def test_only_corrections_are_counted_not_denials_or_failed_tasks(tmp_path):
     fn = answering(reply())
     store, home, r, clock = setup(tmp_path, fn)
@@ -325,12 +306,9 @@ async def test_only_corrections_are_counted_not_denials_or_failed_tasks(tmp_path
     t3 = act.start_task("재시작된 일")
     store._run("UPDATE tasks SET status = 'stopped', result = ? WHERE id = ?", (RESTART_RESULT, t3))
     act.finish_task(act.start_task("잘 된 일"), "done", answer="끝")
-    sig = r.signals(r.messages_since(r._since()), r._since())
-    assert [c["user"] for c in sig["corrections"]] == ["아니 그게 아니라 11월 8일이잖아"] and "11월 9일" in sig["corrections"][0]["after"]
-    assert set(sig) == {"corrections"}                                  # denials and failed tasks never make a rule
     await r.run()
     sent = fn.calls[0].messages[1]["content"]
-    assert "correct the assistant (a word match; judge each yourself): 1" in sent and "결제 확인 요청" not in sent
+    assert "결제 확인 요청" not in sent and "word match" not in sent         # denials and failed tasks never make a rule; no pre-filter
     assert "항공권 찾기" not in sent
 
 

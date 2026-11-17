@@ -128,7 +128,7 @@ async def test_without_a_toolbox_every_tool_is_shown():
 
 # ------------------------------------------------------------------------------------------------------------------ in the app
 def full_app(tmp_path, fn, browser=False):
-    s = app_settings(tmp_path, home_dir=str(tmp_path / "home"))
+    s = app_settings(tmp_path, home_dir=str(tmp_path / "home"), browser_worker=True)
     if browser:
         s.cdp_host = "127.0.0.1"   # browser tools are made; nothing connects until one runs
     return create_app(s, stream_fn=fn, with_schedule_check=False)
@@ -137,7 +137,8 @@ def full_app(tmp_path, fn, browser=False):
 def test_every_tool_is_reachable_by_search(tmp_path):
     app = full_app(tmp_path, scripted([TextDelta("ok"), Done("stop")]), browser=True)
     every = list(app.state.tools)
-    hidden = [t for t in every if t.name not in CORE_TOOLS]
+    from assistant.tool_roles import is_browser_acting_tool
+    hidden = [t for t in every if t.name not in CORE_TOOLS and not is_browser_acting_tool(t.name)]   # the browser split: those are the jobs', never loaded by the chat
     assert len(hidden) > 40 and "find_tools" in {t.name for t in every}
     finder = next(t for t in every if t.name == "find_tools")
     for t in hidden:
@@ -159,6 +160,14 @@ def test_tools_taken_out_of_the_core_are_found_by_what_they_do(tmp_path, query, 
     app = full_app(tmp_path, scripted([TextDelta("ok"), Done("stop")]), browser=True)
     hidden = [t for t in app.state.tools if t.name not in CORE_TOOLS]
     assert tool_name in {t.name for t in search(hidden, query)}, query
+
+
+def test_search_drops_a_word_found_in_most_tools_by_frequency_not_by_a_list():
+    tools = [tool(f"misc_{i}", "This is a very small helper.") for i in range(10)] + [tool("zebra_notes", "Keeps notes about zebras.")]
+    assert [t.name for t in search(tools, "very zebra")] == ["zebra_notes"]            # "very" is in 10 of 11 tools: it says nothing
+    assert len(search(tools, "very small helper", limit=20)) == 10                    # every word common: all of them count (never an empty answer)
+    few = [tool(f"misc_{i}", "This is a very small helper.") for i in range(3)] + [tool("zebra_notes", "Keeps notes about zebras.")]
+    assert len(search(few, "very zebra")) == 4                                        # too few tools to count in: nothing is dropped
 
 
 def test_the_catalog_names_what_is_shown_and_what_loads():
@@ -202,7 +211,9 @@ async def test_a_schedule_run_gets_its_tools_up_front(tmp_path):
     seen = []
 
     async def fn(provider, request, **kw):
-        seen.append(request)
+        from assistant.scheduled_runs import CLOSE_SYSTEM
+        if request.messages[0].get("content") != CLOSE_SYSTEM:   # the closing request of a run has no tools
+            seen.append(request)
         for ev in say("NO_REPLY"):
             yield ev
     app = full_app(tmp_path, fn)

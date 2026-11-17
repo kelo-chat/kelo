@@ -21,9 +21,10 @@ def test_blocked_recognises_an_edge_access_denied_page_and_nothing_else():
     assert blocked(403, {"x-cache": "Error from cloudfront"}, "ERROR: The request could not be satisfied", "The request could not be satisfied.") is not None
     assert blocked(200, {"server": "AkamaiGHost"}, "Access Denied", "Access Denied") is None                      # a normal answer
     assert blocked(403, {"server": "nginx"}, "Members", "Please sign in to see this page. " * 80) is None          # a big 403 page
-    assert blocked(403, {"server": "nginx"}, "Members only", "Please sign in") is None                              # short, but not a denial
+    assert blocked(403, {"server": "nginx"}, "Members only", "Please sign in") is not None                          # a short 403 is a refusal page, whatever it says
+    assert blocked(401, {"server": "nginx"}, "Members only", "Please sign in") is None                              # 401 asks to sign in: not a block
+    assert blocked(404, {}, "Not found", "Not found") is None
     # a human check (a puzzle a person can solve) keeps its own path
-    assert blocked(403, {"server": "cloudflare"}, "Just a moment...", "Checking your browser") is None
     assert blocked(403, {"cf-mitigated": "challenge", "server": "cloudflare"}, "Attention", "Access denied") is None
     assert blocked(403, {"x-px-cookie": "1"}, "Access to this page has been denied", "Press and hold") is None
 

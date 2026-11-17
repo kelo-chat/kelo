@@ -22,8 +22,8 @@ interface AppServices {
     /** The app's release number ("0.9.0"), sent along with a problem report. */
     val appVersion: String
 
-    /** The commit the app's source came from (40 lowercase hex; "" = the build did not say) and whether files differed from it; see [chat.kelo.app.core.SourceLink]. */
-    val sourceCommit: String
+    /** The release tag of the app's source on GitHub ("android-0.10.2"; null = none) and whether files differed from that release; see [chat.kelo.app.core.SourceLink]. */
+    val sourceTag: String?
     val sourceDirty: Boolean
 
     /** What the agent is doing now (the header's line, the character's mood); the chat feeds it. */

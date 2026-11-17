@@ -470,14 +470,14 @@ def calendar_tools(cal: GoogleCalendar) -> list[Tool]:
               "calendar": {"type": "string", "description": "the event's calendar id from gcal_events"}, "account": account}
     return [
         Tool("gcal_calendars", "List the calendars of the user's Google Calendar (ids, primary, read-only).",
-             {"type": "object", "properties": {"account": account}}, gcal_calendars, read_only=True, untrusted=True, source="calendar"),
+             {"type": "object", "properties": {"account": account}}, gcal_calendars, read_only=True, untrusted=True, source="calendar", trail="calendar"),
         Tool("gcal_events", "List or search events in the user's Google Calendar only (default: the next 7 days), each occurrence of a "
              "repeating event apart, with the ids needed to change one. For what is on across all calendars use calendar_events.",
              {"type": "object", "properties": {"start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
                                                "query": {"type": "string", "description": "words in titles, places, notes, attendees"},
                                                "calendar": {"type": "string", "description": "only this calendar id"},
                                                "account": account}},
-             gcal_events, read_only=True, untrusted=True, source="calendar"),
+             gcal_events, read_only=True, untrusted=True, source="calendar", trail="calendar"),
         Tool("gcal_create_event", "Add an event to the user's Google Calendar; the user approves it. A date-only start is all-day; a timed "
              "event without end lasts an hour.",
              {"type": "object", "properties": fields, "required": ["title", "start"]},

@@ -28,37 +28,66 @@ private struct IOSMicButton: View {
     @State private var speech = SpeechInput()
     @State private var denied = false
     @State private var problem: String?
+    @State private var phase: HoldToTalk.Phase = .idle
+    @State private var holdTimer: Task<Void, Never>?
+    /// What the field held when listening began, and whether the words still coming in are wanted (a slide off the button drops them).
+    @State private var anchor: SpeechMerge.Anchor?
+    @State private var run = DictationRun()
+
+    private static let size: CGFloat = 40
+
+    /// One listening run: `dropped` once it was cancelled, so words that still arrive are ignored.
+    final class DictationRun { var dropped = false }
 
     var body: some View {
-        Button {
-            if speech.listening { speech.stop(); return }
-            Task {
-                switch await SpeechInput.authorize() {
-                case .ok:
-                    let anchor = SpeechMerge.anchor(text)
-                    speech.start(language: appLanguageCode(), onWords: { words in
-                        text = SpeechMerge.merge(anchor, spoken: words)
-                    }, onEnd: { err in
-                        problem = err
-                        app.activity.listening = false
-                    })
-                    app.activity.listening = speech.listening
-                case .denied: denied = true
-                case .unavailable: problem = L(R.string.voice_unavailable)
-                }
+        ZStack {
+            if speech.listening {
+                Circle().stroke((phase == .holdingAway ? c.dangerInk : c.accent).opacity(0.35), lineWidth: 3).scaleEffect(1 + speech.level * 0.35)
             }
-        } label: {
-            ZStack {
-                if speech.listening {
-                    Circle().stroke(c.accent.opacity(0.35), lineWidth: 3).scaleEffect(1 + speech.level * 0.35)
-                }
-                KeloIconView(speech.listening ? .stop : .mic, size: 22, tint: speech.listening ? c.accent : c.muted)
-            }
-            .frame(width: 40, height: 40)
+            KeloIconView(speech.listening ? .stop : .mic, size: 22, tint: phase == .holdingAway ? c.dangerInk : (speech.listening ? c.accent : c.muted))
         }
-        .buttonStyle(.plain)
+        .frame(width: Self.size, height: Self.size)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { drag in
+                    if phase == .idle && holdTimer == nil {
+                        apply(.down(listening: speech.listening))
+                        holdTimer = Task {
+                            try? await Task.sleep(nanoseconds: UInt64(HoldToTalk.holdMs) * 1_000_000)
+                            guard !Task.isCancelled else { return }
+                            apply(.holdElapsed)
+                        }
+                    }
+                    let on = HoldToTalk.onButton(x: drag.location.x, y: drag.location.y, width: Self.size, height: Self.size, slack: 24)
+                    apply(.move(onButton: on))
+                }
+                .onEnded { _ in
+                    holdTimer?.cancel(); holdTimer = nil
+                    apply(.up)
+                }
+        )
+        // VoiceOver's double tap is the tap; its custom action does the same (the hold needs a finger that stays down)
+        .accessibilityElement()
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(L(speech.listening ? R.string.voice_stop : R.string.voice_start))
         .accessibilityValue(speech.listening ? L(R.string.voice_listening) : "")
+        .accessibilityHint(L(R.string.voice_hold_label))
+        .accessibilityAction { tap() }
+        .overlay(alignment: .topTrailing) {
+            if phase.isHeld {
+                Text(L(R.string.voice_hold_hint))
+                    .font(KeloFont.small)
+                    .foregroundStyle(phase == .holdingAway ? c.dangerInk : c.ink)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(phase == .holdingAway ? c.dangerSoft : c.card))
+                    .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                    .fixedSize()
+                    .offset(y: -(Self.size + 14))
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .alert(L(R.string.voice_denied_title), isPresented: $denied) {
             Button(L(R.string.open_settings)) { DeviceInfo.openAppSettings() }
             Button(L(R.string.close), role: .cancel) {}
@@ -66,7 +95,66 @@ private struct IOSMicButton: View {
         .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
             Button(L(R.string.close), role: .cancel) {}
         }
-        .onDisappear { speech.stop(); app.activity.listening = false }
+        .onChange(of: speech.listening) { _, on in
+            app.activity.listening = on
+            if !on && phase.isHeld { phase = .idle }
+        }
+        .onDisappear { holdTimer?.cancel(); cancelDictation(); app.activity.listening = false }
+    }
+
+    private func apply(_ event: HoldToTalk.Event) {
+        let step = HoldToTalk.step(phase, event)
+        phase = step.phase
+        switch step.action {
+        case .tap: tap()
+        case .start: begin()
+        case .finish: speech.stop()
+        case .cancel: cancelDictation()
+        case .none: break
+        }
+    }
+
+    private func tap() {
+        if speech.listening { speech.stop(); return }
+        begin()
+    }
+
+    private func begin() {
+        Task {
+            switch await SpeechInput.authorize() {
+            case .ok:
+                // the permission question may have taken the finger away: listening then goes on as after a tap
+                if !phase.isHeld { phase = .idle }
+                start()
+            case .denied: phase = .idle; denied = true
+            case .unavailable: phase = .idle; problem = L(R.string.voice_unavailable)
+            }
+        }
+    }
+
+    private func start() {
+        let thisRun = DictationRun()
+        run = thisRun
+        let a = SpeechMerge.anchor(text)
+        anchor = a
+        speech.start(language: appLanguageCode(), onWords: { words in
+            guard !thisRun.dropped else { return }
+            text = SpeechMerge.merge(a, spoken: words)
+        }, onEnd: { err in
+            problem = thisRun.dropped ? nil : err
+            anchor = nil
+            app.activity.listening = false
+        })
+        app.activity.listening = speech.listening
+    }
+
+    /// Sliding off the held mic: listening ends, what was heard is dropped and the field goes back to what it was.
+    private func cancelDictation() {
+        guard speech.listening || anchor != nil else { return }
+        run.dropped = true
+        if let a = anchor { text = SpeechMerge.merge(a, spoken: "") }
+        anchor = nil
+        speech.stop()
     }
 }
 
@@ -174,7 +262,7 @@ final class SpeechInput {
                     await MainActor.run {
                         let heard = self?.heard ?? false
                         self?.endModern()
-                        onEnd(heard ? nil : L(R.string.voice_no_match))
+                        onEnd(Self.message(for: error, heard: heard))
                     }
                 }
             }
@@ -242,16 +330,28 @@ final class SpeechInput {
                         onWords(result.bestTranscription.formattedString)
                         self.restartSilenceTimer()
                         if result.isFinal { self.stop(); onEnd(nil) }
-                    } else if error != nil, self.listening {
+                    } else if let error, self.listening {
+                        let heard = self.heard
                         self.stop()
-                        onEnd(self.heard ? nil : L(R.string.voice_no_match))
+                        onEnd(Self.message(for: error, heard: heard))
                     }
                 }
             }
             restartSilenceTimer()
         } catch {
             stop()
-            onEnd(L(R.string.voice_failed))
+            onEnd(L(R.string.voice_dictation_failed))
+        }
+    }
+
+    /// The one line the owner is told when the recognizer ends with an error (nil: nothing to say, it was just the end).
+    @MainActor static func message(for error: Error, heard: Bool) -> String? {
+        let e = error as NSError
+        switch SpeechFailure.classify(domain: e.domain, code: e.code, heard: heard) {
+        case .none: return nil
+        case .noMatch: return L(R.string.voice_no_match)
+        case .offline: return L(R.string.voice_dictation_offline)
+        case .failed: return L(R.string.voice_dictation_failed)
         }
     }
 

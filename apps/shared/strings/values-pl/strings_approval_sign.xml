@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">Zatwierdź płatność</string>
+    <string name="approval_sign_subtitle">Potwierdź odciskiem palca lub twarzą</string>
+    <string name="approval_sign_failed">Nie udało się zatwierdzić tej płatności na tym telefonie. Spróbuj ponownie.</string>
+    <string name="approval_sign_key_lost">Brakuje klucza zatwierdzeń tego telefonu. Sparuj ponownie ten telefon z serwerem.</string>
+    <string name="approval_pay_on_phone">Zatwierdzaj płatności w aplikacji Kelo na telefonie.</string>
+</resources>

@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 
 data class ActionsUiState(
     val period: ActionPeriod = ActionPeriod.DEFAULT,
+    val filter: DidFilter = DidFilter.ALL,
     val items: List<ActionItem> = emptyList(),
     val groups: List<DayGroups.Group<ActionItem>> = emptyList(),
     val loading: Boolean = false,
@@ -34,25 +35,49 @@ class ActionsViewModel(
     fun setPeriod(period: ActionPeriod) {
         if (_state.value.period == period && _state.value.items.isNotEmpty()) return
         _state.update { it.copy(period = period) }
-        load(period)
+        load(period, filter = _state.value.filter)
+    }
+
+    fun setFilter(filter: DidFilter) {
+        if (_state.value.filter == filter) return
+        val today = todayProvider()
+        val zone = zoneProvider()
+        val filtered = _state.value.items.filter { filter.matches(it) }
+        val groups = ActionRules.groupByDay(filtered, today, zone)
+        _state.update { it.copy(filter = filter, groups = groups) }
     }
 
     fun refresh() {
-        load(_state.value.period, force = true)
+        load(_state.value.period, filter = _state.value.filter, force = true)
     }
 
-    fun load(period: ActionPeriod = _state.value.period, force: Boolean = false) {
+    fun load(
+        period: ActionPeriod = _state.value.period,
+        filter: DidFilter = _state.value.filter,
+        force: Boolean = false,
+    ) {
         val api = sessions.api.value ?: return
         _state.update { it.copy(loading = true, failed = false, error = null) }
         viewModelScope.launch {
             try {
-                val result = api.get<ActionList>("/api/actions?days=${period.days}")
+                // Try /api/did first; fall back to /api/actions on an older server (404)
+                val result = try {
+                    api.get<ActionList>("/api/did?days=${period.days}")
+                } catch (e: ApiError) {
+                    if (e.status == 404) {
+                        api.get<ActionList>("/api/actions?days=${period.days}")
+                    } else {
+                        throw e
+                    }
+                }
                 val today = todayProvider()
                 val zone = zoneProvider()
-                val groups = ActionRules.groupByDay(result.items, today, zone)
+                val filtered = result.items.filter { filter.matches(it) }
+                val groups = ActionRules.groupByDay(filtered, today, zone)
                 _state.update {
                     it.copy(
                         period = period,
+                        filter = filter,
                         items = result.items,
                         groups = groups,
                         loading = false,

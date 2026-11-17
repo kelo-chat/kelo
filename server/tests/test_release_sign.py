@@ -289,3 +289,13 @@ def test_sign_row_returns_the_row_plus_sig_and_key_and_leaves_the_input_alone(tm
     assert "sig" not in row and signed["key"] == kid and {k: v for k, v in signed.items() if k not in ("sig", "key")} == row
     assert verify_row("windows", signed, {kid: pub}) is True
     assert os.stat(path).st_mode & 0o077 == 0
+
+
+def test_the_server_msi_row_has_its_own_signed_statement():
+    from assistant.release_sign import statement
+    row = {"file": "kelo-server-0.10.2.msi", "version": "0.10.2", "size": 1234, "sha256": "a" * 64}
+    text = statement("windows-server-msi", row).decode()
+    assert text.splitlines()[1] == "platform=windows-server-msi"
+    assert statement("windows-server-msi", row) != statement("windows-msi", row)
+    with pytest.raises(ValueError):
+        statement("windows-server", row)

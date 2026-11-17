@@ -162,4 +162,46 @@ private let sampleJson = """
         #expect(m.failed == true)
         #expect(m.items.isEmpty)
     }
+
+    private let didJson = """
+    {"items":[
+      {"at":1794744000.0,"kind":"action","title":"Sent a mail","detail":"","source":"chat","site":null,"connector":"gmail","task_id":101,"outcome":"done"},
+      {"at":1794743000.0,"kind":"browser","title":"Opened coupang.com","detail":"","source":"job","site":"coupang.com","connector":null,"task_id":null,"outcome":"done"},
+      {"at":1794742000.0,"kind":"task","title":"Weekly sync","detail":"stopped early","source":"schedule","site":null,"connector":null,"task_id":7,"outcome":"stopped"}
+    ],"next_before":1794307100.0}
+    """
+
+    @Test func didTimelineLoadsAndFiltersByKind() async {
+        let t = RoutedTransport()
+        t.on("GET /api/did", didJson)
+        let m = ActionsModel(api: t.api(), today: { self.testToday }, zone: utc)
+        await m.load()
+
+        #expect(m.items.count == 3)
+        #expect(Set(m.items.map(\.id)).count == 3)   // no id on the wire: each row still gets its own
+        #expect(m.items[0].displayTitle == "Sent a mail")
+        #expect(m.items[2].displayOutcome == "stopped")
+        #expect(m.groups.flatMap(\.items).count == 3)
+
+        m.setFilter(.browser)
+        #expect(m.groups.flatMap(\.items).map(\.displayTitle) == ["Opened coupang.com"])
+        m.setFilter(.tasks)
+        #expect(m.groups.flatMap(\.items).map(\.displayTitle) == ["Weekly sync"])
+        m.setFilter(.actions)
+        #expect(m.groups.flatMap(\.items).count == 1)
+        m.setFilter(.all)
+        #expect(m.groups.flatMap(\.items).count == 3)
+    }
+
+    @Test func olderServerFallsBackToActions() async {
+        let t = RoutedTransport()
+        t.on("GET /api/did", 404, #"{"detail":"not found"}"#)
+        t.on("GET /api/actions", sampleJson)
+        let m = ActionsModel(api: t.api(), today: { self.testToday }, zone: utc)
+        await m.load()
+        #expect(m.items.count == 3 && !m.failed)
+        // the older kinds (send / change / delete) are all "action"
+        #expect(m.items.allSatisfy { $0.normalizedKind == "action" })
+        #expect(m.items[0].displayTitle == "Sent a mail to alice@example.com")
+    }
 }

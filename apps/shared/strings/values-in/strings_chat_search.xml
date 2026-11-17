@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">Cari di chat</string>
+    <string name="chat_search_title">Cari di chat</string>
+    <string name="chat_search_field">Cari pesan Anda</string>
+    <string name="chat_search_clear">Hapus pencarian</string>
+    <string name="chat_search_hint">Ketik sebuah kata atau sebagian kata. Ketuk hasil untuk membuka chat di pesan itu.</string>
+    <string name="chat_search_none">Tidak ada pesan yang cocok dengan pencarian ini.</string>
+    <string name="chat_search_failed">Pencarian tidak dapat terhubung ke server. Coba lagi sebentar.</string>
+    <string name="chat_search_you">Anda</string>
+</resources>

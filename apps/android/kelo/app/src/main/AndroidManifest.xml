@@ -39,6 +39,10 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- the phone's text-to-speech engines (Read aloud on a reply) -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
         <!-- Health Connect -->
         <package android:name="com.google.android.apps.healthdata" />
         <!-- the dialer the agent may open (ACTION_DIAL, the user presses call) -->
@@ -71,7 +75,11 @@
             android:exported="true"
             android:theme="@style/Theme.Kelo.Starting"
             android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden|density"
             android:windowSoftInputMode="adjustResize">
+            <!-- fold, unfold and a window resize are handled by the activity itself: the chat draft, the open tab and a live view stay -->
+            <meta-data android:name="android.supports_size_changes" android:value="true" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -94,6 +102,14 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- Allow / Deny and Reply from a notification: reached only by the notification's own PendingIntent -->
+        <receiver
+            android:name=".notify.ApprovalActionReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".notify.ReplyActionReceiver"
+            android:exported="false" />
 
         <!-- a reply the chat follows, kept alive for at most 10 minutes after the app goes to the background -->
         <service

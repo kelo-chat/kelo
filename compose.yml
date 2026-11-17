@@ -92,8 +92,8 @@ services:
     volumes: ["browser-data:/data", "browser-downloads:/downloads"]   # profile + downloads only; nothing from the host
     depends_on: [egress]
     # browser-net is `internal`: no route to the internet, the LAN, the host or cloud metadata. Pages get out only through the egress
-    # proxy, which refuses private addresses. DevTools :9223 is reachable on this network only; never published. (No `ports:` here:
-    # an internal network cannot publish them; the viewer is published by `egress`.)
+    # proxy, which refuses private addresses. DevTools :9223 and the live view's RFB :5901 are reachable on this network only; never
+    # published. (No `ports:` here: an internal network cannot publish them.)
     networks: [browser-net]
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://127.0.0.1:9223/json/version"]
@@ -102,7 +102,7 @@ services:
       retries: 5
 
   # ---- the browser's way out (assistant/egress.py): an HTTP proxy that forwards to public addresses only (no LAN, host, CGNAT,
-  # link-local or metadata; names are resolved here and the checked address is the one connected to). Also publishes the viewer.
+  # link-local or metadata; names are resolved here and the checked address is the one connected to).
   egress:
     build: *build
     image: ${KELO_IMAGE:-assistant:local}
@@ -111,12 +111,10 @@ services:
     user: "1004:1004"
     environment:
       ROLE: egress                     # no env_file: no keys, no token
-      EGRESS_RELAY: 6080=browser:6080  # the human viewer (noVNC) of the browser, published below
     read_only: true
     tmpfs: ["/tmp"]
     mem_limit: ${EGRESS_MEMORY:-256m}
     memswap_limit: ${EGRESS_MEMORY:-256m}
-    ports: ["127.0.0.1:${VIEWER_PORT:-6080}:6080"]     # human viewer (noVNC), this machine only
     volumes: ["kelo-route:/run/kelo-route:ro"]         # where the server says "direct" or "through the VPN sidecar" (no keys in it)
     networks: [browser-net, egress-out, vpn-net]
     healthcheck:

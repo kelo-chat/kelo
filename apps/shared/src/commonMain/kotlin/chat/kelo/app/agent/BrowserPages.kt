@@ -25,7 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -114,7 +114,12 @@ fun BrowserTabPage(vm: AgentViewModel, id: String, onBack: () -> Unit, takeContr
     LaunchedEffect(id) { if (state.data == null) vm.loadBrowser() }
     val tab = state.data?.items?.firstOrNull { it.id == id }
     var confirmClose by remember { mutableStateOf(false) }
-    TabView(vm, id, tab, onBack, onClose = { confirmClose = true }, takeControl = takeControl, picture = picture)
+    // the phone handed to the owner (android_show): the live view has its own "Done", answering that card
+    val perms by vm.perms.collectAsStateWithLifecycle()
+    LaunchedEffect(id) { if (LiveKinds.isDevice(id)) vm.loadPerms() }
+    val handed = if (LiveKinds.isDevice(id)) perms.data?.pending?.firstOrNull { it.isDevice } else null
+    TabView(vm, id, tab, onBack, onClose = { confirmClose = true }, takeControl = takeControl, picture = picture,
+        onDone = handed?.let { a -> { vm.answer(a, true); onBack() } })
     if (confirmClose) {
         ConfirmDialog(string(Res.string.agent_tab_close_confirm), string(Res.string.agent_tab_close), onDismiss = { confirmClose = false }, onYes = {
             vm.closeTab(tab ?: BrowserTab(id), onBack)
@@ -129,8 +134,9 @@ fun BrowserTabPage(vm: AgentViewModel, id: String, onBack: () -> Unit, takeContr
 @Composable
 private fun TabView(
     vm: AgentViewModel, id: String, tab: BrowserTab?, onBack: () -> Unit, onClose: () -> Unit, takeControl: Boolean = false, picture: String? = null,
+    onDone: (() -> Unit)? = null,
 ) {
-    LiveTabPage(id, tab, onBack = onBack, onCloseTab = onClose, takeControl = takeControl) {
+    LiveTabPage(id, tab, onBack = onBack, onCloseTab = onClose, takeControl = takeControl, onDone = onDone) {
         ScreenshotView(vm, id, working = false, reload = 0, picture = picture)
     }
 }

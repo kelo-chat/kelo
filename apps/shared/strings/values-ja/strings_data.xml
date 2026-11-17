@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">私のデータ</string>
+    <string name="data_intro">Keloが持つ自分の情報のコピーを受け取る、ほかのアシスタントの記憶を取り込む、または最初からやり直せます。</string>
+    <string name="data_export_title">データをダウンロード</string>
+    <string name="data_export_body">会話、Keloが覚えていること、予定、Keloが見守っていること、接続中のサービス、設定を1つのZIPファイルにまとめます。パスワード、キー、トークンは入りません。</string>
+    <string name="data_export_make">ファイルを作成</string>
+    <string name="data_export_making">ファイルを作成中…</string>
+    <string name="data_export_ready">ファイルの準備ができました（%1$s）。</string>
+    <string name="data_export_save">ファイルを保存</string>
+    <string name="data_export_saved">保存しました。</string>
+    <string name="data_export_again">新しいファイルを作成</string>
+    <string name="data_export_failed">ファイルを作成できませんでした。もう一度お試しください。</string>
+    <string name="data_import_title">ほかのアシスタントの記憶を取り込む</string>
+    <string name="data_import_private">ほかへは何も送られません。Keloサーバーで選んだモデルが文章を読み、あなたについての短い事実だけを残します。</string>
+    <string name="data_import_step1">1. このリクエストをコピーして、以前のアシスタント（ChatGPT、Claude、Geminiなど）に貼り付けます。</string>
+    <string name="data_import_copy">リクエストをコピー</string>
+    <string name="data_import_copied">コピーしました。</string>
+    <string name="data_import_step2">2. その返答をここに貼り付けます。</string>
+    <string name="data_import_paste_hint">返答を貼り付け</string>
+    <string name="data_import_add">記憶に追加</string>
+    <string name="data_import_zip_body">または、ChatGPT、Claude、Geminiからダウンロードしたチャットのエクスポート（ZIP、最大100MB）を選びます。</string>
+    <string name="data_import_zip">ZIPファイルを選択</string>
+    <string name="data_import_running">読み込み中… %1$d / %2$d</string>
+    <string name="data_import_reading">ファイルを開いています…</string>
+    <string name="data_import_cancel">停止</string>
+    <string name="data_import_failed">追加されたものはありません: %1$s</string>
+    <string name="data_import_none">追加できる新しい内容は見つかりませんでした。</string>
+    <string name="data_import_added">記憶に追加しました（%1$d件）:</string>
+    <string name="data_zip_too_big">このファイルは100MBを超えています。</string>
+    <string name="data_reset_title">最初からやり直す</string>
+    <string name="data_reset_body">会話、Keloが覚えていること、Keloが見守っていること、予定を消去します。コネクタ、保存済みのログイン、モデル、スマートフォンはそのままです。先にコピーをファイルとして保存します。</string>
+    <string name="data_reset_signout">コネクタからもサインアウトし、保存済みのログインを削除する</string>
+    <string name="data_reset_type">確認のため %1$s と入力してください</string>
+    <string name="data_reset_button">最初からやり直す</string>
+    <string name="data_reset_wrong">言葉が違います。何も変更していません。</string>
+    <string name="data_reset_confirm">今すぐやり直しますか？ 先にコピーを保存してから、会話、記憶、見守り、予定を消去します。元に戻せません。</string>
+    <string name="data_reset_done">完了しました。上のものをすべて消去しました。コピーは %1$s として保存されています。</string>
+</resources>

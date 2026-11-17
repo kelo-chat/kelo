@@ -30,6 +30,7 @@ from html import unescape
 from typing import Any
 from urllib.parse import quote, urlencode as _urlencode
 
+from . import mail_html
 from .mail import BODY_CAP, MailError, Selection, _sender_headers, is_bulk
 from .mcp_oauth import open_token
 from .netguard import NetGuardError, fetch
@@ -365,24 +366,40 @@ class GraphMail:
 
     # ---- sending
     async def send(self, account: str, to: list[str], subject: str, body: str, cc: list[str] | None = None, reply_to_uid: str = "",
-                   folder: str = "INBOX", reply_to: str = "") -> str:
+                   folder: str = "INBOX", reply_to: str = "", bcc: list[str] | None = None, html: str = "") -> str:
+        """`html`: the designed version (mail_html.clean). Graph holds one body per message, so the HTML replaces the plain text
+        (contentType HTML); a reply with HTML is a draft reply that is given that body and then sent."""
         if self.read_only():
             raise MailError(READ_ONLY)
-        people = [a.strip() for a in [*to, *(cc or [])] if a.strip()]
+        people = [a.strip() for a in [*to, *(cc or []), *(bcc or [])] if a.strip()]
         if not to or not all(re.fullmatch(r"[^@\s,<>]+@[^@\s,<>]+\.[^@\s,<>]+", a) for a in people):
             raise MailError("every recipient must be a plain email address")
         if len(people) > 20:
             raise MailError("at most 20 recipients")
+        designed = mail_html.clean(html) if html.strip() else ""
+        if html.strip() and not designed:
+            raise MailError("the designed (HTML) version has nothing left to send once its unsafe parts are removed")
+        content = {"contentType": "HTML", "content": designed} if designed else {"contentType": "Text", "content": body[:50_000]}
         msg: dict[str, Any] = {"toRecipients": [{"emailAddress": {"address": a}} for a in to],
-                               "ccRecipients": [{"emailAddress": {"address": a}} for a in cc or []]}
+                               "ccRecipients": [{"emailAddress": {"address": a}} for a in cc or []],
+                               "bccRecipients": [{"emailAddress": {"address": a}} for a in bcc or []]}
         if reply_to and re.fullmatch(r"[^@\s,<>]+@[^@\s,<>]+\.[^@\s,<>]+", reply_to):
             msg["replyTo"] = [{"emailAddress": {"address": reply_to}}]
         if reply_to_uid:
-            mid = self.uids.ids([reply_to_uid])[0]
-            st, _ = await self._call("POST", f"/me/messages/{quote(mid)}/reply", "email_send", f"reply to {len(people)} recipient(s)",
-                                     body={"message": msg, "comment": body[:50_000]})
+            mid = quote(self.uids.ids([reply_to_uid])[0])
+            if designed:
+                st, draft = await self._call("POST", f"/me/messages/{mid}/createReply", "email_send", f"reply to {len(people)} recipient(s)")
+                did = quote(str((draft or {}).get("id") or "")) if isinstance(draft, dict) else ""
+                if st not in (200, 201) or not did:
+                    raise MailError(f"Outlook did not start the reply (HTTP {st}); nothing was sent")
+                await self._call("PATCH", f"/me/messages/{did}", "email_send", f"reply to {len(people)} recipient(s)",
+                                 body={**msg, "body": content})
+                st, _ = await self._call("POST", f"/me/messages/{did}/send", "email_send", f"reply to {len(people)} recipient(s)")
+            else:
+                st, _ = await self._call("POST", f"/me/messages/{mid}/reply", "email_send", f"reply to {len(people)} recipient(s)",
+                                         body={"message": msg, "comment": body[:50_000]})
         else:
-            msg.update({"subject": subject[:300], "body": {"contentType": "Text", "content": body[:50_000]}})
+            msg.update({"subject": subject[:300], "body": content})
             st, _ = await self._call("POST", "/me/sendMail", "email_send", f"to {len(people)} recipient(s)",
                                      body={"message": msg, "saveToSentItems": True})
         if st not in (200, 202):

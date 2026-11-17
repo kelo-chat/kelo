@@ -95,6 +95,22 @@ public struct SecretEntryCard: View {
                 } else {
                     SecretFoldedLine(r: request).keloSensitive()
                 }
+            } else if framed && (request.isLogin || !(request.isCard || request.isPin)) {
+                // a login or a service key: the compact card, and the form in a bottom sheet (Cancel there only closes it)
+                CardBox {
+                    LoginCompactCard(login: request.isLogin, hosts: request.hosts, reason: SecretEntryWords.reason(request),
+                                     onOpen: { showSheet = true }, onNotNow: onCancel)
+                }
+                .keloSensitive()
+                .sheet(isPresented: $showSheet) {
+                    LoginRequestSheet(request: request, onSaved: { ans, res in
+                        showSheet = false
+                        onSaved(ans, res)
+                    }, onClose: { showSheet = false }, onGone: {
+                        showSheet = false
+                        onGone()
+                    })
+                }
             } else if framed {
                 CardBox {
                     SecretSummaryEntry(r: request, onOpen: { showSheet = true }, onCancel: onCancel)
@@ -127,6 +143,35 @@ public struct SecretEntryCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .keloSensitive()
             }
+        }
+    }
+}
+
+/// The sheet of a login or a service key asked for in the chat: the one call that answers it. Cancel only closes the sheet.
+private struct LoginRequestSheet: View {
+    let request: SecretRequest
+    let onSaved: (SecretSaveAnswer, SecretResult?) -> Void
+    let onClose: () -> Void
+    let onGone: () -> Void
+    @Environment(\.keloApi) private var api
+    @State private var answer = SecretAnswerModel()
+
+    var body: some View {
+        LoginSheetFrame {
+            LoginSheetForm(login: request.isLogin, hosts: request.hosts, hint: request.usernameHint, check: request.check,
+                           busy: answer.busy, problem: answer.problem, onSave: save, onCancel: onClose)
+        }
+    }
+
+    private func save(_ user: String, _ pass: String, _ mode: SecretLoginMode) {
+        if request.isLogin {
+            answer.saveLogin(name: request.name, user: user, pass: pass, mode: mode, api: api, saved: { got in
+                onSaved(got, SecretResult())
+            }, onGone: onGone)
+        } else {
+            answer.saveKey(name: request.name, secret: pass, api: api, saved: { got in
+                onSaved(got, SecretResult(checked: got.checked ? "ok" : "unchecked"))
+            }, onGone: onGone)
         }
     }
 }
@@ -309,13 +354,18 @@ private struct SecretLoginEntry: View {
     let onSaved: (SecretSaveAnswer, SecretResult?) -> Void
     let onGone: () -> Void
     @Environment(\.keloApi) private var api
-    @State private var user = ""
+    @State private var user: String
     @State private var pass = ""
     @State private var mode: SecretLoginMode = .afterSuccess
     @State private var answer = SecretAnswerModel()
     @FocusState private var focus: Field?
     private var busy: Bool { answer.busy }
     private var problem: String { answer.problem }
+
+    init(r: SecretRequest, onSaved: @escaping (SecretSaveAnswer, SecretResult?) -> Void, onGone: @escaping () -> Void) {
+        self.r = r; self.onSaved = onSaved; self.onGone = onGone
+        _user = State(initialValue: LoginSheetRules.initialUser(r.usernameHint))
+    }
 
     var body: some View {
         SecretValueField(label: L(R.string.vault_username), value: $user, keyboard: .email, masked: false, content: .username, submitLabel: .next) {
@@ -415,7 +465,7 @@ private struct SecretPinEntry: View {
 }
 
 /// A labelled field; `masked` values show as dots until Show is pressed (the system's own paste works in it).
-private struct SecretValueField: View {
+struct SecretValueField: View {
     enum Content { case username, password, none }
     let label: String
     @Binding var value: String
@@ -430,20 +480,21 @@ private struct SecretValueField: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             FieldLabel(label)
-            HStack(spacing: 4) {
-                // no placeholder: the label is right above, and the same words inside the empty field showed them twice ("키 또는 토큰")
-                KeloTextField("", text: $value, secure: masked && !shown, keyboard: keyboard, maxLength: 4096, onSubmit: onSubmit)
-                    .modifier(SecretContentType(kind: content))
-                    .modifier(SecretSubmitLabel(label: submitLabel))
-                    .accessibilityLabel(label)
-                if masked {
-                    Button { shown.toggle() } label: {
-                        KeloIconView(shown ? .close : .eye, size: 20, tint: shown ? c.accent : c.muted).frame(width: 44, height: 44)
+            // no placeholder: the label is right above, and the same words inside the empty field showed them twice ("키 또는 토큰")
+            KeloTextField("", text: $value, secure: masked && !shown, keyboard: keyboard, maxLength: 4096, trailingInset: masked ? 36 : 0, onSubmit: onSubmit)
+                .modifier(SecretContentType(kind: content))
+                .modifier(SecretSubmitLabel(label: submitLabel))
+                .accessibilityLabel(label)
+                .overlay(alignment: .trailing) {
+                    if masked {
+                        // inside the box, at its trailing edge
+                        Button { shown.toggle() } label: {
+                            KeloIconView(shown ? .close : .eye, size: 20, tint: shown ? c.accent : c.muted).frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L(shown ? R.string.secret_hide : R.string.secret_show))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(L(shown ? R.string.secret_hide : R.string.secret_show))
                 }
-            }
         }
     }
 }

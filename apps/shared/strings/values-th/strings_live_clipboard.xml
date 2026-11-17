@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">วางจากโทรศัพท์</string>
+    <string name="live_pasted">วางแล้ว ตรวจดูช่องอีกครั้ง</string>
+    <string name="live_copy_from_browser">คัดลอกจากเบราว์เซอร์</string>
+    <string name="live_copied_to_phone">คัดลอกไปยังโทรศัพท์แล้ว</string>
+</resources>

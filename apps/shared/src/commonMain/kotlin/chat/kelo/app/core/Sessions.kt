@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import okhttp3.OkHttpClient
 
+enum class AddressMove { MOVED, SAME_ADDRESS, INVALID, UNREACHABLE, OTHER_SERVER, NOT_SUPPORTED }
+
 /**
  * The signed-in state of this device. [api] is the [KeloApi] for the current session (null when signed out).
  * Any call that gets a 401 signs the device out.
@@ -137,6 +139,38 @@ class Sessions(
             E2eInfoCalls.Result.Unreachable -> {}
         }
     }
+
+    /**
+     * "Change address" in My: the same Kelo server answers at another address (an operator move, a new domain). The server is
+     * identified by its KE2E key: [raw] must answer GET /api/e2e/info with exactly the key this phone pinned at pairing. Only then the
+     * session moves, keeping the device token and the key (nothing is paired again). Another key is another server: refused, and
+     * pairing a new server stays the Connect flow. A phone without a pinned key (an older server) cannot tell servers apart: [canMoveServer].
+     */
+    suspend fun moveServer(raw: String, allowLocalHttp: Boolean): AddressMove = upgrading.withLock {
+        val api = _api.value ?: return@withLock AddressMove.INVALID
+        val pin = api.keyPin ?: return@withLock AddressMove.NOT_SUPPORTED
+        val address = ServerAddress.normalize(raw)?.takeIf { ServerAddress.isAllowed(it, allowLocalHttp) } ?: return@withLock AddressMove.INVALID
+        if (address.equals(api.baseUrl.trimEnd('/'), ignoreCase = true)) return@withLock AddressMove.SAME_ADDRESS
+        when (val r = E2eInfoCalls.lookup(client, address)) {
+            E2eInfoCalls.Result.Unreachable -> AddressMove.UNREACHABLE
+            E2eInfoCalls.Result.Missing -> AddressMove.OTHER_SERVER
+            is E2eInfoCalls.Result.Found -> when {
+                r.key != pin.key -> AddressMove.OTHER_SERVER
+                _api.value !== api -> AddressMove.UNREACHABLE   // signed out or changed while asking: nothing is switched
+                else -> {
+                    val session = Session(address, api.token, pin)
+                    store.saveSession(session)   // also saves the pin under the new address
+                    synchronized(this) { uploaderOf = null }
+                    AppVersion.reset()
+                    _api.value = apiFor(session)
+                    AddressMove.MOVED
+                }
+            }
+        }
+    }
+
+    /** The address row's "Change address" shows only for a phone that holds the server's key (a server without KE2E has no identity to compare). */
+    val canMoveServer: Boolean get() = pin != null
 
     /** "Try again" on the update-your-server screen: the version and the key are asked for again. */
     fun recheckServer() {

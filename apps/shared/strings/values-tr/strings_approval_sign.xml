@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">Ödemeyi onayla</string>
+    <string name="approval_sign_subtitle">Parmak iziniz veya yüzünüzle doğrulayın</string>
+    <string name="approval_sign_failed">Bu ödeme bu telefonda onaylanamadı. Tekrar deneyin.</string>
+    <string name="approval_sign_key_lost">Bu telefonun onay anahtarı yok. Bu telefonu sunucuyla yeniden eşleştirin.</string>
+    <string name="approval_pay_on_phone">Ödemeleri telefondaki Kelo uygulamasında onaylayın.</string>
+</resources>

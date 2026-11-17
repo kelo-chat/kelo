@@ -33,6 +33,10 @@ def follow_routes(app: Any, runner: FollowRunner, auth: Callable[..., Any]) -> N
                     "until": ch["until_offset"],
                     "state": ch["state"],
                     "last": last["fields"] if last else None,
+                    "next_at": ch.get("next_at"),
+                    # a check waiting for the month (an allowance used up) keeps its reason in "note" and counts no errors
+                    "paused": ch["state"] == "active" and bool(ch.get("last_error")) and not ch.get("consecutive_errors"),
+                    "note": ch.get("last_error") or "",
                 })
             preps_out = [
                 {"what": p.get("what", ""), "when": p.get("when", ""), "state": p.get("state", "later")}
@@ -45,9 +49,10 @@ def follow_routes(app: Any, runner: FollowRunner, auth: Callable[..., Any]) -> N
                 "starts_at": it["starts_at"],
                 "checks": checks_out,
                 "prep": preps_out,
+                "plan": it.get("plan", {}),
                 "state": it.get("state", "planned"),
             })
-        return {"items": out}
+        return {"items": out, "usage": runner.usage()}
 
     @app.post("/api/follow/{key}/stop", dependencies=[Depends(auth)])
     async def stop_follow_item(key: str) -> dict[str, Any]:

@@ -32,6 +32,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import chat.kelo.app.agent.AndroidVncScreenHost
+import chat.kelo.app.agent.LocalVncScreenHost
 
 val LocalAppContainer = staticCompositionLocalOf<AppContainer> { error("no AppContainer") }
 
@@ -70,7 +72,7 @@ class MainActivity : FragmentActivity() {
             receive(intent)
         }
         setContent {
-            CompositionLocalProvider(LocalAppContainer provides container, LocalAppServices provides container, LocalConsentMemory provides consent) {
+            CompositionLocalProvider(LocalAppContainer provides container, LocalAppServices provides container, LocalConsentMemory provides consent, LocalVncScreenHost provides AndroidVncScreenHost) {
                 ProvideAndroidPlatform(reduceMotion) {
                     KeloTheme { AppRoot(onSettled = ::onFirstScreen) }
                 }
@@ -103,6 +105,10 @@ class MainActivity : FragmentActivity() {
         reduceMotion = systemReducesMotion(this)   // the setting may have changed while away
         // the owner is looking at the app now: the notifications that only told something have done their job (owner 2026-11-12)
         runCatching { chat.kelo.app.notify.Notifier(this).clearNews() }
+        // and the ones that waited for an answer given somewhere else (another device, ran out): the server says which are settled
+        appContainer.sessions.api.value?.let { api ->
+            (application as KeloApp).appScope.launch { runCatching { appContainer.poller.dropSettled(api) } }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

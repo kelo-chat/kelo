@@ -94,6 +94,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=kelo-${{ matrix.name }}
             chat.kelo.release=${{ steps.v.outputs.version }}
+            chat.kelo.image=1
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
 

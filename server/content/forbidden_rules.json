@@ -1,0 +1,1733 @@
+{
+ "telegram": [
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "^/bot[^/]*(?:/test)?/(?:setwebhook|deletewebhook|getupdates|logout|close)$",
+   "why": "system",
+   "mode": "never",
+   "body": null,
+   "doc": "https://core.telegram.org/bots/api",
+   "sure": true
+  }
+ ],
+ "github": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:user|repos/[^/]+/[^/]+)/(?:ssh_signing_)?keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/deploy-keys/deploy-keys",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:user|repos/[^/]+/[^/]+)/(?:ssh_signing_)?keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/deploy-keys/deploy-keys",
+   "sure": true
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/authorizations(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/oauth-authorizations",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/authorizations(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/oauth-authorizations",
+   "sure": true
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/applications/[^/]+/token(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/apps/oauth-applications",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/applications/[^/]+/token(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/apps/oauth-applications",
+   "sure": true
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/app/installations/[^/]+/access_tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/apps/apps",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/app/installations/[^/]+/access_tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/apps/apps",
+   "sure": true
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/app-manifests/[^/]+/conversions(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/apps/apps",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/app-manifests/[^/]+/conversions(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/apps/apps",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/admin(?:/|$)",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/enterprise-admin",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/hooks(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/webhooks/repo-config",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:actions|dependabot|codespaces)/(?:secrets|variables|runners)(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/actions/secrets",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/environments/[^/]+/(?:secrets|variables)(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/actions/secrets",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:collaborators|invitations)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/collaborators/collaborators",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/orgs/[^/]+/(?:members|memberships|outside_collaborators|invitations)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/orgs/members",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/teams/[^/]+/(?:members|memberships)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/teams/members",
+   "sure": true
+  },
+  {
+   "methods": [
+    "POST"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/transfer$",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/repos/repos",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/repos/[^/]+/[^/]+$",
+   "why": "data",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/repos/repos",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/actions/workflows/[^/]+/(?:dispatches|enable|disable)$",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/actions/workflows",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/actions/runs/[^/]+/(?:rerun|rerun-failed-jobs)$",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/actions/workflow-runs",
+   "sure": true
+  },
+  {
+   "methods": [
+    "POST"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/repos/[^/]+/[^/]+/dispatches$",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/repos/repos",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/contents/\\.github/workflows(?:/|$)",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.github.com/en/rest/repos/contents",
+   "sure": true
+  }
+ ],
+ "gitea": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:user|repos/[^/]+/[^/]+|admin/users/[^/]+)/keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:user|repos/[^/]+/[^/]+|admin/users/[^/]+)/keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/users/[^/]+/tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/users/[^/]+/tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/user/applications/oauth2(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/user/applications/oauth2(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/admin(?:/|$)",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/hooks(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/actions/(?:secrets|variables|runners)(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:collaborators|invitations)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/orgs/[^/]+/members(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/teams/[^/]+/members(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/user/gpg_keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "POST"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/transfer$",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/repos/[^/]+/[^/]+$",
+   "why": "data",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/actions/workflows/[^/]+/dispatches$",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/contents/\\.(?:github|gitea|forgejo)/workflows(?:/|$)",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.gitea.com/api/1.22/",
+   "sure": false
+  }
+ ],
+ "n8n": [
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/(?:workflows|source-control|variables)(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.n8n.io/api/api-reference/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/credentials(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.n8n.io/api/api-reference/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/users(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.n8n.io/api/api-reference/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/projects(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.n8n.io/api/api-reference/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)rest/api-keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.n8n.io/api/api-reference/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)rest/(?:workflows|credentials|users|variables|source-control)(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.n8n.io/api/api-reference/",
+   "sure": false
+  }
+ ],
+ "nextcloud": [
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "/ocs/v[12]\\.php/core/(?:get)?apppassword(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html",
+   "sure": false
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "/(?:index\\.php/)?login/(?:v2|flow)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/ocs/v[12]\\.php/(?:cloud|apps/provisioning_api/api/v1)/(?:users|groups)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/ocs/v[12]\\.php/(?:cloud|apps/provisioning_api/api/v1)/apps(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)settings/(?:apps|users)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.nextcloud.com/server/latest/admin_manual/configuration_user/instruction_set_for_users.html",
+   "sure": false
+  }
+ ],
+ "shopify": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/admin/api/[^/]+/storefront_access_tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://shopify.dev/docs/api/admin-rest",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "/admin/api/[^/]+/storefront_access_tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://shopify.dev/docs/api/admin-rest",
+   "sure": true
+  },
+  {
+   "methods": [
+    "POST"
+   ],
+   "path": "/admin/api/[^/]+/graphql(?:\\.json)?$",
+   "why": "takeover",
+   "mode": "never",
+   "body": "mutation\\b.*\\b(?:storefrontAccessTokenCreate|delegateAccessTokenCreate)\\b",
+   "doc": "https://shopify.dev/docs/api/admin-graphql",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/admin/api/[^/]+/themes/[^/]+/assets(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://shopify.dev/docs/api/admin-rest",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/admin/api/[^/]+/themes(?:\\.json|/[^/]+\\.json)$",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://shopify.dev/docs/api/admin-rest",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/admin/api/[^/]+/script_tags(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://shopify.dev/docs/api/admin-rest",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/admin/api/[^/]+/webhooks(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://shopify.dev/docs/api/admin-rest",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/admin/api/[^/]+/(?:users|staff_members?)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://shopify.dev/docs/api/admin-rest",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/admin/(?:api_permissions|oauth)(?:/|$)",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://shopify.dev/docs/api/admin-rest",
+   "sure": false
+  },
+  {
+   "methods": [
+    "POST"
+   ],
+   "path": "/admin/api/[^/]+/graphql(?:\\.json)?$",
+   "why": "code",
+   "mode": "ask",
+   "body": "mutation\\b.*\\b(?:theme(?:Create|Update|Delete|Publish|FilesUpsert|FilesCopy|FilesDelete)|scriptTag(?:Create|Update|Delete)|(?:webhookSubscription|eventBridgeWebhookSubscription|pubSubWebhookSubscription)(?:Create|Update|Delete)|staffMember\\w*|storefrontAccessTokenDelete|appRevokeAccessScopes|appUninstall)\\b",
+   "doc": "https://shopify.dev/docs/api/admin-graphql",
+   "sure": true
+  }
+ ],
+ "pihole": [
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/auth/app(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.pi-hole.net/api/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/action(?:/|$)",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://github.com/pi-hole/FTL/blob/master/src/api/docs/content/specs/action.yaml",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/teleporter(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.pi-hole.net/api/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "POST"
+   ],
+   "path": "(?:^|/)api/dns/blocking$",
+   "why": "system",
+   "mode": "ask",
+   "body": "\"blocking\"\\s*:\\s*(?:false|\"false\"|0)",
+   "doc": "https://docs.pi-hole.net/api/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/config(?:/|$)",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.pi-hole.net/api/",
+   "sure": false
+  }
+ ],
+ "adguard_home": [
+  {
+   "methods": [
+    "POST"
+   ],
+   "path": "(?:^|/)control/protection$",
+   "why": "system",
+   "mode": "ask",
+   "body": "\"enabled\"\\s*:\\s*(?:false|\"false\"|0)",
+   "doc": "https://github.com/AdguardTeam/AdGuardHome/blob/master/openapi/openapi.yaml",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)control/(?:dns_config|update|tls/configure|install/[a-z_]+)$",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://github.com/AdguardTeam/AdGuardHome/blob/master/openapi/openapi.yaml",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)control/filtering/config$",
+   "why": "system",
+   "mode": "ask",
+   "body": "\"enabled\"\\s*:\\s*(?:false|\"false\"|0)",
+   "doc": "https://github.com/AdguardTeam/AdGuardHome/blob/master/openapi/openapi.yaml",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)control/(?:safebrowsing|parental|safesearch)/disable$",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://github.com/AdguardTeam/AdGuardHome/blob/master/openapi/openapi.yaml",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)control/safesearch/settings$",
+   "why": "system",
+   "mode": "ask",
+   "body": "\"enabled\"\\s*:\\s*(?:false|\"false\"|0)",
+   "doc": "https://github.com/AdguardTeam/AdGuardHome/blob/master/openapi/openapi.yaml",
+   "sure": true
+  }
+ ],
+ "frigate": [
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/(?:restart|config/save|config/set)(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.frigate.video/integrations/api/frigate-http-api/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/go2rtc/streams(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.frigate.video/integrations/api/frigate-http-api/",
+   "sure": false
+  }
+ ],
+ "paperless": [
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/token(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.paperless-ngx.com/api/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/profile/generate_auth_token(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.paperless-ngx.com/api/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/(?:mail_accounts|users|groups)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.paperless-ngx.com/api/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/(?:workflows|config)(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.paperless-ngx.com/api/",
+   "sure": false
+  }
+ ],
+ "firefly_iii": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)oauth/(?:personal-access-tokens|clients)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://api-docs.firefly-iii.org/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "(?:^|/)oauth/(?:personal-access-tokens|clients)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://api-docs.firefly-iii.org/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/data/(?:destroy|purge)(?![a-z0-9_-])",
+   "why": "data",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://api-docs.firefly-iii.org/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/(?:users|configuration)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://api-docs.firefly-iii.org/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/webhooks(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://api-docs.firefly-iii.org/",
+   "sure": false
+  }
+ ],
+ "mealie": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/users/api-tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.mealie.io/documentation/getting-started/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "(?:^|/)api/users/api-tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.mealie.io/documentation/getting-started/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/admin(?:/|$)",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.mealie.io/documentation/getting-started/api-usage/",
+   "sure": false
+  }
+ ],
+ "immich": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/api-keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://api.immich.app/endpoints",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "(?:^|/)api/api-keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://api.immich.app/endpoints",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/admin(?:/|$)",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://api.immich.app/endpoints",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/(?:system-config|jobs)(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://api.immich.app/endpoints",
+   "sure": false
+  }
+ ],
+ "datadog": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v[12]/(?:api_keys?|application_keys?|current_user/application_keys)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.datadoghq.com/api/latest/key-management/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "(?:^|/)api/v[12]/(?:api_keys?|application_keys?|current_user/application_keys)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.datadoghq.com/api/latest/key-management/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v[12]/(?:users?|roles|user_invitations)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.datadoghq.com/api/latest/users/",
+   "sure": true
+  }
+ ],
+ "slack": [
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/(?:oauth(?:\\.v2)?\\.|tooling\\.tokens\\.rotate)",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.slack.dev/reference/methods",
+   "sure": true
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/admin\\.",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.slack.dev/reference/methods",
+   "sure": true
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/apps\\.(?:uninstall|permissions|manifest)",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.slack.dev/reference/methods",
+   "sure": true
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/auth\\.revoke$",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.slack.dev/reference/methods",
+   "sure": true
+  }
+ ],
+ "miniflux": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)v1/api-keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://miniflux.app/docs/api.html",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "(?:^|/)v1/api-keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://miniflux.app/docs/api.html",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)v1/users(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://miniflux.app/docs/api.html",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)v1/flush-history$",
+   "why": "data",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://miniflux.app/docs/api.html",
+   "sure": true
+  }
+ ],
+ "linkwarden": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.linkwarden.app/api/api-introduction",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "(?:^|/)api/v1/tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.linkwarden.app/api/api-introduction",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/users(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.linkwarden.app/api/api-introduction",
+   "sure": false
+  }
+ ],
+ "karakeep": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/api-?keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://docs.karakeep.com/api/karakeep-api",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "(?:^|/)api/v1/api-?keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.karakeep.com/api/karakeep-api",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/v1/admin(?:/|$)",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://docs.karakeep.com/api/karakeep-api",
+   "sure": true
+  }
+ ],
+ "wallabag": [
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)oauth/v2/token(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://doc.wallabag.org/developer/api/methods/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)(?:api|developer)/clients?(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://doc.wallabag.org/developer/api/methods/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "(?:^|/)api/user(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://doc.wallabag.org/developer/api/methods/",
+   "sure": false
+  }
+ ],
+ "freshrss": [
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/greader\\.php/accounts/clientlogin(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://freshrss.github.io/FreshRSS/en/developers/06_Fever_API.html",
+   "sure": false
+  }
+ ],
+ "home_assistant": [
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/services/(?:shell_command|command_line|python_script|pyscript|rest_command)(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "never",
+   "body": null,
+   "doc": "https://developers.home-assistant.io/docs/api/rest/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/(?:hassio|hassio_ingress)(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://developers.home-assistant.io/docs/api/rest/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/services/hassio(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://developers.home-assistant.io/docs/api/rest/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "*"
+   ],
+   "path": "(?:^|/)api/services/homeassistant/(?:restart|stop)(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://developers.home-assistant.io/docs/api/rest/",
+   "sure": true
+  }
+ ],
+ "forgejo": [
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:user|repos/[^/]+/[^/]+|admin/users/[^/]+)/keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:user|repos/[^/]+/[^/]+|admin/users/[^/]+)/keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/users/[^/]+/tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/users/[^/]+/tokens(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/user/applications/oauth2(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "never",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/user/applications/oauth2(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/admin(?:/|$)",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/hooks(?![a-z0-9_-])",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/actions/(?:secrets|variables|runners)(?![a-z0-9_-])",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": true
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/(?:collaborators|invitations)(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/orgs/[^/]+/members(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/teams/[^/]+/members(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/user/gpg_keys(?![a-z0-9_-])",
+   "why": "takeover",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "POST"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/transfer$",
+   "why": "system",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/repos/[^/]+/[^/]+$",
+   "why": "data",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "^(?!.*/(?:contents|raw|src)/).*?/actions/workflows/[^/]+/dispatches$",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  },
+  {
+   "methods": [
+    "DELETE",
+    "PATCH",
+    "POST",
+    "PUT"
+   ],
+   "path": "/contents/\\.(?:github|gitea|forgejo)/workflows(?:/|$)",
+   "why": "code",
+   "mode": "ask",
+   "body": null,
+   "doc": "https://forgejo.org/docs/latest/user/api-usage/",
+   "sure": false
+  }
+ ]
+}

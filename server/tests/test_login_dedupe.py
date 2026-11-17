@@ -155,3 +155,62 @@ async def test_a_stale_request_of_an_ended_task_expires_after_30_minutes(env):
 
 def test_covered_is_a_known_state():
     assert "covered" in STATES
+
+
+# ------------------------------------------------------------------ the account name the card is pre-filled with (username_hint)
+def open_hint(st) -> list[str]:
+    return [r["username_hint"] for r in st._all("SELECT username_hint FROM secret_requests WHERE state = 'open'")]
+
+
+async def test_request_login_keeps_the_given_account_as_a_non_secret_prefill(env):
+    st, entries, _ = env
+    await tool(st, "request_login").handler({"site": "https://shop.example.com/login", "username": "  nahyun.kim@example.com "})
+    assert open_hint(st) == ["nahyun.kim@example.com"]
+    public = entries.public(st._all("SELECT * FROM secret_requests")[0])
+    assert public["username_hint"] == "nahyun.kim@example.com"
+
+
+async def test_request_login_without_username_has_an_empty_hint(env):
+    st, entries, _ = env
+    await tool(st, "request_login").handler({"site": "https://shop.example.com/login"})
+    assert open_hint(st) == [""]
+    assert entries.public(st._all("SELECT * FROM secret_requests")[0])["username_hint"] == ""
+
+
+@pytest.mark.parametrize("bad", ["x" * 201, "a\nb@example.com", "a\x00b", 5, None])
+async def test_a_bad_username_hint_is_dropped_not_stored(env, bad):
+    st, _, _ = env
+    out = await tool(st, "request_login").handler({"site": "https://shop.example.com/login", "username": bad})
+    assert "fill-in card" in out
+    assert open_hint(st) == [""]
+
+
+def test_the_tool_describes_the_username_argument(env):
+    st, _, _ = env
+    assert "username" in tool(st, "request_login").parameters["properties"]
+
+
+def test_an_old_database_gets_the_column(tmp_path):
+    st = Store(tmp_path / "b.db", KEY)
+    with st._lock:
+        st._db.execute("DROP TABLE IF EXISTS secret_requests")
+        st._db.execute("CREATE TABLE secret_requests (id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', "
+                       "label TEXT NOT NULL DEFAULT '', hosts TEXT NOT NULL DEFAULT '[]', reason TEXT NOT NULL DEFAULT '', "
+                       "check_url TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT 'agent', turn_id TEXT NOT NULL DEFAULT '', "
+                       "task_id INTEGER, worker_id TEXT NOT NULL DEFAULT '', run_source TEXT NOT NULL DEFAULT '', owner TEXT NOT NULL DEFAULT '', "
+                       "after_id INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'open', result TEXT NOT NULL DEFAULT '{}', "
+                       "told INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, answered_at REAL)")
+        st._db.commit()
+    entries = SecretRequests(st)
+    req = entries.create("login", name="x", hosts=["x.example.com"], username_hint="me@example.com")
+    assert req["username_hint"] == "me@example.com"
+
+
+async def test_the_vault_item_of_a_pending_login_carries_the_prefill(env):
+    st, _, _ = env
+    await tool(st, "request_login").handler({"site": "https://shop.example.com/login", "username": "me@example.com"})
+    item = [c for c in st.credentials() if c["kind"] == "login"][0]
+    assert not item["has_secret"] and item["username_hint"] == "me@example.com"
+    await tool(st, "request_login").handler({"site": "https://other.example.org/login"})
+    item = [c for c in st.credentials() if "other.example.org" in c["hosts"]][0]
+    assert item["username_hint"] == ""

@@ -315,3 +315,32 @@ def test_status_tells_the_model_and_whether_play_store_and_adb_keyboard_are_inst
     monkeypatch.setattr(bridge.subprocess, "run", Adb({"get-state": (1, "error")}))
     _, off = call(bridge.Device(SERIAL), "GET", "/status")
     assert off["connected"] is False and off["play_store"] is False and off["korean_input"] is False and off["model"] == ""
+
+
+# ---- read-only questions for the browser sign-in check
+def test_handlers_intent_and_app_links_parse_what_the_device_prints():
+    assert bridge.parse_handlers("2 activities found:\n  org.chromium.webview_shell/.WebViewBrowserActivity\n  com.android.chrome/com.google.android.apps.chrome.Main\n"
+                                 "  org.chromium.webview_shell/.Other\n") == ["org.chromium.webview_shell", "com.android.chrome"]
+    assert bridge.parse_handlers("No activity found") == []
+    top = ("TASK 1\n  ACTIVITY org.chromium.webview_shell/.Main abc pid=1\n    Intent {act=android.intent.action.VIEW dat=https://a.example.com/x?redirect_uri=a:/b&s=1}\n"
+           "    intent={act=android.intent.action.VIEW dat=https://a.example.com/x?redirect_uri=a:/b&s=1 cmp=org.chromium.webview_shell/.Main}\n")
+    assert bridge.parse_intent_data(top) == "https://a.example.com/x?redirect_uri=a:/b&s=1"
+    assert bridge.parse_intent_data("nothing") == ""
+    both = top.replace("ACTIVITY org", "ACTIVITY org").replace("    Intent {", "    launchedFromUid=1 launchedFromPackage=com.example.shop\n    Intent {", 1) + "  ACTIVITY other/.X 1\n    launchedFromPackage=evil.app\n"
+    assert bridge.parse_caller(both) == "com.example.shop" and bridge.parse_caller(top) == "" and bridge.parse_caller("") == ""
+    assert bridge.parse_app_links("com.example.shop:\n  Domain verification state:\n    app.example.com: verified\n    other.com: none\n    b.com: 1024\n") == ["app.example.com"]
+
+
+def test_the_new_endpoints_ask_only_and_quote_the_address(adb):
+    adb.answers["query-activities"] = "1 activities found:\n  com.example.shop/.Redirect\n"
+    device = bridge.Device(SERIAL)
+    status, got = call(device, "GET", "/handlers?url=com.example.shop.oauth%3A%2Foauth2redirect%3Fa%3D%27%3Brm")
+    assert status == 200 and got == {"packages": ["com.example.shop"]}
+    ran = [s for s in adb.shells() if "query-activities" in s][0]
+    assert "-d 'com.example.shop.oauth:/oauth2redirect?a='\\''" in ran and "android.intent.action.VIEW" in ran
+    assert call(device, "GET", "/handlers?url=not%20an%20address")[0] == 400 and call(device, "GET", "/handlers")[0] == 400
+    assert call(device, "GET", "/applinks?package=a%3Bb")[0] == 400
+    assert call(device, "GET", "/intent", auth=None)[0] == 401
+    adb.answers["get-app-links"] = "app.example.com: verified\n"
+    assert call(device, "GET", "/applinks?package=com.example.shop")[1] == {"hosts": ["app.example.com"]}
+    assert not [s for s in adb.shells() if any(w in s for w in ("input ", "am start", "pm install"))]

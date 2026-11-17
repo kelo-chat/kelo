@@ -1,33 +1,27 @@
 """Capture first, file later (memory_inbox.py + the memory pass) and reading only what is relevant (recall.py), with fake models:
-the remember tool's dated inbox lines, filing that removes only what a successful pass read, nothing lost on a failed or cut-off
-pass, the periodic full rewrite, dated lines and oldest-first ageing, the section index (FTS5/BM25) and the turn's note (relevant
+the remember tool's dated inbox lines (filing and undo of the pass are in test_memory_pass.py), dated lines and oldest-first ageing, the section index (FTS5/BM25) and the turn's note (relevant
 sections once, then by path; never in the cached system prompt)."""
 
-import asyncio
 import json
 
 import httpx
 
 from assistant.home import Home
 from assistant.memory_inbox import INBOX, INBOX_MAX, INBOX_SHOWN, MemoryInbox, inbox_tools
-from assistant.memory_upkeep import REWRITE_EVERY, fit_budget, line_date, tag_new_lines
-import assistant.memory_upkeep as mu
+from assistant.memory_upkeep import fit_budget, line_date, tag_new_lines
 from assistant.providers import Done, TextDelta
 from assistant.recall import SHOWN_WINDOW, Recall, TurnRecall, query_terms, sections
 from assistant.server import TURN_NOTE, Settings, create_app
 from assistant.store import Store
 
-from test_memory_upkeep import Clock, answer, answering, read, say, setup, ts
+from test_memory_pass import Clock, ts
 from test_server import AUTH, TOKEN, Running, read_events
 
-MEM = "# MEMORY.md\n\n## About the user\n- {x}\n\n## Ongoing\n\n## Decided & done\n"
-
-
-def with_inbox(tmp_path, fn, **kw):
-    store, home, up, clock = setup(tmp_path, fn, **kw)
-    inbox = MemoryInbox(home, tz=lambda: "Asia/Seoul", clock=clock)
-    up.inbox = inbox
-    return store, home, up, clock, inbox
+def answering(text):
+    async def fn(provider, request, **kw):
+        yield TextDelta(text)
+        yield Done("stop")
+    return fn
 
 
 # ---------------------------------------------------------------------------------------------------------- the inbox
@@ -53,68 +47,6 @@ async def test_remember_writes_a_dated_line_with_its_source_newest_first(tmp_pat
     assert block.count("\n- ") == INBOX_SHOWN and "fact number 204" in block.splitlines()[1] and f"older in {INBOX}" in block
 
 
-async def test_a_pass_files_the_inbox_and_removes_only_what_it_read(tmp_path):
-    store, home, up, clock, inbox = with_inbox(tmp_path, None)
-    inbox.add("Allergic to peanuts", "fact", 7)
-
-    async def fn(provider, request, **kw):
-        assert "<inbox>" in request.messages[1]["content"] and "Allergic to peanuts" in request.messages[1]["content"]
-        inbox.add("Moved to a new team", "fact", 8)               # noted while the pass runs: stays for the next one
-        yield TextDelta(json.dumps(answer(memory_md=MEM.format(x="Allergic to peanuts [2026-11-09, inbox m7]"))))
-        yield Done("stop")
-    up.stream_fn = fn
-    out = await up.run()                                          # no new conversation: the inbox alone is reason enough
-    assert out["status"] == "done" and out["filed"] == 1
-    assert "Allergic to peanuts [2026-11-09, inbox m7]" in read(home, "MEMORY.md")
-    assert [ln.split(" · ")[-1] for ln in inbox.lines()] == ["Moved to a new team"]
-    undone = up.undo()                                            # undoing the pass puts its filed note back in the inbox
-    assert undone["inbox_back"] == 1 and "Allergic to peanuts" not in read(home, "MEMORY.md")
-    assert [ln.split(" · ")[-1] for ln in inbox.lines()] == ["Moved to a new team", "Allergic to peanuts"]
-    assert inbox.restore(inbox.lines()) == 0                      # never twice
-
-
-async def test_a_failed_or_cut_off_pass_loses_nothing(tmp_path, monkeypatch):
-    store, home, up, clock, inbox = with_inbox(tmp_path, answering("not json"))
-    inbox.add("Allergic to peanuts")
-    assert (await up.run())["code"] == "bad_output" and len(inbox.lines()) == 1
-    up.stream_fn = answering(RuntimeError("down"))
-    assert (await up.run())["code"] == "model_error" and len(inbox.lines()) == 1
-
-    async def slow(provider, request, **kw):
-        await asyncio.sleep(5)
-        yield TextDelta(json.dumps(answer(memory_md=MEM.format(x="x"))))
-    monkeypatch.setattr(mu, "MODEL_TIMEOUT", 0.05)
-    up.stream_fn = slow
-    out = await up.run()
-    assert out["status"] == "failed" and "no answer within" in out["reason"] and len(inbox.lines()) == 1
-    assert "x" not in read(home, "MEMORY.md").split("## About the user")[1].split("##")[0]
-
-
-async def test_a_file_changed_meanwhile_keeps_the_inbox_for_the_next_pass(tmp_path):
-    store, home, up, clock, inbox = with_inbox(tmp_path, None)
-    inbox.add("Allergic to peanuts")
-
-    async def fn(provider, request, **kw):
-        home.write("MEMORY.md", MEM.format(x="the user's own edit"), by="user")
-        yield TextDelta(json.dumps(answer(memory_md=MEM.format(x="Allergic to peanuts"))))
-        yield Done("stop")
-    up.stream_fn = fn
-    await up.run()
-    assert "the user's own edit" in read(home, "MEMORY.md") and len(inbox.lines()) == 1
-
-
-async def test_every_few_passes_the_files_are_rewritten_whole(tmp_path):
-    fn = answering(*[answer(memory_md=MEM.format(x=f"fact {i}")) for i in range(REWRITE_EVERY + 2)])
-    store, home, up, clock = setup(tmp_path, fn)
-    for i in range(REWRITE_EVERY + 1):
-        say(store, clock.t - 10, "user", f"message {i}")
-        out = await up.run()
-        clock.t += 3600
-        assert out["status"] == "done"
-    flags = ["rewrite user_md, memory_md and agents_md whole" in c.messages[0]["content"] for c in fn.calls]
-    assert flags == [False] * (REWRITE_EVERY - 1) + [True, False]
-
-
 def test_new_lines_get_a_date_and_the_oldest_go_first():
     before = "## About the user\n- Old fact [2026-01-02, said m3]\n"
     after = tag_new_lines(before, "## About the user\n- Old fact [2026-01-02, said m3]\n- New fact\n- Group:\n", "2026-11-09")
@@ -133,8 +65,19 @@ def people(home, slug, name, aliases, body):
 
 def test_sections_and_terms():
     assert sections("intro\n# A\none\n## B\ntwo\n") == [("", "intro"), ("A", "one"), ("B", "two")]
-    assert query_terms("지우랑 저녁 먹기로 했어") [:3] == ["지우랑", "지우", "저녁"]
-    assert "the" not in query_terms("what is the plan")
+    assert query_terms("지우랑 저녁 먹기로 했어 지우랑 7") == ["지우랑", "저녁", "먹기로", "했어"]   # no word list: whole words, once, a lone digit is no term
+
+
+def test_common_words_count_for_nothing_by_frequency_not_by_a_list(tmp_path):
+    home = Home(tmp_path)
+    for i in range(6):
+        home.write(f"memory/n{i}.md", f"# N{i}\n\n## Plan\nThe plan is that what we do is the thing number {i}.\n")
+    home.write("memory/trip.md", "# Trip\n\n## Visa\nThe visa for Lisbon needs a photo.\n")
+    r = Recall(home)
+    assert r.search("what is the plan") == []                                   # every word is in most sections: nothing to go on
+    hits = r.search("what is the visa for Lisbon")
+    assert hits and hits[0]["path"] == "memory/trip.md"
+    assert r.search("lisbons") and r.search("lisbons")[0]["path"] == "memory/trip.md"   # an ending after the word still finds it, in any script
 
 
 def test_the_index_finds_the_right_section_and_keeps_up_with_changes(tmp_path):
@@ -151,7 +94,7 @@ def test_the_index_finds_the_right_section_and_keeps_up_with_changes(tmp_path):
     assert hits[0]["path"] == "memory/people/jiwoo.md" and "Vegetarian" in hits[0]["text"] and len(hits) <= 3
     assert r.search("when is the dentist")[0]["path"] == "journal/2026-11-07"
     assert r.search("passport")[0]["key"] == "memory/trips.md#Spring"
-    assert r.search("hello there") == []
+    assert r.search("hello yonder") == []   # (was "hello there": no stopword list any more; a frequent word is dropped by frequency, see the test below)
     home.write("memory/trips.md", "# Trips\n\n## Autumn\nVisa for the autumn trip.\n")
     assert r.search("passport") == [] and r.search("visa")[0]["key"] == "memory/trips.md#Autumn"
     (home.root / "memory/trips.md").unlink()

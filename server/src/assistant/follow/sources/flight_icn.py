@@ -11,6 +11,7 @@ from ...keyring_client import PLACEHOLDER
 from ...netguard import Reply, fetch
 from ..checks import Reading, Source
 
+CANCELLED_REMARK = "결항"   # the value this API documents in its remark field for a cancelled flight (its own enumeration)
 ICN_HOST = "apis.data.go.kr"
 DEPARTURES_URL = f"https://{ICN_HOST}/B551177/StatusOfPassengerFlightsDfl/getPassengerDeparturesDfl"
 ARRIVALS_URL = f"https://{ICN_HOST}/B551177/StatusOfPassengerFlightsDfl/getPassengerArrivalsDfl"
@@ -55,7 +56,7 @@ class IncheonFlights(Source):
         if not refs.get("flight"):
             return False
         airport = str(refs.get("airport") or refs.get("origin") or "").strip().upper()
-        if airport and airport not in ("ICN", "INCHEON", "RKSI", "인천"):
+        if airport and airport not in ("ICN", "RKSI"):   # IATA and ICAO codes
             return False
         return True
 
@@ -116,5 +117,6 @@ class IncheonFlights(Source):
                     "terminal": str(terminal),
                     "departure_time": str(dep_time),
                     "status": str(status),
+                    "cancelled": str(status) == CANCELLED_REMARK,
                 }
         return None

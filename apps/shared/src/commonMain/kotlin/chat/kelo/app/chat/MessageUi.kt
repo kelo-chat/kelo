@@ -43,7 +43,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -106,7 +106,8 @@ fun ActionBubble(
     val haptics = LocalHaptics.current
     val clipboard = LocalClipboardManager.current
     // no way to share on this app (the desktop gives none): the action is not offered
-    val shown = MessageActions.offered(actions, canShare = LocalTextSharer.current != null)
+    val reader = LocalReadAloud.current
+    val shown = MessageActions.offered(actions, canShare = LocalTextSharer.current != null, canSpeak = reader != null)
     var open by remember { mutableStateOf(false) }
     var copied by remember { mutableStateOf(false) }
     val lift by animateFloatAsState(if (open && !reduce) LIFT_SCALE else 1f, if (reduce) snap() else Motion.bump(), label = "lift")
@@ -156,6 +157,9 @@ fun ActionBubble(
                         string(if (copied) Res.string.msg_action_copied else Res.string.msg_action_copy)
                     MsgAction.SHARE -> KeloIcons.Share to string(Res.string.msg_action_share)
                     MsgAction.SELECT -> KeloIcons.TextSelect to string(Res.string.msg_action_select)
+                    MsgAction.READ_ALOUD ->
+                        if (reader?.reading == copyText()) KeloIcons.Stop to string(Res.string.msg_action_read_stop)
+                        else KeloIcons.Speaker to string(Res.string.msg_action_read_aloud)
                     MsgAction.RETRY -> KeloIcons.Retry to string(Res.string.msg_action_retry)
                     MsgAction.EDIT -> KeloIcons.Edit to string(Res.string.msg_action_edit)
                     MsgAction.REPORT -> KeloIcons.Flag to string(Res.string.msg_action_report)
@@ -232,8 +236,8 @@ fun SelectTextPage(text: String, onClose: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .background(barColor)
+                .onSizeChanged { barH = with(density) { it.height.toDp() } }   // measured WITH the status bar: the page's top spacer is this whole height
                 .statusBarsPadding()
-                .onSizeChanged { barH = with(density) { it.height.toDp() } }
                 .align(Alignment.TopCenter),
         ) {
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 8.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {

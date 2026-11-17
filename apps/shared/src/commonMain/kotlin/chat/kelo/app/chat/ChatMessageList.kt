@@ -28,7 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -43,6 +43,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -92,6 +93,7 @@ fun Messages(
     val haptics = LocalHaptics.current
     val services = LocalAppServices.current
     val reduce = LocalReduceMotion.current
+    val c = Kelo.colors
     // an end-to-end card goes from this device only after the owner's check (the app's CardSenders: decrypt, send to the approval's
     // slot, wipe); a PIN goes the same way
     val senders = hooks.cardSenders()
@@ -133,25 +135,35 @@ fun Messages(
             if (ChatScroll.follow(list.firstVisibleItemIndex, false)) list.animateScrollToItem(0) else askUnread = true
         }
     }
-    // a follow-up notification asked for one message: scroll to it once it is in the list (a fresh reload brings it)
+    // a message asked for (a follow-up notification, a search result): scroll to it once it is in the list. A message not in the list
+    // is fetched with its window (ChatViewModel.openAt); if the server does not have it, the chat stays where it is. The row is lit
+    // for a moment after the scroll (the highlight below).
     val focusFlow = services.chatFocus
     val focus by focusFlow.collectAsState()
-    var focusReloaded by remember { mutableStateOf(false) }
+    var focusAsked by remember { mutableStateOf(false) }
+    var lit by remember { mutableStateOf<Pair<Long, Int>?>(null) }   // the message to light, with a count so the same one lights again
+    val litAlpha = remember { Animatable(0f) }
     LaunchedEffect(focus, rows.size) {
         val id = focus ?: return@LaunchedEffect
-        if (!focusReloaded) vm.loadFollowups()
         val i = rows.indexOfFirst { it is ChatItem.Msg && it.id == id }
         if (i >= 0) {
             list.animateScrollToItem(i + if (state.phase != null) 1 else 0)
             focusFlow.value = null
-            focusReloaded = false
-        } else if (!focusReloaded) {
-            focusReloaded = true
-            vm.reload()
-        } else if (state.loaded) {
-            focusFlow.value = null   // not among the newest messages: the chat simply opens at the bottom
-            focusReloaded = false
+            focusAsked = false
+            lit = id to ((lit?.second ?: 0) + 1)
+        } else if (!focusAsked) {
+            focusAsked = true
+            vm.openAt(id) { found ->
+                focusAsked = false
+                if (!found) focusFlow.value = null   // not there (unknown, hidden, or no answer): nothing to scroll to
+            }
         }
+    }
+    LaunchedEffect(lit) {
+        if (lit == null) return@LaunchedEffect
+        litAlpha.snapTo(1f)
+        delay(ChatSearchRules.HIGHLIGHT_HOLD_MS)
+        litAlpha.animateTo(0f, tween(ChatSearchRules.HIGHLIGHT_FADE_MS))
     }
     // a row in 답이 필요해요 asked for a secure entry's card: scroll to it and mark it for a moment
     val entryFlow = services.chatEntryFocus
@@ -201,13 +213,19 @@ fun Messages(
         seenSignature = signature
         askUnread = false
     }
+    // the list is a window around an opened message: at its bottom the messages after it load a page at a time (as the iPhone does);
+    // the newest id is a key so that each page that lands at the bottom asks for the next one
+    val newestId = state.items.mapNotNull { (it as? ChatItem.Msg)?.id }.lastOrNull()
+    LaunchedEffect(atBottom, state.hasNewer, newestId) { if (atBottom && state.hasNewer) vm.loadNewer() }
     val showJump = !atBottom && state.items.isNotEmpty()
     SideEffect {
         jump.shown = showJump
         jump.unread = unread
         jump.onClick = {
             haptics.tick()
-            scope.launch { if (reduce) list.scrollToItem(0) else list.animateScrollToItem(0) }
+            // a window: the newest page comes back (the rows after the window are not loaded yet); otherwise the list scrolls down
+            if (state.hasNewer) vm.toNewest()
+            else scope.launch { if (reduce) list.scrollToItem(0) else list.animateScrollToItem(0) }
         }
     }
 
@@ -246,14 +264,14 @@ fun Messages(
                     ChatAskCard(ask, onSolve = {
                         haptics.tick()
                         services.openRequests.value = chat.kelo.app.notify.OpenTarget.Tab(ask.approval.tab, control = true)
-                    }) { ok, rememberSite, rememberSchedule ->
+                    }) { ok, rememberSite, rememberSchedule, rememberRecipient ->
                         val card = ask.approval.event.card
                         if (ok && card != null && card.needsCard) {
                             haptics.tick()
                             vm.answerAsk(ask.id, true, sendCard = cardSender(ask.id, card.card.id))
                         } else {
                             if (ok) haptics.confirm() else haptics.reject()
-                            vm.answerAsk(ask.id, ok, rememberSite = rememberSite, rememberSchedule = rememberSchedule)
+                            vm.answerAsk(ask.id, ok, rememberSite = rememberSite, rememberSchedule = rememberSchedule, rememberRecipient = rememberRecipient)
                         }
                     }
                 }
@@ -271,10 +289,13 @@ fun Messages(
             items(rows, key = { it.key }, contentType = { it::class }) { item ->
                 // rows made during this session rise into place; rows from history just appear
                 val fresh = remember(item.key) { vm.takeFresh(item.key) }
+                val isLit = item is ChatItem.Msg && item.id != null && item.id == lit?.first
+                val litColor = c.accent
                 Box(
                     Modifier
                         .animateItem(fadeInSpec = null, placementSpec = if (reduce) null else Motion.rise(), fadeOutSpec = if (reduce) null else tween(Motion.SMALL_MS))
-                        .riseIn(fresh && !reduce, fromEnd = item is ChatItem.Msg && item.mine),
+                        .riseIn(fresh && !reduce, fromEnd = item is ChatItem.Msg && item.mine)
+                        .drawBehind { if (isLit && litAlpha.value > 0f) drawRect(litColor.copy(alpha = LIT_ALPHA * litAlpha.value)) },
                 ) {
                     // the long-press menu: what this row offers right now (다시 시도 only on the newest reply or an error)
                     val actions = remember(item, state.items, state.busy) { MessageActions.actions(state.items, item.key, state.busy) }
@@ -334,7 +355,7 @@ fun Messages(
                             }
                         }
                         is ChatItem.Tool -> ToolChip(item)
-                        is ChatItem.Approval -> ApprovalCard(item, onAnswer = { id, ok, rememberSite ->
+                        is ChatItem.Approval -> ApprovalCard(item, onAnswer = { id, ok, rememberSite, rememberRecipient ->
                             if (ok && item.pin != null) vm.pinAllowed(id)   // its pin_needed row then asks for the owner's check at once
                             val card = item.card
                             if (ok && card != null && card.needsCard) {
@@ -342,7 +363,7 @@ fun Messages(
                                 vm.approveWithCard(id, cardSender(id, card.card.id))
                             } else {
                                 if (ok) haptics.confirm() else haptics.reject()
-                                vm.approve(id, ok, rememberSite = rememberSite)
+                                vm.approve(id, ok, rememberSite = rememberSite, rememberRecipient = rememberRecipient)
                             }
                         }, onKeepForSchedule = { id -> haptics.confirm(); vm.approve(id, true, rememberSchedule = true) })
                         is ChatItem.Browser -> BrowserCard(item, onOpenLive = { onOpenBrowser(item) })
@@ -411,12 +432,14 @@ private const val ENTRY_WAIT_MS = 3_000L
 @Composable
 private fun BubbleMenu(actions: List<MsgAction>, text: String, onAction: (MsgAction) -> Unit, content: @Composable () -> Unit) {
     val clipboard = LocalClipboardManager.current
-    val offered = MessageActions.offered(actions, canShare = LocalTextSharer.current != null)
+    val reader = LocalReadAloud.current
+    val offered = MessageActions.offered(actions, canShare = LocalTextSharer.current != null, canSpeak = reader != null)
     val items = offered.map { a ->
         val label = when (a) {
             MsgAction.COPY -> string(Res.string.msg_action_copy)
             MsgAction.SHARE -> string(Res.string.msg_action_share)
             MsgAction.SELECT -> string(Res.string.msg_action_select)
+            MsgAction.READ_ALOUD -> string(if (reader?.reading == text) Res.string.msg_action_read_stop else Res.string.msg_action_read_aloud)
             MsgAction.RETRY -> string(Res.string.msg_action_retry)
             MsgAction.EDIT -> string(Res.string.msg_action_edit)
             MsgAction.REPORT -> string(Res.string.msg_action_report)
@@ -425,3 +448,6 @@ private fun BubbleMenu(actions: List<MsgAction>, text: String, onAction: (MsgAct
     }
     MessageContextArea(items, content)
 }
+
+/** How strong the highlight of a message opened from a search is at its start (it fades to nothing). */
+private const val LIT_ALPHA = 0.18f

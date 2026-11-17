@@ -69,6 +69,14 @@ extension ChatModel {
     /// they were, and `secretAsk` opens the sheet (no error row, no failed reply).
     func start(_ text: String, fromComposer: Bool, tookAttachments: Bool, answers: [ReplyAnswer], secrets: String?,
                        files: [MessageFile] = [], autoText: Bool = false) {
+        // a search window on screen: the newest page comes back first, so the reply lands under the newest messages (not in a gap)
+        if hasNewer {
+            leaveWindow { [weak self] in
+                self?.start(text, fromComposer: fromComposer, tookAttachments: tookAttachments, answers: answers, secrets: secrets,
+                            files: files, autoText: autoText)
+            }
+            return
+        }
         guard let api = api() else { return }
         let beforeInput = input
         let beforeAttachments = attachments

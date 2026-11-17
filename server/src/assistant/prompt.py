@@ -112,9 +112,9 @@ def schedules_line(rows: list[dict[str, Any]] | None, tz_name: str | None, now: 
 
 def turn_lines(*, tz_name: str | None, now: datetime | None = None, agent_name: str = "", user_name: str = "",
                goals: list[dict[str, Any]] | None = None, provider: str = "", model: str = "",
-               schedules: list[dict[str, Any]] | None = None, tone: str = "", limits: str = "") -> list[str]:
+               schedules: list[dict[str, Any]] | None = None, tone: str = "", limits: str = "", first_chat: str = "") -> list[str]:
     """What changes every turn, as lines: the time, the calendar, the model, names, how to talk to the user, the next scheduled jobs
-    and the goals being tracked."""
+    and the goals being tracked. `first_chat`: the first-conversation block (first_chat.py), only while that conversation is open."""
     out = [now_line(tz_name, now),
            f"Calendar (the user's local dates for the next 3 weeks; take weekdays from here, never work one out): {calendar(tz_name, now)}",
            language_line()]
@@ -131,6 +131,8 @@ def turn_lines(*, tz_name: str | None, now: datetime | None = None, agent_name: 
         out.append(line)
     if block := goals_block(goals):
         out.append(block)
+    if first_chat:
+        out.append(first_chat)
     return out
 
 
@@ -182,35 +184,68 @@ GOAL_RULES = ("Treat each goal as a project you share: plan it with the user, ea
               "silently.")
 
 
+BUYING_HEAD = "**Buying, ordering, booking.**"
+
+
+def _fragment(folder: Path, name: str, fallback: Path | None) -> str:
+    """A prompt fragment next to the system prompt; a custom prompt file that has none beside it uses the shipped one."""
+    try:
+        return (folder / name).read_text(encoding="utf-8").strip()
+    except OSError:
+        if fallback is None or fallback == folder:
+            raise
+        return (fallback / name).read_text(encoding="utf-8").strip()
+
+
+def buying_filled(text: str, folder: Path, pay_split: bool, browser_split: bool = False, fallback: Path | None = None) -> str:
+    """The buying paragraph follows the switches: system.md holds the one for a chat that pays and clicks itself (both off). Payment
+    switch on: buying-specialist.md (the chat prepares and hands the payment over). Browser switch on: the chat does not use websites
+    itself, so `websites.md` (the delegate rule) comes before the buying paragraph, which is buying-job-specialist.md (payment switch
+    on) or buying-job.md (off)."""
+    start = text.find(BUYING_HEAD)
+    if start < 0 or not (pay_split or browser_split):
+        return text
+    end = text.find("\n\n", start)
+    if browser_split:
+        websites = _fragment(folder, "websites.md", fallback)
+        body = _fragment(folder, "buying-job-specialist.md" if pay_split else "buying-job.md", fallback)
+        paragraph = f"{websites}\n\n{BUYING_HEAD} {body}"
+    else:
+        paragraph = f"{BUYING_HEAD} " + _fragment(folder, "buying-specialist.md", fallback)
+    return text[:start] + paragraph + (text[end:] if end >= 0 else "")
+
+
 class PromptBuilder:
     def __init__(self, base: str, home: Home | None, skills: Skills | None):
         self.base, self.home, self.skills = base, home, skills
         self.learned: Callable[[], str] = lambda: ""   # the learned preferences section (reflection.py), set by the server
         self.corrections: Callable[[], str] = lambda: ""   # the open corrections section (nightly_review.py), set by the server
+        self.forgotten: Callable[[], str] = lambda: ""   # the forgotten-topics notice (forget.py Tombstones.notice), set by the server
         self.marker: Callable[[], str] = lambda: ""    # the private marker line (injection_watch.LeakMarker.line), set by the server
 
     @classmethod
-    def load(cls, content_dir: str | Path, home: Home | None, skills: Skills | None, prompt_file: str | None = None) -> PromptBuilder | None:
+    def load(cls, content_dir: str | Path, home: Home | None, skills: Skills | None, prompt_file: str | None = None,
+             pay_split: bool = False, browser_split: bool = False) -> PromptBuilder | None:
         path = Path(prompt_file) if prompt_file else Path(content_dir) / "prompts" / "system.md"
         try:
-            return cls(path.read_text(encoding="utf-8"), home, skills)
+            return cls(buying_filled(path.read_text(encoding="utf-8"), path.parent, pay_split, browser_split, Path(content_dir) / "prompts"), home, skills)
         except OSError:
             return None
 
     def build(self, *, agent_name: str = "", user_name: str = "", provider: str = "", model: str = "",
               goals: list[dict[str, Any]] | None = None, tz_name: str | None = None, now: datetime | None = None,
               connected: set[str] | None = None, schedules: list[dict[str, Any]] | None = None, tone: str = "",
-              limits: str = "") -> str:
+              limits: str = "", first_chat: str = "") -> str:
         """The whole prompt in one text: the stable part, then this turn's lines (see build_parts)."""
         stable, turn = self.build_parts(agent_name=agent_name, user_name=user_name, provider=provider, model=model, goals=goals,
                                         tz_name=tz_name, now=now, connected=connected, schedules=schedules, tone=tone,
-                                        limits=limits)
+                                        limits=limits, first_chat=first_chat)
         return f"{stable}\n\n{turn}"
 
     def build_parts(self, *, agent_name: str = "", user_name: str = "", provider: str = "", model: str = "",
                     goals: list[dict[str, Any]] | None = None, tz_name: str | None = None, now: datetime | None = None,
                     connected: set[str] | None = None, schedules: list[dict[str, Any]] | None = None,
-                    tone: str = "", limits: str = "") -> tuple[str, str]:
+                    tone: str = "", limits: str = "", first_chat: str = "") -> tuple[str, str]:
         """(stable, turn). Stable, from what changes least to most: rules, skills, learned preferences (at most nightly), the user's
         files (when written). It is byte-for-byte the same from turn to turn until one of those changes, so a provider that caches
         the start of the request reuses it. Turn: "## This Turn" (the clock to the minute, calendar, model, names, how to talk to
@@ -222,6 +257,8 @@ class PromptBuilder:
             parts.append(learned)
         if corrections := self.corrections():
             parts.append(corrections)
+        if forgotten := self.forgotten():
+            parts.append(forgotten)
         if self.home:
             files = self.home.context_block()
             if marker := self.marker():   # in the private part with the owner's files: the model is told never to write it anywhere
@@ -229,5 +266,5 @@ class PromptBuilder:
             parts.append(files)
         turn = "## This Turn\n" + "\n".join(turn_lines(tz_name=tz_name, now=now, agent_name=agent_name, user_name=user_name,
                                                          goals=goals, provider=provider, model=model, schedules=schedules,
-                                                         tone=tone, limits=limits))
+                                                         tone=tone, limits=limits, first_chat=first_chat))
         return "\n\n".join(parts), turn

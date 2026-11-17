@@ -1,0 +1,110 @@
+{
+ "connectors": {
+  "discord": [
+   {
+    "http": "POST",
+    "id": "post_message",
+    "kind": "send",
+    "path": "channels/{recipient}/messages",
+    "policy": "task",
+    "recipient": "path",
+    "via": "request"
+   },
+   {
+    "http": "PATCH",
+    "id": "edit_message",
+    "kind": "send",
+    "path": "channels/{recipient}/messages/{}",
+    "policy": "task",
+    "recipient": "path",
+    "via": "request"
+   },
+   {
+    "http": "DELETE",
+    "id": "delete_message",
+    "kind": "delete",
+    "path": "channels/{recipient}/messages/{}",
+    "policy": "fresh",
+    "recipient": "path",
+    "via": "request"
+   }
+  ],
+  "slack": [
+   {
+    "http": "POST",
+    "id": "post_message",
+    "kind": "send",
+    "path": "chat.postMessage",
+    "policy": "task",
+    "recipient": "json.channel",
+    "via": "request"
+   },
+   {
+    "http": "POST",
+    "id": "post_ephemeral",
+    "kind": "send",
+    "path": "chat.postEphemeral",
+    "policy": "task",
+    "recipient": "json.channel",
+    "via": "request"
+   },
+   {
+    "http": "POST",
+    "id": "edit_message",
+    "kind": "send",
+    "path": "chat.update",
+    "policy": "task",
+    "recipient": "json.channel",
+    "via": "request"
+   },
+   {
+    "http": "POST",
+    "id": "delete_message",
+    "kind": "delete",
+    "path": "chat.delete",
+    "policy": "fresh",
+    "recipient": "json.channel",
+    "via": "request"
+   }
+  ],
+  "telegram": [
+   {
+    "http": "POST",
+    "id": "send_message",
+    "kind": "send",
+    "path": "sendMessage",
+    "policy": "task",
+    "recipient": "json.chat_id",
+    "via": "request"
+   },
+   {
+    "http": "POST",
+    "id": "forward_message",
+    "kind": "send",
+    "path": "forwardMessage",
+    "policy": "fresh",
+    "recipient": "json.chat_id",
+    "via": "request"
+   },
+   {
+    "http": "POST",
+    "id": "edit_message",
+    "kind": "send",
+    "path": "editMessageText",
+    "policy": "task",
+    "recipient": "json.chat_id",
+    "via": "request"
+   },
+   {
+    "http": "POST",
+    "id": "delete_message",
+    "kind": "delete",
+    "path": "deleteMessage",
+    "policy": "fresh",
+    "recipient": "json.chat_id",
+    "via": "request"
+   }
+  ]
+ },
+ "version": 1
+}

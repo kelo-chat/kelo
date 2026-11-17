@@ -4,6 +4,7 @@ redoing it on its own is blocked, an unknown one blocked until it is checked, a 
 
 import asyncio
 import json
+import smtplib
 
 import httpx
 import pytest
@@ -12,7 +13,7 @@ from assistant import effects
 from assistant.agent import Tool, ToolResult, run_agent
 from assistant.agent.fence import data
 from assistant.agent.loop import Ours, ToolOutput
-from assistant.done_once import (ActionFingerprint, ActionLedger, DoneOnce, DuplicateRule, Outcome, PageStep, OwnerAsk, RepeatWords, ResultReader)
+from assistant.done_once import (ActionFingerprint, ActionLedger, Asks, DoneOnce, DuplicateRule, Outcome, PageStep, OwnerAsk, RepeatAsk, ResultReader, TurnAsks)
 from assistant.effects import Effect
 from assistant.permissions import Gate
 from assistant.providers import Done, TextDelta, ToolCall
@@ -99,8 +100,7 @@ class WithStatus(Exception):
         self.status_code = code
 
 
-class BrowserPolicyError(Exception):
-    pass
+from assistant.tools.browser import BrowserPolicyError
 
 
 @pytest.mark.parametrize("tool,result,expected", [
@@ -108,9 +108,11 @@ class BrowserPolicyError(Exception):
     ("email_send", "sent to kim@x.org", Outcome("done", "")),
     ("email_send", "error: the mail server could not be reached (TimeoutError); nothing was repeated", Outcome("unknown")),
     ("email_send", "error: the mail server could not be reached (ConnectionResetError); nothing was repeated", Outcome("unknown")),
-    ("email_send", "error: every recipient must be a plain email address", Outcome("failed")),
-    ("email_send", "error: the mail server refused the sign-in for sending; ask the user to connect the mailbox again", Outcome("failed")),
-    ("email_send", "error: could not send (SMTPRecipientsRefused)", Outcome("failed")),
+    ("email_send", "error: every recipient must be a plain email address", Outcome("unknown")),   # no code, no type: the words are not read
+    ("email_send", "error: the mail server refused the sign-in for sending; ask the user to connect the mailbox again", Outcome("unknown")),
+    ("email_send", "error: could not send (SMTPRecipientsRefused)", Outcome("unknown")),   # a class name in a text is not a type
+    ("email_send", "error: the server said 550 5.1.1 no such user", Outcome("failed")),      # an SMTP reply code is
+    ("email_send", "error: the server said 451 4.3.0 try later", Outcome("unknown")),
     ("email_send", "error: something odd happened", Outcome("unknown")),                       # not clear: it may have gone out
     # a service connected with a key
     ("connector_send", "HTTP 201 · application/json\n" + data('{"id": "msg_42", "ok": true}'), Outcome("done", "msg_42")),
@@ -120,7 +122,7 @@ class BrowserPolicyError(Exception):
     ("connector_send", "HTTP 408 · text/plain\n" + data("slow"), Outcome("unknown")),
     ("connector_send", "HTTP 429 · text/plain\n" + data("slow down"), Outcome("unknown")),
     ("connector_send", "HTTP 503 · text/html\n" + data("maintenance"), Outcome("unknown")),
-    ("connector_send", Ours("error: the host is not registered for this connection"), Outcome("failed")),
+    ("connector_send", Ours("error: the host is not registered for this connection"), Outcome("unknown")),
     ("connector_send", "HTTP 200 · text/plain\n" + data("a body that says error: HTTP 500"), Outcome("done", "")),   # the service's words are data
     # MCP
     ("mcp_call_tool", data('{"content": [{"type": "text", "text": "{\\"id\\": \\"pg_9\\"}"}], "isError": false}'), Outcome("done", "pg_9")),
@@ -131,12 +133,12 @@ class BrowserPolicyError(Exception):
     ("phone_send_text", "Text message sent to 01012345678.", Outcome("done", "")),
     ("phone_send_text", "Error: the phone did not respond", Outcome("unknown")),
     ("gcal_create_event", "Created the event (id: ev8f3k2a1).", Outcome("done", "ev8f3k2a1")),
-    ("gcal_delete_event", "Error: event not found", Outcome("failed")),
+    ("gcal_delete_event", "Error: event not found", Outcome("unknown")),
     # the browser
-    ("browser_click", "Thanks! Your order number: KR-20481 is confirmed.", Outcome("done", "KR-20481")),
-    ("browser_click", "주문번호: 2026110912 주문이 완료되었습니다", Outcome("done", "2026110912")),
+    ("browser_click", "Thanks! Your order number: KR-20481 is confirmed.", Outcome("done", "")),                  # no words of a page are read
+    ("browser_click", "Thanks. order_id: KR-20481", Outcome("done", "KR-20481")),                                    # an id the tool itself names
     ("browser_click", "Message sent. Back to the inbox.", Outcome("done", "")),
-    ("browser_click", "Email is required. Please enter your email.", Outcome("failed")),
+    ("browser_click", "- alert: Email is required.\n- textbox \"Email\"", Outcome("failed")),                          # the ARIA alert role
     ("browser_click", "[The click went through, but nothing changed: same address, same page content]", Outcome("failed")),
     ("browser_click", "Error: navigation timeout while the page loaded", Outcome("unknown")),
 ])
@@ -148,7 +150,11 @@ def test_the_result_reader_by_tool_kind(tool, result, expected):
     (TIMEOUT, "unknown"), (TimeoutError("x"), "unknown"), (HTTPTimeout("read"), "unknown"), (ConnectionResetError("reset"), "unknown"),
     (WithStatus(500), "unknown"), (WithStatus(408), "unknown"), (WithStatus(404), "failed"), (WithStatus(400), "failed"),
     (ValueError("bad"), "failed"), (KeyError("x"), "failed"), (BrowserPolicyError("not allowed"), "failed"),
-    (RuntimeError("who knows"), "unknown"),
+    (RuntimeError("who knows"), "unknown"), (httpx.ReadTimeout("slow"), "unknown"), (httpx.ConnectError("down"), "unknown"),
+    (smtplib.SMTPServerDisconnected("gone"), "unknown"), (smtplib.SMTPResponseException(451, b"try later"), "unknown"),
+    (smtplib.SMTPResponseException(550, b"no"), "failed"), (smtplib.SMTPRecipientsRefused({"a@b": (550, b"x")}), "failed"),
+    (PermissionError("x"), "failed"), (OSError("who knows"), "unknown"), (ValueError("timeout while reading"), "failed"),
+    (RuntimeError("must be a valid address"), "unknown"),   # the words of a message decide nothing
 ])
 def test_the_result_reader_on_exceptions(exc, expected):
     assert R.of("email_send", exc).state == expected
@@ -163,50 +169,99 @@ def test_the_reader_reads_a_tool_output_and_keeps_the_record_detail_short_and_cl
 
 
 # ---------------------------------------------------------------------------------------------------------------- the owner's words
-@pytest.mark.parametrize("request_text,asked", [
-    ("두 번 보내줘", True), ("메일 두 번 보내", True), ("send it twice", True), ("send the mail 3 times to Kim", True), ("메일 3번 보내", True),
-    ("다시 보내줘", True), ("send it again", True), ("Please resend the mail", True), ("send the mail once more to Kim", True),
-    ("send the mail to Kim", False), ("check the weather again", False), ("다시 한 번 날씨 알려줘", False), ("", False),
-])
-def test_repeat_words_next_to_the_action(request_text, asked):
-    e = Effect("send", "gmail", ["kim@x.org"], "hi", "email_send")
-    assert RepeatWords().asked({"source": "chat", "unattended": False, "request": request_text}, e) is asked
+# what the owner's main model would answer for each message of these tests (a scripted judge; no word of the message is read by the code)
+ANSWERS = {
+    "mail Kim": (1, ["send"]), "보내줘": (1, ["send"]), "send it again": (2, ["send"]), "두 번 보내": (2, ["send"]), "send it once": (1, ["send"]),
+    "잘 갔어?": (0, []), "did it go through?": (0, []), "did it go?": (0, []), "불 켜줘": (1, ["change"]), "일정 바꿔줘": (1, ["change"]),
+    "일정 어때?": (0, []), "send it": (1, ["send"]), "delete it": (1, ["delete"]),
+}
 
 
-def test_only_the_owners_own_chat_turn_can_ask_for_more_than_once():
-    e = Effect("send", "gmail", ["kim@x.org"], "hi", "email_send")
-    words = "send it twice"
-    assert RepeatWords().asked({"source": "api", "request": words}, e)
-    assert not RepeatWords().asked({"source": "schedule:3", "unattended": True, "request": words}, e)
-    assert not RepeatWords().asked({"source": "chat", "unattended": True, "request": words}, e)
-    assert not RepeatWords().asked({"source": "group:telegram:1", "request": words}, e)
-    assert not RepeatWords().asked(None, e)
+class Judge:
+    """A scripted `ask(system, user)`: answers by the message inside the JSON; counts its calls."""
+
+    def __init__(self, answers=ANSWERS):
+        self.answers, self.calls = answers, []
+
+    async def __call__(self, system, user):
+        message = json.loads(user)["message"]
+        self.calls.append(message)
+        if message not in self.answers:
+            return None
+        count, kinds = self.answers[message]
+        return {"count": count, "kinds": kinds}
 
 
-@pytest.mark.parametrize("kind,request_text,asked", [
-    ("send", "보내줘", True), ("send", "김에게 답장해줘", True), ("send", "메일 전송", True), ("send", "send it", True), ("send", "Reply to Kim", True),
-    ("send", "post this", True), ("send", "mail Kim", True), ("send", "text Kim", True), ("send", "she sends it", True),
-    ("send", "잘 갔어?", False), ("send", "did it go?", False), ("send", "what is the weather", False), ("send", "context", False),
-    ("change", "불 켜줘", True), ("change", "에어컨 꺼줘", True), ("change", "문 잠가", True), ("change", "온도 올려", True), ("change", "블라인드 내려줘", True),
-    ("change", "창문 열어", True), ("change", "알람 바꿔줘", True), ("change", "turn on the light", True), ("change", "set a timer", True),
-    ("change", "open the door", True), ("change", "lock it", True), ("change", "add an event", True), ("change", "move it to 5", True),
-    ("change", "update the event", True), ("change", "is it on?", False), ("change", "불 어때?", False),
-    ("delete", "지워줘", True), ("delete", "삭제해", True), ("delete", "delete it", True), ("delete", "remove the event", True),
-    ("delete", "보내줘", False), ("send", "지워줘", False), ("change", "delete it", False), ("send", "", False),
-])
-def test_the_owners_words_ask_for_a_kind_of_action(kind, request_text, asked):
-    e = Effect(kind, "gmail", ["kim@x.org"], "hi", "email_send")
-    assert OwnerAsk().asked({"source": "chat", "unattended": False, "request": request_text}, e) is asked
+E_SEND = Effect("send", "gmail", ["kim@x.org"], "hi", "email_send")
 
 
-def test_only_the_owners_own_chat_or_api_turn_has_words_that_ask():
-    e = Effect("send", "gmail", ["kim@x.org"], "hi", "email_send")
-    assert OwnerAsk().asked({"source": "chat", "request": "보내줘"}, e) and OwnerAsk().asked({"source": "api", "request": "send it"}, e)
-    assert not OwnerAsk().asked({"source": "schedule:3", "unattended": True, "request": "send it"}, e)
-    assert not OwnerAsk().asked({"source": "chat", "unattended": True, "request": "send it"}, e)
-    assert not OwnerAsk().asked({"source": "group:telegram:1", "request": "send it"}, e)
-    assert not OwnerAsk().asked({"source": "background", "request": "send it"}, e)
-    assert not OwnerAsk().asked(None, e)
+def chat(request, **over):
+    return {"source": "chat", "unattended": False, "turn_id": "t9", "request": request, **over}
+
+
+async def test_the_turn_asks_come_from_one_judge_answer_per_turn():
+    judge = Judge()
+    asks = TurnAsks(judge)
+    assert await asks.read(chat("send it again")) == Asks(2, ("send",))
+    assert await asks.read(chat("send it again")) == Asks(2, ("send",))
+    assert judge.calls == ["send it again"]                                                  # asked once, then cached
+    assert await asks.read(chat("did it go?")) == Asks(0, ())
+    assert await asks.read(chat("delete it", turn_id="t10")) == Asks(1, ("delete",))
+
+
+async def test_no_owner_words_no_judge_call_and_no_ask():
+    judge = Judge()
+    asks = TurnAsks(judge)
+    for turn in ({"source": "schedule:3", "unattended": True, "request": "send it"}, {"source": "chat", "unattended": True, "request": "send it"},
+                 {"source": "group:telegram:1", "request": "send it"}, {"source": "background", "request": "send it"}, None, chat("")):
+        assert await asks.read(turn) == Asks(0, ())
+    assert judge.calls == []
+
+
+@pytest.mark.parametrize("answer", [None, "x", {}, {"count": 2}, {"kinds": ["send"]}, {"count": "2", "kinds": ["send"]}, {"count": True, "kinds": ["send"]},
+                                    {"count": -1, "kinds": ["send"]}, {"count": 1, "kinds": ["mail"]}, {"count": 1, "kinds": "send"},
+                                    {"count": 1, "kinds": ["send"], "extra": 1}])
+async def test_a_judge_that_fails_or_is_unsure_reads_as_once_and_no_kind(answer):
+    async def ask(system, user):
+        return answer
+    assert await TurnAsks(ask).read(chat("send it twice")) == Asks()
+    assert await TurnAsks(None).read(chat("send it twice")) == Asks()
+
+    async def broken(system, user):
+        raise RuntimeError("no model")
+    assert await TurnAsks(broken).read(chat("send it twice")) == Asks()
+
+
+async def test_an_unsure_answer_is_asked_again_by_the_next_step():
+    answers = iter([None, {"count": 2, "kinds": ["send"]}])
+
+    async def ask(system, user):
+        return next(answers)
+    asks = TurnAsks(ask)
+    assert await asks.read(chat("x")) == Asks()
+    assert await asks.read(chat("x")) == Asks(2, ("send",))
+
+
+def test_a_repeat_inside_a_run_is_allowed_only_up_to_the_count_the_owner_asked_for():
+    turn = lambda **kw: chat("x", asks=Asks(**kw))
+    rule = RepeatAsk()
+    assert rule.allowed(turn(count=2, kinds=("send",)), E_SEND, 1) and not rule.allowed(turn(count=2, kinds=("send",)), E_SEND, 2)
+    assert not rule.allowed(turn(count=1, kinds=("send",)), E_SEND, 1)
+    assert not rule.allowed(turn(count=3, kinds=("change",)), E_SEND, 1)                     # asked for another kind
+    assert not rule.allowed({"source": "background", "unattended": True, "asks": Asks(5, ("send",))}, E_SEND, 1)
+    assert not rule.allowed(chat("x"), E_SEND, 1)                                            # nothing read: fail closed
+    assert not rule.allowed(None, E_SEND, 1)
+
+
+def test_the_owners_turn_asks_for_a_kind_only_by_the_judged_kinds():
+    ask = OwnerAsk()
+    assert ask.asked(chat("x", asks=Asks(1, ("send", "delete"))), E_SEND)
+    assert not ask.asked(chat("x", asks=Asks(0, ())), E_SEND) and not ask.asked(chat("x", asks=Asks(1, ("change",))), E_SEND)
+    assert not ask.asked(chat("x"), E_SEND)                                                  # nothing read: fail closed
+    assert ask.asked({"source": "api", "asks": Asks(1, ("send",))}, E_SEND)
+    for turn in ({"source": "schedule:3", "unattended": True}, {"source": "chat", "unattended": True}, {"source": "group:telegram:1"},
+                 {"source": "background"}, None):
+        assert not ask.asked({**(turn or {}), "asks": Asks(5, ("send",))} if turn else None, E_SEND)
 
 
 # ---------------------------------------------------------------------------------------------------------------- the policy
@@ -216,11 +271,12 @@ class World:
     def __init__(self, **kw):
         self.store = Store()
         self.t = NOW
+        self.judge = Judge()
         self.turn = {"task_id": 1, "turn_id": "t1", "source": "chat", "unattended": False, "request": "mail Kim"}
         self.ledger = ActionLedger(self.store, clock=lambda: self.t)
         self.told = []
         self.once = DoneOnce(self.ledger, effect=lambda tool, args: effects.effect_of(tool, args), turn=lambda: self.turn, clock=lambda: self.t,
-                             tz=lambda: "Asia/Seoul", on_unresolved=self.told.append, **kw)
+                             tz=lambda: "Asia/Seoul", on_unresolved=self.told.append, **{"ask": self.judge, **kw})
 
     def new_turn(self, **over):
         self.turn = {**self.turn, "task_id": self.turn["task_id"] + 1, "turn_id": f"t{self.turn['task_id'] + 1}", **over}
@@ -378,7 +434,7 @@ async def test_a_background_run_cannot_use_asking_words_in_its_own_prompt():
 
 async def test_a_failed_step_never_blocks_and_a_done_one_stops_blocking_after_a_day():
     w = World()
-    text, _ = await w.run("email_send", MAIL, result="error: every recipient must be a plain email address")
+    text, _ = await w.run("email_send", MAIL, result=ValueError("every recipient must be a plain email address"))
     assert w.ledger.get(1).state == "failed" and "unknown" not in text
     assert not (await w.run("email_send", MAIL, result="sent to kim@x.org"))[1].block
     assert (await w.run("email_send", MAIL))[1].block
@@ -388,10 +444,13 @@ async def test_a_failed_step_never_blocks_and_a_done_one_stops_blocking_after_a_
 
 async def test_reads_and_other_tools_are_never_recorded():
     w = World()
+    effects.forget_mcp_tools()
+    effects.remember_mcp_tools("n", [{"name": "list_pages", "annotations": {"readOnlyHint": True}}])   # the server says it only reads
     for tool, args in [("email_list", {"folder": "Sent"}), ("email_read", {"uid": "1"}), ("gcal_events", {}), ("web_search", {"q": "x"}),
                        ("read_file", {"path": "a"}), ("connector_get", {"name": "slack", "url": "https://x"}), ("mcp_call_tool", {"name": "n", "tool": "list_pages"})]:
         assert (await w.run(tool, args, result="ok"))[1] is None, tool
     assert w.ledger.list(1) == []
+    effects.forget_mcp_tools()
 
 
 async def test_the_purchase_tools_and_the_pay_click_are_left_alone():
@@ -409,7 +468,7 @@ async def test_browser_steps_are_recorded_by_class_and_typing_without_submit_is_
         return ("send", "shop.example")
     w = World(browser_step=step, browser_page=lambda tool, args: ("/contact", "Send message"))
     text, att = await w.run("browser_click", {"selector": "e12"}, result="Thanks! Your request number: RQ-7781 was received.")
-    assert w.ledger.get(1).state == "done" and w.ledger.get(1).outside_id == "RQ-7781" and w.ledger.get(1).targets == ("site:shop.example",)
+    assert w.ledger.get(1).state == "done" and w.ledger.get(1).outside_id == "" and w.ledger.get(1).targets == ("site:shop.example",)
     assert (await w.run("browser_click", {"selector": "e31"}))[1].block                     # the same button on the same page: the ref is volatile
     assert (await w.run("browser_type", {"selector": "e3", "text": "hello"}))[1] is None     # typing alone sends nothing
     typed = await w.run("browser_type", {"selector": "e3", "text": "hello", "submit": True}, result="Message sent.")
@@ -450,12 +509,12 @@ def test_the_duplicate_rule_alone():
     mk = lambda i, state, source="chat", run="1": Record(i, NOW, run, 1, "t", source, "email_send", "send", "gmail", ("kim@x.org",), "f", state, "", "", None)
     assert rule.verdict(e, [mk(3, "failed")], {}) is None
     assert rule.verdict(e, [mk(3, "failed"), mk(2, "done")], {"source": "chat", "task_id": 1})[0] == "done"                       # same run
-    assert rule.verdict(e, [mk(3, "done")], {"source": "chat", "task_id": 1, "request": "send it twice"}) is None
-    assert rule.verdict(e, [mk(3, "done")], {"source": "chat", "task_id": 2, "request": "send it"})[0] == "again"               # an earlier run, asked for
-    assert rule.verdict(e, [mk(3, "done")], {"source": "chat", "task_id": 2, "request": "did it go?"})[0] == "done"             # ... not asked for
-    assert rule.verdict(e, [mk(3, "done")], {"source": "background", "unattended": True, "task_id": 2, "request": "send it"})[0] == "done"
+    assert rule.verdict(e, [mk(3, "done")], {"source": "chat", "task_id": 1, "asks": Asks(2, ("send",))}) is None
+    assert rule.verdict(e, [mk(3, "done")], {"source": "chat", "task_id": 2, "asks": Asks(1, ("send",))})[0] == "again"               # an earlier run, asked for
+    assert rule.verdict(e, [mk(3, "done")], {"source": "chat", "task_id": 2, "asks": Asks(0, ())})[0] == "done"             # ... not asked for
+    assert rule.verdict(e, [mk(3, "done")], {"source": "background", "unattended": True, "task_id": 2, "asks": Asks(1, ("send",))})[0] == "done"
     assert rule.verdict(e, [mk(3, "done", source="schedule:4")], {"source": "schedule:4", "unattended": True, "task_id": 2}) is None
-    assert rule.verdict(e, [mk(3, "done"), mk(2, "unknown")], {"source": "chat", "request": "send it twice"})[0] == "unknown"
+    assert rule.verdict(e, [mk(3, "done"), mk(2, "unknown")], {"source": "chat", "asks": Asks(2, ("send",))})[0] == "unknown"
 
 
 # ---------------------------------------------------------------------------------------------------------------- through the real loop
@@ -623,20 +682,6 @@ async def test_the_server_wires_done_once_into_the_gate_the_tool_list_and_the_ap
     assert not once.hides("action_result")                                                  # an unknown record: the tool is offered
 
 
-def test_a_question_about_the_result_is_not_a_request():
-    from assistant.done_once import OwnerAsk
-    from assistant.effects import Effect
-    ask = OwnerAsk()
-    on = Effect("change", "home_assistant", ["connector:ha"], "", "x")
-    send = Effect("send", "gmail", ["kim@x.org"], "hi", "email_send")
-    turn = lambda text: {"source": "chat", "request": text}
-    assert ask.asked(turn("불 켜줘"), on) and ask.asked(turn("거실 불 다시 켜"), on)
-    assert not ask.asked(turn("불 켜졌어?"), on) and not ask.asked(turn("불 꺼졌나?"), on)
-    assert ask.asked(turn("김씨한테 메일 보내줘"), send) and not ask.asked(turn("메일 전송됐어?"), send)
-    assert ask.asked(turn("send it to Kim"), send) and not ask.asked(turn("did you send it?"), send)
-    assert not ask.asked(turn("is the light on?"), on)
-
-
 def test_the_page_key_keeps_what_the_page_is_about_and_drops_tracking():
     from assistant.done_once import page_key
     a = page_key("https://my.coupang.com/productreview/register?completedOrderVendorItemId=1&productId=11&deliveryDate=2026-11-05&vendorItemId=111")
@@ -656,3 +701,44 @@ async def test_two_reviews_on_one_review_page_are_two_steps_even_without_typing_
     assert not (await w.run("browser_click", {"selector": "e9"}, result="등록되었습니다"))[1].block
     assert (await w.run("browser_click", {"selector": "e9"}))[1].block          # the same product again: stopped
     assert not (await w.run("browser_click", {"selector": "e9"}, result="등록되었습니다"))[1].block   # the next product
+
+
+async def test_the_judge_is_asked_once_per_turn_and_only_when_a_done_record_makes_it_matter():
+    w = World()
+    await w.run("email_send", MAIL)                                                         # the first send: nothing done before, no judge
+    assert w.judge.calls == []
+    w.new_turn(request="보내줘")
+    await w.run("email_send", MAIL)
+    await w.run("email_send", {**MAIL, "subject": "Other"})                                 # no record of this one: no new call
+    await w.run("email_send", MAIL)
+    assert w.judge.calls == ["보내줘"]
+
+
+async def test_with_no_judge_a_done_step_is_never_repeated_by_anyone():
+    w = World(ask=None)
+    await w.run("email_send", MAIL)
+    assert (await w.run("email_send", MAIL))[1].block                                       # same run
+    w.new_turn(request="보내줘")
+    assert (await w.run("email_send", MAIL))[1].block                                       # the owner asked, nothing could read it: stopped, the owner is told
+    w.new_turn(request="send it again")
+
+    async def broken(system, user):
+        raise RuntimeError("no model")
+    w.once.turn_asks.ask = broken
+    assert (await w.run("email_send", MAIL))[1].block
+
+
+async def test_the_count_the_owner_asked_for_is_the_most_a_run_may_do():
+    w = World()
+    w.turn["request"] = "두 번 보내"
+    assert not (await w.run("email_send", MAIL))[1].block
+    assert not (await w.run("email_send", MAIL))[1].block                                   # the second of two
+    assert (await w.run("email_send", MAIL))[1].block                                       # a third is more than was asked
+
+
+async def test_a_message_in_another_language_the_code_has_no_word_for_is_read_by_the_judge():
+    w = World(ask=Judge({"gönder şunu iki kere": (2, ["send"]), "もう一度送って": (1, ["send"])}))
+    w.turn["request"] = "gönder şunu iki kere"
+    assert not (await w.run("email_send", MAIL))[1].block and not (await w.run("email_send", MAIL))[1].block
+    w.new_turn(request="もう一度送って")
+    assert not (await w.run("email_send", MAIL))[1].block                                   # an earlier run, asked for

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">搜尋對話</string>
+    <string name="chat_search_title">搜尋對話</string>
+    <string name="chat_search_field">搜尋訊息</string>
+    <string name="chat_search_clear">清除搜尋</string>
+    <string name="chat_search_hint">輸入一個詞或詞的一部分。點選結果即可開啟該則訊息所在的位置。</string>
+    <string name="chat_search_none">沒有符合此搜尋的訊息。</string>
+    <string name="chat_search_failed">無法連到伺服器，搜尋失敗。請稍後再試。</string>
+    <string name="chat_search_you">我</string>
+</resources>

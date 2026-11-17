@@ -49,12 +49,26 @@ NO_VISION = ("[The model you are running on cannot look at pictures: the picture
              "Do not describe it.]")
 
 # The page's secure fields that are on screen, as rectangles in CSS pixels, and the viewport width (to scale them to the picture).
+# By structure only (hc-final-a): the type, the autocomplete tokens, a masked rendering (-webkit-text-security), and every visible
+# input or select of a card form (the form of a cc-* field, else the nearest box holding two or more fields). No field name or id is read.
 SECURE_RECTS_JS = """() => {
   const sel = 'input[type=password], input[autocomplete~="cc-number"], input[autocomplete~="cc-csc"], input[autocomplete~="cc-exp"],'
-    + ' input[autocomplete~="one-time-code"], input[autocomplete~="current-password"], input[autocomplete~="new-password"],'
-    + ' input[name*="card" i], input[name*="cvc" i], input[name*="cvv" i], input[name*="pin" i], input[id*="cvc" i], input[id*="cvv" i]';
+    + ' input[autocomplete~="one-time-code"], input[autocomplete~="current-password"], input[autocomplete~="new-password"]';
+  const picked = new Set(document.querySelectorAll(sel));
+  const inputs = [...document.querySelectorAll('input')];
+  for (const e of inputs) {
+    const masked = (getComputedStyle(e).getPropertyValue('-webkit-text-security') || 'none').trim();
+    if (masked !== 'none') picked.add(e);
+  }
+  for (const e of inputs) {
+    if (!/(^|\\s)cc-/.test((e.getAttribute('autocomplete') || '').toLowerCase())) continue;
+    let box = e.form || e.parentElement;
+    while (box && box !== document.body && !e.form && box.querySelectorAll('input, select').length < 2) box = box.parentElement;
+    if (!box) continue;
+    for (const f of box.querySelectorAll('input:not([type=hidden]), select')) picked.add(f);
+  }
   const out = [];
-  for (const e of document.querySelectorAll(sel)) {
+  for (const e of picked) {
     const r = e.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) out.push([r.left, r.top, r.width, r.height]);
   }

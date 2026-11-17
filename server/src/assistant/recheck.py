@@ -2,8 +2,8 @@
 
 When Kelo said something that may change and that the owner may act on (rules and law, prices, availability, the result of a review or
 an application, opening times), it keeps a row (table `rechecks`) and looks again later. If the fact changed or was wrong, Kelo says so
-before it is asked: what it said, what is right now and since when, what is still unconfirmed, the sources, that nothing has to be
-decided now, and one offer of the next step. If nothing changed it stays silent. It never claims more than two independent sources (or
+before it is asked, in at most three short sentences: what changed since it said it, what that means with one offer of the next step,
+and the source link. If nothing changed it stays silent. It never claims more than two independent sources (or
 one official source) support.
 
 Small classes, one job each; the pure ones are tested alone:
@@ -61,7 +61,8 @@ from fastapi import Depends, FastAPI
 from .agent import Tool
 from .agent.fence import fence
 from .i18n import t
-from .proactive import NEVER_HEADINGS, Candidate, find_date, keywords, section
+from .notify_block import has_rules
+from .proactive import Candidate, find_date
 from .reflection import find_quote, parse_output
 from .tools.sites import public_suffix, registrable
 
@@ -109,16 +110,18 @@ Today's date is given. Reply with JSON only, no other words:
 - Never report changed or wrong from a single unofficial page; when you only have that, answer unclear. Never guess."""
 
 HANDOFF_STEPS = ("Check this yourself before telling the user: open at least one of the sources (web_fetch) or search again. If it holds, "
-                 "tell the user in their language, in this order: what you said and when, what is right now and since when, what is still "
-                 "unconfirmed, the sources, that nothing has to be decided now, and one offer of the next step. If it does not hold, reply "
+                 "tell the user in their language in at most three short sentences: what changed since you said it (\"yesterday I said X; now Y\"), "
+                 "what that means for them with one offer of the next step, and the source as one link at the end. Leave out what is "
+                 "still unconfirmed unless it changes the advice, and never add lines like \"no need to decide now\" or \"tell me when "
+                 "it suits you\". If it does not hold, reply "
                  f"exactly {NO_REPLY} and call `recheck_result({{id}}, \"not_confirmed\")`. After you told the user, call "
                  "`recheck_result({id}, \"sent\")` (load it with find_tools if it is not in your tools).")
 
 EXTRACT_PROMPT = f"""
 
-Rechecks. In the same JSON, also give "rechecks": [{{"claim": "...", "why": "...", "how": "...", "topic": "...", "decide_by": null, "quote": "..."}}].
+Rechecks. In the same JSON, also give "rechecks": [{{"claim": "...", "why": "...", "how": "...", "topic": "...", "decide_by": null, "about": null, "quote": "..."}}].
 - At most {PER_NIGHT} things the ASSISTANT told the user in this conversation that may change AND that the user may act on: rules or law, prices, availability, the result of a review or an application, opening times. Not timeless facts, not opinions, nothing the user only asked about, nothing already listed under "Rechecks already kept".
-- claim: what the assistant said, in its own words, at most {CLAIM_MAX} characters. why: the decision the user has at stake, at most {WHY_MAX}. how: where to check (official sites or names), at most {HOW_MAX}. topic: a short English slug such as "visa-extension-rules". decide_by: YYYY-MM-DD only when the user named a date they decide by, else null.
+- claim: what the assistant said, in its own words, at most {CLAIM_MAX} characters. why: the decision the user has at stake, at most {WHY_MAX}. how: where to check (official sites or names), at most {HOW_MAX}. topic: a short English slug such as "visa-extension-rules". decide_by: YYYY-MM-DD only when the user named a date they decide by, else null. about: YYYY-MM-DD when the claim is about one day or moment (\"today it is ...\", \"it arrives tomorrow\"), else null; such a claim is not kept once that day is over.
 - quote: the assistant's words that state the claim, copied exactly from one of ITS messages in the conversation (no paraphrase, no translation). A claim without such a quote is thrown away.
 - When nothing fits, give []."""
 
@@ -590,6 +593,7 @@ class RecheckService:
         self.repo, self.planner, self.researcher, self.verifier, self.handoff = repo, planner, researcher, verifier, handoff
         self.send, self.replied, self.awake, self.next_awake, self.prefs = send, replied, awake, next_awake, prefs
         self.config, self.busy, self.ready, self.clock = config, busy, ready, clock
+        self.notify_block: Any = None   # notify_block.NotifyBlock (server.py); None: the rules cannot be read
         self.lock = asyncio.Lock()
 
     def today(self, now: float | None = None) -> str:
@@ -598,11 +602,14 @@ class RecheckService:
     def budget_left(self) -> int:
         return max(0, int(self.config().get("recheck_per_day", 4)) - self.repo.runs_today(self.today()))
 
-    def blocked(self, row: Row) -> bool:
-        """The row's topic is on the owner's "do not tell me" list (NOTIFY_PREFS.md): matched on the slug and the claim."""
-        never = keywords(section(self.prefs(), *NEVER_HEADINGS))
-        text = f"{row.slug.replace('-', ' ')} {row.slug} {row.claim}".lower()
-        return any(k in text for k in never)
+    async def blocked(self, row: Row) -> bool | None:
+        """The row's topic is on the owner's "do not tell me" list (NOTIFY_PREFS.md), read by the main model (notify_block.py); None: not
+        known (no reader or no answer)."""
+        rules = self.prefs()
+        if not has_rules(rules):
+            return False
+        text = f"{row.slug.replace('-', ' ')} {row.claim}"
+        return await self.notify_block.one(rules, text) if self.notify_block is not None else None
 
     async def tick(self) -> dict[str, int] | None:
         """What the scheduler calls: nothing when switched off, outside waking hours, while a chat reply runs or a tick is going."""
@@ -642,7 +649,10 @@ class RecheckService:
                            next_at=self.planner.schedule(fresh, now), verdict_json=json.dumps({**state, "weak": 0}, ensure_ascii=False), **done)
         elif verdict.kind == "weak":
             self.weak(row, now, verdict.reason, {**state}, done, verdict.sources)
-        elif self.blocked(row):
+        elif (stop := await self.blocked(row)) is None:   # the rules could not be read: nothing is told, looked at again later
+            self.repo.mark(row.id, next_at=now + RETRY_AFTER, skip_reason="the do-not-tell rules could not be read")
+            return False
+        elif stop:
             self.repo.mark(row.id, state="closed", skip_reason="on the do-not-tell list", verdict_json=json.dumps(state, ensure_ascii=False), **done)
         else:
             assert research is not None
@@ -739,6 +749,12 @@ class RecheckExtractor:
                 log.info("nightly look-back: left out a recheck, not backed by Kelo's own words: %r", claim[:80])
                 continue
             if self.repo.by_key(TopicKey.of(topic, self.repo.clock(), self.planner.tz())) is not None:
+                continue
+            # a claim about one dated moment ("today", "tomorrow's arrival") is over once that day passes: nothing to correct after it
+            about = it.get("about")
+            when = find_date(str(about), self.repo.clock(), self.planner.tz()) if about else None
+            if when is not None and self.planner.decide_end(when[0]) < self.repo.clock() + DAY:
+                log.info("nightly look-back: left out a recheck about a moment that is over before a later look: %r", claim[:80])
                 continue
             by = it.get("decide_by")
             found = find_date(str(by), self.repo.clock(), self.planner.tz()) if by else None

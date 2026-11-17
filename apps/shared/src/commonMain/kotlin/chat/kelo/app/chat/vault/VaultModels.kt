@@ -113,6 +113,8 @@ data class SecretRequest(
     val label: String = "",
     val hosts: List<String> = emptyList(),
     val reason: String = "",
+    /** A login's account name the assistant already knows (non-secret prefill of the user name field); "" when none. */
+    @SerialName("username_hint") val usernameHint: String = "",
     val check: Boolean = false,
     val source: String = SOURCE_AGENT,
     @SerialName("turn_id") val turnId: String? = null,
@@ -206,6 +208,28 @@ object SecretRules {
 
     /** Requests for the Keychain's "waiting for input" list: open ones, newest first. */
     fun waiting(list: List<SecretRequest>): List<SecretRequest> = list.filter { it.open }.sortedByDescending { it.createdAt }
+}
+
+/** The compact login / key card and its sheet (pure, unit-tested). */
+object LoginSheetRules {
+    /** The checkbox "Save in the Keychain": checked = saved once a sign-in with it works, unchecked = used once and erased. */
+    fun mode(keep: Boolean): VaultMode = if (keep) VaultMode.AFTER_SUCCESS else VaultMode.ONCE
+
+    /** Save is enabled only when both fields (a key: its one field) are filled and nothing is being saved. */
+    fun canSave(login: Boolean, user: String, pass: String, busy: Boolean): Boolean =
+        !busy && (if (login) SecretEntryRules.loginReady(user, pass) else SecretEntryRules.keyReady(pass))
+
+    /** The user name field starts with the account the assistant knows (one line, trimmed); empty for a key. */
+    fun prefill(login: Boolean, hint: String?): String = if (login) hint.orEmpty().lineSequence().firstOrNull().orEmpty().trim() else ""
+
+    /** What the card says it is for: the site of a login, the service of a key. */
+    fun forName(login: Boolean, hosts: List<String>, label: String, name: String): String {
+        val site = SecretRules.hostsText(hosts)
+        return if (login) site.ifEmpty { label.ifEmpty { name } } else label.ifEmpty { site.ifEmpty { name } }
+    }
+
+    /** The assistant is told by the app right after a save, once, only when a handler exists (the chat's older secure card). */
+    fun shouldNotify(saved: Boolean, alreadySent: Boolean, hasHandler: Boolean): Boolean = saved && !alreadySent && hasHandler
 }
 
 /** When [저장] may be pressed (pure, unit-tested). */

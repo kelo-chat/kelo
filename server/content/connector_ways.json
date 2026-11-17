@@ -1,0 +1,84 @@
+{
+ "_note": "How connectors without a key or OAuth are reached: the site the agent's own browser opens (blocks_bots: automated visits are often refused) and the reason a connector cannot be used (the reason key picks a text in presets.py). Data, not code.",
+ "browser": {
+  "agoda": {
+   "url": "https://www.agoda.com"
+  },
+  "baemin": {
+   "url": "https://www.baemin.com"
+  },
+  "box": {
+   "url": "https://app.box.com"
+  },
+  "canva": {
+   "url": "https://www.canva.com"
+  },
+  "coupang": {
+   "blocks_bots": true,
+   "url": "https://www.coupang.com"
+  },
+  "daangn": {
+   "url": "https://www.daangn.com"
+  },
+  "expedia": {
+   "url": "https://www.expedia.com"
+  },
+  "facebook_cli": {
+   "blocks_bots": true,
+   "url": "https://www.facebook.com"
+  },
+  "google_contacts": {
+   "blocks_bots": true,
+   "url": "https://contacts.google.com"
+  },
+  "google_tasks": {
+   "blocks_bots": true,
+   "url": "https://calendar.google.com/calendar/u/0/r/tasks"
+  },
+  "instacart": {
+   "url": "https://www.instacart.com"
+  },
+  "instagram": {
+   "blocks_bots": true,
+   "url": "https://www.instagram.com"
+  },
+  "kakao": {
+   "url": "https://map.kakao.com"
+  },
+  "messenger_read": {
+   "blocks_bots": true,
+   "url": "https://www.messenger.com"
+  },
+  "meta_catalog_search": {
+   "blocks_bots": true,
+   "url": "https://www.facebook.com/marketplace"
+  },
+  "naver": {
+   "url": "https://www.naver.com"
+  },
+  "opentable": {
+   "url": "https://www.opentable.com"
+  },
+  "quickbooks": {
+   "url": "https://qbo.intuit.com"
+  },
+  "spotify": {
+   "url": "https://open.spotify.com"
+  },
+  "threads": {
+   "blocks_bots": true,
+   "url": "https://www.threads.com"
+  },
+  "toss": {
+   "url": "https://toss.im"
+  }
+ },
+ "unsupported": {
+  "apple_healthkit": "phone_app_only_ios",
+  "google_health_connect": "phone_app_only_android",
+  "philips_hue": "home_network",
+  "shop-pay": "no_saved_card_pay",
+  "shopify-ucp": "other_product_only",
+  "stripe-link": "no_saved_card_pay"
+ }
+}

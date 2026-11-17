@@ -12,7 +12,7 @@ kind on that site (its registrable domain) go through without a card, for this t
   grant stops after STEPS_PER_ITEM x max_count covered steps in all;
 - never covered: payments and anything that buys or books ("pay"), sign-ups and account or password changes ("account"), the
   account's protection and official documents ("security": app passwords, 2-step verification, devices, 발급), typing into
-  a password field, and deletions unless deleting was the permitted step. confirm_purchase is untouched.
+  a password field, and deletions unless deleting was the permitted step. checkout_review is untouched.
 
 Many items on many sites ("opt out of all of these senders", "decline these invitations"): the agent first finds the items, then asks
 once with the real number and the list (`targets`, shown on the card behind "see the list"), and the sites they are on (`sites`). When
@@ -38,7 +38,6 @@ from urllib.parse import urlsplit
 from ..agent import Tool, approval_of_current_call
 from ..i18n import N_, t
 from .sites import registrable as site_key
-from .commits import judge_words, money_words
 
 MAX_COUNT = 100
 MAX_ALL = 1000            # "all of them": the number found, never approved in chunks
@@ -59,7 +58,7 @@ KINDS: dict[str, frozenset[str]] = {
 }
 COUNTED: dict[str, frozenset[str]] = {"apply": frozenset({"apply", "send"}), "send": frozenset({"send"}), "delete": frozenset({"delete"}),
                                       "optout": frozenset({"optout"})}
-NEVER = frozenset({"pay", "account", "security"})
+NEVER = frozenset({"account", "security"})
 LOW_RISK = frozenset({"optout"})   # spends nothing, sends nothing in the user's name, can be turned back on
 
 DESCRIBE = N_("On {site}: {action}, up to {count} times, only while this task runs. Payments and account changes still ask each time.")
@@ -319,10 +318,9 @@ def many(plan: dict[str, Any]) -> bool:
 
 def task_permission_tools(grants: TaskGrants, current_host: Callable[[], str] = lambda: "",
                           task_id: Callable[[], int | None] = lambda: None,
-                          owner_request: Callable[[], str] = lambda: "") -> list[Tool]:
-    """`owner_request`: the owner's own ongoing request (Orders.request: their words in chat, also for a job the chat handed off).
-    When it already asks for this kind of step (apply / send), the permission is the owner's word and needs no card (2026-11-11:
-    "카카오 체험단 … 다 신청해" was asked again as "471개 모두 … 진행할까요?")."""
+                          owner_request: Callable[[], str] | None = None) -> list[Tool]:
+    """`owner_request` is accepted for the server's existing call and NOT read: the owner's words never decide a permission's card
+    (docs/no-word-lists.md, 2026-11-16). A card is shown for every request_task_permission; the owner's Allow is the grant."""
     def validate(args: dict[str, Any]) -> str | None:
         p = plan_of(args)
         site, kind, action, count = p["site"], p["kind"], p["action"], p["count"]
@@ -330,12 +328,10 @@ def task_permission_tools(grants: TaskGrants, current_host: Callable[[], str] = 
             return ("say where the steps happen: site (one site, e.g. musinsa.com), sites (one per item when the items are on different "
                     "sites), or from_links (the sites the links in what you found lead to)")
         if kind not in KINDS:
-            return ("kind must be apply, send, delete or optout. Payments and bookings go through confirm_purchase each time; sign-ups and "
+            return ("kind must be apply, send, delete or optout. Payments and bookings go through checkout_review each time; sign-ups and "
                     "account changes always ask")
         if not action:
-            return "action is required: the step in the user's language, short (e.g. '체험단 신청', 'opt out', 'decline the invitation')"
-        if money_words(action) or judge_words(action) in NEVER:
-            return "this permission never covers paying, buying, booking, signing up or account changes; those ask each time"
+            return "action is required: the step in the user's language, short (e.g. 'opt out', 'decline the invitation')"
         if p["from_links"] and kind not in LOW_RISK:
             return f"from_links is only for low-risk, reversible steps (kind {', '.join(sorted(LOW_RISK))}); list the sites instead"
         if p["all"] and not p["targets"]:
@@ -372,18 +368,6 @@ def task_permission_tools(grants: TaskGrants, current_host: Callable[[], str] = 
             shown = f"{shown} · {t(WHERE_LINKS)}" if shown else t(WHERE_LINKS)
         lines = [{"label": t("Site"), "value": shown}] if shown else []
         return {"lines": lines, "items": p["targets"]}
-
-    async def asked_for(args: dict[str, Any]) -> bool:
-        """No card when the owner's own words already ask for this kind of step (never a payment: validate refuses those)."""
-        from .order import requested_kinds
-        p = plan_of(args)
-        if p["kind"] not in ("apply", "send"):
-            return False
-        try:
-            words = " ".join(str(owner_request() or "").split())
-        except Exception:  # noqa: BLE001 - when in doubt the card shows
-            return False
-        return bool(words) and p["kind"] in requested_kinds(words)
 
     async def handler(args: dict[str, Any]) -> str:
         p = plan_of(args)
@@ -424,7 +408,7 @@ def task_permission_tools(grants: TaskGrants, current_host: Callable[[], str] = 
             "what": {"type": "string", "description": "what the items are, in the user's language, plural (shown in the question)"},
             "reason": {"type": "string", "description": "what the user asked for, in a few words"},
         }, "required": ["kind", "action", "max_count"]},
-        handler, requires_approval=True, validate=validate, describe=describe, approval_extra=extra, auto_approve=asked_for,
+        handler, requires_approval=True, validate=validate, describe=describe, approval_extra=extra,
         declined=("The user did NOT allow these steps for the whole task. Each such step will ask on its own; do only a few, or ask the "
                   "user how they want to go on."),
     )]

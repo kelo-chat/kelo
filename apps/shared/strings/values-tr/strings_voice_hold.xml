@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Konuşmak için basılı tutun</string>
+    <string name="voice_hold_hint">Bitirmek için bırakın, iptal etmek için kaydırın</string>
+    <string name="voice_dictation_offline">Bağlantı koptuğu için dikte durduruldu.</string>
+    <string name="voice_dictation_failed">Dikte tamamlanamadı.</string>
+    <string name="msg_action_read_aloud">Sesli oku</string>
+    <string name="msg_action_read_stop">Okumayı durdur</string>
+</resources>

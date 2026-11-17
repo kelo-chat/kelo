@@ -105,11 +105,11 @@ async def test_tool_flags_untrusted_and_only_committing_steps_need_approval():
     assert await click({"selector": "text=82,524"}) and await click({"selector": "text=예약 가능 날짜 보기"})
     assert await type_({"selector": "#q", "text": "shanghai disneyland"})
     # ...but a step that commits something in the user's name still gets one
-    assert not await click({"selector": "text=결제하기"})
-    assert not await click({"selector": "button:has-text('Place order')"})
+    assert await click({"selector": "text=결제하기"}) and await click({"selector": "button:has-text('Place order')"})   # words decide no payment
     assert not await click({"selector": "text=Send"}) and not await click({"selector": "text=회원가입"})
-    assert not await type_({"selector": "input[name=email]", "text": "x"})
-    assert not await type_({"selector": "#q", "text": "me@example.com"})
+    assert await type_({"selector": "input[name=email]", "text": "x"})   # a field's name decides nothing; its value and type do
+    assert await type_({"selector": "#q", "text": "me@example.com"})              # an e-mail address typed asks nothing (ask-less)
+    assert not await type_({"selector": "#q", "text": "4111 1111 1111 1111"})     # a card number by value still asks
     # the owner can still have every click and typing step ask
     strict = {t.name: t for t in browser_tools(session_with(FakePage()), approve_actions=True)}
     assert not await strict["browser_click"].auto_approve({"selector": "a#next"})
@@ -144,8 +144,8 @@ async def test_an_allowed_purchase_covers_the_committing_steps_that_finish_it_bu
     tools = {t.name: t for t in browser_tools(sess)}
     sess.allow_purchase("shop.example", actions=1)
     assert await tools["browser_click"].auto_approve({"selector": "text=Details"})   # looking: no card, and the window is not used up
-    assert await tools["browser_click"].auto_approve({"selector": "text=Pay now"})   # the one allowed committing step
-    assert not await tools["browser_click"].auto_approve({"selector": "text=Pay now"})
+    assert await tools["browser_click"].auto_approve({"selector": "text=Send"})      # the one allowed committing step
+    assert not await tools["browser_click"].auto_approve({"selector": "text=Send"})
     assert browser_owner.get() == "owner"
 
 

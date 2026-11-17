@@ -51,12 +51,43 @@ class Thinking:
 Event = TextDelta | ToolCall | Usage | Done | Thinking
 
 
-class ProviderError(Exception):
-    """Raised for HTTP/protocol failures. Never includes credentials."""
+# The machine-readable error codes providers put in their JSON error bodies (OpenAI "error.code", Anthropic "error.type", Google
+# "error.status"), lower-cased. They are protocol identifiers, not words: what a failure is comes from the HTTP status and these codes,
+# never from the words of its message (docs/no-word-lists.md).
+CODES_BALANCE = frozenset({"insufficient_quota", "billing_error", "insufficient_credits", "payment_required"})
+CODES_LIMIT = frozenset({"rate_limit_exceeded", "rate_limit_error", "resource_exhausted", "too_many_requests"}) | CODES_BALANCE
+CODES_OUTAGE = frozenset({"overloaded_error", "api_error", "server_error", "service_unavailable", "unavailable", "internal",
+                          "deadline_exceeded", "timeout", "overloaded"})
+CODES_CONTEXT = frozenset({"context_length_exceeded", "string_above_max_length", "request_too_large"})
 
-    def __init__(self, message: str, status: int | None = None, retry_after: float | None = None):
+
+def error_code(body: Any) -> str:
+    """The lower-cased code of a provider's error body (a dict, or JSON text): error.code, else error.type, else error.status."""
+    if isinstance(body, (str, bytes)):
+        import json
+        try:
+            body = json.loads(body)
+        except ValueError:
+            return ""
+    err = body.get("error") if isinstance(body, dict) else None
+    if isinstance(err, list) and err:
+        err = err[0]
+    if not isinstance(err, dict):
+        err = body if isinstance(body, dict) else {}
+    for key in ("code", "type", "status"):
+        v = err.get(key)
+        if isinstance(v, str) and v:
+            return v.lower()
+    return ""
+
+
+class ProviderError(Exception):
+    """Raised for HTTP/protocol failures. Never includes credentials. `code`: the provider's own error code (see CODES_*), "" when none."""
+
+    def __init__(self, message: str, status: int | None = None, retry_after: float | None = None, code: str = ""):
         super().__init__(message)
         self.status = status
+        self.code = (code or "").lower()
         self.retry_after = retry_after   # seconds the provider asked to wait (an HTTP Retry-After header), when it said
 
 
@@ -94,6 +125,11 @@ class UnsupportedProvider(ProviderError):
 # The system block that carries the rolling summary of the earlier conversation (compaction.py). Marked so the agy adapter can hand
 # it over with the conversation instead of the rules file (cli_agents.fit_agy_rules).
 CONVERSATION_SUMMARY_HEAD = "Earlier in this conversation (summary):"
+
+# What the agent loop puts in place of an older tool result / an older picture to keep a request small (agent/loop.py). The agy session
+# pool knows both: its live session still holds the full original, so a request that carries the short form goes on from the session.
+DIGEST_PREFIX = "[earlier result of "
+OLD_PICTURE = "[Not from the user: picture shown earlier ({name}), no longer attached.]"
 
 # Heads the message with this turn's lines (clock, calendar, schedules, goals) that the server puts right before the user's message
 # (server.py). It is rebuilt every turn and never stored, so the agy adapter knows the previous turn's copy is gone from the next

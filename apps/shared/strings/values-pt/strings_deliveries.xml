@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pt-BR text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="deliveries_label">Mensagens que o Kelo inicia por dia</string>
+    <string name="deliveries_about">O Kelo reúne o que quer contar a você nesta quantidade de mensagens por dia. Com 0, ele envia só o que não pode esperar.</string>
+    <plurals name="deliveries_today">
+        <item quantity="one">Enviada %d vez hoje</item>
+        <item quantity="many">Enviadas %d de vezes hoje</item>
+        <item quantity="other">Enviadas %d vezes hoje</item>
+    </plurals>
+    <plurals name="deliveries_held">
+        <item quantity="one">%d item retido</item>
+        <item quantity="many">%d de itens retidos</item>
+        <item quantity="other">%d itens retidos</item>
+    </plurals>
+    <string name="deliveries_held_title">Mensagens retidas</string>
+    <string name="deliveries_held_about">O Kelo guarda isto para a próxima mensagem. Ele olha de novo antes de enviar e descarta o que já não importa.</string>
+    <string name="deliveries_held_empty">No momento, nada está retido.</string>
+    <string name="deliveries_held_until">Retido até %1$s</string>
+    <string name="deliveries_why_slots">Esperando a próxima mensagem do dia</string>
+    <string name="deliveries_why_cap">Não é urgente o bastante para enviar mais hoje</string>
+    <string name="deliveries_why_reply">Esperando sua resposta à última mensagem</string>
+    <string name="deliveries_why_other">Esperando um momento melhor</string>
+</resources>

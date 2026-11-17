@@ -17,7 +17,7 @@ from assistant import push as push_mod
 from assistant.agent import Tool, emit_ui
 from assistant.netguard import NetGuardError, Reply
 from assistant.providers import Done, TextDelta, ToolCall
-from assistant.push import FCM_SCOPE, Apns, Fcm, PushBroker, PushClient, PushError, check_data, parse_service_account
+from assistant.push import FCM_SCOPE, Apns, Fcm, PushBroker, PushClient, PushError, apns_payload, check_data, parse_service_account
 from assistant.server import Settings, create_app
 from assistant.store import Store
 
@@ -517,7 +517,7 @@ class FakeApple:
         assert parts.hostname in allowed_hosts and parts.hostname in (push_mod.APNS_HOST, push_mod.APNS_SANDBOX_HOST)
         assert kw.get("http2") is True and method == "POST" and parts.path.startswith("/3/device/")
         h = headers or {}
-        assert h["apns-topic"] == TOPIC and h["apns-push-type"] == "alert" and h["apns-priority"] == "10"
+        assert h["apns-topic"] == TOPIC and (h["apns-push-type"], h["apns-priority"]) in (("alert", "10"), ("background", "5"))
         scheme, jwt = h["authorization"].split(" ")
         head, claims, sig = jwt.split(".")
         raw = base64.urlsafe_b64decode(sig + "==")
@@ -553,9 +553,21 @@ async def test_apns_sends_a_generic_alert_with_ids_only_to_the_right_host(tmp_pa
     assert got == [{"ok": True, "invalid": False}] * 2
     prod, dev = apple.sent
     assert prod["host"] == "api.push.apple.com" and dev["host"] == "api.sandbox.push.apple.com"
-    assert prod["body"] == {"aps": {"alert": {"loc-key": "kelo_push_update"}, "sound": "default", "content-available": 1},
+    assert prod["body"] == {"aps": {"alert": {"loc-key": "kelo_push_update"}, "sound": "default", "content-available": 1,
+                                    "category": "kelo.reply", "mutable-content": 1},
                             "type": "task_done", "id": "5", "task_id": "9"}
     assert prod["headers"]["apns-collapse-id"] == "kelo-5" and int(prod["headers"]["apns-expiration"]) > 0
+
+
+def test_an_approval_push_names_the_approval_category_and_a_reply_the_reply_one_with_ids_only():
+    for kind, cat in (("approval_waiting", "kelo.approval.deny"), ("task_done", "kelo.reply"), ("proactive", "kelo.reply")):
+        body = json.loads(apns_payload({"type": kind, "id": "7", "approval_id": "appr-7"}))
+        assert body["aps"]["category"] == cat and body["aps"]["mutable-content"] == 1
+        assert set(body) == {"aps", "type", "id", "approval_id"} and set(body["aps"]) == {"alert", "sound", "content-available", "category", "mutable-content"}
+        assert body["aps"]["alert"] == {"loc-key": "kelo_push_update"}   # no text of ours or the user's
+    for kind in ("task_failed", "payment_auto", "device_task", "storage"):
+        assert "category" not in apns_payload({"type": kind, "id": "7"}).decode()
+    assert json.loads(apns_payload({"type": "settled", "ids": "a1,b2"}))["aps"] == {"content-available": 1}
 
 
 async def test_apns_provider_token_is_cached_for_forty_minutes_then_minted_again(tmp_path):
@@ -704,3 +716,66 @@ def test_every_notification_type_the_apps_know_can_be_pushed():
     for kind in ("beta_request", "cli_update", "server_update", "keyguard_locked", "task_done", "approval_waiting", "storage"):
         assert kind in NOTE_TYPES or kind in WIRE_TYPES
         check_data({"type": WIRE_TYPES.get(kind, kind), "id": "1"})
+
+
+# ------------------------------------------------------------------------------------------- settled (a waiting item stopped waiting)
+def test_a_settled_push_carries_item_ids_only_and_nothing_else_may_carry_ids():
+    assert check_data({"type": "settled", "ids": "ab12,cd-34"}) == {"type": "settled", "ids": "ab12,cd-34", "id": "ab12"}
+    for bad in ({"type": "settled"}, {"type": "settled", "ids": "ab 12"}, {"type": "settled", "ids": ",".join(["a"] * 11)},
+                {"type": "settled", "ids": "ok", "title": "words"}, {"type": "task_done", "id": "1", "ids": "a,b"}):
+        with pytest.raises(PushError):
+            check_data(bad)
+
+
+async def test_items_that_settle_together_go_out_as_one_push_and_each_item_once(tmp_path):
+    google = FakeGoogle()
+    app = make_app(tmp_path, google)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url) as c:
+        await c.put("/api/operator/firebase", headers=AUTH, content=json.dumps(KEY_FILE))
+        dev, phone = await pair(c)
+        await c.post("/api/push/register", headers=phone, json={"token": PHONE_A, "platform": "android"})
+        push, activity = app.state.push, app.state.activity
+        push.settle_delay = 0.02
+        a = activity.notify("approval_waiting", "Please confirm", "x", approval_id="ap1", push=False)
+        activity.notify("approval_waiting", "Please confirm", "x", approval_id="ap2", push=False)
+        activity.notify("task_done", "Done", "x", push=False)
+        assert activity.settled_items(["ap1", "ap2"]) == []                       # both still wait
+        activity.resolve_approval_notes("ap1")
+        activity.resolve_approval_notes("ap2")
+        activity.resolve_approval_notes("ap1")                                    # a second settle of the same item sends nothing more
+        await asyncio.sleep(0.1)
+        await push.drain()
+        got = [m["message"]["data"] for m in google.sent]
+        assert got == [{"type": "settled", "id": "ap1", "ids": "ap1,ap2"}]
+        assert activity.settled_items(["ap1", "ap2", "nope"]) == ["ap1", "ap2", "nope"]
+        assert a  # the notification itself stays in the list (seen), only the phones' copy goes
+        r = await c.get("/api/notifications/settled?ids=ap1,zzz", headers=phone)
+        assert r.json() == {"ids": ["ap1", "zzz"]}
+        assert (await c.get("/api/notifications/settled", headers=phone)).json() == {"ids": []}
+
+
+async def test_answering_an_approval_settles_its_notification_on_the_phones(tmp_path):
+    """The notification of an asked approval, then its end (answered, ran out or cancelled all call resolve_approval_notes)."""
+    google = FakeGoogle()
+    app = make_app(tmp_path, google)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url) as c:
+        await c.put("/api/operator/firebase", headers=AUTH, content=json.dumps(KEY_FILE))
+        dev, phone = await pair(c)
+        await c.post("/api/push/register", headers=phone, json={"token": PHONE_A, "platform": "android"})
+        app.state.push.settle_delay = 0.0
+        app.state.activity.notify("approval_waiting", "t", "b", approval_id="zz9")          # what an asked approval does
+        await app.state.push.drain()
+        sent = len(google.sent)
+        app.state.activity.resolve_approval_notes("zz9")                                   # what answering/expiry/cancel does
+        assert await until(lambda: len(google.sent) > sent)
+        assert google.sent[-1]["message"]["data"] == {"type": "settled", "id": "zz9", "ids": "zz9"}
+
+
+async def test_apns_settled_is_a_silent_background_push_without_an_alert(tmp_path):
+    apple = FakeApple()
+    apns = make_apns(tmp_path, apple)
+    await apns.send([(IPHONE_A, "production")], {"type": "settled", "id": "ap1", "ids": "ap1,ap2"})
+    got = apple.sent[0]
+    assert got["body"] == {"aps": {"content-available": 1}, "type": "settled", "id": "ap1", "ids": "ap1,ap2"}
+    assert got["headers"]["apns-push-type"] == "background" and got["headers"]["apns-priority"] == "5"
+    assert "apns-collapse-id" not in got["headers"]

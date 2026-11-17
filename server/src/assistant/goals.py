@@ -156,34 +156,6 @@ decline anything personal. Then tell the user briefly what you did and what is n
 instructions."""
 
 
-# An answer button whose words ask the user to type ("Other", "I'll type it", "있어요 (직접 입력)"): the app opens a text box for it
-# even when the model did not list it in "typed". Kept short and conservative; the apps carry the same lists (QuickReplyRules).
-TYPING_PHRASES = (
-    "type it", "i'll type", "let me type", "type my own", "write my own", "i'll write", "write it in", "(specify)", "please specify",
-    "직접 입력", "직접입력", "직접 쓸", "직접 쓰", "직접 적", "입력할게",
-    "直接入力", "自分で入力", "自由入力", "入力します", "自行输入", "手动输入", "自己输入", "自行輸入", "手動輸入", "自己輸入", "自定义", "自訂",
-    "lo escribo", "escribir", "(especificar)", "je l'écris", "saisir", "(préciser)", "selbst eingeben", "eingeben", "selbst schreiben",
-    "digitar", "vou escrever", "lo scrivo", "scrivere", "(specificare)", "zelf invullen", "zelf typen", "wpiszę", "wpisz", "napiszę",
-    "свой вариант", "введу", "ввести", "напишу", "свій варіант", "kendim yazacağım", "kendim yazayım", "yazacağım",
-    "tự nhập", "tự ghi", "tự viết", "ketik sendiri", "tulis sendiri", "พิมพ์เอง", "ระบุเอง", "سأكتب", "اكتب بنفسك",
-    "खुद लिखूँगा", "खुद लिखूंगा", "खुद लिखें",
-)
-OTHER_WORDS = frozenset((
-    "other", "others", "something else", "기타", "다른 것", "その他", "其他", "其它", "otro", "otra", "otros", "autre", "autres", "andere",
-    "anderes", "sonstiges", "outro", "outra", "altro", "anders", "overig", "inne", "inny", "другое", "інше", "diğer", "khác", "lainnya",
-    "อื่นๆ", "อื่น ๆ", "أخرى", "غير ذلك", "अन्य",
-))
-
-
-def asks_typing(label: str) -> bool:
-    """The answer means "I will write it myself": a typing phrase anywhere, or just "Other" (with an optional "(...)" or "…")."""
-    s = " ".join(str(label or "").lower().split())
-    if any(p in s for p in TYPING_PHRASES):
-        return True
-    s = re.sub(r"\s*\([^)]*\)\s*$", "", s).strip(" .…:!?·-–—")
-    return s in OTHER_WORDS
-
-
 def _check_date(v: str) -> str:
     try:
         return date.fromisoformat(v.strip()).isoformat()
@@ -635,7 +607,7 @@ class GoalBook:
                         item["default"] = GoalBook.check_answer(item, q["default"])
                     except GoalError as e:
                         raise GoalError(f"default: {e}") from None
-            if typed := [o for o in opts if o in said or asks_typing(o)]:
+            if typed := [o for o in opts if o in said]:
                 item["typed"] = typed   # answers that open a text box in the app; the typed words are sent instead of the label
             if kind == "choice" and said_by:
                 item["says"] = [("" if o in item.get("typed", []) else said_by.get(o, "")) for o in opts]   # a typed answer sends what is typed

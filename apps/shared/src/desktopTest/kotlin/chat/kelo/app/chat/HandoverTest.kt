@@ -60,6 +60,21 @@ class HandoverTest {
         assertTrue(ev.check!!.isVerification)
     }
 
+    @Test fun thePhoneScreenHandoverIsToldApartAndKeepsTheServersWords() {
+        val items = PendingApproval.parseList(Json.parseToJsonElement(
+            """{"items":[{"type":"approval_request","kind":"human_check","approval_id":"d1","name":"browser_check","site":"Pixel 8",
+               "ask":"Kelo needs you at the phone screen","detail":"Solve the check on the phone","tab":"owner:phone",
+               "check":{"vendor":"android","name":"Solve the check on the phone","kind":"device"}},
+               {"type":"approval_request","kind":"human_check","approval_id":"h1","name":"browser_check","site":"shop.example.com",
+               "check":{"vendor":"cloudflare","kind":"interstitial"}}]}"""))
+        val d = items.first { it.id == "d1" }
+        assertTrue(d.isHumanCheck); assertTrue(d.isDevice); assertFalse(d.isVerification)
+        assertEquals("Kelo needs you at the phone screen", d.event.ask); assertEquals("Solve the check on the phone", d.event.detail)
+        assertFalse(items.first { it.id == "h1" }.isDevice)
+        assertFalse(PendingApproval.parseList(Json.parseToJsonElement(
+            """{"items":[{"type":"approval_request","approval_id":"a1","name":"x","check":{"kind":"device"}}]}""")).single().isDevice)
+    }
+
     @Test fun aSignInVerificationApproveStepIsToldApart() {
         val check = CheckInfo.parse(Json.parseToJsonElement("""{"kind":"verification","step":"approve"}"""))!!
         assertTrue(check.isApproveStep)

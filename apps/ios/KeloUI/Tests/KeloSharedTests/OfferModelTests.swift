@@ -73,4 +73,18 @@ import KeloTestSupport
         await m.jobs.settled()
         #expect(m.items.count == 1)
     }
+
+    @Test func requestAndStepsDecodeAndCollapse() throws {
+        let json = #"{"items":[{"id":"1","sentence":"s","request":"do it","steps":["a","b","c","d","e"]},{"id":"2","sentence":"old"}]}"#
+        let list = try JSONDecoder().decode(OfferList.self, from: Data(json.utf8))
+        #expect(list.items[0].request == "do it")
+        #expect(list.items[0].steps.count == 5)
+        #expect(list.items[1].request == "" && list.items[1].steps.isEmpty)
+        let steps = list.items[0].steps
+        #expect(OfferSteps.visible(steps, expanded: false) == ["a", "b", "c"])
+        #expect(OfferSteps.visible(steps, expanded: true) == steps)
+        #expect(OfferSteps.collapsible(steps))
+        #expect(!OfferSteps.collapsible(["a", "b", "c"]))
+        #expect(OfferSteps.visible(["a", "b"], expanded: false) == ["a", "b"])
+    }
 }

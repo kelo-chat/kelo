@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="deliveries_label">Ile wiadomości dziennie Kelo zaczyna sam</string>
+    <string name="deliveries_about">Kelo zbiera to, co chce Ci powiedzieć, w tylu wiadomościach dziennie. Przy 0 wysyła tylko to, co nie może czekać.</string>
+    <plurals name="deliveries_today">
+        <item quantity="one">Dziś wysłano %d raz</item>
+        <item quantity="few">Dziś wysłano %d razy</item>
+        <item quantity="many">Dziś wysłano %d razy</item>
+        <item quantity="other">Dziś wysłano %d razy</item>
+    </plurals>
+    <plurals name="deliveries_held">
+        <item quantity="one">%d element wstrzymany</item>
+        <item quantity="few">%d elementy wstrzymane</item>
+        <item quantity="many">%d elementów wstrzymanych</item>
+        <item quantity="other">%d elementu wstrzymanego</item>
+    </plurals>
+    <string name="deliveries_held_title">Wstrzymane wiadomości</string>
+    <string name="deliveries_held_about">Kelo zachowuje to na następną wiadomość. Przed wysłaniem spojrzy jeszcze raz i pominie to, co przestało mieć znaczenie.</string>
+    <string name="deliveries_held_empty">Teraz nic nie jest wstrzymane.</string>
+    <string name="deliveries_held_until">Wstrzymane do %1$s</string>
+    <string name="deliveries_why_slots">Czeka na następną wiadomość z tego dnia</string>
+    <string name="deliveries_why_cap">Za mało pilne, by wysyłać więcej dzisiaj</string>
+    <string name="deliveries_why_reply">Czeka na Twoją odpowiedź na ostatnią wiadomość</string>
+    <string name="deliveries_why_other">Czeka na lepszy moment</string>
+</resources>

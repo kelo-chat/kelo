@@ -24,7 +24,21 @@ no key shared by all Kelo servers and none is built in):
   No yesterday's numbers and no air quality: those come from the stored day records and Open-Meteo's air-quality API.
 - WeatherAPI.com with the owner's own key (free plan: 100,000 calls a month, 3 days of forecast, air quality included, commercial use
   allowed; a link back is appreciated). Used only when the owner picks it.
-When the picked provider fails (a bad key, the service down), Open-Meteo answers instead and the forecast says so (`fallback_from`).
+- MET Norway locationforecast (https://api.met.no/weatherapi/locationforecast/2.0/complete, no key, CC BY 4.0; credit "Weather data from
+  MET Norway" with https://api.met.no/). Never picked by hand and never in the providers list: only the last fallback, when Open-Meteo
+  cannot be reached either (2026-11-17, the owner's Open-Meteo host timed out on the TLS handshake). Hourly steps for about 2.5 days,
+  then daily highs and lows from its 6-hourly points. Identifies the app with a generic User-Agent ("Kelo/<version> (+https://kelo.chat)").
+- US National Weather Service (https://api.weather.gov, no key, public domain; credit "Forecast by the US National Weather Service"):
+  the default route for a place in the United States when the owner left the provider on auto (2026-11-17). Its /points answers 404
+  elsewhere, so it is never asked for another country. Not in the providers list either (NwsForecast, NWS_ICONS).
+- Another route to Open-Meteo (2026-11-17): Open-Meteo answers from several servers and DNS gives each network the nearest one. When the
+  normal route fails (no answer, a timeout), the forecast is asked once more through another of its servers: alternate_resolver asks
+  DNS over HTTPS (dns.google) with two client subnets from other regions (ALT_SUBNETS, only to learn which server those regions get,
+  no user address is sent) and keeps the addresses that differ from the normal ones for ALT_SECONDS. netguard still checks that the
+  address is public and connects with the service's own host name as SNI, so the certificate is still checked for api.open-meteo.com.
+When the picked provider fails (a bad key, the service down), Open-Meteo answers instead and the forecast says so (`fallback_from`);
+when Open-Meteo fails too, MET Norway answers; when all fail, a forecast for the same place from `stale_seconds` ago is used, if any.
+A US place's chain: NWS -> Open-Meteo -> MET Norway -> the last forecast.
 
 Keys are kept in the vault like any service key (kind "api"; KEYS below: the item names, the only hosts each may go to and where it goes
 in the request), checked with one real request before they are saved, and never returned.
@@ -42,34 +56,52 @@ home area (meta "weather:home") and a use_phone_location switch; both are droppe
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
+import logging
 import math
+import re
+import socket
 import time
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from zoneinfo import ZoneInfo
 
 from .agent import Tool
 from .i18n import t
 from .netguard import NetGuardError, Reply, fetch
+from .version import current as server_release
 
 Fetcher = Callable[..., Awaitable[Reply]]
+log = logging.getLogger("uvicorn.error")
 
 OPEN_METEO, KMA, WEATHERAPI = "open_meteo", "kma", "weatherapi"
-PROVIDERS = (OPEN_METEO, KMA, WEATHERAPI)
+PROVIDERS = (OPEN_METEO, KMA, WEATHERAPI)          # the choices the owner can make (METNO and NWS are not among them)
 CHOICES = ("auto", *PROVIDERS)
+METNO = "met_no"                                    # the last fallback (no key); see MetNorway
+NWS = "nws"                                         # the US National Weather Service, the default for US places; see NwsForecast
 FORECAST_HOST, AIR_HOST, GEO_HOST = "api.open-meteo.com", "air-quality-api.open-meteo.com", "geocoding-api.open-meteo.com"
 ARCHIVE_HOST = "archive-api.open-meteo.com"
+METNO_HOST = "api.met.no"
+METNO_URL = f"https://{METNO_HOST}/weatherapi/locationforecast/2.0/complete"
+NWS_HOST = "api.weather.gov"
 KMA_HOST, WEATHERAPI_HOST = "apis.data.go.kr", "api.weatherapi.com"
 KMA_URL = f"https://{KMA_HOST}/1360000/VilageFcstInfoService_2.0/getVilageFcst"
+ALT_DNS = "dns.google"                              # DNS over HTTPS, asked for the other servers of Open-Meteo (alternate_resolver)
+ALT_SUBNETS = ("85.10.0.0/24", "8.8.8.0/24")         # one European, one North American network prefix (never the owner's address)
+ALT_SECONDS = 30 * 60
+_NORMAL_DOWN_UNTIL: dict[str, float] = {}             # host -> until when its normal route is taken as down (asked second)
 ATTRIBUTION = {OPEN_METEO: ("Weather data by Open-Meteo.com", "https://open-meteo.com/"),
                KMA: ("기상청 (Korea Meteorological Administration)", "https://www.data.go.kr/data/15084084/openapi.do"),
-               WEATHERAPI: ("Powered by WeatherAPI.com", "https://www.weatherapi.com/")}
-NAMES = {OPEN_METEO: "Open-Meteo", KMA: "기상청 (KMA)", WEATHERAPI: "WeatherAPI.com"}
-MAX_DAYS = {OPEN_METEO: 16, KMA: 3, WEATHERAPI: 3}
+               WEATHERAPI: ("Powered by WeatherAPI.com", "https://www.weatherapi.com/"),
+               METNO: ("Weather data from MET Norway", "https://api.met.no/"),
+               NWS: ("Forecast by the US National Weather Service", "https://www.weather.gov/")}
+NAMES = {OPEN_METEO: "Open-Meteo", KMA: "기상청 (KMA)", WEATHERAPI: "WeatherAPI.com", METNO: "MET Norway", NWS: "US National Weather Service"}
+MAX_DAYS = {OPEN_METEO: 16, KMA: 3, WEATHERAPI: 3, METNO: 9, NWS: 7}
 TYPICAL_YEARS, TYPICAL_SPAN = 10, 3   # typical values: that date +-3 days in each of the last 10 years
 ARCHIVE_LAG_DAYS = 6                  # the historical API has about the last five days missing
 CACHE_SECONDS = 20 * 60
@@ -291,19 +323,144 @@ def _json(r: Reply, what: str) -> Any:
         raise WeatherError(f"{what} did not answer with data (HTTP {r.status})") from None
 
 
+async def geocode_places(fetcher: Fetcher, name: str, language: str = "en", count: int = 5) -> list[Place]:
+    """Places for a name (Open-Meteo geocoding, any language), towns and regions first, then by population."""
+    q = (name or "").strip()
+    if not 2 <= len(q) <= 100:
+        raise WeatherError(t("Type a place name (2 to 100 characters)."))
+    lang = (language or "en").split("-")[0]
+    url = f"https://{GEO_HOST}/v1/search?" + urlencode({"name": q, "count": 20, "language": lang, "format": "json"})
+    try:
+        r = await fetcher("GET", url, allowed_hosts=[GEO_HOST], headers={"Accept": "application/json"})
+    except NetGuardError as e:
+        raise WeatherError(t("Could not look the place up: {error}", error=e)) from None
+    data = _json(r, "Open-Meteo geocoding")
+    rows = (data or {}).get("results") or [] if isinstance(data, dict) else []
+
+    def rank(x: dict[str, Any]) -> tuple[int, float]:
+        fc = str(x.get("feature_code") or "")
+        return (0 if fc.startswith(("PPL", "ADM")) else 1, -float(x.get("population") or 0))
+    out = []
+    for x in sorted(rows, key=rank)[:count]:
+        try:
+            out.append(Place(str(x.get("name") or q)[:80], float(x["latitude"]), float(x["longitude"]), str(x.get("country_code") or ""),
+                             str(x.get("admin1") or "")[:80], str(x.get("timezone") or ""), "search"))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return out
+
+
+# ------------------------------------------------------------------------------------------------------- another route
+# Open-Meteo answers from several servers and DNS gives each network the nearest one. On 2026-11-17 the nearest server never answered
+# from the owner's network (TLS timed out, for any name), while the same name answered from a server found through another region's
+# client subnet. So a failed request is asked once more through that other server. The name, the certificate check and the SNI stay the
+# service's own: only the address changes, and netguard still refuses any address that is not public.
+async def _local_ips(host: str) -> set[str]:
+    """The addresses this server's own DNS gives `host` (the normal route)."""
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, 443, 0, socket.SOCK_STREAM)
+    except OSError:
+        return set()
+    return {str(i[4][0]) for i in infos}
+
+
+async def _dns_answers(host: str, subnet: str, fetcher: Fetcher) -> list[str]:
+    """The IPv4 answers DNS over HTTPS gives `host` when asked as if from `subnet` (EDNS client subnet: the region, never the owner)."""
+    q = urlencode({"name": host, "type": "A", "edns_client_subnet": subnet})
+    r = await fetcher("GET", f"https://{ALT_DNS}/resolve?{q}", allowed_hosts=[ALT_DNS], headers={"Accept": "application/dns-json"})
+    if r.status != 200:
+        raise WeatherError(f"DNS over HTTPS refused the question (HTTP {r.status})")
+    data = _json(r, "DNS over HTTPS")
+    answers = data.get("Answer") if isinstance(data, dict) else None
+    out: list[str] = []
+    for a in answers if isinstance(answers, list) else []:
+        if not isinstance(a, dict) or a.get("type") != 1:
+            continue
+        try:
+            out.append(str(ipaddress.IPv4Address(str(a.get("data") or ""))))
+        except ValueError:
+            continue
+    return out
+
+
+async def alternate_resolver(host: str, fetcher: Fetcher = fetch, *, clock: Callable[[], float] = time.time) -> Callable[..., list] | None:
+    """A getaddrinfo-shaped resolver for `host` with the addresses of another server than the normal route's, or None when no other
+    address is found. The first client subnet (ALT_SUBNETS) whose answers differ from the normal ones wins; the result is kept for
+    ALT_SECONDS. A failed DNS question is not kept, so the next request asks again."""
+    now = clock()
+    hit = _ALT.get(host)
+    if hit is None or now - hit[0] >= ALT_SECONDS:
+        normal = await _local_ips(host)
+        found: tuple[str, ...] = ()
+        asked = False
+        for subnet in ALT_SUBNETS:
+            try:
+                answers = await _dns_answers(host, subnet, fetcher)
+            except (NetGuardError, WeatherError):
+                continue
+            asked = True
+            other = tuple(dict.fromkeys(ip for ip in answers if ip not in normal))
+            if other:
+                found = other
+                break
+        if not asked:
+            return None
+        _ALT[host] = hit = (now, found)
+    ips = hit[1]
+    if not ips:
+        return None
+
+    def resolver(name: str, port: int, *_: Any) -> list:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port)) for ip in ips]
+    resolver.ips = ips   # type: ignore[attr-defined]   (for the log line: which addresses answered)
+    return resolver
+
+
+_ALT: dict[str, tuple[float, tuple[str, ...]]] = {}   # host -> (when asked, the other addresses; () = none found)
+
+
 # ---------------------------------------------------------------------------------------------------------------- providers
 class OpenMeteo:
     name = OPEN_METEO
 
-    def __init__(self, fetcher: Fetcher):
-        self.fetcher = fetcher
+    def __init__(self, fetcher: Fetcher, clock: Callable[[], float] = time.time):
+        self.fetcher, self.clock = fetcher, clock
+
+    async def _get(self, url: str, headers: dict[str, str]) -> Reply:
+        """The request on the normal route; when that fails (no answer, a timeout, a refused connection), once more through another
+        server of Open-Meteo (alternate_resolver). After a failure the other server is asked FIRST for ALT_SECONDS, so a dead normal
+        route costs its timeout once, not on every request. Any other error is not retried."""
+        tried_other = False
+        if _NORMAL_DOWN_UNTIL.get(FORECAST_HOST, 0) > self.clock():
+            resolver = await alternate_resolver(FORECAST_HOST, self.fetcher, clock=self.clock)
+            if resolver is not None:
+                tried_other = True
+                try:
+                    return await self.fetcher("GET", url, allowed_hosts=[FORECAST_HOST], headers=headers, resolver=resolver)
+                except NetGuardError:
+                    pass   # the other server failed too: the normal route gets its chance below
+        try:
+            r = await self.fetcher("GET", url, allowed_hosts=[FORECAST_HOST], headers=headers)
+            _NORMAL_DOWN_UNTIL.pop(FORECAST_HOST, None)
+            return r
+        except NetGuardError as e:
+            _NORMAL_DOWN_UNTIL[FORECAST_HOST] = self.clock() + ALT_SECONDS
+            if tried_other:
+                raise   # both routes were asked once in this request
+            resolver = await alternate_resolver(FORECAST_HOST, self.fetcher, clock=self.clock)
+            if resolver is None:
+                raise
+            log.info("Open-Meteo did not answer on the normal route (%s); asking another of its servers", str(e)[:120])
+            r = await self.fetcher("GET", url, allowed_hosts=[FORECAST_HOST], headers=headers, resolver=resolver)
+            log.info("Open-Meteo answered from another of its servers: %s", ", ".join(resolver.ips))
+            return r
 
     async def forecast(self, place: Place, days: int, now: float) -> Forecast:
         q = urlencode({"latitude": f"{place.lat:.4f}", "longitude": f"{place.lon:.4f}",
                        "hourly": "temperature_2m,precipitation,precipitation_probability,snowfall,wind_speed_10m,wind_gusts_10m,weather_code",
                        "daily": "temperature_2m_max,temperature_2m_min,weather_code", "timezone": "auto", "timeformat": "unixtime",
                        "past_days": 1, "forecast_days": max(1, min(days, MAX_DAYS[OPEN_METEO]))})
-        r = await self.fetcher("GET", f"https://{FORECAST_HOST}/v1/forecast?{q}", allowed_hosts=[FORECAST_HOST], headers={"Accept": "application/json"})
+        r = await self._get(f"https://{FORECAST_HOST}/v1/forecast?{q}", {"Accept": "application/json"})
         data = _json(r, "Open-Meteo")
         if r.status != 200 or not isinstance(data, dict) or "hourly" not in data:
             raise WeatherError(f"Open-Meteo refused the request (HTTP {r.status}): {str(data.get('reason', '') if isinstance(data, dict) else '')[:120]}")
@@ -329,6 +486,209 @@ class OpenMeteo:
                 fc.yesterday = day
             else:
                 fc.days.append(day)
+        return fc
+
+
+# MET Norway's symbol codes (https://api.met.no/weatherapi/weathericon/2.0/documentation), without their _day / _night /
+# _polartwilight suffix -> (Kelo's sky, precipitation kind). A protocol value table: the codes name weather, not words to match.
+METNO_SYMBOLS: dict[str, tuple[str, str]] = {
+    "clearsky": ("clear", ""), "fair": ("clear", ""), "partlycloudy": ("partly", ""), "cloudy": ("cloudy", ""), "fog": ("fog", ""),
+    "lightrain": ("rain", "rain"), "rain": ("rain", "rain"), "heavyrain": ("rain", "rain"),
+    "lightrainshowers": ("rain", "rain"), "rainshowers": ("rain", "rain"), "heavyrainshowers": ("rain", "rain"),
+    "lightrainandthunder": ("thunder", "rain"), "rainandthunder": ("thunder", "rain"), "heavyrainandthunder": ("thunder", "rain"),
+    "lightrainshowersandthunder": ("thunder", "rain"), "rainshowersandthunder": ("thunder", "rain"),
+    "heavyrainshowersandthunder": ("thunder", "rain"),
+    "lightsleet": ("sleet", "sleet"), "sleet": ("sleet", "sleet"), "heavysleet": ("sleet", "sleet"),
+    "lightsleetshowers": ("sleet", "sleet"), "sleetshowers": ("sleet", "sleet"), "heavysleetshowers": ("sleet", "sleet"),
+    "lightsleetandthunder": ("thunder", "sleet"), "sleetandthunder": ("thunder", "sleet"), "heavysleetandthunder": ("thunder", "sleet"),
+    "lightsleetshowersandthunder": ("thunder", "sleet"), "sleetshowersandthunder": ("thunder", "sleet"),
+    "heavysleetshowersandthunder": ("thunder", "sleet"),
+    "lightsnow": ("snow", "snow"), "snow": ("snow", "snow"), "heavysnow": ("snow", "snow"),
+    "lightsnowshowers": ("snow", "snow"), "snowshowers": ("snow", "snow"), "heavysnowshowers": ("snow", "snow"),
+    "lightsnowandthunder": ("thunder", "snow"), "snowandthunder": ("thunder", "snow"), "heavysnowandthunder": ("thunder", "snow"),
+    "lightsnowshowersandthunder": ("thunder", "snow"), "snowshowersandthunder": ("thunder", "snow"),
+    "heavysnowshowersandthunder": ("thunder", "snow"),
+}
+
+
+class MetNorway:
+    """MET Norway's locationforecast (api.met.no, no key, CC BY 4.0): the last fallback when Open-Meteo cannot be reached. Its hourly
+    steps cover about the first two and a half days; further days have daily highs and lows only (from its 6-hourly points). It has no
+    yesterday and no air quality (the forecast keeps the day records and Open-Meteo's air API, as before)."""
+    name = METNO
+
+    def __init__(self, fetcher: Fetcher):
+        self.fetcher = fetcher
+
+    async def forecast(self, place: Place, days: int, now: float) -> Forecast:
+        q = urlencode({"lat": f"{place.lat:.4f}", "lon": f"{place.lon:.4f}"})
+        r = await self.fetcher("GET", f"{METNO_URL}?{q}", allowed_hosts=[METNO_HOST],
+                               headers={"Accept": "application/json", "User-Agent": _generic_agent()})
+        data = _json(r, "MET Norway")
+        series = (data.get("properties") or {}).get("timeseries") if isinstance(data, dict) else None
+        if r.status != 200 or not isinstance(series, list) or not series:
+            raise WeatherError(f"MET Norway refused the request (HTTP {r.status})")
+        fc = Forecast(place, METNO, place.timezone or "UTC")
+        tz = fc.tz()
+        today = datetime.fromtimestamp(now, tz).date().isoformat()
+        temps: dict[str, list[float]] = {}
+        skies: dict[str, list[str]] = {}
+        for item in series:
+            try:
+                when = datetime.fromisoformat(str(item["time"]).replace("Z", "+00:00")).timestamp()
+                data_at = item.get("data") or {}
+                inst = (data_at.get("instant") or {}).get("details") or {}
+            except (KeyError, TypeError, ValueError, AttributeError):
+                continue
+            date = datetime.fromtimestamp(when, tz).date().isoformat()
+            if inst.get("air_temperature") is not None:
+                temps.setdefault(date, []).append(float(inst["air_temperature"]))
+            hourly = data_at.get("next_1_hours") or {}
+            symbol = str((hourly.get("summary") or {}).get("symbol_code") or "") or str(
+                ((data_at.get("next_6_hours") or {}).get("summary") or {}).get("symbol_code") or "")
+            base = symbol.rsplit("_", 1)[0] if "_" in symbol else symbol
+            sky, kind = METNO_SYMBOLS.get(base, ("", ""))
+            if sky:
+                skies.setdefault(date, []).append(sky)
+            if not hourly:
+                continue   # the 6-hourly part: its highs and lows count for the day, its amounts are not hours
+            details = hourly.get("details") or {}
+            precip = float(details.get("precipitation_amount") or 0)
+            prob = details.get("probability_of_precipitation")
+            wind, gust = inst.get("wind_speed"), inst.get("wind_speed_of_gust")
+            kind = kind or ("rain" if precip > 0 else "")
+            fc.hours.append(Hour(when, inst.get("air_temperature"), precip, float(prob) if prob is not None else None, 0.0,
+                                 float(wind) * 3.6 if wind is not None else None, float(gust) * 3.6 if gust is not None else None,
+                                 kind, sky))
+        for date in sorted(temps):
+            if date < today or len(fc.days) >= max(1, min(days, MAX_DAYS[METNO])):
+                continue
+            seen = skies.get(date) or []
+            fc.days.append(Day(date, max(temps[date]), min(temps[date]), Counter(seen).most_common(1)[0][0] if seen else ""))
+        if not fc.days:
+            raise WeatherError("MET Norway sent no days to show")
+        return fc
+
+
+def _generic_agent() -> str:
+    """The User-Agent of the keyless services that ask for one: a generic identification, no name and no address."""
+    return f"Kelo/{server_release().version} (+https://kelo.chat)"
+
+
+# The US National Weather Service's icon codes (the last path part of its icon URL, before any ",<percent>") -> (Kelo's sky, precipitation
+# kind). A protocol value table, as METNO_SYMBOLS.
+NWS_ICONS: dict[str, tuple[str, str]] = {
+    "skc": ("clear", ""), "hot": ("clear", ""), "cold": ("clear", ""), "wind_skc": ("clear", ""),
+    "few": ("partly", ""), "sct": ("partly", ""), "wind_few": ("partly", ""), "wind_sct": ("partly", ""),
+    "bkn": ("cloudy", ""), "ovc": ("cloudy", ""), "wind_bkn": ("cloudy", ""), "wind_ovc": ("cloudy", ""),
+    "fog": ("fog", ""), "haze": ("fog", ""), "smoke": ("fog", ""), "dust": ("fog", ""),
+    "rain": ("rain", "rain"), "rain_showers": ("rain", "rain"), "rain_showers_hi": ("rain", "rain"),
+    "tsra": ("thunder", "rain"), "tsra_sct": ("thunder", "rain"), "tsra_hi": ("thunder", "rain"),
+    "tornado": ("thunder", ""), "hurricane": ("thunder", ""), "tropical_storm": ("thunder", ""),
+    "snow": ("snow", "snow"), "blizzard": ("snow", "snow"),
+    "sleet": ("sleet", "sleet"), "rain_sleet": ("sleet", "sleet"), "snow_sleet": ("sleet", "sleet"), "rain_snow": ("sleet", "sleet"),
+    "fzra": ("sleet", "sleet"), "rain_fzra": ("sleet", "sleet"), "snow_fzra": ("sleet", "sleet"),
+}
+
+
+def _nws_icon(url: Any) -> tuple[str, str]:
+    """(sky, precipitation kind) of an NWS icon URL such as .../icons/land/day/rain_showers,30?size=medium."""
+    code = urlsplit(str(url or "")).path.rsplit("/", 1)[-1].split(",", 1)[0]
+    return NWS_ICONS.get(code, ("", ""))
+
+
+def _nws_periods(data: dict[str, Any]) -> list[dict[str, Any]]:
+    props = data.get("properties") if isinstance(data, dict) else None
+    rows = props.get("periods") if isinstance(props, dict) else None
+    return [p for p in rows if isinstance(p, dict)] if isinstance(rows, list) else []
+
+
+def _nws_temp_c(p: dict[str, Any]) -> float | None:
+    v = p.get("temperature")
+    if not isinstance(v, (int, float)) or isinstance(v, bool):
+        return None
+    return (float(v) - 32.0) * 5.0 / 9.0 if str(p.get("temperatureUnit") or "F").upper() == "F" else float(v)
+
+
+def _nws_wind_kmh(text: Any) -> float | None:
+    """NWS wind as text ("5 mph", "5 to 15 mph") -> the stronger figure in km/h."""
+    nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", str(text or ""))]
+    return max(nums) * 1.609344 if nums else None
+
+
+class NwsForecast:
+    """The US National Weather Service (api.weather.gov: no key, public domain, US places only). The default route for a US place when
+    the owner left the provider on auto. Hours come from the hourly periods; they carry no rain amounts, so `wet` follows the chance of
+    precipitation. Days: the high of the daytime period and the low of the night period that start on that date (the night after it);
+    a missing side takes the hourly values of that date."""
+    name = NWS
+
+    def __init__(self, fetcher: Fetcher):
+        self.fetcher = fetcher
+
+    async def _json(self, url: str) -> dict[str, Any]:
+        r = await self.fetcher("GET", url, allowed_hosts=[NWS_HOST], headers={"Accept": "application/geo+json", "User-Agent": _generic_agent()})
+        data = _json(r, "the US National Weather Service") if r.status == 200 else None
+        if r.status != 200 or not isinstance(data, dict):
+            raise WeatherError(f"the US National Weather Service refused the request (HTTP {r.status})")
+        return data
+
+    async def forecast(self, place: Place, days: int, now: float) -> Forecast:
+        points = await self._json(f"https://{NWS_HOST}/points/{place.lat:.4f},{place.lon:.4f}")
+        props = points.get("properties") or {}
+        if not isinstance(props, dict) or not props.get("forecastHourly") or not props.get("forecast"):
+            raise WeatherError("the US National Weather Service has no forecast for this place")
+        hourly = await self._json(str(props["forecastHourly"]))
+        daily = await self._json(str(props["forecast"]))
+        fc = Forecast(place, NWS, str(props.get("timeZone") or place.timezone or "UTC"))
+        tz = fc.tz()
+        for p in _nws_periods(hourly):
+            try:
+                when = datetime.fromisoformat(str(p["startTime"])).timestamp()
+            except (KeyError, TypeError, ValueError):
+                continue
+            sky, kind = _nws_icon(p.get("icon"))
+            prob = (p.get("probabilityOfPrecipitation") or {}).get("value") if isinstance(p.get("probabilityOfPrecipitation"), dict) else None
+            fc.hours.append(Hour(when, _nws_temp_c(p), 0.0, float(prob) if isinstance(prob, (int, float)) else None, 0.0,
+                                 _nws_wind_kmh(p.get("windSpeed")), None, kind, sky))
+        temps: dict[str, list[float]] = {}
+        skies: dict[str, list[str]] = {}
+        for h in fc.hours:
+            d = datetime.fromtimestamp(h.ts, tz).date().isoformat()
+            if h.temp is not None:
+                temps.setdefault(d, []).append(h.temp)
+            if h.sky:
+                skies.setdefault(d, []).append(h.sky)
+        highs: dict[str, float] = {}
+        lows: dict[str, float] = {}
+        day_sky: dict[str, str] = {}
+        for p in _nws_periods(daily):
+            try:
+                d = datetime.fromisoformat(str(p["startTime"])).date().isoformat()
+            except (KeyError, TypeError, ValueError):
+                continue
+            temp = _nws_temp_c(p)
+            sky, _ = _nws_icon(p.get("icon"))
+            if temp is not None and p.get("isDaytime") is True:
+                highs.setdefault(d, temp)
+            elif temp is not None:
+                lows.setdefault(d, temp)
+            if sky and p.get("isDaytime") is True:
+                day_sky.setdefault(d, sky)
+        today = datetime.fromtimestamp(now, tz).date()
+        limit = max(1, min(days, MAX_DAYS[NWS]))
+        for d in sorted(set(temps) | set(highs) | set(lows)):
+            if datetime.fromisoformat(d).date() < today:
+                continue
+            seen = temps.get(d) or []
+            high = highs.get(d, max(seen) if seen else None)
+            low = lows.get(d, min(seen) if seen else None)
+            sky = day_sky.get(d) or (Counter(skies.get(d) or []).most_common(1)[0][0] if skies.get(d) else "")
+            fc.days.append(Day(d, high, low, sky))
+            if len(fc.days) >= limit:
+                break
+        if not fc.days:
+            raise WeatherError("the US National Weather Service sent no days to show")
         return fc
 
 
@@ -590,29 +950,7 @@ class Weather:
 
     async def geocode(self, name: str, count: int = 5) -> list[Place]:
         """Places for a name (Open-Meteo geocoding), towns and regions first, then by population."""
-        q = (name or "").strip()
-        if not 2 <= len(q) <= 100:
-            raise WeatherError(t("Type a place name (2 to 100 characters)."))
-        lang = (self.language() or "en").split("-")[0]
-        url = f"https://{GEO_HOST}/v1/search?" + urlencode({"name": q, "count": 20, "language": lang, "format": "json"})
-        try:
-            r = await self.fetcher("GET", url, allowed_hosts=[GEO_HOST], headers={"Accept": "application/json"})
-        except NetGuardError as e:
-            raise WeatherError(t("Could not look the place up: {error}", error=e)) from None
-        data = _json(r, "Open-Meteo geocoding")
-        rows = (data or {}).get("results") or [] if isinstance(data, dict) else []
-
-        def rank(x: dict[str, Any]) -> tuple[int, float]:
-            fc = str(x.get("feature_code") or "")
-            return (0 if fc.startswith(("PPL", "ADM")) else 1, -float(x.get("population") or 0))
-        out = []
-        for x in sorted(rows, key=rank)[:count]:
-            try:
-                out.append(Place(str(x.get("name") or q)[:80], float(x["latitude"]), float(x["longitude"]), str(x.get("country_code") or ""),
-                                 str(x.get("admin1") or "")[:80], str(x.get("timezone") or ""), "search"))
-            except (KeyError, TypeError, ValueError):
-                continue
-        return out
+        return await geocode_places(self.fetcher, name, self.language() or "en", count)
 
     # ------------------------------------------------------------------ keys (the owner's own; checked, then sealed in the vault)
     def key(self, provider: str) -> str | None:
@@ -678,13 +1016,18 @@ class Weather:
             return KmaShortTerm(self.fetcher, self.key(KMA) or "")
         if name == WEATHERAPI:
             return WeatherApiCom(self.fetcher, self.key(WEATHERAPI) or "")
-        return OpenMeteo(self.fetcher)
+        if name == NWS:
+            return NwsForecast(self.fetcher)
+        return OpenMeteo(self.fetcher, self.clock)
 
-    async def forecast(self, place: Place, days: int = 2) -> Forecast:
+    async def forecast(self, place: Place, days: int = 2, *, stale_seconds: float = 0) -> Forecast:
+        """`stale_seconds`: when the service cannot be reached, a cached forecast this young is returned instead of an error."""
         now = self.clock()
         chosen = self.choose(place)
         if days > MAX_DAYS[chosen]:
             chosen = OPEN_METEO   # a longer range than the chosen service gives: the one with the longest range answers
+        if chosen == OPEN_METEO and self.config()["provider"] == "auto" and (place.country_code or "").upper() == "US" and days <= MAX_DAYS[NWS]:
+            chosen = NWS   # a US place on auto: the National Weather Service first (an owner's own pick of a service is kept as it is)
         ck = (chosen, place.key(), days)
         hit = self._cache.get(ck)
         if hit and now - hit[0] < CACHE_SECONDS:
@@ -692,10 +1035,22 @@ class Weather:
         try:
             fc = await self._provider(chosen).forecast(place, days, now)
         except (WeatherError, NetGuardError) as e:
-            if chosen == OPEN_METEO:
-                raise WeatherError(f"the weather service could not be reached: {e}") from None
-            fc = await OpenMeteo(self.fetcher).forecast(place, days, now)
-            fc.fallback_from, fc.note = chosen, str(e)[:200]
+            # chain: the chosen service -> Open-Meteo (when it was keyed) -> MET Norway (no key) -> the last forecast, if young enough
+            why, fc = str(e)[:200], None
+            if chosen != OPEN_METEO:
+                try:
+                    fc = await OpenMeteo(self.fetcher, self.clock).forecast(place, days, now)
+                    fc.fallback_from, fc.note = chosen, why
+                except (WeatherError, NetGuardError) as e2:
+                    why = str(e2)[:200]
+            if fc is None:
+                try:
+                    fc = await MetNorway(self.fetcher).forecast(place, days, now)
+                    fc.fallback_from, fc.note = chosen, why
+                except (WeatherError, NetGuardError) as e3:
+                    if stale_seconds and hit and now - hit[0] < stale_seconds:
+                        return hit[1]   # every service is down for now: the last forecast for this place is still today's best answer
+                    raise WeatherError(f"the weather service could not be reached: {e3}") from None
         if fc.provider != WEATHERAPI:
             fc.air = await self.air(place)
         if fc.yesterday is None:
@@ -909,7 +1264,8 @@ class Weather:
                     "neighbourhood it is in. Use it for questions about places near the user, before asking where they are. If no "
                     "location is known, the user is asked in the chat to allow it and this waits for the answer.",
                     {"type": "object", "properties": {"reason": {"type": "string", "description": "why the location is needed, in a "
-                     "few words in the user's language (shown on the card if the phone must be asked)"}}}, my_location, read_only=True)
+                     "few words in the user's language (shown on the card if the phone must be asked)"}}}, my_location, read_only=True,
+                    trail="device")
 
 
 def describe(fc: Forecast, now: float, days: int = 2) -> str:
@@ -947,7 +1303,7 @@ def describe(fc: Forecast, now: float, days: int = 2) -> str:
         aqi = max((a.us_aqi or 0) for a in air)
         lines.append(f"Air today: PM2.5 up to {round(pm)} µg/m³" + (f", US AQI up to {round(aqi)}" if aqi else "") + ".")
     text, url = ATTRIBUTION[fc.provider]
-    lines.append(f"Source: {text} ({url})" + (" — CC BY 4.0, mention it when you share these numbers." if fc.provider == OPEN_METEO else "."))
+    lines.append(f"Source: {text} ({url})" + (" — CC BY 4.0, mention it when you share these numbers." if fc.provider in (OPEN_METEO, METNO) else "."))
     return "\n".join(lines)
 
 
@@ -976,5 +1332,5 @@ def describe_typical(place: Place, date: str, got: dict[str, Any], ahead: int) -
     return "\n".join(lines)
 
 
-__all__ = ["ATTRIBUTION", "CHOICES", "KEYS", "KMA", "OPEN_METEO", "PROVIDERS", "WEATHERAPI", "Air", "Day", "Forecast", "Hour", "Place",
+__all__ = ["ATTRIBUTION", "CHOICES", "KEYS", "KMA", "METNO", "OPEN_METEO", "PROVIDERS", "WEATHERAPI", "Air", "Day", "Forecast", "Hour", "Place",
            "Weather", "WeatherError", "describe", "describe_typical", "in_korea", "kma_base", "kma_grid", "notable", "temp_in", "units_for", "wind_in"]

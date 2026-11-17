@@ -277,6 +277,20 @@ async def test_the_assistant_asks_for_a_connection_with_a_card_and_is_told_when_
         await asyncio.sleep(0.03)
     done = await tool.handler({"service": "github"})
     assert "already connected" in done and TOKEN_VALUE not in done and "Do not ask for a login" in done
+    # the apps read {"already": true} from the tool_result's facts, not the sentence (agent/facts.py)
+    from assistant.agent import facts as tool_facts
+    box = {}
+    token = tool_facts.current.set(box)
+    try:
+        await tool.handler({"service": "github"})
+        assert box == {"already": True}
+        box.clear()
+        await tool.handler({"service": "notion"})          # not connected: the card is shown, no fact
+        await tool.handler({"service": "expedia"})         # a browser service has no connection to be "already" in
+        await tool.handler({"service": "nothing-like-it"})
+        assert box == {}
+    finally:
+        tool_facts.current.reset(token)
 
 
 def test_the_verification_page_always_stays_on_the_services_own_site(tmp_path):

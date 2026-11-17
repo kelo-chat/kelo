@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Hal yang dijaga Kelo</string>
+    <string name="follow_stop">Berhenti memantau</string>
+    <string name="follow_stop_confirm">Berhenti memantau item ini?</string>
+    <string name="follow_stop_confirm_detail">Kelo tidak akan lagi memeriksa perubahan atau mempersiapkan sebelumnya.</string>
+    <string name="follow_stop_yes">Berhenti memantau</string>
+    <string name="follow_keep_watching">Tetap memantau</string>
+    <string name="follow_replan">Rencanakan ulang</string>
+    <string name="follow_sheet_title">Rencana pemantauan</string>
+    <string name="follow_plan_checks">Hal yang dipantau</string>
+    <string name="follow_plan_prep">Persiapan</string>
+    <string name="follow_plan_tell">Notifikasi</string>
+    <string name="follow_plan_tell_change">Beri tahu jika ada perubahan</string>
+    <string name="follow_next_check">Pemeriksaan berikutnya: %1$s</string>
+    <string name="follow_last_check">Pemeriksaan terakhir: %1$s</string>
+    <string name="follow_prep_later">Terjadwal</string>
+    <string name="follow_prep_running">Sedang diproses</string>
+    <string name="follow_prep_done">Sudah disiapkan</string>
+    <string name="follow_prep_failed">Gagal</string>
+    <string name="follow_state_watching">Sedang dipantau</string>
+    <string name="follow_state_stopped">Dihentikan</string>
+    <string name="follow_state_done">Selesai</string>
+    <string name="follow_summary_lead_flight">Pemberitahuan 1 hari sebelum keberangkatan</string>
+    <string name="follow_summary_lead_general">Pemberitahuan 1 hari sebelumnya</string>
+    <string name="follow_summary_lead_hours">Pemberitahuan %1$d jam sebelumnya</string>
+    <string name="follow_summary_prep_checkin">Siapkan check-in saat dibuka</string>
+    <string name="follow_summary_prep_general">Siapkan %1$s</string>
+    <string name="follow_summary_watch_changes">Periksa perubahan</string>
+    <string name="follow_summary_default">Jaga jadwal</string>
+</resources>

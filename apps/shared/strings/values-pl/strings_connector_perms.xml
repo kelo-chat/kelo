@@ -17,4 +17,6 @@
     <string name="perm_reset_q">Przywrócić wszystkie ustawienia tego konektora do domyślnych?</string>
     <string name="perm_read_off_q">Przy wyłączonym odczycie Kelo prawie nie może używać tego konektora. Wyłączyć?</string>
     <string name="perm_limited">Ograniczony</string>
+    <string name="perm_unattended">Używaj, gdy nie rozmawiam</string>
+    <string name="perm_unattended_about">Zaplanowane zadania, zadania w tle i wiadomości, które Kelo wysyła z własnej inicjatywy, nie będą używać %1$s. Twoje własne czaty nadal mogą.</string>
 </resources>

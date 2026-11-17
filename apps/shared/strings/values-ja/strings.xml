@@ -823,6 +823,22 @@
     <string name="agent_perm_rules_empty">まだありません。承認カードで「このサイトでは常に許可」を選ぶと、ここに表示されます。</string>
     <string name="agent_perm_history">過去の承認</string>
     <string name="agent_perm_history_empty">まだ確認したことはありません。</string>
+    <string name="approval_edit_button">直す</string>
+    <string name="approval_edit_title">送る内容</string>
+    <string name="approval_edit_save">保存</string>
+    <string name="approval_edited_note">送る内容を直しました</string>
+    <string name="approval_edit_empty">送る内容を入力してください。</string>
+    <string name="approval_edit_too_long">長すぎます。短くしてください。</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">過去の承認</string>
+    <string name="approval_history_empty">承認したものはまだありません。</string>
+    <string name="approval_history_error">過去の承認を読み込めませんでした。</string>
+    <string name="approval_history_where">宛先</string>
+    <string name="approval_history_when">日時</string>
+    <string name="approval_history_answered">答えた場所</string>
+    <string name="approval_via_app">アプリで</string>
+    <string name="approval_via_notification">通知から</string>
+    <string name="approval_via_messenger">メッセンジャーで</string>
     <string name="agent_perm_asked">確認: %1$s</string>
     <string name="approval_remember_site">次からこのサイトでは確認しない</string>
     <string name="approval_remember_scope">対象: %1$s とそのすべてのサブアドレス</string>
@@ -932,6 +948,7 @@
     <string name="live_forward">進む</string>
     <string name="live_reload">再読み込み</string>
     <string name="live_page_not_responding">ページが応答していません</string>
+    <string name="live_touch_missed">タッチがページに届きませんでした</string>
     <string name="live_type_hint">ページに入力するテキスト</string>
     <string name="live_type_send">入力</string>
     <string name="live_type_hide">テキストを隠す</string>
@@ -1100,6 +1117,8 @@
     <string name="offer_reason_later">あとで</string>
     <string name="offer_busy">今ほかの返信を書いています。終わったらもう一度押してください</string>
     <string name="offer_failed">開始できませんでした</string>
+    <string name="offer_steps_show_all">%1$d 件の手順をすべて表示</string>
+    <string name="offer_steps_fewer">手順を折りたたむ</string>
     <string name="work_upcoming">これから</string>
     <string name="work_upcoming_unscheduled">時間未設定</string>
     <string name="work_past">これまで</string>
@@ -1128,6 +1147,7 @@
     <string name="work_kind_browser">ブラウザ作業</string>
     <string name="work_kind_research">調べもの</string>
     <string name="work_kind_general">一般タスク</string>
+    <string name="work_kind_phone">スマホ作業</string>
     <string name="work_job_title">バックグラウンドタスク</string>
     <string name="work_job_line">%1$s · バックグラウンド</string>
     <string name="work_task_in_background">バックグラウンドで実行中</string>
@@ -1422,6 +1442,7 @@
     <string name="handover_verify_title">%1$sがログインの確認を求めています</string>
     <string name="handover_verify_body">スマートフォンでログインを承認するか、ライブ表示を開いて認証コードを入力してください。終わったらKeloが続けます。</string>
     <string name="handover_verify_open">ライブ表示を開く</string>
+    <string name="handover_device_open">スマホの画面を開く</string>
     <string name="handover_verify_done">ログインしました — Keloが続けています</string>
     <string name="handover_verify_approve_body">スマートフォンに届いた通知でサインインを承認してください。承認されると Kelo が続けます。</string>
     <string name="handover_verify_approved">承認しました</string>

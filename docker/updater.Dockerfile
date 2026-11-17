@@ -2,7 +2,7 @@
 # presses Update in the app. The ONLY Kelo container with the Docker socket. No AI, no model keys, no web or mail content; it listens
 # only on the internal network updater-net (compose.yml, profile `updater`) and answers only the main copy's server (UPDATER_TOKEN).
 #
-# What is inside: Python's standard library and five files of this project (no third-party Python packages), the Docker CLI with the
+# What is inside: Python's standard library and six files of this project (no third-party Python packages), the Docker CLI with the
 # Compose plugin (to pull, tag and restart, exactly as `assistant update` does from a terminal), cosign (to check the signatures of
 # release images), and compose.yml (the setup file of the release it came with). Multi-arch: linux/amd64, linux/arm64.
 ARG DOCKER_CLI=docker:27.5.1-cli
@@ -21,9 +21,9 @@ COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 COPY --from=cosign /ko-app/cosign /usr/local/bin/cosign
 COPY server/src/assistant/__init__.py server/src/assistant/cli.py server/src/assistant/instances.py server/src/assistant/updates.py server/src/assistant/release.py \
-     server/src/assistant/updater_service.py /opt/kelo/assistant/
+     server/src/assistant/kelo_address.py server/src/assistant/updater_service.py /opt/kelo/assistant/
 COPY compose.yml /opt/kelo/compose.yml
-RUN python -c "import assistant.updater_service" && docker --version && docker compose version && cosign version >/dev/null
+RUN python -c "import assistant.updater_service, assistant.kelo_address" && docker --version && docker compose version && cosign version >/dev/null
 # runs as the user that owns the Kelo folder (KELO_UID/KELO_GID, with the socket's group): compose.yml sets it
 EXPOSE 9400
 ENTRYPOINT ["/usr/bin/tini", "--", "python", "-m", "assistant.updater_service"]

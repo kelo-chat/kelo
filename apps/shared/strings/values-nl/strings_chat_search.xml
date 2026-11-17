@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">Chat doorzoeken</string>
+    <string name="chat_search_title">Chat doorzoeken</string>
+    <string name="chat_search_field">Zoek in je berichten</string>
+    <string name="chat_search_clear">Zoekopdracht wissen</string>
+    <string name="chat_search_hint">Typ een woord of een deel ervan. Tik op een resultaat om de chat bij dat bericht te openen.</string>
+    <string name="chat_search_none">Geen berichten die bij deze zoekopdracht passen.</string>
+    <string name="chat_search_failed">Zoeken kon de server niet bereiken. Probeer het zo nog eens.</string>
+    <string name="chat_search_you">Jij</string>
+</resources>

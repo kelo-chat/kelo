@@ -19,6 +19,7 @@ import chat.kelo.desktop.core.AppContainer
 import chat.kelo.app.my.OperatorPage
 import chat.kelo.app.my.VaultPage
 import chat.kelo.app.wallet.WalletPage
+import chat.kelo.app.my.PastApprovalsPage
 import chat.kelo.app.my.PermissionsPage
 import chat.kelo.desktop.ui.KeloFrame
 import org.junit.After
@@ -92,12 +93,21 @@ class OpsPagesTest {
     }
 
     @Test fun permissionsTakeARuleBack() {
-        val (_, ui) = open("permissions", "naver.com") { app -> PermissionsPage(onBack = {}, onOpenWork = {}) }
-        ui.waitText(ko.get(Res.string.agent_perm_history))
+        val (_, ui) = open("permissions", "naver.com") { app -> PermissionsPage(onBack = {}, onOpenWork = {}, onOpenPast = {}) }
+        ui.waitText(ko.get(Res.string.approval_history_title))
         compose.onNode(hasContentDescription(ko.get(Res.string.agent_rule_revoke, "naver.com"))).performSemanticsAction(SemanticsActions.OnClick)
         ui.waitText(ko.get(Res.string.agent_rule_revoke_yes))
         compose.onNode(hasText(ko.get(Res.string.agent_rule_revoke_yes))).performSemanticsAction(SemanticsActions.OnClick)
         ui.waitText(ko.get(Res.string.agent_rule_revoked, "naver.com"))
         assertFalse(ui.has(ko.get(Res.string.agent_rule_revoke, "naver.com")))
+    }
+
+    @Test fun pastApprovalsListAndShowWhatOneWas() {
+        val (_, ui) = open("past-approvals", "일정 추가") { _ -> PastApprovalsPage(onBack = {}) }
+        click("메일 보내기")   // a row opens its detail: where, how it was answered, and that the message was fixed first
+        ui.waitText(ko.get(Res.string.approval_edited_note))
+        ui.waitText(ko.get(Res.string.approval_via_notification))
+        ui.waitText("team@example.com")
+        ui.shot("parity-ops-past-approval-detail-light")
     }
 }

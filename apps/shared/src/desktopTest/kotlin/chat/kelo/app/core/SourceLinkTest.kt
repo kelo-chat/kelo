@@ -6,27 +6,36 @@ import kotlin.test.assertNull
 
 /** The same vectors as apps/ios/KeloCore/Tests/KeloCoreTests/Core/SourceLinkTests.swift. */
 class SourceLinkTest {
-    private val sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
-
-    @Test fun aCleanFullShaGivesTheUrlAndTheShortHash() {
-        assertEquals("https://github.com/kelo-chat/kelo/tree/$sha", SourceLink.url(sha, dirty = false))
-        assertEquals("a1b2c3d", SourceLink.label(sha, dirty = false, modified = "modified"))
+    @Test fun aReleaseVersionGivesTheTagTheUrlAndTheLabel() {
+        val tag = SourceLink.appTag("ios", "1.0.2")
+        assertEquals("ios-1.0.2", tag)
+        assertEquals("android-0.10.2", SourceLink.appTag("android", "0.10.2"))
+        assertEquals("windows-1.0.9", SourceLink.appTag("windows", "1.0.9"))
+        assertEquals("macos-1.0.10", SourceLink.appTag("macos", "1.0.10"))
+        assertEquals("https://github.com/kelo-chat/kelo/tree/ios-1.0.2", SourceLink.url(tag, dirty = false))
+        assertEquals("ios-1.0.2", SourceLink.label(tag, dirty = false, modified = "modified"))
     }
 
     @Test fun aDirtyBuildHasNoUrlAndSaysModified() {
-        assertNull(SourceLink.url(sha, dirty = true))
-        assertEquals("a1b2c3d (modified)", SourceLink.label(sha, dirty = true, modified = "modified"))
-        assertEquals("a1b2c3d (수정됨)", SourceLink.label(sha, dirty = true, modified = "수정됨"))
+        val tag = SourceLink.appTag("ios", "1.0.2")
+        assertNull(SourceLink.url(tag, dirty = true))
+        assertEquals("ios-1.0.2 (modified)", SourceLink.label(tag, dirty = true, modified = "modified"))
+        assertEquals("ios-1.0.2 (수정됨)", SourceLink.label(tag, dirty = true, modified = "수정됨"))
     }
 
-    @Test fun anEmptyShortUppercaseOrNonHexValueGivesNothing() {
-        val bad = listOf("", "a1b2c3d", sha.dropLast(1), sha + "0", sha.uppercase(), "g".repeat(40), " " + sha.dropLast(1), "\$(KELO_SOURCE_COMMIT)")
-        for (b in bad) {
-            assertNull(SourceLink.url(b, dirty = false), b)
-            assertNull(SourceLink.url(b, dirty = true), b)
-            assertNull(SourceLink.short(b), b)
-            assertNull(SourceLink.label(b, dirty = false, modified = "modified"), b)
-            assertNull(SourceLink.label(b, dirty = true, modified = "modified"), b)
+    @Test fun aVersionThatIsNotDigitsAndDotsGivesNothing() {
+        for (bad in listOf("", "dev", "1.0.2-rc1", "1..2", ".1", "1.", " 1.0.2", "1.0.2\n", "\$(MARKETING_VERSION)", "v1.0.2", "1.0.2+3")) {
+            assertNull(SourceLink.appTag("ios", bad), bad)
+            assertNull(SourceLink.serverTag(bad), bad)
+            assertNull(SourceLink.serverUrl(bad), bad)
         }
+        assertNull(SourceLink.url(null, dirty = false))
+        assertNull(SourceLink.label(null, dirty = true, modified = "modified"))
+    }
+
+    @Test fun theServerLinksToItsReleaseTag() {
+        assertEquals("release-0.10.2", SourceLink.serverTag("0.10.2"))
+        assertEquals("https://github.com/kelo-chat/kelo-server/tree/release-0.10.2", SourceLink.serverUrl("0.10.2"))
+        assertEquals("ios-1", SourceLink.appTag("ios", "1"))
     }
 }

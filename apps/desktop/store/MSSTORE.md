@@ -54,6 +54,12 @@ python3 -I apps/desktop/store/msstore.py commit
 
 종료 코드: 0 정상, 2 거부/오류, 124 기다리다 시간 초과.
 
+## 상품 설명에 넣을 문장 (2026-11-17)
+Partner Center의 상품 설명(영어·한국어 모두)에 한 문장을 넣어요. 심사관이 이 기능을 볼 수 있어야 해요.
+- 영어: "On Windows, the app can also install the Kelo server on this PC: it downloads the signed server installer and runs it after one administrator confirmation."
+- 한국어: "Windows에서는 앱이 이 PC에 Kelo 서버도 설치할 수 있어요. 서명된 서버 설치 파일을 내려받아 관리자 확인 한 번으로 설치해요."
+이 파일에서 설명을 올리지는 않아요. 제출은 사람이 Partner Center에서 해요.
+
 ## 확인하지 못한 것
 
 Microsoft 문서(learn.microsoft.com "Create and manage submissions using Microsoft Store services")로 역할(Manager), 키/ID 위치, 토큰 주소를 확인했어요. 사용자 관리 화면의 정확한 한국어 메뉴 이름(테넌트, Microsoft Entra 애플리케이션 탭 문구)은 Partner Center 한국어 화면에서 직접 확인하지 못했어요. 실제 Microsoft 서버로는 시험하지 않았고(가짜 서버 테스트만), 앱 정보가 `packageIdentityName`을 돌려주는지는 실제 응답으로 확인이 필요해요(없으면 이름 비교를 건너뛰고 알려줘요).

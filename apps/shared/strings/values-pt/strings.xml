@@ -841,6 +841,22 @@
     <string name="agent_perm_rules_empty">Nada ainda. Escolha “Sempre permitir neste site” num cartão de aprovação e ele aparece aqui.</string>
     <string name="agent_perm_history">Aprovações anteriores</string>
     <string name="agent_perm_history_empty">Nada perguntado ainda.</string>
+    <string name="approval_edit_button">Editar</string>
+    <string name="approval_edit_title">Mensagem a enviar</string>
+    <string name="approval_edit_save">Salvar</string>
+    <string name="approval_edited_note">Você alterou a mensagem</string>
+    <string name="approval_edit_empty">Escreva uma mensagem.</string>
+    <string name="approval_edit_too_long">Longa demais. Encurte.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Aprovações anteriores</string>
+    <string name="approval_history_empty">Ainda não há aprovações.</string>
+    <string name="approval_history_error">Não foi possível carregar as aprovações anteriores.</string>
+    <string name="approval_history_where">Onde</string>
+    <string name="approval_history_when">Quando</string>
+    <string name="approval_history_answered">Respondido</string>
+    <string name="approval_via_app">No app</string>
+    <string name="approval_via_notification">Por uma notificação</string>
+    <string name="approval_via_messenger">Em um mensageiro</string>
     <string name="agent_perm_asked">Perguntado %1$s</string>
     <string name="approval_remember_site">Não perguntar novamente neste site</string>
     <string name="approval_remember_scope">Aplica-se a %1$s e a todos os seus subendereços</string>
@@ -954,6 +970,7 @@
     <string name="live_forward">Avançar</string>
     <string name="live_reload">Recarregar</string>
     <string name="live_page_not_responding">A página não está respondendo</string>
+    <string name="live_touch_missed">O toque não chegou à página</string>
     <string name="live_type_hint">Texto para digitar na página</string>
     <string name="live_type_send">Digitar</string>
     <string name="live_type_hide">Ocultar texto</string>
@@ -1144,6 +1161,8 @@
     <string name="offer_reason_later">Mais tarde</string>
     <string name="offer_busy">Outra resposta está sendo escrita agora. Toque novamente quando terminar</string>
     <string name="offer_failed">Não foi possível iniciar</string>
+    <string name="offer_steps_show_all">Mostrar todos os %1$d passos</string>
+    <string name="offer_steps_fewer">Mostrar menos passos</string>
     <string name="work_upcoming">Em breve</string>
     <string name="work_upcoming_unscheduled">Sem horário definido</string>
     <string name="work_past">Antes</string>
@@ -1176,6 +1195,7 @@
     <string name="work_kind_browser">Tarefa no navegador</string>
     <string name="work_kind_research">Pesquisa</string>
     <string name="work_kind_general">Tarefa geral</string>
+    <string name="work_kind_phone">Tarefa no telefone</string>
     <string name="work_job_title">Tarefa em segundo plano</string>
     <string name="work_job_line">%1$s · Segundo plano</string>
     <string name="work_task_in_background">Em segundo plano</string>
@@ -1490,6 +1510,7 @@
     <string name="handover_verify_title">%1$s pede que você confirme o login</string>
     <string name="handover_verify_body">Aprove o login no seu telefone ou abra a visualização ao vivo e digite o código lá. Depois o Kelo continua.</string>
     <string name="handover_verify_open">Abrir ao vivo</string>
+    <string name="handover_device_open">Abrir a tela do telefone</string>
     <string name="handover_verify_done">Login feito — o Kelo está continuando</string>
     <string name="handover_verify_approve_body">Aprove o login na notificação do seu telefone. Depois de aprovado, o Kelo continua.</string>
     <string name="handover_verify_approved">Já aprovei</string>

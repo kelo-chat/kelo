@@ -31,7 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -140,7 +140,7 @@ fun MenuRow(
             )
             if (!value.isNullOrEmpty()) {
                 Text(chat.kelo.app.ui.components.TokenText.fit(value), color = valueColor ?: c.muted, style = MaterialTheme.typography.bodySmall,
-                    maxLines = formFactor(phone = 1, desktop = 2), overflow = TextOverflow.Ellipsis)
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
         if (badge != null && badge > 0) {
@@ -221,22 +221,26 @@ fun SubPage(
                     .navigationBarsPadding()
                     .imePadding()
             ) {
+                // a wide window (unfolded foldable, tablet): the page is a centred column, not stretched edge to edge
+                val column = LocalPageFrame.current.maxWidth
+                Box(Modifier.fillMaxSize().verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
                 Column(
                     Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scroll)
+                        .then(if (column.isSpecified) Modifier.widthIn(max = column) else Modifier)
+                        .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Spacer(Modifier.height(topBarHeight + 10.dp))
                     content()
                 }
+                }
                 Box(
                     Modifier
                         .fillMaxWidth()
                         .background(barColor)
+                        .onSizeChanged { barH = with(density) { it.height.toDp() } }   // measured WITH the status bar: the page's top spacer is this whole height
                         .statusBarsPadding()
-                        .onSizeChanged { barH = with(density) { it.height.toDp() } }
                         .align(Alignment.TopCenter)
                 ) {
                     BackTitleBar(title, onBack, actions = actions)

@@ -8,31 +8,39 @@ that is not known, the owner decides.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-# currency words and symbols -> the ISO codes they may mean ("$" is any dollar, "¥" yen or yuan)
-_DOLLARS = frozenset({"USD", "CAD", "AUD", "NZD", "SGD", "HKD", "MXN", "TWD"})
-_YEN = frozenset({"JPY", "CNY"})
-_SYMBOLS: dict[str, frozenset[str]] = {
-    "₩": frozenset({"KRW"}), "원": frozenset({"KRW"}), "us$": frozenset({"USD"}), "$": _DOLLARS, "€": frozenset({"EUR"}),
-    "£": frozenset({"GBP"}), "¥": _YEN, "￥": _YEN, "円": frozenset({"JPY"}), "元": frozenset({"CNY"}), "₹": frozenset({"INR"}),
-    "฿": frozenset({"THB"}), "₫": frozenset({"VND"}),
-}
+@lru_cache(maxsize=1)
+def _symbols() -> dict[str, frozenset[str]]:
+    """symbol -> the ISO codes it may mean, from server/content/currency_symbols.json (ASSISTANT_CONTENT_DIR in the container)."""
+    root = Path(os.environ.get("ASSISTANT_CONTENT_DIR") or Path(__file__).resolve().parents[2] / "content")
+    try:
+        raw = json.loads((root / "currency_symbols.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {str(k): frozenset(str(c) for c in v) for k, v in (raw.get("symbols") or {}).items()}
+
+
 _ISO = frozenset("KRW USD EUR GBP JPY CNY CAD AUD NZD SGD HKD CHF SEK NOK DKK INR THB VND IDR MYR PHP TWD BRL MXN TRY PLN CZK AED RUB "
                  "UAH ZAR".split())
 _NUMBER = re.compile(r"\d[\d.,'   ]*\d|\d")
 _WORD = re.compile(r"[\w]+", re.UNICODE)
-_QTY = re.compile(r"(?:[x×*]\s*(\d{1,4})\b)|(?:\b(\d{1,4})\s*(?:[x×]|개|ea|pcs|pc|units?|items?)(?![a-z]))", re.I)
-_OPTION_NOISE = frozenset({"color", "colour", "size", "option", "options", "type", "qty", "quantity", "색상", "컬러", "사이즈", "옵션", "수량", "선택"})
-_FREE_WORDS = re.compile(r"\bfree\b|full refund|100 ?% refund|no (cancel(l?ation)? )?(fee|charge)|without (a )?fee|전액\s*환불|무료\s*취소|무료|수수료\s*(없|면제)|"
-                         r"취소\s*수수료\s*없", re.I)
-_NOT_FREE = re.compile(r"\bnot free\b|non[- ]?refundable|no refund|환불\s*불가|취소\s*불가|유료", re.I)
-_NO_FEE = re.compile(r"^\W*(0|none|no|nil|n/a|free|없음|무료)\W*(%|원|krw|usd|\$|€|won)?\W*$|^\W*[₩$€£¥]?\s*0(?:[.,]0+)?\W*(?:%|원|krw|usd|eur)?\W*$|"
-                     r"no (cancel(l?ation)? )?(fee|charge)|without (a )?fee|수수료\s*(없|면제)|무료", re.I)
+_QTY = re.compile(r"(?:[x×*]\s*(\d{1,4})\b)|(?:\b(\d{1,4})\s*[x×])", re.I)   # "x2", "×2", "2x": no unit word of any language
+
+
+def _option_values(options: str) -> str:
+    """The values of an options text: in "Color: Black / Size: 270" only what follows each label's colon (the labels are the shop's words
+    for the kind of option and appear on no receipt line)."""
+    pieces = re.split(r"[/,;|]", options)
+    return " ".join(p.split(":", 1)[1] if ":" in p else p for p in pieces)
 
 
 def parse_money(value: Any) -> tuple[float | None, frozenset[str]]:
@@ -50,9 +58,10 @@ def parse_money(value: Any) -> tuple[float | None, frozenset[str]]:
             found = frozenset({word.upper()})
             break
     if not found:
-        for sym in sorted(_SYMBOLS, key=len, reverse=True):
+        symbols = _symbols()
+        for sym in sorted(symbols, key=len, reverse=True):
             if sym in low:
-                found = _SYMBOLS[sym]
+                found = symbols[sym]
                 break
     m = _NUMBER.search(text)
     if m is None:
@@ -139,7 +148,7 @@ def compare(approved_amount: float | None, approved_currency: str, approved_item
     lines = [_line(i) for i in charged_items or []]
     for item in approved_items or []:
         name_t = _tokens(item.get("name", ""))
-        opt_t = [w for w in _tokens(item.get("options", "")) if w not in _OPTION_NOISE]
+        opt_t = _tokens(_option_values(str(item.get("options", ""))))
         if not name_t:
             continue
         want = int(item.get("quantity") or 1)
@@ -191,20 +200,22 @@ def parse_time(value: Any, tz: str = "", now: float = 0.0) -> float | None:
 
 
 def cancel_terms(cancel: Any, now: float, tz: str = "") -> Terms:
-    """The terms the page gave (`free_until` ISO or words, `fee`, `how`). Free now only when the page says so in words, or gives a
-    deadline still ahead, or says there is no fee; a fee with no deadline ahead, or anything unclear, is not free."""
+    """The terms the page gave: `free_until` (an ISO time), `fee` (a number, or text holding one amount), `how`. Read from those fields
+    only, never from words. Free now when `free_until` is an ISO time still ahead, or when `fee` is the number 0 and no `free_until`
+    is given. Anything else (text that is not an ISO time, a fee that is not a number, a deadline past, no terms) is not free: the
+    owner decides."""
     if not isinstance(cancel, dict):
         return Terms()
     free_until = " ".join(str(cancel.get("free_until") or "").split())[:80]
-    fee = " ".join(str(cancel.get("fee") or "").split())[:80]
+    raw_fee = cancel.get("fee")
+    fee = "" if raw_fee is None or isinstance(raw_fee, bool) else " ".join(str(raw_fee).split())[:80]
     how = " ".join(str(cancel.get("how") or "").split())[:80]
     t = Terms(until_text=free_until, fee=fee, how=how, known=bool(free_until or fee))
     when = parse_time(free_until, tz, now)
     if when is not None:
         t.until = when
         t.free_now = when > now
-    elif free_until and _FREE_WORDS.search(free_until) and not _NOT_FREE.search(free_until):
-        t.free_now = True
-    elif fee and not free_until and _NO_FEE.search(fee):
-        t.free_now = True
+    elif not free_until and fee:
+        amount = parse_money(raw_fee)[0]
+        t.free_now = amount is not None and amount == 0
     return t

@@ -15,11 +15,15 @@ is stored or sent. API clients and older apps are not asked.
 
 from __future__ import annotations
 
+import functools
 import ipaddress
 import json
+import socket
 import time
 from collections.abc import Callable
 from typing import Any
+
+from .tools.sites import in_public_dns
 from urllib.parse import urlsplit
 
 from .providers.registry import get_provider
@@ -47,17 +51,39 @@ ROLES = (("provider", "main"), ("fallback_provider", "fallback"), ("background_p
 
 def is_private_host(host: str) -> bool:
     """An address on the owner's own computer or network: localhost, private / Tailscale (100.64/10) ranges, a name without a dot
-    (a Docker service such as `freellmapi`), or a local suffix."""
+    (a Docker service such as `freellmapi`), a name outside the public DNS, or a public name that resolves into those ranges."""
     host = (host or "").strip().lower().rstrip(".")
     if not host:
         return True
-    if host == "localhost" or "." not in host or host.endswith((".local", ".lan", ".internal", ".home.arpa", ".ts.net", ".localhost")):
+    if host == "localhost" or not in_public_dns(host) and not _is_ip(host):
         return True
     try:
         ip = ipaddress.ip_address(host.strip("[]"))
     except ValueError:
+        return _resolves_private(host)
+    return _private_ip(ip)
+
+
+def _is_ip(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+        return True
+    except ValueError:
         return False
+
+
+def _private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return ip.is_private or ip.is_loopback or ip.is_link_local or ip in ipaddress.ip_network("100.64.0.0/10")
+
+
+@functools.lru_cache(maxsize=256)
+def _resolves_private(host: str) -> bool:
+    """A name in the public DNS that points into the owner's own network (a tailnet name resolves to 100.64.0.0/10)."""
+    try:
+        found = {i[4][0] for i in socket.getaddrinfo(host, 443, 0, socket.SOCK_STREAM)}
+    except OSError:
+        return False
+    return any(_private_ip(ipaddress.ip_address(a.split("%")[0])) for a in found)
 
 
 def company_of(provider: str) -> str | None:

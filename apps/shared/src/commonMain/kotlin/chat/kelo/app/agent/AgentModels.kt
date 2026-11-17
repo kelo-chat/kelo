@@ -82,7 +82,18 @@ data class ApprovalRecord(
     /** Pending | allowed_once | allowed_always | allowed_by_rule | denied | expired | cancelled */
     val decision: String = "",
     @SerialName("asked_at") val askedAt: Double = 0.0,
+    @SerialName("answered_at") val answeredAt: Double? = null,
     val unattended: Boolean = false,
+    /** The tool's effect: read | change | send | delete, or "" */
+    val kind: String = "",
+    /** The site, or the recipient the step was for */
+    val where: String = "",
+    /** Who answered: app | notification | messenger, or "" (nobody: it ran out, or a rule allowed it) */
+    val via: String = "",
+    /** The owner fixed the message before it was sent */
+    val edited: Boolean = false,
+    /** allow | deny | expired, or the raw decision of a card that is none of them */
+    val result: String = "",
 )
 
 @Serializable
@@ -253,7 +264,15 @@ data class BrowserTab(
     @SerialName("last_activity") val lastActivity: Double? = null,
     @SerialName("task_id") val taskId: Long? = null,
     val thumbnail: String? = null,
-)
+    /** "browser" for a tab, "device" for the Android device the server lists next to the tabs ("" from an older server: a tab) */
+    val source: String = "",
+) {
+    /**
+     * A tab of the browser container. Not the Android device: the server gives it kind "device" too, and a phone's own chat tab (key
+     * = the device number) also has kind "device", so the kind cannot tell them apart; the source and the id ("android") do.
+     */
+    val isBrowserTab: Boolean get() = source in setOf("", "browser") && !LiveKinds.isDevice(id)
+}
 
 @Serializable
 data class BrowserTabs(val available: Boolean = false, val items: List<BrowserTab> = emptyList())
@@ -391,6 +410,10 @@ data class NotificationPage(
     val unseen: Int = 0,
     @SerialName("last_id") val lastId: Long = 0,
 )
+
+/** GET /api/notifications/settled?ids=: of the item ids asked about, the ones that do not wait any more. */
+@Serializable
+data class SettledItems(val ids: List<String> = emptyList())
 
 /** One night's short note of the look-back (reflection/YYYY-MM-DD.md). */
 @Serializable

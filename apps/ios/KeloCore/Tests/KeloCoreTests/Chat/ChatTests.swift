@@ -30,6 +30,17 @@ import Testing
         #expect(e[7] == .unknown("something_new"))
     }
 
+    @Test func toolResultFactsAreRead() throws {
+        let ev = TurnEvent.parse(try JSON.parse("""
+            {"type":"tool_result","id":"t","name":"connect_service","output":"x","is_error":false,"facts":{"already":true,"saved_key":{"service":"s","hosts":["a.com"]}}}
+        """))
+        guard case .toolResult(let r) = ev else { Issue.record("wrong kind"); return }
+        #expect(r.already)
+        #expect(r.facts["saved_key"]?.objectValue?["service"]?.stringValue == "s")
+        guard case .toolResult(let old) = TurnEvent.parse(try JSON.parse(#"{"type":"tool_result","id":"t","name":"x","output":"already connected"}"#)) else { return }
+        #expect(!old.already && old.facts.isEmpty)
+    }
+
     @Test func paymentApprovalWithCardAndLines() throws {
         let ev = TurnEvent.parse(try JSON.parse("""
             {"type":"approval_request","approval_id":"p1","id":"call9","name":"confirm_purchase","label":"Pay","site":"shop.example",
@@ -211,4 +222,13 @@ struct Odd: Error {}
 
 @Suite struct SSETests {
 
+}
+
+@Suite struct ApprovalLineBlockTests {
+    @Test func shortPairIsNotABlockButTaskIs() {
+        #expect(!ApprovalLine(label: "Site", value: "github.com").block)
+        #expect(ApprovalLine(label: "Task", value: String(repeating: "x", count: 200)).block)
+        #expect(ApprovalLine(label: "Task", value: "a\nb").block)
+        #expect(ApprovalLine(label: "Text", value: "hi", full: true).block)
+    }
 }

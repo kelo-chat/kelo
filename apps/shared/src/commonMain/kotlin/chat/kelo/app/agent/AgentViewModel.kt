@@ -215,6 +215,9 @@ class AgentViewModel(
     // ---- approvals and permission rules
     fun loadPerms() = permPart.loadPerms()
     fun loadMoreHistory() = permPart.loadMoreHistory()
+    val past: StateFlow<Loadable<PastApprovals>> = permPart.past
+    fun loadPast() = permPart.loadPast()
+    fun loadMorePast() = permPart.loadMorePast()
 
     /**
      * Answers a waiting approval ([remember]: allow this kind of step on this site from now on). [beforeAllow] runs first on Allow
@@ -222,10 +225,19 @@ class AgentViewModel(
      */
     fun answer(
         a: PendingApproval, approve: Boolean, remember: Boolean = false, beforeAllow: (suspend () -> Boolean)? = null,
-        rememberSchedule: Boolean = false,
-    ) = permPart.answer(a, approve, remember, beforeAllow, rememberSchedule)
+        rememberSchedule: Boolean = false, rememberRecipient: Boolean = false,
+    ) = permPart.answer(a, approve, remember, beforeAllow, rememberSchedule, rememberRecipient)
 
     fun revokeRule(r: ApprovalRule) = permPart.revokeRule(r)
+
+    fun removeRecipient(r: RecipientAllow) = permPart.removeRecipient(r)
+
+    // ---- payments approved in advance (GET /api/permissions/preapprovals, pay-allows, payment-cover)
+    fun removePreapproval(p: Preapproval) = permPart.removePreapproval(p)
+    fun removePayAllow(a: PayAllow) = permPart.removePayAllow(a)
+
+    /** The switch "Allow payments approved in advance" (off: every payment asks). */
+    fun setPaymentCover(on: Boolean) = permPart.setPaymentCover(on)
 
     /** Stops a task's permission at once: its next such step asks again. */
     fun revokeTaskPermission(g: TaskPermission) = permPart.revokeTaskPermission(g)

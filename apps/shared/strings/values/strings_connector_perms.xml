@@ -16,4 +16,6 @@
     <string name="perm_reset_q">Put every setting of this connector back to the defaults?</string>
     <string name="perm_read_off_q">With reading off, Kelo can\'t use this connector for most things. Turn it off?</string>
     <string name="perm_limited">Limited</string>
+    <string name="perm_unattended">Use when I\'m not chatting</string>
+    <string name="perm_unattended_about">Schedules, background jobs and messages Kelo sends first won\'t use %1$s. Your own chats still can.</string>
 </resources>

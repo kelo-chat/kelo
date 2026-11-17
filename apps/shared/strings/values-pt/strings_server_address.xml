@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Endereço do servidor</string>
+    <string name="server_address_title">Mudar o endereço do servidor</string>
+    <string name="server_address_body">Endereço conectado: %1$s\nPara passar a um novo endereço do mesmo servidor Kelo, digite o novo endereço https. Suas conversas e chaves continuam como estão e você não precisa conectar de novo.</string>
+    <string name="server_address_switch">Mudar</string>
+    <string name="server_address_checking">Verificando…</string>
+    <string name="server_address_invalid">Isso não parece um endereço https. Digite assim: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">Não foi possível acessar esse endereço. Confira-o e sua conexão e tente de novo.</string>
+    <string name="server_address_other">Esse endereço pertence a outro servidor, então nada foi alterado. Para conectar outro servidor, saia da conta e conecte-o desde o início.</string>
+    <string name="server_address_same">Este telefone já usa esse endereço.</string>
+    <string name="server_address_done">Endereço do servidor alterado.</string>
+</resources>

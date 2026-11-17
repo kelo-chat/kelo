@@ -2,7 +2,10 @@
 
 The native iPhone app for Kelo. It does what the Android app does (`apps/android/kelo`, Kotlin + Compose, package
 `chat.kelo.app`). It talks to the same self-hosted server (`src/assistant/server.py`). It is native only: SwiftUI on
-iOS 17+, with no web view anywhere. Sign-in pages for connectors open in the system browser
+iOS 17+, with one web view: the live browser screen (KeloWork/VncWeb.swift) draws the browser's X screen with noVNC 1.5.0 (MPL-2.0;
+`KeloWork/Resources/vnc`, the same folder as the Android app's `assets/vnc`, licence in its LICENSE.txt, source and sha256 in SOURCE.md;
+the app has no open-source notices screen). Its socket and bytes belong to the app (`KeloCore/Live/VncRelay.swift`, KE2E kept); the page
+only draws, and anything that fails falls back to the JPEG picture. Sign-in pages for connectors open in the system browser
 (`ASWebAuthenticationSession`), never inside the app.
 
 It was first written on a Mac that had only the Command Line Tools; it now builds with Xcode 26.6 and runs in the iOS 26.5

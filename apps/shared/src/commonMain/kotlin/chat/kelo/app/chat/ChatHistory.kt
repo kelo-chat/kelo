@@ -30,6 +30,7 @@ internal class ChatHistory(private val host: ChatHost, private val sync: ChatSyn
         // the same rows (same keys) as the kept ones: the list updates in place, nothing jumps
         host.state.update { it.copy(items = if (afterReply) mergeStored(it.items, ms.map(::toChatItem)) else ms.map(::toChatItem),
             loaded = true, hasOlder = if (afterReply) it.hasOlder else ms.size >= ChatViewModel.PAGE, offline = false,
+            hasNewer = if (afterReply) it.hasNewer else false,
             secrets = chat.kelo.app.chat.vault.SecretRules.settled(it.secrets)) }
         sync.loadFollowupsNow()
         sync.refreshSecretsNow()
@@ -72,9 +73,67 @@ internal class ChatHistory(private val host: ChatHost, private val sync: ChatSyn
         }
     }
 
+    /**
+     * Opens the chat at message [id] (a search result, a notification). Already in the list: nothing to fetch ([ChatSearchRules.anchor]).
+     * Otherwise its window (GET /api/messages/around) replaces the list, and the newest page comes back once the reader gets there.
+     * Returns whether the message is shown; false when it is unknown or hidden, or the server did not answer, and the list stays.
+     */
+    suspend fun openAt(id: Long): Boolean {
+        val shown = host.state.value
+        if (ChatSearchRules.anchor(shown.items.mapNotNull { (it as? ChatItem.Msg)?.id }, id) == ChatSearchRules.Anchor.Loaded) return true
+        if (shown.busy) return false   // a reply is being written into the list: it stays as it is
+        val window = try {
+            host.api().get<List<StoredMessage>>(ChatSearchRules.aroundPath(id))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return false
+        }
+        if (ChatSearchRules.anchor(window.map { it.id }, id) == ChatSearchRules.Anchor.Missing) return false
+        host.state.update { it.copy(items = window.map(::toChatItem), hasOlder = true, hasNewer = true, loaded = true) }
+        sync.loadFollowupsNow()
+        return true
+    }
+
+    /**
+     * The end of a search window came into view: the messages after its newest one, a page at a time (GET /api/messages/around, n =
+     * [ChatSearchRules.NEWER_PAGE]), appended in order without repeats. A short page means the newest message is in, and the window is
+     * then the normal history again. A failing server keeps the window and marks the list as possibly old (the iPhone does the same).
+     */
+    fun loadNewer() {
+        val s = host.state.value
+        if (!s.hasNewer || s.loadingNewer || s.busy) return
+        val last = s.items.mapNotNull { (it as? ChatItem.Msg)?.id }.lastOrNull() ?: return
+        host.state.update { it.copy(loadingNewer = true) }
+        host.scope.launch {
+            try {
+                refreshing {
+                    val ms = host.api().get<List<StoredMessage>>(ChatSearchRules.aroundPath(last, ChatSearchRules.NEWER_PAGE))
+                    val w = ChatSearchRules.newer(ms, last)
+                    host.state.update { st ->
+                        val known = st.items.mapTo(HashSet()) { it.key }
+                        st.copy(items = st.items + w.rows.map(::toChatItem).filter { it.key !in known }, hasNewer = w.more)
+                    }
+                }
+            } finally {
+                host.state.update { it.copy(loadingNewer = false) }
+            }
+        }
+    }
+
+    /** Back to the newest page (the window's bottom, or before a message is sent from it). Failing, the window stays. */
+    suspend fun toNewest() {
+        try {
+            reloadNow()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
+
     /** Another phone may have talked to the same assistant: while idle and in view, reload when the newest message changed. */
     suspend fun checkForNews() {
-        if (host.state.value.busy) return
+        if (host.state.value.busy || host.state.value.hasNewer) return   // a search window stays; its end loads what is newer
         refreshing {
             val ms = host.api().get<List<StoredMessage>>("/api/messages?limit=1")
             if ((ms.lastOrNull()?.id ?: 0) != lastId && !host.state.value.busy) {

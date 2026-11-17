@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">اضغط مطولاً للتحدث</string>
+    <string name="voice_hold_hint">ارفع إصبعك للإنهاء، وحرّكه بعيداً للإلغاء</string>
+    <string name="voice_dictation_offline">توقف الإملاء الصوتي لانقطاع الاتصال.</string>
+    <string name="voice_dictation_failed">تعذّر إكمال الإملاء الصوتي.</string>
+    <string name="msg_action_read_aloud">قراءة بصوت عالٍ</string>
+    <string name="msg_action_read_stop">إيقاف القراءة</string>
+</resources>

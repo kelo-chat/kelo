@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- b+zh+Hant text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">我的資料</string>
+    <string name="data_intro">下載 Kelo 保存的關於你的內容副本，從其他助理帶來記憶，或重新開始。</string>
+    <string name="data_export_title">下載我的資料</string>
+    <string name="data_export_body">一個 ZIP 檔案，包含你的對話、Kelo 記住的內容、排程、Kelo 關注的事項、已連接的服務和你的設定。裡面絕不會有密碼、金鑰或權杖。</string>
+    <string name="data_export_make">建立檔案</string>
+    <string name="data_export_making">正在建立檔案…</string>
+    <string name="data_export_ready">檔案已準備好（%1$s）。</string>
+    <string name="data_export_save">儲存檔案</string>
+    <string name="data_export_saved">已儲存。</string>
+    <string name="data_export_again">重新建立檔案</string>
+    <string name="data_export_failed">無法建立檔案，請再試一次。</string>
+    <string name="data_import_title">從其他助理帶來記憶</string>
+    <string name="data_import_private">不會向其他任何地方傳送內容。你在 Kelo 伺服器上選擇的模型會閱讀文字，並記下關於你的簡短事實。</string>
+    <string name="data_import_step1">1. 複製這項請求，貼到你以前用的助理裡（ChatGPT、Claude、Gemini 等）。</string>
+    <string name="data_import_copy">複製請求</string>
+    <string name="data_import_copied">已複製。</string>
+    <string name="data_import_step2">2. 把它的回答貼到這裡。</string>
+    <string name="data_import_paste_hint">貼上回答</string>
+    <string name="data_import_add">加入記憶</string>
+    <string name="data_import_zip_body">或選擇你從 ChatGPT、Claude 或 Gemini 下載的聊天匯出檔案（ZIP，最大 100 MB）。</string>
+    <string name="data_import_zip">選擇 ZIP 檔案</string>
+    <string name="data_import_running">正在讀取… %1$d / %2$d</string>
+    <string name="data_import_reading">正在開啟檔案…</string>
+    <string name="data_import_cancel">停止</string>
+    <string name="data_import_failed">沒有加入任何內容：%1$s</string>
+    <string name="data_import_none">沒有找到可加入的新內容。</string>
+    <string name="data_import_added">已加入記憶（%1$d 項）：</string>
+    <string name="data_zip_too_big">此檔案超過 100 MB。</string>
+    <string name="data_reset_title">重新開始</string>
+    <string name="data_reset_body">清除你的對話、Kelo 記住的內容、Kelo 關注的事項和排程。連接器、已儲存的登入、模型和你的手機會保留。會先把副本儲存為檔案。</string>
+    <string name="data_reset_signout">同時登出連接器並移除已儲存的登入</string>
+    <string name="data_reset_type">輸入 %1$s 以確認</string>
+    <string name="data_reset_button">重新開始</string>
+    <string name="data_reset_wrong">這不是正確的字詞。沒有任何變更。</string>
+    <string name="data_reset_confirm">現在重新開始嗎？會先儲存副本，然後清除對話、記憶、關注事項和排程。此操作無法復原。</string>
+    <string name="data_reset_done">完成。以上內容都已清除。副本已儲存為 %1$s。</string>
+</resources>

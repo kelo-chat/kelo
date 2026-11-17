@@ -13,6 +13,11 @@ failure is answered as {"error": "..."}: nothing hangs. Standard library only.
     GET  /screen?image=only              {"png": "<base64>"}: the picture alone, no dump (the browser view's frames)
     POST /tap {"x", "y"}   POST /swipe {"x1", "y1", "x2", "y2", "ms"}   POST /text {"text"}   POST /key {"key"}
     POST /open {"package"}               GET /apps -> {"items": [{"package", "label"}]}
+    GET  /resolve?action=<intent action> {"package": the package whose activity answers that action, "" when none} (read only)
+    GET  /handlers?url=<uri>             {"packages": [...]}: the apps that handle VIEW for that address or scheme (read-only question)
+    GET  /intent                         {"data": "<uri>", "caller": "<pkg>"}: the address in the intent that started the activity in front and
+                                          the package that launched it ("" when unknown)
+    GET  /applinks?package=<pkg>         {"hosts": [...]}: the web hosts the package has a verified App Link for
     POST /install {"apk_url"}            not available in this version (501)
 """
 
@@ -42,7 +47,10 @@ KEYS = {"back": 4, "home": 3, "enter": 66, "recent": 187, "delete": 67, "tab": 6
 ADB_IME = "com.android.adbkeyboard/.AdbIME"   # ADB Keyboard (github.com/senzhk/ADBKeyBoard): types any text sent by broadcast
 IME_SETTLE = 0.5   # seconds for the keyboard switch to reach the focused field
 PACKAGE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
+ACTION = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$")
 COMPONENT = re.compile(r"([A-Za-z][\w.]*)/([\w.$]+)")
+URI_OK = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:[\x21-\x7e]{0,2000}$")   # one printable ASCII word with a scheme: nothing a shell could split
+MAX_PACKAGES = 50
 
 
 class BridgeError(Exception):
@@ -134,6 +142,52 @@ def parse_apps(text: str) -> list[dict[str, str]]:
         if m and m.group(1) not in seen:
             seen[m.group(1)] = m.group(1).rsplit(".", 1)[-1].replace("_", " ").title()
     return [{"package": p, "label": seen[p]} for p in sorted(seen)][:MAX_APPS]
+
+
+def parse_handlers(text: str) -> list[str]:
+    """`cmd package query-activities --brief` lines "package/activity" -> the packages (first-seen order, no repeats)."""
+    out: list[str] = []
+    for line in (text or "").splitlines():
+        m = COMPONENT.fullmatch(line.strip())
+        if m and m.group(1) not in out:
+            out.append(m.group(1))
+    return out[:MAX_PACKAGES]
+
+
+def parse_intent_data(text: str) -> str:
+    """The `dat=` of the intent of the first activity record in `dumpsys activity top` ("" when there is none)."""
+    started = False
+    for line in (text or "").splitlines():
+        if line.lstrip().startswith("ACTIVITY "):
+            started = True
+        if started and "intent={" in line:
+            m = re.search(r"\bdat=(\S+)", line)
+            return m.group(1) if m else ""
+    return ""
+
+
+def parse_caller(text: str) -> str:
+    """The package that launched the first activity record in `dumpsys activity top` (its `launchedFromPackage=`), "" when unknown."""
+    started = False
+    for line in (text or "").splitlines():
+        if line.lstrip().startswith("ACTIVITY "):
+            if started:
+                break
+            started = True
+        m = re.search(r"\blaunchedFromPackage=([A-Za-z][\w.]*)", line) if started else None
+        if m:
+            return m.group(1)
+    return ""
+
+
+def parse_app_links(text: str) -> list[str]:
+    """`cmd package get-app-links <pkg>` -> the hosts whose state is verified (or approved by the user): "host: verified" lines."""
+    hosts: list[str] = []
+    for line in (text or "").splitlines():
+        m = re.fullmatch(r"\s*([A-Za-z0-9*.-]+):\s*(verified|approved|always)\b.*", line, re.I)
+        if m and m.group(1) not in hosts:
+            hosts.append(m.group(1).lower())
+    return hosts[:MAX_PACKAGES]
 
 
 def int_args(body: dict[str, Any], *names: str) -> list[int]:
@@ -294,10 +348,47 @@ class Device:
             raise BridgeError(f"{package} could not be opened: {started.strip()[:150]}")
         return {"ok": True}
 
+    def resolve(self, action: str) -> dict[str, Any]:
+        """The package that answers an intent action (the permission dialog's package is asked this way, never written down)."""
+        if not ACTION.match(action or ""):
+            raise BridgeError("action must be an Android intent action (android.intent.action.MAIN)", 400)
+        self.ready()
+        try:
+            out = self.shell(f"cmd package resolve-activity --brief -a {action}")
+        except BridgeError:
+            out = ""
+        found = [m.group(1) for line in out.splitlines() if (m := COMPONENT.fullmatch(line.strip()))]
+        return {"package": found[-1] if found else ""}
+
     def apps(self) -> dict[str, Any]:
         self.ready()
         out = self.shell("cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER")
         return {"items": parse_apps(out)}
+
+
+    # ---- read-only questions for the sign-in check (no tap, no typing, no state changed)
+    def handlers(self, uri: str) -> dict[str, Any]:
+        """The packages that can open `uri` with VIEW (an https address: the browsers; a custom scheme: the app that claims it)."""
+        if not URI_OK.fullmatch(uri or ""):
+            raise BridgeError("url must be one address with a scheme, no spaces", 400)
+        self.ready()
+        out = self.shell("cmd package query-activities --brief -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d " + quote(uri))
+        return {"packages": parse_handlers(out)}
+
+    def intent_data(self) -> dict[str, Any]:
+        self.ready()
+        dump = self.shell("dumpsys activity top", 15)
+        return {"data": parse_intent_data(dump), "caller": parse_caller(dump)}
+
+    def app_links(self, package: str) -> dict[str, Any]:
+        if not PACKAGE.match(package or ""):
+            raise BridgeError("package must be an Android package name (com.example.app)", 400)
+        self.ready()
+        try:
+            out = self.shell(f"cmd package get-app-links {package}", both=True)
+        except BridgeError:
+            out = ""
+        return {"hosts": parse_app_links(out)}
 
 
 # ---- HTTP ------------------------------------------------------------------------------------------------------------------------
@@ -318,6 +409,14 @@ def handle(device: Device, token: str, method: str, target: str, auth: str | Non
                 return 200, device.frame() if image == "only" else device.screen(image == "1")
             if method == "GET" and path == "/apps":
                 return 200, device.apps()
+            if method == "GET" and path == "/resolve":
+                return 200, device.resolve(query.get("action", [""])[0])
+            if method == "GET" and path == "/handlers":
+                return 200, device.handlers(query.get("url", [""])[0])
+            if method == "GET" and path == "/intent":
+                return 200, device.intent_data()
+            if method == "GET" and path == "/applinks":
+                return 200, device.app_links(query.get("package", [""])[0])
             if method == "POST" and path == "/tap":
                 return 200, device.tap(*int_args(body, "x", "y"))
             if method == "POST" and path == "/swipe":

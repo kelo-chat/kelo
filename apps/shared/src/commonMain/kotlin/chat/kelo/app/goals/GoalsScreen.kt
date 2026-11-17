@@ -42,7 +42,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
@@ -173,7 +173,7 @@ fun GoalsScreen(frame: TabPageFrame = TabPageFrame.None) {
     val pageFrame = LocalPageFrame.current
     BoxWithConstraints(Modifier.fillMaxSize()) {
     // a wide window (the desktop): the open goal sits beside the list; otherwise (the phone, a narrow window) it covers the list
-    val wide = LocalFormFactor.current == FormFactor.Desktop && maxWidth > 860.dp
+    val wide = LocalFormFactor.current == FormFactor.Desktop && maxWidth > 860.dp || chat.kelo.app.ui.platform.LocalWindowShape.current.twoPane
     Row(Modifier.fillMaxSize()) {
     Box(Modifier.weight(1f).fillMaxHeight()) {
         LazyColumn(

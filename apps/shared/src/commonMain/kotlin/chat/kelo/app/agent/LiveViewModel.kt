@@ -4,11 +4,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import chat.kelo.app.core.KeloApi
+import chat.kelo.app.res.*
 import chat.kelo.app.ui.platform.NetworkInfo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import org.jetbrains.compose.resources.StringResource
 
@@ -25,8 +31,30 @@ class LiveViewModel(source: (CoroutineScope) -> LiveSource) : ViewModel() {
     val frame: StateFlow<LiveFrame?> = live.frame
     val state: StateFlow<LiveState> = live.state
     val pointer: StateFlow<LivePointer?> = live.pointer
-    /** Short lines for the user: "someone else is controlling", "the browser could not do that" */
-    val notices = live.notices
+    /** Address and title while the frames are off (the VNC screen shows); see [LiveHeader]. */
+    val meta: StateFlow<LiveMeta?> = live.meta
+    // not viewModelScope: the collector needs no main thread (and a test without a Main dispatcher can build the view model)
+    private val ownScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val own = MutableSharedFlow<StringResource>(extraBufferCapacity = 4)
+    /** Short lines for the user: "someone else is controlling", "the browser could not do that", "that did not reach the page" */
+    val notices: kotlinx.coroutines.flow.Flow<StringResource> = merge(live.notices, own)
+
+    /** What the owner's own touch looks like while controlling: the finger on the glass, and where the last tap landed (or did not). */
+    data class TouchState(val down: Offset? = null, val mark: TouchMark? = null)
+    private val _touch = MutableStateFlow(TouchState())
+    val touch: StateFlow<TouchState> = _touch.asStateFlow()
+    private var markId = 0L
+
+    init {
+        // the server says a tap was dropped (the page or the phone was busy): the mark that showed it landing turns into a missed one
+        ownScope.launch {
+            live.replies.collect { r ->
+                if (!r.notReached) return@collect
+                _touch.update { t -> t.copy(mark = t.mark?.takeIf { it.kind == MarkKind.LANDED }?.let { TouchMarkRules.busy(it, ++markId) } ?: t.mark) }
+                own.tryEmit(Res.string.live_touch_missed)
+            }
+        }
+    }
 
     private val _zoom = MutableStateFlow(1f)
     /** The picture's zoom, [LiveGeometry.MIN_ZOOM] to [LiveGeometry.MAX_ZOOM] */
@@ -41,13 +69,33 @@ class LiveViewModel(source: (CoroutineScope) -> LiveSource) : ViewModel() {
     fun stop() = live.stop(giveBack = false)
 
     suspend fun control(take: Boolean): LiveClient.ControlResult = live.control(take)
-    fun send(event: JsonObject) = live.send(event)
-    fun type(text: String) = live.type(text)
+    /** JPEG frames on or off (off while the VNC screen shows). */
+    fun setFrames(on: Boolean) = live.setFrames(on)
+    /** Keys, back / forward / reload: with the seq of the frame on screen when the server takes it. */
+    fun send(event: JsonObject) {
+        val seq = LiveProtocol.seqFor(live.frame.value?.header)
+        live.send(if (seq != null && event["frame_seq"] == null && event["type"].toString().trim('"') in STAMPED) JsonObject(event + ("frame_seq" to kotlinx.serialization.json.JsonPrimitive(seq))) else event)
+    }
+    fun type(text: String) {
+        val seq = LiveProtocol.seqFor(live.frame.value?.header)
+        if (seq == null) live.type(text) else LiveMessages.chunks(text).forEach { live.send(LiveMessages.text(it, seq)) }
+    }
 
-    /** A pinch or drag: the new zoom and pan (clamped to the view of [viewW] x [viewH]). */
-    fun transform(zoomBy: Float, panBy: Offset, viewW: Float, viewH: Float) {
-        val z = LiveGeometry.clampZoom(_zoom.value * zoomBy)
-        val (x, y) = LiveGeometry.clampPan(_pan.value.x + panBy.x, _pan.value.y + panBy.y, z, viewW, viewH)
+    /**
+     * A pinch or drag: the new zoom and pan, kept inside the picture (clamped to its box in the view of [viewW] x [viewH]). With a
+     * [centroid] (the middle between the fingers, in view pixels) the picture point under it stays put while the zoom changes.
+     */
+    fun transform(zoomBy: Float, panBy: Offset, viewW: Float, viewH: Float, centroid: Offset? = null) {
+        val old = _zoom.value
+        val z = LiveGeometry.clampZoom(old * zoomBy)
+        var px = _pan.value.x
+        var py = _pan.value.y
+        if (centroid != null && z != old) {
+            val (ax, ay) = LiveGeometry.panForZoomAround(centroid.x, centroid.y, old, z, px, py, viewW, viewH)
+            px = ax; py = ay
+        }
+        val h = live.frame.value?.header
+        val (x, y) = LiveGeometry.clampPan(px + panBy.x, py + panBy.y, z, viewW, viewH, h?.w ?: 0, h?.h ?: 0)
         _zoom.value = z
         _pan.value = Offset(x, y)
     }
@@ -55,7 +103,8 @@ class LiveViewModel(source: (CoroutineScope) -> LiveSource) : ViewModel() {
     /** Zoom to [z] around the centre (the zoom buttons, the wheel). */
     fun zoomTo(z: Float, viewW: Float, viewH: Float) {
         val zoom = LiveGeometry.clampZoom(z)
-        val (x, y) = LiveGeometry.clampPan(_pan.value.x, _pan.value.y, zoom, viewW, viewH)
+        val h = live.frame.value?.header
+        val (x, y) = LiveGeometry.clampPan(_pan.value.x, _pan.value.y, zoom, viewW, viewH, h?.w ?: 0, h?.h ?: 0)
         _zoom.value = zoom
         _pan.value = Offset(x, y)
     }
@@ -71,7 +120,52 @@ class LiveViewModel(source: (CoroutineScope) -> LiveSource) : ViewModel() {
         if (_zoom.value > 1.01f) resetZoom() else zoomTo(ZOOM_IN, viewW, viewH)
     }
 
+    // ---- the owner's touch while controlling (every point is mapped by the transform the picture is drawn with)
+
+    /** A finger went down at [at] (view pixels): the ring shows at once, before anything is sent. */
+    fun fingerDown(at: Offset) = _touch.update { it.copy(down = at) }
+
+    fun fingerUp() = _touch.update { it.copy(down = null) }
+
+    /**
+     * A tap or long press at [at]: sent for the frame the owner was looking at (the one shown now), and a mark shows where it
+     * landed. Outside the picture (the letterbox bars) nothing is sent: a "missed" mark and a line say so. Returns whether it was sent.
+     */
+    fun tap(at: Offset, viewW: Float, viewH: Float, longPress: Boolean = false): Boolean {
+        val h = live.frame.value?.header ?: return false
+        val (p, mark) = TouchMarkRules.forTouch(++markId, at, viewW, viewH, h.w, h.h, _zoom.value, _pan.value.x, _pan.value.y)
+        _touch.update { it.copy(mark = mark) }
+        if (p == null) { own.tryEmit(Res.string.live_touch_missed); return false }
+        val seq = LiveProtocol.seqFor(h)
+        live.send(if (longPress) LiveMessages.longPress(p, h.w, h.h, seq) else LiveMessages.tap(p, h.w, h.h, seq))
+        return true
+    }
+
+    /** One finger moved by ([dx], [dy]) view pixels, at ([atX], [atY]): the page scrolls (the shown frame's seq goes with it). */
+    fun scroll(dx: Float, dy: Float, atX: Float, atY: Float, viewW: Float, viewH: Float) {
+        val h = live.frame.value?.header ?: return
+        val z = _zoom.value
+        val d = LiveGeometry.scrollDelta(dx, dy, viewW, viewH, h.w, h.h, z)
+        if (d.x == 0 && d.y == 0) return
+        val at = LiveGeometry.toFrame(atX, atY, viewW, viewH, h.w, h.h, z, _pan.value.x, _pan.value.y)
+        live.send(LiveMessages.scroll(d, at, h.w, h.h, LiveProtocol.seqFor(h)))
+    }
+
+    /** The phone's own swipe, from where the finger went down to where it came up (both must be on the picture). */
+    fun swipe(from: Offset, to: Offset, dragMs: Long, viewW: Float, viewH: Float) {
+        val h = live.frame.value?.header ?: return
+        val z = _zoom.value; val pan = _pan.value
+        val a = LiveGeometry.toFrame(from.x, from.y, viewW, viewH, h.w, h.h, z, pan.x, pan.y)
+        val b = LiveGeometry.toFrame(to.x, to.y, viewW, viewH, h.w, h.h, z, pan.x, pan.y)
+        if (a == null || b == null) { own.tryEmit(Res.string.live_touch_missed); return }
+        live.send(LiveMessages.swipe(a, b, h.w, h.h, LiveKinds.swipeMs(dragMs), LiveProtocol.seqFor(h)))
+    }
+
+    /** The size of the live area while controlling (null when not): sent as `view` when the server takes it (see [ViewReporter]). */
+    fun reportView(v: ViewSize?) = live.setView(v)
+
     override fun onCleared() {
+        ownScope.cancel()
         live.close()
     }
 
@@ -79,6 +173,7 @@ class LiveViewModel(source: (CoroutineScope) -> LiveSource) : ViewModel() {
         /** What a double tap zooms in to. */
         const val ZOOM_IN = 2.5f
         /** One tap on a zoom button, and one notch of the wheel with the zoom key held. */
+        private val STAMPED = setOf("key", "text", "tap", "long_press", "scroll", "swipe")
         const val BUTTON_STEP = 1.25f
         const val WHEEL_STEP = 1.15f
     }

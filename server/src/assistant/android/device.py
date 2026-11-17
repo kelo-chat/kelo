@@ -74,3 +74,25 @@ class DeviceClient:
 
     async def apps(self) -> dict[str, Any]:
         return await self._call("GET", "/apps")
+
+    async def resolve(self, action: str) -> str:
+        """The package whose activity answers an intent action ("" when none), asked from the device (read only)."""
+        return str((await self._call("GET", "/resolve", params={"action": action})).get("package") or "")
+    # ---- read-only questions the sign-in check asks (the bridge answers from the device; nothing is changed there)
+    async def handlers(self, url: str) -> list[str]:
+        """The packages that handle VIEW for `url` (an address or a custom-scheme address)."""
+        data = await self._call("GET", "/handlers", params={"url": url})
+        return [str(p) for p in data.get("packages") or []]
+
+    async def launch(self) -> tuple[str, str]:
+        """(the address in the intent that started the activity in front, the package that launched it); "" for what is unknown."""
+        data = await self._call("GET", "/intent")
+        return str(data.get("data") or ""), str(data.get("caller") or "")
+
+    async def intent_data(self) -> str:
+        """The address in the intent that started the activity in front ("" when there is none)."""
+        return (await self.launch())[0]
+
+    async def app_links(self, package: str) -> list[str]:
+        """The web hosts `package` has a verified App Link for."""
+        return [str(h) for h in (await self._call("GET", "/applinks", params={"package": package})).get("hosts") or []]

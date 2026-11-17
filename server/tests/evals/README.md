@@ -37,6 +37,17 @@ Scenario format
   `approval_asked`, `reply_language` there. Three scenarios are live: choice-card-rule, payment-asks-outside-grant,
   injection-in-page-text.
 
+Payment specialist scenarios (`checkout-*.json`, `live_only`: the scripted tier skips them; `test_evals.py` runs them with a stand-in model
+that follows the design, to prove fixtures and expectations before a real model is used)
+- `workers: true` gives the app the job tools (delegate, report, ...) and a browser session that is never opened; after each turn the runner
+  waits until no job runs and the model has been quiet, then records the jobs (`kind`, `status`, no texts).
+- `settings`: a kill switch under test (`payment_specialist`). `live_only`: needs a `live` block.
+- A fake tool with `real_schema: true` shows the model the real tool's description and parameters (read from a throwaway app); `by` + `results`
+  pick the result by one argument (`checkout_review`: `status` draft / ready).
+- Expectations: `called_with` / `not_called_with` (`{"tool", "args"}`, an arg value `"*"` = present; every call anyone made counts, a job's too),
+  `jobs` (`{"kind", "status"}` each must exist), `jobs_max` (`{"checkout": 1}`), `main_run_has` / `main_run_lacks` (tools the main agent's
+  requests offered). All of these are allowed in a `live` block.
+
 Rules
 - Keep scenarios generic: no shop or site names (use `example.test`, `shop.example.test`). No copied names from other apps.
 - An expectation says what Kelo should do. When today's behaviour differs, say so in the report; do not weaken the expectation.

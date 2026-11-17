@@ -17,4 +17,6 @@
     <string name="perm_reset_q">Đặt mọi cài đặt của kết nối này về mặc định?</string>
     <string name="perm_read_off_q">Khi tắt đọc, Kelo gần như không dùng được kết nối này. Tắt chứ?</string>
     <string name="perm_limited">Bị giới hạn</string>
+    <string name="perm_unattended">Dùng khi tôi không trò chuyện</string>
+    <string name="perm_unattended_about">Lịch hẹn, tác vụ nền và tin nhắn Kelo chủ động gửi sẽ không dùng %1$s. Các cuộc trò chuyện của bạn vẫn dùng được.</string>
 </resources>

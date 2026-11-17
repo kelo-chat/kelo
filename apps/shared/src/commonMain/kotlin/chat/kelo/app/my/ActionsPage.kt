@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,7 +15,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,9 +45,13 @@ import chat.kelo.app.ui.theme.Kelo
 /**
  * 마이 → Kelo가 한 일: what Kelo did outside, when, where and from which run (GET /api/actions).
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun ActionsPage(onBack: () -> Unit, onOpenTask: (Long) -> Unit = {}) {
+fun ActionsPage(
+    onBack: () -> Unit,
+    onOpenTask: (Long) -> Unit = {},
+    onOpenChat: () -> Unit = {},
+) {
     val sessions = LocalAppServices.current.sessions
     val vm = keloViewModel("my-actions") { ActionsViewModel(sessions) }
     val ui by vm.state.collectAsStateWithLifecycle()
@@ -72,9 +77,24 @@ fun ActionsPage(onBack: () -> Unit, onOpenTask: (Long) -> Unit = {}) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // Filter chips: 전체 / 보내기·바꾸기 / 브라우저 / 작업
+                // a row that wraps: on a 320 dp screen (or in a longer language) the last chip would run off the edge
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
+                ) {
+                    DidFilter.entries.forEach { f ->
+                        ChoiceChip(
+                            text = string(f.labelRes),
+                            selected = ui.filter == f,
+                            onClick = { vm.setFilter(f) },
+                        )
+                    }
+                }
+
                 // Period chips
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
                 ) {
                     ActionPeriod.entries.forEach { p ->
@@ -94,7 +114,7 @@ fun ActionsPage(onBack: () -> Unit, onOpenTask: (Long) -> Unit = {}) {
                     ui.groups.forEach { group ->
                         SectionLabel(dayLabel(group.label))
                         group.items.forEach { item ->
-                            ActionRow(item = item, onOpenTask = onOpenTask)
+                            ActionRow(item = item, onOpenTask = onOpenTask, onOpenChat = onOpenChat)
                         }
                     }
                 }
@@ -112,28 +132,49 @@ fun ActionsPage(onBack: () -> Unit, onOpenTask: (Long) -> Unit = {}) {
 }
 
 @Composable
-internal fun ActionRow(item: ActionItem, onOpenTask: (Long) -> Unit) {
+internal fun ActionRow(
+    item: ActionItem,
+    onOpenTask: (Long) -> Unit,
+    onOpenChat: () -> Unit = {},
+) {
     val c = Kelo.colors
-    val icon = when (item.kind) {
-        "send" -> KeloIcons.Send
-        "change" -> KeloIcons.Edit
-        "delete" -> KeloIcons.Trash
+    val icon = when (item.normalizedKind) {
+        "browser" -> KeloIcons.Globe
+        "reply" -> KeloIcons.Chat
+        "task" -> KeloIcons.Work
+        "action" -> when (item.kind) {
+            "send" -> KeloIcons.Send
+            "change" -> KeloIcons.Edit
+            "delete" -> KeloIcons.Trash
+            else -> KeloIcons.Send
+        }
         else -> KeloIcons.Spark
     }
-    val hasTask = item.taskId != null
-    val clickMod = if (hasTask) {
-        Modifier.clickable(role = Role.Button) { onOpenTask(item.taskId!!) }
-    } else {
-        Modifier
+    val clickMod = when {
+        item.kind == "reply" -> Modifier.clickable(role = Role.Button) { onOpenChat() }
+        item.taskId != null -> Modifier.clickable(role = Role.Button) { onOpenTask(item.taskId) }
+        item.source == "chat" -> Modifier.clickable(role = Role.Button) { onOpenChat() }
+        else -> Modifier
     }
-    val time = clockText(item.ts)
-    val subtitle = listOf(item.sourceName, time).filter { it.isNotBlank() }.joinToString(" · ")
-    val tagText = when (item.state) {
-        "unknown" -> string(Res.string.actions_state_unknown)
-        "failed" -> string(Res.string.actions_state_failed)
+    val time = clockText(item.timestamp)
+    val origin = when {
+        !item.site.isNullOrBlank() -> item.site
+        !item.connector.isNullOrBlank() -> item.connector
+        item.sourceName.isNotBlank() -> item.sourceName
+        item.source == "schedule" -> string(Res.string.agent_source_schedule)
+        item.source == "job" -> string(Res.string.work_source_job)
+        item.source == "chat" -> string(Res.string.tab_chat)
         else -> null
     }
-    val tagColor = when (item.state) {
+    val subtitle = listOfNotNull(origin, time.ifBlank { null }).joinToString(" · ")
+    val outcome = item.displayOutcome
+    val tagText = when (outcome) {
+        "unknown" -> string(Res.string.actions_state_unknown)
+        "failed" -> string(Res.string.actions_state_failed)
+        "stopped", "interrupted" -> string(Res.string.agent_task_stopped)
+        else -> null
+    }
+    val tagColor = when (outcome) {
         "failed" -> c.danger
         "unknown" -> c.warn
         else -> c.muted
@@ -151,12 +192,21 @@ internal fun ActionRow(item: ActionItem, onOpenTask: (Long) -> Unit) {
         Icon(icon, contentDescription = null, tint = c.muted, modifier = Modifier.size(24.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                item.line,
+                item.displayTitle,
                 color = c.ink,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (item.detail.isNotBlank() && item.detail != item.displayTitle) {
+                Text(
+                    item.detail,
+                    color = c.muted,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             if (subtitle.isNotEmpty()) {
                 Text(
                     subtitle,

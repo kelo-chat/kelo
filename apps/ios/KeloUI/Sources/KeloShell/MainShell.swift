@@ -14,6 +14,7 @@ struct MainShell: View {
     @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
     @Environment(\.scenePhase) private var phase
+    @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduce
     /// Tabs visited so far (each keeps its state once built).
     @State private var built: Set<String> = [KeloTab.chat.rawValue]
@@ -26,6 +27,9 @@ struct MainShell: View {
     @State private var barHeight: CGFloat = 0
     /// the keyboard covers the bar, so the pages need no room for it then
     @State private var keyboardUp = false
+    /// the window's size, and the first pane's share of it (kept per device) when it has two panes
+    @State private var size: CGSize = .zero
+    @State private var ratio = SplitRules.stored()
 
     init(app: AppModel, background: KeloBackground = KeloLaunch.background) {
         self.background = background
@@ -33,9 +37,16 @@ struct MainShell: View {
                                                 api: { [weak app] in app?.api }, profile: { [weak app] in app?.profile }))
     }
 
+    private var shape: WindowShape { WindowShape(width: size.width, height: size.height) }
+    /// how wide the first pane is while the window has two (the Nest tabs have one pane); nil = one pane
+    private var paneLeft: CGFloat? {
+        shape.twoPanes && app.router.nestTab == nil ? SplitRules.leftWidth(total: size.width, ratio: ratio) : nil
+    }
+
     var body: some View {
         let router = app.router
         let tabs = shownTabs
+        let left = paneLeft
         ZStack(alignment: .top) {
             c.bg.ignoresSafeArea()
             ZStack {
@@ -58,11 +69,23 @@ struct MainShell: View {
             // shows through around the agent (Android's header scrim)
             // the top band: the status bar, and the header's area while the header shows. The page colour at rest; the system bar
             // material with a separator once content scrolls under it (TopEdge.swift). Nothing shows behind the clock without it.
-            .overlay(alignment: .top) { TopEdgeBand(below: router.headerHidden ? 0 : headerHeight) }
-            .overlay(alignment: .top) {
+            .overlay(alignment: .topLeading) { TopEdgeBand(below: router.headerHidden ? 0 : headerHeight).frame(maxWidth: left ?? .infinity) }
+            .coordinateSpace(name: Self.panesSpace)
+            .overlay(alignment: .topLeading) { if let left { PaneDivider(left: left, total: size.width, ratio: $ratio) } }
+            .overlay(alignment: .topLeading) {
                 if !router.headerHidden {
                     FloatingHeader(onAgent: { router.openWork() })
+                        .frame(maxWidth: left ?? .infinity)
                         .onGeometryChange(for: CGFloat.self, of: { $0.size.height }, action: { headerHeight = $0; KeloSheetMetrics.headerHeight = $0 })
+                        .transition(.opacity)
+                }
+            }
+            // the chat's search: a magnifier at the end of the header, on the chat tab only (Android ShellParts)
+            .overlay(alignment: .topTrailing) {
+                if !router.headerHidden && router.tab == .chat && router.nestTab == nil && !router.workOpen && router.liveTab == nil {
+                    ChatSearchButton { router.chatSearch = true }
+                        .padding(.top, 6).padding(.trailing, 6)
+                        .frame(maxWidth: left ?? .infinity, alignment: .topTrailing)
                         .transition(.opacity)
                 }
             }
@@ -71,6 +94,7 @@ struct MainShell: View {
                 // never sits above the keyboard over a send or save button (Android hides it while the IME shows)
                 if !router.barHidden && !keyboardUp {
                     TabBar(tabs: tabs)
+                        .frame(maxWidth: shape.tabBarMax ?? .infinity)
                         .onGeometryChange(for: CGFloat.self, of: { $0.size.height }, action: { barHeight = $0 })
                         .ignoresSafeArea(.keyboard, edges: .bottom)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -88,6 +112,7 @@ struct MainShell: View {
                 ChooseModelCard { router.openMyPage(.model) }
                     .padding(.top, 112).padding(.horizontal, 16)
                     .frame(maxWidth: 560)
+                    .modifier(FirstPane(width: left))
             }
 
             // Keyguard: the server holds no key ("Kelo is locked"): unlock with this phone, or the recovery code in 마이 → 보안
@@ -95,16 +120,32 @@ struct MainShell: View {
                 LockedBanner(app: app, onRecover: { router.openMyPage(.keyguardCode) })
                     .padding(.top, headerHeight + 8).padding(.horizontal, 12)
                     .frame(maxWidth: 560)
+                    .modifier(FirstPane(width: left))
                     .transition(.opacity)
             }
 
-            if router.workOpen {
+            // a newer released app that works with this server (X-Kelo-App-Update): once per version, under the header, clear of the
+            // model card and the locked banner; the button opens Kelo's App Store page
+            if let version = app.appNotice, router.tab != .my, !router.workOpen, router.liveTab == nil, !router.headerHidden,
+               !app.locked, popupVersion == nil, !(app.profile.map(ProfileRules.needsModel) ?? false) {
+                AppNoticeBanner(version: version, onOpen: {
+                    app.dismissAppNotice(version)
+                    openURL(AppNoticeRules.storeURL(appStoreId: AppUpdateRules.appStoreId))
+                }, onClose: { app.dismissAppNotice(version) })
+                    .padding(.top, headerHeight + 8).padding(.horizontal, 12)
+                    .frame(maxWidth: 560)
+                    .modifier(FirstPane(width: left))
+                    .transition(.opacity)
+            }
+
+            // with two panes the work list and the live view sit beside the chat instead (ChatPanes)
+            if router.workOpen && !shape.twoPanes {
                 WorkScreen(api: { [weak app] in app?.api }, onClose: { router.workOpen = false })
                     .background(c.bg.ignoresSafeArea())
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                     .zIndex(1)
             }
-            if let tab = router.liveTab {
+            if let tab = router.liveTab, !shape.twoPanes {
                 LiveOverlay(api: { [weak app] in app?.api }, tabId: tab, takeControl: router.liveTakeControl, onClose: { router.closeLive() })
                     .background(c.bg.ignoresSafeArea())
                     .transition(.opacity)
@@ -117,9 +158,15 @@ struct MainShell: View {
                 // the server's KE2E key changed: nothing more goes to it until this phone is paired again
                 PairAgainView(onPair: { app.signOut() }).zIndex(3)
             } else if let server = app.serverTooOld {
-                ServerTooOldView(server: server, onRetry: { app.recheckServer() }).zIndex(3)
+                ServerTooOldView(server: server, api: { [weak app] in app?.api }, onRetry: { app.recheckServer() }).zIndex(3)
             }
         }
+        .onGeometryChange(for: CGSize.self, of: { $0.size }, action: { size = $0 })
+        .environment(\.keloWindow, shape)
+        .environment(\.keloPanes, PaneLayout(left: left))
+        .onChange(of: shape.twoPanes, initial: true) { _, _ in settleDock() }
+        .onChange(of: router.liveTab) { _, _ in settleDock() }
+        .onChange(of: router.workOpen) { _, _ in settleDock() }
         .environment(\.keloApi, app.api)
         .environment(\.keloBackground, background)
         .environment(\.keloTopEdge, topEdge)
@@ -150,6 +197,39 @@ struct MainShell: View {
             await shell.syncAvatar()
         }
         .onChange(of: phase) { _, p in if p == .background { KeloBackground.scheduleRefresh() } }
+        // away more than an hour: the server is asked again whether a newer app exists (the popup below follows its answer)
+        .onChange(of: phase) { _, p in
+            if p == .background { app.appLeft() } else if p == .active { app.appCameBack() }
+        }
+        // a newer released app (X-Kelo-App-Update): a popup at launch and on coming back, at most once a day
+        .alert(popupVersion.map { L(R.string.app_notice_new, $0) } ?? "", isPresented: popupShown) {
+            Button(L(R.string.update_now)) {
+                app.popupAnswered()
+                openURL(AppNoticeRules.storeURL(appStoreId: AppUpdateRules.appStoreId))
+            }
+            Button(L(R.string.offer_reason_later), role: .cancel) {
+                app.popupAnswered()
+            }
+        }
+    }
+
+    /// The version the popup asks about now: not while a full-screen notice (app too old, pair again, server too old) covers the app.
+    private var popupVersion: String? {
+        if app.appTooOld || app.pairAgain || app.serverTooOld != nil { return nil }
+        return app.appPopup()
+    }
+    private var popupShown: Binding<Bool> { Binding(get: { popupVersion != nil }, set: { _ in }) }
+
+    /// With two panes the live view and the work list live beside the chat: whoever opened one from another tab lands on the chat,
+    /// and the work page needs no flag (its list is already there). The flag is the router's, so the chrome follows it.
+    private func settleDock() {
+        let router = app.router
+        router.twoPane = shape.twoPanes
+        guard shape.twoPanes else { return }
+        if router.liveTab != nil || router.workOpen {
+            if router.nestTab != nil || router.tab != .chat { router.go(.chat) }
+            router.workOpen = false
+        }
     }
 
     private func isOpen(_ spec: TabSpec) -> Bool {
@@ -167,12 +247,63 @@ struct MainShell: View {
     private var builtInTabs: [TabSpec] {
         Tabs.builtIn { tab in
             switch tab {
-            case .chat: AnyView(ChatScreen(cardSender: WalletCardSender()).environment(\.keloConnectPanel, ChatConnectPanel.builder))
+            case .chat: AnyView(ChatPanes(chat: ChatScreen(cardSender: WalletCardSender()).environment(\.keloConnectPanel, ChatConnectPanel.builder)))
             case .goals: AnyView(GoalsScreen())
             case .connectors: AnyView(ConnectorsScreen())
             case .my: AnyView(MyScreen().environment(\.keloConnectPanel, ChatConnectPanel.builder))   // Share on GitHub connects GitHub with the same panel
             }
         }
+    }
+}
+
+private extension MainShell { static let panesSpace = "kelo.panes" }
+
+/// A banner under the header sits over the first pane only while there are two (nil = as it was).
+private struct FirstPane: ViewModifier {
+    let width: CGFloat?
+    func body(content: Content) -> some View {
+        if let width { content.frame(maxWidth: width).frame(maxWidth: .infinity, alignment: .leading) } else { content }
+    }
+}
+
+/// The chat, and when the window has two panes the second one: the live browser / phone view of the agent when one is open, else
+/// the work list, so the pane is never empty.
+private struct ChatPanes<Chat: View>: View {
+    let chat: Chat
+    @Environment(AppModel.self) private var app
+    @Environment(\.keloWindow) private var window
+
+    var body: some View {
+        TwoPaneRow(left: { chat.frame(maxWidth: window.chatColumnMax ?? .infinity) }, right: { side })
+    }
+
+    @ViewBuilder private var side: some View {
+        let router = app.router
+        if window.side(onChatTab: true, liveOpen: router.liveTab != nil) == .live, let tab = router.liveTab {
+            LiveOverlay(api: { [weak app] in app?.api }, tabId: tab, takeControl: router.liveTakeControl, onClose: { router.closeLive() })
+                .id(tab)
+        } else {
+            WorkScreen(api: { [weak app] in app?.api }, docked: true, onClose: {})
+        }
+    }
+}
+
+/// The divider between the panes: a thin line the owner can drag (a 16 pt strip around it), kept per device.
+private struct PaneDivider: View {
+    let left: CGFloat
+    let total: CGFloat
+    @Binding var ratio: CGFloat
+
+    var body: some View {
+        Color.clear
+            .frame(width: SplitRules.handle)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .offset(x: left - SplitRules.handle / 2)
+            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named(MainShell.panesSpace))
+                .onChanged { ratio = SplitRules.ratio(dragX: $0.location.x, total: total) }
+                .onEnded { _ in SplitRules.store(ratio) })
+            .accessibilityHidden(true)
     }
 }
 

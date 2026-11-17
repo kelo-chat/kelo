@@ -3,7 +3,7 @@ hours, and only what passes the user's own rules in NOTIFY_PREFS.md (sections "t
 headings written by home.py; the agent keeps that file when the user says "don't tell me things like this").
 
 The urgency levels 보통 (regular) / 오늘 (today) / 지금 (now) are fixed data values: they are stored, returned by the API and written by
-the model, so they stay as they are. The "don't tell me" heading is "Do not tell me" in new files and "알리지 마" in older ones; both are read.
+the model, so they stay as they are. The owner's don't-tell-me rules are read by the main model, whole (notify_block.py): no heading name is read in code.
 
 One pass (an internal job; every `every_minutes`, default 120, inside wake_start..wake_end of the profile's time zone, default
 07:00–22:00; the first pass of the day runs at wake_start):
@@ -60,10 +60,24 @@ One pass (an internal job; every `every_minutes`, default 120, inside wake_start
    delivery failed is not logged as sent and the pass fails without moving the mailbox cursors. Every decision, drop included, is
    logged with its reason (GET /api/proactive/log).
 
+Prepare, hold, bundle (docs/proactive.md): the classifier prepares first (what the facts let it work out is said as ready, ending in one
+offer) and gives each kept item a "useful_until". An accepted item that cannot go out now (a daily cap, the unanswered guard, or the
+day's `daily_deliveries` slots, 2: ordinary messages only; 지금 and change alerts never use a slot) is HELD in table proactive_held until
+its deadline (its own time, else the end of its day, else useful_until, else the end of the next local day; at most 14 days) instead of
+being dropped. A later pass that may talk judges the held items again with the owner's recent chat (stays, is reworded, or is dropped),
+and tells them with the new ones under the same caps; past its deadline an item is missed and logged as dropped. Held items are in the
+ledger (never judged twice), deleted by forget / clear-history / disconnecting their connector. A held item that the sources still list
+takes their current words when it is judged again (a big event's "in 3 days" is "in 2 days" the day it is told).
+
 The checklist (CHECKLIST.md, checklist.py) is part of this: it runs at the same pace, only while this is on, in waking hours and
 while today's daily_total has room; a run that said something counts as one 오늘 message (log source "checklist").
 
 Off by default: the user turns it on in the app (PUT /api/proactive {"enabled": true}). All limits are settings.
+
+Research (config "research", on by default; "research_every_minutes", 60): while it is on, the hourly situation pass (situation.py:
+what changed, research with read-only tools, selection, a message written by the main agent) takes the place of the candidate pass
+above (gather / _classify do not run). It reuses this class's mail cursors, ledger, waking hours, unanswered guard, daily caps,
+delivery slots and `deliver`. With "research" off the pass above runs as before. GET /api/proactive/research shows its passes.
 
 Guard against talking to nobody (see "the unanswered guard" in the class): nothing runs before the owner's first chat message on this
 server; after `unanswered_limit` (3) proactive messages in a row with no chat message from the owner (checklist runs that said something
@@ -114,13 +128,16 @@ PUT  /api/proactive        any of enabled, wake_start, wake_end, weekend_start, 
                            unanswered_limit (1..10), pause_hours (1..168), pause_max_days (1..30), auto_hours,
                            ahead_days (lead times for big events: up to 4 whole days 1..14, [] = off; the agent's big_event_notice tool)
                            -> the same as GET (a changed wake_start / wake_end makes hours_source "manual"); 422 {"detail"} for a bad value
-GET  /api/proactive/log?limit=50&before=<id>   {"items": [{"id", "key", "source": mail|calendar|schedule|watcher|goal|memory|checklist, "title",
+GET  /api/proactive/log?limit=50&before=<id>   {"items": [{"id", "key", "source": mail|calendar|schedule|watcher|goal|memory|checklist|situation, "title",
                             "urgency": 보통|오늘|지금|null, "status": sent|dropped, "reason", "message", "decided_at", "expires_at",
                             "task_id"|null, "kind": ""|change}] newest first, "next_before": id|null}
 POST /api/proactive/hours/{id}/accept   the suggested contact hours become the setting of its day type (source "learned") -> as GET
 POST /api/proactive/hours/{id}/keep     keep the current hours; no new suggestion for 14 days -> the same as GET; 404 unknown id
 POST /api/proactive/hours/learned/{weekday|weekend}/apply   that day type's learned window becomes its hours ("learned") -> as GET;
                            404 when there is none that differs
+GET  /api/proactive/held   {"items": [{"key", "source", "title", "urgency", "message", "why": over_cap|waiting_for_reply|slots, "held_at",
+                            "expires_at"}]} held items inside their deadline; GET /api/proactive also has "daily_deliveries" (2; 0..10, also PUT),
+                            "today_deliveries" and "held" (count)
 POST /api/proactive/run    one pass now (outside waking hours too) -> last_pass; 409 when it is off or a pass is running
 """
 
@@ -156,16 +173,18 @@ log = logging.getLogger("uvicorn.error")
 
 URGENCIES = ("보통", "오늘", "지금")
 DEFAULTS: dict[str, Any] = {"enabled": False, "wake_start": "07:00", "wake_end": "22:00", "every_minutes": 120, "daily_regular": 2,
-                            "daily_total": 3, "daily_now": 3, "unanswered_limit": 3, "pause_hours": 18, "pause_max_days": 7,
+                            "daily_total": 3, "daily_now": 3, "daily_deliveries": 2, "unanswered_limit": 3, "pause_hours": 18, "pause_max_days": 7,
                             "auto_hours": False, "hours_source": "default", "weekend_start": "", "weekend_end": "",
                             "weekend_source": "default", "ahead_days": [7, 1], "daily_change": 10, "spam_skim": True,
-                            "calendar_check": True, "change_alerts": True, "mail_check": True, "rechecks": True, "recheck_per_day": 4, "offers": True}
+                            "calendar_check": True, "change_alerts": True, "mail_check": True, "rechecks": True, "recheck_per_day": 4, "offers": True,
+                            "research": True, "research_every_minutes": 60}
 HOURS_SOURCES = ("default", "manual", "learned")   # where the contact hours (wake_start..wake_end) came from
 # per day type: the config keys of its window and where it came from (weekend "" = not set: weekends follow the weekday window)
 WINDOW_KEYS = {WEEKDAY: ("wake_start", "wake_end", "hours_source"), WEEKEND: ("weekend_start", "weekend_end", "weekend_source")}
 SUGGESTION_KEYS = {WEEKDAY: ("hours_suggestion", "hours_kept_at"), WEEKEND: ("weekend_suggestion", "weekend_kept_at")}
-LIMITS = {"every_minutes": (30, 1440), "daily_regular": (0, 10), "daily_total": (0, 20), "daily_now": (0, 10), "daily_change": (0, 50),
-          "unanswered_limit": (1, 10), "pause_hours": (1, 168), "pause_max_days": (1, 30), "recheck_per_day": (0, 20)}
+LIMITS = {"every_minutes": (30, 1440), "daily_regular": (0, 10), "daily_total": (0, 20), "daily_now": (0, 10), "daily_change": (0, 50), "daily_deliveries": (0, 10),
+          "unanswered_limit": (1, 10), "pause_hours": (1, 168), "pause_max_days": (1, 30), "recheck_per_day": (0, 20),
+          "research_every_minutes": (15, 1440)}
 AHEAD_LEADS_MAX = 4           # ahead_days: at most this many lead times, each 1..big_events.AHEAD_DAYS days before
 MAX_LEVEL = 32                 # the backoff level stops growing here (the pause is long capped well before)
 
@@ -182,7 +201,6 @@ SKIP_REASONS = {
     "model_limit": N_("The AI model's usage limit is used up"),
 }
 NOW_WINDOW = 3 * 3600          # 지금 needs something that starts or closes within this many seconds
-NEVER_HEADINGS = ("Do not tell me", "알리지 마")   # NOTIFY_PREFS.md heading: English in new files (home.py), Korean in older ones
 BATCH = 40                    # items per model request: a pass with more is sent in as few requests as this allows (nothing is left out)
 MAIL_NOTICE_CHARS = 60        # the notification title of a mail (what it is, who, which subject)
 CALENDAR_LINES = 150          # calendar lines shown to the model next to mail, for the booking cross-check
@@ -190,6 +208,8 @@ PREFS_CHARS = 2_000
 SENT_KEEP = 30 * 86400         # a told item is not told again for this long
 DROPPED_KEEP = 7 * 86400       # an item judged not worth telling is not looked at again for this long
 KEEP_LOG = 4000
+HOLD_MAX_DAYS = 14              # a held item is never kept longer than this, whatever deadline was read for it
+HELD_CHAT_LINES = 8             # the owner's recent chat lines shown when a held item is judged again
 UNREAD_PER_ACCOUNT = 5        # the briefing's newest unread per mailbox (briefing.py); the proactive pass reads everything since its last look
 MAIL_ACCOUNT_TIMEOUT = 45.0   # one mailbox's read for the briefing; longer is skipped this time (and shown in the settings, briefing_sources.py)
 ARRIVALS_TIMEOUT = 330.0      # one mailbox's look at everything that arrived since the last pass (a long gap is read in pages)
@@ -221,10 +241,13 @@ CREATE TABLE IF NOT EXISTS proactive_log (
     status TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', message TEXT NOT NULL DEFAULT '', decided_at REAL NOT NULL,
     expires_at REAL NOT NULL, day TEXT NOT NULL, task_id INTEGER, kind TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS proactive_log_key ON proactive_log(key, expires_at);
+CREATE TABLE IF NOT EXISTS proactive_held (
+    key TEXT PRIMARY KEY, source TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', urgency TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '', cand TEXT NOT NULL DEFAULT '{}', held_at REAL NOT NULL, expires_at REAL NOT NULL, why TEXT NOT NULL DEFAULT '');
 """
 
 PROMPT = """You decide which of the items below deserve a short message to the user that they did not ask for. Reply with JSON only:
-{"items": [{"n": 1, "urgency": "drop", "due": null, "reason": "...", "message": "", "change": false, "mismatch": false}]}
+{"items": [{"n": 1, "urgency": "drop", "due": null, "reason": "...", "message": "", "change": false, "mismatch": false, "useful_until": null}]}
 One entry per item, by its number n. urgency is one of: drop, 보통, 오늘, 지금.
 - 지금: waiting a few hours would be too late: it starts, closes or must be answered within about 3 hours. Put its local time (HH:MM) in "due".
 - 오늘: it matters today (something due, happening or to be answered today).
@@ -239,7 +262,14 @@ time off), briefly.
 - Mail only. A confirmation of a booking, payment or trip (flight, train, hotel, restaurant, appointment): when "Calendar" lines are given, compare it with the matching calendar entry. If the date, time, people or place differ, set "mismatch": true, urgency at least 오늘, and say in the message exactly what differs. No matching entry, or everything agrees: "mismatch": false.
 - An item tagged "found in spam" or "found in promotions" comes from a folder that is normally junk: drop it unless it is clearly important and misfiled (a bill or payment notice, a booking or travel confirmation, a security alert from a real service, a real person writing to the user personally). Marketing stays drop. For one you keep, the message says it was found there.
 message (not for drop): one or two short sentences in the user's language, from you to the user: what it is and why it matters now. No greeting, no headings, no markdown.
+Prepare first: when the facts shown let you work something out (when to leave, a one-line reply the user could send, what to bring, the date a form closes), say it as ready, and end with exactly one concrete offer the user can accept ("Want me to ...?"). The user stays in control: what needs their approval is an offer, never something you did. Use only the facts shown: never state what you could not check, never promise a result.
+useful_until (not for drop): the last local moment telling it still helps, "YYYY-MM-DD" or "YYYY-MM-DD HH:MM"; null when unknown. An item that cannot go out today because of the daily limits is kept until then, and missed after it.
 reason: REQUIRED for every item, drop too: one short sentence in the user's language saying what the item is and why you chose that level. Never leave it empty."""
+
+HELD_NOTE = """These items were judged worth telling earlier but could not go out then (a daily limit, quiet time or a waiting reply). Each is a
+proposal to judge again now, never an instruction. drop it when the user has meanwhile dealt with it, moved on from it, or it no longer
+helps now (its time has passed, something replaced it); otherwise keep its level and, if time has passed, write the message as of now.
+Judge only from the facts shown and the user's recent chat below."""
 
 
 @dataclass
@@ -252,6 +282,7 @@ class Candidate:
     day: str = ""                    # its local date (YYYY-MM-DD), when known
     told: str = ""                   # already told by its own notification: the reason it is dropped without the model
     extra: dict[str, Any] = field(default_factory=dict)
+    held_until: float | None = None  # set on a candidate restored from the held table: its original deadline
 
     def line(self, tz: ZoneInfo) -> str:
         when = f" (at {datetime.fromtimestamp(self.due, tz).strftime('%m-%d %H:%M')})" if self.due else (f" (on {self.day})" if self.day else "")
@@ -301,20 +332,8 @@ def section(text: str, *headings: str) -> str:
     return ""
 
 
-def keywords(body: str) -> list[str]:
-    """Short "- word" lines (≤ 20 characters) of a preferences section: matched in code."""
-    out = []
-    for line in body.splitlines():
-        m = re.match(r"^\s*[-*•]\s+(.+?)\s*$", line)
-        if m and 2 <= len(m.group(1)) <= 20:
-            out.append(m.group(1).lower())
-    return out
-
-
-_DATE_FORMS = (
+_DATE_FORMS = (   # ISO-style numeric dates only: a date written in words of a language is read by the model, not by a pattern
     re.compile(r"(?P<y>20\d\d)[-./](?P<m>\d{1,2})[-./](?P<d>\d{1,2})(?:[ T]+(?P<H>\d{1,2}):(?P<M>\d{2}))?"),
-    re.compile(r"(?:(?P<y>20\d\d)\s*년\s*)?(?P<m>\d{1,2})\s*월\s*(?P<d>\d{1,2})\s*일"
-               r"(?:[^\d\n]{0,8}?(?P<ap>오전|오후)?\s*(?P<H>\d{1,2})\s*(?::(?P<M>\d{2})|시(?:\s*(?P<M2>\d{1,2})\s*분)?))?"),
 )
 
 
@@ -337,9 +356,7 @@ def find_date(text: str, now: float, tz: ZoneInfo) -> tuple[str, float | None] |
         due = None
         if g.get("H"):
             h = int(g["H"])
-            if g.get("ap") == "오후" and h < 12:
-                h += 12
-            mi = int(g.get("M") or g.get("M2") or 0)
+            mi = int(g.get("M") or 0)
             if h < 24 and mi < 60:
                 due = d.replace(hour=h, minute=mi).timestamp()
         return d.strftime("%Y-%m-%d"), due
@@ -392,6 +409,10 @@ class Proactive:
                 store._db.execute("ALTER TABLE proactive_log ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
             store._db.commit()
         self.sources: list[CandidateSource] = []           # more candidate sources, asked by gather() (see CandidateSource)
+        self.notify_block: Any = None                      # notify_block.NotifyBlock (set by the server)
+        self.kinds: Any = None                             # event_kinds.EventKinds (set by the server)
+        self.situation: Any = None                         # situation.SituationResearch (set by it): the hourly research pass that replaces _run while "research" is on
+        self.kind_map: dict[str, str] = {}                 # event_key -> kind from the model, for the briefing's "coming up" too
         self._events: list[dict[str, Any]] = []            # the calendar events read in this pass (the booking cross-check)
         self._cursors: dict[str, dict[str, Any]] = {}      # mailbox -> where this pass's look ended: saved when the pass is through
         self._mailbox_count = 0                            # mailboxes this pass looked at (a mail message names its mailbox when > 1)
@@ -416,7 +437,7 @@ class Proactive:
         for k, v in changes.items():
             if v is None or k not in DEFAULTS:
                 continue
-            if k in ("enabled", "auto_hours", "spam_skim", "calendar_check", "change_alerts", "mail_check", "rechecks", "offers"):
+            if k in ("enabled", "auto_hours", "spam_skim", "calendar_check", "change_alerts", "mail_check", "rechecks", "offers", "research"):
                 if k == "mail_check" and bool(v) and not cfg[k]:   # mail is back on: the first pass starts every mailbox at "now" (no backlog)
                     self.store.set_meta(MAIL_RESUME, str(self.clock()))
                 elif k == "mail_check" and not bool(v):
@@ -736,7 +757,8 @@ class Proactive:
         start, end, kind = self.window_at(now)
         country = self.country()
         return {**cfg, "weekend_start": wk_start, "weekend_end": wk_end, "weekend_source": wk_src,
-                "timezone": self.tz().key, "prefs_file": NOTIFY_PREFS, "today": self.today_counts(), "today_changes": self.today_changes(),
+                "timezone": self.tz().key, "prefs_file": NOTIFY_PREFS, "today": self.today_counts(), "today_changes": self.today_changes(), "today_deliveries": self.today_deliveries(),
+                "held": len(self.held(now)),
                 "last_pass": self.state().get("last_pass"), "awake": self.awake(), "guard": g,
                 "hours_suggestion": self.hours_suggestion(), "weekend_suggestion": self.suggestion(WEEKEND),
                 "day_type": kind, "today_start": start, "today_end": end, "holiday_country": country,
@@ -771,7 +793,84 @@ class Proactive:
                  "task_id": r["task_id"], "kind": r["kind"]} for r in rows]
 
     def _ledgered(self, key: str, now: float) -> bool:
-        return bool(self.store._all("SELECT 1 FROM proactive_log WHERE key = ? AND expires_at > ? LIMIT 1", (key, now)))
+        return bool(self.store._all("SELECT 1 FROM proactive_log WHERE key = ? AND expires_at > ? LIMIT 1", (key, now))
+                    or self.store._all("SELECT 1 FROM proactive_held WHERE key = ? AND expires_at > ? LIMIT 1", (key, now)))
+
+    # ------------------------------------------------------------------ held items (docs/proactive.md, 2)
+    def today_deliveries(self) -> int:
+        """Ordinary messages sent today (the delivery slots used): a message is one task id; an urgent one (a 지금 or change item in it)
+        is not an ordinary delivery."""
+        day = _day(self.clock(), self.tz())
+        return int(self.store._all(
+            "SELECT COUNT(DISTINCT COALESCE(task_id, -id)) AS n FROM proactive_log WHERE status = 'sent' AND day = ? AND kind != 'change' "
+            "AND urgency != '지금' AND (task_id IS NULL OR task_id NOT IN (SELECT task_id FROM proactive_log WHERE status = 'sent' AND day = ? "
+            "AND task_id IS NOT NULL AND (kind = 'change' OR urgency = '지금')))", (day, day))[0]["n"])
+
+    def held(self, now: float | None = None) -> list[dict[str, Any]]:
+        """Items kept for a later delivery, still inside their deadline (the soonest deadline first)."""
+        now = self.clock() if now is None else now
+        rows = self.store._all("SELECT * FROM proactive_held WHERE expires_at > ? ORDER BY expires_at, held_at", (now,))
+        return [{"key": r["key"], "source": r["source"], "title": r["title"], "urgency": r["urgency"], "message": r["message"], "why": r["why"],
+                 "held_at": r["held_at"], "expires_at": r["expires_at"]} for r in rows]
+
+    def expire_held(self, now: float | None = None) -> int:
+        """A held item past its deadline is missed, not held: it goes to the log as dropped and leaves the table."""
+        now = self.clock() if now is None else now
+        rows = self.store._all("SELECT * FROM proactive_held WHERE expires_at <= ?", (now,))
+        for r in rows:
+            c = Candidate(key=r["key"], source=r["source"], title=r["title"])
+            self._record(c, "dropped", t("Expired before it could go out"), urgency=r["urgency"], message=r["message"], keep=DROPPED_KEEP)
+            self.store._run("DELETE FROM proactive_held WHERE key = ?", (r["key"],))
+        return len(rows)
+
+    def _until(self, c: Candidate, d: dict[str, Any], now: float, tz: ZoneInfo) -> float:
+        """The deadline of an item that is held: its own time, else the end of its own day, else the model's useful_until, else the end of
+        the next local day; never more than HOLD_MAX_DAYS away."""
+        if c.held_until is not None:
+            return c.held_until
+        if c.due:
+            until = c.due
+        elif c.day and (end := _until_from(c.day, tz)) is not None:
+            until = end
+        elif d.get("until"):
+            until = float(d["until"])
+        else:
+            until = (datetime.fromtimestamp(now, tz).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=2)).timestamp() - 1
+        return min(until, now + HOLD_MAX_DAYS * 86400)
+
+    def _hold(self, c: Candidate, d: dict[str, Any], urgency: str, reason: str, message: str, why: str, now: float, tz: ZoneInfo) -> bool:
+        """Keep an accepted item that cannot go out now. False (and logged as dropped, missed) when its deadline has already passed."""
+        until = self._until(c, d, now, tz)
+        if until <= now:
+            self._record(c, "dropped", t("Expired before it could go out"), urgency=urgency, message=message, keep=DROPPED_KEEP)
+            self.store._run("DELETE FROM proactive_held WHERE key = ?", (c.key,))
+            return False
+        cand = json.dumps({"key": c.key, "source": c.source, "title": c.title, "detail": c.detail, "due": c.due, "day": c.day,
+                           "extra": c.extra}, ensure_ascii=False)
+        old = self.store._all("SELECT held_at FROM proactive_held WHERE key = ?", (c.key,))
+        self.store._run("INSERT OR REPLACE INTO proactive_held(key, source, title, urgency, reason, message, cand, held_at, expires_at, why) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?)", (c.key, c.source, c.title[:200], urgency, reason[:300], message[:1000], cand,
+                                                        old[0]["held_at"] if old else now, until, why))
+        return True
+
+    def _release(self, now: float) -> list[Candidate]:
+        """The held items inside their deadline as candidates (oldest first), to be judged again and sent with the new ones."""
+        out: list[Candidate] = []
+        for r in self.store._all("SELECT * FROM proactive_held WHERE expires_at > ? ORDER BY held_at, key", (now,)):
+            try:
+                v = json.loads(r["cand"])
+                out.append(Candidate(key=v["key"], source=v["source"], title=v["title"], detail=v.get("detail", ""), due=v.get("due"),
+                                     day=v.get("day", ""), extra=v.get("extra") or {}, held_until=float(r["expires_at"])))
+            except (ValueError, KeyError, TypeError):
+                self.store._run("DELETE FROM proactive_held WHERE key = ?", (r["key"],))
+        return out
+
+    def _recent_chat(self) -> str:
+        rows = self.store._all("SELECT role, content FROM messages WHERE role IN ('user', 'assistant') ORDER BY id DESC LIMIT ?",
+                               (HELD_CHAT_LINES * 3,))
+        lines = [f"{r['role']}: {' '.join(str(r['content']).split())[:200]}" for r in rows
+                 if not (self.owner_marks and str(r["content"]).startswith(self.owner_marks))]
+        return "\n".join(reversed(lines[:HELD_CHAT_LINES]))
 
     def _record(self, c: Candidate, status: str, reason: str, *, urgency: str | None = None, message: str = "", keep: float,
                 task_id: int | None = None, kind: str = "") -> None:
@@ -785,8 +884,7 @@ class Proactive:
     def prefs(self) -> str:
         if self.home is None:
             return ""
-        p = self.home.root / NOTIFY_PREFS
-        return p.read_text(encoding="utf-8", errors="replace") if p.is_file() and not p.is_symlink() else ""
+        return self.home.policy(NOTIFY_PREFS)   # the owner's saved rules (owner_copies.py): the file is the agent's notes
 
     # ------------------------------------------------------------------ candidates
     async def gather(self, since: float, *, mail_only: bool = False) -> tuple[list[Candidate], dict[str, str]]:
@@ -809,7 +907,12 @@ class Proactive:
             try:
                 evs = await self.calendar()
                 self._events = evs
-                big = big_events.ahead(evs, now, tz)
+                if self.kinds is not None:   # the main model's kind of the events structure leaves (event_kinds.py); down = structure only
+                    try:
+                        self.kind_map = await self.kinds.classify(big_events.unclassified(evs, now, tz), tz)
+                    except Exception:  # noqa: BLE001
+                        self.kind_map = {}
+                big = big_events.ahead(evs, now, tz, model=self.kind_map)
                 later = {(str(e.get("title") or "").strip().casefold(), e["first"]) for e in big}
                 for ev in evs:
                     start = float(ev.get("start") or 0)
@@ -984,6 +1087,9 @@ class Proactive:
         """big_event_notice: the owner says how early to be told about trips, flights, stays and several-day events."""
         from .agent import Tool
 
+        async def describe_change(a: dict[str, Any]) -> str:
+            return t("Change how early big events are mentioned?")
+
         async def big_event_notice(a: dict[str, Any]) -> str:
             if a.get("days") is None:
                 days = self.config()["ahead_days"]
@@ -997,11 +1103,12 @@ class Proactive:
                     "Saved: big events are no longer mentioned ahead.")
         return Tool("big_event_notice",
                     "Read or change how many days before a big event (a trip, flight, stay or several-day event in the calendar) you "
-                    "mention it first, with what to prepare, when the user asks. Default 7 days and 1 day before; [] turns it off.",
+                    "mention it first, with what to prepare, when the user asks. Default 7 days and 1 day before; [] turns it off. "
+                    "The user approves a change; reading the setting needs no approval.",
                     {"type": "object", "properties": {"days": {"type": "array", "items": {"type": "integer", "minimum": 1,
                                                                                             "maximum": big_events.AHEAD_DAYS},
                                                                "description": "days before, e.g. [7, 1]; leave out to read the setting"}}},
-                    big_event_notice)
+                    big_event_notice, requires_approval=True, auto_approve=lambda a: a.get("days") is None, describe=describe_change)
 
     # ------------------------------------------------------------------ running
     async def tick(self) -> dict[str, Any] | None:
@@ -1015,9 +1122,15 @@ class Proactive:
         cfg = self.config()
         if self.lock.locked():
             return None
+        try:
+            self.expire_held(now)   # a held item past its deadline is missed, also while nothing is allowed to talk
+        except Exception:  # noqa: BLE001
+            log.exception("proactive: expiring held items failed")
         if not cfg["enabled"]:
             self._skip("off")
             return None
+        if cfg["research"] and self.situation is not None:   # the hourly research pass (situation.py) takes the place of the candidate pass
+            return await self.situation.tick(now)
         last = float(self.state().get("last_pass_at") or 0)
         due = now - last >= cfg["every_minutes"] * 60 or last < self.wake_start_today(now)
         if not due:
@@ -1058,14 +1171,22 @@ class Proactive:
     def _finish(self, status: str, reason: str = "", *, code: str = "", **counts: int) -> dict[str, Any]:
         now = self.clock()
         out = {"at": now, "status": status, "reason": reason, "reason_code": code, "candidates": counts.get("candidates", 0),
-               "sent": counts.get("sent", 0), "dropped": counts.get("dropped", 0), **self._backoff_fields(now)}
+               "sent": counts.get("sent", 0), "dropped": counts.get("dropped", 0), "held": counts.get("held", 0), **self._backoff_fields(now)}
         self._save_state(last_pass=out, last_pass_at=out["at"])
         return out
 
     async def _run(self, guarded: bool = False, held: str = "") -> dict[str, Any]:
         now, tz, cfg = self.clock(), self.tz(), self.config()
+        if cfg["research"] and self.situation is not None:   # situation.py: gather what changed, research, choose; reuses this class's ledger, guard and delivery
+            return await self.situation.run_pass()
         since = float(self.state().get("last_pass_at") or now - 86400)
+        self.expire_held(now)
+        released = [] if held else self._release(now)   # held items are told only by a pass that may talk (not the change-alerts-only one)
         found, notes = await self.gather(since, mail_only=bool(held))
+        current = {c.key: c for c in found}
+        for c in released:   # a held item says what is true now (a big event's "in 3 days" the day it is told is "in 2 days")
+            if (again := current.get(c.key)) and not again.told:
+                c.title, c.detail, c.due, c.day = again.title, again.detail, again.due, again.day
         fresh = [c for c in found if not self._ledgered(c.key, now)]
         dropped = 0
         for c in [c for c in fresh if c.told]:
@@ -1073,23 +1194,30 @@ class Proactive:
             dropped += 1
         fresh = [c for c in fresh if not c.told]
         prefs = self.prefs()
-        never = keywords(section(prefs, *NEVER_HEADINGS))
-        if never:
-            for c in [c for c in fresh if any(k in f"{c.title} {c.detail}".lower() for k in never)]:
-                self._record(c, "dropped", t("It is on your don't-tell-me list"), keep=DROPPED_KEEP)
-                dropped += 1
-                fresh.remove(c)
-        if not fresh:
+        if fresh and self.notify_block is not None:   # the owner's don't-tell rules, read by the main model (notify_block.py)
+            verdicts = await self.notify_block.check(prefs, [f"{c.title} {c.detail}" for c in fresh])
+            for c, stop in zip(list(fresh), verdicts):
+                if stop is None:
+                    fresh.remove(c)   # the rules could not be read: not told in this pass, not recorded: judged again next time
+                elif stop:
+                    self._record(c, "dropped", t("It is on your don't-tell-me list"), keep=DROPPED_KEEP)
+                    dropped += 1
+                    fresh.remove(c)
+        if not fresh and not released:
             self.commit_mail()
             note = "; ".join(f"{k}: {v}" for k, v in notes.items())
             return self._finish("nothing_new", note or t(SKIP_REASONS["nothing_new"]), code="nothing_new", candidates=len(found), dropped=dropped)
         chosen = self.model()
         if not chosen:
             return self._finish("skipped", t(SKIP_REASONS["no_model"]), code="no_model", candidates=len(found), dropped=dropped)
-        decisions = await self._classify(chosen, fresh, prefs, cfg, now, tz)
-        if decisions is None:
+        again = await self._classify(chosen, released, prefs, cfg, now, tz, held=True) if released else {}
+        decisions = await self._classify(chosen, fresh, prefs, cfg, now, tz) if fresh else {}
+        if decisions is None or again is None:
             return self._finish("failed", "the model did not answer in the expected form", code="bad_answer", candidates=len(found),
                                 dropped=dropped)
+        decisions = {**again, **{len(released) + i: d for i, d in decisions.items()}}
+        fresh = released + fresh   # held items first: at the same level they are older
+        nheld, kept, settled = len(released), 0, set()   # kept: items held again or newly held; settled: held keys that are sent or dropped now
         counts = self.today_counts()
         changes = self.today_changes()
         rank = {"지금": 0, "오늘": 1, "보통": 2}
@@ -1102,8 +1230,11 @@ class Proactive:
         for i in order:
             c, d = fresh[i], decisions.get(i)
             if d is None:
-                self._record(c, "dropped", t("Got no decision for it"), keep=max(3600.0, tomorrow - now))
-                dropped += 1
+                if i < nheld:   # a held item the model did not answer for stays held until its deadline
+                    kept += 1
+                else:
+                    self._record(c, "dropped", t("Got no decision for it"), keep=max(3600.0, tomorrow - now))
+                    dropped += 1
                 continue
             urgency, reason, message = d["urgency"], d["reason"], d["message"]
             change = bool(d.get("change")) and c.source == "mail" and bool(cfg["change_alerts"])
@@ -1115,6 +1246,8 @@ class Proactive:
                 message = message or c.title + (f" — {c.detail[:120]}" if c.detail else "")
             if urgency == "drop":
                 self._record(c, "dropped", reason or t("Not worth telling you"), keep=DROPPED_KEEP)
+                if i < nheld:
+                    settled.add(c.key)
                 dropped += 1
                 continue
             if c.extra.get("found"):
@@ -1128,23 +1261,39 @@ class Proactive:
                 ok = counts["보통"] + counts["오늘"] < cfg["daily_total"]
             else:
                 ok = counts["보통"] < cfg["daily_regular"] and counts["보통"] + counts["오늘"] < cfg["daily_total"]
-            if ok and not change and room is not None and counted >= room:
-                self._record(c, "dropped", t(SKIP_REASONS["waiting_for_reply"]), urgency=urgency, keep=max(3600.0, tomorrow - now))
-                dropped += 1
+            why = "waiting_for_reply" if ok and not change and room is not None and counted >= room else "" if ok else "over_cap"
+            if why:   # it cannot go out now: kept until its deadline (a missed deadline is logged as dropped)
+                if self._hold(c, d, urgency, reason, message, why, now, tz):
+                    kept += 1
+                else:
+                    dropped += 1
+                    if i < nheld:
+                        settled.add(c.key)
                 continue
-            if not ok:
-                self._record(c, "dropped", t("Over the number that can be sent today ({urgency})", urgency=urgency), urgency=urgency, keep=max(3600.0, tomorrow - now))
-                dropped += 1
-                continue
-            outbox.append(Outgoing(c, urgency, reason, message, change))
+            outbox.append(Outgoing(c, urgency, reason, message, change, d))
             if change:
                 changes += 1   # not counted as unanswered either: like what the owner asked for, it is never held back
             else:
                 counts[urgency] += 1
                 counted += 1
             sent += 1
+        groups = group_outbox(outbox)
+        ordinary = [g for g in groups if not any(o.change or o.urgency == "지금" for o in g.items)]
+        slots = max(0, int(cfg["daily_deliveries"]) - self.today_deliveries())
+        if len(ordinary) > slots:   # more ordinary messages than today's slots: the lowest levels wait for the next delivery
+            ordinary.sort(key=lambda g: min(rank.get(o.urgency, 9) for o in g.items))
+            for g in ordinary[slots:]:
+                groups.remove(g)
+                for o in g.items:
+                    sent -= 1
+                    if self._hold(o.c, o.d, o.urgency, o.reason, o.message, "slots", now, tz):
+                        kept += 1
+                    else:
+                        dropped += 1
+                        if o.c.held_until is not None:
+                            settled.add(o.c.key)
         failure: BaseException | None = None
-        for g in group_outbox(outbox):   # one message per group; a group that fails to go out is not logged and keeps the cursors where they are
+        for g in groups:   # one message per group; a group that fails to go out is not logged and keeps the cursors where they are
             try:
                 task_id = await self._deliver_group(g)
             except Exception as e:  # noqa: BLE001 - the other groups still go out; the pass then fails as a whole (below)
@@ -1154,12 +1303,15 @@ class Proactive:
             for o in g.items:
                 self._record(o.c, "sent", o.reason, urgency=o.urgency, message=o.message, keep=SENT_KEEP, task_id=task_id,
                              kind="change" if o.change else "")
+                settled.add(o.c.key)
                 if not o.change:
                     self._count_unanswered(self.clock())
         if failure is not None:
             raise failure
+        for key in settled:
+            self.store._run("DELETE FROM proactive_held WHERE key = ?", (key,))
         self.commit_mail()
-        return self._finish("done", "", candidates=len(found), sent=sent, dropped=dropped)
+        return self._finish("done", "", candidates=len(found), sent=sent, dropped=dropped, held=kept)
 
     async def _deliver_group(self, g: Group) -> int | None:
         """Tell one group as one message (see the module docstring, 5); returns its task id."""
@@ -1183,12 +1335,12 @@ class Proactive:
                                    "kind": "change" if any(o.change for o in g.items) else "", "notice": notice})
 
     async def _classify(self, chosen: tuple[str, str], items: list[Candidate], prefs: str, cfg: dict[str, Any], now: float,
-                        tz: ZoneInfo) -> dict[int, dict[str, Any]] | None:
+                        tz: ZoneInfo, held: bool = False) -> dict[int, dict[str, Any]] | None:
         """Every item judged, BATCH at a time (as few requests as that allows; none is left out). None when one batch gets no answer in
         the expected form: the pass then fails as a whole and looks at the same items next time."""
         out: dict[int, dict[str, Any]] = {}
         for at in range(0, len(items), BATCH):
-            got = await self._classify_batch(chosen, items[at:at + BATCH], prefs, cfg, now, tz)
+            got = await self._classify_batch(chosen, items[at:at + BATCH], prefs, cfg, now, tz, held)
             if got is None:
                 return None
             out.update({at + i: d for i, d in got.items()})
@@ -1206,13 +1358,15 @@ class Proactive:
         return "\n".join(lines)
 
     async def _classify_batch(self, chosen: tuple[str, str], items: list[Candidate], prefs: str, cfg: dict[str, Any], now: float,
-                              tz: ZoneInfo) -> dict[int, dict[str, Any]] | None:
+                              tz: ZoneInfo, held: bool = False) -> dict[int, dict[str, Any]] | None:
         provider, model = chosen
         counts = self.today_counts()
         left_regular = max(0, cfg["daily_regular"] - counts["보통"])
         left_total = max(0, cfg["daily_total"] - counts["보통"] - counts["오늘"])
         head = (f"Now: {datetime.fromtimestamp(now, tz).strftime('%a %Y-%m-%d %H:%M')} ({tz.key}). Still allowed today: {left_regular} 보통, "
                 f"{left_total} 보통+오늘 together.\n{tone_line(self.tone(), switch=False)}\n\nThe user's preferences (NOTIFY_PREFS.md):\n{(prefs.strip() or '(none)')[:PREFS_CHARS]}\n\nItems:\n")
+        if held:   # items kept from an earlier pass: judged again against what the owner said since (docs/proactive.md, 2)
+            head = head.replace("\nThe user's preferences", f"\n{HELD_NOTE}\nThe user's recent chat:\n{self._recent_chat() or '(none)'}\n\nThe user's preferences", 1)
         body = "\n".join(f"{n}. {c.line(tz)}" for n, c in enumerate(items, 1))
         cal = self._calendar_block(tz) if cfg["calendar_check"] and any(c.source == "mail" for c in items) else ""
         if cal:
@@ -1258,6 +1412,7 @@ class Proactive:
                 if not message:
                     message = f"{c.title}" + (f" — {c.detail[:120]}" if c.detail else "")
             out[i] = {"urgency": urgency, "reason": reason, "message": message, "mismatch": mismatch,
+                      "until": _until_from(str(it.get("useful_until") or ""), tz),
                       "change": it.get("change") is True and c.source == "mail"}
         return out
 
@@ -1270,6 +1425,7 @@ class Outgoing:
     reason: str
     message: str
     change: bool
+    d: dict[str, Any] = field(default_factory=dict)   # the model's decision it came from (its useful_until, for a hold)
 
 
 @dataclass
@@ -1377,6 +1533,18 @@ def _due_from(text: str, now: float, tz: ZoneInfo) -> float | None:
 
 
 # ---------------------------------------------------------------------------------------------------------------- API
+def _until_from(text: str, tz: ZoneInfo) -> float | None:
+    """A local "YYYY-MM-DD" (the end of that day) or "YYYY-MM-DD HH:MM" as unix seconds; None when it is neither."""
+    s = (text or "").strip().replace("T", " ")[:16]
+    for fmt, whole_day in (("%Y-%m-%d %H:%M", False), ("%Y-%m-%d", True)):
+        try:
+            d = datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+        return (d.replace(hour=23, minute=59, second=59) if whole_day else d).replace(tzinfo=tz).timestamp()
+    return None
+
+
 class ProactiveIn(BaseModel):
     enabled: bool | None = None
     wake_start: str | None = None
@@ -1393,6 +1561,7 @@ class ProactiveIn(BaseModel):
     weekend_end: str | None = None
     ahead_days: list[int] | None = None
     daily_change: int | None = None
+    daily_deliveries: int | None = None
     spam_skim: bool | None = None
     calendar_check: bool | None = None
     change_alerts: bool | None = None
@@ -1400,6 +1569,8 @@ class ProactiveIn(BaseModel):
     rechecks: bool | None = None
     recheck_per_day: int | None = None
     offers: bool | None = None
+    research: bool | None = None
+    research_every_minutes: int | None = None
 
 
 def proactive_routes(app: FastAPI, proactive: Proactive, auth: Callable[..., Any]) -> None:
@@ -1415,6 +1586,10 @@ def proactive_routes(app: FastAPI, proactive: Proactive, auth: Callable[..., Any
             return proactive.update(**body.model_dump())
         except ValueError as e:
             raise HTTPException(422, str(e)) from None
+
+    @app.get("/api/proactive/held", dependencies=[Depends(auth)])
+    async def get_proactive_held() -> dict[str, Any]:
+        return {"items": proactive.held()}
 
     @app.get("/api/proactive/log", dependencies=[Depends(auth)])
     async def get_proactive_log(limit: int = 50, before: int | None = None) -> dict[str, Any]:

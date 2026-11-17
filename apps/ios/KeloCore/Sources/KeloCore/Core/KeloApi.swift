@@ -170,6 +170,10 @@ public final class KeloApi: Sendable {
     let onServerVersion: @Sendable (String?) -> Void
     /// `X-Kelo-App` sent with every request ("" sends none).
     let appHeader: String
+    /// `X-Kelo-App-Channel` sent with every request ("" sends none).
+    let channelHeader: String
+    /// A newer released app named by an answer of /api/about or /api/profile (`X-Kelo-App-Update`; nil when that answer named none).
+    let onAppUpdate: @Sendable (String?) -> Void
     /// Holds this session's upload limits answer (see `uploadLimits`).
     let uploadLimitsBox = UploadLimitsBox()
 
@@ -179,9 +183,11 @@ public final class KeloApi: Sendable {
         transport: HTTPTransport = URLSessionTransport.shared,
         acceptLanguage: @escaping @Sendable () -> String = { AcceptLanguageValue.current },
         appHeader: String = Versioning.currentAppHeader,
+        channelHeader: String = Versioning.currentChannel,
         onUnauthorized: @escaping @Sendable () -> Void = {},
         onFailure: @escaping @Sendable (ApiError) -> Void = { _ in },
-        onServerVersion: @escaping @Sendable (String?) -> Void = { _ in }
+        onServerVersion: @escaping @Sendable (String?) -> Void = { _ in },
+        onAppUpdate: @escaping @Sendable (String?) -> Void = { _ in }
     ) {
         var b = baseUrl
         while b.hasSuffix("/") { b.removeLast() }
@@ -190,6 +196,8 @@ public final class KeloApi: Sendable {
         self.transport = transport
         self.acceptLanguage = acceptLanguage
         self.appHeader = appHeader
+        self.channelHeader = channelHeader
+        self.onAppUpdate = onAppUpdate
         self.onUnauthorized = onUnauthorized
         self.onFailure = onFailure
         self.onServerVersion = onServerVersion
@@ -197,9 +205,10 @@ public final class KeloApi: Sendable {
 
     public convenience init(session: Session, transport: HTTPTransport = URLSessionTransport.shared, onUnauthorized: @escaping @Sendable () -> Void = {},
                             onFailure: @escaping @Sendable (ApiError) -> Void = { _ in },
-                            onServerVersion: @escaping @Sendable (String?) -> Void = { _ in }) {
+                            onServerVersion: @escaping @Sendable (String?) -> Void = { _ in },
+                            onAppUpdate: @escaping @Sendable (String?) -> Void = { _ in }) {
         self.init(baseUrl: session.serverUrl, token: session.token, transport: transport, onUnauthorized: onUnauthorized,
-                  onFailure: onFailure, onServerVersion: onServerVersion)
+                  onFailure: onFailure, onServerVersion: onServerVersion, onAppUpdate: onAppUpdate)
     }
 
     /// The transport's end-to-end layer, when this API talks through one.
@@ -217,6 +226,7 @@ public final class KeloApi: Sendable {
         let lang = acceptLanguage()
         if !lang.isEmpty { r.setValue(lang, forHTTPHeaderField: AcceptLanguage.header) }
         if !appHeader.isEmpty { r.setValue(appHeader, forHTTPHeaderField: Versioning.appHeader) }
+        if !channelHeader.isEmpty { r.setValue(channelHeader, forHTTPHeaderField: Versioning.channelHeader) }
         return r
     }
 
@@ -227,15 +237,15 @@ public final class KeloApi: Sendable {
 
     /// `send` with the answer's headers (lower-case names).
     public func sendReply(_ request: URLRequest) async throws -> HTTPReply {
-        try await checked { try await self.transport.exchange(request) }
+        try await checked(path: request.url?.path) { try await self.transport.exchange(request) }
     }
 
     /// A request body sent with progress (uploads): a file goes up from disk, never read whole. Errors as for `send`.
     public func upload(_ request: URLRequest, body: HTTPUploadBody, progress: (@Sendable (Int64, Int64) -> Void)? = nil) async throws -> Data {
-        try await checked { try await self.transport.upload(request, body: body, progress: progress) }.body
+        try await checked(path: request.url?.path) { try await self.transport.upload(request, body: body, progress: progress) }.body
     }
 
-    private func checked(_ run: () async throws -> HTTPReply) async throws -> HTTPReply {
+    private func checked(path: String? = nil, _ run: () async throws -> HTTPReply) async throws -> HTTPReply {
         let reply: HTTPReply
         do {
             reply = try await run()
@@ -253,6 +263,10 @@ public final class KeloApi: Sendable {
             throw e
         }
         if reply.status != 0 { onServerVersion(reply.headers[Versioning.serverHeader.lowercased()]) }
+        // a newer app that works with this server: only /api/about and /api/profile say so (no header there = none any more)
+        if reply.status == 200, path == "/api/about" || path == "/api/profile" {
+            onAppUpdate(AppNoticeRules.clean(reply.headers[Versioning.updateHeader.lowercased()]))
+        }
         guard (200...299).contains(reply.status) else { throw failure(reply.status, reply.body) }
         return reply
     }

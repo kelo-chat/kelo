@@ -28,6 +28,8 @@ from assistant.agent import Tool
 from assistant.providers import Done, TextDelta, ToolCall
 from assistant.secret_guard import find as find_secrets
 from assistant.server import Settings, create_app
+from assistant.tools.checkout import PROBE_JS, REFUSAL
+from assistant.tools.browser import BrowserSession
 from assistant.settings import _default_content_dir
 from assistant.store import Store
 
@@ -35,11 +37,16 @@ SCENARIO_DIR = Path(__file__).parent / "scenarios"
 TOKEN = "e" * 32
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
-SCENARIO_KEYS = {"name", "about", "profile", "user", "model", "tools", "expect", "approve", "real", "live"}
+SCENARIO_KEYS = {"name", "about", "profile", "user", "model", "tools", "expect", "approve", "real", "live", "settings", "workers", "live_only"}
 EXPECT_KEYS = {
     "called", "not_called", "approval_asked", "reply_contains", "reply_not_contains", "no_secret_in", "prompt_contains",
     "model_calls", "status", "tool_error", "login_cards", "status_labels", "reply_language",
+    "called_with", "not_called_with", "jobs", "jobs_max", "main_run_has", "main_run_lacks",
 }
+LIVE_EXPECT_KEYS = {"called", "not_called", "approval_asked", "reply_language", "called_with", "not_called_with", "jobs", "jobs_max",
+                    "main_run_has", "main_run_lacks"}
+SETTINGS_KEYS = {"payment_specialist"}   # the settings a scenario may switch (a kill switch under test)
+TOOL_SPEC_KEYS = {"result", "error", "approval", "untrusted", "source", "description", "parameters", "by", "results", "real_schema", "refuse_selector_containing", "final_pages", "shows_page"}
 NO_SECRET_PLACES = {"reply", "tool_args", "log"}
 REAL_TOOLS = {"request_login"}   # the real vault tools a scenario may ask for ("real": [...]); see _real_tools
 
@@ -61,6 +68,31 @@ class Outcome:
     log_lines: list[str] = field(default_factory=list)
     login_cards: int = 0
     secrets: list[str] = field(default_factory=list)       # values the secret guard found in the user's messages (checked, never shown)
+    request_tools: list[list[str]] = field(default_factory=list)   # the tool names each model request offered
+    jobs: list[dict[str, Any]] = field(default_factory=list)       # the background jobs at the end: id, kind, status (no texts)
+    page: dict[str, Any] = field(default_factory=dict)             # the page the fake browser last showed: url, text, final (a final checkout step)
+
+    def observed_calls(self) -> list[tuple[str, dict[str, Any]]]:
+        """Every tool call anyone made (the main agent or a job, fake or real tool, run or refused): the calls the tools ran plus the
+        calls the model asked for in the requests it was sent, each asked call once."""
+        seen: dict[str, tuple[str, dict[str, Any]]] = {}
+        for req in self.model_requests:
+            for m in req:
+                for tc in m.get("tool_calls") or []:
+                    fn = tc.get("function") or {}
+                    try:
+                        args = json.loads(fn.get("arguments") or "{}")
+                    except (TypeError, ValueError):
+                        args = {}
+                    seen.setdefault(str(tc.get("id")), (str(fn.get("name")), args if isinstance(args, dict) else {}))
+        return [*self.calls, *seen.values()]
+
+    def refused(self, name: str) -> int:
+        """How many calls of this tool came back as an error (the tool's own "Error: ..." answer), read from the results the model saw."""
+        ids = {str(tc.get("id")) for req in self.model_requests for m in req for tc in (m.get("tool_calls") or [])
+               if (tc.get("function") or {}).get("name") == name}
+        results = {str(m.get("tool_call_id")): str(m.get("content") or "") for req in self.model_requests for m in req if m.get("role") == "tool"}
+        return sum(1 for i in ids if results.get(i, "").lstrip().startswith("Error"))
 
     @property
     def reply(self) -> str:
@@ -103,12 +135,18 @@ def load_scenario(path: Path) -> dict[str, Any]:
         if name not in REAL_TOOLS:
             raise ScenarioError(f"{path.name}: unknown real tool {name!r} (known: {sorted(REAL_TOOLS)})")
     for name, spec in sc.get("tools", {}).items():
-        if not isinstance(spec, dict) or set(spec) - {"result", "error", "approval", "untrusted", "source", "description", "parameters"}:
+        if not isinstance(spec, dict) or set(spec) - TOOL_SPEC_KEYS:
             raise ScenarioError(f"{path.name}: tool {name!r} has an unknown or bad spec")
+        if ("by" in spec) != ("results" in spec):
+            raise ScenarioError(f"{path.name}: tool {name!r}: by and results go together")
+    if set(sc.get("settings", {})) - SETTINGS_KEYS:
+        raise ScenarioError(f"{path.name}: settings may only set {sorted(SETTINGS_KEYS)}")
+    if sc.get("live_only") and "live" not in sc:
+        raise ScenarioError(f"{path.name}: live_only needs a live block")
     if "live" in sc and set(sc["live"]) - {"expect", "note"}:
         raise ScenarioError(f"{path.name}: live takes expect and note only")
-    if "live" in sc and not set(sc["live"].get("expect", {})) <= {"called", "not_called", "approval_asked", "reply_language"}:
-        raise ScenarioError(f"{path.name}: live expectations are called, not_called, approval_asked, reply_language only")
+    if "live" in sc and not set(sc["live"].get("expect", {})) <= LIVE_EXPECT_KEYS:
+        raise ScenarioError(f"{path.name}: live expectations are {sorted(LIVE_EXPECT_KEYS)} only")
     return sc
 
 
@@ -117,12 +155,41 @@ def load_scenarios(directory: Path = SCENARIO_DIR) -> list[dict[str, Any]]:
 
 
 # ---- fakes ------------------------------------------------------------------------------------------------------------------------
-def _fake_tool(name: str, spec: dict[str, Any], outcome: Outcome) -> Tool:
+def _real_schemas(names: set[str]) -> dict[str, tuple[str, dict[str, Any]]]:
+    """The description and parameters of the app's own tools of these names (a throwaway app, no browser is ever opened), so a
+    scenario's fake shows the model exactly what the real tool shows it and cannot drift from it."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        app = create_app(Settings(token=TOKEN, provider="p", model="m", cdp_host="127.0.0.1", db_path=str(Path(d) / "a.db"),
+                                  home_dir=str(Path(d) / "home"), content_dir=_default_content_dir()), with_worker_tools=True)
+        return {t.name: (t.description, t.parameters) for t in app.state.tools if t.name in names}
+
+
+def _fake_tool(name: str, spec: dict[str, Any], outcome: Outcome, real: dict[str, tuple[str, dict[str, Any]]] | None = None) -> Tool:
+    def shown(args: dict[str, Any], text: str) -> str:
+        """The fixture marks which of its pages is a final checkout step (final_pages: addresses, for a tool that opens by address); the
+        fake browser's page structure then says so to the app (FakePage), as the real probe does for a real page. `shows_page`: a reading,
+        which shows the page last opened."""
+        if spec.get("shows_page"):
+            return str(outcome.page.get("text") or text)
+        if "final_pages" in spec:
+            url = str(args.get(spec["by"], ""))
+            outcome.page = {"url": url, "text": text, "final": url in spec["final_pages"]}
+        return text
+
     async def handler(args: dict[str, Any]) -> str:
         outcome.calls.append((name, dict(args)))
         if "error" in spec:
             raise RuntimeError(spec["error"])
-        return str(spec.get("result", "ok"))
+        for part, text in (spec.get("refuse_selector_containing") or {}).items():
+            # the real guard answers a press on a final checkout step with checkout.REFUSAL (the fixture's pay control is e9); the fake must too
+            if part in str(args.get("selector", "")):
+                return REFUSAL if text == "$REFUSAL" else str(text)
+        if "by" in spec:   # the result depends on one argument (checkout_review: draft, ready)
+            by = str(args.get(spec["by"], ""))
+            if by in spec["results"]:
+                return shown(args, str(spec["results"][by]))
+        return shown(args, str(spec.get("result", "ok")))
 
     approval = spec.get("approval")
     auto = None
@@ -136,8 +203,44 @@ def _fake_tool(name: str, spec: dict[str, Any], outcome: Outcome) -> Tool:
                 return False
 
     params = spec.get("parameters") or {"type": "object", "properties": {}, "additionalProperties": True}
-    return Tool(name, spec.get("description", f"{name} (scenario fake)"), params, handler, requires_approval=approval is not None,
+    description = spec.get("description", f"{name} (scenario fake)")
+    if spec.get("real_schema") and real and name in real:
+        description, params = real[name]
+    return Tool(name, description, params, handler, requires_approval=approval is not None,
                 untrusted=bool(spec.get("untrusted", False)), source=spec.get("source", ""), auto_approve=auto)
+
+
+class FakePage:
+    """The page of an eval's browser: what the fake page tools last showed. Its structure is what the real probe (tools/checkout.py
+    read_page) reads: a final checkout step has payment inputs and an order total beside a control, any other page has none."""
+    frames: list[Any] = []
+
+    def __init__(self, outcome: Outcome):
+        self.outcome = outcome
+
+    @property
+    def url(self) -> str:
+        return str(self.outcome.page.get("url") or "about:blank")
+
+    def is_closed(self) -> bool:
+        return False
+
+    def on(self, *a: Any, **k: Any) -> None:
+        return None
+
+    async def title(self) -> str:
+        return "shop"
+
+    async def close(self) -> None:
+        return None
+
+    async def evaluate(self, js: str, arg: Any = None) -> Any:
+        if js is not PROBE_JS:   # only the checkout probe is answered: every other page script fails as it did when no page existed
+            raise RuntimeError("no browser in an eval")
+        final = bool(self.outcome.page.get("final"))
+        return {"url": self.url, "text": str(self.outcome.page.get("text") or ""), "payment_inputs": 1 if final else 0,
+                "totals": ["total"] if final else [], "controls": [{"role": "button", "label": "pay"}] if final else [], "marked": None,
+                "currency": ""}
 
 
 def _real_tools(names: list[str], store: Store) -> list[Tool]:
@@ -153,6 +256,7 @@ def scripted_model(steps: list[list[dict[str, Any]]], outcome: Outcome) -> Calla
 
     async def fn(provider: str, request: Any, **kw: Any) -> AsyncIterator[Any]:
         outcome.model_requests.append(copy.deepcopy(request.messages))
+        outcome.request_tools.append([t["function"]["name"] for t in (request.tools or [])])
         step = queue.pop(0) if queue else None
         if step is None:
             outcome.extra_model_calls += 1
@@ -166,6 +270,21 @@ def scripted_model(steps: list[list[dict[str, Any]]], outcome: Outcome) -> Calla
             else:
                 yield TextDelta(item["text"])
         yield Done("tool_calls" if has_tool else "stop")
+
+    return fn
+
+
+def recording_model(outcome: Outcome, inner: Callable[..., AsyncIterator[Any]] | None = None) -> Callable[..., AsyncIterator[Any]]:
+    """The app's own model call (or `inner`), with each request noted (messages and offered tool names) so a live run can count and
+    inspect them."""
+    from assistant.server import default_stream_chat
+    inner = inner or default_stream_chat
+
+    async def fn(provider: str, request: Any, **kw: Any) -> AsyncIterator[Any]:
+        outcome.model_requests.append(copy.deepcopy(request.messages))
+        outcome.request_tools.append([t["function"]["name"] for t in (request.tools or [])])
+        async for ev in inner(provider, request, **kw):
+            yield ev
 
     return fn
 
@@ -210,6 +329,40 @@ async def _drive(c: httpx.AsyncClient, text: str, approve: bool, outcome: Outcom
     raise AssertionError("the reply never ended")
 
 
+async def _jobs(c: httpx.AsyncClient) -> list[dict[str, Any]]:
+    items = (await c.get("/api/workers", headers=AUTH)).json().get("items", [])
+    return [{"id": i.get("id"), "kind": i.get("kind"), "status": i.get("status")} for i in items]
+
+
+async def _answer_job_cards(c: httpx.AsyncClient, approve: bool, outcome: Outcome, answered: set[str]) -> None:
+    """A background job's approval card is no turn's event: nobody in an eval answers it, and a job waits 30 minutes for it. Answered here the
+    way the chat's cards are (the scenario's `approve`, default no)."""
+    for e in (await c.get("/api/approvals/pending", headers=AUTH)).json().get("items", []):
+        aid = str(e.get("approval_id") or e.get("id") or "")
+        if not aid or aid in answered or e.get("kind") == "location":
+            continue
+        answered.add(aid)
+        outcome.approvals.append(e)
+        await c.post(f"/api/approvals/{aid}", json={"approve": approve}, headers=AUTH)
+
+
+async def _settle(c: httpx.AsyncClient, outcome: Outcome, quiet: float = 25.0, limit: float = 600.0, approve: bool = False) -> None:
+    """After a turn that may have started background jobs: wait until no job runs and the model has been quiet for `quiet` seconds
+    (a finished job hands its report to the main agent, which may answer or resume the job)."""
+    loop = asyncio.get_running_loop()
+    start, seen, since = loop.time(), -1, loop.time()
+    answered: set[str] = set()
+    while loop.time() - start < limit:
+        await asyncio.sleep(0.5)
+        await _answer_job_cards(c, approve, outcome, answered)
+        running = any(j["status"] == "running" for j in await _jobs(c))
+        n = len(outcome.model_requests)
+        if running or n != seen:
+            seen, since = n, loop.time()
+        elif loop.time() - since >= quiet:
+            return
+
+
 async def run_scenario(sc: dict[str, Any], workdir: Path, *, stream_fn: Callable[..., AsyncIterator[Any]] | None = None,
                        settings_kw: dict[str, Any] | None = None, base_settings: Settings | None = None) -> Outcome:
     """Runs one scenario in `workdir` (a temporary folder). `base_settings` (live tier) takes the instance's provider, model and keys
@@ -217,7 +370,18 @@ async def run_scenario(sc: dict[str, Any], workdir: Path, *, stream_fn: Callable
     outcome = Outcome()
     for text in sc["user"]:
         outcome.secrets += [text[h.start:h.end] for h in find_secrets(text) if h.end > h.start]
-    tools = [_fake_tool(n, spec, outcome) for n, spec in sc.get("tools", {}).items()]
+    wanted = {n for n, spec in sc.get("tools", {}).items() if spec.get("real_schema")}
+    real = _real_schemas(wanted) if wanted else {}
+    tools = [_fake_tool(n, spec, outcome, real) for n, spec in sc.get("tools", {}).items()]
+    workers = bool(sc.get("workers"))
+    app_kw: dict[str, Any] = {}
+    if workers:   # delegate and the job tools, and a browser session over a fake page (the tools are fakes; the page says what it is)
+        page = FakePage(outcome)
+
+        async def connect() -> Any:
+            return page
+        app_kw = {"with_worker_tools": True, "browser": BrowserSession(connect=connect)}
+    settings_kw = {**(settings_kw or {}), **sc.get("settings", {})}
     db_path = workdir / "app.db"
     store = None
     if sc.get("real"):   # the real tools write to the app's own database (the same file, its key next to it)
@@ -225,14 +389,14 @@ async def run_scenario(sc: dict[str, Any], workdir: Path, *, stream_fn: Callable
         tools += _real_tools(sc["real"], store)
     if base_settings is not None:
         settings = replace(base_settings, token=TOKEN, cdp_host=None, db_path=str(db_path), home_dir=str(workdir / "home"),
-                           content_dir=_default_content_dir(), **(settings_kw or {}))
-        app = create_app(settings, tools=tools) if stream_fn is None else create_app(settings, tools=tools, stream_fn=stream_fn)
+                           content_dir=_default_content_dir(), **settings_kw)
+        app = create_app(settings, tools=tools, stream_fn=recording_model(outcome, stream_fn), **app_kw)
     else:
-        model = stream_fn or scripted_model(sc.get("model", []), outcome)
+        model = recording_model(outcome, stream_fn) if stream_fn else scripted_model(sc.get("model", []), outcome)
         model_name = sc.get("profile", {}).get("model", "scripted")
         settings = Settings(token=TOKEN, provider="p", model=model_name, cdp_host=None, db_path=str(db_path),
-                            content_dir=_default_content_dir(), **(settings_kw or {}))
-        app = create_app(settings, tools=tools, stream_fn=model)
+                            content_dir=_default_content_dir(), **settings_kw)
+        app = create_app(settings, tools=tools, stream_fn=model, **app_kw)
     handler = _Log(outcome.log_lines)
     root = logging.getLogger("assistant")
     old_level = root.level
@@ -247,6 +411,10 @@ async def run_scenario(sc: dict[str, Any], workdir: Path, *, stream_fn: Callable
         async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", timeout=30) as c:
             for text in sc["user"]:
                 await _drive(c, text, bool(sc.get("approve", False)), outcome)
+                if workers:
+                    await _settle(c, outcome, quiet=25.0 if base_settings is not None else 1.0, limit=1500.0 if base_settings is not None else 600.0, approve=bool(sc.get("approve", False)))   # a live model takes ~30 s a request
+            if workers:
+                outcome.jobs = await _jobs(c)
     finally:
         server.should_exit = True
         await task
@@ -263,6 +431,11 @@ def _hangul_share(text: str) -> float:
     return sum("가" <= ch <= "힣" for ch in letters) / len(letters) if letters else 0.0
 
 
+def _has_args(got: dict[str, Any], want: dict[str, Any]) -> bool:
+    """Every key of `want` is in `got` with that value; a value of "*" only needs the key to be there and not empty."""
+    return all((bool(got.get(k)) if v == "*" else got.get(k) == v) for k, v in want.items())
+
+
 def check(expect: dict[str, Any], outcome: Outcome) -> list[str]:
     """Every expectation that does not hold, as a sentence. An empty list means the scenario passed."""
     bad: list[str] = []
@@ -273,6 +446,27 @@ def check(expect: dict[str, Any], outcome: Outcome) -> list[str]:
     for name in expect.get("not_called", []):
         if name in called:
             bad.append(f"{name} was called")
+    observed = outcome.observed_calls()
+    for want in expect.get("called_with", []):
+        if not any(name == want["tool"] and _has_args(args, want.get("args", {})) for name, args in observed):
+            bad.append(f"{want['tool']} was not called with {want.get('args', {})}")
+    for want in expect.get("not_called_with", []):
+        if any(name == want["tool"] and _has_args(args, want.get("args", {})) for name, args in observed):
+            bad.append(f"{want['tool']} was called with {want.get('args', {})}")
+    for want in expect.get("jobs", []):
+        if not any(_has_args(j, want) for j in outcome.jobs):
+            bad.append(f"no job like {want} (jobs: {[(j['kind'], j['status']) for j in outcome.jobs]})")
+    for kind, most in expect.get("jobs_max", {}).items():
+        n = sum(1 for j in outcome.jobs if j["kind"] == kind)
+        if n > most:
+            bad.append(f"{n} jobs of kind {kind}, at most {most}")
+    main_runs = [set(names) for names in outcome.request_tools if "delegate" in names]   # a run that can hand work off is the main agent
+    for name in expect.get("main_run_has", []):
+        if not main_runs or not all(name in names for names in main_runs):
+            bad.append(f"the main run was not offered {name}")
+    for name in expect.get("main_run_lacks", []):
+        if any(name in names for names in main_runs):
+            bad.append(f"the main run was offered {name}")
     if "approval_asked" in expect and bool(outcome.approvals) != bool(expect["approval_asked"]):
         bad.append(f"approval_asked is {bool(outcome.approvals)}, expected {expect['approval_asked']}")
     for needle in expect.get("reply_contains", []):

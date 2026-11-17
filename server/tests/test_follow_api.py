@@ -48,7 +48,7 @@ def test_get_follow_empty(test_setup):
     resp = client.get("/api/follow")
     assert resp.status_code == 200
     data = resp.json()
-    assert data == {"items": []}
+    assert data == {"items": [], "usage": []}
 
 
 def test_get_follow_with_items(test_setup):

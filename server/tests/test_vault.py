@@ -284,6 +284,9 @@ class Locator:
             raise RuntimeError(f"locator.fill: Timeout while filling {value!r}")
         self.page.filled.append((self.sel, value))
 
+    async def focus(self, timeout=None):
+        return None
+
     async def count(self):
         return int(bool(self.page.state.get("pw"))) if "password" in self.sel else 1
 
@@ -295,7 +298,8 @@ class Locator:
 
 class Page:
     def __init__(self, url="https://github.com/login", found=None, fail=False, after_press=None, body="Welcome nahyun.kim@example.com, password hunter2-Pa$$w0rd!",
-                 state=None):
+                 state=None, field=None):
+        self.field = field or {}
         self.url, self.found, self.fail, self.after_press, self.body = url, found or {"u": True, "p": True}, fail, after_press, body
         self.state = state or {"pw": False, "text": "Signed in. Logout"}             # what the page shows after Enter
         self.filled, self.pressed, self.untagged, self.goto_calls = [], [], 0, []
@@ -303,6 +307,10 @@ class Page:
     async def evaluate(self, js):
         if "kelo_check" in js:                                  # the structure of the page (bot-check reading): from the state after Enter
             return self.state.get("probe")
+        if "webkitTextSecurity" in js:                           # the password field's state at the moment of typing (lengths only)
+            typed = [v for sel, v in self.filled if "data-vault-p" in sel]
+            return {"n": 1, "input": True, "type": "password", "tagged": "password", "masked": True,
+                    "length": len(typed[-1]) if typed else 0, **self.field}
         if "pw:" in js:
             return self.state
         if "setAttribute" in js:
@@ -570,9 +578,10 @@ async def test_a_sign_in_that_stops_at_a_verification_step_is_logged_as_not_ok_a
 
 async def test_a_sign_in_that_left_the_form_for_another_sign_in_step_is_not_counted_as_signed_in(tmp_path):
     st = filled(tmp_path)
-    still = {"kelo_check": 1, "text": "Choose how to continue", "text_len": 22, "url": "https://github.com/session/challenge",
-             "title": "Continue", "otp": 0, "short_inputs": 0, "secret_box": False}
-    page = Page(after_press="https://github.com/session/challenge", state={"pw": False, "text": "Choose how to continue", "probe": still})
+    # the page judge read it and said "not a verification step", but the address carries the page to return to: still the sign-in flow (structure)
+    still = {"kelo_check": 1, "text": "Choose how to continue", "text_len": 22, "judged_step": "none", "title": "Continue", "otp": 0,
+             "short_inputs": 0, "secret_box": False, "url": "https://github.com/session/challenge?return_to=https%3A%2F%2Fgithub.com%2Fhome"}
+    page = Page(after_press="https://github.com/session/challenge?return_to=https%3A%2F%2Fgithub.com%2Fhome", state={"pw": False, "text": "Choose how to continue", "probe": still})
     out = await with_browser(st, page)["browser_login"].handler({"name": "github"})
     assert out.startswith("[sign-in result: unknown") and "still shows a sign-in or verification step" in out
     assert [r["ok"] for r in st.vault_log(10) if r["action"] == "used"] == [False]

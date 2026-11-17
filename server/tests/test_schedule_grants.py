@@ -22,6 +22,7 @@ from assistant.tools.vault_tools import vault_tools
 from assistant.wallet import CardDeliveries, Wallet
 from assistant.workers import current_turn
 
+from test_conditional_grants import text_judge
 from test_server import AUTH, TOKEN, Running, scripted
 from test_vault import KEY, PASSWORD, USER, Page, session_for
 from test_wallet import auto_card, checkout, e2e_card, no_secrets
@@ -34,6 +35,7 @@ def world(tmp_path):
     wallet = Wallet(store)
     schedules = Schedules(store)
     grants = ScheduleGrants(store, schedules, wallet)
+    grants.judge = text_judge()
     schedules.on_deleted = grants.drop_schedule
     used = []
     grants.on_use = lambda g, tool, host, detail: used.append((g["id"], tool, host, detail))
@@ -155,7 +157,8 @@ async def test_task_allow_is_one_card_at_setup_and_never_in_a_run(tmp_path):
     assert "no schedule" in tool.validate({**args, "schedule_id": 999})
     assert "trigger is required" in tool.validate({**args, "trigger": ""})
     assert "no website login" in tool.validate({**args, "login": "nope"})
-    assert "account" in tool.validate({**args, "purchase": {**args["purchase"], "what": "change the account password"}})
+    assert "never covers sign-ups" in await tool.hold({**args, "purchase": {**args["purchase"], "what": "change the account password"}})
+    assert await tool.hold(args) is None
     assert "max_amount" in tool.validate({**args, "purchase": {**args["purchase"], "max_amount": 0}})
     card = (await decided(tool.describe(args)))
     assert "every Monday at 9" in card and "Shop" in card and "buy coffee beans on example.com" in card and "5,000 KRW" in card
@@ -236,7 +239,6 @@ async def test_a_purchase_grant_buys_within_its_cap_in_that_schedules_runs_and_n
     ({"amount": 5001}, "task_over_cap"),
     ({"currency": "USD", "amount": 3}, "task_currency"),
     ({"summary": "Gift card 50,000"}, "task_other_item"),
-    ({"summary": "coffee beans and change the account password"}, "task_other_item"),
 ])
 async def test_outside_the_cap_or_the_item_it_asks_with_the_reason(tmp_path, change, reason):
     store, wallet, schedules, grants, weekly, *_ = world(tmp_path)
@@ -339,3 +341,30 @@ async def test_grants_over_http_schedule_vault_wallet_and_the_approval_log(tmp_p
         assert (await c.delete(f"/api/schedules/{s['id']}/grants/{lg['id']}")).status_code == 404
         assert (await c.delete(f"/api/schedules/{s['id']}")).status_code == 200
         assert grants.list() == []
+
+
+def test_a_changed_task_drops_its_grants_and_remembered_rules_so_they_are_asked_again(tmp_path):
+    from assistant.activity import Activity
+    store, wallet, schedules, grants, weekly, daily, _ = world(tmp_path)
+    activity = Activity(store)
+    schedules.on_task_changed = lambda sid: (grants.drop_schedule(sid), activity.drop_schedule_rules(sid))
+    a = grants.add_login(weekly["id"], "shop-login", "shop.example.com")
+    c = grants.add_login(daily["id"], "shop-login", "shop.example.com")
+    activity.add_schedule_rule(weekly["id"], "email_send", "mail.example.com")
+    activity.add_schedule_rule(daily["id"], "email_send", "mail.example.com")
+    schedules.update(weekly["id"], name="Weekly beans (renamed)")                                       # the name is not the task
+    assert grants.get(a["id"]) is not None and len(activity.schedule_rules(weekly["id"])) == 1
+    schedules.update(weekly["id"], prompt="buy the usual beans and check the address first")           # the task changed
+    assert grants.get(a["id"]) is None and activity.schedule_rules(weekly["id"]) == []
+    assert grants.get(c["id"]) is not None and len(activity.schedule_rules(daily["id"])) == 1         # another schedule keeps its own
+
+
+def test_the_schedule_card_shows_the_whole_task_not_a_cut(tmp_path):
+    from assistant.schedules import schedule_tools
+    store, wallet, schedules, grants, weekly, daily, _ = world(tmp_path)
+    runbook = "Step 1: open the account page and write down every line of it. " * 20   # a long runbook, read unattended
+    tools = {t.name: t for t in schedule_tools(schedules)}
+    created = tools["schedule_create"].approval_extra("a1", {"name": "Runbook", "prompt": runbook, "cron": "0 9 * * *"})
+    updated = tools["schedule_update"].approval_extra("a2", {"id": weekly["id"], "prompt": runbook})
+    assert any(line["value"] == runbook for line in created["lines"])
+    assert any(line["value"] == runbook for line in updated["lines"])

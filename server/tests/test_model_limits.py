@@ -15,9 +15,7 @@ import httpx
 import pytest
 
 from assistant import i18n, model_limits as ml
-from assistant.activity import Activity
 from assistant.home import Home
-from assistant.memory_upkeep import IDLE_BEFORE_RUN, MemoryUpkeep
 from assistant.proactive import Proactive
 from assistant.providers import ChatRequest, Done, TextDelta
 from assistant.providers.types import ProviderError, QuotaExhausted
@@ -42,18 +40,20 @@ class Clock:
         return self.t
 
 
-def agy_used_up(after="2h3m10s"):
-    return ProviderError(f"Antigravity model error: You have exhausted your capacity on this model. Your quota will reset after {after}.")
+def agy_used_up(after="2h3m10s", status=429):
+    return ProviderError(f"Antigravity model error: You have exhausted your capacity on this model. Your quota will reset after {after}.",
+                         status=status)
 
 
 # ---------------------------------------------------------------------------------------------------------- reading the error
 def test_limit_errors_are_told_apart_from_outages_and_bad_requests():
     assert ml.is_limit(agy_used_up())
-    assert ml.is_limit(ProviderError("RESOURCE_EXHAUSTED (code 429) Individual quota reached"))
+    assert not ml.is_limit(agy_used_up(status=None)) and ml.is_opaque(agy_used_up(status=None))   # plain CLI text: classify() asks the usage windows
+    assert ml.is_limit(ProviderError("x", code="RESOURCE_EXHAUSTED"))
     assert ml.is_limit(ProviderError("You've hit your session limit · resets 3pm (Asia/Seoul)", status=429))
     assert ml.is_limit(ProviderError("insufficient_quota", status=402))
-    assert ml.is_limit(ProviderError("Your credit balance is too low to access the API"))
-    assert not ml.is_limit(ProviderError("prompt is too long: context window exceeded", status=429))
+    assert ml.is_limit(ProviderError("billing", code="billing_error"))
+    assert not ml.is_limit(ProviderError("too long", status=429, code="context_length_exceeded"))
     assert not ml.is_limit(ProviderError("quota", status=401))                       # a sign-in problem, not a used-up limit
     assert not ml.is_limit(ProviderError("p: overloaded, try again later", status=529))
     assert not ml.is_limit(RuntimeError("HTTP 429 rate limited"))                    # only provider errors count
@@ -118,9 +118,26 @@ async def test_without_a_reset_time_the_windows_decide_else_a_capped_backoff():
     hit = await g.hit("claude", "claude-sonnet-4-5", ProviderError("rate limited", status=429))
     assert asked == ["claude"] and hit.reset_at == NOW + 5400 + ml.RESET_MARGIN
     plain = ml.QuotaGuard(Store(), clock=clock)
+    # 2026-11-17 (busy-429): a 429 with no reset is busy, held BUSY_HOLD; the 4th busy hold in a row takes the used-up ladder from 600 s
     holds = [(await plain.hit("x", "m", ProviderError("too many requests", status=429))).until - NOW for _ in range(6)]
-    assert holds == [*ml.BACKOFF, ml.BACKOFF[-1], ml.BACKOFF[-1]]
+    assert holds == [ml.BUSY_HOLD] * ml.BUSY_LADDER_AFTER + list(ml.BACKOFF[:3])
     assert all(e is None for e in [(await plain.classify("x", "m", ProviderError("bad tool schema", status=400)))])
+
+
+async def test_a_failure_without_status_or_code_is_a_limit_only_when_the_usage_windows_say_so():
+    full = [{"group": "", "used_percent": 100, "resets_at": datetime.fromtimestamp(NOW + 3600, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}]
+    room = [{**full[0], "used_percent": 10}]
+
+    async def windows_full(provider):
+        return full
+
+    async def windows_room(provider):
+        return room
+    text = agy_used_up(status=None)
+    hit = await ml.QuotaGuard(Store(), windows_full, clock=Clock(NOW)).classify("agy", "m", text)
+    assert hit is not None and hit.reset_at is not None
+    assert await ml.QuotaGuard(Store(), windows_room, clock=Clock(NOW)).classify("agy", "m", text) is None   # its words alone decide nothing
+    assert await ml.QuotaGuard(Store(), clock=Clock(NOW)).classify("agy", "m", text) is None
 
 
 async def test_a_nearly_used_up_window_makes_only_the_jobs_nobody_waits_for_step_aside():
@@ -212,28 +229,7 @@ async def test_proactive_skips_quietly_on_the_limit_and_looks_at_the_items_next_
     assert out["status"] == "done" and len(sent) == 1
 
 
-# ---------------------------------------------------------------------------------------------------------- the memory pass: retry_at
-async def test_the_memory_pass_waits_for_retry_at_and_then_runs_without_the_usual_gap(tmp_path):
-    from test_memory_upkeep import answer, answering, say as said
-
-    store = Store()
-    store.set_profile(timezone="Asia/Seoul", provider="p", model="m", user_name="Mina")
-    clock = Clock(NOW)
-    fn = answering(QuotaExhausted("p: used up", provider="p", reset_at=NOW + 3600, until=NOW + 3630),
-                   answer(memory_md="# Memory\n\n## Facts\n- Mina likes tea"))
-    up = MemoryUpkeep(store, Home(tmp_path / "home"), Activity(store, clock), fn, lambda: ("p", "m"), enabled=lambda: True,
-                      rules=lambda: [], clock=clock, last_use=lambda: NOW - IDLE_BEFORE_RUN - 1)
-    said(store, NOW - 7200, "user", "나는 차를 좋아해")
-    first = await up.run(trigger="nightly")
-    assert first["status"] == "pending" and first["code"] == "model_limit" and first["retry_at"] == NOW + 3630
-    assert up.public()["last_attempt"]["retry_at"] == NOW + 3630 and store.meta("memory:seen_until") in ("", None)
-    clock.t = NOW + 1800
-    assert await up.idle_tick() is None and len(fn.calls) == 1          # not before the hold is over
-    clock.t = NOW + 3700
-    up.last_use = lambda: clock.t - IDLE_BEFORE_RUN - 1
-    done = await up.idle_tick()
-    assert done["status"] == "done" and done["trigger"] == "retry" and len(fn.calls) == 2   # no IDLE_GAP / message count wait
-    assert up.last_attempt()["code"] == ""
+# the memory pass's retry_at (usage limit -> pending -> idle_tick retry) is tested in test_memory_pass.py
 
 
 # ---------------------------------------------------------------------------------------------------------- a background job pauses
@@ -270,7 +266,12 @@ async def test_a_job_pauses_on_the_limit_tells_once_in_the_active_hours_and_goes
         await until(lambda: brain.calls["handoff"])
 
 
-async def test_a_job_paused_without_a_known_reset_does_not_promise_a_time(tmp_path):
+async def test_a_job_paused_without_a_known_reset_does_not_promise_a_time(tmp_path, monkeypatch):
+    # 2026-11-17 (busy-429): a 429 with no reset is busy, so its retries wait first; the waits are skipped here
+    async def instant(self, seconds):
+        return None
+    monkeypatch.setattr(ml.QuotaGuard, "pause", instant)
+
     def worker(req, n):
         raise ProviderError("too many requests", status=429)
     brain = Brain(chat=delegating({"task": "정리해줘", "kind": "general"}), worker=worker)
@@ -279,8 +280,7 @@ async def test_a_job_paused_without_a_known_reset_does_not_promise_a_time(tmp_pa
         await follow(c, (await c.post("/api/turns", json={"text": "정리해줘"})).json()["id"])
         w = await one_worker(c, "interrupted")
         row = app.state.workers._row(w["id"])
-        assert row["error"] == ("Paused because the AI model's usage limit is used up. It goes on by itself once the model can be used "
-                                "again.")
+        assert row["error"] == ("Paused because the AI model was busy. It goes on by itself in a few minutes.")
         assert app.state.workers.host.limit_until() == app.state.limit_guard.until("p") is not None
         # a provider held longer pushes the job's own wait back
         later = app.state.limit_guard.until("p") + 3600
@@ -353,9 +353,8 @@ async def test_a_balance_that_ran_out_says_top_up_with_no_reset_time_and_nothing
     err = ProviderError("openrouter: HTTP 402: This request requires more credits, or fewer max_tokens. You requested up to 16384 "
                         "tokens, but can only afford 300.", status=402)
     assert ml.is_limit(err) and ml.is_balance(err)
-    for words in ("Insufficient Balance", "insufficient_quota: You exceeded your current quota, please check your plan and billing",
-                  "Your credit balance is too low to access the API"):
-        assert ml.is_balance(ProviderError(words, status=400 if "credit" in words else 429)), words
+    assert ml.is_balance(ProviderError("x", status=429, code="insufficient_quota"))
+    assert ml.is_balance(ProviderError("x", status=400, code="billing_error"))
     assert not ml.is_balance(agy_used_up()) and not ml.is_balance(ProviderError("rate limit", status=429))
     hit = await g.classify("openrouter", "some/model", err)
     assert hit is not None and hit.balance and hit.reset_at is None and g.balance_out("openrouter")
@@ -385,7 +384,7 @@ async def test_a_job_pauses_while_the_model_is_busy_and_goes_on_by_itself(tmp_pa
     def worker(req, n):
         if n == 0:
             raise ProviderError("antigravity-oauth: Antigravity model error: Our servers are experiencing high traffic right now, please "
-                                "try again in a minute. (UNAVAILABLE (code 503): No capacity available for model g")
+                                "try again in a minute. (UNAVAILABLE (code 503): No capacity available for model g", status=503)
         return call("report", {"status": "done", "summary": "끝났어요."})
     brain = Brain(chat=delegating({"task": "가격을 비교해줘", "kind": "general"}), worker=worker, handoff=lambda r, n: say("다 했어요."))
     app = create_app(app_settings(tmp_path), tools=[], stream_fn=brain, with_worker_tools=True)

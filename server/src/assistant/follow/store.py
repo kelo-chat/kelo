@@ -7,7 +7,7 @@ import sqlite3
 import time
 from typing import Any
 
-from .items import UpcomingItem
+from .items import UpcomingItem, from_row, same_thing
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS follow_items (
@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS follow_items (
     plan TEXT NOT NULL DEFAULT '{}',
     prep TEXT NOT NULL DEFAULT '[]',
     created_at REAL NOT NULL,
-    updated_at REAL NOT NULL
+    updated_at REAL NOT NULL,
+    aliases TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS follow_checks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +66,7 @@ CREATE TABLE IF NOT EXISTS follow_usage (
 """
 
 
-ITEM_COLS = ("key", "kind", "title", "starts_at", "ends_at", "place", "refs", "source", "state", "plan", "prep", "created_at", "updated_at")
+ITEM_COLS = ("key", "kind", "title", "starts_at", "ends_at", "place", "refs", "source", "state", "plan", "prep", "created_at", "updated_at", "aliases")
 CHECK_COLS = ("id", "item_key", "kind", "refs", "fields", "from_offset", "until_offset", "window_start", "window_end", "every_minutes", "next_at", "last_at", "state", "consecutive_errors", "last_error", "created_at")
 READING_COLS = ("id", "check_id", "at", "ok", "fields", "detail")
 
@@ -90,10 +91,15 @@ class FollowStore:
             self._store = db_or_store
             self._db = getattr(db_or_store, "_db", db_or_store)
 
-        with getattr(self._store, "_lock", _DummyLock()):
+        self._lock = getattr(self._store, "_lock", _DummyLock())
+        with self._lock:
             self._db.row_factory = sqlite3.Row
             self._db.executescript(SCHEMA)
+            cols = [r[1] for r in self._db.execute("PRAGMA table_info(follow_items)").fetchall()]
+            if "aliases" not in cols:   # a database from before the aliases column
+                self._db.execute("ALTER TABLE follow_items ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'")
             self._db.commit()
+        self.merge_duplicates()
 
     def _run(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
         with getattr(self._store, "_lock", _DummyLock()):
@@ -101,13 +107,18 @@ class FollowStore:
             self._db.commit()
             return cur
 
-    def _all(self, sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
+    def _all(self, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
         with getattr(self._store, "_lock", _DummyLock()):
-            return self._db.execute(sql, params).fetchall()
+            cur = self._db.execute(sql, params)
+            cols = [c[0] for c in cur.description] if cur.description else []
+            return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
-    def _one(self, sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Row | None:
+    def _one(self, sql: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
         with getattr(self._store, "_lock", _DummyLock()):
-            return self._db.execute(sql, params).fetchone()
+            cur = self._db.execute(sql, params)
+            cols = [c[0] for c in cur.description] if cur.description else []
+            row = cur.fetchone()
+            return dict(zip(cols, row, strict=False)) if row else None
 
     # ---- items -----------------------------------------------------------------
     def save_item(self, item: UpcomingItem, plan: dict[str, Any] | None = None, state: str = "planned",
@@ -125,6 +136,8 @@ class FollowStore:
             (item.key, item.kind, item.title, item.starts_at, item.ends_at, item.place, refs_json, item.source,
              state, plan_json, prep_json, now, now),
         )
+        if item.aliases:
+            self.add_aliases(item.key, list(item.aliases))
 
     def get_item(self, key: str) -> dict[str, Any] | None:
         row = self._one("SELECT * FROM follow_items WHERE key = ?", (key,))
@@ -136,6 +149,76 @@ class FollowStore:
         else:
             rows = self._all("SELECT * FROM follow_items ORDER BY starts_at")
         return [self._item_dict(r) for r in rows]
+
+    def add_aliases(self, key: str, aliases: list[str]) -> None:
+        """Other sources' keys for this same item: a later sync from any of them reaches the same item."""
+        row = self._one("SELECT aliases FROM follow_items WHERE key = ?", (key,))
+        if row is None:
+            return
+        have = json.loads(row["aliases"] or "[]")
+        new = [a for a in aliases if a and a != key and a not in have]
+        if new:
+            self._run("UPDATE follow_items SET aliases = ? WHERE key = ?", (json.dumps(have + new), key))
+
+    def find_same(self, item: UpcomingItem) -> dict[str, Any] | None:
+        """The stored item that is the same real-world thing as this one (by key or alias first, then by structure)."""
+        mine = {item.key, *item.aliases}
+        stored = self.list_items()
+        for s in stored:
+            if mine & {s["key"], *s.get("aliases", [])}:
+                return s
+        for s in stored:
+            if same_thing(item, from_row(s)):
+                return s
+        return None
+
+    def delete_item(self, key: str) -> None:
+        for ch in self.list_checks(item_key=key):
+            self._run("DELETE FROM follow_readings WHERE check_id = ?", (ch["id"],))
+        self._run("DELETE FROM follow_checks WHERE item_key = ?", (key,))
+        self._run("DELETE FROM follow_items WHERE key = ?", (key,))
+
+    def _history(self, key: str) -> int:
+        row = self._one("SELECT (SELECT COUNT(*) FROM follow_checks WHERE item_key = ?) + "
+                        "(SELECT COUNT(*) FROM follow_readings WHERE check_id IN (SELECT id FROM follow_checks WHERE item_key = ?)) AS n",
+                        (key, key))
+        return int(row["n"]) if row else 0
+
+    def merge_duplicates(self) -> int:
+        """Folds items that are one real-world thing into the one with the most history (checks and readings); returns how many were
+        dropped. The other's keys become aliases, its checks move over (a check the kept item already has is dropped, its readings
+        move to the kept one's), then the duplicate row is deleted."""
+        items = self.list_items()
+        groups: list[list[dict[str, Any]]] = []
+        for it in items:
+            me = from_row(it)
+            for g in groups:
+                if any(same_thing(me, from_row(o)) or {it["key"], *it["aliases"]} & {o["key"], *o["aliases"]} for o in g):
+                    g.append(it)
+                    break
+            else:
+                groups.append([it])
+        dropped = 0
+        for g in groups:
+            if len(g) < 2:
+                continue
+            keep = max(g, key=lambda i: (self._history(i["key"]), -float(i.get("created_at") or 0)))
+            for dup in g:
+                if dup["key"] == keep["key"]:
+                    continue
+                self.add_aliases(keep["key"], [dup["key"], *dup["aliases"]])
+                have = {(c["kind"], json.dumps(c["refs"], sort_keys=True), tuple(c["fields"])): c
+                        for c in self.list_checks(item_key=keep["key"])}
+                for ch in self.list_checks(item_key=dup["key"]):
+                    twin = have.get((ch["kind"], json.dumps(ch["refs"], sort_keys=True), tuple(ch["fields"])))
+                    if twin is None:
+                        self._run("UPDATE follow_checks SET item_key = ? WHERE id = ?", (keep["key"], ch["id"]))
+                    else:
+                        self._run("UPDATE follow_readings SET check_id = ? WHERE check_id = ?", (twin["id"], ch["id"]))
+                        self._run("DELETE FROM follow_checks WHERE id = ?", (ch["id"],))
+                self._run("DELETE FROM follow_items WHERE key = ?", (dup["key"],))
+                dropped += 1
+        return dropped
 
     def update_item_state(self, key: str, state: str) -> bool:
         cur = self._run("UPDATE follow_items SET state = ?, updated_at = ? WHERE key = ?", (state, self.clock(), key))
@@ -162,6 +245,7 @@ class FollowStore:
         d["refs"] = json.loads(d["refs"] or "{}") if isinstance(d.get("refs"), str) else (d.get("refs") or {})
         d["plan"] = json.loads(d["plan"] or "{}") if isinstance(d.get("plan"), str) else (d.get("plan") or {})
         d["prep"] = json.loads(d["prep"] or "[]") if isinstance(d.get("prep"), str) else (d.get("prep") or [])
+        d["aliases"] = json.loads(d.get("aliases") or "[]") if isinstance(d.get("aliases"), str) else (d.get("aliases") or [])
         return d
 
     # ---- checks ----------------------------------------------------------------
@@ -270,13 +354,17 @@ class FollowStore:
         row = self._one("SELECT calls FROM follow_usage WHERE source = ? AND month = ?", (source, month))
         if not row:
             return 0
-        return int(row[0]) if isinstance(row, (tuple, list)) or hasattr(row, "__getitem__") else int(row["calls"])
+        if isinstance(row, dict):
+            return int(row.get("calls", 0))
+        return int(row[0]) if isinstance(row, (tuple, list)) else int(row["calls"])
 
     def notified_allowance(self, source: str, month: str) -> bool:
         row = self._one("SELECT notified_allowance FROM follow_usage WHERE source = ? AND month = ?", (source, month))
         if not row:
             return False
-        return bool(row[0]) if isinstance(row, (tuple, list)) or hasattr(row, "__getitem__") else bool(row["notified_allowance"])
+        if isinstance(row, dict):
+            return bool(row.get("notified_allowance", 0))
+        return bool(row[0]) if isinstance(row, (tuple, list)) else bool(row["notified_allowance"])
 
     def set_notified_allowance(self, source: str, month: str, notified: bool = True) -> None:
         self._run(
@@ -284,6 +372,32 @@ class FollowStore:
             "ON CONFLICT(source, month) DO UPDATE SET notified_allowance = excluded.notified_allowance",
             (source, month, 1 if notified else 0),
         )
+
+    def credentials(self) -> list[dict[str, Any]]:
+        if self._store is not None and hasattr(self._store, "credentials"):
+            return self._store.credentials()
+        has_table = bool(self._all("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'credentials'"))
+        if has_table:
+            rows = self._all("SELECT * FROM credentials ORDER BY created_at")
+            out = []
+            for r in rows:
+                col_keys = r.keys() if hasattr(r, "keys") else ()
+                keyring = bool(r["keyring"]) if "keyring" in col_keys else False
+                has_sec = bool(r["secret"]) or keyring
+                raw_hosts = r["hosts"] if "hosts" in col_keys else "[]"
+                try:
+                    hosts = json.loads(raw_hosts) if isinstance(raw_hosts, str) else list(raw_hosts or [])
+                except Exception:
+                    hosts = []
+                out.append({
+                    "name": r["name"] if "name" in col_keys else "",
+                    "label": r["label"] if "label" in col_keys else "",
+                    "kind": r["kind"] if "kind" in col_keys else "",
+                    "hosts": hosts,
+                    "has_secret": has_sec,
+                })
+            return out
+        return []
 
 
 class _DummyLock:

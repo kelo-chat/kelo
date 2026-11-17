@@ -27,6 +27,10 @@ public enum Versioning {
 
     public static let serverHeader = "X-Kelo-Server"
     public static let appHeader = "X-Kelo-App"
+    /// Where this build is updated from, sent with every call (docs/version-notices.md): "appstore", "play", "download" or "msstore".
+    public static let channelHeader = "X-Kelo-App-Channel"
+    /// On /api/about and /api/profile: the newest released app that works with this server (when newer than this one).
+    public static let updateHeader = "X-Kelo-App-Update"
     /// 426 `{"code": "app_too_old"}`: the server needs a newer app.
     public static let appTooOldCode = "app_too_old"
 
@@ -39,4 +43,10 @@ public enum Versioning {
     /// This running app's header value (CFBundleVersion of the main bundle).
     public static let currentAppHeader: String =
         appHeaderValue(build: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
+
+    /// The channel of this running app: "appstore" for an App Store install (its receipt is the production one); "" for TestFlight,
+    /// a simulator or a debug build, which the App Store version list says nothing about (no banner there).
+    public static let currentChannel: String = channel(receiptName: Bundle.main.appStoreReceiptURL?.lastPathComponent)
+
+    public static func channel(receiptName: String?) -> String { receiptName == "receipt" ? "appstore" : "" }
 }

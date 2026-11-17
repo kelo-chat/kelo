@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">服务器地址</string>
+    <string name="server_address_title">更改服务器地址</string>
+    <string name="server_address_body">当前连接的地址：%1$s\n要换到同一台 Kelo 服务器的新地址，请输入新的 https 地址。聊天和密钥都会保留，无需重新连接。</string>
+    <string name="server_address_switch">更改</string>
+    <string name="server_address_checking">正在检查…</string>
+    <string name="server_address_invalid">这看起来不是 https 地址。请这样输入：https://kelo.example.com。</string>
+    <string name="server_address_unreachable">无法连接到该地址。请检查地址和网络后重试。</string>
+    <string name="server_address_other">该地址属于另一台服务器，所以没有做任何更改。要连接其他服务器，请先退出登录，再从头连接。</string>
+    <string name="server_address_same">这部手机已在使用该地址。</string>
+    <string name="server_address_done">服务器地址已更改。</string>
+</resources>

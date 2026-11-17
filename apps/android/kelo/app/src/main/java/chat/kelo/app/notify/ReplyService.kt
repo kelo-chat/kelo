@@ -34,15 +34,21 @@ class ReplyService : Service() {
             return START_NOT_STICKY
         }
         val container = appContainer
+        val send = intent?.takeIf { it.action == ACTION_SEND_REPLY }
         try {
             ServiceCompat.startForeground(
                 this, Notifier.WORKING_ID, container.notifier.working(container.replyWatch.live),
                 if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
             )
         } catch (e: Exception) {
+            if (send != null) {   // the system refused: say so on the notification the reply was typed in
+                ReplyNotifierNotes(applicationContext, container.notifier)
+                    .failed(send.getStringExtra(ApprovalActionRules.EXTRA_NOTE_TAG), send.getIntExtra(ApprovalActionRules.EXTRA_NOTE_ID, 0))
+            }
             stopSelf()
             return START_NOT_STICKY
         }
+        if (send != null) sendReply(container, send)
         if (!watching) {
             watching = true
             scope.launch {
@@ -54,6 +60,25 @@ class ReplyService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    /**
+     * A reply typed into a notification ([ReplyActionReceiver]): POST /api/turns, then followed by the reply watch like a reply of the
+     * chat, so the answer arrives as the normal reply notification. [ReplyRunner] starts the watch before its first request, so the
+     * wait below sees the reply as followed.
+     */
+    private fun sendReply(container: chat.kelo.app.AppContainer, send: Intent) {
+        val tag = send.getStringExtra(ApprovalActionRules.EXTRA_NOTE_TAG)
+        val noteId = send.getIntExtra(ApprovalActionRules.EXTRA_NOTE_ID, 0)
+        val notes = ReplyNotifierNotes(applicationContext, container.notifier)
+        val api = container.sessions.api.value
+        if (api == null) {
+            notes.failed(tag, noteId)
+            stopSelf()
+            return
+        }
+        val runner = ReplyRunner(chat.kelo.app.chat.KeloTurnApi(api), container.replyWatch, notes) { java.util.TimeZone.getDefault().id }
+        scope.launch { runner.run(send.getStringExtra(ReplyActionRules.EXTRA_TEXT), tag, noteId) }
     }
 
     /** Android 15: a dataSync service that ran out of its daily time is told to stop. */
@@ -74,5 +99,7 @@ class ReplyService : Service() {
     companion object {
         const val MAX_MS = 10 * 60 * 1000L
         const val ACTION_STOP = "chat.kelo.app.notify.STOP_REPLY"
+        /** A reply typed into a notification: extras reply_text, note_id, note_tag */
+        const val ACTION_SEND_REPLY = "chat.kelo.app.notify.SEND_REPLY"
     }
 }

@@ -14,6 +14,7 @@ class Reading:
     at: float = field(default_factory=time.time)
     ok: bool = True
     detail: str = ""
+    done: bool = False      # the source says the item is over (a parcel delivered): the item is done
 
     def get(self, key: str, default: Any = None) -> Any:
         return self.fields.get(key, default)
@@ -39,6 +40,23 @@ class Source(ABC):
     async def read(self, refs: dict[str, str]) -> Reading:
         """Read the watched subject; returns Reading(fields={...}, at=ts, ok=bool, detail=str)."""
         ...
+
+    default_fields: ClassVar[tuple[str, ...]] = ("value",)   # the fields a check watches when the plan names none
+
+    def paused(self, refs: dict[str, str]) -> str:
+        """Why this source would cover `refs` but is stopped for now (a monthly allowance used up), else "". The runner then tries
+        the next source of the kind, and tells the check is paused when none is left."""
+        return ""
+
+    def significant(self, field: str, old: Any, new: Any) -> bool:
+        """True if a changed field is worth telling (a source with a continuous reading, like a forecast, ignores small moves).
+        An ignored change is not stored either, so slow drift adds up against the last told value."""
+        return True
+
+    def usage(self) -> dict[str, Any] | None:
+        """This month's calls for the apps and the operator page: {"source", "month", "used", "allowance" | None, "stop_at" | None,
+        "paused"}; None for a source that is not counted."""
+        return None
 
 
 @dataclass

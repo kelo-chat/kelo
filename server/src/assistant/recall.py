@@ -30,11 +30,10 @@ SHOWN_WINDOW = 6               # a section shown within this many user messages 
 INDEXED_DIRS = ("memory",)
 SKIP = {INBOX_FILE}               # shown whole in the turn note already
 JOURNAL_ROWS = 400
-QUERY_TERMS = 24
+QUERY_TERMS = 24               # the rarest of the words that count are used
+CUT_BACK = 2                   # a word nothing matches loses at most this many characters (an ending, a particle)
+QUERY_SCAN = 80                # words read out of one message
 COMMON_SHARE = 0.5             # a word found in more than this share of the sections does not count as a match on its own
-_STOP = {"the", "and", "for", "you", "your", "with", "this", "that", "what", "how", "can", "are", "was", "but", "not", "have", "from",
-         "please", "about", "could", "would", "will", "just", "it", "is", "to", "of", "in", "on", "me", "my", "a", "an", "do", "be"}
-_HANGUL = re.compile(r"[가-힣]")
 
 
 def sections(text: str) -> list[tuple[str, str]]:
@@ -54,17 +53,13 @@ def sections(text: str) -> list[tuple[str, str]]:
 
 
 def query_terms(text: str) -> list[str]:
-    words, out = re.findall(r"\w+", (text or "").lower()), []
-    for w in words:
-        if len(w) < 2 or w in _STOP or w.isdigit() and len(w) < 3:
-            continue
-        forms = [w]
-        if _HANGUL.search(w):    # a particle or ending may follow the word: also its first characters
-            forms += [w[:n] for n in range(len(w) - 1, 1, -1)]
-        for f in forms:
-            if f not in out:
-                out.append(f)
-    return out[:QUERY_TERMS]
+    """The words of a message (two characters or more, a short number is no term), each once, in order. No word list: how common a
+    word is in the indexed sections is decided by `best_sections` (document frequency)."""
+    out: list[str] = []
+    for w in re.findall(r"\w+", (text or "").lower()):
+        if len(w) >= 2 and not (w.isdigit() and len(w) < 3) and w not in out:
+            out.append(w)
+    return out[:QUERY_SCAN]
 
 
 class Recall:
@@ -131,24 +126,44 @@ class Recall:
     def search(self, text: str, k: int = TOP) -> list[dict[str, Any]]:
         """The `k` sections that best match `text` (BM25), best first. A word found in most sections counts for nothing."""
         self.refresh()
-        terms = query_terms(text)
-        if not terms:
+        return best_sections(self.db, self._lock, text, k)
+
+
+def _hits(db: sqlite3.Connection, term: str) -> tuple[str, int]:
+    """(the FTS query, sections matched) for a word as a prefix; a word nothing matches is cut back one character at a time (at most
+    CUT_BACK, never below two) until something does: an ending or a particle that follows a word, in whatever script."""
+    for n in range(len(term), max(1, len(term) - CUT_BACK - 1), -1):
+        if n < 2:
+            break
+        q = '"' + term[:n].replace('"', '') + '"*'
+        df = db.execute("SELECT COUNT(*) FROM sec WHERE sec MATCH ?", (q,)).fetchone()[0]
+        if df:
+            return q, df
+    return '"' + term.replace('"', '') + '"*', 0
+
+
+def best_sections(db: sqlite3.Connection, lock: threading.Lock, text: str, k: int) -> list[dict[str, Any]]:
+    """The `k` rows of an FTS5 table `sec(key, path, heading, body)` that best match `text` (BM25, heading counts double), best first.
+    A word found in more than COMMON_SHARE of the rows counts for nothing; no useful word, no rows."""
+    terms = query_terms(text)
+    if not terms:
+        return []
+    with lock:
+        total = db.execute("SELECT COUNT(*) FROM sec").fetchone()[0]
+        if not total:
             return []
-        with self._lock:
-            total = self.db.execute("SELECT COUNT(*) FROM sec").fetchone()[0]
-            if not total:
-                return []
-            useful = []
-            for t in terms:
-                q = '"' + t.replace('"', '') + '"*'
-                df = self.db.execute("SELECT COUNT(*) FROM sec WHERE sec MATCH ?", (q,)).fetchone()[0]
-                if df and (df <= max(2, COMMON_SHARE * total)):
-                    useful.append(q)
-            if not useful:
-                return []
-            rows = self.db.execute("SELECT key, path, heading, body, bm25(sec, 0.0, 0.0, 2.0, 1.0) AS score FROM sec WHERE sec MATCH ? "
-                                   "ORDER BY score LIMIT ?", (" OR ".join(useful), k)).fetchall()
-        return [{"key": r[0], "path": r[1], "heading": r[2], "text": r[3], "score": r[4]} for r in rows]
+        useful: list[tuple[int, str]] = []
+        for t in terms:
+            q, df = _hits(db, t)
+            if df and (df <= max(2, COMMON_SHARE * total)):
+                useful.append((df, q))
+        useful.sort(key=lambda x: x[0])   # the rarest words first: a word found nearly everywhere (any language) counts for little
+        useful = [q for _, q in useful[:QUERY_TERMS]]
+        if not useful:
+            return []
+        rows = db.execute("SELECT key, path, heading, body, bm25(sec, 0.0, 0.0, 2.0, 1.0) AS score FROM sec WHERE sec MATCH ? "
+                          "ORDER BY score LIMIT ?", (" OR ".join(useful), k)).fetchall()
+    return [{"key": r[0], "path": r[1], "heading": r[2], "text": r[3], "score": r[4]} for r in rows]
 
 
 class TurnRecall:

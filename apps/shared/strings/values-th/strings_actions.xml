@@ -8,4 +8,8 @@
     <string name="actions_state_failed">ไม่สำเร็จ</string>
     <string name="actions_empty">Kelo ยังไม่ได้ทำสิ่งใดภายนอก</string>
     <string name="actions_outside_text_note">สิ่งที่ Kelo อ่านจากหน้าเว็บ อีเมล และไฟล์จะถือว่าเป็นข้อมูล ไม่ใช่คำสั่ง ข้อความดังกล่าวไม่สามารถสั่งให้ Kelo ชำระเงิน ส่ง หรือลบสิ่งใดได้</string>
+    <string name="did_filter_all">ทั้งหมด</string>
+    <string name="did_filter_actions">ส่งและแก้ไข</string>
+    <string name="did_filter_browser">เบราว์เซอร์</string>
+    <string name="did_filter_tasks">งาน</string>
 </resources>

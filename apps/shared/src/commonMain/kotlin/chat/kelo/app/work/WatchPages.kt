@@ -36,7 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -104,7 +104,7 @@ fun WatcherRow(vm: AgentViewModel, w: Watcher, onOpen: () -> Unit) {
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(w.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = c.ink, maxLines = 1,
+                Text(w.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = c.ink, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                 StatusChip(watchWord(w.state), watchTone(w.state))
             }
@@ -329,7 +329,7 @@ fun SchedulesPage(vm: AgentViewModel, onBack: () -> Unit, onNew: () -> Unit, onO
                                         Modifier.fillMaxWidth().background(c.card).clickable(role = Role.Button) { onOpen(s.id) }.padding(vertical = 8.dp),
                                         verticalArrangement = Arrangement.spacedBy(2.dp),
                                     ) {
-                                        Text(s.name, style = MaterialTheme.typography.bodyLarge, color = if (s.enabled) c.ink else c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(s.name, style = MaterialTheme.typography.bodyLarge, color = if (s.enabled) c.ink else c.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         val sub = if (!s.enabled) string(Res.string.work_schedule_off) else chat.kelo.app.agent.scheduleText(s)
                                         if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     }
@@ -395,7 +395,7 @@ fun ArchivedSchedulesPage(vm: AgentViewModel, onBack: () -> Unit) {
                                     }) {
                                         Row(Modifier.fillMaxWidth().background(c.card).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                Text(s.name, style = MaterialTheme.typography.bodyLarge, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(s.name, style = MaterialTheme.typography.bodyLarge, color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                                 Text(chat.kelo.app.agent.scheduleText(s), style = MaterialTheme.typography.bodySmall, color = c.muted)
                                                 s.purgeAt?.let { Text(string(Res.string.work_archive_until, relText(it)), style = MaterialTheme.typography.labelSmall, color = c.muted) }
                                             }

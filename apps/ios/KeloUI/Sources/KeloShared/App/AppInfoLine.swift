@@ -16,28 +16,32 @@ public enum AppInfoLine {
     }
 }
 
-/// The commit the app's source came from and whether files differed from it, as the build wrote them into Info.plist
-/// (`KeloSourceCommit` / `KeloSourceDirty`, from the build settings KELO_SOURCE_COMMIT / KELO_SOURCE_DIRTY that tools/build/ios.sh passes;
-/// apps/ios/Kelo/project.yml). A build that was not given them has "" and "NO", or the unexpanded "$(KELO_SOURCE_COMMIT)", which `SourceLink` ignores.
+/// Where the app's source is, as the build wrote it into Info.plist: the marketing version (CFBundleShortVersionString, tag `ios-<version>`
+/// in the public repo) and whether files differed from the commit it was built from (`KeloSourceDirty`, from KELO_SOURCE_DIRTY that
+/// tools/build/ios.sh passes; apps/ios/Kelo/project.yml). The private commit is NOT embedded by default (KELO_SOURCE_COMMIT is empty
+/// unless a public-source builder sets it), so a build of the public tag is the store build. An unexpanded "$(...)" has no tag.
 public struct AppSource: Equatable, Sendable {
-    public var commit: String
+    public var version: String
     public var dirty: Bool
 
-    public init(commit: String, dirty: Bool) { self.commit = commit; self.dirty = dirty }
+    public init(version: String, dirty: Bool) { self.version = version; self.dirty = dirty }
 
     public static var current: AppSource { parse(Bundle.main.infoDictionary) }
 
     public static func parse(_ info: [String: Any]?) -> AppSource {
-        let commit = ((info?["KeloSourceCommit"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let version = ((info?["CFBundleShortVersionString"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let dirty: Bool
         switch info?["KeloSourceDirty"] {
         case let flag as Bool: dirty = flag
         case let text as String: dirty = ["yes", "true", "1"].contains(text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
         default: dirty = false
         }
-        return AppSource(commit: commit, dirty: dirty)
+        return AppSource(version: version, dirty: dirty)
     }
 
-    /// The page of this commit on GitHub (a clean build of a full sha), else nil.
-    public var url: URL? { SourceLink.url(commit: commit, dirty: dirty).flatMap(URL.init(string:)) }
+    /// `ios-<marketing version>`, or nil when the version is not a plain number.
+    public var tag: String? { SourceLink.appTag(platform: "ios", version: version) }
+
+    /// The release page on GitHub (a clean build), else nil.
+    public var url: URL? { SourceLink.url(tag: tag, dirty: dirty).flatMap(URL.init(string:)) }
 }

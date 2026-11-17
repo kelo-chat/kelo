@@ -1,0 +1,7 @@
+{
+  "note": "Currency symbols and signs -> the ISO 4217 codes they may mean (data, not words). Used by receipt.parse_money.",
+  "symbols": {
+    "₩": ["KRW"], "원": ["KRW"], "us$": ["USD"], "$": ["USD", "CAD", "AUD", "NZD", "SGD", "HKD", "MXN", "TWD"], "€": ["EUR"],
+    "£": ["GBP"], "¥": ["JPY", "CNY"], "￥": ["JPY", "CNY"], "円": ["JPY"], "元": ["CNY"], "₹": ["INR"], "฿": ["THB"], "₫": ["VND"]
+  }
+}

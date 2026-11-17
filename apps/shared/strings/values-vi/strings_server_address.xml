@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Địa chỉ máy chủ</string>
+    <string name="server_address_title">Đổi địa chỉ máy chủ</string>
+    <string name="server_address_body">Địa chỉ đang kết nối: %1$s\nĐể chuyển sang địa chỉ mới của cùng máy chủ Kelo, hãy nhập địa chỉ https mới. Cuộc trò chuyện và khóa vẫn giữ nguyên, bạn không cần kết nối lại.</string>
+    <string name="server_address_switch">Đổi</string>
+    <string name="server_address_checking">Đang kiểm tra…</string>
+    <string name="server_address_invalid">Đây không giống địa chỉ https. Hãy nhập như sau: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">Không thể kết nối tới địa chỉ đó. Hãy kiểm tra địa chỉ và kết nối mạng rồi thử lại.</string>
+    <string name="server_address_other">Địa chỉ đó thuộc về một máy chủ khác nên không có gì thay đổi. Để kết nối máy chủ khác, hãy đăng xuất rồi kết nối lại từ đầu.</string>
+    <string name="server_address_same">Điện thoại này đã dùng địa chỉ đó.</string>
+    <string name="server_address_done">Đã đổi địa chỉ máy chủ.</string>
+</resources>

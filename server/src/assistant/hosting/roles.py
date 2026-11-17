@@ -49,6 +49,7 @@ class RoleSpec:
     memory_limit_mb: int | None = None      # None = no limit by default (the owner may set one)
     health_path: str | None = "/healthz"    # None = checked by connecting to the port, or not checked
     env_names: tuple[str, ...] = ()         # environment variables it reads (never values)
+    required: bool = False
 
 
 def _rw(name: str, mount_path: str) -> DataFolder:
@@ -67,6 +68,7 @@ ROLES: dict[str, RoleSpec] = {role.name: role for role in (
         env_names=("WORKROOM_SOCKET_DIR", "BROWSER_CDP_HOST", "ASSISTANT_CLI_CLAUDE_URL", "ASSISTANT_CLI_AGY_URL", "KELO_ROUTE_DIR",
                    "KELO_VPN_DIR", "BROWSER_DOWNLOADS_DIR", "BROWSER_LANG", "ASSISTANT_UPDATER_URL", "KEYRING_URL", "KEYRING_TOKEN",
                    "ANDROID_BRIDGE_URL", "ANDROID_BRIDGE_TOKEN", "ANDROID_DEVICE"),
+        required=True,
     ),
     RoleSpec(
         name="browser", executable="chrome", listen_port=9223, depends_on=("egress",), health_path="/json/version",
@@ -77,7 +79,7 @@ ROLES: dict[str, RoleSpec] = {role.name: role for role in (
     RoleSpec(
         name="egress", entry_module="assistant.egress", listen_port=3128, health_path=None,
         data_folders=(_ro("kelo-route", "/run/kelo-route"),), memory_limit_mb=256,
-        env_names=("EGRESS_RELAY",),
+        required=True,
     ),
     RoleSpec(
         name="vpn", entry_module="assistant.vpn_sidecar", listen_port=1080, health_path=None,
@@ -86,7 +88,7 @@ ROLES: dict[str, RoleSpec] = {role.name: role for role in (
     RoleSpec(
         name="keyring", entry_module="assistant.keyring_service", listen_port=9500,
         data_folders=(_rw("keyring-state", "/keyring-state"),), memory_limit_mb=128,
-        env_names=("KEYRING_TOKEN", "KEYRING_STATE"),
+        env_names=("KEYRING_TOKEN", "KEYRING_STATE"), required=True,
     ),
     RoleSpec(
         name="android", executable="bridge.py", listen_port=8090,
@@ -97,7 +99,7 @@ ROLES: dict[str, RoleSpec] = {role.name: role for role in (
         name="workroom", entry_module="assistant.workroom_agent", health_path=None,
         data_folders=(_rw("workroom-io", "/run/workroom"), _rw("workroom-scratch", "/work"), _rw("workroom-tools", "/tools")),
         network_access=NetworkAccess.NONE, memory_limit_mb=2048,
-        env_names=("WORKROOM_DISK",),
+        env_names=("WORKROOM_DISK",), required=True,
     ),
     RoleSpec(
         name="claude-cli", entry_module="assistant.cli_runner", listen_port=9300,

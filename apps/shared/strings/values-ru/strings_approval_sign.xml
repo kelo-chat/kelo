@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ru text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">Подтвердите платёж</string>
+    <string name="approval_sign_subtitle">Подтвердите отпечатком пальца или лицом</string>
+    <string name="approval_sign_failed">Не удалось подтвердить этот платёж на этом телефоне. Попробуйте ещё раз.</string>
+    <string name="approval_sign_key_lost">Ключ подтверждения этого телефона не найден. Снова свяжите этот телефон с сервером.</string>
+    <string name="approval_pay_on_phone">Подтверждайте платежи в приложении Kelo на телефоне.</string>
+</resources>

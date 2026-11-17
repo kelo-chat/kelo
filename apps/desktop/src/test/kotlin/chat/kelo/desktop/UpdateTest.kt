@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -221,6 +222,11 @@ class UpdateTest {
         }
         val offer = ko.get(Res.string.update_available, "1.0.3", SharedUpdateRules.size(installer.size.toLong()))
         ui.waitText("매일 30분 걷기")
+        // since the new-version popup (3fc808f9) the first sight of a newer build is the popup, and the banner stays hidden under it;
+        // "Later" closes the popup and the banner shows
+        ui.waitText(ko.get(Res.string.update_popup_title, "1.0.3"))
+        compose.onAllNodes(hasText(offer)).assertCountEquals(0)
+        compose.onAllNodes(hasText(ko.get(Res.string.update_popup_later)) and hasClickAction()).onFirst().performClick()
         ui.waitText(offer)
         app.settings.setTheme("light"); ui.shot("v18-update-banner-ko-light")
         app.settings.setTheme("dark"); ui.shot("v18-update-banner-ko-dark")

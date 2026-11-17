@@ -14,7 +14,7 @@ from assistant.store import Store
 from assistant.tools import order as order_mod
 
 from fixtures.fake_shop import Shop, ShopServer, browser_args
-from fixtures.order_harness import (CVC, KR, KR_ITEMS, KR_NEXT, KR_SAVED, KR_SAVED_TEXT, OTHER, US, VISA, Env, kr_pay, kr_to_checkout,
+from fixtures.order_harness import (CVC, KR, KR_ITEMS, KR_NEXT, KR_SAVED, KR_SAVED_TEXT, OTHER, US, VISA, Env, kr_pay, kr_to_checkout, review,
                                     sign_in_directly, us_pay, us_to_checkout, US_NEXT)
 
 pw = pytest.importorskip("playwright.async_api")
@@ -87,7 +87,7 @@ async def test_signed_in_saved_address_auto_pay_off_is_one_card(ctx, shop):
     env = await env_for(ctx, signed_in="kim")
     e2e_card(env.wallet)
     run = await env.run([*kr_to_checkout("after"), KR_SAVED, KR_NEXT, *kr_pay("after", ship_to=KR_SAVED_TEXT)])
-    assert run.card_tools() == ["confirm_purchase"]
+    assert run.card_tools() == ["checkout_review"]
     COUNTS["kr_saved_autopay_off"] = len(run.cards)
     card = run.cards[0].extra
     pay = card["payment"]
@@ -101,7 +101,6 @@ async def test_signed_in_saved_address_auto_pay_off_is_one_card(ctx, shop):
     assert o["cart"] == [{"item": "블루 머그", "color": "화이트", "qty": 2}] and o["shipping"] == {"saved": SAVED["text"]}
     assert o["card_last4"] == "4242"
     # the steps that only prepared the order went through as part of it and were logged
-    assert ("browser_click", "pay", "www.mugshop.example") in env.logged
     assert all(not r.is_error for r in run.results), [(r.name, r.output[:200]) for r in run.results if r.is_error]
 
 
@@ -123,7 +122,7 @@ async def test_new_site_address_typed_from_the_profile_is_one_card(ctx, shop):
     e2e_card(env.wallet)
     env.book.add(HOME_KR)
     run = await env.run([*kr_to_checkout("after"), ("browser_fill_shipping", {}), KR_NEXT, *kr_pay("after")])
-    assert run.card_tools() == ["confirm_purchase"]
+    assert run.card_tools() == ["checkout_review"]
     COUNTS["kr_profile_typed"] = len(run.cards)
     ship = run.cards[0].extra["payment"]["shipping"]
     assert ship["source"] == "profile" and ship["label"] == "집" and ship["name"] == "홍길동" and ship["phone"] == "+821012345678"
@@ -143,7 +142,7 @@ async def test_not_signed_in_with_a_saved_login_that_asks(ctx, shop):
     env.store.set_login("mugshop", "kim", "pw-kim-1")
     run = await env.run([*kr_to_checkout("after"), ("browser_login", {"name": "mugshop"}), KR_SAVED, KR_NEXT,
                          *kr_pay("after", ship_to=KR_SAVED_TEXT)])
-    assert run.card_tools() == ["browser_login", "confirm_purchase"]
+    assert run.card_tools() == ["browser_login", "checkout_review"]
     COUNTS["kr_login_asks"] = len(run.cards)
     assert "your order" in run.cards[0].detail or "주문" in run.cards[0].detail   # the login card says it is for this order
     assert len(placed(shop)) == 1
@@ -157,7 +156,7 @@ async def test_not_signed_in_with_an_auto_allowed_login_is_one_card(ctx, shop):
     env.store.set_auto_allow("mugshop", True)
     run = await env.run([*kr_to_checkout("after"), ("browser_login", {"name": "mugshop"}), KR_SAVED, KR_NEXT,
                          *kr_pay("after", ship_to=KR_SAVED_TEXT)])
-    assert run.card_tools() == ["confirm_purchase"]
+    assert run.card_tools() == ["checkout_review"]
     COUNTS["kr_login_auto"] = len(run.cards)
 
 
@@ -170,7 +169,7 @@ async def test_a_sign_up_still_asks_for_its_own_steps(ctx, shop):
               ("browser_type", {"selector": "input[name=password]", "text": "S3cret-pass"}),
               ("browser_click", {"selector": "button:has-text('가입하기')"})]
     run = await env.run([*kr_to_checkout("after"), *signup, ("browser_fill_shipping", {}), KR_NEXT, *kr_pay("after")])
-    assert run.card_tools() == ["browser_type", "browser_type", "browser_click", "confirm_purchase"]
+    assert run.card_tools() == ["browser_type", "browser_click", "checkout_review"]   # the e-mail asks nothing; the password field, the sign-up click and the payment do
     COUNTS["kr_signup"] = len(run.cards)
     assert shop.signups == ["new.user@example.org"] and len(placed(shop)) == 1
 
@@ -189,7 +188,7 @@ async def test_no_address_anywhere_asks_once_with_a_form_then_one_card(ctx, shop
     run = await env.run([*kr_to_checkout("after"), ("ask_shipping", {"country": "KR", "prefill": remembered}),
                          ("browser_fill_shipping", {}), KR_NEXT, *kr_pay("after")])
     forms = [u for u in run.ui if u.get("type") == "shipping_form"]
-    assert len(forms) == 1 and run.card_tools() == ["confirm_purchase"]
+    assert len(forms) == 1 and run.card_tools() == ["checkout_review"]
     COUNTS["kr_form_then_card"] = len(run.cards)
     f = forms[0]
     assert f["country"] == "KR" and f["prefill"] == remembered and f["save"] is True and f["label"] in ("Home", "집")
@@ -207,7 +206,7 @@ async def test_no_address_and_no_card_one_form_asks_both_then_one_card(ctx, shop
                          *kr_pay("after", card=None, pay_with="사이트 결제 (무통장 입금)")])
     [f] = [u for u in run.ui if u.get("type") == "shipping_form"]
     assert f["ask_payment"] is True                                     # no usable wallet card: the same form asks how to pay
-    assert run.card_tools() == ["confirm_purchase"]
+    assert run.card_tools() == ["checkout_review"]
     COUNTS["kr_form_no_card"] = len(run.cards)
     assert "site's own payment way" in run.result("ask_shipping").output
     assert env.book.profiles() == []                                     # "use for next orders" was off: not saved
@@ -223,7 +222,7 @@ async def test_us_checkout_filled_from_a_us_profile_is_one_card(ctx, shop):
     env.book.add(OFFICE_US)
     run = await env.run([*us_to_checkout("after"), ("browser_click", {"selector": "#apply-coupon"}), ("browser_fill_shipping", {}),
                          US_NEXT, *us_pay("after")])
-    assert run.card_tools() == ["confirm_purchase"], [(c.tool, c.detail) for c in run.cards]
+    assert run.card_tools() == ["checkout_review"], [(c.tool, c.detail) for c in run.cards]
     COUNTS["us_profile_typed"] = len(run.cards)
     [o] = placed(shop, "www.usmugs.example")
     assert o["shipping"] == {"ship_name": "Jane Roe", "ship_a1": "1600 Amphitheatre Pkwy", "ship_a2": "Bldg 43", "ship_city": "Mountain View",
@@ -257,21 +256,13 @@ async def test_read_only_postcode_fields_get_their_value_set(ctx, shop):
     e2e_card(env.wallet)
     env.book.add(HOME_KR)
     run = await env.run([*kr_to_checkout("after"), ("browser_fill_shipping", {}), KR_NEXT, *kr_pay("after")])
-    assert run.card_tools() == ["confirm_purchase"]
+    assert run.card_tools() == ["checkout_review"]
     assert placed(shop)[0]["shipping"]["zipcode"] == "06236" and placed(shop)[0]["shipping"]["addr1"].startswith("서울특별시")
 
 
 # ================================================================ what still asks during an order
 def deny_all(req):
     return False
-
-
-async def test_a_pay_click_on_another_site_during_an_order_asks(ctx, shop):
-    env = await env_for(ctx, signed_in="kim")
-    run = await env.run([*kr_to_checkout("after"), ("browser_open", {"url": f"{OTHER}/product/1"}),
-                         ("browser_click", {"selector": "button:has-text('결제하기')"})], answer=deny_all)
-    assert run.card_tools() == ["browser_click"] and not run.cards[0].allowed
-    assert placed(shop, "www.othershop.example") == []
 
 
 async def test_deleting_and_reviewing_and_account_changes_ask(ctx, shop):
@@ -295,62 +286,32 @@ async def test_typing_a_password_or_an_address_that_is_not_the_orders_asks(ctx, 
                          ("browser_type", {"selector": "input[name=addr1]", "text": "부산광역시 해운대구 센텀로 1"}),
                          ("browser_open", {"url": f"{KR}/login"}),
                          ("browser_type", {"selector": "input[name=password]", "text": "pw-lee-1"})], answer=deny_all)
-    # the name is the saved profile's (covered); an address Kelo only remembers and a password ask
-    assert run.card_tools() == ["browser_type", "browser_type"]
-    assert "부산" in run.cards[0].args["text"] and run.cards[1].args["selector"] == "input[name=password]"
+    # typing a name or an address sends nothing (a field's name decides nothing); a password field asks by its type
+    assert run.card_tools() == ["browser_type"]
+    assert run.cards[0].args["selector"] == "input[name=password]"
 
 
 async def test_a_second_payment_in_the_same_order_asks_even_with_auto_pay(ctx, shop):
     env = await env_for(ctx, signed_in="kim")
     auto_card(env.wallet)
     env.wallet.mark_site("www.mugshop.example")
-    run = await env.run([*kr_to_checkout("after"), KR_SAVED, KR_NEXT, *kr_pay("after", ship_to=KR_SAVED_TEXT),
-                         ("confirm_purchase", {"summary": "블루 머그 1개 더", "amount": 12000, "currency": "KRW", "site": "www.mugshop.example",
-                                               "card": "생활비 카드", "items": KR_ITEMS})], answer=deny_all)
-    assert run.card_tools() == ["confirm_purchase"]
-    assert run.cards[0].extra["card"]["reason"] == "order_again"
+    await env.run([*kr_to_checkout("after"), KR_SAVED, KR_NEXT, *kr_pay("after", ship_to=KR_SAVED_TEXT)], answer=deny_all)
+    _, args = review("블루 머그 1개 더", 12000, "KRW", "www.mugshop.example", card="생활비 카드", items=KR_ITEMS)
+    from assistant.tools.purchase import _confirm_args
+    tool = env.by_name["checkout_review"]
+    assert tool.auto_approve(args) is False                               # one payment per order: the next one asks even with auto-pay
+    assert tool.approval_extra("ap1", args)["card"]["reason"] == "order_again"
     assert len(placed(shop)) == 1
-
-
-async def test_the_order_ends_after_payment(ctx, shop):
-    env = await env_for(ctx, signed_in="kim")
-    auto_card(env.wallet)
-    env.wallet.mark_site("www.mugshop.example")
-    after = [("browser_open", {"url": f"{KR}/product/1"}), ("browser_click", {"selector": "#buy"})]
-    run = await env.run([*kr_to_checkout("after"), KR_SAVED, KR_NEXT, *kr_pay("after", ship_to=KR_SAVED_TEXT), *after], answer=deny_all)
-    assert run.card_tools() == ["browser_click"]                         # paid: "구매하기" asks again
 
 
 async def test_the_order_ends_when_the_payment_is_denied(ctx, shop):
     env = await env_for(ctx, signed_in="kim")
     e2e_card(env.wallet)
-    again = [("browser_open", {"url": f"{KR}/product/1"}), ("browser_click", {"selector": "#buy"})]
     run = await env.run([*kr_to_checkout("after"), KR_SAVED, KR_NEXT, ("browser_read", {}),
-                         ("confirm_purchase", {"summary": "블루 머그 x2", "amount": 24000, "currency": "KRW", "site": "www.mugshop.example",
-                                               "card": "생활비 카드"}), *again], answer=deny_all)
-    assert run.card_tools() == ["confirm_purchase", "browser_click"]
-    assert "order on mugshop.example is closed" in run.result("confirm_purchase").output
+                         review("블루 머그 x2", 24000, "KRW", "www.mugshop.example", card="생활비 카드")], answer=deny_all)
+    assert run.card_tools() == ["checkout_review"]
+    assert "order on mugshop.example is closed" in run.result("checkout_review").output
     assert placed(shop) == []
-
-
-async def test_the_order_ends_after_its_time(ctx, shop, monkeypatch):
-    env = await env_for(ctx, signed_in="kim")
-    start = time.time()
-    env.orders.clock = lambda: start
-    first = await env.run([("browser_open", {"url": f"{KR}/product/1"}), ("begin_order", {"site": "www.mugshop.example", "what": "머그"}),
-                           ("browser_click", {"selector": "#buy"})], turn_id="same")
-    assert first.cards == []
-    env.orders.clock = lambda: start + order_mod.ORDER_MINUTES * 60 + 1
-    later = await env.run([("browser_click", {"selector": "button:has-text('주문하기')"})], answer=deny_all, turn_id="same")
-    assert later.card_tools() == ["browser_click"]
-
-
-async def test_the_order_belongs_to_its_task(ctx, shop):
-    env = await env_for(ctx, signed_in="kim")
-    await env.run([("browser_open", {"url": f"{KR}/product/1"}), ("begin_order", {"site": "www.mugshop.example", "what": "머그"})],
-                  turn_id="one")
-    other = await env.run([("browser_click", {"selector": "#buy"})], answer=deny_all, turn_id="two")
-    assert other.card_tools() == ["browser_click"]                       # another reply does not ride on that order
 
 
 async def test_begin_order_refuses_another_site_than_the_page(ctx, shop):
@@ -362,7 +323,7 @@ async def test_begin_order_refuses_another_site_than_the_page(ctx, shop):
 def test_card_count_table_is_complete():
     """Runs last in this file: every scenario of the table was measured (the numbers are printed with -s)."""
     want = {"kr_saved_autopay_off": 1, "kr_saved_autopay_on": 0, "kr_profile_typed": 1, "kr_login_asks": 2, "kr_login_auto": 1,
-            "kr_signup": 4, "kr_form_then_card": 1, "kr_form_no_card": 1, "us_profile_typed": 1, "schedule_run": 0}
+            "kr_signup": 3, "kr_form_then_card": 1, "kr_form_no_card": 1, "us_profile_typed": 1, "schedule_run": 0}
     if not COUNTS:
         pytest.skip("the browser scenarios did not run")
     print("\ncard counts:", COUNTS)

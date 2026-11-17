@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">सर्वर का पता</string>
+    <string name="server_address_title">सर्वर का पता बदलें</string>
+    <string name="server_address_body">जुड़ा हुआ पता: %1$s\nउसी Kelo सर्वर के नए पते पर जाने के लिए नया https पता लिखें। आपकी चैट और कुंजियाँ वैसी ही रहेंगी, और दोबारा जुड़ने की ज़रूरत नहीं है।</string>
+    <string name="server_address_switch">बदलें</string>
+    <string name="server_address_checking">जाँच हो रही है…</string>
+    <string name="server_address_invalid">यह https पता नहीं लग रहा। इसे ऐसे लिखें: https://kelo.example.com।</string>
+    <string name="server_address_unreachable">उस पते तक पहुँच नहीं हो सकी। पता और अपना कनेक्शन जाँचें, फिर दोबारा कोशिश करें।</string>
+    <string name="server_address_other">वह पता किसी दूसरे सर्वर का है, इसलिए कुछ नहीं बदला। दूसरे सर्वर से जुड़ने के लिए लॉग आउट करें और शुरू से जोड़ें।</string>
+    <string name="server_address_same">यह फ़ोन पहले से यही पता इस्तेमाल कर रहा है।</string>
+    <string name="server_address_done">सर्वर का पता बदल गया।</string>
+</resources>

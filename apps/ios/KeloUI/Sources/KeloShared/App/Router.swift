@@ -165,6 +165,8 @@ public final class Router {
     public var chatEntryFocus: String?
     /// A reply started outside the chat (an offer card on the Work page): the chat follows it, then clears this.
     public var chatFollowTurn: String?
+    /// The chat's search screen is open (the magnifier in the shell's header, on the chat tab only).
+    public var chatSearch = false
     /// Counts taps on the tab that is already open at its start (pages watch their own entry to scroll to the top).
     public private(set) var reselects: [KeloTab: Int] = [:]
     /// Who asked the header and tab bar to step aside (a full-screen page, the keyboard on the chat).
@@ -183,8 +185,12 @@ public final class Router {
 
     public func depth(_ t: KeloTab) -> Int { paths[t]?.count ?? 0 }
 
-    public var headerHidden: Bool { (nestTab == nil && depth(tab) > 0) || chromeAskers.contains { $0 != Self.keyboardAsker } }
-    public var barHidden: Bool { (nestTab == nil && depth(tab) > 0) || !chromeAskers.isEmpty }
+    /// The window has two panes (the shell sets it): a pushed page of the list tabs opens in the second pane, so the header and the
+    /// bar stay; the chat's own pushed pages still have the whole window.
+    public var twoPane = false
+    private func pageIsFull(_ t: KeloTab) -> Bool { nestTab == nil && depth(t) > 0 && !(twoPane && t != .chat) }
+    public var headerHidden: Bool { pageIsFull(tab) || chromeAskers.contains { $0 != Self.keyboardAsker } }
+    public var barHidden: Bool { pageIsFull(tab) || !chromeAskers.isEmpty }
 
     public func hideChrome(_ key: String, _ hidden: Bool) {
         if hidden { chromeAskers.insert(key) } else { chromeAskers.remove(key) }
@@ -281,6 +287,7 @@ public final class Router {
         chatFocus = nil
         chatEntryFocus = nil
         chatFollowTurn = nil
+        chatSearch = false
         chromeAskers = []
     }
 }

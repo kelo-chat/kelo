@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Pegar desde el móvil</string>
+    <string name="live_pasted">Pegado. Revisa el campo.</string>
+    <string name="live_copy_from_browser">Copiar del navegador</string>
+    <string name="live_copied_to_phone">Copiado en tu móvil</string>
+</resources>

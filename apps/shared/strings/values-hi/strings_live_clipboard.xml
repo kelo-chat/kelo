@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">फ़ोन से पेस्ट करें</string>
+    <string name="live_pasted">पेस्ट हो गया। फ़ील्ड देख लें।</string>
+    <string name="live_copy_from_browser">ब्राउज़र से कॉपी करें</string>
+    <string name="live_copied_to_phone">फ़ोन पर कॉपी हो गया</string>
+</resources>

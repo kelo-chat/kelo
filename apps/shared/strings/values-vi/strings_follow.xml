@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Việc Kelo đang chăm sóc</string>
+    <string name="follow_stop">Dừng chăm sóc</string>
+    <string name="follow_stop_confirm">Dừng theo dõi mục này?</string>
+    <string name="follow_stop_confirm_detail">Kelo sẽ không kiểm tra thay đổi hay chuẩn bị trước nữa.</string>
+    <string name="follow_stop_yes">Dừng chăm sóc</string>
+    <string name="follow_keep_watching">Tiếp tục chăm sóc</string>
+    <string name="follow_replan">Lập kế hoạch lại</string>
+    <string name="follow_sheet_title">Kế hoạch chăm sóc</string>
+    <string name="follow_plan_checks">Nội dung cần kiểm tra</string>
+    <string name="follow_plan_prep">Việc chuẩn bị trước</string>
+    <string name="follow_plan_tell">Thông báo</string>
+    <string name="follow_plan_tell_change">Báo khi có thay đổi</string>
+    <string name="follow_next_check">Kiểm tra tiếp theo: %1$s</string>
+    <string name="follow_last_check">Kiểm tra lần cuối: %1$s</string>
+    <string name="follow_prep_later">Dự kiến</string>
+    <string name="follow_prep_running">Đang làm</string>
+    <string name="follow_prep_done">Đã chuẩn bị</string>
+    <string name="follow_prep_failed">Thất bại</string>
+    <string name="follow_state_watching">Đang theo dõi</string>
+    <string name="follow_state_stopped">Đã dừng</string>
+    <string name="follow_state_done">Hoàn thành</string>
+    <string name="follow_summary_lead_flight">Báo trước ngày khởi hành 1 ngày</string>
+    <string name="follow_summary_lead_general">Báo trước 1 ngày</string>
+    <string name="follow_summary_lead_hours">Báo trước %1$d giờ</string>
+    <string name="follow_summary_prep_checkin">Chuẩn bị check-in khi mở</string>
+    <string name="follow_summary_prep_general">Chuẩn bị %1$s</string>
+    <string name="follow_summary_watch_changes">Kiểm tra thay đổi</string>
+    <string name="follow_summary_default">Chăm sóc lịch trình</string>
+</resources>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">Vergessene Themen</string>
+    <string name="forget_intro">Themen, die Kelo vergessen sollte. Kelo hat gelöscht, was es gefunden hat, und schreibt sie nicht wieder auf.</string>
+    <string name="forget_empty">Noch nichts vergessen. Wenn Kelo ein Thema vergessen soll, erscheint es hier.</string>
+    <string name="forget_date">Vergessen am %1$s</string>
+    <string name="forget_removed">Entfernt: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Es wurde nichts zum Entfernen gefunden.</string>
+    <string name="forget_cat_memory">Gedächtnis</string>
+    <string name="forget_cat_notes">Notizen</string>
+    <string name="forget_cat_reminders">Erinnerungen</string>
+    <string name="forget_cat_skills">Fähigkeiten</string>
+    <string name="forget_cat_history">Protokolle</string>
+    <string name="forget_cat_other">Sonstiges</string>
+    <string name="forget_allow_again">Wieder erlauben</string>
+    <string name="forget_allow_confirm">Darf Kelo wieder über „%1$s“ schreiben? Gelöschtes kommt nicht zurück.</string>
+    <string name="forget_allowed">Kelo darf wieder darüber schreiben.</string>
+    <string name="paycover_title">Vorab genehmigte Zahlungen</string>
+    <string name="paycover_switch">Vorab genehmigte Zahlungen erlauben</string>
+    <string name="paycover_switch_note">Aus: Jede Zahlung fragt zuerst bei dir nach.</string>
+    <string name="paycover_empty">Nichts vorab genehmigt. Eine Bestellung oder geplante Zahlung, die du vorab genehmigst, erscheint hier.</string>
+    <string name="paycover_off_note">Ausgeschaltet: Die Einträge bleiben in der Liste, aber jede Zahlung fragt nach.</string>
+    <string name="paycover_orders">Bestellungen</string>
+    <string name="paycover_allows">Geplante Zahlungen</string>
+    <string name="paycover_cap">Bis zu %1$s insgesamt</string>
+    <string name="paycover_until">Bis %1$s</string>
+    <string name="paycover_for_task">Für eine Aufgabe</string>
+    <string name="paycover_for_schedule">Für den Zeitplan „%1$s“</string>
+    <string name="paycover_for_a_schedule">Für eine geplante Aufgabe</string>
+    <string name="paycover_one_order">eine Bestellung</string>
+    <string name="paycover_allow_scope">Gleicher Shop, gleiche Zahlungsart</string>
+    <string name="paycover_remove">%1$s entfernen</string>
+    <string name="paycover_remove_order_confirm">Diese Genehmigung entfernen? Die Bestellung fragt vor dem Bezahlen nach.</string>
+    <string name="paycover_remove_allow_confirm">Die Erlaubnis für „%1$s“ entfernen? Seine Zahlungen fragen wieder jedes Mal nach.</string>
+    <string name="paycover_removed">Entfernt. Zahlungen fragen wieder nach.</string>
+    <string name="preapprove_what">Bestellung</string>
+    <string name="preapprove_cap">Höchstbetrag</string>
+    <string name="preapprove_cap_value">%1$s insgesamt (inkl. Steuern und Versand)</string>
+    <string name="preapprove_until">Bis</string>
+    <string name="preapprove_covers">Gilt für</string>
+    <string name="preapprove_covers_value">Nur diese eine Bestellung</string>
+    <string name="preapprove_requirements">Muss haben</string>
+    <string name="preapprove_shipping">Lieferung</string>
+    <string name="preapprove_shops">Shops</string>
+    <string name="preapprove_delegated">Kelo entscheidet</string>
+    <string name="chat_payment_cover_order">Gedeckt durch die Bestellung, die du vorab genehmigt hast</string>
+    <string name="chat_payment_cover_schedule">Gedeckt durch deine Erlaubnis für die Zahlungen dieses Zeitplans</string>
+</resources>

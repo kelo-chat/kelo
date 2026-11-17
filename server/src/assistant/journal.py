@@ -202,4 +202,4 @@ def journal_tools(journal: Journal) -> list[Any]:
             "to": {"type": "string", "description": "last day, included"},
             "keyword": {"type": "string"},
             "limit": {"type": "integer", "description": "default 30"}}},
-        handler=search, read_only=True)]
+        handler=search, read_only=True, trail="memory")]

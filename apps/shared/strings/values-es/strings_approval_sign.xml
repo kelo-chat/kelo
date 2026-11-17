@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- es text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">Aprobar pago</string>
+    <string name="approval_sign_subtitle">Confirma con tu huella dactilar o tu rostro</string>
+    <string name="approval_sign_failed">No se pudo aprobar este pago en este teléfono. Inténtalo de nuevo.</string>
+    <string name="approval_sign_key_lost">Falta la clave de aprobación de este teléfono. Vincula este teléfono con el servidor otra vez.</string>
+    <string name="approval_pay_on_phone">Aprueba los pagos en la app de Kelo del teléfono.</string>
+</resources>

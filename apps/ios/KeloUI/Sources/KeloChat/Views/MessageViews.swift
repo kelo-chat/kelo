@@ -2,18 +2,21 @@ import SwiftUI
 import KeloCore
 import KeloShared
 
-/// The long-press menu of a bubble (Android ActionBubble): 복사, 공유, 텍스트 선택, 다시 시도, 수정해서 다시 보내기, 신고하기.
+/// The long-press menu of a bubble (Android ActionBubble): 복사, 공유, 텍스트 선택, 소리 내어 읽기, 다시 시도, 수정해서 다시 보내기, 신고하기.
 struct BubbleMenu: ViewModifier {
     let actions: [MsgAction]
     let text: String
     let onAction: (MsgAction) -> Void
+    @Environment(\.readAloud) private var reader
 
     func body(content: Content) -> some View {
-        if actions.isEmpty {
+        // 소리 내어 읽기 only where the system can speak (the chat screen provides the reader)
+        let shown = actions.filter { $0 != .readAloud || reader != nil }
+        if shown.isEmpty {
             content
         } else {
             content.contextMenu {
-                ForEach(Array(actions.enumerated()), id: \.offset) { _, a in
+                ForEach(Array(shown.enumerated()), id: \.offset) { _, a in
                     switch a {
                     case .copy:
                         Button { onAction(.copy) } label: { Label(L(R.string.msg_action_copy), systemImage: KeloIcon.copy.rawValue) }
@@ -21,6 +24,12 @@ struct BubbleMenu: ViewModifier {
                         ShareLink(item: text) { Label(L(R.string.msg_action_share), systemImage: KeloIcon.share.rawValue) }
                     case .select:
                         Button { onAction(.select) } label: { Label(L(R.string.msg_action_select), systemImage: KeloIcon.textSelect.rawValue) }
+                    case .readAloud:
+                        let on = reader?.reading == text
+                        Button { onAction(.readAloud) } label: {
+                            Label(L(on ? R.string.msg_action_read_stop : R.string.msg_action_read_aloud),
+                                  systemImage: (on ? KeloIcon.stop : KeloIcon.speaker).rawValue)
+                        }
                     case .retry:
                         Button { onAction(.retry) } label: { Label(L(R.string.msg_action_retry), systemImage: KeloIcon.retry.rawValue) }
                     case .edit:
@@ -43,6 +52,7 @@ struct UserBubble: View {
     let actions: [MsgAction]
     let onAction: (MsgAction) -> Void
     @Environment(\.kelo) private var c
+    @Environment(\.keloWindow) private var window
 
     var body: some View {
         HStack {
@@ -56,6 +66,8 @@ struct UserBubble: View {
                     .modifier(BubbleMenu(actions: actions, text: text, onAction: onAction))
                 if !reaction.isEmpty { ReactionChip(emoji: reaction) }
             }
+            // a wide window keeps lines readable: at most 540 pt, on the right
+            .keloBubbleCap(window.bubbleMax, alignment: .trailing)
         }
     }
 }
@@ -131,6 +143,7 @@ struct AssistantBubbles: View {
     let actions: [MsgAction]
     let onAction: (String, MsgAction) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduce
+    @Environment(\.keloWindow) private var window
     /// Kept across frames without causing redraws (the TimelineView drives them).
     @State private var pacer = Pacer()
 
@@ -184,6 +197,7 @@ struct AssistantBubbles: View {
                         .background(RoundedRectangle(cornerRadius: 20).fill(BubbleColor.assistant))
                         .contentShape(RoundedRectangle(cornerRadius: 20))
                         .modifier(BubbleMenu(actions: actions, text: plain) { a in onAction(plain, a) })
+                        .keloBubbleCap(window.bubbleMax, alignment: .leading)
                     Spacer(minLength: 48)
                 }
             }

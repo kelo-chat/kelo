@@ -8,14 +8,19 @@ public struct ConnectorPermissions: Decodable, Equatable, Sendable {
     public var connector: String
     public var name: String
     public var kinds: [PermissionKind]
+    /// "Use when I'm not chatting": allow (the default) or off for schedules, background jobs and messages Kelo sends first.
+    public var unattended: String
+    public var unattendedDefault: String
 
-    public init(connector: String = "", name: String = "", kinds: [PermissionKind] = []) {
+    public init(connector: String = "", name: String = "", kinds: [PermissionKind] = [], unattended: String = "allow", unattendedDefault: String = "allow") {
         self.connector = connector; self.name = name; self.kinds = kinds
+        self.unattended = unattended; self.unattendedDefault = unattendedDefault
     }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         connector = j.str("connector"); name = j.str("name"); kinds = j.list("kinds")
+        unattended = j.obj("unattended").str("mode", "allow"); unattendedDefault = j.obj("unattended").str("default", "allow")
     }
 }
 
@@ -57,8 +62,14 @@ public enum PermissionRules {
 
     /// Anything set away from its default (the "back to the defaults" link shows then).
     public static func changed(_ p: ConnectorPermissions) -> Bool {
-        p.kinds.contains { k in k.mode != k.default || k.actions.contains { $0.mode != $0.default } }
+        p.unattended != p.unattendedDefault || p.kinds.contains { k in k.mode != k.default || k.actions.contains { $0.mode != $0.default } }
     }
+
+    /// "Use when I'm not chatting" is on while the server has it as anything but off.
+    public static func unattendedOn(_ p: ConnectorPermissions) -> Bool { p.unattended != "off" }
+
+    /// The PUT body for the switch: on is the default again, so it clears the setting (null); off sends "off".
+    public static func unattendedBody(_ on: Bool) -> [String: JSON] { ["unattended": on ? .null : .string("off")] }
 
     /// The PUT body for one kind's new mode.
     public static func kindBody(_ kind: String, _ mode: String) -> [String: JSON] { [kind: .string(mode)] }

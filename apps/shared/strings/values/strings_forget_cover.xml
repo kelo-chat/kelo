@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- My > Forgotten topics (the topics Kelo was asked to forget, "Allow again"), the list under the forget card -->
+    <string name="forget_title">Forgotten topics</string>
+    <string name="forget_intro">Topics you asked Kelo to forget. Kelo deleted what it found and will not write them down again.</string>
+    <string name="forget_empty">Nothing forgotten yet. When you ask Kelo to forget a topic, it appears here.</string>
+    <string name="forget_date">Forgotten on %1$s</string>
+    <string name="forget_removed">Removed: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Nothing was found to remove.</string>
+    <string name="forget_cat_memory">Memory</string>
+    <string name="forget_cat_notes">Notes</string>
+    <string name="forget_cat_reminders">Reminders</string>
+    <string name="forget_cat_skills">Skills</string>
+    <string name="forget_cat_history">Logs</string>
+    <string name="forget_cat_other">Other</string>
+    <string name="forget_allow_again">Allow again</string>
+    <string name="forget_allow_confirm">Let Kelo write about “%1$s” again? What was deleted does not come back.</string>
+    <string name="forget_allowed">Kelo may write about it again.</string>
+    <!-- My > Permissions > Payments approved in advance (the switch, orders approved in advance, schedule payment allows) -->
+    <string name="paycover_title">Payments approved in advance</string>
+    <string name="paycover_switch">Allow payments approved in advance</string>
+    <string name="paycover_switch_note">Off: every payment asks you first.</string>
+    <string name="paycover_empty">Nothing approved in advance. An order or a scheduled payment you approve in advance appears here.</string>
+    <string name="paycover_off_note">Switched off: these stay listed, but every payment asks.</string>
+    <string name="paycover_orders">Orders</string>
+    <string name="paycover_allows">Scheduled payments</string>
+    <string name="paycover_cap">Up to %1$s in total</string>
+    <string name="paycover_until">Until %1$s</string>
+    <string name="paycover_for_task">For one task</string>
+    <string name="paycover_for_schedule">For the schedule “%1$s”</string>
+    <string name="paycover_for_a_schedule">For a scheduled task</string>
+    <string name="paycover_one_order">one order</string>
+    <string name="paycover_allow_scope">Same shop, same payment method</string>
+    <string name="paycover_remove">Remove %1$s</string>
+    <string name="paycover_remove_order_confirm">Remove this approval? The order will ask before it is paid.</string>
+    <string name="paycover_remove_allow_confirm">Remove the allow for “%1$s”? Its payments will ask each time again.</string>
+    <string name="paycover_removed">Removed. Payments will ask again.</string>
+    <!-- The approval card of an order approved in advance (nothing is bought by it) -->
+    <string name="preapprove_what">Order</string>
+    <string name="preapprove_cap">Most you pay</string>
+    <string name="preapprove_cap_value">%1$s, all in (tax and shipping included)</string>
+    <string name="preapprove_until">Until</string>
+    <string name="preapprove_covers">Covers</string>
+    <string name="preapprove_covers_value">One order only</string>
+    <string name="preapprove_requirements">Must have</string>
+    <string name="preapprove_shipping">Delivery</string>
+    <string name="preapprove_shops">Shops</string>
+    <string name="preapprove_delegated">Kelo decides</string>
+    <!-- The notice that a payment went through without a new card -->
+    <string name="chat_payment_cover_order">Covered by the order you approved in advance</string>
+    <string name="chat_payment_cover_schedule">Covered by your allow for this schedule\'s payments</string>
+</resources>

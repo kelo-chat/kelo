@@ -48,6 +48,7 @@ PLATFORMS: dict[str, tuple[str, str, str]] = {
     "android": (".apk", "application/vnd.android.package-archive", "Android"),
     "windows": (".exe", "application/vnd.microsoft.portable-executable", "Windows"),
     "windows-msi": (".msi", "application/x-msi", "Windows (MSI)"),
+    "windows-server-msi": (".msi", "application/x-msi", "Kelo server for Windows (MSI)"),   # not on the public download page: latest.json + the direct link only
     "mac": (".dmg", "application/x-apple-diskimage", "macOS"),
 }
 FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
@@ -253,9 +254,9 @@ def platform_for(platform: str, file: Path) -> str:
     if platform == "windows" and file.suffix.lower() == ".msi":
         platform = "windows-msi"
     if platform not in PLATFORMS:
-        raise PublishError(f"unknown platform {platform!r}: android, windows or mac")
+        raise PublishError(f"unknown platform {platform!r}: android, windows, windows-msi, windows-server-msi or mac")
     if file.suffix.lower() != PLATFORMS[platform][0]:
-        want = ".exe or .msi" if platform.startswith("windows") else PLATFORMS[platform][0]
+        want = ".exe or .msi" if platform == "windows" else PLATFORMS[platform][0]
         raise PublishError(f"{file.name}: a {PLATFORMS[platform][2]} download must be a {want} file")
     return platform
 
@@ -289,6 +290,28 @@ def versions_for(platform: str, file: Path, given: str | None, run: Callable[...
     return version, code
 
 
+OPERATOR_INSTANCE_ENV = "KELO_OPERATOR_INSTANCE"
+
+
+def operator_instance() -> str | None:
+    """The extra copy (`assistant instance`) that is the operator, from KELO_OPERATOR_INSTANCE; None = the main copy (the default).
+
+    A bad name stops the command instead of falling back to main: publishing to the wrong copy is worse than not publishing."""
+    from .instances import MAIN, NAME
+
+    name = (os.environ.get(OPERATOR_INSTANCE_ENV) or "").strip()
+    if not name or name == MAIN:
+        return None
+    if not NAME.match(name):
+        raise PublishError(f"{OPERATOR_INSTANCE_ENV}={name!r} is not a copy name")
+    return name
+
+
+def operator_env_file(root: Path, instance: str | None) -> Path:
+    """The settings file of the operator: the repo's .env (main) or instances/<name>/env."""
+    return root / "instances" / instance / "env" if instance else root / ".env"
+
+
 class Publisher:
     """Copies a build into the downloads folder of the main copy's server container and updates the manifest there.
 
@@ -302,11 +325,14 @@ class Publisher:
         self.server_release: dict[str, Any] | None = None
 
     def container(self) -> str:
-        r = self.run(["docker", "compose", "-f", str(self.root / "compose.yml"), "ps", "-a", "-q", "server"],
-                     cwd=self.root, capture_output=True, text=True)
+        inst = operator_instance()
+        cmd = ["docker", "compose", "-f", str(self.root / "compose.yml")]
+        if inst:   # a separate operator copy: its own compose project and settings, exactly as Instances.compose builds them
+            cmd += ["-p", f"assistant-u-{inst}", "--env-file", str(operator_env_file(self.root, inst))]
+        r = self.run([*cmd, "ps", "-a", "-q", "server"], cwd=self.root, capture_output=True, text=True)
         cid = (r.stdout or "").strip().splitlines()[0].strip() if r.returncode == 0 and (r.stdout or "").strip() else ""
         if not cid:
-            raise PublishError("the main copy's server container was not found here: run this in the folder that holds compose.yml "
+            raise PublishError(f"the {inst + ' copy' if inst else 'main copy'}'s server container was not found here: run this in the folder that holds compose.yml "
                                "after `docker compose up -d`")
         return cid
 
@@ -355,7 +381,8 @@ class Publisher:
         commit = (commit or "").strip().lower() or None
         if commit is not None and not COMMIT.fullmatch(commit):
             raise PublishError("--commit must be the full 40-character hex hash of the public source commit")
-        name = f"kelo-{version}{f'-{code}' if code is not None else ''}{PLATFORMS[platform][0]}"
+        prefix = "kelo-server-" if platform == "windows-server-msi" else "kelo-"   # the server MSI never shares a file name with the desktop app
+        name = f"{prefix}{version}{f'-{code}' if code is not None else ''}{PLATFORMS[platform][0]}"
         size, sha = file.stat().st_size, sha256_of(file)
         cid = self.container()
         with tempfile.TemporaryDirectory(prefix="kelo-publish-") as tmp:
@@ -395,7 +422,7 @@ class Publisher:
         written again. The row's size and sha256 are kept, and the file's real sha256 is re-checked first (it is copied out of the
         container with `docker cp`, which works whether or not the container runs)."""
         if platform not in PLATFORMS:
-            raise PublishError(f"unknown platform {platform!r}: android, windows, windows-msi or mac")
+            raise PublishError(f"unknown platform {platform!r}: android, windows, windows-msi, windows-server-msi or mac")
         commit = (commit or "").strip().lower() or None
         if commit is not None and not COMMIT.fullmatch(commit):
             raise PublishError("--commit must be the full 40-character hex hash of the public source commit")
@@ -470,9 +497,14 @@ def run_publish_server(args: Any, root: Path | None = None, *, run: Callable[...
     from .cli import read_env
 
     root = (root or Path.cwd()).resolve()
-    env = root / ".env"
+    try:
+        env = operator_env_file(root, operator_instance())
+    except PublishError as e:
+        out(f"error: {e}")
+        return 1
     if not env.is_file() or not (root / "compose.yml").is_file():
-        out("error: run this in the folder that holds compose.yml and .env (the main copy)")
+        out("error: run this in the folder that holds compose.yml and .env (the main copy; the operator copy's settings when "
+            f"{OPERATOR_INSTANCE_ENV} is set)")
         return 1
     get = lambda k: read_env(env, k)  # noqa: E731
     flag = operator_flag(get("ASSISTANT_OPERATOR"))
@@ -504,7 +536,8 @@ def run_publish(args: Any, root: Path | None = None, *, run: Callable[..., Any] 
     except PublishError as e:
         out(f"error: {e}")
         return 1
-    record_published(root, row, out)
+    if args.platform != "windows-server-msi":          # the server's installer is not an app release: nothing to record in apps.json
+        record_published(root, row, out)
     return 0
 
 
@@ -512,9 +545,14 @@ def _operator_public(root: Path, out: Callable[[str], None]) -> str | None:
     """The public address from .env when this folder is the operator's main copy; None (after saying why) when it is not."""
     from .cli import read_env
 
-    env = root / ".env"
+    try:
+        env = operator_env_file(root, operator_instance())
+    except PublishError as e:
+        out(f"error: {e}")
+        return None
     if not env.is_file() or not (root / "compose.yml").is_file():
-        out("error: run this in the folder that holds compose.yml and .env (the main copy)")
+        out("error: run this in the folder that holds compose.yml and .env (the main copy; the operator copy's settings when "
+            f"{OPERATOR_INSTANCE_ENV} is set)")
         return None
     get = lambda k: read_env(env, k)  # noqa: E731
     flag = operator_flag(get("ASSISTANT_OPERATOR"))

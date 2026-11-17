@@ -1,0 +1,44 @@
+{
+ "format": 1,
+ "suite": "approval-sign v1",
+ "alg": "ES256",
+ "test_key_only": true,
+ "public_key_spki_b64": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdGbVG+hSOxAy5lIiPnDCkO8UdPWowk9uk9KPWuMsvzxk0EtJPjUSU0Bh2WPJXsL8zIIBKXwwTvSbr0aMuleDCQ==",
+ "approvals": [
+  {
+   "approval_id": "3f9c0a1e5b7d42c8a6e1f0b9d2c4a7e3",
+   "decision": "approve",
+   "issued_at": 1789000000,
+   "message_hex": "6b656c6f2d617070726f76616c2076310a33663963306131653562376434326338613665316630623964326334613765330a617070726f76650a31373839303030303030",
+   "sig_b64": "MEQCICnnFjavXb4sJpNtfpizVogreaEB3+N3DRDCr5HKRl28AiA5/IZyaq0VTStnIMXpnyOSIqIMRhhxStdT0tujHzY+tA=="
+  },
+  {
+   "approval_id": "b1e4d7a20c9f4e6b8d3a5c7e9f1b2d4a",
+   "decision": "approve",
+   "issued_at": 1789000123,
+   "message_hex": "6b656c6f2d617070726f76616c2076310a62316534643761323063396634653662386433613563376539663162326434610a617070726f76650a31373839303030313233",
+   "sig_b64": "MEYCIQDr8F+z1Hg8Yd68B0pU76o87gTXUlqJYjNxjWICk66tKgIhALeQH4yAAdoC6cexqIw8yK8DSVmLG4uAB+NxSVU/be9p"
+  },
+  {
+   "approval_id": "6a2c8e4f0b1d3c5e7a9b2d4f6e8c0a1b",
+   "decision": "deny",
+   "issued_at": 1789003600,
+   "message_hex": "6b656c6f2d617070726f76616c2076310a36613263386534663062316433633565376139623264346636653863306131620a64656e790a31373839303033363030",
+   "sig_b64": "MEQCIF/SIp6fyUsJsAFm5cd+eDVqtKd72dzB8k1M3Q2uk+aLAiAmGPrEy8r7XwAduM8Xe7CculVafBQjNky3YLHOKxmzKQ=="
+  }
+ ],
+ "bad": [
+  {
+   "name": "issued_at_changed",
+   "message_hex": "6b656c6f2d617070726f76616c2076310a33663963306131653562376434326338613665316630623964326334613765330a617070726f76650a31373839303030303031",
+   "sig_b64": "MEQCICnnFjavXb4sJpNtfpizVogreaEB3+N3DRDCr5HKRl28AiA5/IZyaq0VTStnIMXpnyOSIqIMRhhxStdT0tujHzY+tA==",
+   "expect": "bad_signature"
+  },
+  {
+   "name": "signature_byte_flipped",
+   "message_hex": "6b656c6f2d617070726f76616c2076310a33663963306131653562376434326338613665316630623964326334613765330a617070726f76650a31373839303030303030",
+   "sig_b64": "MEQCICnnFjavXb8sJpNtfpizVogreaEB3+N3DRDCr5HKRl28AiA5/IZyaq0VTStnIMXpnyOSIqIMRhhxStdT0tujHzY+tA==",
+   "expect": "bad_signature"
+  }
+ ]
+}

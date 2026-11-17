@@ -153,17 +153,17 @@ FENCED = {"browser_open", "browser_read", "browser_view", "browser_human_check",
           "mcp_call_tool", "read_file", "read_skill", "search_skills", "extract_document", "watch_list", "watch_dry_run",
           "gcal_calendars", "gcal_events", "calendar_events", "phone_calendar_events", "phone_contacts", "phone_messages", "phone_call_log",
           "phone_notifications", "phone_health", "browser_fill_shipping", "package_entries",
-          "payment_step_wait", "browser_type_payment_pin", "browser_pin_keypad_card", "places_near"}
+          "checkout_submit", "payment_step_wait", "browser_type_payment_pin", "browser_pin_keypad_card", "places_near"}
 MARKS = {"confirm_purchase": "tools/purchase.py", "purchase_result": "tools/purchase.py"}
-OWN = {"action_result", "storage_cleanup", "storage_cleanup_list", "add_service_key", "save_found_secret", "await_reply", "browser_fill_card", "browser_private", "browser_save_download", "browser_save_pdf",
+OWN = {"kelo_help", "read_earlier_messages", "checkout_review","order_preapprove", "action_result", "storage_cleanup", "storage_cleanup_list", "add_service_key", "save_found_secret", "await_reply", "browser_fill_card", "browser_private", "browser_save_download", "browser_save_pdf",
        "browser_site_state", "browser_forget_site", "connect_service", "delegate", "email_send", "email_update", "find_tools", "followup_cancel", "followup_snooze",
        "gcal_create_event", "gcal_delete_event", "gcal_update_event", "generate_image", "goal_add_document", "goal_get",
        "goal_link_schedule", "goal_log", "goal_metric_add", "goal_plan", "goal_set_facts", "goal_step_done", "goal_suggest",
        "journal_search", "list_files", "list_product_images", "phone_calendar_add", "phone_calendar_delete", "phone_calendar_update",
-       "phone_call", "phone_send_text", "quick_replies", "compare_options", "remember", "request_card", "request_payment_pin", "request_login", "request_task_permission", "resume",
+       "phone_call", "phone_send_text", "quick_replies", "compare_options", "remember", "memory_explain", "forget_plan", "forget_confirm", "request_card", "request_payment_pin", "request_login", "request_task_permission", "resume",
        "save_product_image", "task_allow", "schedule_create", "schedule_delete", "schedule_list", "schedule_pause", "schedule_retry",
        "schedule_runs", "schedule_update", "vault_status", "view_image", "weather", "my_location", "wallet_cards", "watch_add", "watch_enable",
-       "watch_remove", "watch_update", "ha_watch_add", "ha_watch_list", "ha_watch_remove", "react", "set_tone", "big_event_notice", "briefing", "recheck_later", "recheck_watch", "recheck_stop", "recheck_result", "offer_post", "send_screenshot", "show_picture", "connector_download", "propose_skill", "worker_message", "worker_status", "worker_stop", "workers_list", "write_file", "report",
+       "watch_remove", "watch_update", "ha_watch_add", "ha_watch_list", "ha_watch_remove", "react", "set_tone", "set_owner_settings", "finish_first_chat", "big_event_notice", "briefing", "recheck_later", "recheck_watch", "recheck_stop", "recheck_result", "offer_post", "send_screenshot", "show_picture", "connector_download", "propose_skill", "worker_message", "worker_status", "worker_stop", "workers_list", "write_file", "report",
        "follow_list", "follow_stop",
        "begin_order", "briefing_sources", "end_order", "shipping_profiles", "ask_shipping", "package_entry_add", "package_entry_delete", "messenger",
        "nest_draft_create", "nest_draft_write", "nest_draft_check", "nest_draft_delete", "nest_draft_from_skill", "nest_share_github"}

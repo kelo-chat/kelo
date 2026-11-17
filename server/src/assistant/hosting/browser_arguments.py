@@ -10,6 +10,7 @@ from pathlib import Path
 
 WINDOW_SIZE = "1440,900"
 MEGABYTE = 1024 * 1024
+DEFAULT_CACHE_MB = 1024                 # the page cache cap when none is set (Docker: the same, in entrypoint.sh); docs/disk-growth.md
 
 
 @dataclass(frozen=True)
@@ -20,7 +21,7 @@ class BrowserOptions:
     devtools_port: int                  # ROLES["browser"].listen_port
     proxy_url: str                      # "http://127.0.0.1:<egress port>"
     language: str = ""                  # BROWSER_LANG, e.g. "ko-KR"
-    cache_mb: int | None = None         # BROWSER_CACHE_MB; 0 or None = the browser's default
+    cache_mb: int | None = None         # BROWSER_CACHE_MB; 0 or None = DEFAULT_CACHE_MB
     user_agent: str = ""
     headless: bool = False
     chrome_sandbox: bool = True         # False only where the container is the sandbox (Docker)
@@ -41,8 +42,8 @@ def browser_arguments(options: BrowserOptions) -> list[str]:
         arguments.append("--no-sandbox")
     if options.language:
         arguments += [f"--lang={options.language}", f"--accept-lang={options.language}"]
-    if options.cache_mb:
-        arguments.append(f"--disk-cache-size={options.cache_mb * MEGABYTE}")
+    cache_mb = options.cache_mb or DEFAULT_CACHE_MB     # never the browser's own default, which grows with the free disk
+    arguments.append(f"--disk-cache-size={cache_mb * MEGABYTE}")
     if options.user_agent:
         arguments.append(f"--user-agent={options.user_agent}")
     arguments += ["--disable-sync", "--password-store=basic", "--disable-background-networking", "about:blank"]

@@ -40,22 +40,21 @@ private struct GoalsPage: View {
     }
 
     var body: some View {
-        NavigationStack(path: app.router.path(.goals)) {
+        ListDetailStack<GoalRoute, _, _>(tab: .goals, root: {
             list
                 .keloShellInsets()
-                .navigationDestination(for: GoalRoute.self) { r in
-                    if let g = model.state.goals.first(where: { $0.id == r.id }) {
-                        GoalDetailPage(goal: g, api: { [weak app] in app?.api }, onBack: { pop() }, onEdit: { editing = $0 }, onOpenChat: {
-                            pop()
-                            app.router.open(.chat)
-                        })
-                        .environment(app)
-                    } else {
-                        SubPage(L(R.string.tab_goals), onBack: { pop() }) { SkeletonRows(rows: 3) }
-                    }
-                }
                 .keloHideNavigationBar()
-        }
+        }, detail: { r in
+            if let g = model.state.goals.first(where: { $0.id == r.id }) {
+                GoalDetailPage(goal: g, api: { [weak app] in app?.api }, onBack: { pop() }, onEdit: { editing = $0 }, onOpenChat: {
+                    pop()
+                    app.router.open(.chat)
+                })
+                .environment(app)
+            } else {
+                SubPage(L(R.string.tab_goals), onBack: { pop() }) { SkeletonRows(rows: 3) }
+            }
+        })
         .onAppear { model.load() }
         .onChange(of: phase) { _, p in if p == .active { model.load() } else if p == .background { model.commitAll() } }
         .onDisappear { model.commitAll() }

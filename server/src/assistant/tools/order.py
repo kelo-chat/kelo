@@ -1,28 +1,27 @@
 """One order, one card: the agent buys what the user asked for in chat ("<site>에서 <item> 주문해줘") and the user answers ONE
 Allow/Deny card, at the end, that shows everything at once.
 
-`begin_order(site, what)` starts an order for the browser tab and the task it runs in (the user's request in chat is the intent; it
-needs no card). While the order is open, on that site only (its registrable domain), the steps that only prepare it go through without
+`begin_order(site, what)` starts an order for the browser tab and the task it runs in (it needs no card: the payment is what asks). While the order is open, on that site only (its registrable domain), the steps that only prepare it go through without
 a card and are written to the approval log as part of the order (decision allowed_by_rule):
 
-- going to the cart and the checkout and to the next step of the checkout ("구매하기", "주문하기", "Checkout", "Next" on the cart or the
-  checkout: commits.order_step tells them from the final payment);
+- going to the cart and the checkout and to the next step of the checkout (plain clicks: the final checkout step itself, by the page's
+  structure, refuses them and goes through checkout_review / checkout_submit);
 - choosing options, quantity and delivery, applying a coupon or points ("Apply coupon");
 - sending the order form's details (a form with the shipping details) and filling the shipping form from a shipping profile
   (`browser_fill_shipping`), or typing the values of the order's address one by one;
-- a pop-up of the site that only asks to go on ("장바구니로 이동할까요?"), unless it speaks of paying.
+- a pop-up of the site that only asks to go on ("장바구니로 이동할까요?").
 
 Still asking, even during an order: typing into a password field (browser_login keeps its own rules: auto-allow and schedule grants),
 signing up or changing the account, anything on another site, sending messages or reviews, deleting or cancelling, typing personal
 details that are not the order's address (an e-mail, an address Kelo only remembers), and anything that may spend money: the final
-payment goes through `confirm_purchase` (one card, or none for an auto-pay card within the user's rules), and after it the order covers
+payment goes through `checkout_review` (one card, or none for an auto-pay card within the user's rules), and after it the order covers
 nothing more (a second payment in the same order asks again, also with auto-pay). The order ends when the user denies the payment, when
 the task (the chat reply or the job) ends, after ORDER_MINUTES, or with `end_order`.
 
 The address: the user's shipping profiles (shipping.py) by nickname; or, when the site account has none saved and Kelo has no profile,
 `ask_shipping` shows ONE form in the chat (country-aware fields, prefilled with what Kelo remembers for the user to check, "use for next
 orders" on by default) and waits for it; the answer is saved as a profile when the user left that on, and is the order's address
-either way. An address the site account already holds is just selected on the page (no form, no typing); `confirm_purchase(ship_to=...)`
+either way. An address the site account already holds is just selected on the page (no form, no typing); `checkout_review(ship_to=...)`
 then names it on the card.
 
 A run of a task the user allowed to buy at setup (schedule_grants.py: a schedule, a watcher's hit, a job) may start an order only on the
@@ -44,7 +43,7 @@ from .. import address
 from ..agent import Tool, approval_timeout, current_call, emit_ui
 from ..i18n import N_, t
 from .sites import registrable as site_key
-from .commits import _EN_FINAL, _KO_FINAL, _SIGN_UP, _page, coupon_words, order_step
+from .commits import coupon_box
 from .task_permission import current_scope
 
 ORDER_MINUTES = 45.0
@@ -61,112 +60,9 @@ def _site(value: str) -> str:
     return site_key(host.lower())
 
 
-# The user's request asks to buy, order, book or pay for something (read from the user's own words for the turn, never from a page).
-# Kept general and multilingual; a request that only asks to look ("가격 알려줘") does not match.
-BUY_REQUEST = re.compile(
-    r"\b(?:buy|purchase|order|re-?order|book|reserve|check ?out|pay for|subscribe|kaufen|bestellen|buchen|acheter|commander|r[ée]server|"
-    r"comprar|reservar|pedir|ordinare|prenotare|acquistare|kopen|kupi[ćc]|zam[óo]wi[ćc]|satın al|sipari[şs]|đặt mua|mua|beli|pesan)\b|"
-    r"구매|구입|주문|결제|예매|예약|사\s*줘|사\s*주세요|사\s*다\s*줘|사\s*와|사\s*놔|사\s*둬|사\s*줄래|사고\s*싶|"
-    r"買って|購入|注文|予約|买|購買|订购|訂購|下单|預訂|预订|купить|заказать|забронировать|ซื้อ|สั่ง|खरीद|اشتر|اطلب", re.I)
-IMPLICIT_NOTE = ("[Not from the user: you are buying on {site} without begin_order, so the order the user asked for was started for "
-                 "you: {what!r}. The steps that only prepare it go through without a card; the payment itself is ONE confirm_purchase "
-                 "at the end (items, amount, ship_to, card). Next time call begin_order first.]")
-
-
-# Asking about past orders is not asking to buy ("주문 내역 봐줘", "order status")
-_LOOK_ONLY = re.compile(r"(?:주문|구매|구입|결제|예약|예매)\s*(?:내역|기록|조회|상태|현황|목록|취소|확인|번호)|"
-                        r"\b(?:order|purchase|booking|reservation|payment)s?\s*(?:history|status|number|details|list|tracking)\b|"
-                        r"\b(?:track|cancel|check)\s+(?:my\s+|the\s+)?(?:order|booking|reservation|purchase)", re.I)
-
-
-def buy_request(text: str) -> bool:
-    """The user's words ask to buy, order, book or pay (an order may then be started for them; tools/order.py)."""
-    return bool(BUY_REQUEST.search(_LOOK_ONLY.sub(" ", text or "")))
-
-
-# ---------------------------------------------------------------- other commits the user's request names (2026-11-10)
-# The owner's rule: one general flow for every request, and the only approval that must always be asked is before paying. A request
-# to apply / enter / sign up / send something authorizes the click that does exactly that on the site the task works on. Read from
-# the user's own words for the task (never from a page). Paying, deleting, opting out and anything else keep their cards.
-APPLY_REQUEST = re.compile(
-    r"\b(?:apply|enrol+|enter (?:the |this |a |me in |me into )?(?:draw|giveaway|contest|raffle|lottery|sweepstakes)|rsvp|"
-    r"anmelden|bewerben|teilnehmen|inscri(?:re|bir|ver)|postuler|participer|postular|participar|candidatar|iscriv|partecipare|"
-    r"aanmelden|deelnemen|zapisa[ćc]|başvur|katıl|đăng ký|daftar|ikut)\b|"
-    r"신청|응모|지원해|지원하|참가|참여|申し込|申込|応募|参加|申请|申請|报名|報名|参与|參與|подать заявку|записат|участвова|"
-    r"สมัคร|เข้าร่วม|आवेदन|भाग ले|تقدم|سجل", re.I)
-SIGNUP_REQUEST = re.compile(r"\b(?:sign (?:me )?up|register|create (?:an |my )?account|join)\b|가입|登録|注册|註冊|регистр|inscr", re.I)
-SEND_REQUEST = re.compile(
-    r"\b(?:send|post|publish|tweet|comment|reply|submit|leave (?:a )?(?:review|comment)|senden|envoyer|publier|enviar|publicar|"
-    r"inviare|pubblicare|versturen|plaatsen|gönder|gửi|kirim)\b|"
-    r"보내|전송|게시|올려|댓글|답글|작성해|제출|送って|送信|投稿|返信|发送|發送|发布|發布|回复|回覆|отправ|опублик|ส่ง|भेज|أرسل|انشر", re.I)
-# Asking about an application, a sign-up or a message is not asking to make one ("신청 내역 봐줘", "how do I apply")
-_ASK_ABOUT = re.compile(r"(?:신청|응모|가입|지원|참여|참가)\s*(?:내역|기록|현황|조회|상태|방법|기간|조건|자격|결과|여부|취소)|"
-                        r"\b(?:how (?:do i|to|can i)|when (?:can|do) i|where (?:do|can) i)\b|"
-                        r"\b(?:application|registration|entry|sign-?up)\s*(?:status|history|deadline|rules|requirements)\b|"
-                        r"하지\s*마|하지\s*말|\bdon'?t\b|\bdo not\b|\bnever\b", re.I)
-INTENT_SECONDS = 60 * 60.0   # the owner's ongoing request: user messages this recent...
-INTENT_MESSAGES = 5          # ...and at most this many of them, newest first
-# A request that already let steps through on a site stays the owner's word there for this long after its last use, through
-# chat about the same work in between ("브라우저 하는애 자는거같은데", "하나 직접 해봐"; 2026-11-12 those voided "카카오 체험단
-# 신청해" and the next apply asked). A stop / cancel said since ends it at once.
-STANDING_SECONDS = 6 * 3600.0
-# A follow-up that carries the request on without naming it again ("다시 해봐", "pc웹으로", "계속해", "try again")
-_GO_ON = re.compile(r"다시|계속|알아서|마저|이어서|또|한번 더|한 번 더|해\s*봐|해\s*줘|하자|진행|pc|모바일|웹|앱으로|"
-                    r"\b(?:again|retry|try|continue|go on|keep going|carry on|do it|desktop|mobile|web)\b|"
-                    r"もう一度|続け|再試行|再来|继续|再试|繼續|nochmal|weiter|encore|continue|otra vez|sigue|de novo|ancora|"
-                    r"opnieuw|ponownie|еще раз|ещё раз|продолж|tekrar|lại|lagi|อีกครั้ง|फिर से|مرة أخرى", re.I)
-# Stop, cancel, don't: the request ends here (nothing older counts)
-_STOP = re.compile(r"하지\s*마|하지\s*말|그만|멈춰|중지|취소|됐어|\b(?:stop|cancel|don'?t|do not|never mind|forget it)\b|"
-                   r"やめ|止め|しないで|停止|不要|别|別|hör auf|arrête|стоп|не надо|dur\b|dừng", re.I)
-_QUESTION = re.compile(r"\?|어때|뭐야|뭐지|알려\s*줘|인가요|일까|나요\b|\b(?:what|how|when|where|why|who|which)\b", re.I)
-
-
-# a whole message the server writes into the conversation in the user's place (a job's handoff, a watcher, goal work): none of it is
-# the owner's words (2026-11-11: a handoff saying "Do not ..." read as the owner's stop and voided "카카오 체험단 신청해" for the job)
-_NOT_OWNER = re.compile(r"^\s*\[[^\]\n]{0,80}not from the user\]", re.I)
-
-
-def _own_words(text: str) -> str:
-    """The user's own words of a stored message: the app's notes appended to it ("[Not from the user: ...]") left out, and nothing
-    at all of a message the server wrote in the user's place ("[Handoff from a background job, not from the user] ...")."""
-    if _NOT_OWNER.match(text or ""):
-        return ""
-    return re.sub(r"\[Not from the user[^\]]*\]", " ", text or "").strip()
-
-
-def ongoing_request(newest_first: list[str]) -> str:
-    """The owner's ongoing request from their recent messages, newest first (2026-11-10: "카카오 체험단 전부 신청해" -> "알아서 신청해" ->
-    "pc웹으로 다시해봐": the third carries the first on). Walks back from the newest: a message that names the action starts the
-    request (it and the follow-ups after it are returned); a follow-up that only carries it on ("다시 해봐", "pc웹으로") goes on
-    looking; anything else (a new subject, a question) or a stop / cancel / don't ends it with nothing."""
-    taken: list[str] = []
-    for raw in newest_first:
-        text = " ".join(_own_words(raw).split())
-        if not text:
-            continue
-        if _STOP.search(text):
-            return ""
-        taken.append(text)
-        if requested_kinds(text):
-            return " / ".join(reversed(taken))
-        if not _GO_ON.search(text) or _QUESTION.search(text):
-            return ""
-    return ""
-
-
-def requested_kinds(text: str) -> set[str]:
-    """The commit kinds (commits.judge_click) the user's words ask for: apply (with its form), sign up, send (with its form)."""
-    w = text or ""
-    if not w or _ASK_ABOUT.search(w):
-        return set()
-    kinds: set[str] = set()
-    if APPLY_REQUEST.search(w):
-        kinds |= {"apply", "form"}
-    if SIGNUP_REQUEST.search(w):
-        kinds |= {"account", "form"}
-    if SEND_REQUEST.search(w):
-        kinds |= {"send", "form"}
-    return kinds
+IMPLICIT_NOTE = ("[Not from the user: you are buying on {site} without begin_order, so the order was started for you from the "
+                 "purchase permission of the schedule: {what!r}. The steps that only prepare it go through without a card; the payment "
+                 "itself is ONE checkout_review at the end (items, amount, ship_to, card). Next time call begin_order first.]")
 
 
 @dataclass
@@ -207,12 +103,6 @@ class Orders:
         # it; None = no request to buy here, or a run that may not buy on that site)
         self.implicit: Callable[[str], Order | None] | None = None
         self._orders: dict[str, Order] = {}
-        # () -> the user's own words for the task running now, or "" (a scheduled run: its standing permissions decide); order_tools
-        self.request: Callable[[], str] | None = None
-        self.on_request_use: Callable[[str, str, str, str], None] | None = None   # (tool, kind, host, request): the server may log it
-        self._requested: dict[tuple[str, str], list[Any]] = {}                    # (tab, task) -> [site, count]
-        self._standing: dict[str, tuple[str, float]] = {}                          # site -> (request, last use)
-        self.stopped_since: Callable[[float], bool] | None = None                 # (ts) -> the owner said stop since ts (order_tools)
 
     def start(self, site: str, what: str, *, grant: dict[str, Any] | None = None) -> Order:
         now = self.clock()
@@ -281,11 +171,10 @@ class Orders:
         o = self.current()
         if kind == "unknown" or o is None or o.paid or secret or o.steps >= MAX_STEPS or not host or site_key(host.lower()) != o.site:
             return False   # (unknown: a step whose target could not be read is never covered)
-        if _SIGN_UP.search(_page(info, url)) and not re.search(r"order|checkout|cart|주문|결제|장바구니", _page(info, url), re.I):
-            return False   # a sign-up page: its steps ask
+        if info and info.get("signup_form"):
+            return False   # a sign-up form (a new-password field): its steps ask
         if tool == "browser_click":
-            ok = (kind == "pay" and order_step(info, selector, url=url)) or (kind == "apply" and coupon_words(info, selector)) or \
-                 (kind == "form" and not (info and info.get("pay_page") and not order_step(info, selector, url=url)))
+            ok = (kind == "apply" and coupon_box(info)) or (kind == "form" and not (info and info.get("pay_page")))
         else:
             src = o.profile if from_address(text, o.profile) else next((p for p in o.known if from_address(text, p)), None)
             ok = kind in ("personal", "form") and src is not None
@@ -294,61 +183,6 @@ class Orders:
         if ok:
             self.count(o, tool, kind, host)
         return ok
-
-    def covers_request(self, kind: str, host: str, *, tool: str, info: dict[str, Any] | None, selector: str, url: str) -> bool:
-        """True = the user's request for this task names this commit (apply / enter / sign up / send), so its click needs no card.
-        Bound to the first site it is used on in the task (the site the task works on); no count limit (the owner's decision,
-        2026-11-10: what they asked for is not asked again). A sign-up
-        click must say so (not a settings change); paying, deleting and opting out are never covered here."""
-        if tool != "browser_click" or kind not in ("apply", "form", "account", "send") or not host or self.request is None:
-            return False
-        try:
-            request = " ".join(str(self.request() or "").split())
-        except Exception:  # noqa: BLE001 - when in doubt each step asks as usual
-            return False
-        if kind not in requested_kinds(request):
-            request = self._standing_request(site_key(host.lower()), kind)
-            if not request:
-                return False
-        if kind == "account" and not _SIGN_UP.search(f"{(info or {}).get('text') or ''} {(info or {}).get('words') or ''} {selector}"):
-            return False   # an account change that is not the sign-up the user asked for
-        if (info or {}).get("pay_page") or _EN_FINAL.search(_norm_words(info, selector)) or _KO_FINAL.search(_norm_words(info, selector)):
-            return False   # anything that may pay goes through the payment rules
-        site, scope = site_key(host.lower()), self.scope()
-        if not scope:
-            return False
-        got = self._requested.setdefault((self.owner(), scope), [site, 0])
-        if got[0] != site:
-            return False
-        got[1] += 1
-        if len(self._requested) > 200:
-            self._requested.pop(next(iter(self._requested)))
-        self._standing[site] = (request, self.clock())
-        if len(self._standing) > 100:
-            self._standing.pop(next(iter(self._standing)))
-        if self.on_request_use is not None:
-            try:
-                self.on_request_use(tool, kind, host, request)
-            except Exception:  # noqa: BLE001 - the log never blocks the step
-                pass
-        return True
-
-    def _standing_request(self, site: str, kind: str) -> str:
-        """The owner's request that already let this kind of step through on this site, while it stands (STANDING_SECONDS since its
-        last use, and no stop said since), else ""."""
-        got = self._standing.get(site)
-        if got is None:
-            return ""
-        request, used = got
-        if self.clock() - used > STANDING_SECONDS or kind not in requested_kinds(request):
-            return ""
-        try:
-            if self.stopped_since is not None and self.stopped_since(used):
-                self._standing.pop(site, None)
-                return ""
-        except Exception:  # noqa: BLE001 - when in doubt it asks
-            return ""
-        return request
 
     def count(self, o: Order, tool: str, kind: str, host: str) -> None:
         o.steps += 1
@@ -359,16 +193,12 @@ class Orders:
                 pass
 
     def dialog_ok(self, owner: str, host: str, message: str) -> bool:
-        """A pop-up on the order's site while the order is prepared: accepted unless it speaks of paying."""
+        """A pop-up on the order's site while the order is prepared (before any payment): accepted. Paying itself is never a plain
+        click (checkout_submit, inside its purchase window, accepts its own pop-ups)."""
         o = self._orders.get(owner)
         if o is None or o.paid or self.clock() >= o.until or site_key((host or "").lower()) != o.site:
             return False
-        w = " ".join((message or "").lower().split())
-        return not (_EN_FINAL.search(w) or _KO_FINAL.search(w))
-
-
-def _norm_words(info: dict[str, Any] | None, selector: str) -> str:
-    return " ".join(f"{(info or {}).get('text') or ''} {(info or {}).get('words') or ''} {'' if info else selector}".lower().split())
+        return True
 
 
 def _norm(s: str) -> str:
@@ -547,7 +377,7 @@ def order_tools(orders: Orders, session: Any, book: Any, forms: ShippingForms | 
                          "has this address saved, select it; otherwise browser_fill_shipping.")
         else:
             lines.append(f"Shipping profiles: {profiles_text()}. If the site account already has a saved address, just select it on the "
-                         "page (no typing) and pass it as ship_to to confirm_purchase. Else use a profile with browser_fill_shipping "
+                         "page (no typing) and pass it as ship_to to checkout_review. Else use a profile with browser_fill_shipping "
                          "(the default one unless the user named another). With no profile and no saved address on the site, call "
                          "ask_shipping once (a form in the chat; prefill what you remember of the user's name, phone and address so they "
                          "can check it). Never type an address you only remember without that form.")
@@ -556,85 +386,31 @@ def order_tools(orders: Orders, session: Any, book: Any, forms: ShippingForms | 
                          "form (ask_payment=true).")
         if paths is not None and (hint := paths.hint(site)):   # payment_pins.PaymentPaths: the way of paying that went through here
             lines.append(hint)
-        lines.append("When the order is ready (item, options, quantity, address, total on the page), call confirm_purchase ONCE with "
-                     "items, amount, ship_to (when the site's saved address is used) and card: it is the one card the user answers. "
+        lines.append("When the order is ready (item, options, quantity, address, total on the page), call checkout_review with status draft "
+                     "(items, variants, total, currency, delivery, ship_to when the site's saved address is used, card), then with status "
+                     "ready once the check confirms: ready is the one card the user answers. "
                      "If the site asks you to sign in, use browser_login (its own setting decides whether it asks).")
         return " ".join(lines)
 
     # ---------------------------------------------------------------- an order the agent did not start itself
     def implicit(host: str) -> Order | None:
-        """The agent takes a buying step on a site with no order open: when the user's request for this turn asked to buy, start the
-        order from it (on that site, with the user's words as `what`), under the same limits as begin_order."""
-        from ..workers import current_turn
-        turn = current_turn.get() or {}
-        request = " ".join(str(turn.get("request") or "").split())
-        if not request or not buy_request(request) or not orders.scope():
+        """The agent takes a buying step on a site with no order open: only a schedule's (or a job's) purchase permission for this site
+        starts the order, as begin_order would. The owner's words are never read for it (docs/no-word-lists.md, 2026-11-16)."""
+        if not orders.scope():
             return None
         site = site_key(host.lower())
         in_run, g = schedule_grant(site)
-        if in_run and g is None:
-            return None   # a run that may not buy here: each step asks
-        o = orders.start(site, request[:MAX_WHAT], grant=g)
+        if not in_run or g is None:
+            return None   # no permission here: each step asks
+        o = orders.start(site, str(g.get("what") or "")[:MAX_WHAT], grant=g)
         o.known = book.profiles()
         o.implicit = True
-        ref = str(g.get("shipping_id") or "") if g else ""
+        ref = str(g.get("shipping_id") or "")
         if ref and (named := book.find(ref)) is not None:
             o.profile, o.source = named, "profile"
         return o
 
     orders.implicit = implicit
-
-    def request_words() -> str:
-        """The owner's ongoing request (ongoing_request): this task's own words, then their recent messages in this conversation
-        (INTENT_SECONDS, INTENT_MESSAGES); "" in a scheduled run (its standing permissions decide there)."""
-        from ..schedule_grants import current_schedule_id
-        from ..workers import current_turn, current_worker
-        if current_schedule_id():
-            return ""
-        own = str((current_turn.get() or {}).get("request") or "")
-        recent: list[str] = []
-        store = getattr(book, "store", None)
-        anchor = time.time()
-        if store is not None and (wid := current_worker.get()):
-            # a background job the chat handed work to (2026-11-10: ~50 applications went to a job that asked for each): its brief
-            # is the agent's words, not the owner's, so the request is the chat's at the moment it was handed off; a stop the
-            # owner said since then still ends it
-            own = ""
-            try:
-                row = store._all("SELECT created_at, parent_source FROM workers WHERE id = ?", (wid,))
-            except Exception:  # noqa: BLE001
-                row = []
-            if not row or str(row[0]["parent_source"] or "").startswith("schedule"):
-                return ""
-            anchor = float(row[0]["created_at"])
-            try:
-                later = store._all("SELECT content FROM messages WHERE role = 'user' AND created_at > ?", (anchor,))
-            except Exception:  # noqa: BLE001
-                later = []
-            if any(_STOP.search(_own_words(str(r["content"] or ""))) for r in later):
-                return ""
-        if store is not None:
-            try:
-                rows = store._all("SELECT content FROM messages WHERE role = 'user' AND created_at >= ? AND created_at <= ? "
-                                  "ORDER BY id DESC LIMIT ?", (anchor - INTENT_SECONDS, anchor + 1, INTENT_MESSAGES))
-                recent = [str(r["content"] or "") for r in rows]
-            except Exception:  # noqa: BLE001 - this task's own words then
-                recent = []
-        if own and (not recent or _own_words(recent[0]).strip() != _own_words(own).strip()):
-            recent.insert(0, own)
-        return ongoing_request(recent[:INTENT_MESSAGES + 1])
-
-    orders.request = request_words
-
-    def stopped_since(ts: float) -> bool:
-        """The owner said stop / cancel / don't in a message after ts (their own words only)."""
-        store = getattr(book, "store", None)
-        if store is None:
-            return False
-        rows = store._all("SELECT content FROM messages WHERE role = 'user' AND created_at > ?", (ts,))
-        return any(_STOP.search(_own_words(str(r["content"] or ""))) for r in rows)
-
-    orders.stopped_since = stopped_since
 
     # ---------------------------------------------------------------- the profiles
     async def list_profiles(_args: dict[str, Any]) -> str:
@@ -696,9 +472,9 @@ def order_tools(orders: Orders, session: Any, book: Any, forms: ShippingForms | 
         o.asked = True
         prof = got["profile"]
         o.profile, o.source = prof, "profile" if got["saved"] else "once"
-        pay = {"card": " For paying they chose to add a card in the wallet now: before confirm_purchase, check wallet_cards; if there is "
+        pay = {"card": " For paying they chose to add a card in the wallet now: before checkout_review, check wallet_cards; if there is "
                        "still no card, ask once whether to wait or pay on the site.",
-               "site": " For paying they chose the site's own payment way: use pay_with in confirm_purchase (no wallet card)."}.get(
+               "site": " For paying they chose the site's own payment way: use pay_with in checkout_review (no wallet card)."}.get(
             got.get("payment") or "", "")
         o.note = got.get("payment") or ""
         saved = (f"saved as the shipping profile '{prof['label']}' for next orders" if got["saved"] else "for this order only (not saved)")
@@ -764,7 +540,7 @@ def order_tools(orders: Orders, session: Any, book: Any, forms: ShippingForms | 
     out = [
         Tool("begin_order", "Start the order the user asked for in chat, on the site where it is bought, before going to the cart. Until "
              "you pay, the steps that only prepare it (cart, checkout, options, coupon, shipping form) need no card; the payment itself "
-             "is ONE confirm_purchase at the end.",
+             "is ONE checkout_review at the end.",
              obj({"site": {"type": "string", "description": "the shop's address"},
                   "what": {"type": "string", "description": "what the user asked to buy, in their words"},
                   "shipping": {"type": "string", "description": "a shipping profile's nickname, if the user named one"}}, ["site", "what"]),

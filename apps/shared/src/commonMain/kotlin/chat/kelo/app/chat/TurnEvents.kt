@@ -37,7 +37,12 @@ sealed interface TurnEvent {
     data class ToolResult(
         val id: String, val name: String, val output: String, val isError: Boolean, val approved: Boolean?,
         val label: String = "", val hidden: Boolean = false, val group: String = "", val done: String = "",
-    ) : TurnEvent
+        /** Facts the tool handed over next to its text (server agent/facts.py): connect_service {"already": true}, save_found_secret {"saved_key": {"service", "hosts"}}. Empty from an older server. */
+        val facts: JsonObject = JsonObject(emptyMap()),
+    ) : TurnEvent {
+        /** connect_service: the service was connected before this call, so no connect card is shown. */
+        val already: Boolean get() = (facts["already"] as? JsonPrimitive)?.booleanOrNull == true
+    }
     /** Confirm_purchase also carries [payment] and, when a wallet card was named, [card]. */
     data class ApprovalRequest(
         val approvalId: String, val name: String, val arguments: JsonObject, val detail: String?,
@@ -66,7 +71,20 @@ sealed interface TurnEvent {
         /** The site the step is on (the rule's scope when remembered) and whether "don't ask again on this site" may be offered */
         val site: String = "",
         val canRemember: Boolean = false,
-    ) : TurnEvent
+        /** The moment the card was asked (unix seconds): a signed payment approval signs it */
+        val issuedAt: Long = 0,
+        /** The server checks this phone's signature for an Allow (approval_sign.is_payment) */
+        val signable: Boolean = false,
+        /** The data trail's question: which kind of data would go to which recipient (titles only); empty for other cards */
+        val offers: List<chat.kelo.app.agent.TrailOffer> = emptyList(),
+        /** `order_preapprove`: the order approved in advance (what, the all-in cap, until when); null for any other card */
+        val preapproval: chat.kelo.app.agent.PreapprovalAsk? = null,
+        /** The message this card will send, which the owner may fix before allowing it (a mail's body, a text); null for any other card */
+        val editable: chat.kelo.app.agent.EditableMessage? = null,
+    ) : TurnEvent {
+        /** `forget_confirm`: the waiting cleanup plan whose list the card can show (GET /api/forget/plans/{id}); "" for any other card */
+        val forgetPlan: String get() = if (name == "forget_confirm") (arguments["plan_id"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim().orEmpty() else ""
+    }
     /**
      * A picture of the assistant's browser tab; one card per tool call [id], updated in place. [image] is a data: URL or null.
      * [tab]: the tab it shows (this phone's, "owner", a job's "task:…", a run's "schedule:…"); "" from an older server.
@@ -91,6 +109,8 @@ sealed interface TurnEvent {
     /** [payment]: the whole payment part (an order's items and where it goes, when the server sends them) */
     data class PaymentAuto(
         val id: String, val card: CardBrief?, val site: String, val amountText: String, val summary: String, val payment: PaymentInfo? = null,
+        /** Covered by an order the user approved in advance, or by the schedule's allow (`preapproval: {kind, via}`) */
+        val cover: chat.kelo.app.agent.PreapprovalCover? = null,
     ) : TurnEvent
     /**
      * The reply used its step budget. [next] from a newer server: "background" (the rest goes on in a job), "continue" or "stopped"
@@ -150,7 +170,7 @@ sealed interface TurnEvent {
                 "text" -> Text(s("text"))
                 "tool_started" -> ToolStarted(s("id"), s("name"), obj("arguments"), s("label"), bool("hidden") == true, s("group"), s("done"))
                 "tool_result" -> ToolResult(s("id"), s("name"), s("output"), bool("is_error") == true, bool("approved"), s("label"), bool("hidden") == true,
-                    s("group"), s("done"))
+                    s("group"), s("done"), obj("facts"))
                 "approval_request" -> ApprovalRequest(
                     s("approval_id"), s("name"), obj("arguments"), o["detail"]?.let { s("detail") }?.ifEmpty { null }, s("label"),
                     (o["payment"] as? JsonObject)?.let(PaymentInfo::parse), (o["card"] as? JsonObject)?.let(ApprovalCardInfo::parse),
@@ -161,6 +181,10 @@ sealed interface TurnEvent {
                     PinAsk.parse(o["pin"]),
                     CheckInfo.parse(o["check"]),
                     s("site"), bool("can_remember") == true,
+                    long("issued_at"), chat.kelo.app.approval.ApprovalSignRules.isPayment(o),
+                    chat.kelo.app.agent.TrailOffer.parseList(o["trail"]),
+                    chat.kelo.app.agent.PreapprovalAsk.parse(o["preapproval"]),
+                    chat.kelo.app.agent.EditableMessage.parse(o["editable"]).takeIf { (o["payment"] as? JsonObject) == null },
                 )
                 "payment_step" -> PaymentStep.parse(o)?.let { PaymentStepChanged(it) } ?: Unknown(type)
                 "pin_needed" -> PinNeed.parse(o)?.let { PinNeeded(it) } ?: Unknown(type)
@@ -185,7 +209,7 @@ sealed interface TurnEvent {
                     val p = obj("payment")
                     fun ps(k: String) = (p[k] as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty()
                     PaymentAuto(s("id"), (o["card"] as? JsonObject)?.let(CardBrief::parse), ps("site").ifEmpty { ps("host") }, ps("amount_text"), ps("summary"),
-                        (o["payment"] as? JsonObject)?.let(PaymentInfo::parse))
+                        (o["payment"] as? JsonObject)?.let(PaymentInfo::parse), chat.kelo.app.agent.PreapprovalCover.parse(o["preapproval"]))
                 }
                 "step_limit" -> StepLimit(int("steps"), s("next"), int("progress"))
                 "fallback" -> Fallback(s("provider"), s("model"), s("reason"))
@@ -380,8 +404,15 @@ class KeloTurnApi(private val api: KeloApi) : TurnApi {
 
 /** One readable pair of an approval card ("사이트" · "github.com"). [full]: shown whole, never cut (a text message the phone will send). */
 data class ApprovalLine(val label: String, val value: String, val full: Boolean = false) {
+    /** Drawn as a block (label above, the whole text below) instead of one cut line: a [full] value, a long one or one with line breaks.
+     *  A schedule's Task line is the whole task (server schedules.py, audit F6), so it must not be clipped. */
+    val block: Boolean get() = full || value.length > BLOCK_CHARS || '\n' in value
+
     companion object {
         const val MAX = 4
+        const val BLOCK_CHARS = 60
+        /** a block shows at most this many lines; more of it scrolls inside the card */
+        const val BLOCK_LINES = 8
 
         fun parseList(e: JsonElement?): List<ApprovalLine> {
             val arr = e as? kotlinx.serialization.json.JsonArray ?: return emptyList()
@@ -561,11 +592,14 @@ object PaymentStepRules {
  */
 data class CheckInfo(val vendor: String = "", val name: String = "", val kind: String = "", val step: String = "") {
     val isVerification: Boolean get() = kind == KIND_VERIFICATION
+    /** The phone's screen shown in Kelo's browser view for the owner to use (not a site's check): the card shows the server's own words */
+    val isDevice: Boolean get() = kind == KIND_DEVICE
     /** A sign-in verification the owner approves on the phone (an app's push), not a code typed in the page */
     val isApproveStep: Boolean get() = isVerification && step == STEP_APPROVE
 
     companion object {
         const val KIND_VERIFICATION = "verification"
+        const val KIND_DEVICE = "device"
         const val STEP_APPROVE = "approve"
 
         fun parse(e: kotlinx.serialization.json.JsonElement?): CheckInfo? {

@@ -10,6 +10,7 @@ from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from fastapi import APIRouter
 from .context import AppContext
+from .. import approval_sign, i18n
 from ..keyguard import KeyGuardError
 
 
@@ -26,6 +27,12 @@ class DeviceOwnerIn(BaseModel):
 class PairIn(BaseModel):
     code: str = Field(min_length=16, max_length=128)
     name: str = Field(default="", max_length=60)
+
+
+class ApprovalKeyIn(BaseModel):
+    alg: str = Field(max_length=10)                 # "ES256": ECDSA P-256 with SHA-256 (approval_sign.py)
+    public_key: str = Field(min_length=1, max_length=400)   # base64 SubjectPublicKeyInfo DER, made in the phone's keystore
+    sig: str | None = Field(default=None, max_length=400)   # replacing a key: the old key's signature over approval_sign.key_message
 
 
 class PairStartIn(BaseModel):
@@ -101,6 +108,27 @@ def router(ctx: AppContext) -> APIRouter:
         for device_id in gone:
             forget_device(device_id)
         return {"ok": True, "signed_out": len(gone)}
+
+    # signed payment approvals: the calling phone stores its approval public key (docs/approval-signing.md). One per device; replacing
+    # it needs the old key's signature over the new one, unless the device has no key yet.
+    @router.post("/api/devices/approval-key", dependencies=[Depends(require_auth)])
+    async def put_approval_key(request: Request, body: ApprovalKeyIn) -> dict[str, Any]:
+        device_id = request.state.device_id
+        if device_id is None:   # the master token is not a phone: it has no keystore to sign with
+            raise HTTPException(403, {"code": "no_device", "message": i18n.t("Only a signed-in phone can add an approval key.")})
+        try:
+            approval_sign.check_public_key(body.alg, body.public_key)
+        except approval_sign.BadKey as e:
+            raise HTTPException(422, str(e)) from None
+        old = store.approval_key(device_id)
+        if old:
+            if not body.sig:
+                raise HTTPException(403, {"code": "signature_required", "message": i18n.t("Replacing the approval key needs the signature of the current key.")})
+            if not approval_sign.verify(old, approval_sign.key_message(body.alg, body.public_key), body.sig):
+                raise HTTPException(403, {"code": "bad_signature", "message": i18n.t("The signature does not match the current approval key.")})
+        if not store.set_approval_key(device_id, body.public_key):
+            raise HTTPException(404, "no such device")
+        return {"ok": True, "approval_key": True}
 
     @router.get("/api/devices", dependencies=[Depends(require_auth)])
     async def get_devices(request: Request) -> dict[str, Any]:

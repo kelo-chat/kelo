@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">e-mail</string>
+    <string name="trail_kind_file">fichier</string>
+    <string name="trail_kind_memory">mémoire</string>
+    <string name="trail_kind_contacts">contacts</string>
+    <string name="trail_kind_calendar">agenda</string>
+    <string name="trail_kind_photos">photos</string>
+    <string name="trail_kind_messages">messages</string>
+    <string name="trail_kind_notes">notes</string>
+    <string name="trail_kind_vault">identifiants enregistrés</string>
+    <string name="trail_kind_profile">profil</string>
+    <string name="trail_kind_web">page web</string>
+    <string name="trail_kind_channel">discussion</string>
+    <string name="trail_kind_device">données de l\'appareil</string>
+    <string name="trail_kind_connector">service connecté</string>
+    <string name="trail_kind_other">données</string>
+    <string name="trail_recipient_link">un lien public</string>
+    <string name="trail_goes_to">Vers %2$s : %1$s</string>
+    <string name="trail_allow_once">Autoriser une fois</string>
+    <string name="trail_allow_always">Toujours pour ce destinataire</string>
+    <string name="recipient_approval_always">Autorisé. Je ne redemanderai plus pour ce destinataire.</string>
+    <string name="recipient_allows_title">Destinataires toujours autorisés</string>
+    <string name="recipient_allows_empty">Aucun pour l\'instant. Quand vous choisissez \"Toujours pour ce destinataire\" sur une carte, il apparaît ici.</string>
+    <string name="recipient_allow_since">Autorisé %1$s</string>
+    <string name="recipient_allow_remove">Retirer %1$s</string>
+    <string name="recipient_allow_remove_confirm">Redemander avant d\'envoyer %1$s à %2$s ?</string>
+    <string name="recipient_allow_removed">Je redemanderai avant d\'envoyer là-bas.</string>
+</resources>

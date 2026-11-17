@@ -63,7 +63,7 @@ import KeloCore
     @Test func everyChoiceGetsAnOtherBoxUnlessItHasOneOrIsALoneButton() {
         let when = ReplyQuestion(question: "When", options: ["Morning", "Evening"])
         #expect(QuickReplyRules.choices(when) == ["Morning", "Evening", QuickReplyRules.other])
-        #expect(QuickReplyRules.choices(ReplyQuestion(question: "Q", options: ["a", "Other"])) == ["a", "Other"])
+        #expect(QuickReplyRules.choices(ReplyQuestion(question: "Q", options: ["a", "Other"], typed: ["Other"])) == ["a", "Other"])
         #expect(QuickReplyRules.choices(ReplyQuestion(options: ["Continue"])) == ["Continue"])
         #expect(QuickReplyRules.choices(ReplyQuestion(question: "Day", options: ["a", "b"], kind: "date")).isEmpty)
         let one = ReplySet(questions: [when])

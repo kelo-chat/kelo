@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Houd ingedrukt om te spreken</string>
+    <string name="voice_hold_hint">Laat los om te voltooien, veeg weg om te annuleren</string>
+    <string name="voice_dictation_offline">Dicteren is gestopt omdat de verbinding wegviel.</string>
+    <string name="voice_dictation_failed">Dicteren kon niet worden voltooid.</string>
+    <string name="msg_action_read_aloud">Voorlezen</string>
+    <string name="msg_action_read_stop">Stop met voorlezen</string>
+</resources>

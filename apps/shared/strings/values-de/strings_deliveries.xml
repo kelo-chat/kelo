@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="deliveries_label">Nachrichten, die Kelo pro Tag von sich aus schickt</string>
+    <string name="deliveries_about">Kelo fasst zusammen, was es dir sagen möchte, und schickt es in so vielen Nachrichten pro Tag. Bei 0 schickt es nur, was nicht warten kann.</string>
+    <plurals name="deliveries_today">
+        <item quantity="one">Heute %d Mal gesendet</item>
+        <item quantity="other">Heute %d Mal gesendet</item>
+    </plurals>
+    <plurals name="deliveries_held">
+        <item quantity="one">%d Eintrag zurückgehalten</item>
+        <item quantity="other">%d Einträge zurückgehalten</item>
+    </plurals>
+    <string name="deliveries_held_title">Zurückgehaltene Nachrichten</string>
+    <string name="deliveries_held_about">Das hebt Kelo für die nächste Nachricht auf. Vor dem Senden schaut es noch einmal darauf und lässt weg, was nicht mehr wichtig ist.</string>
+    <string name="deliveries_held_empty">Im Moment wird nichts zurückgehalten.</string>
+    <string name="deliveries_held_until">Zurückgehalten bis %1$s</string>
+    <string name="deliveries_why_slots">Wartet auf die nächste Nachricht des Tages</string>
+    <string name="deliveries_why_cap">Nicht dringend genug, um heute mehr zu senden</string>
+    <string name="deliveries_why_reply">Wartet auf deine Antwort auf die letzte Nachricht</string>
+    <string name="deliveries_why_other">Wartet auf einen besseren Zeitpunkt</string>
+</resources>

@@ -4,7 +4,7 @@ each kind, taken from the code (server/src/assistant/effects.py, presets.py, mcp
 
   uv run python tools/connector_effects.py            # print it
   uv run python tools/connector_effects.py --write    # update docs/connector-permissions.md
-  uv run python tools/connector_effects.py --counts   # connectors / actions classified, how many fell to the name-verb fallback
+  uv run python tools/connector_effects.py --counts   # connectors / actions classified, how many fell to the model fallback
 """
 
 from __future__ import annotations
@@ -29,9 +29,6 @@ FAMILY_TITLES = {
     "key": "Services connected with a key or sign-in, and apps on your own network", "mcp": "MCP services",
     "package": "Nest packages that keep entries on this server",
 }
-EXAMPLES = ("send_message", "postComment", "reply_to_thread", "share_file", "invite_user", "publish_page", "delete_issue", "remove_member",
-            "trash_file", "destroy_session", "purge_cache", "get_page", "list_issues", "search_docs", "read_file", "find_user",
-            "query_database", "fetch_url", "create_page", "update_task", "set_status")
 
 
 def connectors() -> list[tuple[str, str, str, bool]]:
@@ -88,15 +85,13 @@ def render() -> str:
             out.append("")
             out.append("A service that posts to people (a messenger: `sends` in `presets.py`) has its change action as *send* instead of *change*.")
         if fam == "mcp":
-            out.append("| *each tool the server lists* | the tool's name | read, change, send or delete | `mcp_call_tool` |")
+            out.append("| *each tool the server lists* | its annotations or the model's reading | read, change, send or delete | `mcp_call_tool` |")
             out.append("")
-            out.append("The kind of an MCP tool: the server's own annotations when it gave them (`readOnlyHint` → read, `destructiveHint` → delete), "
-                       "else the first verb in the tool's name: send, post, reply, share, invite, publish, message → send; delete, remove, trash, "
-                       "destroy, purge → delete; get, list, search, read, find, query, fetch → read; anything else → change.")
+            out.append("The kind of an MCP tool: the server's own annotations when it gave them (`destructiveHint` → delete, `readOnlyHint` → "
+                       "read), else the connector's manifest (`connector_rules.json`, which can only tighten), else one cached call of the "
+                       "main model that reads the tool's description (read, change, send or delete; also whether it pays or touches an "
+                       "account). Never the words in the tool's name. A tool nothing can tell about is a change that asks.")
             out.append("")
-            out.append("| Tool name | Kind by name |")
-            out.append("|---|---|")
-            out += [f"| `{n}` | {effects.mcp_kind(n)} |" for n in EXAMPLES]
         if fam == "package":
             out.append("")
             out.append("The package's id is the connector id. A Nest connector package that keeps a mailbox or a calendar is a mail or a "
@@ -120,7 +115,7 @@ def render() -> str:
                    f"{r.doc}{'' if r.sure else ' (conservative prefix)'} |")
     out += ["", f"{c['connectors']} connectors with settings, {c['actions']} actions in them ({c['static_actions']} distinct actions in "
             f"{c['families']} families). Every tool of every family is classified by hand above; only the tools an MCP server lists are "
-            f"classified at run time (annotations first, then the verbs in the name). Installed Nest packages are added when installed.", ""]
+            f"classified at run time (annotations, the manifest, then the model's reading of the description). Installed Nest packages are added when installed.", ""]
     return "\n".join(out)
 
 

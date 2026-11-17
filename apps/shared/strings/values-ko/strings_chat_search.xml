@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">대화 검색</string>
+    <string name="chat_search_title">대화 검색</string>
+    <string name="chat_search_field">메시지 검색</string>
+    <string name="chat_search_clear">검색어 지우기</string>
+    <string name="chat_search_hint">단어나 단어의 일부를 입력해 보세요. 결과를 누르면 그 메시지가 있는 곳으로 가요.</string>
+    <string name="chat_search_none">이 검색어와 맞는 메시지가 없어요.</string>
+    <string name="chat_search_failed">서버에 닿지 못해 검색하지 못했어요. 잠시 후 다시 해 보세요.</string>
+    <string name="chat_search_you">나</string>
+</resources>

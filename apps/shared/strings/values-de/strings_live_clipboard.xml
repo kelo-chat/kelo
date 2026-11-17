@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Vom Handy einfügen</string>
+    <string name="live_pasted">Eingefügt. Prüfe das Feld.</string>
+    <string name="live_copy_from_browser">Aus dem Browser kopieren</string>
+    <string name="live_copied_to_phone">Auf dein Handy kopiert</string>
+</resources>

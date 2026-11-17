@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Buttons and texts of the phone notifications that answer without opening the app (notify/ApprovalActionReceiver.kt, ReplyActionReceiver.kt) -->
+<resources>
+    <string name="notify_action_reply">Reply</string>
+    <string name="notify_unlock_retry">Unlock your phone, then try again.</string>
+    <string name="notify_send_failed_open">Couldn\'t send. Open Kelo to answer.</string>
+    <string name="notify_send_failed_tap">Couldn\'t send. Tap to open Kelo.</string>
+</resources>

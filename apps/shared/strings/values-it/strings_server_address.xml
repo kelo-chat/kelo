@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Indirizzo del server</string>
+    <string name="server_address_title">Cambia l\'indirizzo del server</string>
+    <string name="server_address_body">Indirizzo collegato: %1$s\nPer passare a un nuovo indirizzo dello stesso server Kelo, scrivi il nuovo indirizzo https. Chat e chiavi restano come sono e non devi collegarti di nuovo.</string>
+    <string name="server_address_switch">Cambia</string>
+    <string name="server_address_checking">Controllo in corso…</string>
+    <string name="server_address_invalid">Non sembra un indirizzo https. Scrivilo così: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">Impossibile raggiungere quell\'indirizzo. Controllalo insieme alla connessione e riprova.</string>
+    <string name="server_address_other">Quell\'indirizzo appartiene a un altro server, quindi non è cambiato nulla. Per collegare un altro server, esci e collegalo da capo.</string>
+    <string name="server_address_same">Questo telefono usa già quell\'indirizzo.</string>
+    <string name="server_address_done">Indirizzo del server cambiato.</string>
+</resources>

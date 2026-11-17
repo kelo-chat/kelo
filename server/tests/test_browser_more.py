@@ -39,7 +39,6 @@ def probe(**kw):
 # ------------------------------------------------------------------------------------------------ bot-check detection
 @pytest.mark.parametrize("kw,want", [
     ({"headers": {"cf-mitigated": "challenge", "server": "cloudflare"}, "status": 403}, ("cloudflare", "interstitial")),
-    ({"probe": probe(title="Just a moment...")}, ("cloudflare", "interstitial")),
     ({"probe": probe(marks={"cf_running": {"w": 300, "h": 60, "shown": True}})}, ("cloudflare", "interstitial")),
     ({"probe": probe(frames=[{"src": "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv0/0/x",
                               "w": 300, "h": 65, "shown": True}])}, ("cloudflare", "widget")),
@@ -53,7 +52,6 @@ def probe(**kw):
     ({"probe": probe(frames=[{"src": "https://geo.captcha-delivery.com/captcha/?initialCid=x", "w": 900, "h": 700, "shown": True}])},
      ("datadome", "interstitial")),
     ({"headers": {"x-px-blocked": "1"}, "status": 403}, ("perimeterx", "interstitial")),
-    ({"probe": probe(title="Access to this page has been denied")}, ("perimeterx", "interstitial")),
     ({"probe": probe(marks={"px": {"w": 310, "h": 100, "shown": True}})}, ("perimeterx", "interstitial")),
     ({"probe": probe(frames=[{"src": "https://client-api.arkoselabs.com/fc/gc/?token=x", "w": 400, "h": 400, "shown": True}])},
      ("arkose", "widget")),
@@ -72,6 +70,7 @@ def test_bot_checks_are_found_by_structure(kw, want):
     {"probe": probe(frames=[{"src": "https://www.google.com/recaptcha/api2/bframe?k=abc", "w": 0, "h": 0, "shown": False}])},
     {"probe": probe(frames=[{"src": "https://challenges.cloudflare.com/turnstile/x", "w": 0, "h": 0, "shown": False}])},
     {"probe": probe(title="Please complete the CAPTCHA to continue")},        # words in a title or text alone are not structure
+    {"probe": probe(title="Just a moment...")},                                # not even a known interstitial's title
     {"probe": "page text"},                                                    # not a page reading at all
     {"probe": probe(), "frame_urls": ["https://challenges.cloudflare.com/turnstile/x"]},   # a frame without a size proves nothing
     {"probe": probe(), "headers": {"server": "cloudflare"}, "status": 200},
@@ -86,7 +85,7 @@ def test_the_probe_reads_no_values_and_avoids_the_fake_routing_words():
 
 
 def test_the_notes_let_the_agent_try_twice_then_offer_the_live_view():
-    check = detect(probe(title="Just a moment..."))
+    check = detect(probe(marks={"cf_running": {"w": 300, "h": 60, "shown": True}}))
     first = try_note(check, "shop.example.com", CHECK_TRIES)
     assert CHECK_TRIES == 2 and first.startswith("[Human check on the page") and "2 of 2 tries left" in first and "shop.example.com" in first
     assert "browser_human_check" in first and "hand_over" in first and "No outside solving services" in first and "scripts" in first
@@ -124,7 +123,7 @@ def session_for(page, **kw):
 
 
 async def test_a_page_reading_lets_the_agent_try_twice_before_the_user_is_told_once():
-    page = CheckPage(probe(title="Just a moment..."))
+    page = CheckPage(probe(marks={"cf_running": {"w": 300, "h": 60, "shown": True}}))
     s = session_for(page)
     seen = []
     s.check_listeners.append(lambda key, c, host: seen.append((key, c.vendor, host)))
@@ -138,12 +137,12 @@ async def test_a_page_reading_lets_the_agent_try_twice_before_the_user_is_told_o
     page.probe_value = probe()
     out = await s.snapshot()
     assert "Human check" not in out and "is gone" in out
-    page.probe_value = probe(title="Just a moment...")                  # a new check later gets its own tries
+    page.probe_value = probe(marks={"cf_running": {"w": 300, "h": 60, "shown": True}})                  # a new check later gets its own tries
     assert "2 of 2 tries left" in await s.snapshot()
 
 
 async def test_the_agent_can_hand_a_check_over_at_once():
-    page = CheckPage(probe(title="Just a moment..."))
+    page = CheckPage(probe(marks={"cf_running": {"w": 300, "h": 60, "shown": True}}))
     s = session_for(page)
     assert "2 of 2 tries left" in await s.snapshot()
     s.give_up_check()

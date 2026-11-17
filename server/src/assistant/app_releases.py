@@ -51,9 +51,10 @@ class Release:
     version: str
     channel: str
     date: str
+    min_server: str = ""   # the oldest server this app works with (the app's compiled-in min_server); "" = not recorded: any server
 
     @classmethod
-    def make(cls, version: Any, build: Any, channel: Any, date: Any) -> Release:
+    def make(cls, version: Any, build: Any, channel: Any, date: Any, min_server: Any = None) -> Release:
         """Checks every field. Raises RecordError."""
         try:
             key = release_version.parse(version)
@@ -69,10 +70,21 @@ class Release:
             day = None
         if day is None:
             raise RecordError(f"the date must be YYYY-MM-DD, not {date!r}")
-        return cls(key, build, version.strip(), channel, day.isoformat())
+        if min_server in (None, ""):
+            min_server = ""
+        else:
+            try:
+                release_version.parse(min_server)
+            except ValueError:
+                raise RecordError(f"min_server must be a release version (MAJOR.MINOR.PATCH), not {min_server!r}") from None
+            min_server = min_server.strip()
+        return cls(key, build, version.strip(), channel, day.isoformat(), min_server)
 
     def to_json(self) -> dict[str, Any]:
-        return {"version": self.version, "build": self.build, "channel": self.channel, "date": self.date}
+        out: dict[str, Any] = {"version": self.version, "build": self.build, "channel": self.channel, "date": self.date}
+        if self.min_server:
+            out["min_server"] = self.min_server
+        return out
 
     @property
     def label(self) -> str:
@@ -132,9 +144,9 @@ class AppReleases:
             seen: set[tuple[str, int]] = set()
             out = []
             for row in rows:
-                if not isinstance(row, dict) or set(row) - {"version", "build", "channel", "date"}:
-                    raise RecordError(f"{platform}: an entry is not {{version, build, channel, date}}")
-                rel = Release.make(row.get("version"), row.get("build"), row.get("channel"), row.get("date"))
+                if not isinstance(row, dict) or set(row) - {"version", "build", "channel", "date", "min_server"}:
+                    raise RecordError(f"{platform}: an entry is not {{version, build, channel, date[, min_server]}}")
+                rel = Release.make(row.get("version"), row.get("build"), row.get("channel"), row.get("date"), row.get("min_server"))
                 if (rel.version, rel.build) in seen:
                     raise RecordError(f"{platform}: {rel.label} is listed twice")
                 seen.add((rel.version, rel.build))
@@ -232,7 +244,7 @@ class AppReleases:
         return Enforcement(kept, skip, tuple(sorted(bad | skip)), tuple(by_version + by_build))
 
     # ------------------------------------------------------------------------------------------------------------- writing
-    def add(self, platform: str, version: Any, build: Any, channel: Any, date: Any = None) -> bool:
+    def add(self, platform: str, version: Any, build: Any, channel: Any, date: Any = None, min_server: Any = None) -> bool:
         """Adds a release that is live now. Returns False when exactly this one is already recorded; a different channel for the
         same version and build is the same release and is not added twice either. Raises RecordError for anything invalid."""
         if platform not in PLATFORMS:
@@ -241,7 +253,7 @@ class AppReleases:
             if not build.isdigit():
                 raise RecordError(f"the build must be a whole number, not {build!r}")
             build = int(build)
-        rel = Release.make(version, build, channel, date or _date.today().isoformat())
+        rel = Release.make(version, build, channel, date or _date.today().isoformat(), min_server)
         if any(r.version == rel.version and r.build == rel.build for r in self.entries[platform]):
             return False
         self.entries[platform] = sorted([*self.entries[platform], rel])
@@ -298,7 +310,8 @@ def run_record(args: Any, out: Any = print, path: Path | None = None) -> int:
         return 1
     try:
         record = AppReleases.read(target)
-        added = record.add(args.platform, args.version, args.build, args.channel, getattr(args, "date", None))
+        added = record.add(args.platform, args.version, args.build, args.channel, getattr(args, "date", None),
+                          getattr(args, "min_server", None))
     except RecordError as e:
         out(f"error: {e}")
         return 1
@@ -313,7 +326,8 @@ def run_record(args: Any, out: Any = print, path: Path | None = None) -> int:
 
 def _valid(args: Any) -> bool:
     try:
-        AppReleases().add(args.platform, args.version, args.build, args.channel, getattr(args, "date", None))
+        AppReleases().add(args.platform, args.version, args.build, args.channel, getattr(args, "date", None),
+                          getattr(args, "min_server", None))
         return True
     except RecordError:
         return False

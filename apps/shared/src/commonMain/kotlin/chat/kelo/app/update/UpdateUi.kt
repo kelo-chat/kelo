@@ -25,7 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -97,6 +97,34 @@ fun UpdateBanner(s: UpdateState, onGet: () -> Unit, onInstall: () -> Unit, onClo
         Icon(KeloIcons.ArrowDown, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
         Text(offerText(s), color = c.ink, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 6.dp))
         TextButton(onClick = if (s.phase == UpdatePhase.READY) onInstall else onGet) { Text(actionWord(s), color = c.accent) }
+        IconButton(onClick = onClose) { Icon(KeloIcons.Close, contentDescription = string(Res.string.close), tint = c.muted, modifier = Modifier.size(18.dp)) }
+    }
+}
+
+/**
+ * The one-time banner "A new Kelo app (x.y.z) works best with your server" ([AppNotice]): the same look as [UpdateBanner]; [onAction]
+ * opens the store page or starts the app's own update, [onClose] puts it away for this version.
+ */
+@Composable
+fun AppNoticeBanner(version: String, onAction: () -> Unit, onClose: () -> Unit, store: Boolean, modifier: Modifier = Modifier) {
+    val c = Kelo.colors
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier
+            .widthIn(max = 560.dp)
+            .fillMaxWidth()
+            .shadow(4.dp, shape, clip = false)
+            .clip(shape)
+            .background(c.card)
+            .border(1.dp, c.line, shape)
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(KeloIcons.ArrowDown, contentDescription = null, tint = c.accent, modifier = Modifier.size(20.dp))
+        Text(string(Res.string.app_notice_new, version), color = c.ink, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 6.dp))
+        TextButton(onClick = onAction) { Text(string(if (store) Res.string.app_notice_store else Res.string.update_get), color = c.accent) }
         IconButton(onClick = onClose) { Icon(KeloIcons.Close, contentDescription = string(Res.string.close), tint = c.muted, modifier = Modifier.size(18.dp)) }
     }
 }

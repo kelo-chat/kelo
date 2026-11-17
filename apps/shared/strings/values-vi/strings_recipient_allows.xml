@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">thư</string>
+    <string name="trail_kind_file">tệp</string>
+    <string name="trail_kind_memory">bộ nhớ</string>
+    <string name="trail_kind_contacts">danh bạ</string>
+    <string name="trail_kind_calendar">lịch</string>
+    <string name="trail_kind_photos">ảnh</string>
+    <string name="trail_kind_messages">tin nhắn</string>
+    <string name="trail_kind_notes">ghi chú</string>
+    <string name="trail_kind_vault">thông tin đăng nhập đã lưu</string>
+    <string name="trail_kind_profile">hồ sơ</string>
+    <string name="trail_kind_web">trang web</string>
+    <string name="trail_kind_channel">cuộc trò chuyện</string>
+    <string name="trail_kind_device">dữ liệu thiết bị</string>
+    <string name="trail_kind_connector">dịch vụ đã kết nối</string>
+    <string name="trail_kind_other">dữ liệu</string>
+    <string name="trail_recipient_link">một liên kết công khai</string>
+    <string name="trail_goes_to">Gửi tới %2$s: %1$s</string>
+    <string name="trail_allow_once">Cho phép một lần</string>
+    <string name="trail_allow_always">Luôn cho người nhận này</string>
+    <string name="recipient_approval_always">Đã cho phép. Sẽ không hỏi lại với người nhận này.</string>
+    <string name="recipient_allows_title">Người nhận luôn được phép</string>
+    <string name="recipient_allows_empty">Chưa có. Khi bạn chọn \"Luôn cho người nhận này\" trên thẻ, người nhận sẽ hiện ở đây.</string>
+    <string name="recipient_allow_since">Đã cho phép %1$s</string>
+    <string name="recipient_allow_remove">Xóa %1$s</string>
+    <string name="recipient_allow_remove_confirm">Hỏi lại trước khi gửi %1$s tới %2$s?</string>
+    <string name="recipient_allow_removed">Sẽ hỏi lại trước khi gửi tới đó.</string>
+</resources>

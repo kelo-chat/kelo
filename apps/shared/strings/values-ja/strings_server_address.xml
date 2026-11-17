@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">サーバーのアドレス</string>
+    <string name="server_address_title">サーバーのアドレスを変更</string>
+    <string name="server_address_body">接続中のアドレス: %1$s\n同じ Kelo サーバーの新しいアドレスに移るには、新しい https アドレスを入力してください。チャットとキーはそのままで、接続し直す必要はありません。</string>
+    <string name="server_address_switch">変更</string>
+    <string name="server_address_checking">確認中…</string>
+    <string name="server_address_invalid">https のアドレスではないようです。https://kelo.example.com のように入力してください。</string>
+    <string name="server_address_unreachable">そのアドレスに接続できませんでした。アドレスと通信環境を確認して、もう一度お試しください。</string>
+    <string name="server_address_other">そのアドレスは別のサーバーのものなので、何も変更していません。別のサーバーに接続するには、ログアウトして最初から接続してください。</string>
+    <string name="server_address_same">このスマートフォンはすでにそのアドレスを使っています。</string>
+    <string name="server_address_done">サーバーのアドレスを変更しました。</string>
+</resources>

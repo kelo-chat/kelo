@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">確認付款</string>
+    <string name="approval_sign_subtitle">使用指紋或臉部辨識確認</string>
+    <string name="approval_sign_failed">無法在這支手機上批准這筆付款，請再試一次。</string>
+    <string name="approval_sign_key_lost">找不到這支手機的付款核准金鑰。請重新將這支手機與伺服器配對。</string>
+    <string name="approval_pay_on_phone">付款請在 Kelo 手機 App 中核准。</string>
+</resources>

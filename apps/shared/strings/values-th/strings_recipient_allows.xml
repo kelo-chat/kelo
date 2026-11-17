@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">อีเมล</string>
+    <string name="trail_kind_file">ไฟล์</string>
+    <string name="trail_kind_memory">ความจำ</string>
+    <string name="trail_kind_contacts">รายชื่อติดต่อ</string>
+    <string name="trail_kind_calendar">ปฏิทิน</string>
+    <string name="trail_kind_photos">รูปภาพ</string>
+    <string name="trail_kind_messages">ข้อความ</string>
+    <string name="trail_kind_notes">บันทึก</string>
+    <string name="trail_kind_vault">การเข้าสู่ระบบที่บันทึกไว้</string>
+    <string name="trail_kind_profile">โปรไฟล์</string>
+    <string name="trail_kind_web">หน้าเว็บ</string>
+    <string name="trail_kind_channel">แชต</string>
+    <string name="trail_kind_device">ข้อมูลอุปกรณ์</string>
+    <string name="trail_kind_connector">บริการที่เชื่อมต่อ</string>
+    <string name="trail_kind_other">ข้อมูล</string>
+    <string name="trail_recipient_link">ลิงก์สาธารณะ</string>
+    <string name="trail_goes_to">ถึง %2$s: %1$s</string>
+    <string name="trail_allow_once">อนุญาตครั้งเดียว</string>
+    <string name="trail_allow_always">อนุญาตผู้รับนี้เสมอ</string>
+    <string name="recipient_approval_always">อนุญาตแล้ว จะไม่ถามอีกสำหรับผู้รับนี้</string>
+    <string name="recipient_allows_title">ผู้รับที่อนุญาตเสมอ</string>
+    <string name="recipient_allows_empty">ยังไม่มี เมื่อคุณเลือก \"อนุญาตผู้รับนี้เสมอ\" บนการ์ด จะแสดงที่นี่</string>
+    <string name="recipient_allow_since">อนุญาตเมื่อ %1$s</string>
+    <string name="recipient_allow_remove">ลบ %1$s</string>
+    <string name="recipient_allow_remove_confirm">ถามอีกครั้งก่อนส่ง%1$sไปที่ %2$s ไหม</string>
+    <string name="recipient_allow_removed">จะถามอีกครั้งก่อนส่งไปที่นั่น</string>
+</resources>

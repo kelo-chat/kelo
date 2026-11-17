@@ -6,6 +6,8 @@
 - a model that ran tools but never wrote an answer ends with a translated line and a Continue button; a crash shows the user's words.
 Fake model only."""
 
+import asyncio
+
 import httpx
 
 from assistant import i18n
@@ -16,7 +18,7 @@ from assistant.workers import NO_PROGRESS
 
 from test_agent_profile import app_settings
 from test_server import AUTH, Running, follow
-from test_workers import Brain, call, one_worker, say, until
+from test_workers import Brain, call, one_worker, say, until, worker_list
 
 ITEMS = 150
 
@@ -130,3 +132,82 @@ async def test_tools_but_no_answer_ends_with_a_plain_line_and_a_crash_shows_no_e
         assert "RuntimeError" not in err["message"] and "42" not in err["message"] and err["message"].strip()
         assert err["message"] != "Something went wrong on the server, so I stopped. Please try again in a moment."   # translated
 
+
+
+# ---------------------------------------------------------------------------------------- one request never becomes two jobs
+def long_chat(first_call=None):
+    """A chat that (optionally) hands a job over first, then works step after step with distinct calls until its budget is gone."""
+    def chat(req, n):
+        if no_tools(req):
+            return say("여기까지 했어요.")
+        if n == 0 and first_call is not None:
+            return call(*first_call)
+        return call("handle_item", {"item": n}, cid=f"c{n}")
+    return chat
+
+
+async def _handle(args):
+    return f"item {args['item']} done"
+
+
+def _jobs_app(tmp_path, chat, **kw):
+    gate_worker = lambda req, n: call("press_nothing", {}, cid=f"w{n}") if False else say("")   # noqa: E731 - never reached
+    brain = Brain(chat=chat, worker=kw.pop("worker", gate_worker))
+    tools = [Tool("handle_item", "x", {"type": "object"}, _handle)]
+    return create_app(app_settings(tmp_path, max_steps=6), tools=tools, stream_fn=brain, with_worker_tools=True), brain
+
+
+async def _hold(req, n):
+    await asyncio.sleep(30)   # the job stays open for the whole test
+    return say("")
+
+
+async def test_a_turn_that_delegated_and_hits_the_step_limit_starts_no_second_job(tmp_path):
+    app, _ = _jobs_app(tmp_path, long_chat(("delegate", {"task": "log in to the shop app", "kind": "general"})), worker=_hold)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers={**AUTH, "Accept-Language": "ko"}) as c:
+        events = await follow(c, (await c.post("/api/turns", json={"text": "쇼핑 앱에 로그인해줘"})).json()["id"])
+        limit = next(e for e in events if e["type"] == "step_limit")
+        jobs = await worker_list(c)
+        assert len(jobs) == 1 and limit["next"] == "background" and limit["job_id"] == jobs[0]["id"]
+        assert i18n.t(STEP_LIMIT_BACKGROUND, lang="ko") in "".join(e["text"] for e in events if e["type"] == "text")
+        await app.state.workers.stop(jobs[0]["id"])
+
+
+async def test_an_open_job_on_the_phone_blocks_the_continuation(tmp_path):
+    app, _ = _jobs_app(tmp_path, long_chat(), worker=_hold)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers={**AUTH, "Accept-Language": "ko"}) as c:
+        out = await app.state.workers.delegate({"task": "hold the phone", "kind": "general"})
+        wid = out.split("(job ")[1].split(":")[0]
+        app.state.workers.store._run("UPDATE workers SET status = 'needs_input', wait_on = ? WHERE id = ?", ('{"kind": "device"}', wid))
+        events = await follow(c, (await c.post("/api/turns", json={"text": "계속 해줘"})).json()["id"])
+        limit = next(e for e in events if e["type"] == "step_limit")
+        assert limit["next"] == "background" and limit["job_id"] == wid and len(await worker_list(c)) == 1
+        await app.state.workers.stop(wid)
+
+
+async def test_an_open_job_in_the_replys_own_tab_blocks_the_continuation(tmp_path):
+    app, _ = _jobs_app(tmp_path, long_chat(), worker=_hold)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers={**AUTH, "Accept-Language": "ko"}) as c:
+        out = await app.state.workers.delegate({"task": "work in that tab", "kind": "general"})
+        wid = out.split("(job ")[1].split(":")[0]
+        app.state.workers.store._run("UPDATE workers SET tab = 'owner' WHERE id = ?", (wid,))   # a chat reply's tab key
+        events = await follow(c, (await c.post("/api/turns", json={"text": "계속 해줘"})).json()["id"])
+        limit = next(e for e in events if e["type"] == "step_limit")
+        assert limit["job_id"] == wid and len(await worker_list(c)) == 1
+        await app.state.workers.stop(wid)
+
+
+async def test_without_an_open_job_the_continuation_is_created_with_a_title_in_the_owners_language(tmp_path):
+    for lang, expect in (("ko", "이어서 진행: "), ("en", "Carrying on: ")):
+        (tmp_path / lang).mkdir()
+        app, _ = _jobs_app(tmp_path / lang, long_chat(), worker=_hold)
+        async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers={**AUTH, "Accept-Language": lang}) as c:
+            asked = "아주 긴 요청입니다 " * 10 if lang == "ko" else "a very long request about many things " * 5
+            events = await follow(c, (await c.post("/api/turns", json={"text": asked})).json()["id"])
+            limit = next(e for e in events if e["type"] == "step_limit")
+            jobs = await worker_list(c)
+            assert len(jobs) == 1 and limit["job_id"] == jobs[0]["id"]
+            title = jobs[0]["title"]
+            assert title.startswith(expect) and len(title) <= len(expect) + 45
+            assert "Carry on with the user's request" not in title and "chat reply ran out" not in title
+            await app.state.workers.stop(jobs[0]["id"])

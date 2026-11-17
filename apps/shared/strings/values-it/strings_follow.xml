@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Di cosa si occupa Kelo</string>
+    <string name="follow_stop">Smetti di seguire</string>
+    <string name="follow_stop_confirm">Smettere di seguire questo elemento?</string>
+    <string name="follow_stop_confirm_detail">Kelo non controllerà più le modifiche né preparerà nulla in anticipo.</string>
+    <string name="follow_stop_yes">Smetti di seguire</string>
+    <string name="follow_keep_watching">Continua a seguire</string>
+    <string name="follow_replan">Ripianifica</string>
+    <string name="follow_sheet_title">Piano di monitoraggio</string>
+    <string name="follow_plan_checks">Cosa controllare</string>
+    <string name="follow_plan_prep">Preparativi</string>
+    <string name="follow_plan_tell">Notifiche</string>
+    <string name="follow_plan_tell_change">Avvisa in caso di variazioni</string>
+    <string name="follow_next_check">Prossimo controllo: %1$s</string>
+    <string name="follow_last_check">Ultimo controllo: %1$s</string>
+    <string name="follow_prep_later">In programma</string>
+    <string name="follow_prep_running">In corso</string>
+    <string name="follow_prep_done">Preparato</string>
+    <string name="follow_prep_failed">Non riuscito</string>
+    <string name="follow_state_watching">Monitoraggio attivo</string>
+    <string name="follow_state_stopped">Interrotto</string>
+    <string name="follow_state_done">Completato</string>
+    <string name="follow_summary_lead_flight">Notifica 1 giorno prima della partenza</string>
+    <string name="follow_summary_lead_general">Notifica 1 giorno prima</string>
+    <string name="follow_summary_lead_hours">Notifica %1$d ore prima</string>
+    <string name="follow_summary_prep_checkin">Prepara il check-in all\'apertura</string>
+    <string name="follow_summary_prep_general">Prepara %1$s</string>
+    <string name="follow_summary_watch_changes">Controlla le variazioni</string>
+    <string name="follow_summary_default">Prenditi cura del programma</string>
+</resources>

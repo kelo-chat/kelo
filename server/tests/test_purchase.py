@@ -17,7 +17,7 @@ from assistant.agent import ApprovalRequest, ToolResult, run_agent, ui_sink
 from assistant.providers import Done, TextDelta, ToolCall
 from assistant.server import Settings, create_app
 from assistant.tools import browser as browser_mod
-from assistant.tools.browser import BrowserSession, browser_tools, looks_final, shrink_jpeg
+from assistant.tools.browser import BrowserSession, browser_tools, shrink_jpeg
 from assistant.tools.purchase import purchase_tools
 
 from test_browser_tools import FakePage, fake_resolver
@@ -132,10 +132,8 @@ async def test_deny_or_no_answer_means_no_payment(answer):
     agen, asked = agent_run(session, [PAY, CLICK_PAY, END], [answer] if answer is not None else [])
     results = [ev async for ev in agen if isinstance(ev, ToolResult)]
     assert results[0].approved is False and "did NOT approve" in results[0].output and "Do NOT click pay" in results[0].output
-    # a model that clicks pay anyway meets a card of its own (here denied too): nothing was clicked
-    assert results[1].approved is False and ("click", "text=결제하기") not in page.calls
-    assert [a.name for a in asked] == ["confirm_purchase", "browser_click"]
-    assert "the button that confirms a payment, order or booking" in asked[1].detail
+    # a button's words decide nothing: paying is a checkout step by its structure (tests/test_checkout.py)
+    assert [a.name for a in asked] == ["confirm_purchase"]
 
 
 async def test_the_purchase_window_is_short_small_and_for_one_site(monkeypatch):
@@ -237,11 +235,6 @@ def test_screenshots_are_scaled_and_capped():
     assert data is None or len(data) <= 20_000
 
 
-def test_final_button_hint():
-    assert looks_final("text=결제하기") and looks_final("#place-order") and looks_final("button:has-text('Book now')")
-    assert not looks_final("a#next") and not looks_final("text=상세보기")
-
-
 # ---------------------------------------------------------------- through the server: events the phone renders
 async def test_the_phone_gets_labels_a_browser_card_and_a_purchase_card_over_http():
     session, page = shop()
@@ -249,7 +242,7 @@ async def test_the_phone_gets_labels_a_browser_card_and_a_purchase_card_over_htt
     fn = scripted([ToolCall("c1", "browser_open", '{"url": "https://shop.example.com/cart"}'), Done("tool_calls")],
                   [ToolCall("c2", "confirm_purchase", json.dumps(ORDER)), Done("tool_calls")],
                   [TextDelta("not paid"), Done("stop")])
-    s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None)
+    s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None, payment_specialist=False)   # the events of a purchase card, not the split
     async with Running(create_app(s, tools=tools, stream_fn=fn)) as srv, httpx.AsyncClient(base_url=srv.url) as c:
         events = []
         async with c.stream("POST", "/api/chat", json={"messages": [{"role": "user", "content": "buy 2 blue mugs"}]}, headers=AUTH) as r:
@@ -276,7 +269,7 @@ async def test_the_phone_gets_labels_a_browser_card_and_a_purchase_card_over_htt
 async def test_every_tool_the_app_offers_has_a_label(tmp_path):
     """Ask the real app for a tool that does not exist: its error names every tool it has."""
     fn = scripted([ToolCall("c1", "no_such_tool", "{}"), Done("tool_calls")], [TextDelta("ok"), Done("stop")])
-    s = Settings(token=TOKEN, provider="p", model="m", cdp_host="browser", home_dir=str(tmp_path / "home"), content_dir=str(CONTENT),
+    s = Settings(token=TOKEN, provider="p", model="m", cdp_host="browser", payment_specialist=True, home_dir=str(tmp_path / "home"), content_dir=str(CONTENT),
                  db_path=str(tmp_path / "a.db"))
     app = create_app(s, stream_fn=fn)
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url) as c:
@@ -284,9 +277,9 @@ async def test_every_tool_the_app_offers_has_a_label(tmp_path):
             events = [json.loads(line[6:]) async for line in r.aiter_lines() if line.startswith("data: ")]
     out = next(e for e in events if e["type"] == "tool_result")["output"]
     shown = re.search(r"Available: (.*?)\.( find_tools|$)", out).group(1).split(", ")   # the tools shown now (tools on demand)
-    assert "confirm_purchase" in shown and "browser_click" in shown and "find_tools" in shown
+    assert "checkout_review" not in shown and "checkout_submit" not in shown and "confirm_purchase" not in shown   # the split: only a checkout job pays and "browser_click" in shown and "find_tools" in shown
     names = [t.name for t in app.state.tools]                                                # and every tool, shown or loadable
-    assert set(shown) <= set(names) and "wallet_cards" in names
+    assert set(shown) <= set(names) and "wallet_cards" in names and "checkout_review" in names   # the app has them; the chat is not shown them
     assert [n for n in names if n not in tool_labels.LABELS] == []
     assert tool_labels.hidden("read_file") and tool_labels.hidden("list_files") and not tool_labels.hidden("browser_open")
     assert tool_labels.label("something_new") == "Working"
@@ -302,13 +295,13 @@ async def test_every_tool_the_app_offers_has_a_label(tmp_path):
 def test_the_prompt_describes_this_apps_purchase_path_and_nothing_site_specific():
     text = (CONTENT / "prompts" / "system.md").read_text(encoding="utf-8")
     section = text.split("**Buying, ordering, booking.**", 1)[1].split("\n\n**", 1)[0]
-    for word in ("browser_open", "confirm_purchase", "APPROVED", "one message", "wallet_cards", "browser_fill_card"):
+    for word in ("browser_open", "checkout_review", "approved", "one message", "wallet_cards", "browser_fill_card"):
         assert word in section, word
     keys = text.split("**Logins and keys", 1)[1].split("\n\n**", 1)[0]
     assert "card numbers never go through chat" in keys                   # said once, for every secret, not again per task
     assert len(section) < 1600                                             # kept short: a long prompt makes some models wander
     short = Settings(token=TOKEN).system_prompt
-    assert "confirm_purchase" in short and "APPROVED" in short
+    assert "checkout_review" in short and "approved" in short
 
 
 def test_the_prompt_says_not_to_decline_a_purchase_on_assumed_requirements():

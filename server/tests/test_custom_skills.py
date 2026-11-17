@@ -342,3 +342,62 @@ def test_skill_endpoints_list_approve_discard_and_draft(tmp_path):
     assert "## How to check it worked" in draft["text"]
     assert c.post("/api/tasks/999999/skill-draft", headers=h).status_code == 404
     assert c.post("/api/workers/nope/skill-draft", headers=h).status_code == 404
+
+
+async def test_propose_skill_card_shows_full_body_and_outside_text(tmp_path):
+    from assistant.agent.loop import outside_seen
+    reg, props = make(tmp_path)
+    [tool] = skill_tools(props)
+    assert tool.approval_extra is not None
+
+    # Normal proposal: not after outside text
+    tok = outside_seen.set(None)
+    try:
+        extra = tool.approval_extra("a1", {"id": "my-skill", "name": "My Skill", "description": "Do stuff", "body": BODY})
+        assert extra["outside_text"] is False
+        assert extra["scrollable"] is True
+        assert extra["body"] == BODY
+        lines = extra["lines"]
+        assert len(lines) == 3
+        assert lines[0] == {"label": "Name", "value": "My Skill"}
+        assert lines[1] == {"label": "Task", "value": "Do stuff"}
+        assert lines[2] == {"label": "Content", "value": BODY, "full": True}
+
+        # After outside text was seen
+        outside_seen.set((True, "https://example.com"))
+        extra_out = tool.approval_extra("a2", {"id": "my-skill", "name": "My Skill", "description": "Do stuff", "body": BODY})
+        assert extra_out["outside_text"] is True
+        assert extra_out["scrollable"] is True
+        assert len(extra_out["lines"]) == 4
+        assert extra_out["lines"][3]["label"] == "Why it asks"
+        assert "outside text" in extra_out["lines"][3]["value"]
+    finally:
+        outside_seen.reset(tok)
+
+
+def test_propose_skill_only_records_shown_card_content_as_approved(tmp_path):
+    reg, props = make(tmp_path)
+    # A custom skill with an extra file on disk
+    reg.write_custom("my-skill", {"SKILL.md": skill_md("my-skill", "Old", "Old body"), "extra.md": "Unshown file content"})
+    assert "extra.md" in reg.custom_files("my-skill")
+    assert "extra.md" in reg.custom_approved("my-skill")
+
+    # Now propose_skill proposes a new body (simulating owner approving proposal card)
+    prop = props.propose("my-skill", "New desc", BODY, origin={"type": "chat"}, outside_text=True)
+    assert prop["outside_text"] is True
+
+    # Approving proposal writes custom skill with keep_others=False
+    res = props.approve(prop["id"])
+    assert res == {"ok": True, "skill": "my-skill"}
+
+    # Only SKILL.md remains on disk and is recorded as approved; extra.md was not shown on the card and is gone
+    files = reg.custom_files("my-skill")
+    assert list(files.keys()) == ["SKILL.md"]
+    approved = reg.custom_approved("my-skill")
+    assert list(approved.keys()) == ["SKILL.md"]
+
+    records = reg._read_records(reg.custom_dir)
+    rec = records["my-skill"]
+    assert rec["approved_body"] == BODY
+    assert rec["outside_text"] is True
+    assert list(rec["texts"].keys()) == ["SKILL.md"]

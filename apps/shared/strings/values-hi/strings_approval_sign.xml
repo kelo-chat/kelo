@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">भुगतान स्वीकृत करें</string>
+    <string name="approval_sign_subtitle">फ़िंगरप्रिंट या चेहरे से पुष्टि करें</string>
+    <string name="approval_sign_failed">इस फ़ोन पर यह भुगतान स्वीकृत नहीं हो सका। फिर से कोशिश करें।</string>
+    <string name="approval_sign_key_lost">इस फ़ोन की स्वीकृति कुंजी नहीं मिली। इस फ़ोन को सर्वर से फिर से जोड़ें।</string>
+    <string name="approval_pay_on_phone">भुगतान की स्वीकृति Kelo फ़ोन ऐप में दें।</string>
+</resources>

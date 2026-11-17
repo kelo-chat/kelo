@@ -27,12 +27,11 @@
       <ol class="steps">
         <li>
           <h3>Install Docker</h3>
-          <p>On Mac and Windows, install Docker Desktop. Windows needs WSL 2; the Docker Desktop installer sets it up. On Linux, the command below can install Docker for you.</p>
+          <p>On Mac, install Docker Desktop. On Linux, the command below can install Docker for you. On Windows you do not need Docker for the Windows line in the next step.</p>
           <ul class="ticks">
             <li>Mac: <a href="https://docs.docker.com/desktop/setup/install/mac-install/">Docker Desktop install guide</a></li>
-            <li>Windows: <a href="https://docs.docker.com/desktop/setup/install/windows-install/">Docker Desktop install guide</a></li>
           </ul>
-          <p>Open Docker Desktop once and leave it running before the second step.</p>
+          <p>On Mac, open Docker Desktop once and leave it running before the second step.</p>
         </li>
         <li>
           <h3>One command</h3>
@@ -46,9 +45,10 @@
               </div>
             </div>
             <div class="term-line" data-panel="sh"><span class="pr" aria-hidden="true">$</span><code>{{install_sh}}</code><button type="button" class="copy" data-copy>Copy</button></div>
-            <div class="term-line" data-panel="ps"><span class="pr" aria-hidden="true">&gt;</span><code>{{install_ps1}}</code><button type="button" class="copy" data-copy>Copy</button></div>
+            <div class="term-line" data-panel="ps"><span class="pr" aria-hidden="true">&gt;</span><code>{{install_win}}</code><button type="button" class="copy" data-copy>Copy</button></div>
           </div>
-          <p>The command checks Docker, installs git and uv if they are missing, downloads the official Kelo server and checks its signature, asks how much it may use, starts it, asks for a kelo.chat address (offered for now) and shows a QR code for your phone. Running it again updates Kelo; your data is kept.</p>
+          <p>On Mac and Linux, the command checks Docker, installs git and uv if they are missing, downloads the official Kelo server and checks its signature, asks how much it may use, starts it, asks for a kelo.chat address (offered for now) and shows a QR code for your phone. Running it again updates Kelo; your data is kept.</p>
+          <p>On Windows the line does not need Docker. Windows asks for administrator permission once (click <strong>Yes</strong>), installs Kelo Server, and opens the setup page in your browser. Nothing else is asked in the terminal. If you want Docker Desktop on Windows instead, use <code>irm https://kelo.chat/install.ps1 | iex</code>.</p>
         </li>
         <li>
           <h3>Scan the QR code with the app</h3>

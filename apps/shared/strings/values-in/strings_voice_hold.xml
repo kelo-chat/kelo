@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- in text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Tahan untuk berbicara</string>
+    <string name="voice_hold_hint">Lepas untuk selesai, geser keluar untuk membatalkan</string>
+    <string name="voice_dictation_offline">Dikte berhenti karena koneksi terputus.</string>
+    <string name="voice_dictation_failed">Dikte tidak dapat diselesaikan.</string>
+    <string name="msg_action_read_aloud">Bacakan</string>
+    <string name="msg_action_read_stop">Hentikan pembacaan</string>
+</resources>

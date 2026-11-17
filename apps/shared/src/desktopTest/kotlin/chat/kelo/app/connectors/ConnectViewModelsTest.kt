@@ -11,6 +11,7 @@ import chat.kelo.app.platform.PickedImage
 import chat.kelo.app.platform.SaveTarget
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
@@ -55,7 +56,7 @@ class ConnectViewModelsTest {
         override fun open(url: String): Boolean { opened += url; return opens }
     }
 
-    private fun count(s: MyFakeServer, prefix: String) = s.requests.count { it.startsWith(prefix) }
+    private fun count(s: MyFakeServer, prefix: String) = synchronized(s.requests) { s.requests.count { it.startsWith(prefix) } }
 
     // ---- the list and the lookup
 
@@ -333,7 +334,7 @@ class ConnectViewModelsTest {
     // ---- the code typed on the service's page
 
     private val githubProviders = """[{"id":"github","item":"github","name":"GitHub","has_client_id":true,"scopes":[{"id":"repo","label":"Repos"},{"id":"gist","label":"Gists"}]}]"""
-    private fun pendingFlow(status: String) = """{"id":"f1","provider":"github","status":"$status","user_code":"AB-12","verification_uri":"https://github.test/device","expires_in":600}"""
+    private fun pendingFlow(status: String, id: String = "f1") = """{"id":"$id","provider":"github","status":"$status","user_code":"AB-12","verification_uri":"https://github.test/device","expires_in":600}"""
 
     @Test fun aCodeAttemptIsFollowedUntilTheServiceIsConnected() = runBlocking {
         val polls = AtomicInteger()
@@ -389,27 +390,31 @@ class ConnectViewModelsTest {
     }
 
     @Test fun aCodeAttemptTheServerForgotAndACancelledOneEndTheWait() = runBlocking {
+        val starts = AtomicInteger()
         val s = fake { m, p, _ ->
             when ("$m $p") {
                 "GET /api/oauth/providers" -> ok(githubProviders)
-                "POST /api/oauth/github/start" -> ok(pendingFlow("pending"))
+                "POST /api/oauth/github/start" -> ok(pendingFlow("pending", if (starts.incrementAndGet() == 1) "f1" else "f2"))
                 "GET /api/oauth/flows/f1" -> fail(404, "unknown attempt")
-                "DELETE /api/oauth/flows/f1" -> ok("{}")
+                "GET /api/oauth/flows/f2" -> ok(pendingFlow("pending", "f2"))
+                "DELETE /api/oauth/flows/f2" -> ok("{}")
                 else -> null
             }
         }
         val vm = DeviceConnectViewModel(s.sessions(), FakeBrowser(), "github", tickMs = 10).tracked()
         vm.load()
         until("provider") { vm.state.value.provider != null }
-        val look = launch(Dispatchers.Default) { vm.state.collect { } }
-        Thread.sleep(100)
+        // the attempt is only followed while somebody collects: the first value arriving proves the collector is subscribed
+        val watching = CompletableDeferred<Unit>()
+        val look = launch(Dispatchers.Default) { vm.state.collect { watching.complete(Unit) } }
+        watching.await()
         vm.startCode()
-        until("the attempt is gone") { vm.state.value.flow == null && s.saw("GET /api/oauth/flows/f1") }
+        until("the server forgot the first attempt") { vm.state.value.flow == null && s.saw("GET /api/oauth/flows/f1") }
 
         vm.startCode()
-        until("a new code") { vm.state.value.flow != null || s.requests.count { it.startsWith("POST /api/oauth/github/start") } >= 2 }
+        until("a new code") { vm.state.value.flow?.id == "f2" }
         vm.cancelCode()
-        until("cancelled") { s.saw("DELETE /api/oauth/flows/f1") }
+        until("cancelled") { s.saw("DELETE /api/oauth/flows/f2") }
         look.cancelAndJoin()
     }
 

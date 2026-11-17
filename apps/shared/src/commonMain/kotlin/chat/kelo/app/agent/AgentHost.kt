@@ -26,6 +26,15 @@ class AgentHost(val scope: CoroutineScope, private val sessions: Sessions, val p
 
     fun say(text: StringResource, vararg args: Any) { messages.tryEmit(AgentMessage(text, args.toList())) }
 
+    /** The text the chat shows for the same error (a refused payment Allow, a signature that did not go through). */
+    fun sayChatError(e: chat.kelo.app.chat.ChatError) {
+        when (e) {
+            is chat.kelo.app.chat.ChatError.Localized -> messages.tryEmit(AgentMessage(e.res))
+            is chat.kelo.app.chat.ChatError.Message -> messages.tryEmit(AgentMessage(Res.string.agent_error_detail, detail = e.text))
+            else -> messages.tryEmit(AgentMessage(Res.string.connect_failed))
+        }
+    }
+
     fun sayError(e: Throwable) {
         val detail = (e as? ApiError)?.takeIf { !it.isNetwork }?.detail
         messages.tryEmit(AgentMessage(if (detail != null) Res.string.agent_error_detail else Res.string.connect_failed, detail = detail))

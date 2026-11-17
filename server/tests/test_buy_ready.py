@@ -27,8 +27,8 @@ from test_wallet import auto_card, e2e_card
 from test_watching import PAGE, Clock, FakePages, until
 
 SHOP = "https://shop.example.com/sneaker"
-SIGNED_OUT = 'link "로그인" [ref=e1]\nbutton "장바구니" [ref=e2]'
-SIGNED_IN = 'link "로그아웃" [ref=e1]\nlink "마이페이지" [ref=e3]\nbutton "장바구니" [ref=e2]'
+SIGNED_OUT = "password box"      # the fake session reads these as "a password box is shown" / "not shown"
+SIGNED_IN = "no password box"
 
 
 class FakeSession:
@@ -42,6 +42,9 @@ class FakeSession:
         self.tabs.add(tab)
         self.opened.append((tab, url))
         return self.text
+
+    def password_box_shown(self, key):
+        return self.text == SIGNED_OUT
 
     def has_tab(self, key):
         return key in self.tabs

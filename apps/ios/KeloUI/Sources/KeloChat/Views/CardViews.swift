@@ -6,7 +6,7 @@ import KeloShared
 /// buttons, and a chip says how it ended. The raw arguments are never shown, only readable pairs or the server's sentence.
 struct ApprovalCard: View {
     let approval: ChatItem.Approval
-    let onAnswer: (Bool, Bool) -> Void
+    let onAnswer: (Bool, Bool, Bool) -> Void
     let onKeepForSchedule: () -> Void
     @Environment(\.kelo) private var c
     @State private var rememberSite = false
@@ -16,12 +16,12 @@ struct ApprovalCard: View {
             // the setup card says it itself, at its end
             if approval.urgent && approval.open && approval.grant?.urgent != true { UrgentLine(missed: approval.missed) }
             if let payment = approval.payment {
-                PurchaseApproval(approval: approval, payment: payment) { ok in onAnswer(ok, false) }
+                PurchaseApproval(approval: approval, payment: payment) { ok in onAnswer(ok, false, false) }
             } else if let grant = approval.grant {
                 // the setup card of a "when X happens, do Y" task: its own layout (trigger, action, limits, the card's auto-pay limit)
                 TaskGrantApproval(grant: grant, open: approval.open, trailing: {
                     if let o = Outcomes.of(approval) { OutcomeChip(outcome: o) }
-                }, onAnswer: { ok in onAnswer(ok, false) })
+                }, onAnswer: { ok in onAnswer(ok, false, false) })
             } else {
                 HStack(alignment: .top, spacing: 8) {
                     Text(TurnEvent.ApprovalRequest.question(approval.ask) ?? L(R.string.chat_approval_ask,
@@ -32,15 +32,24 @@ struct ApprovalCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if let o = Outcomes.of(approval) { OutcomeChip(outcome: o) }
                 }
-                ApprovalFacts(lines: approval.lines, detail: approval.detail)
+                if let pre = approval.preapproval { PreapprovalFacts(pre) } else if let e = approval.editable {
+                    // the message is shown in its own block, with Edit under it (the detail line is then not the message)
+                    ApprovalFacts(lines: ApprovalEditRules.withoutMessage(approval.lines, e), detail: nil)
+                    EditableMessageBlock(approvalId: approval.id, editable: e, enabled: approval.open)
+                } else { ApprovalFacts(lines: approval.lines, detail: approval.detail) }
+                if !approval.forgetPlan.isEmpty { ForgetPlanList(planId: approval.forgetPlan) }
                 if !approval.items.isEmpty { ApprovalItems(items: approval.items) }
                 if approval.open {
                     if approval.canRemember && !approval.site.isEmpty {
                         RememberSiteCheck(site: approval.site, checked: rememberSite, enabled: true) { rememberSite = $0 }
                     }
-                    HStack(spacing: 10) {
-                        SecondaryButton(L(R.string.chat_approval_deny), fill: true) { onAnswer(false, false) }
-                        PrimaryButton(L(R.string.chat_approval_allow)) { onAnswer(true, rememberSite) }
+                    if RecipientRules.canAlways(approval.offers) {
+                        RecipientChoices(offers: approval.offers) { answer in onAnswer(answer.approve, false, answer == .always) }
+                    } else {
+                        HStack(spacing: 10) {
+                            SecondaryButton(L(R.string.chat_approval_deny), fill: true) { onAnswer(false, false, false) }
+                            PrimaryButton(L(R.string.chat_approval_allow)) { onAnswer(true, rememberSite, false) }
+                        }
                     }
                     if approval.canRememberSchedule { LinkButton(L(R.string.approval_keep_for_schedule), action: onKeepForSchedule) }
                 }
@@ -60,10 +69,10 @@ struct ApprovalFacts: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, l in
                     // the whole thing, as it will be sent (e.g. a text message): the label above, every word below
-                    if l.full || l.value.count > 60 || l.value.contains("\n") {
+                    if l.block {
                         VStack(alignment: .leading, spacing: 2) {
                             if !l.label.isEmpty { Text(l.label).font(KeloFont.small).foregroundStyle(c.muted) }
-                            Text(l.value).font(KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
+                            CappedScrollText(l.value)
                         }
                     } else {
                         ViewThatFits(in: .horizontal) {
@@ -198,6 +207,11 @@ struct PaymentAutoRow: View {
                 Text(item.cardLabel.isEmpty ? L(R.string.chat_payment_auto_no_card, item.site, item.amountText)
                      : L(R.string.chat_payment_auto, item.site, item.amountText, item.cardLabel))
                     .font(KeloFont.small).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
+                // covered in advance (an order approved earlier, or the schedule's allow)
+                if let cover = item.cover {
+                    Text(L(cover.bySchedule ? R.string.chat_payment_cover_schedule : R.string.chat_payment_cover_order))
+                        .font(KeloFont.small).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true)
+                }
                 // where the order goes, when the server said
                 if let ship = item.order?.shipping {
                     let place = [ship.label, AddressRules.oneLine(ship.formatted)].filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -334,10 +348,10 @@ struct VaultCardRow: View {
     var body: some View {
         switch item.state {
         case .open:
-            SecureCard(name: item.name) { text in
+            SecureCard(name: item.name, onAdded: { model.entryToast = $0 }, onNotify: { text in
                 model.settleCard(item.key, .done)
                 model.send(text)
-            }
+            })
         case .done: CardBox { ResultLine(icon: .shield, text: L(R.string.chat_vault_done)) }
         case .cancelled: CardBox { ResultLine(icon: .close, text: L(R.string.chat_card_cancelled), muted: true) }
         case .expired, .closed: CardBox { ResultLine(icon: .clock, text: L(R.string.chat_card_expired), muted: true) }

@@ -112,8 +112,9 @@ async def test_aeroapi_flights_allowance_counter():
     for _ in range(limit):
         follow_store.count_usage("flight_aeroapi", month)
 
-    # 3. Now allowance exceeded: available is False, read refuses and tells once
-    assert src.available() is False
+    # 3. Now allowance exceeded: the source is paused (the key is still there), read refuses and tells once
+    assert src.available() is True
+    assert src.paused({"flight": "KE123"}) != ""
     reading2 = await src.read({"flight": "KE123"})
     assert reading2.ok is False
     assert "allowance reached 90%" in reading2.detail

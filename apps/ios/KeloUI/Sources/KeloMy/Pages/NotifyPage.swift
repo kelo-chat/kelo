@@ -10,6 +10,7 @@ struct NotifyPage: View {
     @Environment(\.kelo) private var c
     @Environment(\.keloBackground) private var background
     @Environment(\.scenePhase) private var phase
+    @Environment(AppModel.self) private var app
     @State private var model: NotifySettingsModel
     @State private var briefing: BriefingSettingsModel
     @State private var sources: BriefingSourcesModel
@@ -122,11 +123,48 @@ struct NotifyPage: View {
                 let caps = NotifySettingsRules.perDay(v, regular: p.dailyRegular, now: p.dailyNow)
                 model.putProactive(["daily_regular": .number(Double(caps.regular)), "daily_total": .number(Double(caps.total)), "daily_now": .number(Double(caps.now))])
             }
+            deliveries(p)
             toggleLine(L(R.string.heads_mail), L(R.string.heads_mail_about), on: p.mailCheck) {
                 model.putProactive(["mail_check": .bool($0)])
             }
             let sent = p.today.values.reduce(0, +)
             if sent > 0 { MutedText(P(R.plurals.heads_sent_today, sent, sent), small: true) }
+        }
+    }
+
+    /// How many messages a day Kelo starts (0...10, 0 = only what cannot wait) and "오늘 n번 보냄 · 보관 중 m개" (the held part opens the
+    /// list); each row only when the server sends its field (Android my/ProactiveDeliveries.kt DeliveriesBlock).
+    @ViewBuilder private func deliveries(_ p: ProactiveSettings) -> some View {
+        if let count = p.dailyDeliveries {
+            stepper(L(R.string.deliveries_label), value: count, text: String(count), min: DeliveryRules.min, max: DeliveryRules.max) { v in
+                model.putProactive(["daily_deliveries": .number(Double(DeliveryRules.clamp(v)))])
+            }
+            MutedText(L(R.string.deliveries_about), small: true)
+        }
+        if p.todayDeliveries != nil || p.held != nil {
+            let today = p.todayDeliveries.map { Text(P(R.plurals.deliveries_today, $0, $0)).font(KeloFont.small).foregroundStyle(c.muted) }
+            let held = p.held.map { n in
+                Button { MyNav(app: app).push(.proactiveHeld) } label: {
+                    HStack(spacing: 2) {
+                        Text(P(R.plurals.deliveries_held, n, n)).font(KeloFont.small).foregroundStyle(c.accent)
+                        KeloIconView(.chevronRight, size: 14, tint: c.accent)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            // one line when it fits, else the two parts one under the other (never a part broken in the middle)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) {
+                    if let today { today.fixedSize() }
+                    if today != nil && held != nil { Text(L(R.string.deliveries_separator)).font(KeloFont.small).foregroundStyle(c.muted) }
+                    if let held { held.fixedSize() }
+                    Spacer(minLength: 0)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    if let today { today.fixedSize(horizontal: false, vertical: true) }
+                    if let held { held }
+                }
+            }
         }
     }
 

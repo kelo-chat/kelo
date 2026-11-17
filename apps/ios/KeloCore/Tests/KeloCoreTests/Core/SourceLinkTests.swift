@@ -3,28 +3,35 @@ import Testing
 
 /// The same vectors as apps/shared/src/desktopTest/.../core/SourceLinkTest.kt (Android and desktop).
 @Suite struct SourceLinkTests {
-    let sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
-
-    @Test func aCleanFullShaGivesTheUrlAndTheShortHash() {
-        #expect(SourceLink.url(commit: sha, dirty: false) == "https://github.com/kelo-chat/kelo/tree/\(sha)")
-        #expect(SourceLink.label(commit: sha, dirty: false, modified: "modified") == "a1b2c3d")
+    @Test func aReleaseVersionGivesTheTagTheUrlAndTheLabel() {
+        let tag = SourceLink.appTag(platform: "ios", version: "1.0.2")
+        #expect(tag == "ios-1.0.2")
+        #expect(SourceLink.appTag(platform: "android", version: "0.10.2") == "android-0.10.2")
+        #expect(SourceLink.appTag(platform: "windows", version: "1.0.9") == "windows-1.0.9")
+        #expect(SourceLink.url(tag: tag, dirty: false) == "https://github.com/kelo-chat/kelo/tree/ios-1.0.2")
+        #expect(SourceLink.label(tag: tag, dirty: false, modified: "modified") == "ios-1.0.2")
     }
 
     @Test func aDirtyBuildHasNoUrlAndSaysModified() {
-        #expect(SourceLink.url(commit: sha, dirty: true) == nil)
-        #expect(SourceLink.label(commit: sha, dirty: true, modified: "modified") == "a1b2c3d (modified)")
-        #expect(SourceLink.label(commit: sha, dirty: true, modified: "수정됨") == "a1b2c3d (수정됨)")
+        let tag = SourceLink.appTag(platform: "ios", version: "1.0.2")
+        #expect(SourceLink.url(tag: tag, dirty: true) == nil)
+        #expect(SourceLink.label(tag: tag, dirty: true, modified: "modified") == "ios-1.0.2 (modified)")
+        #expect(SourceLink.label(tag: tag, dirty: true, modified: "수정됨") == "ios-1.0.2 (수정됨)")
     }
 
-    @Test func anEmptyShortUppercaseOrNonHexValueGivesNothing() {
-        let bad = ["", "a1b2c3d", String(sha.dropLast()), sha + "0", sha.uppercased(), String(repeating: "g", count: 40),
-                   " " + String(sha.dropLast()), "$(KELO_SOURCE_COMMIT)"]
-        for b in bad {
-            #expect(SourceLink.url(commit: b, dirty: false) == nil, "\(b)")
-            #expect(SourceLink.url(commit: b, dirty: true) == nil, "\(b)")
-            #expect(SourceLink.short(b) == nil, "\(b)")
-            #expect(SourceLink.label(commit: b, dirty: false, modified: "modified") == nil, "\(b)")
-            #expect(SourceLink.label(commit: b, dirty: true, modified: "modified") == nil, "\(b)")
+    @Test func aVersionThatIsNotDigitsAndDotsGivesNothing() {
+        for bad in ["", "dev", "1.0.2-rc1", "1..2", ".1", "1.", " 1.0.2", "1.0.2\n", "$(MARKETING_VERSION)", "v1.0.2", "1.0.2+3"] {
+            #expect(SourceLink.appTag(platform: "ios", version: bad) == nil, "\(bad)")
+            #expect(SourceLink.serverTag(version: bad) == nil, "\(bad)")
+            #expect(SourceLink.serverUrl(version: bad) == nil, "\(bad)")
         }
+        #expect(SourceLink.url(tag: nil, dirty: false) == nil)
+        #expect(SourceLink.label(tag: nil, dirty: true, modified: "modified") == nil)
+    }
+
+    @Test func theServerLinksToItsReleaseTag() {
+        #expect(SourceLink.serverTag(version: "0.10.2") == "release-0.10.2")
+        #expect(SourceLink.serverUrl(version: "0.10.2") == "https://github.com/kelo-chat/kelo-server/tree/release-0.10.2")
+        #expect(SourceLink.appTag(platform: "ios", version: "1") == "ios-1")
     }
 }

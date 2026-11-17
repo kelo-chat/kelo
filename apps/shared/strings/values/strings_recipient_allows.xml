@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The data trail's card (which kind of data goes to which recipient; Allow once / Always for this recipient / Deny) and the list of recipients always allowed (My > Permissions) -->
+    <string name="trail_kind_mail">mail</string>
+    <string name="trail_kind_file">file</string>
+    <string name="trail_kind_memory">memory</string>
+    <string name="trail_kind_contacts">contacts</string>
+    <string name="trail_kind_calendar">calendar</string>
+    <string name="trail_kind_photos">photos</string>
+    <string name="trail_kind_messages">messages</string>
+    <string name="trail_kind_notes">notes</string>
+    <string name="trail_kind_vault">saved logins</string>
+    <string name="trail_kind_profile">profile</string>
+    <string name="trail_kind_web">web page</string>
+    <string name="trail_kind_channel">chat</string>
+    <string name="trail_kind_device">device data</string>
+    <string name="trail_kind_connector">connected service</string>
+    <string name="trail_kind_other">data</string>
+    <string name="trail_recipient_link">a public link</string>
+    <string name="trail_goes_to">To %2$s: %1$s</string>
+    <string name="trail_allow_once">Allow once</string>
+    <string name="trail_allow_always">Always for this recipient</string>
+    <string name="recipient_approval_always">Allowed. Won\'t ask again for this recipient.</string>
+    <string name="recipient_allows_title">Recipients always allowed</string>
+    <string name="recipient_allows_empty">None yet. When you choose \"Always for this recipient\" on a card, it appears here.</string>
+    <string name="recipient_allow_since">Allowed %1$s</string>
+    <string name="recipient_allow_remove">Remove %1$s</string>
+    <string name="recipient_allow_remove_confirm">Ask again before sending %1$s to %2$s?</string>
+    <string name="recipient_allow_removed">Will ask again before sending there.</string>
+</resources>

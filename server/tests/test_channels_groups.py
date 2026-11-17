@@ -186,7 +186,9 @@ async def test_group_reply_with_private_category_is_held_back_and_owner_told(rig
         held = "That is private, so I'll show it to the owner in the app instead."
         await until(lambda: held in to_chat(r, GROUP))
         owner = await until(lambda: [x for x in to_chat(r, 7) if "held back" in x])
-        assert owner == ['In "Family" I held back a reply that held: home address.']
+        # (hc-privacy: the old expectation said "home address", read from the label word "Address:". Here the model's answers are the
+        # spoken reply itself, no usable classification, so the labelled value counts as "a personal detail": the safe side)
+        assert owner == ['In "Family" I held back a reply that held: a personal detail.']
         assert not any("Elm Street" in x for x in r.sent()) and "Elm Street" not in json.dumps(r.mgr.state("telegram"))
         assert to_chat(r, GROUP) == [held]
         assert [x["text"] for x in r.mgr.state("telegram")["group_log"][str(GROUP)] if x["bot"]] == [held]
@@ -360,3 +362,29 @@ async def test_telegram_reply_parameters_only_on_the_first_part():
     assert sent[0]["reply_parameters"]["message_id"] == 21 and all("reply_parameters" not in s for s in sent[1:])
     await tg.send("7", "plain")
     assert "reply_parameters" not in fake.of("sendMessage")[-1]
+
+
+# ---- other bots in a group (bot-to-bot mode): their messages are read like anyone's
+def other_bot(text, *, uid=900, mid=40, update_id=40, mention=True, **kw):
+    m = said(text, uid=uid, first="PickleBot", mid=mid, update_id=update_id, mention=mention, **kw)
+    m["message"]["from"]["is_bot"] = True
+    return m
+
+
+def test_group_prompt_allows_at_mention_but_not_messages_elsewhere():
+    from assistant.channels.manager import GROUP_SYSTEM
+    low = GROUP_SYSTEM.casefold()
+    assert "@name" in low and "ask another bot" in low and "posted in this group" in low
+    assert "no messages to other chats or people outside this group" in low and "purchases" in low
+
+
+async def test_message_from_another_bot_is_not_dropped(rig):
+    async with rig([TextDelta("Hello bot."), Done("stop")]) as r:
+        await r.pair()
+        r.fake.push(added(update_id=3))
+        await until(lambda: r.mgr.state("telegram")["groups"])
+        r.fake.push(other_bot("here is my answer", update_id=5, mid=22))
+        await until(lambda: "Hello bot." in to_chat(r, GROUP))
+        r.fake.push(other_bot("just chatter", update_id=6, mid=23, mention=False))
+        await until(lambda: len(r.mgr.state("telegram")["group_log"][str(GROUP)]) >= 3)
+        assert "just chatter" in [x["text"] for x in r.mgr.state("telegram")["group_log"][str(GROUP)]]

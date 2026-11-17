@@ -160,13 +160,13 @@ async def test_item_finder_merges_across_calendar_and_mail():
         "id": "cal-trip-1",
         "title": "Trip to Jeju",
         "start": now + 3600,
-        "end": now + 72000,
+        "end": now + 3 * 86400,
         "where": "Jeju Island",
     }
     mail_msg = {
         "id": "mail-jeju-booking",
         "subject": "trip   to  jeju",
-        "body": "Booking confirmation #JEJU12345",
+        "body": "Your flight KE1234 is booked.",
         "starts_at": now + 3600 + 400,  # within 10 min
         "place": "Jeju",
     }

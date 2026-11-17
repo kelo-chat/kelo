@@ -17,6 +17,9 @@ object AppVersion {
     /** e.g. "android/0.9.0+404735"; empty = not set (tests) */
     @Volatile var header: String = ""
 
+    /** Where this build is updated from, sent as `X-Kelo-App-Channel`: download (a file: sideload, installer), play, appstore or msstore; empty = not said */
+    @Volatile var channel: String = ""
+
     /** The oldest server release this app works with (version.json "min_server"), e.g. "0.9.0"; empty = no check */
     @Volatile var minServer: String = ""
 
@@ -24,14 +27,27 @@ object AppVersion {
     /** The newest server answer's version (null until one came) */
     val server: StateFlow<ServerSeen?> = _server.asStateFlow()
 
+    private val _update = MutableStateFlow<String?>(null)
+    /**
+     * A newer released app that works with this server (`X-Kelo-App-Update` on /api/about and /api/profile, or `app_update` in /api/about;
+     * docs/version-notices.md part 3): its version, or null. The shell shows a banner once per version ([chat.kelo.app.update.AppNotice]).
+     */
+    val update: StateFlow<String?> = _update.asStateFlow()
+
     /** What an answer said: [version] like "0.9.0+1", or null when the header was missing (a server older than 0.9.0). */
     data class ServerSeen(val version: String?)
 
     val interceptor = Interceptor { chain ->
         val req = chain.request()
-        val out = if (header.isNotEmpty() && req.header(HEADER_APP) == null) req.newBuilder().header(HEADER_APP, header).build() else req
-        val res = chain.proceed(out)
-        if (res.header(HEADER_LOCAL) == null) observe(res.code, res.header(HEADER_SERVER), res.header("Content-Type"))
+        val b = req.newBuilder()
+        if (header.isNotEmpty() && req.header(HEADER_APP) == null) b.header(HEADER_APP, header)
+        if (channel.isNotEmpty() && req.header(HEADER_CHANNEL) == null) b.header(HEADER_CHANNEL, channel)
+        val res = chain.proceed(b.build())
+        if (res.header(HEADER_LOCAL) == null) {
+            observe(res.code, res.header(HEADER_SERVER), res.header("Content-Type"))
+            val path = req.url.encodedPath
+            if (res.code == 200 && (path == "/api/about" || path == "/api/profile")) setUpdate(res.header(HEADER_UPDATE))
+        }
         res
     }
 
@@ -44,7 +60,10 @@ object AppVersion {
         if (status in 200..499 && contentType.orEmpty().startsWith("application/json")) _server.value = ServerSeen(null)
     }
 
-    fun reset() { _server.value = null }
+    /** The answer of /api/about or /api/profile named [version] (or none, which clears an earlier one). */
+    fun setUpdate(version: String?) { _update.value = version?.trim()?.takeIf { it.isNotEmpty() } }
+
+    fun reset() { _server.value = null; _update.value = null }
 
     /** Whether [seen] is older than [min] (both "MAJOR.MINOR.PATCH", a "+build" ignored). A missing version is too old. */
     fun serverTooOld(seen: ServerSeen?, min: String = minServer): Boolean {
@@ -70,6 +89,8 @@ object AppVersion {
 
     const val HEADER_APP = "X-Kelo-App"
     const val HEADER_SERVER = "X-Kelo-Server"
+    const val HEADER_CHANNEL = "X-Kelo-App-Channel"
+    const val HEADER_UPDATE = "X-Kelo-App-Update"
     /** On answers the app's own transport made (a KE2E error), never from the server */
     const val HEADER_LOCAL = "X-Kelo-Local"
 }

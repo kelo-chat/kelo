@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="deliveries_label">عدد الرسائل التي يبدأها Kelo كل يوم</string>
+    <string name="deliveries_about">يجمع Kelo ما يريد إخبارك به في هذا العدد من الرسائل يوميًا. عند 0 يرسل فقط ما لا يحتمل الانتظار.</string>
+    <plurals name="deliveries_today">
+        <item quantity="zero">لم تُرسل أي رسالة اليوم</item>
+        <item quantity="one">أُرسلت مرة واحدة اليوم</item>
+        <item quantity="two">أُرسلت مرتين اليوم</item>
+        <item quantity="few">أُرسلت %d مرات اليوم</item>
+        <item quantity="many">أُرسلت %d مرة اليوم</item>
+        <item quantity="other">أُرسلت %d مرة اليوم</item>
+    </plurals>
+    <plurals name="deliveries_held">
+        <item quantity="zero">لا عناصر محجوزة</item>
+        <item quantity="one">عنصر واحد محجوز</item>
+        <item quantity="two">عنصران محجوزان</item>
+        <item quantity="few">%d عناصر محجوزة</item>
+        <item quantity="many">%d عنصرًا محجوزًا</item>
+        <item quantity="other">%d عنصر محجوز</item>
+    </plurals>
+    <string name="deliveries_held_title">الرسائل المحجوزة</string>
+    <string name="deliveries_held_about">يحتفظ Kelo بهذه العناصر للرسالة التالية. يراجعها مرة أخرى قبل الإرسال ويستبعد ما لم يعد مهمًا.</string>
+    <string name="deliveries_held_empty">لا شيء محجوز الآن.</string>
+    <string name="deliveries_held_until">محجوز حتى %1$s</string>
+    <string name="deliveries_why_slots">في انتظار رسالة اليوم التالية</string>
+    <string name="deliveries_why_cap">ليس عاجلًا بما يكفي لإرسال المزيد اليوم</string>
+    <string name="deliveries_why_reply">في انتظار ردك على الرسالة الأخيرة</string>
+    <string name="deliveries_why_other">في انتظار وقت أنسب</string>
+</resources>

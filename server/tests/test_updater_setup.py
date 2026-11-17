@@ -3,6 +3,8 @@
 import json
 import subprocess
 
+import pytest
+
 from assistant import release as rel
 from assistant import updater_setup as su
 from assistant.cli import read_env, setup as cli_setup
@@ -81,3 +83,43 @@ def test_a_first_install_from_the_release_checks_then_tags_only_kelos_images(tmp
                       "assistant-workroom:local": f"ghcr.io/kelo-chat/workroom@{D['workroom']}",
                       "assistant-updater:local": f"ghcr.io/kelo-chat/updater@{D['updater']}"}
     assert not [c for c in d.calls if any("cli" in a for a in c if isinstance(a, str) and "kelo-chat" in a)]
+
+
+def test_a_first_install_of_an_exact_version_never_reads_the_newest_list(tmp_path, monkeypatch):
+    (tmp_path / "compose.yml").write_text("services: {}\n")
+    (tmp_path / ".env").write_text("ASSISTANT_TOKEN=owner-token-owner-token-1234\n")
+    monkeypatch.setattr(rel, "fetch", lambda url, registry: (_ for _ in ()).throw(AssertionError("the newest list was read")))
+
+    class Tags(Docker):
+        def __call__(self, cmd, **kw):
+            if cmd[:3] == ["docker", "image", "inspect"] and "{{json .RepoDigests}}" in cmd and "@" not in cmd[-1]:
+                self.calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps([cmd[-1].rsplit(":", 1)[0] + "@" + D["server"]]), stderr="")
+            return super().__call__(cmd, **kw)
+
+    d = Tags()
+    m = Instances(tmp_path, run=d, out=lambda s: None)
+    assert su.pull_release(m, "0.5.0") == "0.5.0"                                        # asked by argument
+    assert d.tags["assistant:local"] == f"ghcr.io/kelo-chat/server@{D['server']}"
+    monkeypatch.setenv(su.VERSION_ENV, "0.5.0")
+    assert su.pull_release(m) == "0.5.0"                                                 # asked by the installer's variable
+    monkeypatch.setenv(su.VERSION_ENV, "0.4.0")                                          # the images say 0.5.0: refused, nothing tagged
+    d.tags.clear()
+    with pytest.raises(rel.ReleaseError, match="another version"):
+        su.pull_release(m)
+    assert d.tags == {}
+
+
+def test_the_release_version_option_reaches_the_pull(tmp_path, monkeypatch):
+    from assistant import cli, wizard
+    got = []
+    monkeypatch.setattr(su, "pull_release", lambda m, version=None: got.append(version) or "0.5.0")
+    monkeypatch.setattr(su, "setup", lambda *a, **k: 0)
+    assert cli.main(["updater", "setup", "--pull-release", "--release-version", "0.5.0", "--env-file", str(tmp_path / ".env")]) == 0
+    assert got == ["0.5.0"]
+    monkeypatch.delenv(su.VERSION_ENV, raising=False)
+    monkeypatch.setattr(wizard, "run", lambda *a, **k: 0)
+    monkeypatch.setattr("sys.stdin", type("T", (), {"isatty": staticmethod(lambda: True)})())
+    assert cli.main(["setup", "--from-release", "--release-version", "0.4.0", "--env-file", str(tmp_path / ".env")]) == 0
+    import os
+    assert os.environ.pop(su.VERSION_ENV) == "0.4.0"

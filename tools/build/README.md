@@ -190,7 +190,7 @@ state volume or inside the compose folder (the commands refuse such a path and a
 4. Publish each build with the public commit it was built from (the full 40-character hash):
    `assistant publish-app android dist/kelo.apk --version 0.9.0+402500 --commit <hash>`. The key is `~/.kelo-release/signing.key`
    unless `--sign-key PATH` is given. `--unsigned` publishes without a signature (apps that check signatures do not offer it).
-5. Builds that are already live: `assistant sign-app <android|windows|windows-msi|mac> --commit <hash>` signs the row in the manifest
+5. Builds that are already live: `assistant sign-app <android|windows|windows-msi|windows-server-msi|mac> --commit <hash>` signs the row in the manifest
    (the file is not touched; its sha256 is checked against the manifest first).
 6. Rotating: add the next key to both files in an app release first, and sign with the next key only after that release is what
    people run. Every listed key is accepted, so old and new apps both keep working during the switch.

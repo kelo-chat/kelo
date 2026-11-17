@@ -338,7 +338,7 @@ class Sources:
                     {"type": "object", "properties": {"start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
                                                       "query": {"type": "array", "items": {"type": "string"},
                                                                 "description": "words in titles or places; an event matching any one is shown"}}},
-                    calendar_events, read_only=True, untrusted=True, source="calendar")
+                    calendar_events, read_only=True, untrusted=True, source="calendar", trail="calendar")
 
     # ------------------------------------------------------------------ the agent's tool
     def _match(self, ref: str, kind: str | None) -> list[Acct]:
@@ -409,11 +409,23 @@ class Sources:
 
         acct = {"type": "array", "items": {"type": "string"},
                 "description": "account ids, addresses or provider names as listed by action=show (e.g. 'work@company.com', 'naver'), or 'all'"}
+
+        def switches(args: dict[str, Any]) -> bool:
+            """A switch (on or off) asks: turning a source on widens what is read, turning it off silences its heads-ups. A view does not."""
+            return str(args.get("action") or "show").strip().lower() in ("on", "off")
+
+        async def describe(args: dict[str, Any]) -> str:
+            raw = args.get("accounts")
+            names = (", ".join(str(x) for x in raw) if isinstance(raw, list) else str(raw or "")).strip()[:120] or "all"
+            if str(args.get("action") or "").strip().lower() == "on":
+                return t("Let Kelo read {accounts} for the briefing, heads-ups and calendar questions?", accounts=names)
+            return t("Stop Kelo reading {accounts} for the briefing, heads-ups and calendar questions?", accounts=names)
+
         return Tool("briefing_sources",
                     "Switch connected calendars and mailboxes on or off for what Kelo reads by itself (the morning briefing, heads-ups, the "
                     "calendar_events tool). All are on unless the user switched one off. Use it for 'leave my work mail out' (off) or "
-                    "'put it back' (on). No approval needed. Call action=show first when you do not know the accounts; afterwards confirm in "
-                    "one short line, naming the accounts.",
+                    "'put it back' (on). The user approves each switch; show needs no approval. Call action=show first when you do not "
+                    "know the accounts; afterwards confirm in one short line, naming the accounts.",
                     {"type": "object", "properties": {
                         "action": {"type": "string", "enum": ["show", "on", "off"],
                                    "description": "show: list the accounts and their switches; on / off: switch these accounts"},
@@ -421,7 +433,7 @@ class Sources:
                                  "description": "calendar or mail when the user named only one; both when they meant both; optional when "
                                                 "the accounts are all of one kind"},
                         "accounts": acct}, "required": ["action"]},
-                    briefing_sources)
+                    briefing_sources, requires_approval=True, auto_approve=lambda a: not switches(a), describe=describe)
 
 
 class SelectedMail:

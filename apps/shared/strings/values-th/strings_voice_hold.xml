@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">กดค้างเพื่อพูด</string>
+    <string name="voice_hold_hint">ปล่อยเพื่อเสร็จสิ้น เลื่อนออกนอกปุ่มเพื่อยกเลิก</string>
+    <string name="voice_dictation_offline">การพิมพ์ด้วยเสียงหยุดลงเพราะการเชื่อมต่อหลุด</string>
+    <string name="voice_dictation_failed">พิมพ์ด้วยเสียงไม่สำเร็จ</string>
+    <string name="msg_action_read_aloud">อ่านออกเสียง</string>
+    <string name="msg_action_read_stop">หยุดอ่าน</string>
+</resources>

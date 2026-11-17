@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_notify_actions.xml (generated from values/strings_notify_actions.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="notify_action_reply">ตอบกลับ</string>
+    <string name="notify_unlock_retry">ปลดล็อกโทรศัพท์ แล้วลองอีกครั้ง</string>
+    <string name="notify_send_failed_open">ส่งไม่สำเร็จ เปิด Kelo เพื่อตอบ</string>
+    <string name="notify_send_failed_tap">ส่งไม่สำเร็จ แตะเพื่อเปิด Kelo</string>
+</resources>

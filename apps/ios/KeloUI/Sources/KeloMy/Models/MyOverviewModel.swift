@@ -27,6 +27,7 @@ import KeloShared
     }
 
     func clearNotice() { notice = nil }
+    func say(_ text: String) { notice = text }
 
     /// Reads every part again; a newer read cancels the older one, so an old answer never covers a newer one.
     func reload() { jobs.run { [self] in await load() } }

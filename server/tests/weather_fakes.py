@@ -4,6 +4,8 @@ WeatherAPI.com, answering from data the test sets."""
 from __future__ import annotations
 
 import json
+import socket
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -12,6 +14,7 @@ from zoneinfo import ZoneInfo
 from assistant.netguard import NetGuardError, Reply
 
 SEOUL = ZoneInfo("Asia/Seoul")
+NEW_YORK = ZoneInfo("America/New_York")
 
 
 def ts(*a: int, tz: ZoneInfo = SEOUL) -> float:
@@ -49,6 +52,31 @@ def air(day: tuple[int, int, int] = (2026, 11, 9), pm: float = 12.0, aqi: float 
     return {"hourly": {"time": times, "pm2_5": [pm] * 24, "pm10": [pm * 1.5] * 24, "us_aqi": [aqi] * 24}}
 
 
+def met_norway(day: tuple[int, int, int] = (2026, 11, 9), *, tz: ZoneInfo = SEOUL, rain_from: int | None = None, rain_to: int = 24,
+               highs: tuple[float, float, float] = (12.0, 11.0, 9.0), lows: tuple[float, float, float] = (3.0, 4.0, 2.0)) -> dict[str, Any]:
+    """MET Norway's locationforecast shape: hourly steps (next_1_hours) for 48 hours from local midnight of `day`, then 6-hourly steps
+    (next_6_hours) for nine days. Rain on `day` from `rain_from` (local hour) to `rain_to`. The low is at 00:00 and the high at 12:00."""
+    start = datetime(*day, tzinfo=tz)
+    series = []
+    offsets = list(range(0, 48)) + list(range(48, 9 * 24, 6))
+    for i, hh in enumerate(offsets):
+        t = start + timedelta(hours=hh)
+        d = min((t.date() - start.date()).days, 2)
+        temp = lows[d] + (highs[d] - lows[d]) * (1 if 12 <= t.hour <= 16 else 0)
+        entry: dict[str, Any] = {"time": t.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                                 "data": {"instant": {"details": {"air_temperature": temp, "wind_speed": 3.0, "wind_speed_of_gust": 5.0,
+                                                                  "wind_from_direction": 270.0}}}}
+        wet = t.date() == start.date() and rain_from is not None and rain_from <= t.hour < rain_to
+        if hh < 48:
+            sym = "rain" if wet else ("partlycloudy_day" if 6 <= t.hour < 18 else "clearsky_night")
+            entry["data"]["next_1_hours"] = {"summary": {"symbol_code": sym}, "details": {"precipitation_amount": 1.2 if wet else 0.0}}
+        else:
+            entry["data"]["next_6_hours"] = {"summary": {"symbol_code": "cloudy"}, "details": {"precipitation_amount": 0.0}}
+        series.append(entry)
+    return {"type": "Feature", "geometry": {"type": "Point", "coordinates": [127.0, 37.55, 0]},
+            "properties": {"meta": {"updated_at": "2026-11-09T00:00:00Z", "units": {"air_temperature": "celsius"}}, "timeseries": series}}
+
+
 def kma_items(base_date: str = "20261109", *, rain_hour: int | None = 15, tmx: float = 10.0, tmn: float = 2.0) -> dict[str, Any]:
     items = []
     d = base_date
@@ -74,6 +102,33 @@ GEO = {"results": [
 ]}
 
 
+def nws(day: tuple[int, int, int] = (2026, 11, 17), *, tz: ZoneInfo = NEW_YORK, rain_from: int | None = None, high_f: int = 50,
+        low_f: int = 36) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """The US National Weather Service's three answers for a place in New York, as (points, hourly, 12-hour forecast): hourly periods
+    for 48 hours from local midnight of `day` (rain showers from `rain_from` o'clock when given); 12-hour periods for seven days: day
+    (06:00) at `high_f`, night (18:00) at `low_f`. Temperatures in Fahrenheit, wind in mph, as the API sends them."""
+    start = datetime(*day, tzinfo=tz)
+    base = "https://api.weather.gov/gridpoints/OKX/33,35/forecast"
+    points = {"properties": {"forecastHourly": f"{base}/hourly", "forecast": base, "timeZone": tz.key}}
+    hours = []
+    for i in range(48):
+        t = start + timedelta(hours=i)
+        wet = rain_from is not None and t.date() == start.date() and t.hour >= rain_from
+        day_time = 6 <= t.hour < 18
+        icon = ("day" if day_time else "night") + ("/rain_showers,60" if wet else "/skc")
+        hours.append({"startTime": t.isoformat(), "isDaytime": day_time, "temperature": high_f if 12 <= t.hour <= 16 else low_f,
+                      "temperatureUnit": "F", "windSpeed": "5 to 10 mph", "windDirection": "NW",
+                      "icon": f"https://api.weather.gov/icons/land/{icon}?size=medium",
+                      "probabilityOfPrecipitation": {"unitCode": "wmoUnit:percent", "value": 60 if wet else 0}})
+    periods = []
+    for d in range(7):
+        for hh, is_day in ((6, True), (18, False)):
+            t = (start + timedelta(days=d)).replace(hour=hh)
+            periods.append({"startTime": t.isoformat(), "isDaytime": is_day, "temperature": high_f if is_day else low_f,
+                            "temperatureUnit": "F", "icon": f"https://api.weather.gov/icons/land/{'day' if is_day else 'night'}/skc?size=medium"})
+    return points, {"properties": {"periods": hours}}, {"properties": {"periods": periods}}
+
+
 class FakeWeather:
     """An async fetcher like netguard.fetch: answers by host; `calls` records every URL (no real network)."""
 
@@ -88,9 +143,21 @@ class FakeWeather:
         self.wapi_ok_keys = {"good-wapi-key-123"}
         self.down: set[str] = set()
         self.archive_queries: list[dict[str, str]] = []
+        self.met: dict[str, Any] = met_norway()
+        self.headers: list[dict[str, str]] = []   # the request headers of each call (the User-Agent of MET Norway's rule)
+        # another route to Open-Meteo: the normal route (no resolver) times out for these hosts; a resolver answer that is reachable works
+        self.plain_timeout: set[str] = set()
+        self.reachable_ips: set[str] = {"157.90.83.168"}
+        self.doh: dict[str, list[str]] = {"85.10.0.0/24": ["157.90.83.168"], "8.8.8.0/24": ["51.81.167.44"]}   # subnet -> DNS answers
+        self.doh_answers: list[tuple[str, str]] = []   # (name, subnet) of each DNS over HTTPS question
+        self.resolved: list[list[str]] = []           # the addresses a resolver gave for a request
+        self.nws_points, self.nws_hourly, self.nws_daily = nws()
+        self.nws_down = False
 
-    async def __call__(self, method: str, url: str, *, allowed_hosts: list[str], headers: dict[str, str] | None = None, **_: Any) -> Reply:
+    async def __call__(self, method: str, url: str, *, allowed_hosts: list[str], headers: dict[str, str] | None = None,
+                       resolver: Callable[..., list] | None = None, **_: Any) -> Reply:
         self.calls.append(url)
+        self.headers.append(dict(headers or {}))
         parts = urlsplit(url)
         host = parts.hostname or ""
         assert host in allowed_hosts, (host, allowed_hosts)
@@ -98,6 +165,26 @@ class FakeWeather:
         if host in self.down:
             raise NetGuardError("could not resolve host")
         q = {k: v[0] for k, v in parse_qs(parts.query).items()}
+        if host == "dns.google":
+            self.doh_answers.append((q.get("name", ""), q.get("edns_client_subnet", "")))
+            answers = self.doh.get(q.get("edns_client_subnet", ""), [])
+            return self._json({"Status": 0, "Answer": [{"name": q.get("name", "") + ".", "type": 1, "TTL": 300, "data": ip} for ip in answers]})
+        if host in self.plain_timeout:
+            ips = [] if resolver is None else [i[4][0] for i in resolver(host, 443, 0, socket.SOCK_STREAM)]
+            if resolver is not None:
+                self.resolved.append(ips)
+            if not any(ip in self.reachable_ips for ip in ips):
+                raise NetGuardError("the request timed out; if it was a write, check the state before retrying")
+        if host == "api.weather.gov":
+            if self.nws_down:
+                raise NetGuardError("could not resolve host")
+            if parts.path.startswith("/points/"):
+                return self._json(self.nws_points)
+            if parts.path.endswith("/hourly"):
+                return self._json(self.nws_hourly)
+            if parts.path.endswith("/forecast"):
+                return self._json(self.nws_daily)
+            return Reply(404, {}, b"{}", False)
         if host == "api.open-meteo.com":
             return self._json(self.forecast)
         if host == "air-quality-api.open-meteo.com":
@@ -111,6 +198,8 @@ class FakeWeather:
             return self._json({"timezone": "Asia/Shanghai", "daily": {
                 "time": [d.isoformat() for d in days], "temperature_2m_max": [10.0 + d.timetuple().tm_yday % 7 for d in days],
                 "temperature_2m_min": [2.0 for _ in days], "precipitation_sum": [3.0 if d.day % 4 == 0 else 0.0 for d in days]}})
+        if host == "api.met.no":
+            return self._json(self.met)
         if host == "apis.data.go.kr":
             if q.get("serviceKey") not in self.kma_ok_keys:
                 return Reply(200, {}, b"<OpenAPI_ServiceResponse><returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg></OpenAPI_ServiceResponse>", False)

@@ -23,7 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -437,6 +437,13 @@ fun PaymentAutoRow(p: ChatItem.PaymentAuto) {
                 else string(Res.string.chat_payment_auto, p.site, p.amountText, p.cardLabel),
                 style = MaterialTheme.typography.bodySmall, color = c.ink,
             )
+            // "covered by the order you approved in advance": the notice says why no card was asked
+            p.cover?.let { cv ->
+                Text(
+                    string(if (cv.bySchedule) Res.string.chat_payment_cover_schedule else Res.string.chat_payment_cover_order),
+                    style = MaterialTheme.typography.bodySmall, color = c.muted,
+                )
+            }
             // where the order goes, when the server said
             p.order?.shipping?.let { ship ->
                 val place = listOf(ship.label, chat.kelo.app.wallet.AddressRules.oneLine(ship.formatted)).filter { it.isNotBlank() }.joinToString(" · ")

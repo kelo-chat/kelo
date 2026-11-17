@@ -43,6 +43,7 @@ from .cli import (
     read_env,
     write_env,
 )
+from .copy_host import CopyHost, HostCheck
 from .i18n import N_
 
 GB = 1024**3
@@ -339,6 +340,82 @@ def stream_process(cmd: list[str], cwd: Path, on_line: Callable[[str], None]) ->
     return proc.wait()
 
 
+class DockerCopyHost:
+    """Kelo's parts as Docker Compose containers (Linux, Windows, a Mac with Docker). Everything the setup always did with Docker."""
+
+    start_command = "docker compose up -d --build"
+    logs_command = "docker compose logs server"
+    health_seconds: float | None = None
+    health_request_seconds = 3.0
+
+    def __init__(self, env_file: Path, *, run: Callable[..., Any] = subprocess.run,
+                 stream: Callable[[list[str], Path, Callable[[str], None]], int] = stream_process,
+                 which: Callable[[str], str | None] = shutil.which, system: str | None = None) -> None:
+        self.env_file = env_file
+        self.run, self.stream, self.which = run, stream, which
+        self.system = system or platform.system()
+
+    @property
+    def root(self) -> Path:
+        return self.env_file.resolve().parent
+
+    def check(self) -> HostCheck:
+        d = check_docker(self.run, self.which)
+        if not d.ok:
+            return HostCheck(False, failure=docker_help(d, self.system))
+        return HostCheck(True, [f"Docker {d.version or '?'}", f"Docker Compose {d.compose}"], d.cpus, d.ram)
+
+    def manager(self, out: Callable[[str], None]) -> Any:
+        from .instances import Instances
+        return Instances(self.root, run=self.run, out=out, main_env=self.env_file.resolve())
+
+    def bring_up(self, ui: UI, mgr: Any, inst: Any, *, rerun: bool, release: bool) -> bool:
+        def t(text: str, **kw: Any) -> str:
+            return translate(text, ui.lang, **kw)
+
+        if release and self.pull_official(ui, mgr):
+            cmd = mgr.compose(inst, "up", "-d", "--remove-orphans")     # the pulled images; compose builds only what is missing
+            title = t("Updating and restarting Kelo") if rerun else t("Starting Kelo")
+        else:
+            cmd = mgr.compose(inst, "up", "-d", "--build", "--remove-orphans")
+            title = t("Updating and restarting Kelo") if rerun else t("Building and starting Kelo (the first time takes a few minutes)")
+        code = ui.live(title, lambda on_line: self.stream(cmd, self.root, on_line))
+        if code != 0:
+            ui.fail(t("Start Kelo"), [t("docker compose failed (exit {code}). The last lines are above; the full log: {command}",
+                                        code=code, command="docker compose logs")])
+            return False
+        return True
+
+    def pull_official(self, ui: UI, mgr: Any) -> bool:
+        """Pull and check the signed release images, with the same checks an update makes. False (with a warning) when that fails,
+        and the caller builds the images here instead. The pull's own output shows in the live view."""
+        from . import updater_setup
+
+        def t(text: str, **kw: Any) -> str:
+            return translate(text, ui.lang, **kw)
+
+        failure: list[str] = []
+
+        def pull(on_line: Callable[[str], None]) -> int:
+            shown_by = mgr.out
+            mgr.out = on_line
+            try:
+                updater_setup.pull_release(mgr)
+                return 0
+            except Exception as e:  # noqa: BLE001 - any failure (no network, no row in latest.json, a bad signature) builds here
+                failure.append(str(e)[:200])
+                return 1
+            finally:
+                mgr.out = shown_by
+
+        code = ui.live(t("Downloading the official Kelo images and checking their signatures"), pull)
+        if code == 0:
+            return True
+        ui.warn(t("Could not get the official images ({why}). Building them here instead; the first time takes a few minutes.",
+                  why=failure[0] if failure else "unknown error"))
+        return False
+
+
 @dataclass
 class Wizard:
     env_file: Path
@@ -357,6 +434,13 @@ class Wizard:
     clis: list[str] | None = None
     profile: str | None = None
     release: bool = False       # pull the signed release images instead of building them here (falls back to building)
+    host: CopyHost | None = None   # how Kelo's parts are run here; None = Docker, driven through run/stream/which/system above
+
+    @property
+    def copy_host(self) -> CopyHost:
+        if self.host is None:
+            self.host = DockerCopyHost(self.env_file, run=self.run, stream=self.stream, which=self.which, system=self.system)
+        return self.host
 
     def t(self, text: str, **kw: Any) -> str:
         return translate(text, self.ui.lang, **kw)
@@ -370,8 +454,7 @@ class Wizard:
         return self.env_file.resolve().parent
 
     def manager(self) -> Any:
-        from .instances import Instances
-        return Instances(self.root, run=self.run, out=lambda s: self.ui.info(s), main_env=self.env_file.resolve())
+        return self.copy_host.manager(lambda s: self.ui.info(s))
 
     # -------------------------------------------------------------------------------------------------------- the run
     def __call__(self) -> int:
@@ -388,7 +471,7 @@ class Wizard:
                 return 1
             if not self.start:
                 self.ui.step(3, self.t("Start Kelo"))
-                self.ui.info(self.t("Not started (--no-start). Start it with: {command}", command="docker compose up -d --build"))
+                self.ui.info(self.t("Not started (--no-start). Start it with: {command}", command=self.copy_host.start_command))
             url = self.phone()
         except (KeyboardInterrupt, EOFError):
             self.ui.warn(self.t("Stopped. Steps already finished are kept; run `{command}` again any time.", command=f"{self.cmd} setup"))
@@ -404,15 +487,15 @@ class Wizard:
     # -------------------------------------------------------------------------------------------------------- 1/4
     def check(self) -> Machine | None:
         self.ui.step(1, self.t("Check the Kelo server"))
-        d = check_docker(self.run, self.which)
-        if not d.ok:
-            head, lines = docker_help(d, self.system)
+        found = self.copy_host.check()
+        if not found.ok:
+            head, lines = found.failure or (N_("Start Kelo"), [])
             self.ui.fail(self.t(head), [l if l.startswith("  ") else self.t(l) for l in lines]
                          + ["", self.t("Then run the same command again; it picks up where it stopped.")])
             return None
-        self.ui.ok(f"Docker {d.version or '?'}")
-        self.ui.ok(f"Docker Compose {d.compose}")
-        m = Machine(d.cpus, d.ram, self.free_disk(self.root))
+        for fact in found.facts:
+            self.ui.ok(fact)
+        m = Machine(found.cpus, found.ram, self.free_disk(self.root))
         self.ui.ok(self.t("This computer: RAM {ram} · CPU {cpus} · {disk} free disk",
                           ram=profiles.gb(m.ram), cpus=m.cpus or "?", disk=profiles.gb(m.disk_free)))
         self.env_file.parent.mkdir(parents=True, exist_ok=True)
@@ -465,62 +548,28 @@ class Wizard:
         self.ui.step(3, self.t("Start Kelo"))
         mgr = self.manager()
         inst = mgr.load()
-        if self.release and self.pull_official(mgr):
-            cmd = mgr.compose(inst, "up", "-d", "--remove-orphans")     # the pulled images; compose builds only what is missing
-            title = self.t("Updating and restarting Kelo") if rerun else self.t("Starting Kelo")
-        else:
-            cmd = mgr.compose(inst, "up", "-d", "--build", "--remove-orphans")
-            title = self.t("Updating and restarting Kelo") if rerun else self.t("Building and starting Kelo (the first time takes a few minutes)")
-        code = self.ui.live(title, lambda on_line: self.stream(cmd, self.root, on_line))
-        if code != 0:
-            self.ui.fail(self.t("Start Kelo"), [self.t("docker compose failed (exit {code}). The last lines are above; the full log: {command}",
-                                                       code=code, command="docker compose logs")])
+        if not self.copy_host.bring_up(self.ui, mgr, inst, rerun=rerun, release=self.release):
             return False
         return self.wait_healthy(inst.local_url)
-
-    def pull_official(self, mgr: Any) -> bool:
-        """Pull and check the signed release images, with the same checks an update makes. False (with a warning) when that fails,
-        and the caller builds the images here instead. The pull's own output shows in the live view."""
-        from . import updater_setup
-
-        failure: list[str] = []
-
-        def pull(on_line: Callable[[str], None]) -> int:
-            shown_by = mgr.out
-            mgr.out = on_line
-            try:
-                updater_setup.pull_release(mgr)
-                return 0
-            except Exception as e:  # noqa: BLE001 - any failure (no network, no row in latest.json, a bad signature) builds here
-                failure.append(str(e)[:200])
-                return 1
-            finally:
-                mgr.out = shown_by
-
-        code = self.ui.live(self.t("Downloading the official Kelo images and checking their signatures"), pull)
-        if code == 0:
-            return True
-        self.ui.warn(self.t("Could not get the official images ({why}). Building them here instead; the first time takes a few minutes.",
-                            why=failure[0] if failure else "unknown error"))
-        return False
 
     def wait_healthy(self, url: str) -> bool:
         import httpx
 
         get = self.get or httpx.get
-        deadline = time.monotonic() + self.health_timeout
+        timeout = self.copy_host.health_seconds or self.health_timeout
+        deadline = time.monotonic() + timeout
         tries = 0
         while True:
             tries += 1
             try:
-                if get(f"{url}/healthz", timeout=3).status_code == 200:
+                if get(f"{url}/healthz", timeout=self.copy_host.health_request_seconds).status_code == 200:
                     self.ui.ok(self.t("Kelo is running at {url}", url=url))
                     return True
             except httpx.HTTPError:
                 pass
-            if time.monotonic() >= deadline or tries * 2 >= self.health_timeout:
+            if time.monotonic() >= deadline or tries * 2 >= timeout:
                 self.ui.fail(self.t("Start Kelo"), [self.t("Kelo did not answer at {url} within {secs} seconds. See: {command}",
-                                                           url=url, secs=int(self.health_timeout), command="docker compose logs server")])
+                                                           url=url, secs=int(timeout), command=self.copy_host.logs_command)])
                 return False
             self.sleep(2)
 
@@ -769,6 +818,6 @@ class RichUI:
 
 
 def run(env_file: Path, *, start: bool = True, browser: str | None = None, clis: list[str] | None = None,
-        profile: str | None = None, release: bool = False) -> int:
+        profile: str | None = None, release: bool = False, host: CopyHost | None = None) -> int:
     ui = RichUI(detect_lang())
-    return Wizard(env_file, ui, start=start, browser=browser, clis=clis, profile=profile, release=release)()
+    return Wizard(env_file, ui, start=start, browser=browser, clis=clis, profile=profile, release=release, host=host)()

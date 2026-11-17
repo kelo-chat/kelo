@@ -987,6 +987,22 @@
     <string name="agent_perm_rules_empty">Nothing yet. Pick “Always allow on this site” on an approval card and it\'ll show up here.</string>
     <string name="agent_perm_history">Past approvals</string>
     <string name="agent_perm_history_empty">Nothing asked yet.</string>
+    <string name="approval_edit_button">Edit</string>
+    <string name="approval_edit_title">Message to send</string>
+    <string name="approval_edit_save">Save</string>
+    <string name="approval_edited_note">You changed the message</string>
+    <string name="approval_edit_empty">Add a message.</string>
+    <string name="approval_edit_too_long">Too long. Shorten it.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Past approvals</string>
+    <string name="approval_history_empty">No approvals yet.</string>
+    <string name="approval_history_error">Couldn\'t load past approvals.</string>
+    <string name="approval_history_where">Where</string>
+    <string name="approval_history_when">When</string>
+    <string name="approval_history_answered">Answered</string>
+    <string name="approval_via_app">In the app</string>
+    <string name="approval_via_notification">From a notification</string>
+    <string name="approval_via_messenger">In a messenger</string>
     <string name="agent_perm_asked">Asked %1$s</string>
     <string name="approval_remember_site">Don\'t ask again on this site</string>
     <string name="approval_remember_scope">Applies to %1$s and all its sub-addresses</string>
@@ -1106,6 +1122,7 @@
     <string name="live_forward">Forward</string>
     <string name="live_reload">Reload</string>
     <string name="live_page_not_responding">The page is not responding</string>
+    <string name="live_touch_missed">That touch did not get through</string>
     <string name="live_type_hint">Text to type on the page</string>
     <string name="live_type_send">Type</string>
     <string name="live_type_hide">Hide text</string>
@@ -1301,6 +1318,8 @@
     <string name="offer_reason_later">Later</string>
     <string name="offer_busy">A reply is being written now. Tap again when it ends</string>
     <string name="offer_failed">Could not start</string>
+    <string name="offer_steps_show_all">Show all %1$d steps</string>
+    <string name="offer_steps_fewer">Show fewer steps</string>
     <string name="work_upcoming">Coming up</string>
     <string name="work_upcoming_unscheduled">No time set</string>
     <string name="work_past">Earlier</string>
@@ -1331,6 +1350,7 @@
     <string name="work_kind_browser">Browser task</string>
     <string name="work_kind_research">Research</string>
     <string name="work_kind_general">General task</string>
+    <string name="work_kind_phone">Phone task</string>
     <string name="work_job_title">Background task</string>
     <string name="work_job_line">%1$s · Background</string>
     <string name="work_task_in_background">In the background</string>
@@ -1678,6 +1698,7 @@
     <string name="handover_verify_title">%1$s asks you to confirm the sign-in</string>
     <string name="handover_verify_body">Approve the sign-in on your phone, or open the live view and type the code there. Kelo carries on once it is done.</string>
     <string name="handover_verify_open">Open the live view</string>
+    <string name="handover_device_open">Open the phone screen</string>
     <string name="handover_verify_done">Signed in — Kelo is carrying on</string>
     <string name="handover_verify_approve_body">Approve the sign-in in the notification on your phone. Kelo carries on once it is approved.</string>
     <string name="handover_verify_approved">I approved it</string>

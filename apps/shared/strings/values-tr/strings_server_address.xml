@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Sunucu adresi</string>
+    <string name="server_address_title">Sunucu adresini değiştir</string>
+    <string name="server_address_body">Bağlı adres: %1$s\nAynı Kelo sunucusunun yeni adresine geçmek için yeni https adresini yaz. Sohbetlerin ve anahtarların olduğu gibi kalır, yeniden bağlanman gerekmez.</string>
+    <string name="server_address_switch">Değiştir</string>
+    <string name="server_address_checking">Kontrol ediliyor…</string>
+    <string name="server_address_invalid">Bu bir https adresine benzemiyor. Şöyle yaz: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">Bu adrese ulaşılamadı. Adresi ve bağlantını kontrol edip tekrar dene.</string>
+    <string name="server_address_other">Bu adres başka bir sunucuya ait, bu yüzden hiçbir şey değişmedi. Başka bir sunucuya bağlanmak için çıkış yap ve baştan bağlan.</string>
+    <string name="server_address_same">Bu telefon zaten bu adresi kullanıyor.</string>
+    <string name="server_address_done">Sunucu adresi değiştirildi.</string>
+</resources>

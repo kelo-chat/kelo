@@ -250,4 +250,4 @@ def phone_calendar_tools(cals: PhoneCalendars, timezone_name: Callable[[], str |
                  "with each event's id (needed to change one) and how fresh the snapshot is. For what is on across all calendars use calendar_events.",
                  {"type": "object", "properties": {"start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
                                                    "query": {"type": "string", "description": "words in titles, places, calendar names"}}},
-                 phone_calendar_events, read_only=True, untrusted=True, source="calendar")]
+                 phone_calendar_events, read_only=True, untrusted=True, source="calendar", trail="calendar")]

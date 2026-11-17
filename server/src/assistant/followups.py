@@ -49,8 +49,8 @@ Stop conditions:
   wait for its next follow-up from that message, so a reminder never lands in the middle of a conversation;
 - the user drops or postpones it: the drop / snooze buttons (POST /api/followups/{id}/drop|snooze) or the agent's tools
   followup_cancel(item) / followup_snooze(item, until). Dropping stops the reminders only (it never denies an approval or stops a job);
-- NOTIFY_PREFS.md: an item whose title, topic, site or name matches a short keyword line under "Do not tell me" is kept but marked
-  suppressed: listed, never followed up.
+- NOTIFY_PREFS.md: an item the owner's saved rules say not to tell about (read by the main model, notify_block.py) is kept but marked
+  suppressed: listed, never followed up. Rules that cannot be read now: the item waits for the next pass.
 
 Delivery: one chat message from the agent, written by the user's main model from a short prompt (what waits, why, what is needed,
 the deadline; in the conversation's language; offering the obvious choices), or a fixed template in the app's language when the model
@@ -103,8 +103,9 @@ from .activity import _TIME_TAG
 from .agent import Tool, emit_ui
 from .agent.fence import fence
 from .home import NOTIFY_PREFS
+from .notify_block import has_rules
 from .i18n import N_, t
-from .proactive import NEVER_HEADINGS, in_waking_hours, keywords, section
+from .proactive import in_waking_hours
 from .prompt import tone_line
 from .providers import ChatRequest, TextDelta
 
@@ -240,6 +241,7 @@ class Followups:
         self.login_state = login_state or self._login_state
         self.schedule_next, self.user_marks, self.clock = schedule_next, user_marks, clock
         self.schedule_since, self.retry_fn = schedule_since, retry   # schedule_since(sid, ts): "gone" | "ran" (a run began after ts) | ""
+        self.notify_block: Any = None   # notify_block.NotifyBlock (server.py wires the main model); None: the rules cannot be read
         self.lock = asyncio.Lock()
         with store._lock:
             store._db.executescript(SCHEMA)
@@ -596,15 +598,17 @@ class Followups:
         return min(out) if out else None
 
     # ------------------------------------------------------------------ the pass
-    def prefs_block(self, row: dict[str, Any]) -> bool:
+    async def prefs_block(self, row: dict[str, Any]) -> bool | None:
+        """True: the item is on the owner's don't-tell-me list (read by the main model, notify_block.py); None: not known (no rules reader
+        or no answer): it is not sent now and not marked."""
         if self.home is None:
             return False
-        p = self.home.root / NOTIFY_PREFS
-        text = p.read_text(encoding="utf-8", errors="replace") if p.is_file() and not p.is_symlink() else ""
-        never = keywords(section(text, *NEVER_HEADINGS))
+        text = self.home.policy(NOTIFY_PREFS)   # the owner's saved rules (owner_copies.py), never the agent's notes
+        if not has_rules(text):
+            return False
         extra = _extra(row)
-        hay = " ".join(str(x) for x in (row["title"], row["detail"], extra.get("site"), extra.get("login"), extra.get("topic")) if x).lower()
-        return any(k in hay for k in never)
+        hay = " ".join(str(x) for x in (row["title"], row["detail"], extra.get("site"), extra.get("login"), extra.get("topic")) if x)
+        return await self.notify_block.one(text, hay) if self.notify_block is not None else None
 
     async def tick(self) -> int:
         """What the internal job calls every minute: check the items, send what is due. Returns how many went out."""
@@ -626,7 +630,10 @@ class Followups:
                 d = self.due(row, cfg)
                 if d is None or d[0] > now:
                     continue
-                if self.prefs_block(row):
+                blocked = await self.prefs_block(row)
+                if blocked is None:
+                    continue   # the rules could not be read: not told now, asked again next pass
+                if blocked:
                     self._set(row["id"], suppressed=1)
                     continue
                 try:
@@ -889,6 +896,13 @@ class Followups:
                     "deny an approval or stop a job.")
 
         item_desc = "which one: its id, 'all', or a login name, job id or words of what it is about"
+
+        async def describe_snooze(args: dict[str, Any]) -> str:
+            return t("Put off Kelo's reminders about {item}?", item=" ".join(str(args.get("item") or "").split())[:80] or "?")
+
+        async def describe_cancel(args: dict[str, Any]) -> str:
+            return t("Stop Kelo's reminders about {item}?", item=" ".join(str(args.get("item") or "").split())[:80] or "?")
+
         return [
             Tool("await_reply", "Call when your reply ends with a question you must have answered to go on (not small talk or optional "
                  "questions); Kelo reminds the user later if they do not answer.",
@@ -896,14 +910,15 @@ class Followups:
                                                    "deadline": {"type": "string", "description": "local date-time when an answer is too late"}},
                   "required": ["topic"]},
                  await_reply, closes_reply=True),
-            Tool("followup_snooze", "Put off Kelo's reminders about something that waits for the user, when they ask.",
+            Tool("followup_snooze", "Put off Kelo's reminders about something that waits for the user, when they ask. The user approves it.",
                  {"type": "object", "properties": {"item": {"type": "string", "description": item_desc},
                                                    "until": {"type": "string", "description": "local date-time or HH:MM"},
                                                    "minutes": {"type": "integer"}},
-                  "required": ["item"]}, followup_snooze),
-            Tool("followup_cancel", "Stop Kelo's reminders about something that waits for the user, when they ask (only the reminders).",
+                  "required": ["item"]}, followup_snooze, requires_approval=True, describe=describe_snooze),
+            Tool("followup_cancel", "Stop Kelo's reminders about something that waits for the user, when they ask (only the reminders). "
+                 "The user approves it.",
                  {"type": "object", "properties": {"item": {"type": "string", "description": item_desc}}, "required": ["item"]},
-                 followup_cancel),
+                 followup_cancel, requires_approval=True, describe=describe_cancel),
         ]
 
 

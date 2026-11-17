@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Утримуйте, щоб говорити</string>
+    <string name="voice_hold_hint">Відпустіть, щоб завершити; зсуньте вбік, щоб скасувати</string>
+    <string name="voice_dictation_offline">Диктування зупинено: зникло з\'єднання.</string>
+    <string name="voice_dictation_failed">Не вдалося завершити диктування.</string>
+    <string name="msg_action_read_aloud">Прочитати вголос</string>
+    <string name="msg_action_read_stop">Зупинити читання</string>
+</resources>

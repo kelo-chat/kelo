@@ -37,6 +37,7 @@ from .agent.fence import data
 from .deliverables import Deliverables, LibraryFileError
 from .home import Home, HomeError
 from .hosting.channels import LocalChannel
+from .data_trail import USES_PARAM
 from .i18n import t
 from .netguard import NetGuardError, resolve_public
 from .photos import PhotoError, view_bytes
@@ -646,6 +647,6 @@ def workroom_tools(room: Workroom, *, share: Callable[[str], dict[str, Any]] | N
 
         tools.append(Tool("share_file", "Make a 48-hour download link for a file of the user's library when they ask to share it; the user "
                           "approves every link.",
-                          obj({"name": {"type": "string"}}, ["name"]), share_file, requires_approval=True, describe=describe_share,
+                          obj({"name": {"type": "string"}, "uses": USES_PARAM}, ["name"]), share_file, requires_approval=True, describe=describe_share,
                           validate=validate_share, declined="The user declined the link. Do not make it; ask how they want to share the file."))
     return tools

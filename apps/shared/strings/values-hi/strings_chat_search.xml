@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">चैट में खोजें</string>
+    <string name="chat_search_title">चैट में खोजें</string>
+    <string name="chat_search_field">अपने संदेश खोजें</string>
+    <string name="chat_search_clear">खोज साफ़ करें</string>
+    <string name="chat_search_hint">कोई शब्द या उसका हिस्सा लिखें। किसी परिणाम पर टैप करके उस संदेश पर चैट खोलें।</string>
+    <string name="chat_search_none">इस खोज से मेल खाने वाला कोई संदेश नहीं है।</string>
+    <string name="chat_search_failed">सर्वर तक पहुँच नहीं हो पाई, इसलिए खोज नहीं हो सकी। थोड़ी देर बाद फिर कोशिश करें।</string>
+    <string name="chat_search_you">आप</string>
+</resources>

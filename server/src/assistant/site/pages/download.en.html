@@ -1,0 +1,54 @@
+<div class="doc">
+  <header class="doc-hero">
+    <div class="wrap doc-hero-in">
+      <div class="doc-hero-copy">
+        <p class="kicker"><span class="num">/download</span>Download</p>
+        <h1>Download Kelo</h1>
+        <p class="lead">Get the Kelo app for your phone or desktop, then pair it with your Kelo server.</p>
+      </div>
+      <div class="doc-hero-art" aria-hidden="true">{{svg:working}}</div>
+    </div>
+  </header>
+
+  <div class="wrap doc-grid">
+    <article class="prose">
+      <p>The apps are free. Each one connects to a Kelo server you install yourself: see the <a href="{{href:install}}">install guide</a>, then pair with the QR code.</p>
+      <div class="dl-list">
+      <article class="dl-card">
+        <img class="ic" src="{{asset:logo-android.svg}}" width="62" height="36" alt="" loading="lazy" decoding="async">
+        <div class="dl-body"><h3>Android</h3>
+        <a class="btn btn--secondary dl-btn" href="{{href:tester}}">Google Play closed test</a>
+        <p class="dl-meta">Sign up as a tester and we send you the link to join from the Play Store.</p>
+        {{dl:android}}
+        <p class="dl-note">Open the APK; if Android asks, allow installing apps from this source. Android 8.0 or later.</p>
+        </div>
+      </article>
+      <article class="dl-card">
+        <img class="ic ic-ink" src="{{asset:logo-apple.svg}}" width="30" height="36" alt="" loading="lazy" decoding="async">
+        <div class="dl-body"><h3>iPhone</h3>
+        <a class="btn btn--secondary dl-btn" href="https://apps.apple.com/us/app/kelo-ai/id6832422201">App Store</a>
+        <a class="btn btn--secondary dl-btn" href="https://testflight.apple.com/join/p2gqKkNu">Join the beta on TestFlight</a>
+        <p class="dl-note">The beta needs the free TestFlight app from Apple. Open the link on your iPhone, install TestFlight, then accept the invitation.</p>
+        </div>
+      </article>
+      <article class="dl-card">
+        <img class="ic" src="{{asset:logo-windows.svg}}" width="36" height="36" alt="" loading="lazy" decoding="async">
+        <div class="dl-body"><h3>Windows</h3>
+        <a class="btn btn--secondary dl-btn" href="https://apps.microsoft.com/detail/9P54HX2TX361?hl=en-us&amp;gl=US">Microsoft Store</a>
+        {{dl:windows}}
+        {{dl:windows-msi}}
+        <p class="dl-note">These files are not signed yet. If a blue “Windows protected your PC” window appears, choose <strong>More info → Run anyway</strong>. If Smart App Control is on (Windows 11), it blocks the setup .exe for now: install from the Microsoft Store instead. Windows 10, 11.</p>
+        </div>
+      </article>
+      <article class="dl-card">
+        <img class="ic ic-ink" src="{{asset:logo-apple.svg}}" width="30" height="36" alt="" loading="lazy" decoding="async">
+        <div class="dl-body"><h3>macOS</h3>
+        {{dl:mac}}
+        <p class="dl-note">Notarized by Apple: opens right away. Apple silicon.</p>
+        </div>
+      </article>
+      </div>
+      <p class="muted">Each build’s version, size and SHA-256 are listed at <a href="/download/latest.json">/download/latest.json</a>.</p>
+    </article>
+  </div>
+</div>

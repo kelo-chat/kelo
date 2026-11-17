@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from typing import Any
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request, Response
+from .. import app_updates
 from pydantic import BaseModel, Field
 from .. import i18n
 from ..effort import ORDER as EFFORT_ORDER
@@ -29,6 +30,8 @@ class ProfileIn(BaseModel):
     background_provider: str | None = Field(default=None, max_length=80)
     background_model: str | None = Field(default=None, max_length=120)
     tone: str | None = Field(default=None, pattern="^(friendly|polite)$")
+    # payment approvals need the phone's signature even from a device without an approval key (docs/approval-signing.md); default off
+    require_signed_payments: bool | None = None
 
 
 def router(ctx: AppContext) -> APIRouter:
@@ -67,16 +70,25 @@ def router(ctx: AppContext) -> APIRouter:
         store.set_meta("ui_lang_from", "picked")
         return language_view()
 
+    def signing_view() -> dict[str, Any]:
+        return {"require_signed_payments": store.meta("require_signed_payments") == "1", "first_chat_done": store.meta("first_chat_done") == "1"}
+
     @router.get("/api/profile", dependencies=[Depends(require_auth)])
-    async def get_profile() -> dict[str, Any]:
+    async def get_profile(request: Request, response: Response) -> dict[str, Any]:
+        update = await ctx.app_updates.for_header(request.headers.get("x-kelo-app"), request.headers.get(app_updates.CHANNEL_HEADER))
+        if update:
+            response.headers[app_updates.HEADER] = update   # a newer released app that works with this server (app_updates.py)
         prof = store.profile()
-        return {**prof, "avatar_version": avatar.version(), "model_ready": model_ready(prof), "min_app_version": dict(settings.min_app_version)}
+        return {**prof, **signing_view(), "avatar_version": avatar.version(), "model_ready": model_ready(prof),
+                "min_app_version": dict(settings.min_app_version)}
 
     @router.put("/api/profile", dependencies=[Depends(require_auth)])
     async def put_profile(body: ProfileIn) -> dict[str, Any]:
         if body.effort not in (None, "", *EFFORT_ORDER):
             raise HTTPException(422, f"effort must be one of: {', '.join(EFFORT_ORDER)} (or empty)")
         fields = body.model_dump(exclude_none=True)
+        if "require_signed_payments" in fields:
+            store.set_meta("require_signed_payments", "1" if fields.pop("require_signed_payments") else "")
         cur = store.profile()
         if "background_provider" in fields or "background_model" in fields:
             bp = fields.get("background_provider", cur["background_provider"]).strip()
@@ -111,6 +123,7 @@ def router(ctx: AppContext) -> APIRouter:
                     raise HTTPException(422, "the fallback model must come from a different provider than the main model")
                 fields["fallback_provider"], fields["fallback_model"] = "", ""   # the main model moved onto the fallback's provider: empty the fallback
         prof = store.set_profile(**fields)
-        return {**prof, "avatar_version": avatar.version(), "model_ready": model_ready(prof), "min_app_version": dict(settings.min_app_version)}
+        return {**prof, **signing_view(), "avatar_version": avatar.version(), "model_ready": model_ready(prof),
+                "min_app_version": dict(settings.min_app_version)}
 
     return router

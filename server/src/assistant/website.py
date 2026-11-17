@@ -9,7 +9,7 @@ SIL OFL) and the home page's two scroll moments (`site/moments/`, from the taste
 scripts or trackers, and the Content-Security-Policy below allows nothing but this server.
 
 Placeholders in a page: {{svg:<state>}} (the mascot), {{shot:<name>}} (a screenshot's URL), {{href:<page>[#anchor]}},
-{{asset:<file>}} (any served file's versioned URL), {{app_open}}, {{install_sh}} and {{install_ps1}} (the one-line install
+{{asset:<file>}} (any served file's versioned URL), {{app_open}}, {{install_sh}}, {{install_ps1}} and {{install_win}} (the one-line install
 commands), {{github}} (the project on GitHub, for links
 into its README), and {{dl:<platform>}} (an app download button
 with its version and size from the published builds, downloads.py; filled at every request, so a new build shows at once).
@@ -39,18 +39,19 @@ SITE = Path(__file__).with_name("site")
 LANGS = ("ko", "en")
 PRIMARY = "en"
 CANONICAL = "https://kelo.chat"
-PAGES = ("index", "install", "privacy", "support", "tester")
+PAGES = ("index", "install", "privacy", "support", "tester", "download")
 # the two v2 designs (site/v2/<design>.css, site/pages/index-<design>.<lang>.html). Both are previews until one is chosen:
 # set LIVE_DESIGN to "a" or "b" and "/", "/install" and "/privacy" all use that design. None keeps the current pages.
 DESIGNS = ("a", "b")
 LIVE_DESIGN: str | None = "b"
-PATHS = {"index": "/", "install": "/install", "privacy": "/privacy", "support": "/support", "tester": "/tester"}
+PATHS = {"index": "/", "install": "/install", "privacy": "/privacy", "support": "/support", "tester": "/tester", "download": "/download"}
 CHARACTERS = ("idle", "working", "browser", "approval", "done", "sleeping", "reading", "thinking", "listening")
 GITHUB = "https://github.com/kelo-chat/kelo"   # the project on GitHub (header and footer)
 # the one-line installers (scripts/install.sh, install.ps1, served by api/site.py): they check Docker, get uv, fetch the newest release
 # of the public source into ~/kelo and open the guided setup
 INSTALL_SH = "curl -fsSL https://kelo.chat/install.sh | bash"
 INSTALL_PS1 = "irm https://kelo.chat/install.ps1 | iex"
+INSTALL_WIN = "irm https://kelo.chat/install-windows.ps1 | iex"
 _SHOT = re.compile(r"[a-z0-9-]+\.webp")
 
 CSP = ("default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; "
@@ -228,13 +229,14 @@ TEXT = {
         "dl_meta": "버전 {version} · {size}", "dl_off": "아직 올라오지 않았어요. 곧 이곳에서 받을 수 있어요.",
         "copyright": "Kelo",
         "titles": {"index": "Kelo · 직접 설치한 서버에서 돌아가는 AI 비서", "install": "서버 설치하기 · Kelo", "privacy": "개인정보 처리방침 · Kelo", "support": "고객 지원 · Kelo",
-                   "tester": "테스터 모집 · Kelo"},
+                   "tester": "테스터 모집 · Kelo", "download": "내려받기 · Kelo"},
         "desc": {
             "index": "Kelo는 직접 설치한 Kelo 서버에서 돌아가는 AI 비서예요. 휴대폰 앱으로 대화하고, 맡긴 일은 비서가 브라우저와 연결한 서비스로 처리해요. 데이터는 Kelo 서버에 남아요.",
             "install": "Kelo 서버를 설치하고 휴대폰을 연결하는 방법.",
             "privacy": "Kelo 앱과 서버가 어떤 정보를 어디에 두는지 설명하는 개인정보 처리방침.",
             "support": "Kelo 문의처, 시작하는 방법, 자주 묻는 질문.",
             "tester": "Google Play 비공개 테스트에 참여할 테스터를 모집해요.",
+            "download": "Android, iPhone, Windows, macOS용 Kelo 앱을 받는 곳.",
         },
         "tester_notice": {
             "sent": "신청을 받았어요. 참여 링크를 메일로 보내 드릴게요.",
@@ -262,13 +264,14 @@ TEXT = {
         "copyright": "Kelo",
         "titles": {"index": "Kelo · an AI assistant on a server you run", "install": "Install the server · Kelo",
                    "privacy": "Privacy policy · Kelo", "support": "Support · Kelo",
-                   "tester": "Become a tester · Kelo"},
+                   "tester": "Become a tester · Kelo", "download": "Download · Kelo"},
         "desc": {
             "index": "Kelo is an AI assistant that runs on a Kelo server you set up. Talk to it from the phone app; it gets things done in its own browser and the services you connect. Your data stays with you.",
             "install": "How to install the Kelo server and connect your phone.",
             "privacy": "Privacy policy: what the Kelo app and server keep, and where.",
             "support": "Kelo support: how to reach us, getting started and common questions.",
             "tester": "Join the Google Play closed test of the Kelo app.",
+            "download": "Get the Kelo app for Android, iPhone, Windows and macOS.",
         },
         "tester_notice": {
             "sent": "Thanks! We'll email you the link to join.",
@@ -304,7 +307,7 @@ def body(page: str, lang: str, design: str | None = None) -> str:
     html = re.sub(r"\{\{art:([a-z-]+)\}\}", lambda m: art(m.group(1)), html)
     html = re.sub(r"\{\{svg:(\w+)\}\}", lambda m: character(m.group(1)), html)
     html = html.replace("{{app_open}}", escape(APP_OPEN))
-    html = html.replace("{{install_sh}}", escape(INSTALL_SH)).replace("{{install_ps1}}", escape(INSTALL_PS1))
+    html = html.replace("{{install_sh}}", escape(INSTALL_SH)).replace("{{install_ps1}}", escape(INSTALL_PS1)).replace("{{install_win}}", escape(INSTALL_WIN))
     html = html.replace("{{github}}", GITHUB)
     if "{{credits}}" in html:
         html = html.replace("{{credits}}", credits_list(lang, design))

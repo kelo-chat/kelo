@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hans text for strings_notify_actions.xml (generated from values/strings_notify_actions.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="notify_action_reply">回复</string>
+    <string name="notify_unlock_retry">请先解锁手机，然后再试一次。</string>
+    <string name="notify_send_failed_open">发送失败。请打开 Kelo 作答。</string>
+    <string name="notify_send_failed_tap">发送失败。点按即可打开 Kelo。</string>
+</resources>

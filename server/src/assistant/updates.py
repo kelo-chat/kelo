@@ -247,6 +247,55 @@ class Updater:
         d.chmod(0o700)
         return d
 
+    def prune_old_releases(self, insts: list[Instance]) -> None:
+        """After a good registry update: remove the release images of Kelo's own repositories (the source's release lists them) that
+        neither the shared tags (the new release), a container, a copy's rollback point nor a hold uses. A release image pulled by
+        tag stays tagged, so the dangling prune never reaches it (without this every release left ~4 GB). Only images that carry
+        the label chat.kelo.release, removed by exact tag or ID: never `image prune -a`, never an image of the owner's."""
+        release = getattr(self.source, "release", None)
+        repos = {i.repo for i in getattr(release, "images", {}).values()}
+        if not repos:
+            return
+        r = self._run(["docker", "image", "ls", "--digests", "--no-trunc", "--format",
+                       "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.Digest}}"])
+        if r.returncode != 0:
+            return
+        refs: dict[str, list[str]] = {}
+        for line in (r.stdout or "").splitlines():
+            iid, _, rest = line.partition("\t")
+            repo, tag, digest = (rest.split("\t") + ["", "", ""])[:3]
+            if repo in repos:
+                ref = f"{repo}:{tag}" if tag not in ("", "<none>") else f"{repo}@{digest}" if digest not in ("", "<none>") else ""
+                if iid and ref:
+                    refs.setdefault(iid, []).append(ref)
+        if not refs:
+            return
+        from .updater_service import incoming_updater_image, shared_updater_image   # the updater's own tags: running, and waiting for the swap
+        keep = {self.image_id(self.m.shared_image(v)) for v in IMAGE_VARS} | {self.image_id(shared_updater_image()), self.image_id(incoming_updater_image())}
+        for inst in {i.name: i for i in [*insts, *(self.m.load(n) for n in [MAIN, *self.m.names()])]}.values():
+            keep |= {i.get("id") for i in (self.point(inst) or {}).get("images", {}).values()}
+            keep |= {self.image_id(read_env(inst.env, v)) for v in IMAGE_VARS if read_env(inst.env, v)}
+        c = self._run(["docker", "container", "ls", "-a", "-q", "--no-trunc"])
+        ids = (c.stdout or "").split() if c.returncode == 0 else None
+        if ids is None:
+            return                                  # cannot tell what runs: remove nothing
+        if ids:
+            used = self._run(["docker", "inspect", "-f", "{{.Image}}", *ids])
+            if used.returncode != 0:
+                return
+            keep |= set((used.stdout or "").split())
+        for iid, names in refs.items():
+            if iid in keep:
+                continue
+            labels = self._run(["docker", "image", "inspect", "-f", "{{json .Config.Labels}}", iid])
+            try:
+                mine = labels.returncode == 0 and "chat.kelo.release" in (json.loads(labels.stdout or "null") or {})
+            except ValueError:
+                mine = False
+            if mine:
+                for ref in names:
+                    self._run(["docker", "image", "rm", ref])
+
     def point(self, inst: Instance) -> dict[str, Any] | None:
         p = self.m.dir / inst.name / "rollback.json"
         try:
@@ -305,6 +354,13 @@ class Updater:
             raise UpdateError(f"the {args[0]} step inside the server container gave no answer") from None
 
     # ------------------------------------------------------------------ 1. preflight
+    def builds_locally(self, build: bool) -> bool:
+        """Does this run build images on this disk (the big margin)? Without a source it builds when asked to; a source says for
+        itself (`builds`, default True for an unknown one): the registry source only pulls finished images."""
+        if self.source is None:
+            return build
+        return bool(getattr(self.source, "builds", True))
+
     def preflight(self, inst: Instance, *, build: bool) -> dict[str, Any]:
         live = "server" in self.running(inst)
         info: dict[str, Any] = {"running": live, "version": None, "schema": None}
@@ -463,7 +519,7 @@ class Updater:
         self.result = {"outcome": "failed", "changed": False, "data_restored": False, "problem": None, "stamp": stamp, "updated": []}
         self.step("preflight")
         try:                                   # 1. nothing changed yet when this fails
-            pre = {i.name: self.preflight(i, build=build or self.source is not None) for i in insts}
+            pre = {i.name: self.preflight(i, build=self.builds_locally(build)) for i in insts}
         except UpdateError as e:
             self.out(f"Update stopped before changing anything: {e}.")
             self.result["problem"] = str(e)
@@ -523,6 +579,7 @@ class Updater:
                 self.out(f"{self._who(inst)} is updated and healthy. To go back to the previous version: assistant rollback{self._flag(inst)}")
                 continue
             return self._failed(inst, point, problem, shared_before if not done else None, rest=[i for i in insts if i.name not in done and i is not inst])
+        self.prune_old_releases(insts)
         self.prune_untagged()
         self.result.update(outcome="done")
         finish = getattr(self.source, "finish", None)

@@ -874,6 +874,22 @@
     <string name="agent_perm_rules_empty">لا شيء بعد. اختر «السماح دائمًا على هذا الموقع» في بطاقة موافقة وسيظهر هنا.</string>
     <string name="agent_perm_history">الموافقات السابقة</string>
     <string name="agent_perm_history_empty">لم يُطرح أي سؤال بعد.</string>
+    <string name="approval_edit_button">تعديل</string>
+    <string name="approval_edit_title">الرسالة المراد إرسالها</string>
+    <string name="approval_edit_save">حفظ</string>
+    <string name="approval_edited_note">عدّلت الرسالة</string>
+    <string name="approval_edit_empty">أضف رسالة.</string>
+    <string name="approval_edit_too_long">الرسالة طويلة جدًا. اختصرها.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">الموافقات السابقة</string>
+    <string name="approval_history_empty">لا توجد موافقات بعد.</string>
+    <string name="approval_history_error">تعذّر تحميل الموافقات السابقة.</string>
+    <string name="approval_history_where">أين</string>
+    <string name="approval_history_when">متى</string>
+    <string name="approval_history_answered">تمت الإجابة</string>
+    <string name="approval_via_app">في التطبيق</string>
+    <string name="approval_via_notification">من إشعار</string>
+    <string name="approval_via_messenger">في تطبيق مراسلة</string>
     <string name="agent_perm_asked">سُئل %1$s</string>
     <string name="approval_remember_site">عدم السؤال مجددًا على هذا الموقع</string>
     <string name="approval_remember_scope">ينطبق على %1$s وجميع العناوين الفرعية التابعة له</string>
@@ -993,6 +1009,7 @@
     <string name="live_forward">تقدّم</string>
     <string name="live_reload">إعادة التحميل</string>
     <string name="live_page_not_responding">الصفحة لا تستجيب</string>
+    <string name="live_touch_missed">لم يصل اللمس إلى الصفحة</string>
     <string name="live_type_hint">نص للكتابة في الصفحة</string>
     <string name="live_type_send">اكتب</string>
     <string name="live_type_hide">إخفاء النص</string>
@@ -1216,6 +1233,8 @@
     <string name="offer_reason_later">لاحقاً</string>
     <string name="offer_busy">تجري كتابة رد آخر الآن. اضغط مجدداً عند الانتهاء</string>
     <string name="offer_failed">تعذر البدء</string>
+    <string name="offer_steps_show_all">عرض كل الخطوات (%1$d)</string>
+    <string name="offer_steps_fewer">عرض خطوات أقل</string>
     <string name="work_upcoming">القادم</string>
     <string name="work_upcoming_unscheduled">بلا وقت محدد</string>
     <string name="work_past">سابقًا</string>
@@ -1254,6 +1273,7 @@
     <string name="work_kind_browser">مهمة متصفح</string>
     <string name="work_kind_research">بحث</string>
     <string name="work_kind_general">مهمة عامة</string>
+    <string name="work_kind_phone">مهمة على الهاتف</string>
     <string name="work_job_title">مهمة في الخلفية</string>
     <string name="work_job_line">%1$s · في الخلفية</string>
     <string name="work_task_in_background">في الخلفية</string>
@@ -1598,6 +1618,7 @@
     <string name="handover_verify_title">يطلب %1$s تأكيد تسجيل الدخول</string>
     <string name="handover_verify_body">وافِق على تسجيل الدخول من هاتفك، أو افتح العرض المباشر واكتب الرمز هناك. بعدها يكمل Kelo.</string>
     <string name="handover_verify_open">فتح العرض المباشر</string>
+    <string name="handover_device_open">افتح شاشة الهاتف</string>
     <string name="handover_verify_done">تم تسجيل الدخول — Kelo يكمل</string>
     <string name="handover_verify_approve_body">وافِق على تسجيل الدخول من الإشعار على هاتفك. بعدها يكمل Kelo بمجرد الموافقة.</string>
     <string name="handover_verify_approved">وافقت عليه</string>

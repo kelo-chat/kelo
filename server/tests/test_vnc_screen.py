@@ -1,0 +1,424 @@
+"""tools/vnc.XScreen against an in-process RFB server, and the VncScreen arbiter with fakes (no browser, no X)."""
+
+import asyncio
+import struct
+
+import pytest
+
+from assistant.tools.vnc import DEFAULT_SIZE, VncError, VncScreen, VncUnavailable, XScreen
+
+from fake_rfb import FakeRfb
+
+
+# ---------------------------------------------------------------------------------------------------------- XScreen
+async def test_resize_follows_the_rfb_steps_and_the_screen_has_the_new_size():
+    fake = FakeRfb()
+    port = await fake.start()
+    try:
+        await XScreen("127.0.0.1", port).resize(500, 900)
+    finally:
+        await fake.stop()
+    assert fake.size == (500, 900)
+    assert fake.handshakes == [b"RFB 003.008\n\x01\x01"]                       # RFB 3.8, security None, shared
+    assert fake.encodings == [[0, -308]]                                         # Raw and ExtendedDesktopSize
+    assert fake.requests == [(0, 0, 0, 1, 1)] * 2                                # not incremental, 1 x 1: for the layout, and again to get the answer
+    assert fake.resizes == [(500, 900, 7, 1)]                                    # the screen id and flags the server itself listed
+
+
+async def test_size_reads_the_server_init():
+    fake = FakeRfb(size=(412, 915))
+    port = await fake.start()
+    try:
+        assert await XScreen("127.0.0.1", port).size() == (412, 915)
+    finally:
+        await fake.stop()
+    assert fake.resizes == []
+
+
+async def test_a_screen_that_already_has_the_size_is_not_asked_again():
+    fake = FakeRfb(size=(500, 900))
+    port = await fake.start()
+    try:
+        await XScreen("127.0.0.1", port).resize(500, 900)
+    finally:
+        await fake.stop()
+    assert fake.resizes == [] and fake.encodings == []
+
+
+async def test_a_refused_size_raises():
+    fake = FakeRfb(resize_status=1)
+    port = await fake.start()
+    try:
+        with pytest.raises(VncError, match="refused 500x900"):
+            await XScreen("127.0.0.1", port).resize(500, 900)
+    finally:
+        await fake.stop()
+    assert fake.size == DEFAULT_SIZE
+
+
+async def test_a_server_that_never_answers_raises_within_the_timeout():
+    fake = FakeRfb(answer_update=False)
+    port = await fake.start()
+    try:
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(VncError):
+            await XScreen("127.0.0.1", port, timeout=0.3).resize(500, 900)
+        assert asyncio.get_running_loop().time() - started < 2
+    finally:
+        await fake.stop()
+
+
+async def test_nothing_listening_raises_vnc_error_not_a_connection_error():
+    fake = FakeRfb()
+    port = await fake.start()
+    await fake.stop()
+    with pytest.raises(VncError):
+        await XScreen("127.0.0.1", port, timeout=1).resize(500, 900)
+
+
+async def test_a_server_that_wants_a_password_raises():
+    async def client(reader, writer):
+        writer.write(b"RFB 003.008\n")
+        await reader.readexactly(12)
+        writer.write(b"\x01\x02")   # only VNC authentication
+        await writer.drain()
+        await asyncio.sleep(0.2)
+        writer.close()
+
+    server = await asyncio.start_server(client, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    try:
+        with pytest.raises(VncError, match="password"):
+            await XScreen("127.0.0.1", port).size()
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+# ---------------------------------------------------------------------------------------------------------- VncScreen
+class FakeCdp:
+    def __init__(self):
+        self.sent: list[tuple[str, dict]] = []
+        self.detached = False
+
+    async def send(self, method, params=None):
+        self.sent.append((method, dict(params or {})))
+        if method == "Browser.getWindowForTarget":
+            return {"windowId": 11}
+        return {}
+
+    async def detach(self):
+        self.detached = True
+
+    def methods(self):
+        return [m for m, _ in self.sent]
+
+
+class FakePage:
+    def is_closed(self):
+        return False
+
+
+class FakeSession:
+    def __init__(self, keys=("owner", "other"), mobile=()):
+        self.pages = {k: FakePage() for k in keys}
+        self.tab = {k: FakeCdp() for k in keys}
+        self.phone = {k: FakeCdp() for k in mobile}
+        self.calls: list[str] = []
+
+    def raw_page(self, key):
+        return self.pages.get(key)
+
+    def view(self, key):
+        return "mobile" if key in self.phone else "desktop"
+
+    def phone_cdp(self, key):
+        return self.phone.get(key)
+
+    def tab_cdp(self, key):
+        return self.tab.get(key)
+
+    def target_id(self, key):
+        return f"target-{key}"
+
+    async def keep_view(self, key):
+        self.calls.append(f"keep_view:{key}")
+
+    async def cdp_session(self, page):
+        return FakeCdp()
+
+
+class FakeX:
+    host, port = "browser", 5901
+
+    def __init__(self, fail=False, gate=None, now=DEFAULT_SIZE):
+        self.sizes: list[tuple[int, int]] = []
+        self.fail, self.gate, self.now = fail, gate, now
+
+    async def size(self):
+        if self.fail:
+            raise VncError("no X screen")
+        return self.now
+
+    async def resize(self, w, h):
+        if self.gate is not None:
+            await self.gate.wait()
+        if self.fail:
+            raise VncError("no X screen")
+        self.sizes.append((w, h))
+        self.now = (w, h)
+
+
+def screen(session=None, x=None):
+    refits: list[str] = []
+
+    async def refit(key):
+        refits.append(key)
+
+    s = VncScreen(session or FakeSession(), x or FakeX(), refit=refit)
+    return s, refits
+
+
+async def test_the_first_viewer_brings_the_tab_forward_sizes_the_screen_and_makes_the_window_fullscreen():
+    sess, x = FakeSession(mobile=("owner",)), FakeX()
+    s, _ = screen(sess, x)
+    assert await s.acquire("owner", "dev1", 500, 889) is True
+    assert sess.tab["owner"].sent == [
+        ("Target.activateTarget", {"targetId": "target-owner"}), ("Page.bringToFront", {}),
+        ("Browser.getWindowForTarget", {"targetId": "target-owner"}),
+        ("Browser.setWindowBounds", {"windowId": 11, "bounds": {"windowState": "fullscreen"}})]
+    assert x.sizes == [(500, 889)] and s.holds("owner") and s.size_of("owner") == (500, 889) and s.size_of("other") is None
+
+
+async def test_the_window_is_made_fullscreen_after_the_screen_changed_size_not_before():
+    order: list[str] = []
+    sess = FakeSession(mobile=("owner",))
+
+    class Spy(FakeX):
+        async def resize(self, w, h):
+            order.append("resize")
+
+    orig = sess.tab["owner"].send
+
+    async def send(method, params=None):
+        order.append(method)
+        return await orig(method, params)
+
+    sess.tab["owner"].send = send
+    s, _ = screen(sess, Spy())
+    await s.acquire("owner", "dev1", 500, 889)
+    assert order == ["Target.activateTarget", "Page.bringToFront", "resize", "Browser.getWindowForTarget", "Browser.setWindowBounds"]
+
+
+async def test_a_second_tab_is_busy_and_nothing_is_touched():
+    sess, x = FakeSession(mobile=("owner",)), FakeX()
+    s, _ = screen(sess, x)
+    assert await s.acquire("owner", "dev1", 500, 889)
+    assert await s.acquire("other", "dev2", 600, 900) is False
+    assert x.sizes == [(500, 889)] and sess.tab["other"].sent == [] and s.holds("owner")
+
+
+async def test_two_requests_for_different_tabs_at_once_give_the_screen_to_one():
+    gate = asyncio.Event()
+    s, _ = screen(FakeSession(mobile=("owner", "other")), FakeX(gate=gate))
+    first = asyncio.ensure_future(s.acquire("owner", "dev1", 500, 889))
+    second = asyncio.ensure_future(s.acquire("other", "dev2", 500, 889))
+    await asyncio.sleep(0.05)
+    gate.set()
+    assert sorted(await asyncio.gather(first, second)) == [False, True]
+
+
+async def test_viewers_of_the_same_tab_share_the_screen_and_the_last_one_to_leave_puts_it_back():
+    sess, x = FakeSession(mobile=("owner",)), FakeX()
+    s, refits = screen(sess, x)
+    assert await s.acquire("owner", "dev1", 500, 889)
+    assert await s.acquire("owner", "dev2", 700, 900) is True
+    assert x.sizes == [(500, 889)] and s.size_of("owner") == (500, 889)   # the first viewer's size stays
+    await s.release("owner", "dev1")
+    assert s.holds("owner") and x.sizes == [(500, 889)]
+    await s.release("owner", "dev2")
+    assert not s.holds("owner") and x.sizes == [(500, 889), DEFAULT_SIZE] and refits == ["owner"]
+    assert await s.acquire("other", "dev3", 600, 900) is True   # free again
+
+
+async def test_a_device_with_two_screens_open_keeps_the_tab_until_both_are_closed():
+    s, _ = screen()
+    await s.acquire("owner", "dev1", 500, 889)
+    await s.acquire("owner", "dev1", 500, 889)
+    await s.release("owner", "dev1")
+    assert s.holds("owner")
+    await s.release("owner", "dev1")
+    assert not s.holds("owner")
+
+
+async def test_a_release_by_one_that_never_had_the_screen_changes_nothing():
+    s, _ = screen()
+    await s.acquire("owner", "dev1", 500, 889)
+    await s.release("other", "dev1")
+    await s.release("owner", "stranger")
+    assert s.holds("owner")
+
+
+async def test_a_phone_view_tab_gets_a_window_sized_phone_and_mouse_as_touch_and_gets_its_phone_back():
+    sess, x = FakeSession(mobile=("owner",)), FakeX()
+    s, refits = screen(sess, x)
+    await s.acquire("owner", "dev1", 500, 889)
+    phone = sess.phone["owner"]
+    assert phone.sent == [
+        ("Emulation.setDeviceMetricsOverride", {"width": 500, "height": 889, "deviceScaleFactor": 1, "mobile": True,
+                                                "screenWidth": 500, "screenHeight": 889}),
+        ("Emulation.setEmitTouchEventsForMouse", {"enabled": True, "configuration": "mobile"})]
+    await s.release("owner", "dev1")
+    assert phone.sent[-1] == ("Emulation.setEmitTouchEventsForMouse", {"enabled": False})
+    assert sess.calls == ["keep_view:owner"] and refits == ["owner"] and x.sizes == [(500, 889), DEFAULT_SIZE]
+
+
+async def test_a_desktop_view_tab_gets_no_emulation():
+    sess = FakeSession()
+    s, _ = screen(sess)
+    await s.acquire("owner", "dev1", 500, 889)
+    assert not any(m.startswith("Emulation.") for m in sess.tab["owner"].methods())
+    await s.release("owner", "dev1")
+    assert sess.calls == []
+
+
+async def test_a_desktop_view_tab_keeps_the_desktop_screen_the_phone_only_scales_it_down():
+    """Owner report 2026-11-17: the live view resized the whole X screen to the phone's width, so a desktop-view tab was laid out ~500 px
+    wide and coupang showed its narrow layout. A desktop-view tab is never shown on a screen narrower than the desktop's."""
+    sess, x = FakeSession(), FakeX()
+    s, refits = screen(sess, x)
+    assert await s.acquire("owner", "dev1", 500, 889) is True       # the phone's size is not used for a desktop-view tab
+    assert x.sizes == [] and s.size_of("owner") == DEFAULT_SIZE
+    assert await s.acquire("owner", "dev2", 360, 640) is True       # a second phone does not change it either
+    await s.release("owner", "dev1")
+    await s.release("owner", "dev2")
+    assert x.sizes == [] and not s.holds("owner") and refits == ["owner"]
+
+
+async def test_a_desktop_view_tab_keeps_the_size_the_screen_already_has_and_leaves_it_so():
+    x = FakeX(now=(1920, 1080))
+    s, _ = screen(FakeSession(), x)
+    await s.acquire("owner", "dev1", 500, 889)
+    assert s.size_of("owner") == (1920, 1080) and x.sizes == []
+    await s.release("owner", "dev1")
+    assert x.sizes == []
+
+
+async def test_a_desktop_view_tab_puts_a_narrow_screen_a_crashed_server_left_behind_back_to_the_desktop_size():
+    x = FakeX(now=(500, 889))
+    s, _ = screen(FakeSession(), x)
+    await s.acquire("owner", "dev1", 500, 889)
+    assert x.sizes == [DEFAULT_SIZE] and s.size_of("owner") == DEFAULT_SIZE
+
+
+async def test_a_phone_view_tab_still_gets_a_screen_the_size_of_the_phone():
+    x = FakeX()
+    s, _ = screen(FakeSession(mobile=("owner",)), x)
+    await s.acquire("owner", "dev1", 411, 841)
+    assert x.sizes == [(411, 841)] and s.size_of("owner") == (411, 841)
+
+
+async def test_a_tab_that_closes_releases_the_screen_and_tells_its_viewers():
+    sess, x = FakeSession(mobile=("owner",)), FakeX()
+    s, refits = screen(sess, x)
+    await s.acquire("owner", "dev1", 500, 889)
+    gone = s.gone["owner"]
+    sess.pages.pop("owner")
+    await s.tab_closed("owner")
+    assert gone.is_set() and not s.holds("owner") and x.sizes == [(500, 889), DEFAULT_SIZE] and refits == []
+    await s.release("owner", "dev1")   # the closing socket's own release finds nothing to do
+    assert await s.acquire("other", "dev2", 600, 900) is True
+
+
+async def test_the_closing_of_another_tab_changes_nothing():
+    s, _ = screen()
+    await s.acquire("owner", "dev1", 500, 889)
+    await s.tab_closed("other")
+    assert s.holds("owner") and not s.gone["owner"].is_set()
+
+
+async def test_a_screen_that_cannot_be_sized_is_unavailable_and_stays_free():
+    x = FakeX(fail=True)
+    s, _ = screen(FakeSession(mobile=("owner",)), x)
+    with pytest.raises(VncUnavailable):
+        await s.acquire("owner", "dev1", 500, 889)
+    assert not s.holds("owner")
+    x.fail = False
+    assert await s.acquire("other", "dev2", 600, 900) is True
+
+
+async def test_a_step_of_bringing_the_tab_forward_that_fails_does_not_stop_the_screen():
+    sess, x = FakeSession(mobile=("owner",)), FakeX()
+
+    async def broken(method, params=None):
+        raise RuntimeError("target gone")
+
+    sess.tab["owner"].send = broken
+    s, _ = screen(sess, x)
+    assert await s.acquire("owner", "dev1", 500, 889) is True and x.sizes == [(500, 889)]
+
+
+async def test_a_tab_without_its_own_devtools_session_gets_a_temporary_one():
+    sess = FakeSession()
+    temporary = FakeCdp()
+    sess.tab_cdp = lambda key: None
+
+    async def cdp_session(page):
+        return temporary
+
+    sess.cdp_session = cdp_session
+    s, _ = screen(sess)
+    await s.acquire("owner", "dev1", 500, 889)
+    assert "Target.activateTarget" in temporary.methods() and temporary.detached is True
+
+
+# ---------------------------------------------------------------------------------------------------------- the live hub's own size override
+async def test_the_hub_leaves_the_page_size_alone_while_the_x_screen_shows_the_tab_and_sets_it_again_after():
+    from assistant.tools.live import LiveHub
+    from test_browser_live import FakeCDP, make_session
+
+    sess, cdps = make_session()
+    phone = FakeCDP()
+    sess._view_cdp["owner"] = phone      # a phone-view tab: the only kind that follows the owner's screen
+    hub = LiveHub(sess, reaper=False)
+    held = {"on": True}
+    class Vnc:
+        size = (500, 889)
+
+        def holds(self, key):
+            return held["on"] and key == "owner"
+
+    hub.vnc = Vnc()
+    sess.take_control("owner", "dev1")
+    hub._screens[("owner", "dev1")] = (900, 1600, 2)
+    assert await hub.fit("owner", "dev1") == {"css_w": 500, "css_h": 889}
+    assert not any(c.methods("Emulation.setDeviceMetricsOverride") for c in [*cdps, phone])   # no override at another pixel ratio
+    held["on"] = False                                    # the screen let go: the page takes the shape of the holder's screen again
+    await hub.refit("owner")
+    override = [p for c in [*cdps, phone] for p in c.methods("Emulation.setDeviceMetricsOverride")]
+    assert override == [{"width": 450, "height": 800, "deviceScaleFactor": 2.0, "mobile": True, "screenWidth": 450, "screenHeight": 800}]
+
+
+async def test_giving_the_tab_back_keeps_a_phone_views_size_while_the_x_screen_shows_it():
+    from assistant.tools.live import LiveHub
+    from test_browser_live import FakeCDP, make_session
+
+    sess, _ = make_session()
+    hub = LiveHub(sess, reaper=False)
+    phone = FakeCDP()
+    sess._view_cdp["owner"] = phone
+    reapplied: list[str] = []
+
+    class Vnc:
+        size = (500, 889)
+
+        def holds(self, key):
+            return True
+
+        async def reapply(self, key):
+            reapplied.append(key)
+
+    hub.vnc = Vnc()
+    hub._fitted["owner"] = (phone, True)
+    await hub.unfit("owner")
+    assert reapplied == ["owner"]

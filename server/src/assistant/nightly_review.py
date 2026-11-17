@@ -12,8 +12,8 @@ do better and what it does first next time. One request to the main model, JSON 
                              material shows it is fixed), by the owner (POST /api/corrections/{id}/resolve) or by age (it did not come
                              up again for CORRECTION_QUIET_DAYS). A kept correction needs a quote found in the owner's own words. The open
                              ones go into every reply's system prompt ("Recently corrected", prompt_section).
-  review_days (database)     the day's counts: the owner's turns and those that were corrections (counted in code, not by the
-                             model), and the correction-free rate
+  review_days (database)     the day's counts: the owner's turns and those that were corrections (the ones the model named, each with
+                             a quote found in the owner's own words), and the correction-free rate
 
 The first time, when WORKING_TOGETHER.md does not exist yet and the home holds an earlier assistant's synthesis about the owner, its
 text goes into the request (as data) so the lines it kept carry over. Secrets are scrubbed from everything written. A night the owner
@@ -37,7 +37,7 @@ from .compaction import clip_tokens, est_tokens
 from .home import Home
 from .memory_upkeep import scrub
 from .providers import ChatRequest, TextDelta
-from .reflection import LANG_NAMES, LOOKBACK_SECONDS, MAX_LOOKBACK_SECONDS, Reflection, find_quote, is_correction, parse_output
+from .reflection import LANG_NAMES, LOOKBACK_SECONDS, MAX_LOOKBACK_SECONDS, Reflection, find_quote, parse_output
 
 NEW_CORRECTIONS_PER_NIGHT = 3
 OPEN_CORRECTIONS_MAX = 12            # the oldest open ones are dropped first
@@ -190,9 +190,8 @@ class NightlyReview:
                                for r in self.corrections("open")) or "(none)"
         tasks = "\n".join(f"- {t['title']} [{t['status']}]" for t in self._tasks(since)) or "(none)"
         rules = "\n".join(f"- {r['rule']}" for r in self.reflection.in_use()) or "(none)"
-        rate = f"{counts['correction_turns']} of {counts['user_turns']}"
         parts = [f"Language for the review: {LANG_NAMES.get(lang, lang)}",
-                 f"The owner's turns: {counts['user_turns']}; those that look like a correction (a word match): {rate}",
+                 f"The owner's turns: {counts['user_turns']}",
                  f"Tasks that finished or failed:\n{clip_tokens(tasks, 500)}",
                  f"Open corrections:\n{clip_tokens(open_lines, 900)}",
                  f"{WORKING_TOGETHER} (now):\n{self._head(WORKING_TOGETHER, 900) or '(none yet)'}",
@@ -205,6 +204,20 @@ class NightlyReview:
         return [{"role": "system", "content": REVIEW_PROMPT}, {"role": "user", "content": "\n\n".join([*parts, f"Conversation:\n{convo}"])}]
 
     # ------------------------------------------------------------------ applying
+    @staticmethod
+    def corrected_turns(out: dict[str, Any], words: list[str]) -> int:
+        """How many of the owner's messages the model named as a correction: the ones that contain the (verified) quote of a new correction.
+        Judged by the model, found by the owner's own words; no word of any language is looked for here."""
+        items = out.get("corrections_new") if isinstance(out.get("corrections_new"), list) else []
+        hit: set[int] = set()
+        for item in items:
+            quote = find_quote(item.get("quote"), words) if isinstance(item, dict) else None
+            if quote is None:
+                continue
+            q = _norm(quote)
+            hit.update(i for i, w in enumerate(words) if q and q in _norm(w))
+        return len(hit)
+
     def apply_corrections(self, out: dict[str, Any], words: list[str]) -> dict[str, int]:
         now = self.clock()
         counts = {"added": 0, "resolved": 0, "dropped": 0}
@@ -318,7 +331,7 @@ class NightlyReview:
         if not chosen:
             return self._record("pending", "no_model", "no model is set")
         provider, model = chosen
-        counts = {"user_turns": len(mine), "correction_turns": sum(1 for m in self.reflection.owner_words(mine) if is_correction(m))}
+        counts = {"user_turns": len(mine), "correction_turns": 0}   # the corrections are the model's finding, counted after its answer
         req = ChatRequest(model=model, messages=self.build_request(msgs, counts, since), tools=[], extra={})
         parts: list[str] = []
         try:
@@ -340,7 +353,9 @@ class NightlyReview:
             self.store.set_meta("review:working_together", json.dumps(wt, ensure_ascii=False))
         else:
             wt = self._stored_wt()
-        done = self.apply_corrections(out, self.reflection.owner_words(mine))
+        words = self.reflection.owner_words(mine)
+        done = self.apply_corrections(out, words)
+        counts["correction_turns"] = self.corrected_turns(out, words)
         open_n = len(self.corrections("open"))
         day = self._today()
         rate = round(1 - counts["correction_turns"] / counts["user_turns"], 2) if counts["user_turns"] else None

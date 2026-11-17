@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">Chủ đề đã quên</string>
+    <string name="forget_intro">Các chủ đề bạn đã nhờ Kelo quên. Kelo đã xóa những gì tìm thấy và sẽ không ghi lại nữa.</string>
+    <string name="forget_empty">Chưa quên gì cả. Khi bạn nhờ Kelo quên một chủ đề, chủ đề đó sẽ hiện ở đây.</string>
+    <string name="forget_date">Đã quên ngày %1$s</string>
+    <string name="forget_removed">Đã xóa: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Không tìm thấy gì để xóa.</string>
+    <string name="forget_cat_memory">Bộ nhớ</string>
+    <string name="forget_cat_notes">Ghi chú</string>
+    <string name="forget_cat_reminders">Lời nhắc</string>
+    <string name="forget_cat_skills">Kỹ năng</string>
+    <string name="forget_cat_history">Nhật ký</string>
+    <string name="forget_cat_other">Khác</string>
+    <string name="forget_allow_again">Cho phép lại</string>
+    <string name="forget_allow_confirm">Cho phép Kelo viết về “%1$s” trở lại? Những gì đã xóa sẽ không quay lại.</string>
+    <string name="forget_allowed">Kelo có thể viết về chủ đề này trở lại.</string>
+    <string name="paycover_title">Thanh toán đã duyệt trước</string>
+    <string name="paycover_switch">Cho phép thanh toán đã duyệt trước</string>
+    <string name="paycover_switch_note">Tắt: mọi khoản thanh toán đều hỏi bạn trước.</string>
+    <string name="paycover_empty">Chưa có gì được duyệt trước. Đơn hàng hoặc khoản thanh toán theo lịch mà bạn duyệt trước sẽ hiện ở đây.</string>
+    <string name="paycover_off_note">Đã tắt: các mục này vẫn nằm trong danh sách nhưng mọi khoản thanh toán đều hỏi.</string>
+    <string name="paycover_orders">Đơn hàng</string>
+    <string name="paycover_allows">Thanh toán theo lịch</string>
+    <string name="paycover_cap">Tối đa %1$s tổng cộng</string>
+    <string name="paycover_until">Đến %1$s</string>
+    <string name="paycover_for_task">Cho một tác vụ</string>
+    <string name="paycover_for_schedule">Cho lịch “%1$s”</string>
+    <string name="paycover_for_a_schedule">Cho một tác vụ theo lịch</string>
+    <string name="paycover_one_order">một đơn hàng</string>
+    <string name="paycover_allow_scope">Cùng cửa hàng, cùng phương thức thanh toán</string>
+    <string name="paycover_remove">Xóa %1$s</string>
+    <string name="paycover_remove_order_confirm">Xóa lượt duyệt này? Đơn hàng sẽ hỏi trước khi thanh toán.</string>
+    <string name="paycover_remove_allow_confirm">Xóa quyền cho “%1$s”? Các khoản thanh toán của lịch này sẽ lại hỏi mỗi lần.</string>
+    <string name="paycover_removed">Đã xóa. Các khoản thanh toán sẽ hỏi lại.</string>
+    <string name="preapprove_what">Đơn hàng</string>
+    <string name="preapprove_cap">Mức trả tối đa</string>
+    <string name="preapprove_cap_value">%1$s tổng cộng (đã gồm thuế và phí giao hàng)</string>
+    <string name="preapprove_until">Đến</string>
+    <string name="preapprove_covers">Phạm vi</string>
+    <string name="preapprove_covers_value">Chỉ một đơn hàng này</string>
+    <string name="preapprove_requirements">Bắt buộc</string>
+    <string name="preapprove_shipping">Giao hàng</string>
+    <string name="preapprove_shops">Cửa hàng</string>
+    <string name="preapprove_delegated">Kelo quyết định</string>
+    <string name="chat_payment_cover_order">Được chi trả theo đơn hàng bạn đã duyệt trước</string>
+    <string name="chat_payment_cover_schedule">Được chi trả theo quyền bạn cho các khoản thanh toán của lịch này</string>
+</resources>

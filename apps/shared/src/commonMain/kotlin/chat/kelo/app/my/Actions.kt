@@ -10,34 +10,63 @@ import kotlinx.serialization.Serializable
 import org.jetbrains.compose.resources.StringResource
 
 /**
- * One row of GET /api/actions (What Kelo did outside; server api/actions.py, done_once.py).
+ * One row of GET /api/did (or fallback to GET /api/actions).
  */
 @Serializable
 data class ActionItem(
     val id: Long = 0,
+    val at: Double = 0.0,
     val ts: Double = 0.0,
-    @SerialName("run_id") val runId: String = "",
-    @SerialName("task_id") val taskId: Long? = null,
-    @SerialName("turn_id") val turnId: String = "",
+    val kind: String = "",
+    val title: String = "",
+    val line: String = "",
+    val detail: String = "",
     val source: String = "",
     @SerialName("source_name") val sourceName: String = "",
-    val line: String = "",
-    val tool: String = "",
-    val kind: String = "",
+    val site: String? = null,
     val connector: String? = null,
+    @SerialName("task_id") val taskId: Long? = null,
+    val outcome: String = "",
+    val state: String = "",
+    @SerialName("run_id") val runId: String = "",
+    @SerialName("turn_id") val turnId: String = "",
+    val tool: String = "",
     val targets: List<String> = emptyList(),
-    val state: String = "done",
     @SerialName("outside_id") val outsideId: String = "",
-    val detail: String = "",
     @SerialName("checked_at") val checkedAt: Double? = null,
-)
+) {
+    val timestamp: Double get() = if (at > 0.0) at else ts
+    val displayTitle: String get() = title.ifBlank { line }
+    val displayOutcome: String get() = outcome.ifBlank { state }.ifBlank { "done" }
+
+    val normalizedKind: String get() = when (kind) {
+        "send", "change", "delete" -> "action"
+        else -> kind
+    }
+}
 
 @Serializable
 data class ActionList(
     val items: List<ActionItem> = emptyList(),
+    @SerialName("next_before") val nextBefore: Double? = null,
 )
 
-/** The time period chips for GET /api/actions?days=N. */
+/** Filter chips for "Kelo가 한 일": 전체 / 보내기·바꾸기 / 브라우저 / 작업. */
+enum class DidFilter(val labelRes: StringResource) {
+    ALL(Res.string.did_filter_all),
+    ACTIONS(Res.string.did_filter_actions),
+    BROWSER(Res.string.did_filter_browser),
+    TASKS(Res.string.did_filter_tasks);
+
+    fun matches(item: ActionItem): Boolean = when (this) {
+        ALL -> true
+        ACTIONS -> item.normalizedKind == "action"
+        BROWSER -> item.normalizedKind == "browser"
+        TASKS -> item.normalizedKind == "task"
+    }
+}
+
+/** The time period chips for GET /api/did?days=N (or GET /api/actions?days=N). */
 enum class ActionPeriod(val days: Int, val labelRes: StringResource) {
     TODAY(1, Res.string.actions_period_today),
     DAYS_7(7, Res.string.actions_period_7d),
@@ -59,8 +88,9 @@ object ActionRules {
         zone: ZoneId = ZoneId.systemDefault(),
     ): List<DayGroups.Group<ActionItem>> {
         return DayGroups.group(items, today) { item ->
-            if (item.ts > 0) {
-                Instant.ofEpochMilli((item.ts * 1000).toLong()).atZone(zone).toLocalDate()
+            val ts = item.timestamp
+            if (ts > 0) {
+                Instant.ofEpochMilli((ts * 1000).toLong()).atZone(zone).toLocalDate()
             } else {
                 null
             }

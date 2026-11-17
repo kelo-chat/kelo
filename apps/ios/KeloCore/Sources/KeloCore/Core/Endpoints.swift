@@ -21,10 +21,16 @@ extension KeloApi {
 
     public func clearMessages() async throws { try await request("DELETE", "/api/messages") }
 
-    /// POST /api/approvals/{id} {approve, remember?: "site" | "schedule"}.
-    public func answerApproval(_ id: String, approve: Bool, remember: String? = nil) async throws -> ApprovalAnswer {
+    /// POST /api/approvals/{id} {approve, sig?, remember?: "site" | "schedule" | "recipient", edited?: {field: text} (an Allow with the
+    /// message fixed in the card), via?: "notification" (a phone notification's button; the server keeps "app" otherwise)}.
+    /// `sig`: the phone's signature of a payment Allow.
+    public func answerApproval(_ id: String, approve: Bool, remember: String? = nil, sig: String? = nil,
+                               edited: [String: JSON]? = nil, via: String? = nil) async throws -> ApprovalAnswer {
         var body: [String: JSON] = ["approve": .bool(approve)]
+        if let sig { body["sig"] = .string(sig) }
         if let remember { body["remember"] = .string(remember) }
+        if approve, let edited { body["edited"] = .object(edited) }
+        if let via { body["via"] = .string(via) }
         return try await post("/api/approvals/\(KeloApi.seg(id))", body: .object(body))
     }
 
@@ -120,6 +126,11 @@ extension KeloApi {
     // ---- notifications, journal, reflection, avatar -----------------------------------------------------------------------------
     public func notifications(after: Int64? = nil, limit: Int = 50) async throws -> NotificationPage {
         try await get("/api/notifications?" + (after.map { "after=\($0)&" } ?? "") + "limit=\(limit)")
+    }
+    /// Of these waiting items' ids (a notification's approval id), the ones that do not wait any more (answered anywhere, ran out, cancelled).
+    public func settledItems(_ ids: [String]) async throws -> [String] {
+        let s: SettledItems = try await get("/api/notifications/settled?ids=" + ids.map { KeloApi.query($0) }.joined(separator: ","))
+        return s.ids
     }
     public func journal(month: String) async throws -> JournalMonth { try await get("/api/journal?month=\(KeloApi.query(month))") }
     public func setRuleStatus(_ id: Int64, status: String) async throws -> LearnedRule {

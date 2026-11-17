@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">อนุมัติการชำระเงิน</string>
+    <string name="approval_sign_subtitle">ยืนยันด้วยลายนิ้วมือหรือใบหน้า</string>
+    <string name="approval_sign_failed">ไม่สามารถอนุมัติการชำระเงินนี้บนโทรศัพท์เครื่องนี้ได้ ลองอีกครั้ง</string>
+    <string name="approval_sign_key_lost">ไม่พบกุญแจอนุมัติของโทรศัพท์เครื่องนี้ จับคู่โทรศัพท์เครื่องนี้กับเซิร์ฟเวอร์อีกครั้ง</string>
+    <string name="approval_pay_on_phone">อนุมัติการชำระเงินในแอป Kelo บนโทรศัพท์</string>
+</resources>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">อัปเดตเซิร์ฟเวอร์</string>
+    <string name="server_old_failed">อัปเดตไม่สำเร็จ ลองอีกครั้ง หรืออัปเดตเซิร์ฟเวอร์บนเครื่องที่เซิร์ฟเวอร์ทำงานอยู่</string>
+    <string name="server_old_manual">หากต้องการอัปเดตเซิร์ฟเวอร์ ให้ทำตามขั้นตอนอัปเดตบนเครื่องที่เซิร์ฟเวอร์ทำงานอยู่</string>
+    <string name="server_old_guide">เปิดคู่มือการอัปเดต</string>
+    <string name="app_notice_new">แอป Kelo ใหม่ (%1$s) ทำงานได้ดีที่สุดกับเซิร์ฟเวอร์ของคุณ</string>
+    <string name="app_notice_store">เปิดสโตร์</string>
+    <string name="update_popup_title">มีเวอร์ชันใหม่แล้ว (%1$s)</string>
+    <string name="update_popup_update">อัปเดต</string>
+    <string name="update_popup_later">ไว้ทีหลัง</string>
+</resources>

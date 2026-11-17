@@ -20,14 +20,18 @@ case "${ROLE:-}" in
     ;;
   browser)
     umask 022   # downloads must stay readable by the server, which mounts the download folder read-only
-    # A restarted container keeps /tmp: a lock left by the last Xvfb would stop the display (and the browser) from ever starting.
+    # A restarted container keeps /tmp: a lock left by the last X server would stop the display (and the browser) from ever starting.
     rm -f "/tmp/.X${DISPLAY#:}-lock" "/tmp/.X11-unix/X${DISPLAY#:}"
-    Xvfb "$DISPLAY" -screen 0 "$SCREEN" -nolisten tcp &
+    # The screen is TigerVNC's own X server (Xvnc): a real X display that also speaks RFB, so the live view of a tab is this screen.
+    # RFB on loopback only, no password: the only way to it is the socat below, on the private browser network, the same trust as
+    # DevTools. The server's ticketed /vnc route (api/browser.py) is the only thing that talks to it, and it drops pointer, key and
+    # clipboard messages from anyone who does not hold the tab. -AcceptSetDesktopSize: the screen follows the phone's size.
+    Xvnc "$DISPLAY" -geometry "${SCREEN%x*}" -depth "${SCREEN##*x}" -localhost -rfbport 5900 -SecurityTypes None \
+      -AlwaysShared -AcceptSetDesktopSize=1 -nolisten tcp >/dev/null 2>&1 &
     sleep 1
     openbox >/dev/null 2>&1 &
-    # Viewer: VNC on loopback only, served as a web page by noVNC on :6080.
-    x11vnc -display "$DISPLAY" -localhost -forever -shared -nopw -quiet -rfbport 5900 >/dev/null 2>&1 &
-    websockify --web /usr/share/novnc 6080 127.0.0.1:5900 >/dev/null 2>&1 &
+    # RFB for the server container, republished like DevTools below; never published by compose.
+    socat TCP-LISTEN:5901,fork,reuseaddr TCP:127.0.0.1:5900 &
     # DevTools stays on loopback; socat republishes it on :9223 for other containers on the
     # private network. Compose never publishes this port.
     socat TCP-LISTEN:9223,fork,reuseaddr TCP:127.0.0.1:9222 &
@@ -35,11 +39,24 @@ case "${ROLE:-}" in
     # volume as "in use on another computer" and never opens the DevTools port. This container is the only
     # user of the profile, so the leftover lock is always stale.
     rm -f /data/profile/SingletonLock /data/profile/SingletonCookie /data/profile/SingletonSocket
-    # Optional cap on the page cache kept on disk (BROWSER_CACHE_MB, 0 = browser default).
-    CACHE_FLAG=""
-    if [ "${BROWSER_CACHE_MB:-0}" -gt 0 ] 2>/dev/null; then
-      CACHE_FLAG="--disk-cache-size=$((BROWSER_CACHE_MB * 1048576))"
-    fi
+    # Cap on the page cache kept on disk: BROWSER_CACHE_MB, and when that is 0 or unset the default of 1024 MB (Chrome alone would
+    # grow it to a share of the free disk). docs/disk-growth.md.
+    CACHE_MB="${BROWSER_CACHE_MB:-0}"
+    case "$CACHE_MB" in ''|*[!0-9]*) CACHE_MB=0 ;; esac
+    [ "$CACHE_MB" -gt 0 ] || CACHE_MB=1024
+    CACHE_FLAG="--disk-cache-size=$((CACHE_MB * 1048576)) --media-cache-size=$((CACHE_MB * 1048576 / 4))"
+    # Caches the browser rebuilds by itself are emptied at every start (nothing is running yet), and crash reports are dropped. The
+    # profile's cookies, logins and site storage are not touched.
+    for d in "Default/Code Cache" "Default/GPUCache" "Default/DawnCache" "GrShaderCache" "ShaderCache" "GraphiteDawnCache" "component_crx_cache" \
+             "Crashpad/reports" "Crashpad/completed"; do
+      rm -rf "/data/profile/$d" 2>/dev/null || true
+    done
+    # While it runs: crash reports and leftovers in /tmp older than a day go, every half hour (the page cache is capped by the flag).
+    ( while true; do
+        find /data/profile/Crashpad -type f -mmin +1440 -delete 2>/dev/null
+        find /tmp -mindepth 1 -maxdepth 1 \( -name '.org.chromium.*' -o -name '.com.google.Chrome.*' -o -name 'scoped_dir*' \) -mmin +1440 -exec rm -rf {} + 2>/dev/null
+        sleep 1800
+      done ) &
     # The browser's way out: the egress proxy (BROWSER_PROXY; compose sets http://egress:3128). The container's own network has no
     # route anywhere else, so this is the only path, and the proxy refuses private addresses.
     PROXY_FLAG=""
@@ -84,6 +101,7 @@ case "${ROLE:-}" in
       --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
       --user-data-dir=/data/profile \
       --window-size=1440,900 --start-maximized --disable-dev-shm-usage \
+      --kiosk --disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
       --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist \
       --disable-blink-features=AutomationControlled \
       $CACHE_FLAG $PROXY_FLAG $LANG_FLAGS \

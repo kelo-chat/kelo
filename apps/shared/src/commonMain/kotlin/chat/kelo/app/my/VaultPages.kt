@@ -30,7 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -177,6 +177,7 @@ fun VaultPage(onBack: () -> Unit, onGoModel: () -> Unit, noLock: Boolean = false
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun VaultList(v: VaultState, providers: List<ProviderDetail>, noLock: Boolean, vm: VaultViewModel, onBack: () -> Unit, go: (VaultView) -> Unit) {
     val logins = v.items.filter { it.kind == VaultEntry.KIND_LOGIN }
@@ -187,9 +188,13 @@ private fun VaultList(v: VaultState, providers: List<ProviderDetail>, noLock: Bo
     SubPage(string(Res.string.vault_title), onBack) {
         if (noLock) MutedText(string(Res.string.vault_gate_no_lock), small = true, modifier = Modifier.padding(horizontal = 4.dp))
         MyCard {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconTitle(KeloIcons.Shield, string(if (v.locked) Res.string.vault_locked_title else Res.string.vault_safe_title), Modifier.weight(1f))
-                if (v.locked) PrimaryButton(string(Res.string.vault_unlock), onClick = vm::toggleLock, modifier = Modifier.weight(0.6f))
+            // the title and the button share a line; on a narrow screen (or in a longer language) the button goes below instead of
+            // squeezing the title into three short lines
+            androidx.compose.foundation.layout.FlowRow(
+                verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                IconTitle(KeloIcons.Shield, string(if (v.locked) Res.string.vault_locked_title else Res.string.vault_safe_title))
+                if (v.locked) PrimaryButton(string(Res.string.vault_unlock), onClick = vm::toggleLock)
                 else SecondaryButton(string(Res.string.vault_lock), onClick = vm::toggleLock)
             }
             MutedText(string(if (v.locked) Res.string.vault_locked_body else Res.string.vault_safe_body), small = true)

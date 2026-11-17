@@ -6,19 +6,15 @@ import asyncio
 import logging
 from typing import Any
 from fastapi import Depends
-from ..recheck import RECHECK_MARK
-from ..schedules import SCHEDULE_MARK
-from ..watchers import WATCH_MARK
 from ..chat_images import chat_image_routes
-from ..goals import GOAL_MARK
+from ..chat_search import DEFAULT_AROUND, DEFAULT_LIMIT, NOT_THE_USERS_WORDS
+from .. import chat_search
 from ..tools.browser import (
     one_run_tab,
 )
 from ..browser_history import ActionArchive
 from ..chat_clear import clear_tables
-from ..workers import HANDOFF_MARK
-from ..nest_drafts import NEST_SHARE_MARK
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from .context import AppContext
 
 log = logging.getLogger("uvicorn.error")
@@ -60,15 +56,32 @@ def router(ctx: AppContext) -> APIRouter:
 
     chat_image_routes(router, chat_images, require_auth)
 
-    @router.get("/api/messages", dependencies=[Depends(require_auth)])
-    async def get_messages(limit: int = 100, before_id: int | None = None) -> list[dict[str, Any]]:
-        rows = store.messages(limit=max(1, min(limit, 500)), before_id=before_id)
-        rows = [m for m in rows if not (m["role"] == "user" and m["content"].startswith((HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK)))]   # not the user's words
+    def decorate(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The extra fields GET /api/messages puts on each message (replies, comparison, images, attachments, briefing card)."""
         rows = goal_book.replies_for(rows)   # tap-to-answer buttons on the newest agent messages
         rows = ctx.comparisons.for_messages(rows)   # comparison cards (comparison.py)
         rows = chat_images.for_messages(rows)  # screenshots Kelo showed with a reply (chat_images.py)
         rows = chat_attachments.for_messages(rows)   # files the user sent with a message (chat_attachments.py)
         return briefing.attach(rows)         # the morning briefing's card on its message (briefing.py)
+
+    @router.get("/api/messages", dependencies=[Depends(require_auth)])
+    async def get_messages(limit: int = 100, before_id: int | None = None) -> list[dict[str, Any]]:
+        rows = store.messages(limit=max(1, min(limit, 500)), before_id=before_id)
+        rows = [m for m in rows if not (m["role"] == "user" and m["content"].startswith(NOT_THE_USERS_WORDS))]   # not the user's words
+        return decorate(rows)
+
+    @router.get("/api/messages/search", dependencies=[Depends(require_auth)])
+    async def search_messages(q: str = "", limit: int = DEFAULT_LIMIT, before: int | None = None) -> list[dict[str, Any]]:
+        """Matches in the whole conversation, newest first (chat_search.py). `before` = only ids below it (page with the last id)."""
+        return chat_search.search(store, q, limit=limit, before=before)
+
+    @router.get("/api/messages/around", dependencies=[Depends(require_auth)])
+    async def messages_around(id: int, n: int = DEFAULT_AROUND) -> list[dict[str, Any]]:
+        """The messages around a hit (n before, the message, n after), oldest first, shaped like GET /api/messages. 404 if unknown or hidden."""
+        rows = chat_search.around(store, id, n=n)
+        if rows is None:
+            raise HTTPException(status_code=404, detail={"detail": "message not found", "code": "message_not_found"})
+        return decorate(rows)
 
     clearing = asyncio.Lock()   # one clear of the chat history at a time
 
@@ -119,6 +132,8 @@ def router(ctx: AppContext) -> APIRouter:
         cleared["browser_tabs"] = tabs
         log.info("chat history cleared: %d jobs and %d replies stopped", jobs, len(cancelled))
         return {"ok": True, "stopped": {"jobs": jobs, "turns": len(cancelled)}, "cleared": cleared}
+
+    ctx.add(clear_history=clear_history, clearing=clearing)   # api/data.py: "start over" clears the chat the same way
 
     @router.delete("/api/messages", dependencies=[Depends(require_auth)])
     async def delete_messages() -> dict[str, Any]:

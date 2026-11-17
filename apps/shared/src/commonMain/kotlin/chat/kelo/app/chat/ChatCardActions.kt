@@ -1,7 +1,13 @@
 package chat.kelo.app.chat
 
+import chat.kelo.app.agent.ApprovalDrafts
+import chat.kelo.app.agent.RecipientRules
+import chat.kelo.app.approval.ApprovalSignErrors
+import chat.kelo.app.approval.ApprovalSignOutcome
+import chat.kelo.app.approval.signPaymentAllow
 import chat.kelo.app.core.ApiError
 import chat.kelo.app.core.KeloApi
+import chat.kelo.app.res.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -32,6 +38,7 @@ internal class ChatCardActions(private val host: ChatHost, private val sync: Cha
                     put("allowed", kotlinx.serialization.json.JsonPrimitive(place != null))
                     if (place != null) put("place", place)
                 })
+                host.platform.itemSettled(approvalId)
                 if (place != null) ChatItem.LocationAsk.ALLOWED else ChatItem.LocationAsk.REFUSED
             } catch (e: CancellationException) {
                 throw e
@@ -47,9 +54,10 @@ internal class ChatCardActions(private val host: ChatHost, private val sync: Cha
     }
 
     /** Answers an approval; [rememberSchedule]: keep allowing this step in the scheduled job it came from. */
-    fun approve(id: String, ok: Boolean, rememberSite: Boolean = false, rememberSchedule: Boolean = false) {
-        val open = host.state.value.items.any { it is ChatItem.Approval && it.id == id && it.open }
-        if (!open) return
+    fun approve(id: String, ok: Boolean, rememberSite: Boolean = false, rememberSchedule: Boolean = false, rememberRecipient: Boolean = false) {
+        val item = host.state.value.items.firstOrNull { it is ChatItem.Approval && it.id == id && it.open } as? ChatItem.Approval ?: return
+        if (ok && item.signable) return approveSigned(item, rememberSite, rememberSchedule)
+        val recipient = ok && rememberRecipient && RecipientRules.canAlways(item.offers)
         host.state.update { s ->
             s.copy(
                 items = ChatReducer.answer(s.items, id, ok),
@@ -60,12 +68,62 @@ internal class ChatCardActions(private val host: ChatHost, private val sync: Cha
             try {
                 host.api().post<JsonElement>("/api/approvals/${KeloApi.segment(id)}", buildJsonObject {
                     put("approve", ok)
-                    if (ok && rememberSite) put("remember", "site")
+                    if (recipient) put("remember", "recipient")
+                    else if (ok && rememberSite) put("remember", "site")
                     else if (ok && rememberSchedule) put("remember", "schedule")
+                    if (ok) ApprovalDrafts.edited(id, item.editable)?.let { put("edited", it) }   // the message the owner fixed in the card
                 })
+                ApprovalDrafts.clear(id)
+                host.platform.itemSettled(id)
                 if (ok) host.platform.afterApproval()   // a text, call or calendar change may now wait for this phone
             } catch (_: ApiError) {
                 // expired: the reply reports the denial
+            }
+        }
+    }
+
+    /**
+     * Allow on a signed payment: the owner's check and the phone's signature come first. A cancelled or refused one leaves the card
+     * open (the reason shows in the chat); the card is answered only once the server took the signature.
+     */
+    private fun approveSigned(item: ChatItem.Approval, rememberSite: Boolean, rememberSchedule: Boolean) {
+        val id = item.id
+        host.state.update { it.copy(items = ChatReducer.cardSend(it.items, id, CardSend.Working)) }
+        host.scope.launch {
+            val signed = try { signPaymentAllow(host.platform.approvalSigner, id, item.issuedAt) } catch (e: CancellationException) { throw e } catch (e: Exception) { ApprovalSignOutcome.Failed(ChatError.Localized(Res.string.approval_sign_failed)) }
+            val sig = when (signed) {
+                is ApprovalSignOutcome.Ready -> signed.sig
+                ApprovalSignOutcome.Cancelled -> { host.state.update { it.copy(items = ChatReducer.cardSend(it.items, id, CardSend.Idle)) }; return@launch }
+                is ApprovalSignOutcome.Failed -> {
+                    host.state.update { it.copy(items = ChatReducer.cardSend(it.items, id, CardSend.Idle)) }
+                    host.addError(signed.error)
+                    return@launch
+                }
+            }
+            try {
+                host.api().post<JsonElement>("/api/approvals/${KeloApi.segment(id)}", buildJsonObject {
+                    put("approve", true)
+                    sig?.let { put("sig", it) }
+                    if (rememberSite) put("remember", "site")
+                    else if (rememberSchedule) put("remember", "schedule")
+                })
+                host.state.update { s ->
+                    s.copy(
+                        items = ChatReducer.answer(ChatReducer.cardSend(s.items, id, CardSend.Idle), id, true),
+                        phase = if (s.busy) Phase(PhaseKind.WAITING, since = host.now()) else s.phase,
+                    )
+                }
+                host.platform.itemSettled(id)
+                host.platform.afterApproval()   // a text, call or calendar change may now wait for this phone
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ApiError) {
+                host.state.update { it.copy(items = ChatReducer.cardSend(it.items, id, CardSend.Idle)) }
+                if (e.status == 404) host.state.update { s -> s.copy(items = ChatReducer.answer(s.items, id, true)) }   // gone: the reply reports it
+                else host.addError(if (ApprovalSignErrors.isSignature(e)) ApprovalSignErrors.error(e, host.platform.approvalSigner.available)
+                    else if (e.isNetwork) ChatError.Network else ChatError.Message(e.detail))
+            } catch (e: Exception) {
+                host.state.update { it.copy(items = ChatReducer.cardSend(it.items, id, CardSend.Idle)) }   // signed out meanwhile
             }
         }
     }
@@ -77,7 +135,7 @@ internal class ChatCardActions(private val host: ChatHost, private val sync: Cha
      */
     fun answerAsk(
         id: String, approve: Boolean, rememberSite: Boolean = false, rememberSchedule: Boolean = false,
-        sendCard: (suspend () -> chat.kelo.app.wallet.CardSendError?)? = null,
+        sendCard: (suspend () -> chat.kelo.app.wallet.CardSendError?)? = null, rememberRecipient: Boolean = false,
     ) {
         val ask = host.state.value.asks.firstOrNull { it.id == id } ?: return
         if (!ask.open || ask.working) return
@@ -96,13 +154,28 @@ internal class ChatCardActions(private val host: ChatHost, private val sync: Cha
                         return@launch
                     }
                 }
+                // a signed payment Allow: the owner's check and the phone's signature (approval/ApprovalSigning.kt)
+                val sig = if (approve && a.event.signable) when (val signed = signPaymentAllow(host.platform.approvalSigner, id, a.event.issuedAt)) {
+                    is ApprovalSignOutcome.Ready -> signed.sig
+                    ApprovalSignOutcome.Cancelled -> { host.state.update { s -> s.copy(asks = ChatAsks.working(s.asks, id, false)) }; return@launch }
+                    is ApprovalSignOutcome.Failed -> {
+                        host.state.update { s -> s.copy(asks = ChatAsks.working(s.asks, id, false)) }
+                        host.addError(signed.error)
+                        return@launch
+                    }
+                } else null
                 host.api().post<JsonElement>("/api/approvals/${KeloApi.segment(id)}", buildJsonObject {
                     put("approve", approve)
-                    if (approve && rememberSite && a.canRemember) put("remember", "site")
+                    sig?.let { put("sig", it) }
+                    if (approve && rememberRecipient && RecipientRules.canAlways(a.event.offers)) put("remember", "recipient")
+                    else if (approve && rememberSite && a.canRemember) put("remember", "site")
                     else if (approve && rememberSchedule && a.canRememberSchedule) put("remember", "schedule")
+                    if (approve) ApprovalDrafts.edited(id, a.event.editable)?.let { put("edited", it) }   // the message the owner fixed in the card
                 })
+                ApprovalDrafts.clear(id)
+                host.platform.itemSettled(id)
                 if (approve) host.platform.afterApproval()   // a text, call or calendar change may now wait for this phone
-                val end = ChatAsks.answerEnd(a, approve, rememberSite, rememberSchedule)
+                val end = ChatAsks.answerEnd(a, approve, rememberSite, rememberSchedule, rememberRecipient)
                 host.state.update { s -> s.copy(asks = ChatAsks.ended(s.asks, id, end, s.items.lastOrNull()?.key)) }
             } catch (e: CancellationException) {
                 throw e
@@ -110,7 +183,8 @@ internal class ChatCardActions(private val host: ChatHost, private val sync: Cha
                 if (e.status == 404) host.state.update { s -> s.copy(asks = ChatAsks.ended(s.asks, id, AskEnd.GONE, s.items.lastOrNull()?.key)) }
                 else {
                     host.state.update { s -> s.copy(asks = ChatAsks.working(s.asks, id, false)) }
-                    host.addError(if (e.isNetwork) ChatError.Network else ChatError.Message(e.detail))
+                    host.addError(if (ApprovalSignErrors.isSignature(e)) ApprovalSignErrors.error(e, host.platform.approvalSigner.available)
+                        else if (e.isNetwork) ChatError.Network else ChatError.Message(e.detail))
                 }
             } catch (e: Exception) {
                 host.state.update { s -> s.copy(asks = ChatAsks.working(s.asks, id, false)) }   // signed out meanwhile

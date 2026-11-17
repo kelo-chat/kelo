@@ -1,0 +1,24 @@
+{
+  "ios_takeover_missed": {
+    "en": "That touch did not reach the page",
+    "ko": "그 터치가 페이지에 닿지 못했어요",
+    "ja": "そのタップはページに届きませんでした",
+    "zh-Hans": "这次触摸没有传到页面",
+    "zh-Hant": "這次觸控沒有傳到頁面",
+    "es": "El toque no llegó a la página",
+    "fr": "Le toucher n'a pas atteint la page",
+    "de": "Die Berührung hat die Seite nicht erreicht",
+    "pt-BR": "O toque não chegou à página",
+    "it": "Il tocco non ha raggiunto la pagina",
+    "ru": "Касание не дошло до страницы",
+    "id": "Sentuhan tidak sampai ke halaman",
+    "vi": "Lần chạm chưa tới được trang",
+    "th": "การแตะไม่ถึงหน้าเว็บ",
+    "tr": "Dokunuş sayfaya ulaşmadı",
+    "ar": "لم تصل اللمسة إلى الصفحة",
+    "hi": "वह स्पर्श पेज तक नहीं पहुँचा",
+    "pl": "Dotknięcie nie dotarło do strony",
+    "nl": "De aanraking kwam niet bij de pagina aan",
+    "uk": "Дотик не дійшов до сторінки"
+  }
+}

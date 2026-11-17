@@ -165,15 +165,89 @@ def test_draft_skill_in_index(tmp_path: Path):
     home = Home(home_dir)
     skills = Skills(registry=reg, home=home)
 
+    # 1. Unapproved: not in index or index_text, and read fails
+    idx = skills.index
+    found = next((s for s in idx if s["id"] == "draft-skill"), None)
+    assert found is None
+    assert "draft-skill" not in skills.index_text()
+    from assistant.home import HomeError
+    with pytest.raises(HomeError, match="no such skill"):
+        skills.read("draft-skill")
+
+    # 2. Approved: loaded into index and index_text (fenced), read is fenced
+    mgr.approve_draft("draft-skill")
+    reg.refresh()
+
     idx = skills.index
     found = next((s for s in idx if s["id"] == "draft-skill"), None)
     assert found is not None
     assert found["source"] == "draft"
 
     text = skills.index_text()
-    assert "Draft, made here:" in text
+    assert "<draft-skills>" in text
+    assert "</draft-skills>" in text
     assert "draft-skill" in text
     assert "Skill made in draft" in text
+
+    read_text = skills.read("draft-skill")
+    assert "Draft skill 'draft-skill' written by an assistant" in read_text
+    assert "Run instructions." in read_text
+    from assistant.agent.fence import is_fenced
+    assert is_fenced(read_text) or "\ue000" in read_text
+
+
+def test_draft_skill_cannot_shadow_existing_skill(tmp_path: Path):
+    installed_dir = tmp_path / "installed"
+    custom_dir = tmp_path / "custom"
+    drafts_dir = tmp_path / "package-drafts"
+    (installed_dir / "my-installed").mkdir(parents=True)
+    (installed_dir / "my-installed" / "SKILL.md").write_text("# Installed\nInstalled skill\n", encoding="utf-8")
+
+    store = Store(str(tmp_path / "store.db"))
+    reg = Registry(installed=installed_dir, custom=custom_dir, drafts=drafts_dir)
+    reg.write_custom("my-custom", {"SKILL.md": "---\nname: Custom\ndescription: Custom\n---\nCustom skill body"})
+    mgr = DraftManager(drafts_dir=drafts_dir, registry=reg, store=store)
+
+    # Refuses built-in id
+    with pytest.raises(DraftError, match="built-in"):
+        mgr.create("skill", "browser", "Browser", "Builtin collision")
+
+    # Refuses installed id
+    with pytest.raises(DraftError, match="installed package"):
+        mgr.create("skill", "my-installed", "Installed", "Installed collision")
+
+    # Refuses approved custom id
+    with pytest.raises(DraftError, match="approved custom skill"):
+        mgr.create("skill", "my-custom", "Custom", "Custom collision")
+
+
+def test_nest_draft_write_approval_card(tmp_path: Path):
+    drafts_dir = tmp_path / "package-drafts"
+    store = Store(str(tmp_path / "store.db"))
+    reg = Registry(drafts=drafts_dir)
+    mgr = DraftManager(drafts_dir=drafts_dir, registry=reg, store=store)
+
+    mgr.create("skill", "card-skill", "Card Skill", "Skill requiring approval")
+    tools = {t.name: t for t in draft_tools(mgr)}
+    tool = tools["nest_draft_write"]
+
+    assert tool.requires_approval is True
+    # Non-skill file auto-approves
+    assert tool.auto_approve({"id": "card-skill", "path": "ui/main.json", "content": "{}"}) is True
+    # SKILL.md does not auto-approve: needs owner card
+    assert tool.auto_approve({"id": "card-skill", "path": "SKILL.md", "content": "Full body text"}) is False
+
+    # Approval card shows full text
+    extra = tool.approval_extra("a1", {"id": "card-skill", "path": "SKILL.md", "content": "Full body text"})
+    assert extra["full_text"] == "Full body text"
+    full_lines = [l for l in extra["lines"] if l.get("full")]
+    assert len(full_lines) == 1
+    assert full_lines[0]["value"] == "Full body text"
+
+    # Running handler approves the draft
+    asyncio.run(tool.handler({"id": "card-skill", "path": "SKILL.md", "content": "Full body text"}))
+    reg.refresh()
+    assert reg.get("card-skill") is not None
 
 
 def test_custom_skill_to_draft(tmp_path: Path):

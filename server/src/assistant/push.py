@@ -72,7 +72,10 @@ NOTE_TYPES = ("task_done", "task_failed", "approval_waiting", "payment_auto", "s
               "follow_change", "follow_done", "follow_problem", "follow_reminder", "nest_shared")   # beta_request: a beta or tester sign-up for the operator
 # (beta.py, testers.py). Every type a notification is made with must be here or in WIRE_TYPES, or its push is refused
 # (test_every_notification_type_can_be_pushed); the apps then show it with the server's own title.   # device_task: a phone has work waiting (phone_data.py)
-DATA_KEYS = ("type", "id", "task_id", "approval_id", "schedule_id")
+DATA_KEYS = ("type", "id", "task_id", "approval_id", "schedule_id", "ids")
+SETTLED = "settled"                      # a push of its own kind: these waiting items (approval ids) do not wait any more; the phones take
+SETTLED_MAX = 10                         # their notifications down. `ids` = up to this many item ids, comma-separated; `id` = the first one
+SETTLED_DELAY = 1.0                      # seconds settles are collected, so several that settle together go out as one push
 WIRE_TYPES = {"briefing": "proactive",   # the morning briefing (briefing.py) wakes the phones like a proactive message
               "operator_busy": "storage", "operator_pool": "storage"}   # the Kelo address breaker tripped (kelo_names.py): a notice about the server, like storage
 PLATFORMS = ("android", "ios-apns")      # ios-apns: the iPhone app's own APNs device token (hex), no Firebase SDK in the app
@@ -168,12 +171,19 @@ def check_data(data: Any) -> dict[str, str]:
         if isinstance(v, bool) or not isinstance(v, (str, int)):
             raise PushError(f"data.{k} must be a string")
         out[k] = str(v)
-    if out.get("type") not in NOTE_TYPES:
-        raise PushError(f"data.type must be one of {', '.join(NOTE_TYPES)}")
+    if out.get("type") not in NOTE_TYPES + (SETTLED,):
+        raise PushError(f"data.type must be one of {', '.join(NOTE_TYPES + (SETTLED,))}")
+    if out["type"] == SETTLED:                              # item ids only, never more than SETTLED_MAX
+        ids = out.get("ids", "").split(",")
+        if len(ids) > SETTLED_MAX or not all(ID_RE.match(i) for i in ids):
+            raise PushError(f"data.ids must be 1 to {SETTLED_MAX} ids (letters, digits, '-', '_') separated by commas")
+        out.setdefault("id", ids[0])
+    elif "ids" in out:
+        raise PushError("data.ids is only for settled pushes")
     if "id" not in out:
         raise PushError("data.id is required")
     for k, v in out.items():
-        if k != "type" and not ID_RE.match(v):
+        if k not in ("type", "ids") and not ID_RE.match(v):
             raise PushError(f"data.{k} must be an id (letters, digits, '-', '_')")
     return out
 
@@ -334,10 +344,22 @@ def _apns_reason(r: Reply) -> str:
     return re.sub(r"[^A-Za-z0-9]", "", str(reason))[:40] if reason else f"HTTP_{r.status}"
 
 
+# An approval push names the Deny-only category: the push carries ids only, so it cannot know whether Allow may be offered (a payment's
+# Allow needs the phone's signature in the app). The app, woken by content-available, fetches the pending item and re-posts the
+# notification with "kelo.approval" (Allow + Deny) when its notify_actions offer "allow" (fail closed: never an Allow by default).
+APNS_CATEGORIES = {"approval_waiting": "kelo.approval.deny",   # the app registers these (KeloUI NotificationTaps)
+                   "task_done": "kelo.reply", "proactive": "kelo.reply"}   # an assistant's answer: a Reply field (Android replyable types)
+
+
 def apns_payload(data: dict[str, str]) -> bytes:
     """What the iPhone gets: a generic alert the phone words itself (loc-key, so no text of ours or of the user's travels through
-    Apple), content-available (the app may fetch the details from its own server when iOS lets it) and the ids. Nothing personal."""
+    Apple), content-available (the app may fetch the details from its own server when iOS lets it) and the ids. Nothing personal.
+    An approval or an answer also names its notification category (the buttons under it) and is mutable (the app may rewrite it)."""
     body: dict[str, Any] = {"aps": {"alert": {"loc-key": APNS_LOC_KEY}, "sound": "default", "content-available": 1}}
+    if data.get("type") == SETTLED:   # nothing to show: a silent background push that only lets the app take notifications down
+        body = {"aps": {"content-available": 1}}
+    elif data.get("type") in APNS_CATEGORIES:
+        body["aps"].update({"category": APNS_CATEGORIES[data["type"]], "mutable-content": 1})
     body.update(data)
     return json.dumps(body, separators=(",", ":")).encode()
 
@@ -419,6 +441,8 @@ class Apns:
             raise PushError("this server does not send iPhone push notifications", 404)
         state = {"jwt": self.provider_token(s), "refreshed": False}
         body = apns_payload(data)
+        if data["type"] == SETTLED:   # silent: push type background, priority 5, never collapsed with a visible notification
+            return list(await asyncio.gather(*(self._one(s, t, env, body, state, push_type="background", priority="5") for t, env in items)))
         collapse = f"kelo-{data['id']}"[:64]
         return list(await asyncio.gather(*(self._one(s, t, env, body, state, collapse=collapse) for t, env in items)))
 
@@ -575,8 +599,12 @@ class PushClient:
 
     def __init__(self, store: Store, fcm: Fcm, apns: Apns | None = None, *, broker_url: str = "", fetcher: Fetcher = fetch,
                  backoff: tuple[float, ...] = (2.0, 10.0, 30.0), sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time, settle_delay: float = SETTLED_DELAY):
         _schema(store)
+        self.settle_delay = settle_delay
+        self._settling: list[str] = []
+        self._settle_timer: asyncio.TimerHandle | None = None
+        self._settle_loop: asyncio.AbstractEventLoop | None = None
         self.store, self.fcm, self.apns, self.fetcher, self.backoff, self.sleep, self.clock = store, fcm, apns, fetcher, backoff, sleep, clock
         self.broker = broker_url.strip().rstrip("/")
         self._queue: asyncio.Queue[dict[str, str]] | None = None
@@ -717,6 +745,37 @@ class PushClient:
         except asyncio.QueueFull:
             log.warning("push: queue full, %s not pushed", note.get("type"))
 
+    def settle(self, ids: list[str]) -> None:
+        """Waiting items stopped waiting (answered anywhere, ran out, cancelled): tell the phones once, ids only. Items that settle within
+        SETTLED_DELAY of each other go out as one push (at most SETTLED_MAX ids each)."""
+        if not self.mode() or not ids:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._settle_loop is not loop:                   # another event loop (tests): start over
+            self._settle_loop, self._settling, self._settle_timer = loop, [], None
+        self._settling.extend(i for i in ids if ID_RE.match(i) and i not in self._settling)
+        if self._settle_timer is None:
+            self._settle_timer = loop.call_later(self.settle_delay, self._flush_settled)
+
+    def _flush_settled(self) -> None:
+        batch, self._settling, self._settle_timer = self._settling, [], None
+        for i in range(0, len(batch), SETTLED_MAX):
+            ids = batch[i:i + SETTLED_MAX]
+            self._enqueue({"type": SETTLED, "id": ids[0], "ids": ",".join(ids)})
+
+    def _enqueue(self, data: dict[str, str]) -> None:
+        loop = asyncio.get_running_loop()
+        if self._loop is not loop or self._queue is None or self._worker is None or self._worker.done():
+            self._loop, self._queue = loop, asyncio.Queue(self.QUEUE_MAX)
+            self._worker = loop.create_task(self._run())
+        try:
+            self._queue.put_nowait(data)
+        except asyncio.QueueFull:
+            log.warning("push: queue full, %s not pushed", data.get("type"))
+
     def wake(self, task_id: int) -> None:
         """A phone has a task waiting (a text to send, the dialer to open, a calendar change): wake the phones with the id only."""
         if not self.mode():
@@ -751,6 +810,9 @@ class PushClient:
             await self._queue.join()
 
     async def close(self) -> None:
+        if self._settle_timer is not None:
+            self._settle_timer.cancel()
+            self._settle_timer = None
         if self._worker is not None and not self._worker.done():
             self._worker.cancel()
             try:

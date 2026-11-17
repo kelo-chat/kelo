@@ -198,7 +198,8 @@ async def test_the_tool_sets_it_from_the_chat_and_says_what_it_did(tmp_path):
     mailbox(store, "yahoo", "work@company.test")
     src, _, _ = build(store, google=FakeGoogle([("google-calendar", "me@gmail.test"), ("google-calendar-2", "personal@gmail.test")]), phone=[])
     tool = src.tool()
-    assert tool.name == "briefing_sources" and not tool.requires_approval and tool.auto_approve is None   # no approval card
+    assert tool.name == "briefing_sources" and tool.requires_approval                                   # a switch asks (audit F7)
+    assert tool.auto_approve({"action": "show"}) is True and tool.auto_approve({"action": "off"}) is False
     shown = await tool.handler({"action": "show"})
     assert "mail:mail-yahoo | Yahoo Mail | work@company.test | read: yes" in shown and "google:google-calendar-2" in shown
     # "leave my work mail out"
@@ -385,15 +386,15 @@ async def test_the_app_adds_a_caldav_account_lists_it_in_connectors_and_reads_it
     from assistant.server import Settings, create_app
     from test_server import AUTH, TOKEN, Running
     s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "a.db"), scheduler=False, home_dir=str(tmp_path / "home"))
-    with FakeCalDav(host="dav.fastmail.test", prefix="/dav/") as fake:
+    with FakeCalDav(host="dav.fastmail.com", prefix="/dav/") as fake:
         app = create_app(s, tools=[], weather_fetcher=FakeWeather(), caldav_fetcher=fake.fetcher)
         async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
             row = next(r for r in (await c.get("/api/connectors")).json() if r["id"] == "caldav_calendar")
             assert row["connect"] == "caldav" and row["status"] != "connected"
-            bad = await c.post("/api/caldav/accounts", json={"url": "https://dav.fastmail.test/dav/", "username": "me@fastmail.test", "password": "nope"})
+            bad = await c.post("/api/caldav/accounts", json={"url": "https://dav.fastmail.com/dav/", "username": "me@fastmail.test", "password": "nope"})
             assert bad.status_code == 422 and "refused" in bad.json()["detail"]
-            assert (await c.post("/api/caldav/accounts", json={"url": "http://dav.fastmail.test/", "username": "u", "password": "p"})).status_code == 422
-            ok = await c.post("/api/caldav/accounts", json={"url": "https://dav.fastmail.test/dav/", "username": "me@fastmail.test", "password": "app-pass-123"})
+            assert (await c.post("/api/caldav/accounts", json={"url": "http://dav.fastmail.com/", "username": "u", "password": "p"})).status_code == 422
+            ok = await c.post("/api/caldav/accounts", json={"url": "https://dav.fastmail.com/dav/", "username": "me@fastmail.test", "password": "app-pass-123"})
             assert ok.status_code == 200 and ok.json()["address"] == "me@fastmail.test" and "app-pass" not in ok.text
             assert (await c.get("/api/caldav")).json()["accounts"][0]["address"] == "me@fastmail.test"
             row = next(r for r in (await c.get("/api/connectors")).json() if r["id"] == "caldav_calendar")

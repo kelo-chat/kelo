@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Alamat server</string>
+    <string name="server_address_title">Ubah alamat server</string>
+    <string name="server_address_body">Alamat yang terhubung: %1$s\nUntuk pindah ke alamat baru server Kelo yang sama, ketik alamat https yang baru. Obrolan dan kunci tetap ada, dan kamu tidak perlu menghubungkan ulang.</string>
+    <string name="server_address_switch">Ubah</string>
+    <string name="server_address_checking">Memeriksa…</string>
+    <string name="server_address_invalid">Itu sepertinya bukan alamat https. Ketik seperti ini: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">Alamat itu tidak dapat dijangkau. Periksa alamat dan koneksimu, lalu coba lagi.</string>
+    <string name="server_address_other">Alamat itu milik server lain, jadi tidak ada yang diubah. Untuk menghubungkan server lain, keluar lalu hubungkan dari awal.</string>
+    <string name="server_address_same">Ponsel ini sudah memakai alamat itu.</string>
+    <string name="server_address_done">Alamat server diubah.</string>
+</resources>

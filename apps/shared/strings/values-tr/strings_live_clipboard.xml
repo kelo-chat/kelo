@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Telefondan yapıştır</string>
+    <string name="live_pasted">Yapıştırıldı. Alanı kontrol edin.</string>
+    <string name="live_copy_from_browser">Tarayıcıdan kopyala</string>
+    <string name="live_copied_to_phone">Telefona kopyalandı</string>
+</resources>

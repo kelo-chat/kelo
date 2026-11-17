@@ -30,6 +30,7 @@ from urllib.parse import urlencode, urlsplit
 
 from .i18n import N_, t
 from .netguard import NetGuardError, Reply, fetch
+from .scope_pick import ScopePick
 from .store import Store
 from .vault import VaultError
 
@@ -44,8 +45,6 @@ REFUSAL_ERRORS = ("invalid_client", "unauthorized_client", "invalid_request")
 CLIENT_REFUSALS = ("invalid_client", "unauthorized_client")   # errors that name this app's client itself (not a cancel, not a bad request)
 REFUSED = "refused"
 REFUSAL_DAYS = 30   # a remembered refusal is tried again after this long (the service may have approved the app since)
-# Scopes a server lists for another assistant's own integration (Netlify lists "claudeai"): asking for them is not this app's place.
-OTHER_ASSISTANT = re.compile(r"claude|anthropic|chatgpt|openai|cursor", re.I)
 
 
 @dataclass(frozen=True)
@@ -292,11 +291,12 @@ def relay_target(state: str) -> str:
 
 class McpConnections:
     def __init__(self, store: Store, *, fetcher: Fetcher = fetch, relay: str = "",
-                 services: Callable[[str], McpService | None] | None = None):
+                 services: Callable[[str], McpService | None] | None = None, ask: Callable[..., Any] | None = None):
         """`relay`: a fixed https page every copy of the app shares (registered once with services that want a fixed return address);
         it sends each returning sign-in on to the copy that started it. Empty: the service returns straight to this copy.
         With a relay, services that read Client ID Metadata Documents get the relay host's document as client_id."""
         self.store, self.fetcher, self.relay = store, fetcher, relay.strip()
+        self.picker = ScopePick(ask) if ask is not None else None   # which listed scopes are this app's own (scope_pick.py); None: none are asked
         self.services = services or SERVICES.get   # `services`: finds a connector's MCP server (packages.Registry.mcp_service)
         self.metadata_url = client_metadata_url(self.relay)
         self.pending: dict[str, dict[str, Any]] = {}
@@ -389,11 +389,9 @@ class McpConnections:
         for k in ("authorization_endpoint", "token_endpoint", "registration_endpoint"):
             if meta.get(k) and not str(meta[k]).startswith("https://"):
                 raise McpOAuthError(t("{name} gave an address that is not https.", name=svc.name))
-        if not scope and prm.get("scopes_supported"):
-            scope = " ".join(str(s) for s in prm["scopes_supported"])
-        if not scope and meta.get("scopes_supported"):   # some servers (e.g. Kakao PlayMCP: ["default"]) list them only here
-            scope = " ".join(str(s) for s in meta["scopes_supported"])
-        scope = " ".join(s for s in scope.split() if not OTHER_ASSISTANT.search(s))
+        if not scope:   # no scope named by the server's own challenge: only the model's pick of the listed ones (some, e.g. Kakao PlayMCP: ["default"], list them only in the metadata)
+            listed = [str(s) for s in (prm.get("scopes_supported") or meta.get("scopes_supported") or [])]
+            scope = " ".join(await self.picker.pick(svc.id, listed)) if self.picker is not None else ""
         return {"authorization_endpoint": meta["authorization_endpoint"], "token_endpoint": meta["token_endpoint"],
                 "registration_endpoint": str(meta.get("registration_endpoint") or ""), "resource": str(prm.get("resource") or svc.url),
                 "scope": scope, "auth_methods": meta.get("token_endpoint_auth_methods_supported") or [], "cimd": cimd}

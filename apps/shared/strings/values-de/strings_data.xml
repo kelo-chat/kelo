@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">Deine Daten</string>
+    <string name="data_intro">Hol dir eine Kopie dessen, was Kelo über dich speichert, bring Erinnerungen von einem anderen Assistenten mit oder fang neu an.</string>
+    <string name="data_export_title">Daten herunterladen</string>
+    <string name="data_export_body">Eine ZIP-Datei mit deinem Gespräch, dem, was Kelo sich merkt, Terminplänen, Beobachtetem, verbundenen Diensten und deinen Einstellungen. Passwörter, Schlüssel und Tokens sind nie enthalten.</string>
+    <string name="data_export_make">Datei erstellen</string>
+    <string name="data_export_making">Datei wird erstellt …</string>
+    <string name="data_export_ready">Deine Datei ist fertig (%1$s).</string>
+    <string name="data_export_save">Datei speichern</string>
+    <string name="data_export_saved">Gespeichert.</string>
+    <string name="data_export_again">Neue Datei erstellen</string>
+    <string name="data_export_failed">Die Datei konnte nicht erstellt werden. Versuche es erneut.</string>
+    <string name="data_import_title">Erinnerungen von einem anderen Assistenten holen</string>
+    <string name="data_import_private">Nichts wird anderswohin gesendet. Das Modell, das du auf deinem Kelo-Server gewählt hast, liest den Text und behält kurze Fakten über dich.</string>
+    <string name="data_import_step1">1. Kopiere diese Anfrage und füge sie in deinen alten Assistenten ein (ChatGPT, Claude, Gemini, …).</string>
+    <string name="data_import_copy">Anfrage kopieren</string>
+    <string name="data_import_copied">Kopiert.</string>
+    <string name="data_import_step2">2. Füge hier seine Antwort ein.</string>
+    <string name="data_import_paste_hint">Antwort einfügen</string>
+    <string name="data_import_add">Zum Gedächtnis hinzufügen</string>
+    <string name="data_import_zip_body">Oder wähle den Chat-Export, den du von ChatGPT, Claude oder Gemini heruntergeladen hast (ZIP-Datei, bis 100 MB).</string>
+    <string name="data_import_zip">ZIP-Datei wählen</string>
+    <string name="data_import_running">Lese … %1$d von %2$d</string>
+    <string name="data_import_reading">Datei wird geöffnet …</string>
+    <string name="data_import_cancel">Stopp</string>
+    <string name="data_import_failed">Nichts wurde hinzugefügt: %1$s</string>
+    <string name="data_import_none">Es wurde nichts Neues zum Hinzufügen gefunden.</string>
+    <string name="data_import_added">Zum Gedächtnis hinzugefügt (%1$d):</string>
+    <string name="data_zip_too_big">Diese Datei ist größer als 100 MB.</string>
+    <string name="data_reset_title">Neu anfangen</string>
+    <string name="data_reset_body">Löscht dein Gespräch, das, was Kelo sich merkt, Beobachtetes und deine Terminpläne. Connectors, gespeicherte Logins, Modelle und deine Handys bleiben. Vorher wird eine Kopie als Datei gespeichert.</string>
+    <string name="data_reset_signout">Auch von Connectors abmelden und gespeicherte Logins entfernen</string>
+    <string name="data_reset_type">Gib %1$s zur Bestätigung ein</string>
+    <string name="data_reset_button">Neu anfangen</string>
+    <string name="data_reset_wrong">Das ist nicht das Wort. Nichts wurde geändert.</string>
+    <string name="data_reset_confirm">Jetzt neu anfangen? Zuerst wird eine Kopie gespeichert, dann werden Gespräch, Gedächtnis, Beobachtetes und Terminpläne gelöscht. Das lässt sich nicht rückgängig machen.</string>
+    <string name="data_reset_done">Fertig. Alles oben wurde gelöscht. Die Kopie ist als %1$s gespeichert.</string>
+</resources>

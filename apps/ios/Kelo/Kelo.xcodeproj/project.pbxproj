@@ -16,6 +16,7 @@
 		3DA135EFAED1C061EC3D40D0 /* KeloKeyguardShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11BBE671469990546D2C3040 /* KeloKeyguardShotsTests.swift */; };
 		451E1021F13F73869E900913 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 088FEF735DD78BEDC464CF77 /* Assets.xcassets */; };
 		46A18524B729BE4EA2437F3D /* KeloSecretShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF0B9F1B22988C2E12C58FF /* KeloSecretShotsTests.swift */; };
+		4FE20C8F2630FC9D3EDE2D2C /* KeloLoginSheetShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DFDB40EEC013D177AB9CE98 /* KeloLoginSheetShotsTests.swift */; };
 		51D2BD2AE67CB28631DE9B8B /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 9514436AB32144773EFE95C3 /* InfoPlist.strings */; };
 		520FD05A4956B2A999EA9DE2 /* KeloShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 53977DF1A9E45BB9A9C1F639 /* KeloShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6722E50D8CDE93D35C6FCAC4 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = F06AB5191A38F8C44975BED7 /* InfoPlist.strings */; };
@@ -23,12 +24,14 @@
 		7047608D4AD097249EBA5D1C /* KeloShippingShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CEFA003A4EC94218391ECC1 /* KeloShippingShotsTests.swift */; };
 		73F9DCB635ED12863D639220 /* KeloGrantsShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB44E93AA684DD69B71DB81D /* KeloGrantsShotsTests.swift */; };
 		7B3E36F3F81DE7904A3901EE /* KeloToneShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CD77F8F62C8EB5723EDCD24 /* KeloToneShotsTests.swift */; };
+		7F158624AD77C860665BE76B /* KeloPreapprovalShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB2D1DE63FBBDE401EF9DE89 /* KeloPreapprovalShotsTests.swift */; };
 		87D6ACA160F364448E2E9876 /* KeloShotCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86537C71A3B9F16E3DE3D1EF /* KeloShotCase.swift */; };
 		8A21C810E8DB962AFB5C887D /* KeloUI in Frameworks */ = {isa = PBXBuildFile; productRef = 2EED9A45DCDB83BE0820F327 /* KeloUI */; };
 		911DD2EC008A0A5C637BDB9B /* KeloLive in Frameworks */ = {isa = PBXBuildFile; productRef = 7F1DC86F5B23919540CD2FA1 /* KeloLive */; };
 		92C9644983F89F94DE79B568 /* KeloEffortShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47161B921BFBE6EBB9D18C63 /* KeloEffortShotsTests.swift */; };
 		9C442F1A3DDEA24D1A2AEA29 /* KeloResourcesShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4751BCDF5FAC6594A01D9E4F /* KeloResourcesShotsTests.swift */; };
 		A874494DD307E416A3F86E19 /* KeloLiveWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 661BE74399303F028214A178 /* KeloLiveWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA83BE0C833C47A7A562E715 /* KeloFoldableShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0ACF2E8F7CF6B2575603E3B /* KeloFoldableShotsTests.swift */; };
 		AD06F3A9CB59BBCD9F83AFF6 /* KeloStorageShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF6E8A600D27C768BFC4B08 /* KeloStorageShotsTests.swift */; };
 		AD3B7BF54A20501AA5546E56 /* KeloSwipeBackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E023266B1DF092EC008744E9 /* KeloSwipeBackTests.swift */; };
 		AD4092413C6F9B00FA65999C /* KeloOwnerFixesShotsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7E37340ED57820EB6856120 /* KeloOwnerFixesShotsTests.swift */; };
@@ -163,6 +166,7 @@
 		99D345137E1848C8C9761C09 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9AE58822C5401E1595D0C23E /* hi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = hi; path = hi.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9C1A57559718E5684DBC0CAB /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/Localizable.strings; sourceTree = "<group>"; };
+		9DFDB40EEC013D177AB9CE98 /* KeloLoginSheetShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloLoginSheetShotsTests.swift; sourceTree = "<group>"; };
 		9E5C3E42E3955FD8D8E17FE0 /* KeloBatchShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloBatchShotsTests.swift; sourceTree = "<group>"; };
 		9EE1A3413C6DA617369D3F20 /* uk */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = uk; path = uk.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A47DACF7BAB355E732671D7D /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
@@ -188,6 +192,7 @@
 		CF98E055DD9436990615C692 /* KeloTopEdgeShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloTopEdgeShotsTests.swift; sourceTree = "<group>"; };
 		D04EC361C6F3C2837C9C7240 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		D0934C091E1D31FCB85BBF3D /* th */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = th; path = th.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		D0ACF2E8F7CF6B2575603E3B /* KeloFoldableShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloFoldableShotsTests.swift; sourceTree = "<group>"; };
 		D29DD1125CD61560BF304A98 /* id */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = id; path = id.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		D44F72A93B5E2F3DAD9C2DA6 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "pt-BR.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		D488DC0D842D9BFDDEBF2435 /* KeloLiveWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloLiveWidget.swift; sourceTree = "<group>"; };
@@ -196,6 +201,7 @@
 		D8167C37F6EFFA7D2EE15375 /* Kelo.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Kelo.entitlements; sourceTree = "<group>"; };
 		D8AA6A1CD35B651E651EC9DC /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
 		D9C64E951EC74E13377A3207 /* pt-BR */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-BR"; path = "pt-BR.lproj/Localizable.strings"; sourceTree = "<group>"; };
+		DB2D1DE63FBBDE401EF9DE89 /* KeloPreapprovalShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloPreapprovalShotsTests.swift; sourceTree = "<group>"; };
 		DB44E93AA684DD69B71DB81D /* KeloGrantsShotsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloGrantsShotsTests.swift; sourceTree = "<group>"; };
 		DC217686BBF7B216C22ACA12 /* KeloWrapWalkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloWrapWalkTests.swift; sourceTree = "<group>"; };
 		E023266B1DF092EC008744E9 /* KeloSwipeBackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeloSwipeBackTests.swift; sourceTree = "<group>"; };
@@ -251,13 +257,16 @@
 				BC9A7195EE010C6AF1E9E142 /* KeloConsentShotsTests.swift */,
 				47161B921BFBE6EBB9D18C63 /* KeloEffortShotsTests.swift */,
 				F3596BF616FA548ECE9372C3 /* KeloFieldSweepTests.swift */,
+				D0ACF2E8F7CF6B2575603E3B /* KeloFoldableShotsTests.swift */,
 				DB44E93AA684DD69B71DB81D /* KeloGrantsShotsTests.swift */,
 				39557A66CAA8292244F5AA8A /* KeloHoursShotsTests.swift */,
 				77C3317FF1A594D7FBB09D6C /* KeloKeyboardDismissTests.swift */,
 				11BBE671469990546D2C3040 /* KeloKeyguardShotsTests.swift */,
 				C5C81B6AD72D1A869AAE096E /* KeloLocationAttachShotsTests.swift */,
+				9DFDB40EEC013D177AB9CE98 /* KeloLoginSheetShotsTests.swift */,
 				B41ED8352E74420A1937C386 /* KeloMemoryPassShotsTests.swift */,
 				B7E37340ED57820EB6856120 /* KeloOwnerFixesShotsTests.swift */,
+				DB2D1DE63FBBDE401EF9DE89 /* KeloPreapprovalShotsTests.swift */,
 				4751BCDF5FAC6594A01D9E4F /* KeloResourcesShotsTests.swift */,
 				B5087CD420599EE0C28F90BA /* KeloScopeShotsTests.swift */,
 				CCFE94A712E9F3054FB2B818 /* KeloScreensTests.swift */,
@@ -577,13 +586,16 @@
 				0DF46859566132ECC41559B9 /* KeloConsentShotsTests.swift in Sources */,
 				92C9644983F89F94DE79B568 /* KeloEffortShotsTests.swift in Sources */,
 				2BFC1184C57E146B43571062 /* KeloFieldSweepTests.swift in Sources */,
+				AA83BE0C833C47A7A562E715 /* KeloFoldableShotsTests.swift in Sources */,
 				73F9DCB635ED12863D639220 /* KeloGrantsShotsTests.swift in Sources */,
 				FC6CF1E16A1BE130A0D9CE98 /* KeloHoursShotsTests.swift in Sources */,
 				E14441C012152881DC833624 /* KeloKeyboardDismissTests.swift in Sources */,
 				3DA135EFAED1C061EC3D40D0 /* KeloKeyguardShotsTests.swift in Sources */,
 				25F6332F5F3502B521B749AF /* KeloLocationAttachShotsTests.swift in Sources */,
+				4FE20C8F2630FC9D3EDE2D2C /* KeloLoginSheetShotsTests.swift in Sources */,
 				68172C7FC89E3F04AEC1A4C7 /* KeloMemoryPassShotsTests.swift in Sources */,
 				AD4092413C6F9B00FA65999C /* KeloOwnerFixesShotsTests.swift in Sources */,
+				7F158624AD77C860665BE76B /* KeloPreapprovalShotsTests.swift in Sources */,
 				9C442F1A3DDEA24D1A2AEA29 /* KeloResourcesShotsTests.swift in Sources */,
 				245E7EBB725E7233101B737D /* KeloScopeShotsTests.swift in Sources */,
 				D7A28C0DAC46F35193F8B19B /* KeloScreensTests.swift in Sources */,
@@ -747,7 +759,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = chat.kelo.app.uitests;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Kelo;
 			};
 			name = Debug;
@@ -767,7 +779,7 @@
 				PRODUCT_NAME = KeloShare;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -786,7 +798,7 @@
 				PRODUCT_NAME = KeloLiveWidget;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -805,7 +817,7 @@
 				PRODUCT_NAME = KeloShare;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -822,7 +834,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = chat.kelo.app.uitests;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Kelo;
 			};
 			name = Release;
@@ -862,7 +874,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 26111613;
+				CURRENT_PROJECT_VERSION = 26111411;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = P6GD4DM9C5;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -914,7 +926,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = chat.kelo.app;
 				PRODUCT_NAME = Kelo;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -953,7 +965,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 26111613;
+				CURRENT_PROJECT_VERSION = 26111411;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = P6GD4DM9C5;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -998,7 +1010,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = chat.kelo.app;
 				PRODUCT_NAME = Kelo;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -1017,7 +1029,7 @@
 				PRODUCT_NAME = KeloLiveWidget;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};

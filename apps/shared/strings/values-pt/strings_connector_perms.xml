@@ -17,4 +17,6 @@
     <string name="perm_reset_q">Voltar todas as configurações deste conector ao padrão?</string>
     <string name="perm_read_off_q">Com a leitura desligada, a Kelo quase não consegue usar este conector. Desligar?</string>
     <string name="perm_limited">Limitado</string>
+    <string name="perm_unattended">Usar quando não estou conversando</string>
+    <string name="perm_unattended_about">Tarefas agendadas, trabalhos em segundo plano e mensagens que o Kelo envia por conta própria não usarão %1$s. Suas próprias conversas ainda podem.</string>
 </resources>

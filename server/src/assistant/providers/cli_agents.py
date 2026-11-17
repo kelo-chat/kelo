@@ -169,9 +169,16 @@ def _kwargs(provider: str, req: ChatRequest) -> dict[str, Any]:
     return kw
 
 
+_CODE_MARK = re.compile(r"\((?:code|HTTP) (\d{3})\)|\bHTTP (\d{3})\b")   # the status a CLI prints in its error text: "(code 503)"
+
+
 def _status(e: BaseException) -> int | None:
+    """The HTTP status of a CLI's failure: the SDK error's status_code, else the status the CLI printed in its text."""
     s = getattr(e, "status_code", None)
-    return s if isinstance(s, int) else None
+    if isinstance(s, int):
+        return s
+    m = _CODE_MARK.search(str(e))
+    return int(m.group(1) or m.group(2)) if m else None
 
 
 def session_note(lease: Any) -> str:

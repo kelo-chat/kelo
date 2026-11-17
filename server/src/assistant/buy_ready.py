@@ -4,7 +4,7 @@ A watcher that has a purchase grant (scope `watcher:<id>`, schedule_grants.py) w
 - a parked tab `buy:<watcher id>` of the agent's browser is open on the watcher's page (BrowserSession tab keys; it is not a one-run tab,
   so no run closes it) and the buying run at the hit starts on it, with the site's cookies warm;
 - every KEEP_MINUTES x a random 0.8..1.2 a keep-alive reloads that tab (no model call), reads the page tree once and records whether the
-  page shows a sign-in link and no account link; a page that needs a sign-in, when the task also has a login grant for the site, gets a
+  page shows a password box (signed out) or not; a page that needs a sign-in, when the task also has a login grant for the site, gets a
   quiet sign-in (`login_for`); without one it is listed as a problem. The keep-alive never clicks anything else;
 - readiness is checked then: each failed check is a problem with a code (PROBLEMS);
 - the watcher may look every 2 minutes and fires without the 30 s confirmation look (watchers.py).
@@ -44,7 +44,7 @@ KEEP_MINUTES = 15
 SPREAD = (0.8, 1.2)
 FAST_STEPS = 25
 FAST_TOOLS = ("browser_read", "browser_click", "browser_type", "browser_fill_shipping", "browser_fill_card", "browser_login",
-              "confirm_purchase", "end_order")
+              "confirm_purchase", "checkout_review", "checkout_submit", "end_order")
 LOGIN_TOOLS = ("browser_read", "browser_click", "browser_login")   # the tiny sign-in run (BuyReady.login_for in server.py)
 LOGIN_STEPS = 8
 
@@ -58,11 +58,6 @@ PROBLEMS = {
     "page_error": N_("The page could not be opened: {error}"),
 }
 
-# a sign-in link, and a link that only a signed-in page shows (the words the order tools use for account steps, tools/order.py)
-SIGN_IN = re.compile(r"log[ -]?in|sign[ -]?in|로그인|ログイン|登录|登錄|anmelden|se connecter|iniciar sesi|accedi|entrar|войти", re.I)
-ACCOUNT = re.compile(r"log[ -]?out|sign[ -]?out|로그아웃|ログアウト|退出登录|注销|abmelden|déconnexion|cerrar sesi|my ?page|my account|마이\s*페이지|"
-                     r"내 계정|주문\s*내역|order history|your orders", re.I)
-
 FAST_PROMPT = """You are Kelo's buying run. A watched item just became available and the owner already allowed this purchase. Be fast.
 Buy: {what}
 Site: {site}
@@ -72,7 +67,7 @@ Card: {card}
 You are already on the product page in this tab. Do these steps and nothing else:
 1. browser_read the page once. Check it is the item named above, at a price within the most above.
 2. Add it to the cart or press buy now. Go to checkout.
-3. Choose the saved shipping address (browser_fill_shipping). Pay with the card above and confirm_purchase.
+3. Choose the saved shipping address (browser_fill_shipping). Pay with the card above and checkout_review.
 4. After the payment, end_order and say in one short line what was bought and the total.
 Stop and report in one short line, without paying, when anything differs: another item, a higher price, an extra fee, a sign-up, a
 page that asks for a sign-in you cannot do with browser_login, or a step that does not work twice.
@@ -88,11 +83,10 @@ def site_of(url: str) -> str:
     return h.removeprefix("www.")
 
 
-def signed_in_of(text: str) -> bool | None:
-    """From the page tree: False when it shows a sign-in link and no account link, True when it shows an account link, else None."""
-    if ACCOUNT.search(text or ""):
-        return True
-    return False if SIGN_IN.search(text or "") else None
+def signed_in_of(shown: bool | None) -> bool | None:
+    """From the page's own structure (BrowserSession.password_box_shown): a visible password box means signed out, a page read with none
+    means signed in, a page that could not be read says nothing (None). No word of any language is read."""
+    return None if shown is None else not shown
 
 
 class BuyReady:
@@ -203,6 +197,11 @@ class BuyReady:
         finally:
             browser_owner.reset(tok)
 
+    @staticmethod
+    def _password_box(session: Any, tab: str) -> bool | None:
+        """Whether the tab shows a password box (None: the page could not be read)."""
+        return session.password_box_shown(tab)
+
     async def keep(self, wid: int) -> dict[str, Any] | None:
         """One keep-alive: the `buy` object after it (None when the watcher is not armed)."""
         r = self._row(wid)
@@ -220,8 +219,8 @@ class BuyReady:
         else:
             site = site_of(w["url"])
             try:
-                text = await self._look(session, r["tab"], w["url"])
-                signed_in = signed_in_of(text)
+                await self._look(session, r["tab"], w["url"])
+                signed_in = signed_in_of(self._password_box(session, r["tab"]))
                 if signed_in is False and g is not None and self._login_allowed(f"watcher:{wid}", w["url"]):
                     self.busy.add(wid)   # the sign-in run uses the tab: nothing else touches it meanwhile
                     try:
@@ -229,8 +228,8 @@ class BuyReady:
                     finally:
                         self.busy.discard(wid)
                     if signed:
-                        text = await self._look(session, r["tab"], w["url"])   # back on the product page, now signed in
-                        signed_in = signed_in_of(text)
+                        await self._look(session, r["tab"], w["url"])   # back on the product page, now signed in
+                        signed_in = signed_in_of(self._password_box(session, r["tab"]))
                         if signed_in is None:
                             signed_in = True
                 if signed_in is False:

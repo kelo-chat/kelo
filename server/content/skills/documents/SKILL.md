@@ -1,6 +1,6 @@
 ---
 name: Documents
-description: Read, summarize, compare or convert PDF, Word and Excel files, and write new documents.
+description: Read, summarize, compare or convert PDF, Word, Excel and PowerPoint files; make Excel, Word, PowerPoint, PDF or CSV files.
 ---
 
 # Documents
@@ -17,6 +17,8 @@ description: Read, summarize, compare or convert PDF, Word and Excel files, and 
 - Say what the document does not cover rather than filling gaps.
 
 ## Making or converting files
+- A file the user asked for goes into their files (`files/`), not into a note: `write_file` to `notes/` or `memory/` is never the answer to "make me a spreadsheet / Word / PDF / slides".
+- Plain text formats (`.csv`, `.txt`, `.json`) can be written straight to `files/<name>` with `write_file`. Excel, Word, PowerPoint and PDF are made in the work room.
 - Before you make a file, read its guide: `read_skill(name="documents", file="excel.md")`, or `word.md`, `powerpoint.md`, `pdf.md`.
 - Make it in the work room with `workroom_run` (see the `work-room` skill). Pass the user's files in with `files_in` (`uploads/<name>` or `files/<name>`). Edit a copy, never the input.
 - Write results to `$OUT_DIR`; they appear in the user's files. Write checks and intermediate files to `$TMPDIR`, so they do not appear as results. Render pictures you want to look at into `$VIEW_DIR`: they come back to you, not to the user's files.

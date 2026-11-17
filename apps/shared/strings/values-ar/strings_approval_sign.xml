@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">الموافقة على الدفع</string>
+    <string name="approval_sign_subtitle">أكّد ببصمة الإصبع أو الوجه</string>
+    <string name="approval_sign_failed">تعذّرت الموافقة على هذه الدفعة من هذا الهاتف. حاول مرة أخرى.</string>
+    <string name="approval_sign_key_lost">مفتاح الموافقة لهذا الهاتف مفقود. أقرن هذا الهاتف بالخادم مرة أخرى.</string>
+    <string name="approval_pay_on_phone">وافِق على المدفوعات في تطبيق Kelo على الهاتف.</string>
+</resources>

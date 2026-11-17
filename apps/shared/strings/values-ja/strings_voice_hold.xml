@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">押したまま話す</string>
+    <string name="voice_hold_hint">指を離すと完了、外へスライドでキャンセル</string>
+    <string name="voice_dictation_offline">接続が切れたため、音声入力を停止しました。</string>
+    <string name="voice_dictation_failed">音声入力を完了できませんでした。</string>
+    <string name="msg_action_read_aloud">読み上げ</string>
+    <string name="msg_action_read_stop">読み上げを止める</string>
+</resources>

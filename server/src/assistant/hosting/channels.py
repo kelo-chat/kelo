@@ -14,6 +14,11 @@ from typing import Any
 
 from . import operating_system
 
+WORKROOM_LINK_ENV = "WORKROOM_LINK"      # "tcp": the work room is reached over a private network link instead of a socket in a shared folder
+WORKROOM_AGENT_PORT = 9710               # the work room's agent, on the work room's side of the link
+WORKROOM_PROXY_PORT = 9711               # the server's install proxy, on the server's side of the link
+WORKROOM_HOST = "workroom"               # the names the two containers have for each other on the link (Apple container hosts files)
+SERVER_HOST = "server"
 PIPE_PREFIX = "\\\\.\\pipe\\"
 PIPE_NAME_PREFIX = "kelo-"
 GROUP_READ_WRITE = 0o660        # the server reaches a sibling's socket through a shared group; nobody else mounts the folder
@@ -121,6 +126,62 @@ class LocalChannel:
         return server
 
 
+class TcpChannel(LocalChannel):
+    """The same meeting point over TCP, for a host whose containers cannot share a socket file (Apple container: a socket on a
+    folder shared with the host cannot be chmodded, and another container cannot connect to it).
+
+    Safe only on a network that holds nothing but the two containers and has no way out (`workroom-link`, internal). The side that
+    listens binds every address of its container; the other side connects to `host`. Same calls as LocalChannel."""
+
+    BIND_ADDRESS = "0.0.0.0"
+
+    def __init__(self, name: str, host: str, port: int) -> None:
+        super().__init__(name, Path("/"), file_name=f"{name}.tcp")
+        self.host, self.port = host, port
+
+    @property
+    def address(self) -> str:
+        return f"{self.host}:{self.port}"
+
+    def is_present(self) -> bool:
+        return True   # nothing to look for: a refused connection says the other side is not up
+
+    def remove_leftover(self) -> None:
+        return None
+
+    def restrict_to_group(self) -> None:
+        return None
+
+    def connect(self, timeout_seconds: float | None = None) -> Any:
+        return socket.create_connection((self.host, self.port), timeout=timeout_seconds)
+
+    def make_http_transport(self) -> Any:
+        import httpx
+        host, port = self.host, self.port
+
+        class _Transport(httpx.AsyncHTTPTransport):
+            async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+                request.url = request.url.copy_with(host=host, port=port)
+                return await super().handle_async_request(request)
+
+        return _Transport()
+
+    def make_server(self, handler_class: type[socketserver.BaseRequestHandler]) -> socketserver.BaseServer:
+        class _Server(socketserver.ThreadingMixIn, socketserver.TCPServer):
+            daemon_threads = True
+            allow_reuse_address = True
+
+        return _Server((self.BIND_ADDRESS, self.port), handler_class)
+
+    async def serve_async(self, on_connection: Callable[[asyncio.StreamReader, asyncio.StreamWriter], Any]) -> asyncio.AbstractServer:
+        return await asyncio.start_server(on_connection, self.BIND_ADDRESS, self.port)
+
+
+def tcp_link_on(environ: Any = None) -> bool:
+    """True when the work room is reached over the network link (WORKROOM_LINK=tcp)."""
+    return (environ if environ is not None else os.environ).get(WORKROOM_LINK_ENV, "").strip().lower() == "tcp"
+
+
 class _PipeClient:
     """A named-pipe client that looks like a socket for the three calls the callers make."""
 
@@ -168,9 +229,13 @@ async def _serve_pipe(pipe_name: str, on_connection: Callable[[asyncio.StreamRea
 
 def workroom_agent_channel(folder: str | Path) -> LocalChannel:
     """Where the server calls the work room's agent (`agent.sock` in the folder the two share; the pipe `kelo-workroom` on Windows)."""
+    if tcp_link_on():
+        return TcpChannel("workroom", WORKROOM_HOST, WORKROOM_AGENT_PORT)
     return LocalChannel("workroom", folder, file_name="agent.sock")
 
 
 def workroom_proxy_channel(folder: str | Path) -> LocalChannel:
     """Where the work room's agent reaches the server's install proxy (`proxy.sock` in the shared folder; `kelo-workroom-proxy`)."""
+    if tcp_link_on():
+        return TcpChannel("workroom-proxy", SERVER_HOST, WORKROOM_PROXY_PORT)
     return LocalChannel("workroom-proxy", folder, file_name="proxy.sock")

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from .. import approval_edit, approval_sign, i18n
+from ..channels import needs_app
 from ..server import HANDOVER_RESOLVED_KEEP
 from ..weather import WeatherError
 from fastapi import APIRouter
@@ -28,7 +30,39 @@ class LocationAnswerIn(BaseModel):
 
 class ApprovalIn(BaseModel):
     approve: bool
-    remember: str | None = Field(default=None, pattern="^(site|schedule)$")
+    remember: str | None = Field(default=None, pattern="^(site|schedule|recipient)$")
+    sig: str | None = Field(default=None, max_length=400)   # signed payment approvals: the phone's signature (approval_sign.py)
+    # the fixed outgoing message of a card with "editable": {that card's field: the new text}; read only with approve=true (approval_edit.py)
+    edited: dict[str, str] | None = None
+    # where the answer comes from (the history shows it): the app's card, or a button on the phone's notification
+    via: str = Field(default="app", pattern="^(app|notification)$")
+
+
+def check_payment_signature(device_id: int | None, store: Any, approval_id: str, meta: dict[str, Any], sig: str | None) -> None:
+    """A payment approved with Allow must carry the signature of the calling device's approval key (docs/approval-signing.md). A device
+    without a key (an older app) is allowed as before, unless the owner turned on require_signed_payments."""
+    key = store.approval_key(device_id) if device_id is not None else ""
+    if key:
+        if not sig:
+            raise HTTPException(403, {"code": "signature_required", "message": i18n.t("Approve payments in the Kelo phone app.")})
+        if not approval_sign.verify(key, approval_sign.approval_message(approval_id, True, int(meta.get("issued_at") or 0)), sig):
+            raise HTTPException(403, {"code": "bad_signature", "message": i18n.t("This payment approval was not signed by this phone.")})
+        return
+    if store.meta("require_signed_payments") == "1":
+        raise HTTPException(403, {"code": "signature_required",
+                                  "message": i18n.t("Approve payments in the Kelo phone app (you may need to update the app).")})
+
+
+def notify_actions(item: dict[str, Any]) -> list[str]:
+    """What a phone notification for this pending approval may offer as buttons, ONE rule for every app. A payment offers only Deny: an Allow
+    needs the phone's biometric signature, which only the open app can give (approval_sign.is_payment). A card that needs input in the
+    app (a PIN or payment step, a wallet or card choice, a login or secret, a code from the mail, a human check, a location) offers
+    nothing. Everything else: Allow and Deny. An Allow from a notification is always "once": `remember` is never offered there."""
+    if approval_sign.is_payment(item):
+        return ["deny"]
+    if needs_app(item) or item.get("pin") or item.get("type") == "payment_step":
+        return []
+    return ["allow", "deny"]
 
 
 def router(ctx: AppContext) -> APIRouter:
@@ -41,11 +75,19 @@ def router(ctx: AppContext) -> APIRouter:
     require_auth = ctx.require_auth
     resolved_checks = ctx.resolved_checks
     task_grants = ctx.task_grants
+    store = ctx.store
 
     # ---- approvals: answers, history, standing rules, what is waiting ----------------------------------------------------------
     @router.post("/api/approvals/{approval_id}", dependencies=[Depends(require_auth)])
-    async def answer(approval_id: str, body: ApprovalIn) -> dict[str, Any]:
-        result = answer_approval(approval_id, body.approve, body.remember)
+    async def answer(request: Request, approval_id: str, body: ApprovalIn) -> dict[str, Any]:
+        meta = pending_approvals.get(approval_id) or {}
+        fut = broker.pending.get(approval_id)
+        if body.approve and fut is not None and not fut.done() and approval_sign.is_payment(meta):
+            check_payment_signature(request.state.device_id, store, approval_id, meta, body.sig)   # before the card is answered: a refusal keeps it open
+        try:
+            result = answer_approval(approval_id, body.approve, body.remember, body.edited if body.approve else None, body.via)
+        except approval_edit.EditRefused as e:   # the card stays open: the owner fixes the text and tries again
+            raise HTTPException(400, str(e)) from None
         if result is None:
             raise HTTPException(404, "no such pending approval")
         return result
@@ -77,7 +119,8 @@ def router(ctx: AppContext) -> APIRouter:
         items = sorted(pending_approvals.values(), key=lambda e: e["asked_at"], reverse=True)
         now = time.time()
         done = sorted((v for v in resolved_checks.values() if now - v["at"] <= HANDOVER_RESOLVED_KEEP), key=lambda v: v["at"], reverse=True)
-        return {"items": [{k: v for k, v in e.items() if k not in ("arguments", "answer")} for e in items], "resolved": done}
+        return {"items": [{**{k: v for k, v in e.items() if k not in ("arguments", "answer")}, "notify_actions": notify_actions(e)}
+                          for e in items], "resolved": done}
 
     @router.get("/api/approvals/history", dependencies=[Depends(require_auth)])
     async def get_approval_history(limit: int = 50, before: float | None = None, task_id: int | None = None) -> dict[str, Any]:
@@ -102,5 +145,19 @@ def router(ctx: AppContext) -> APIRouter:
     async def delete_approval_rule(rule_id: int) -> dict[str, bool]:
         if not activity.delete_rule(rule_id):
             raise HTTPException(404, "no such rule")
+        return {"ok": True}
+
+    # RECIPIENT ALLOWS (data_trail.py): "always for this recipient" on a data-trail card. Only the owner's app lists and removes them;
+    # the agent has no tool for either.
+    # GET    /api/permissions/recipients        {"items": [{"id", "recipient", "kind", "created_at", "approval_id"}]}
+    # DELETE /api/permissions/recipients/{id}   {"ok": true}; 404 when there is no such allow
+    @router.get("/api/permissions/recipients", dependencies=[Depends(ctx.require_owner)])
+    async def get_recipient_allows() -> dict[str, Any]:
+        return {"items": ctx.trail_store.allows()}
+
+    @router.delete("/api/permissions/recipients/{allow_id}", dependencies=[Depends(ctx.require_owner)])
+    async def delete_recipient_allow(allow_id: int) -> dict[str, bool]:
+        if not ctx.trail_store.delete_allow(allow_id):
+            raise HTTPException(404, "no such allow")
         return {"ok": True}
     return router

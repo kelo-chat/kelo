@@ -42,6 +42,9 @@ class Clock:
 
 
 def app_settings(tmp_path, **kw):
+    """Most tests drive the chat through the browser tools themselves, so they run with the browser split off (browser_worker=False);
+    server/tests/test_browser_split.py (and any test of the split) passes browser_worker=True."""
+    kw.setdefault("browser_worker", False)
     return Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "a.db"), **kw)
 
 
@@ -465,7 +468,6 @@ async def test_allow_on_this_site_skips_the_card_next_time_but_never_for_payment
     script = iter([
         [ToolCall("c1", "browser_click", '{"selector":"#next"}'), Done("tool_calls")], [TextDelta("ok"), Done("stop")],
         [ToolCall("c2", "browser_click", '{"selector":"#more"}'), Done("tool_calls")], [TextDelta("ok"), Done("stop")],
-        [ToolCall("c3", "browser_click", '{"selector":"text=결제하기"}'), Done("tool_calls")], [TextDelta("ok"), Done("stop")],
         [ToolCall("c4", "confirm_purchase", '{"site":"shop.example.com","summary":"x","amount":1000}'), Done("tool_calls")],
         [TextDelta("ok"), Done("stop")],
     ])
@@ -489,7 +491,8 @@ async def test_allow_on_this_site_skips_the_card_next_time_but_never_for_payment
                 return events
         raise AssertionError
 
-    async with Running(create_app(app_settings(tmp_path), tools=[click, pay], stream_fn=fn, browser=sess)) as srv, \
+    # the chat itself makes the final payment here: the switch-off path (with the split on, a checkout job pays; test_approval_sign)
+    async with Running(create_app(app_settings(tmp_path, payment_specialist=False), tools=[click, pay], stream_fn=fn, browser=sess)) as srv, \
             httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
         first = await turn(c, "다음 눌러", {"approve": True, "remember": "site"})
         card = next(e for e in first if e["type"] == "approval_request")
@@ -499,14 +502,11 @@ async def test_allow_on_this_site_skips_the_card_next_time_but_never_for_payment
         second = await turn(c, "더보기 눌러")
         assert not any(e["type"] == "approval_request" for e in second)                        # allowed by the rule: no card
         assert next(e for e in second if e["type"] == "tool_result")["approved"] is True
-        third = await turn(c, "결제 눌러", {"approve": False})
-        final = next(e for e in third if e["type"] == "approval_request")
-        assert final["can_remember"] is False                                                   # the pay button always asks
         fourth = await turn(c, "결제해", {"approve": True, "remember": "site"})
         pay_card = next(e for e in fourth if e["type"] == "approval_request")
         assert pay_card["can_remember"] is False and next(e for e in fourth if e["type"] == "answered")["remembered"] is False
         decisions = [h["decision"] for h in (await c.get("/api/approvals/history")).json()["items"]]
-        assert decisions == ["allowed_once", "denied", "allowed_by_rule", "allowed_always"]
+        assert decisions == ["allowed_once", "allowed_by_rule", "allowed_always"]
         rules = (await c.get("/api/approvals/rules")).json()["items"]
         assert [(r["kind"], r["site"], r["uses"]) for r in rules] == [("browser_action", "shop.example.com", 1)]
         assert rules[0]["kind_label"]

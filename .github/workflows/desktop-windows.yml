@@ -157,8 +157,9 @@ jobs:
           if-no-files-found: ignore
 
       - name: MSI and EXE
-        # -PkeloCommit: the commit this run built, shown in My as a link to its source on GitHub (a checkout is clean, so not modified)
-        run: '& $env:GRADLE_CMD --no-daemon packageMsi packageExe createDistributable "-PkeloVersion=${{ env.VERSION }}" "-PkeloCommit=${{ github.sha }}" "-PkeloDirty=false" "-Dorg.gradle.jvmargs=$env:KELO_GRADLE_JVMARGS"'
+        # No -PkeloCommit: the version line in My links by release tag (windows-<package version>), so the commit is not put into the app and
+        # a build of the public tag has the same bytes (a checkout is clean, so not modified)
+        run: '& $env:GRADLE_CMD --no-daemon packageMsi packageExe createDistributable "-PkeloVersion=${{ env.VERSION }}" "-PkeloDirty=false" "-Dorg.gradle.jvmargs=$env:KELO_GRADLE_JVMARGS"'
 
       - name: MSIX
         shell: pwsh

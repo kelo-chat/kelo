@@ -212,12 +212,37 @@ def test_vendors_that_take_only_listed_apps_are_keys_on_the_same_mcp_address():
     assert SERVICES["ibkr"].url == "https://api.ibkr.com/v1/api/mcp-public"
 
 
-async def test_scopes_made_for_another_assistant_are_not_asked_for():
-    fake = Refusing(at_once=False, cimd=False, dcr=True, www_scope=False, prm_scopes=["offline_access", "read", "write", "claudeai", "chatgpt.tools"])
+async def test_listed_scopes_go_through_the_model_pick_and_no_brand_list():
+    from assistant.scope_pick import ScopePick
+    listed = ["offline_access", "read", "write", "claudeai", "chatgpt.tools"]
+    asked = []
+
+    async def ask(system, user):
+        asked.append(json.loads(user))
+        return {"scopes": ["offline_access", "read", "write", "made_up"]}   # a name the server never listed is dropped
+    fake = Refusing(at_once=False, cimd=False, dcr=True, www_scope=False, prm_scopes=listed)
     conn = McpConnections(Store(":memory:"), fetcher=fake.fetch, relay=RELAY)
+    conn.picker = ScopePick(ask)
     got = q(await conn.start("notion", ORIGIN))
     assert got["scope"] == "offline_access read write" and fake.registered[0]["scope"] == "offline_access read write"
+    assert asked == [{"service": "notion", "scopes": listed}]
     assert fake.preflights == []   # a registered client is this app's own: nothing to check first
+
+
+async def test_no_model_or_a_bad_answer_asks_for_no_scope():
+    from assistant.scope_pick import ScopePick
+    listed = ["offline_access", "read", "write", "claudeai"]
+
+    async def start(picker):
+        fake = Refusing(at_once=False, cimd=False, dcr=True, www_scope=False, prm_scopes=listed)
+        conn = McpConnections(Store(":memory:"), fetcher=fake.fetch, relay=RELAY)
+        conn.picker = picker
+        return q(await conn.start("notion", ORIGIN))
+    assert "scope" not in await start(None) or (await start(None))["scope"] in ("", [""])
+    for answer in (None, {"scopes": "read"}, {"scopes": [1]}, {"other": []}):
+        async def ask(system, user, answer=answer):
+            return answer
+        assert (await start(ScopePick(ask))).get("scope", "") in ("", [""])
 
 
 def test_no_connector_uses_an_address_made_for_another_assistant():

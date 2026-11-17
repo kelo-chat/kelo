@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Dán từ điện thoại</string>
+    <string name="live_pasted">Đã dán. Hãy kiểm tra ô nhập.</string>
+    <string name="live_copy_from_browser">Sao chép từ trình duyệt</string>
+    <string name="live_copied_to_phone">Đã sao chép vào điện thoại</string>
+</resources>

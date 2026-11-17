@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">忘れたトピック</string>
+    <string name="forget_intro">Kelo に忘れてもらったトピックです。見つかった内容は削除済みで、今後は記録しません。</string>
+    <string name="forget_empty">忘れたトピックはまだありません。Kelo にトピックを忘れてもらうと、ここに表示されます。</string>
+    <string name="forget_date">%1$s に忘れました</string>
+    <string name="forget_removed">削除した内容: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">削除する内容は見つかりませんでした。</string>
+    <string name="forget_cat_memory">記憶</string>
+    <string name="forget_cat_notes">メモ</string>
+    <string name="forget_cat_reminders">リマインダー</string>
+    <string name="forget_cat_skills">スキル</string>
+    <string name="forget_cat_history">ログ</string>
+    <string name="forget_cat_other">その他</string>
+    <string name="forget_allow_again">もう一度許可</string>
+    <string name="forget_allow_confirm">Kelo が「%1$s」についてまた記録してもよいですか？ 削除した内容は元に戻りません。</string>
+    <string name="forget_allowed">Kelo がまた記録できるようになりました。</string>
+    <string name="paycover_title">事前に承認した支払い</string>
+    <string name="paycover_switch">事前に承認した支払いを許可</string>
+    <string name="paycover_switch_note">オフにすると、すべての支払いで先に確認します。</string>
+    <string name="paycover_empty">事前に承認したものはありません。注文や予定された支払いを事前に承認すると、ここに表示されます。</string>
+    <string name="paycover_off_note">オフです。一覧はそのまま残りますが、すべての支払いで確認します。</string>
+    <string name="paycover_orders">注文</string>
+    <string name="paycover_allows">予定された支払い</string>
+    <string name="paycover_cap">合計 %1$s まで</string>
+    <string name="paycover_until">%1$s まで</string>
+    <string name="paycover_for_task">1 件のタスク用</string>
+    <string name="paycover_for_schedule">スケジュール「%1$s」用</string>
+    <string name="paycover_for_a_schedule">予定されたタスク用</string>
+    <string name="paycover_one_order">注文 1 件</string>
+    <string name="paycover_allow_scope">同じショップ、同じ支払い方法</string>
+    <string name="paycover_remove">%1$s を削除</string>
+    <string name="paycover_remove_order_confirm">この承認を削除しますか？ この注文は支払い前に確認します。</string>
+    <string name="paycover_remove_allow_confirm">「%1$s」の許可を削除しますか？ このスケジュールの支払いは毎回確認します。</string>
+    <string name="paycover_removed">削除しました。支払いは確認します。</string>
+    <string name="preapprove_what">注文</string>
+    <string name="preapprove_cap">上限額</string>
+    <string name="preapprove_cap_value">%1$s（税・送料込み）</string>
+    <string name="preapprove_until">期限</string>
+    <string name="preapprove_covers">対象</string>
+    <string name="preapprove_covers_value">この注文 1 件のみ</string>
+    <string name="preapprove_requirements">必須条件</string>
+    <string name="preapprove_shipping">配送</string>
+    <string name="preapprove_shops">ショップ</string>
+    <string name="preapprove_delegated">Kelo に任せる</string>
+    <string name="chat_payment_cover_order">事前に承認した注文で支払いました</string>
+    <string name="chat_payment_cover_schedule">このスケジュールの支払い許可で支払いました</string>
+</resources>

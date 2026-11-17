@@ -4,9 +4,11 @@ fake https addresses; nothing goes to the network."""
 
 import pytest
 
+from assistant.page_judge import PageJudge
 from assistant import address
 from assistant.tools.browser import BrowserSession
 from assistant.tools.order import fill_values
+from fake_page_judge import FakePageJudge
 
 from test_purchase import PUBLIC
 
@@ -60,6 +62,7 @@ async def filled(ctx, url, prof):
     async def connect():
         return page
     session = BrowserSession(connect=connect, resolver=PUBLIC)
+    session.page_judge = PageJudge(FakePageJudge().ask)   # stands in for the owner's main model: it reads the labels of fields without autocomplete
     await (await session.page()).goto(url)
     result = await session.fill_address(fill_values({**address.clean(prof), "note": prof.get("note", "")}))
     values = dict(await page.eval_on_selector_all("input, select, textarea", "els => els.map(e => [e.name || e.id, e.value])"))

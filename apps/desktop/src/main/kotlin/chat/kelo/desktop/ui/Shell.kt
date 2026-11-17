@@ -30,7 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -85,6 +85,7 @@ import chat.kelo.desktop.core.MY_PAGE_WALLET
 import chat.kelo.app.notify.OpenTarget
 import chat.kelo.app.agent.ownTabId
 import chat.kelo.app.shell.PairAgainScreen
+import chat.kelo.app.shell.ServerOldUpdater
 import chat.kelo.app.shell.ServerTooOldScreen
 import chat.kelo.desktop.pages.ConnectorsPane
 import chat.kelo.desktop.pages.GoalsPane
@@ -225,7 +226,12 @@ private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onPage
                 // as on the phone, the agent opens its own page (My → the agent: its name, picture and what it is doing)
                 FloatingHeader(p, shell, onAgent = { app.myPageRequests.value = MY_PAGE_AGENT; onPage(Page.MY) }, modifier = Modifier.align(Alignment.TopCenter))
                 // a newer app version: a small pill once per version (My keeps the card and the download)
-                UpdateBanner(app, onOpenMy = { onPage(Page.MY) }, modifier = Modifier.align(Alignment.BottomCenter))
+                val popupUp = updatePopupOpen(app) != null
+                if (!popupUp) {
+                    UpdateBanner(app, onOpenMy = { onPage(Page.MY) }, modifier = Modifier.align(Alignment.BottomCenter))
+                    AppNoticeHost(app, onOpenMy = { onPage(Page.MY) }, modifier = Modifier.align(Alignment.BottomCenter))
+                }
+                UpdatePopupHost(app, onOpenMy = { onPage(Page.MY) })
                 // Keyguard: the server holds no key ("Kelo is locked", 423 / agent status): this computer holds no copy, so the banner
                 // says where to unlock and offers the recovery code (My → Keyguard)
                 val locked by app.sessions.locked.collectAsState()
@@ -244,7 +250,10 @@ private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onPage
         if (updateRequired) UpdateRequiredScreen(app)
         else if (keyChanged) PairAgainScreen(onPairAgain = { app.sessions.pairAgain(); onSignedOut() })
         else if (serverOld || AppVersion.serverTooOld(serverSeen)) {
-            ServerTooOldScreen(serverSeen, onRetry = { app.sessions.recheckServer() })
+            val oldUpdater = remember(app.sessions) {
+                ServerOldUpdater(app.scope, { app.sessions.api.value }, onDone = { app.sessions.recheckServer() })
+            }
+            ServerTooOldScreen(serverSeen, onRetry = { app.sessions.recheckServer(); oldUpdater.probe() }, updater = oldUpdater)
         }
     }
 }

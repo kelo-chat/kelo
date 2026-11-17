@@ -18,7 +18,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,7 +68,7 @@ fun PendingCard(vm: AgentViewModel, a: PendingApproval, working: Boolean) {
         return
     }
     Card {
-        PendingApprovalBody(a, working, cardError) { ok, rememberSite, rememberSchedule ->
+        PendingApprovalBody(a, working, cardError) { ok, rememberSite, rememberSchedule, rememberRecipient ->
             val card = a.event.card
             if (ok && card != null && card.needsCard) {
                 haptics.tick()
@@ -79,7 +79,7 @@ fun PendingCard(vm: AgentViewModel, a: PendingApproval, working: Boolean) {
                 })
             } else {
                 if (ok) haptics.confirm() else haptics.reject()
-                vm.answer(a, ok, remember = rememberSite, rememberSchedule = rememberSchedule)
+                vm.answer(a, ok, remember = rememberSite, rememberSchedule = rememberSchedule, rememberRecipient = rememberRecipient)
             }
         }
     }
@@ -94,14 +94,14 @@ fun PendingCard(vm: AgentViewModel, a: PendingApproval, working: Boolean) {
 @Composable
 fun PendingApprovalBody(
     a: PendingApproval, working: Boolean, cardError: chat.kelo.app.wallet.CardSendError?,
-    onAnswer: (Boolean, Boolean, Boolean) -> Unit,
+    onAnswer: (Boolean, Boolean, Boolean, Boolean) -> Unit,
 ) {
     val c = Kelo.colors
     val payment = a.event.payment
     if (a.event.urgent) UrgentLine(a.event.missed)
     a.event.grant?.let { grant ->
         // the setup card of a "when X happens, do Y" task, the same as in the chat
-        TaskGrantApproval(grant, open = !working) { ok -> onAnswer(ok, false, false) }
+        TaskGrantApproval(grant, open = !working) { ok -> onAnswer(ok, false, false, false) }
         return
     }
     if (payment != null) {
@@ -115,7 +115,7 @@ fun PendingApprovalBody(
                 else -> chat.kelo.app.chat.CardSend.Idle
             },
         )
-        PurchaseApproval(item, payment) { ok -> onAnswer(ok, false, false) }
+        PurchaseApproval(item, payment) { ok -> onAnswer(ok, false, false, false) }
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -126,18 +126,26 @@ fun PendingApprovalBody(
                 color = c.ink, modifier = Modifier.weight(1f))
         }
         if (a.site.isNotBlank() && a.event.lines.isEmpty()) MutedText(a.site, small = true)
-        chat.kelo.app.chat.ApprovalFacts(a.event.lines, a.event.detail)
+        val editable = a.event.editable
+        a.event.preapproval?.let { PreapprovalFacts(it) }
+            ?: chat.kelo.app.chat.ApprovalFacts(if (editable != null) ApprovalEditRules.withoutMessage(a.event.lines, editable) else a.event.lines, a.event.detail.takeIf { editable == null })
+        if (editable != null) EditableMessageBlock(a.id, editable, enabled = !working)
         if (a.event.items.isNotEmpty()) chat.kelo.app.chat.ApprovalItems(a.event.items)
+        if (a.event.forgetPlan.isNotEmpty()) ForgetPlanList(a.event.forgetPlan)
         if (a.askedAt > 0) Text(string(Res.string.agent_perm_asked, relText(a.askedAt)), style = MaterialTheme.typography.labelSmall, color = c.muted)
         if (a.canRemember && a.site.isNotBlank() && a.event.payment == null) {
             RememberSiteCheck(a.site, rememberSite, enabled = !working) { rememberSite = it }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryButton(string(Res.string.chat_approval_deny), enabled = !working, modifier = Modifier.weight(1f), onClick = { onAnswer(false, false, false) })
-            PrimaryButton(string(Res.string.chat_approval_allow), enabled = !working, modifier = Modifier.weight(1f), onClick = { onAnswer(true, rememberSite, false) })
+        if (RecipientRules.canAlways(a.event.offers)) {
+            RecipientChoices(a.event.offers, enabled = !working) { answer ->
+                onAnswer(answer.approve, false, false, answer == RecipientRules.Answer.ALWAYS)
+            }
+        } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SecondaryButton(string(Res.string.chat_approval_deny), enabled = !working, modifier = Modifier.weight(1f), onClick = { onAnswer(false, false, false, false) })
+            PrimaryButton(string(Res.string.chat_approval_allow), enabled = !working, modifier = Modifier.weight(1f), onClick = { onAnswer(true, rememberSite, false, false) })
         }
         if (a.canRememberSchedule) {
-            LinkButton(string(Res.string.approval_keep_for_schedule), onClick = { onAnswer(true, false, true) })
+            LinkButton(string(Res.string.approval_keep_for_schedule), onClick = { onAnswer(true, false, true, false) })
         }
     }
 }
@@ -172,6 +180,19 @@ fun RememberSiteCheck(site: String, checked: Boolean, enabled: Boolean, onChange
 @Composable
 fun HumanCheckBody(a: PendingApproval, working: Boolean, onSolve: () -> Unit, onDone: () -> Unit, onSkip: () -> Unit) {
     val c = Kelo.colors
+    if (a.isDevice) {   // the phone's screen: the server's own (already translated) question and reason, open it or say you are done
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(KeloIcons.User, contentDescription = null, tint = c.accent)
+                Text(a.event.ask.ifBlank { string(Res.string.handover_device_open) }, style = MaterialTheme.typography.titleMedium, color = c.ink, modifier = Modifier.weight(1f))
+            }
+            a.event.detail?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.muted) }
+            if (a.askedAt > 0) Text(string(Res.string.agent_perm_asked, relText(a.askedAt)), style = MaterialTheme.typography.labelSmall, color = c.muted)
+            PrimaryButton(string(Res.string.handover_device_open), enabled = !working, modifier = Modifier.fillMaxWidth(), onClick = onSolve)
+            SecondaryButton(string(Res.string.live_done), enabled = !working, modifier = Modifier.fillMaxWidth(), onClick = onDone)
+        }
+        return
+    }
     val site = a.site.ifBlank { string(Res.string.handover_this_site) }
     // a sign-in's second step (approve on the phone, or a code) is not a person check: its own words, the server's step first
     val verify = a.isVerification

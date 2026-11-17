@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Server address</string>
+    <string name="server_address_title">Change server address</string>
+    <string name="server_address_body">Connected address: %1$s\nTo move to a new address of the same Kelo server, type the new https address. Your chats and keys stay as they are, and you don\'t need to connect again.</string>
+    <string name="server_address_switch">Switch</string>
+    <string name="server_address_checking">Checking…</string>
+    <string name="server_address_invalid">That doesn\'t look like an https address. Type it like https://kelo.example.com.</string>
+    <string name="server_address_unreachable">Couldn\'t reach that address. Check it and your connection, then try again.</string>
+    <string name="server_address_other">That address belongs to a different server, so nothing was changed. To connect to another server, log out and connect it from the start.</string>
+    <string name="server_address_same">This phone already uses that address.</string>
+    <string name="server_address_done">Server address changed.</string>
+</resources>

@@ -1,0 +1,17 @@
+{
+ "_note": "Background services the browser calls on its own (also off by policy): refused here, matched as the host or a subdomain. Data, not code.",
+ "deny_hosts": [
+  "chromekanonymity-pa.googleapis.com",
+  "chromewebstore.googleapis.com",
+  "clients2.google.com",
+  "clients2.googleusercontent.com",
+  "clientservices.googleapis.com",
+  "content-autofill.googleapis.com",
+  "dl.google.com",
+  "edgedl.me.gvt1.com",
+  "optimizationguide-pa.googleapis.com",
+  "redirector.gvt1.com",
+  "safebrowsingohttpgateway.googleapis.com",
+  "update.googleapis.com"
+ ]
+}

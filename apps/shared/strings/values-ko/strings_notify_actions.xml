@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_notify_actions.xml (generated from values/strings_notify_actions.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="notify_action_reply">답장</string>
+    <string name="notify_unlock_retry">휴대폰 잠금을 풀고 다시 눌러 주세요.</string>
+    <string name="notify_send_failed_open">보내지 못했어요. Kelo를 열어 답해 주세요.</string>
+    <string name="notify_send_failed_tap">보내지 못했어요. 눌러서 Kelo를 여세요.</string>
+</resources>

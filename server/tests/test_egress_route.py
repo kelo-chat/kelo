@@ -95,7 +95,7 @@ async def test_through_the_vpn_a_name_goes_as_a_domain_and_is_never_looked_up_he
     proxy = await asyncio.start_server(e.handle, "127.0.0.1", 0)
     port = proxy.sockets[0].getsockname()[1]
     try:
-        r, w, head = await request(port, "CONNECT site.example:443 HTTP/1.1")
+        r, w, head = await request(port, "CONNECT site.example.com:443 HTTP/1.1")
         assert head.startswith(b"HTTP/1.1 200")
         w.write(b"hello")
         await w.drain()
@@ -112,7 +112,7 @@ async def test_through_the_vpn_a_name_goes_as_a_domain_and_is_never_looked_up_he
         proxy.close()
         await fake.close()
     got = [(q["atyp"], q["host"], q["port"], q["cmd"]) for q in fake.requests]
-    assert got[:2] == [(3, "site.example", 443, 1), (1, "93.184.216.34", 8443, 1)]
+    assert got[:2] == [(3, "site.example.com", 443, 1), (1, "93.184.216.34", 8443, 1)]
     assert got[2][0] == 4 and got[2][2] == 443                                  # the IPv6 literal as an IPv6 address
 
 
@@ -142,7 +142,7 @@ async def test_through_the_vpn_plain_http_goes_the_same_way(tmp_path):
     proxy = await asyncio.start_server(e.handle, "127.0.0.1", 0)
     try:
         r, w = await asyncio.open_connection("127.0.0.1", proxy.sockets[0].getsockname()[1])
-        w.write(b"GET http://site.example/x HTTP/1.1\r\nHost: site.example\r\n\r\n")
+        w.write(b"GET http://site.example.com/x HTTP/1.1\r\nHost: site.example.com\r\n\r\n")
         await w.drain()
         got = await asyncio.wait_for(r.read(500), 5)
         assert got.startswith(b"echo:GET /x HTTP/1.1")
@@ -155,7 +155,7 @@ async def test_through_the_vpn_plain_http_goes_the_same_way(tmp_path):
     finally:
         proxy.close()
         await fake.close()
-    assert [(q["atyp"], q["host"], q["port"]) for q in fake.requests] == [(3, "site.example", 80)]
+    assert [(q["atyp"], q["host"], q["port"]) for q in fake.requests] == [(3, "site.example.com", 80)]
 
 
 # ----------------------------------------------------------------------------------------------------------------- fail closed
@@ -173,11 +173,11 @@ async def test_when_the_vpn_cannot_be_reached_nothing_is_sent_directly(tmp_path)
             else:
                 path.write_text(content)
                 os.utime(path, ns=(1, 3_000_000_000))
-            r, w, head = await request(port, f"CONNECT site.example:{site_port} HTTP/1.1")
+            r, w, head = await request(port, f"CONNECT site.example.com:{site_port} HTTP/1.1")
             assert head.startswith(b"HTTP/1.1 502") and VPN_DOWN.encode() in await r.read(500)
             w.close()
             r, w = await asyncio.open_connection("127.0.0.1", port)
-            w.write(f"GET http://site.example:{site_port}/ HTTP/1.1\r\nHost: site.example\r\n\r\n".encode())
+            w.write(f"GET http://site.example.com:{site_port}/ HTTP/1.1\r\nHost: site.example.com\r\n\r\n".encode())
             await w.drain()
             assert (await r.read(500)).count(b"direct:") == 0
             w.close()
@@ -194,7 +194,7 @@ async def test_a_vpn_that_answers_with_an_error_is_refused_not_retried_directly(
         path, e = make(tmp_path, resolver=lambda h, p, *a, **k: [(2, 1, 6, "", ("127.0.0.1", p))], allow_ip=lambda ip: True)
         write_route(path, mode="socks5", host="127.0.0.1", port=fake.port, generation=1)
         with pytest.raises(Denied) as err:
-            await e.dial("site.example", "site.example", site_port)
+            await e.dial("site.example.com", "site.example.com", site_port)
         assert err.value.status == 502 and text in err.value.reason
         await fake.close()
     site.close()
@@ -205,7 +205,7 @@ async def test_a_start_with_the_vpn_on_and_the_sidecar_not_ready_refuses_browsin
     # the situation after a restart behind Keyguard: route.json says socks5, but the files for the sidecar cannot be rebuilt yet
     path, e = make(tmp_path, resolver=no_dns)
     write_route(path, mode="socks5", host="127.0.0.1", port=1, generation=7)
-    for host in ("site.example", "93.184.216.34"):
+    for host in ("site.example.com", "93.184.216.34"):
         with pytest.raises(Denied) as err:
             await e.dial(host, host, 443)
         assert err.value.status == 502 and err.value.reason == VPN_DOWN
@@ -234,19 +234,19 @@ async def test_a_tunnel_opened_direct_is_closed_when_the_route_changes_to_the_vp
     port = proxy.sockets[0].getsockname()[1]
     watcher = asyncio.create_task(e.watch(0.02))
     try:
-        r1, w1 = await open_tunnel(port, f"site.example:{site_port}")                   # direct (no route file yet)
+        r1, w1 = await open_tunnel(port, f"site.example.com:{site_port}")                   # direct (no route file yet)
         w1.write(b"a")
         await w1.drain()
         assert await r1.read(100) == b"direct:a"
         write_route(path, mode="socks5", host="127.0.0.1", port=fake.port, generation=1)
         assert await asyncio.wait_for(r1.read(100), 3) == b""                          # closed by egress, with no new connection coming in
-        r2, w2 = await open_tunnel(port, "site.example:443")                            # a new one goes through the VPN
+        r2, w2 = await open_tunnel(port, "site.example.com:443")                            # a new one goes through the VPN
         w2.write(b"b")
         await w2.drain()
         assert await r2.read(100) == b"echo:b"
         write_route(path, mode="direct", generation=2)
         assert await asyncio.wait_for(r2.read(100), 3) == b""                          # and the VPN tunnel is closed when it is turned off
-        r3, w3 = await open_tunnel(port, f"site.example:{site_port}")
+        r3, w3 = await open_tunnel(port, f"site.example.com:{site_port}")
         w3.write(b"c")
         await w3.drain()
         assert await r3.read(100) == b"direct:c"
@@ -267,9 +267,9 @@ async def test_switching_from_one_vpn_to_another_also_closes_the_open_tunnels(tm
     proxy = await asyncio.start_server(e.handle, "127.0.0.1", 0)
     port = proxy.sockets[0].getsockname()[1]
     try:
-        r1, w1 = await open_tunnel(port, "site.example:443")
+        r1, w1 = await open_tunnel(port, "site.example.com:443")
         write_route(path, mode="socks5", host="127.0.0.1", port=fake.port, generation=2)    # same address, another VPN behind it
-        r2, w2 = await open_tunnel(port, "site.example:443")                                  # the next new connection notices at once
+        r2, w2 = await open_tunnel(port, "site.example.com:443")                                  # the next new connection notices at once
         assert await asyncio.wait_for(r1.read(100), 3) == b""
         w2.write(b"x")
         await w2.drain()

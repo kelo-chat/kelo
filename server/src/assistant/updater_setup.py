@@ -25,6 +25,7 @@ from .cli import ensure_updater_token, read_env, write_env
 from .instances import MAIN, InstanceError, Instances
 
 PROFILE = "updater"
+VERSION_ENV = "KELO_RELEASE_VERSION"   # the installer's --version: pull_release takes the images of exactly this release
 
 
 def _profiles(env: Path) -> list[str]:
@@ -96,16 +97,21 @@ def setup(m: Instances, *, auto: bool | None = None, registry: str | None = None
     return 0
 
 
-def pull_release(m: Instances) -> str:
-    """A first install from the release (the installer's --from-release): pull Kelo's images of the newest release, check each one
-    like an update does (digest, signature, version), then put them on the shared tags. The Claude / agy sidecars are not in a
-    release (proprietary CLIs); `docker compose up -d` builds them here. Returns the version."""
+def pull_release(m: Instances, version: str | None = None) -> str:
+    """A first install from the release (the installer's --from-release): pull Kelo's images of the newest release (or of exactly
+    `version`, else $KELO_RELEASE_VERSION: the installer's --version), check each one like an update does (digest, signature,
+    version), then put them on the shared tags. The Claude / agy sidecars are not in a release (proprietary CLIs);
+    `docker compose up -d` builds them here. Returns the version."""
     from . import release as rel
     from .updater_service import shared_updater_image
 
     env = m.load(MAIN).env
     registry = read_env(env, "KELO_REGISTRY") or rel.DEFAULT_REGISTRY
-    r = rel.fetch(read_env(env, "KELO_RELEASES_URL") or rel.DEFAULT_RELEASES_URL, registry)
+    version = (version or os.environ.get(VERSION_ENV) or "").strip()
+    if version:
+        r = rel.by_version(version, registry, m.run)
+    else:
+        r = rel.fetch(read_env(env, "KELO_RELEASES_URL") or rel.DEFAULT_RELEASES_URL, registry)
     v = rel.Verifier(m.run, cosign=rel.cosign_command(), key=read_env(env, "KELO_COSIGN_KEY") or None)
     for comp in ("server", "workroom", "updater"):
         m.out(f"Downloading and checking {r.images[comp].repo} {r.version}...")
@@ -161,7 +167,7 @@ def run_command(args: Any, manager: Instances | None = None) -> int:
                 if args.registry:
                     from .release import check_registry
                     write_env(m.load(MAIN).env, {"KELO_REGISTRY": check_registry(args.registry)})
-                pull_release(m)
+                pull_release(m, getattr(args, "release_version", None))
             return setup(m, auto=args.auto, registry=args.registry, start=not args.no_start)
         if args.ucmd == "off":
             return off(m)

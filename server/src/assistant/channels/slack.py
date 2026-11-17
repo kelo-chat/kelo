@@ -294,9 +294,10 @@ class Slack(Channel):
         return []
 
     async def _message(self, e: dict[str, Any]) -> Incoming | None:
-        user = str(e.get("user") or "")
-        if (not user or user == self.me_id or e.get("bot_id") or e.get("subtype") not in (None, "file_share", "thread_broadcast")):
-            return None                         # itself, other bots, edits, deletes, join notices
+        from_bot = bool(e.get("bot_id")) or e.get("subtype") == "bot_message"
+        user = str(e.get("user") or (e.get("bot_id") if from_bot else "") or "")
+        if (not user or user == self.me_id or e.get("subtype") not in (None, "file_share", "thread_broadcast", "bot_message")):
+            return None                         # itself, edits, deletes, join notices (other bots are kept)
         channel, ts = str(e.get("channel", "")), str(e.get("ts", ""))
         if not (ID_OK.match(channel) and TS_OK.match(ts)):
             return None
@@ -305,7 +306,7 @@ class Slack(Channel):
         if self.me_id:
             text = text.replace(f"<@{self.me_id}>", f"@{self.me_name or 'bot'}")
         private = e.get("channel_type") == "im"
-        inc = Incoming(chat_id=channel, user_id=user, message_id=ts, text=text, private=private)
+        inc = Incoming(chat_id=channel, user_id=user, message_id=ts, text=text, private=private, name=str(e.get("username") or "") if from_bot else "")
         if not private:
             root = str(e.get("thread_ts") or ts)
             self._threads.put(ts, root)

@@ -8,4 +8,8 @@
     <string name="actions_state_failed">Không thành công</string>
     <string name="actions_empty">Kelo chưa làm bất cứ việc gì bên ngoài.</string>
     <string name="actions_outside_text_note">Những gì Kelo đọc từ trang web, email và tệp tin đều được coi là dữ liệu, không bao giờ là hướng dẫn; văn bản đó không thể khiến Kelo thanh toán, gửi hoặc xóa bất cứ thứ gì.</string>
+    <string name="did_filter_all">Tất cả</string>
+    <string name="did_filter_actions">Gửi &amp; thay đổi</string>
+    <string name="did_filter_browser">Trình duyệt</string>
+    <string name="did_filter_tasks">Nhiệm vụ</string>
 </resources>

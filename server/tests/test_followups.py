@@ -12,12 +12,14 @@ import pytest
 from assistant import i18n
 from assistant.followups import LABELS, TEMPLATES, DEADLINE_NOTE, LAST_NOTE, PAYMENT_NOTE, Followups, parse_when
 from assistant.home import Home, NOTIFY_PREFS
+from assistant.owner_copies import OwnerCopies
 from assistant.providers import Done, TextDelta
 from assistant.push import NOTE_TYPES, check_data, note_data
 from assistant.server import Settings, create_app
 from assistant.store import Store
 from assistant.workers import MAIN_ONLY
 
+from notify_fake import FakeRules
 from test_server import AUTH, TOKEN, Running
 
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -71,15 +73,16 @@ class FakeWorkers:
         return dict(r) if r else None
 
 
-def make(tmp_path=None, *, t0=None, writer=None, prefs=None, **kw):
+def make(tmp_path=None, *, t0=None, writer=None, prefs=None, rules=None, **kw):
     store = Store()
     store.set_profile(timezone="Asia/Seoul", provider="p", model="m")
     home = None
     if tmp_path is not None:
         home = Home(tmp_path / "home")
+        home.owner_copies = OwnerCopies(store)   # the rules are the owner's saved copy (owner_copies.py), written as the owner's editor does
         home.ensure_side_files()
         if prefs is not None:
-            (home.root / NOTIFY_PREFS).write_text(prefs, encoding="utf-8")
+            home.write(NOTIFY_PREFS, prefs, by="user")
     clock = Clock(t0 or ts(2026, 11, 7, 10, 0))
     sent = []
 
@@ -89,6 +92,8 @@ def make(tmp_path=None, *, t0=None, writer=None, prefs=None, **kw):
 
     writer = writer if writer is not None else Writer()
     f = Followups(store, home=home, stream_fn=writer, model=lambda: ("p", "m"), deliver=deliver, clock=clock, **kw)
+    if rules is not None:
+        f.notify_block = rules.block   # the main model's reading of the owner's don't-tell rules (notify_block.py), faked
     return f, store, clock, sent, writer
 
 
@@ -318,13 +323,44 @@ async def test_snooze_and_drop_from_the_agents_tools():
 
 async def test_notify_prefs_keep_an_item_but_never_remind(tmp_path):
     prefs = "# NOTIFY_PREFS.md\n\n## Tell me\n\n## Do not tell me\n- tickets.example\n\n## When\n\n## How\n"
-    f, store, clock, sent, _ = make(tmp_path, prefs=prefs)
+    rules = FakeRules("tickets.example")
+    f, store, clock, sent, _ = make(tmp_path, prefs=prefs, rules=rules)
     login_slot(store)
     fid = f.login_requested("login-tickets", "Tickets", "tickets.example.com")
     clock.t += 30 * MIN
     assert await f.tick() == 0 and sent == []
     item = f.get(fid)
     assert item["suppressed"] is True and item["status"] == "open" and item["next_at"] is None
+    assert len(rules.calls) == 1 and "tickets.example" in rules.calls[0]["rules"]
+
+
+async def test_rules_nobody_can_read_hold_the_item_back_without_marking_it(tmp_path):
+    prefs = "# NOTIFY_PREFS.md\n\n## Do not tell me\n- anything about the gym\n"
+    for rules in (FakeRules(down=True), None):                   # the model is away / no reader wired
+        f, store, clock, sent, _ = make(tmp_path / ("a" if rules else "b"), prefs=prefs, rules=rules)
+        login_slot(store)
+        fid = f.login_requested("login-tickets", "Tickets", "tickets.example.com")
+        clock.t += 30 * MIN
+        assert await f.tick() == 0 and sent == []
+        assert f.get(fid)["suppressed"] is False                 # not marked: asked again next pass
+    ok = FakeRules("gym")
+    f, store, clock, sent, _ = make(tmp_path / "c", prefs=prefs, rules=ok)
+    login_slot(store)
+    f.login_requested("login-tickets", "Tickets", "tickets.example.com")
+    clock.t += 30 * MIN
+    assert await f.tick() == 1 and len(ok.calls) == 1            # the rules are read and the item is told
+    clock.t += 30 * MIN
+    await f.tick()
+    assert len(ok.calls) == 1                                    # the same item and rules: answered from the cache
+
+
+async def test_a_rule_the_agent_writes_into_notify_prefs_is_not_applied(tmp_path):
+    f, store, clock, sent, _ = make(tmp_path, prefs="# NOTIFY_PREFS.md\n\n## Tell me\n\n## Do not tell me\n\n## When\n\n## How\n")
+    f.home.write(NOTIFY_PREFS, "# NOTIFY_PREFS.md\n\n## Do not tell me\n- tickets.example\n", by="agent")   # a note of the agent's, not a rule
+    login_slot(store)
+    fid = f.login_requested("login-tickets", "Tickets", "tickets.example.com")
+    clock.t += 30 * MIN
+    assert await f.tick() == 1 and f.get(fid)["suppressed"] is False                                       # the owner's rules are the saved copy
 
 
 async def test_off_or_busy_means_no_follow_up():
@@ -613,7 +649,7 @@ async def test_a_schedules_expired_card_is_followed_up_at_once_and_retry_runs_th
         note = next(n for n in (await c.get("/api/notifications")).json()["items"] if n["type"] == "followup")
         assert note["followup_id"] == item["id"] and "다시 시도할까요?" in note["body"] and not note.get("approval_id")
         msgs = (await c.get("/api/messages")).json()
-        assert msgs[-1]["id"] == item["message_id"]
+        assert item["message_id"] in [m["id"] for m in msgs]   # the run's closing message (scheduled_runs.py) comes after it
         for _ in range(100):
             if not (await c.get(f"/api/schedules/{s['id']}")).json()["running"]:
                 break

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable  # noqa: F401
 from typing import TYPE_CHECKING, Any
 
+from . import tool_roles
 from .reply_text import ReplyText
 from .turn_engine import Turn, _server  # noqa: F401
 
@@ -26,10 +27,14 @@ def start_worker_turn(ctx: Any, w: dict[str, Any], transcript: list[dict[str, An
     provider, model = resolve_model(None, None)
     tz = store.profile()["timezone"]
     messages = [{"role": "system", "content": system_text(provider, model, tz)}, *transcript]
+    if w.get("kind") == tool_roles.PHONE_KIND:   # the phone job's tools are not core tools: they are loaded for it up front, never searched for
+        ctx.tool_scopes.add(f"job:{w['id']}", [t.name for t in worker_tools if tool_roles.is_phone_tool(t.name) or t.name in tool_roles.PHONE_HELPERS])
     turn = start_turn(provider, model, messages, observe, source="worker", title=w["title"], unattended=True, owner=w["tab"],
                       tools_=worker_tools, max_steps=steps, tool_scope=f"job:{w['id']}")
     turn.quiet_end = True
     turn.worker_id = w["id"]
+    if getattr(ctx, "run_progress", None) is not None:
+        ctx.run_progress.set_count(f"job:{w['id']}", int(w.get("steps") or 0))
     activity.link_task(turn.task_id, w["parent_task_id"], w["id"])
     return turn
 
@@ -172,7 +177,8 @@ def worker_limit_text(ctx: Any, until: float | None) -> str:
     main = journal_model()
     if main and limit_guard.balance_out(main[0]):
         return i18n.t(model_limits.BALANCE_STOPPED, provider=model_limits.provider_name(main[0]))
-    return model_limits.paused_text(until if until and worker_limit_known() else None, store.profile()["timezone"])
+    busy = bool(main and limit_guard.busy_now(main[0]))   # a busy model (429, reset unknown): "busy", not "used up"
+    return model_limits.paused_text(until if until and worker_limit_known() else None, store.profile()["timezone"], busy=busy)
 
 
 def worker_limit_notice(ctx: Any, row: dict[str, Any], until: float) -> bool:

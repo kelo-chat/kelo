@@ -2,7 +2,7 @@ import SwiftUI
 import KeloCore
 import KeloShared
 
-/// 마이 → Kelo가 한 일 (Android my/ActionsPage.kt): what Kelo did outside, when, where and from which run (GET /api/actions).
+/// 마이 → Kelo가 한 일 (Android my/ActionsPage.kt): what Kelo did outside, when, where and from which run (GET /api/did).
 struct ActionsPage: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -27,8 +27,18 @@ struct ActionsPage: View {
             }
         ) {
             VStack(alignment: .leading, spacing: 8) {
+                // Filter chips: all / send & change / browser / tasks (they wrap on a narrow screen and in long languages)
+                WalletWrap(spacing: 8) {
+                    ForEach(DidFilter.allCases, id: \.self) { f in
+                        ChoiceChip(L(f.labelKey), selected: model.filter == f) {
+                            model.setFilter(f)
+                        }
+                    }
+                }
+                .padding(.bottom, 2)
+
                 // Period chips
-                HStack(spacing: 8) {
+                WalletWrap(spacing: 8) {
                     ForEach(ActionPeriod.allCases, id: \.self) { p in
                         ChoiceChip(L(p.labelKey), selected: model.period == p) {
                             Task { await model.setPeriod(p) }
@@ -47,6 +57,8 @@ struct ActionsPage: View {
                         ForEach(group.items, id: \.id) { item in
                             ActionRow(item: item, onOpenTask: { taskId in
                                 app.router.open(.work(.task(taskId)))
+                            }, onOpenChat: {
+                                app.router.open(.chat)
                             })
                         }
                     }
@@ -73,23 +85,43 @@ struct ActionsPage: View {
 private struct ActionRow: View {
     let item: ActionItem
     let onOpenTask: (Int64) -> Void
+    let onOpenChat: () -> Void
     @Environment(\.kelo) private var c
 
     var body: some View {
-        let icon: KeloIcon = switch item.kind {
-        case "send": .send
-        case "change": .edit
-        case "delete": .trash
+        let icon: KeloIcon = switch item.normalizedKind {
+        case "browser": .globe
+        case "reply": .chat
+        case "task": .work
+        case "action":
+            switch item.kind {
+            case "change": .edit
+            case "delete": .trash
+            default: .send
+            }
         default: .spark
         }
-        let time = item.ts > 0 ? MyFormat.clock(item.ts) : ""
-        let subtitle = [item.sourceName, time].filter { !$0.isEmpty }.joined(separator: " · ")
-        let tagText: String? = switch item.state {
+        let time = item.timestamp > 0 ? MyFormat.clock(item.timestamp) : ""
+        let origin: String = {
+            if let s = item.site, !s.isEmpty { return s }
+            if let s = item.connector, !s.isEmpty { return s }
+            if !item.sourceName.isEmpty { return item.sourceName }
+            switch item.source {
+            case "schedule": return L(R.string.agent_source_schedule)
+            case "job": return L(R.string.work_source_job)
+            case "chat": return L(R.string.tab_chat)
+            default: return ""
+            }
+        }()
+        let subtitle = [origin, time].filter { !$0.isEmpty }.joined(separator: " · ")
+        let outcome = item.displayOutcome
+        let tagText: String? = switch outcome {
         case "unknown": L(R.string.actions_state_unknown)
         case "failed": L(R.string.actions_state_failed)
+        case "stopped", "interrupted": L(R.string.agent_task_stopped)
         default: nil
         }
-        let tagColor: Color = switch item.state {
+        let tagColor: Color = switch outcome {
         case "failed": c.danger
         case "unknown": c.warn
         default: c.muted
@@ -98,10 +130,18 @@ private struct ActionRow: View {
         let content = HStack(spacing: 16) {
             KeloIconView(icon, size: 24, tint: c.muted)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.line)
+                Text(item.displayTitle)
                     .font(KeloFont.bodyLarge)
                     .foregroundStyle(c.ink)
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !item.detail.isEmpty && item.detail != item.displayTitle {
+                    Text(item.detail)
+                        .font(KeloFont.small)
+                        .foregroundStyle(c.muted)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if !subtitle.isEmpty {
                     Text(subtitle)
                         .font(KeloFont.small)
@@ -125,13 +165,12 @@ private struct ActionRow: View {
         .padding(.vertical, 10)
         .contentShape(Rectangle())
 
-        if let taskId = item.taskId {
-            Button {
-                onOpenTask(taskId)
-            } label: {
-                content
-            }
-            .buttonStyle(.plain)
+        if item.kind == "reply" {
+            Button(action: onOpenChat) { content }.buttonStyle(.plain)
+        } else if let taskId = item.taskId {
+            Button { onOpenTask(taskId) } label: { content }.buttonStyle(.plain)
+        } else if item.source == "chat" {
+            Button(action: onOpenChat) { content }.buttonStyle(.plain)
         } else {
             content
         }

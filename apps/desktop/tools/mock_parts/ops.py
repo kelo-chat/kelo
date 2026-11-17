@@ -47,7 +47,8 @@ def _state(s) -> dict:
                     {"id": "h2", "tool": "browser_click", "label": "주문하기" if ko else "Placing an order", "site": "coupang.com", "detail": "",
                      "decision": "allowed_always", "asked_at": NOW - 86400 * 9},
                     {"id": "h3", "tool": "email_send", "label": "메일 보내기" if ko else "Sending an email", "site": "", "detail": "team@example.com",
-                     "decision": "denied", "asked_at": NOW - 86400 * 3},
+                     "decision": "denied", "asked_at": NOW - 86400 * 3, "kind": "send", "where": "team@example.com", "via": "notification",
+                     "edited": True, "result": "deny"},
                 ],
                 "vault": [
                     {"name": "login-naver", "label": "네이버" if ko else "Naver", "kind": "login", "hosts": ["naver.com", "nid.naver.com"], "has_secret": True,

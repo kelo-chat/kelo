@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="deliveries_label">Kelo रोज़ कितने संदेश खुद शुरू करे</string>
+    <string name="deliveries_about">Kelo जो बताना चाहता है, उसे रोज़ इतने संदेशों में समेटकर भेजता है। 0 होने पर वह सिर्फ़ वही भेजता है जो रुक नहीं सकता।</string>
+    <plurals name="deliveries_today">
+        <item quantity="one">आज %d बार भेजा</item>
+        <item quantity="other">आज %d बार भेजा</item>
+    </plurals>
+    <plurals name="deliveries_held">
+        <item quantity="one">%d आइटम रोका गया</item>
+        <item quantity="other">%d आइटम रोके गए</item>
+    </plurals>
+    <string name="deliveries_held_title">रोके गए संदेश</string>
+    <string name="deliveries_held_about">Kelo इन्हें अगले संदेश के लिए रखता है। भेजने से पहले वह इन्हें फिर देखता है और जो अब ज़रूरी नहीं, उसे हटा देता है।</string>
+    <string name="deliveries_held_empty">अभी कुछ भी रोका नहीं गया है।</string>
+    <string name="deliveries_held_until">%1$s तक रोका गया</string>
+    <string name="deliveries_why_slots">दिन के अगले संदेश का इंतज़ार है</string>
+    <string name="deliveries_why_cap">आज और भेजने जितना ज़रूरी नहीं है</string>
+    <string name="deliveries_why_reply">पिछले संदेश पर आपके जवाब का इंतज़ार है</string>
+    <string name="deliveries_why_other">बेहतर समय का इंतज़ार है</string>
+</resources>

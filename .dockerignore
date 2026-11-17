@@ -10,7 +10,8 @@ docs
 *.md
 server/web/node_modules
 server/web/dist
-dist
+dist/*
+!dist/kelo-src.tar.gz
 instances
 
 # Android app: signing keys, build output, local SDK path

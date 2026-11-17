@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">支払いの承認</string>
+    <string name="approval_sign_subtitle">指紋または顔で確認してください</string>
+    <string name="approval_sign_failed">このスマホで支払いを承認できませんでした。もう一度お試しください。</string>
+    <string name="approval_sign_key_lost">このスマホの支払い承認キーが見つかりません。このスマホをサーバーに再度ペアリングしてください。</string>
+    <string name="approval_pay_on_phone">支払いの承認は Kelo のスマホアプリで行ってください。</string>
+</resources>

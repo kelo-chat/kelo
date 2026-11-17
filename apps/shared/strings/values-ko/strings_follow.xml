@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Kelo가 챙기는 일</string>
+    <string name="follow_stop">그만 챙기기</string>
+    <string name="follow_stop_confirm">정말 챙기기를 그만둘까요?</string>
+    <string name="follow_stop_confirm_detail">더 이상 변경 사항을 확인하거나 미리 준비하지 않아요.</string>
+    <string name="follow_stop_yes">그만 챙기기</string>
+    <string name="follow_keep_watching">계속 챙기기</string>
+    <string name="follow_replan">다시 계획하기</string>
+    <string name="follow_sheet_title">챙기기 계획</string>
+    <string name="follow_plan_checks">확인할 내용</string>
+    <string name="follow_plan_prep">미리 준비할 일</string>
+    <string name="follow_plan_tell">알림</string>
+    <string name="follow_plan_tell_change">변경 사항 발생 시 알림</string>
+    <string name="follow_next_check">다음 확인: %1$s</string>
+    <string name="follow_last_check">마지막 확인: %1$s</string>
+    <string name="follow_prep_later">예정</string>
+    <string name="follow_prep_running">하는 중</string>
+    <string name="follow_prep_done">해 뒀어요</string>
+    <string name="follow_prep_failed">실패</string>
+    <string name="follow_state_watching">챙기는 중</string>
+    <string name="follow_state_stopped">중단됨</string>
+    <string name="follow_state_done">완료</string>
+    <string name="follow_summary_lead_flight">출발 하루 전 알림</string>
+    <string name="follow_summary_lead_general">하루 전 알림</string>
+    <string name="follow_summary_lead_hours">%1$d시간 전 알림</string>
+    <string name="follow_summary_prep_checkin">체크인 열리면 준비</string>
+    <string name="follow_summary_prep_general">%1$s 준비</string>
+    <string name="follow_summary_watch_changes">변경 사항 확인</string>
+    <string name="follow_summary_default">일정 챙기기</string>
+</resources>

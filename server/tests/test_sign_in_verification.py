@@ -12,7 +12,10 @@ from assistant.agent import handover
 from assistant.agent.fence import plain
 from assistant.tools import humanize
 from assistant.tools.browser import BrowserSession
-from assistant.tools.verification import verification_step
+from assistant.page_judge import PageJudge
+from assistant.tools.verification import unconfirmed, verification_step
+
+from fake_page_judge import FakePageJudge
 
 from fixtures.order_harness import public as PUBLIC
 
@@ -25,32 +28,63 @@ def probe(text, *, url="https://id.example.com/login/verify", title="", otp=0, s
             "short_inputs": short_inputs, "secret_box": secret_box}
 
 
-@pytest.mark.parametrize("text", [
+TEXTS = [
     "2단계 인증\n카카오톡으로 로그인 확인 요청을 보냈습니다. 휴대폰에서 확인해 주세요.",
     "2-Step Verification\nCheck your phone. We sent a notification to your Pixel. Tap Yes to sign in.",
     "2段階認証\nスマートフォンでログインを承認してください。",
     "Zwei-Faktor-Authentifizierung: Bestätigen Sie die Anmeldung in der App.",
     "两步验证：请在手机上确认登录。",
-])
-def test_an_approve_on_your_phone_page_in_any_language(text):
-    v = verification_step(probe(text))
+]
+
+
+@pytest.mark.parametrize("text", TEXTS)
+def test_a_short_page_after_a_sign_in_is_a_verification_step_until_the_judge_says_otherwise_in_any_language(text):
+    # fail closed (hc-pagefields): no word of any language is read; the page is short, no password box, nothing to type, and the agent
+    # started a sign-in on this tab, so with no judge answer it IS taken for a verification step (the user is asked)
+    v = verification_step(probe(text), signing_in=True)
     assert v is not None and v.step == "approve"
+    assert unconfirmed(probe(text), signing_in=True)
+    assert verification_step(probe(text)) is None                                           # no sign-in on this tab: the words decide nothing
+    assert verification_step({**probe(text), "judged_step": "none"}, signing_in=True) is None       # the page judge read it: not one
+    assert verification_step({**probe(text), "judged_step": "approve"}, signing_in=True).step == "approve"
+    assert not unconfirmed({**probe(text), "judged_step": "approve"}, signing_in=True)
 
 
-def test_a_code_page_by_its_boxes_or_by_a_short_input_next_to_the_words():
-    assert verification_step(probe("Enter the 6-digit code we sent to your phone", otp=1)).step == "code"
-    assert verification_step(probe("인증번호를 입력해 주세요. 문자로 보냈어요.", short_inputs=1)).step == "code"
-    assert verification_step(probe("Código de verificación", short_inputs=1, url="https://x.example/auth")).step == "code"
+def test_a_code_page_by_its_boxes_or_by_a_short_input():
+    assert verification_step(probe("Enter the 6-digit code we sent to your phone", otp=1)).step == "code"        # boxes: certain, no judge asked
+    assert not unconfirmed(probe("x", otp=1), signing_in=True)
+    assert verification_step(probe("인증번호를 입력해 주세요. 문자로 보냈어요.", short_inputs=1), signing_in=True).step == "code"
+    assert verification_step(probe("Código de verificación", short_inputs=1, url="https://x.example/auth"), signing_in=True).step == "code"
+    assert verification_step(probe("Código de verificación", short_inputs=1, url="https://x.example/auth")) is None
 
 
 def test_pages_that_only_talk_about_it_are_not_taken_for_one():
     article = "How two-step verification protects you. " * 300            # long: an article
-    assert verification_step(probe(article)) is None
+    assert verification_step(probe(article), signing_in=True) is None
     assert verification_step(probe("Two-step verification is on", url="https://shop.example.com/products/1", title="Mug")) is None
-    assert verification_step(probe("Enter the code", secret_box=True)) is None   # a password box: a sign-in form, not this
+    assert verification_step(probe("Enter the code", secret_box=True), signing_in=True) is None   # a password box: a sign-in form, not this
     assert verification_step(probe("Welcome back, Kim", otp=0)) is None
-    # a sign-in the agent started on this tab makes a short page with the words count even on a plain address
-    assert verification_step(probe("We sent a code to your email", url="https://shop.example.com/x", short_inputs=1), signing_in=True).step == "code"
+
+
+async def test_the_page_judge_is_asked_only_for_the_unconfirmed_short_page_and_its_answer_is_kept(ctx):
+    from assistant.page_judge import PageJudge
+    fake = FakePageJudge()
+    s, _page = await session_on(ctx)
+    s.page_judge = PageJudge(fake.ask)
+    p = probe(TEXTS[1])
+    await s.judge_probe(p, False)
+    assert "judged_step" not in p and fake.calls == []                                       # no sign-in started: not asked
+    await s.judge_probe(p, True)
+    assert p["judged_step"] == "approve" and fake.calls == ["verify"]
+    q = probe("Welcome back, Kim")
+    await s.judge_probe(q, True)
+    assert q["judged_step"] == "none" and verification_step(q, signing_in=True) is None
+    await s.judge_probe(probe(TEXTS[1]), True)
+    assert fake.calls == ["verify", "verify"]                                                # the same text is answered from the cache
+    s.page_judge = PageJudge(FakePageJudge(down=True).ask)
+    r = probe(TEXTS[0])
+    await s.judge_probe(r, True)
+    assert "judged_step" not in r and verification_step(r, signing_in=True).step == "approve"   # no answer: the safer side
 
 
 # ---------------------------------------------------------------- on a real page
@@ -91,6 +125,7 @@ async def session_on(ctx):
     async def connect():
         return page
     s = BrowserSession(connect=connect, resolver=PUBLIC)
+    s.page_judge = PageJudge(FakePageJudge().ask)   # stands in for the owner's main model
     s.overlay_pause = 0.05
     s.check_poll = 0.1
     s.settle_seconds = 0.1

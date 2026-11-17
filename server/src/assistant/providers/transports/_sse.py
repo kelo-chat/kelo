@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from ..types import ProviderError
+from ..types import ProviderError, error_code
 
 
 async def sse_events(response: httpx.Response) -> AsyncIterator[tuple[str | None, str]]:
@@ -41,7 +41,7 @@ async def raise_for_status(response: httpx.Response) -> None:
     if response.status_code < 400:
         return
     body = (await response.aread()).decode("utf-8", "replace")[:500]
-    raise ProviderError(f"HTTP {response.status_code} from provider: {body}", status=response.status_code,
+    raise ProviderError(f"HTTP {response.status_code} from provider: {body}", status=response.status_code, code=error_code(body),
                         retry_after=retry_after(response.headers.get("retry-after")))
 
 

@@ -9,6 +9,7 @@ import asyncio
 import contextlib
 import ctypes
 import os
+import sys
 import signal
 import subprocess
 import weakref
@@ -42,7 +43,9 @@ def _apply_posix_limits(limits: ProcessLimits) -> None:
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     if limits.file_size_limit_bytes is not None:
         resource.setrlimit(resource.RLIMIT_FSIZE, (limits.file_size_limit_bytes, limits.file_size_limit_bytes))
-    if limits.memory_limit_bytes is not None:
+    if limits.memory_limit_bytes is not None and sys.platform != "darwin":
+        # macOS refuses to lower RLIMIT_AS ("current limit exceeds maximum limit", checked on a clean macOS 15 VM): there the
+        # Supervisor's memory watchdog enforces the limit instead (docs/native-server.md, phase 1b-3)
         resource.setrlimit(resource.RLIMIT_AS, (limits.memory_limit_bytes, limits.memory_limit_bytes))
     if limits.umask is not None:
         os.umask(limits.umask)

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Ce dont Kelo s\'occupe</string>
+    <string name="follow_stop">Ne plus suivre</string>
+    <string name="follow_stop_confirm">Ne plus suivre cet élément ?</string>
+    <string name="follow_stop_confirm_detail">Kelo ne vérifiera plus les changements et ne préparera plus rien.</string>
+    <string name="follow_stop_yes">Ne plus suivre</string>
+    <string name="follow_keep_watching">Continuer à suivre</string>
+    <string name="follow_replan">Replanifier</string>
+    <string name="follow_sheet_title">Plan de suivi</string>
+    <string name="follow_plan_checks">Éléments surveillés</string>
+    <string name="follow_plan_prep">Préparations</string>
+    <string name="follow_plan_tell">Notifications</string>
+    <string name="follow_plan_tell_change">Notifier en cas de changement</string>
+    <string name="follow_next_check">Prochaine vérification : %1$s</string>
+    <string name="follow_last_check">Dernière vérification : %1$s</string>
+    <string name="follow_prep_later">Prévu</string>
+    <string name="follow_prep_running">En cours</string>
+    <string name="follow_prep_done">Fait à l\'avance</string>
+    <string name="follow_prep_failed">Échoué</string>
+    <string name="follow_state_watching">Suivi en cours</string>
+    <string name="follow_state_stopped">Arrêté</string>
+    <string name="follow_state_done">Terminé</string>
+    <string name="follow_summary_lead_flight">Notification 1 jour avant le départ</string>
+    <string name="follow_summary_lead_general">Notification 1 jour avant</string>
+    <string name="follow_summary_lead_hours">Notification %1$d h avant</string>
+    <string name="follow_summary_prep_checkin">Préparer l\'enregistrement dès ouverture</string>
+    <string name="follow_summary_prep_general">Préparer %1$s</string>
+    <string name="follow_summary_watch_changes">Surveiller les changements</string>
+    <string name="follow_summary_default">Prendre en charge l\'itinéraire</string>
+</resources>

@@ -723,3 +723,63 @@ async def test_the_server_asks_the_ai_consent_before_the_briefing_calls_the_mode
         assert (await c.put("/api/ai-consent", json={"accepted": True})).json()["accepted"] is True
         second = (await c.get("/api/briefing/preview")).json()["card"]               # the preview never asks a model
         assert second["headline"] is None and len(calls) == before
+
+
+# ---- the weather must not drop out of the morning card for one slow answer (owner 2026-11-17: "오늘 아침 브리핑엔 왜 날씨얘기가없지";
+# the forecast request timed out once and the card went out without weather)
+
+def _weather_down_then(fake: FakeWeather, up_after_sleeps: int | None):
+    """Open-Meteo and MET Norway (the last fallback) both down; Open-Meteo comes back after `up_after_sleeps` waits."""
+    waits: list[float] = []
+
+    async def sleep(s: float) -> None:
+        waits.append(s)
+        if up_after_sleeps is not None and len(waits) >= up_after_sleeps:
+            fake.down.discard("api.open-meteo.com")
+    fake.down |= {"api.open-meteo.com", "api.met.no"}
+    return sleep, waits
+
+
+async def test_open_meteo_down_alone_the_card_gets_its_weather_from_met_norway_without_waiting(tmp_path):
+    fake = FakeWeather()
+    store, clock, p, b, sent, m, _ = setup(tmp_path, ts(2026, 11, 17, 8, 0), fake=fake)
+    fake.down.add("api.open-meteo.com")
+    waits: list[float] = []
+
+    async def sleep(s: float) -> None:
+        waits.append(s)
+    b._sleep = sleep
+    card = await b.build(clock.t)
+    assert card is not None and card["weather"] is not None and card["weather"]["provider"] == "met_no"
+    assert waits == []
+
+
+async def test_a_forecast_that_fails_once_is_tried_again_and_the_card_has_the_weather(tmp_path):
+    fake = FakeWeather()
+    store, clock, p, b, sent, m, _ = setup(tmp_path, ts(2026, 11, 17, 8, 0), fake=fake)
+    b._sleep, waits = _weather_down_then(fake, up_after_sleeps=1)
+    card = await b.build(clock.t)
+    assert card is not None and card["weather"] is not None and card["place"] is not None
+    assert waits == [5]
+
+
+async def test_a_service_still_down_after_the_tries_uses_this_mornings_earlier_forecast(tmp_path):
+    fake = FakeWeather()
+    store, clock, p, b, sent, m, _ = setup(tmp_path, ts(2026, 11, 17, 5, 0), fake=fake)
+    await b.weather.forecast(b.weather.current_place(), 2)        # fetched at 05:00 (the agent asked, or an earlier card)
+    clock.t = ts(2026, 11, 17, 8, 0)                             # 3 h later: past the 20-minute cache, within the 12-hour fallback
+    b._sleep, waits = _weather_down_then(fake, up_after_sleeps=None)
+    card = await b.build(clock.t)
+    assert card is not None and card["weather"] is not None
+    assert waits == [5, 20]
+
+
+async def test_with_no_forecast_at_all_the_card_still_goes_out_after_three_tries(tmp_path):
+    fake = FakeWeather()
+    store, clock, p, b, sent, m, _ = setup(tmp_path, ts(2026, 11, 17, 8, 0), fake=fake)
+    b._sleep, waits = _weather_down_then(fake, up_after_sleeps=None)
+    forecasts_before = sum("/v1/forecast" in u for u in fake.calls)
+    card = await b.build(clock.t)   # a quiet day without weather may send nothing; it must not wait forever or stop early
+    assert card is None or card["weather"] is None
+    # three tries, and each try asks Open-Meteo's normal route and then its other server (both down here)
+    assert waits == [5, 20] and sum("/v1/forecast" in u for u in fake.calls) - forecasts_before == 6

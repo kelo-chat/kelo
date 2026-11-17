@@ -80,16 +80,7 @@ def _auto_prefixes() -> tuple[str, ...]:
 
 AUTO_PREFIXES = _auto_prefixes()
 
-# The user pushing back on an answer, in a few languages. Deliberately simple: the model weighs each hit itself.
-CORRECTION = re.compile(
-    r"^\s*(아니(?![면고])|아뇨|노노|no\b|nope\b|nein\b|non\b|não\b|нет\b|いいえ|違う|ちがう|不是|不对)"
-    r"|그게\s*아니|그거\s*아니|그건\s*아니|아니라고|틀렸|틀린\s*거|잘못\s*(했|알|찾|봤|이해)|다시\s*(해|하|찾|봐|알아|확인|써|만들)"
-    r"|말했잖|했잖아|그만\s*해|왜\s*자꾸|내\s*말은"
-    r"|that'?s\s+(wrong|not\s+(it|right|what))|that\s+is\s+wrong|not\s+what\s+i\s+(asked|meant|said|wanted)|i\s+(said|told\s+you|meant)\b"
-    r"|you\s+misunderstood|try\s+again|wrong\b|間違|错了",
-    re.IGNORECASE)
-
-PROMPT = f"""You help a personal assistant get better at serving one user. Below are the preference rules learned so far, notes the assistant keeps about the user, the times the user seemed to correct the assistant and the latest conversation.
+PROMPT = f"""You help a personal assistant get better at serving one user. Below are the preference rules learned so far, notes the assistant keeps about the user, the latest conversation.
 
 Find what the user said about how they want to be helped from now on, and answer with JSON only:
 {{"new": [{{"rule": "...", "quote": "...", "confidence": 0.9}}], "update": [{{"id": 1, "confidence": 0.0, "quote": "..."}}], "drop": [2], "goals": [{{"title": "...", "reason": "...", "evidence": "..."}}], "reasons": ["..."]}}
@@ -126,10 +117,6 @@ def quoted(quote: str) -> str:
     return f"“{quote[:EVIDENCE_MAX - 2]}”"
 
 
-def is_correction(text: str) -> bool:
-    return bool(CORRECTION.search(TIME_TAG.sub("", text or "")[:400]))
-
-
 def _clean(text: Any) -> str:
     return TIME_TAG.sub("", str(text or "")).strip()
 
@@ -138,20 +125,14 @@ def _norm(rule: str) -> str:
     return re.sub(r"[\W_]+", " ", rule.lower()).strip()
 
 
-# A Korean rule written as an order ("…하지 마라", "…해라") becomes the plain style the app shows ("…하지 않기", "…하기").
-_KO_DONT = re.compile(r"지\s*(?:마라|마세요|마십시오|말아라|말라|말\s*것)[.!]?$")
-_KO_DO = re.compile(r"(?:하라|해라|하세요|하십시오|할\s*것)[.!]?$")
-_EVIDENCE_LABEL = re.compile(r"^\s*(?:근거|이유|evidence|why|reason)\s*[:：]\s*", re.IGNORECASE)
-
-
 def tidy_rule(rule: Any) -> str:
-    text = re.sub(r"\s+", " ", str(rule or "")).strip().rstrip(".")
-    text = _KO_DONT.sub("지 않기", text)
-    return _KO_DO.sub("하기", text)
+    """The rule as the model wrote it (the prompt asks for a plain statement, never an order): one line, no closing full stop."""
+    return re.sub(r"\s+", " ", str(rule or "")).strip().rstrip(".")
 
 
 def tidy_evidence(evidence: Any) -> str:
-    return _EVIDENCE_LABEL.sub("", re.sub(r"\s+", " ", str(evidence or "")).strip())[:EVIDENCE_MAX]
+    """The evidence is the owner's own quote (checked against their messages): one line, cut at EVIDENCE_MAX."""
+    return re.sub(r"\s+", " ", str(evidence or "")).strip()[:EVIDENCE_MAX]
 
 
 _OLD_SUMMARY = re.compile(r"^(\d+) new, (\d+) updated, (\d+) dropped(?:, (\d+) goal)?")
@@ -216,7 +197,6 @@ class Reflection:
         self.offers: Any = None   # offers.OfferExtractor, set by the server: and for offers, grounded in the owner's own words
         self.upcoming: Any = None   # follow/upcoming.UpcomingExtractor, set by the server: and for dated things said in chat (follow items)
         self.migrated = self.migrate_guide()
-        self.tidy_proposed()
         self.drop_inferred()
 
     # ------------------------------------------------------------------ on/off
@@ -255,16 +235,6 @@ class Reflection:
         cur = self.store._run("INSERT INTO learned_rules(rule, evidence, date, confidence, status, updated_at) VALUES(?,?,?,?,?,?)",
                               (rule, tidy_evidence(evidence), self._today(), _confidence(confidence), status, self.clock()))
         return int(cur.lastrowid)
-
-    def tidy_proposed(self) -> int:
-        """Rules still waiting for the user that an older version wrote as orders ("…하지 마라") read as preferences now."""
-        n = 0
-        for r in self.rules(("proposed",)):
-            tidy = tidy_rule(r["rule"])[:RULE_MAX]
-            if tidy != r["rule"] and len(tidy) >= 4:
-                self.store._run("UPDATE learned_rules SET rule = ? WHERE id = ?", (tidy, r["id"]))
-                n += 1
-        return n
 
     def drop_inferred(self) -> int:
         """Once: suggestions an older version inferred from behaviour (denied approvals, repeats) rather than the owner's words were
@@ -360,24 +330,6 @@ class Reflection:
         """The assistant's own messages of a run: where the quote of a recheck must be found."""
         return [_clean(m["content"]).replace("<message_break/>", " ") for m in msgs if m["role"] == "assistant"]
 
-    def signals(self, msgs: list[dict[str, Any]], since: float) -> dict[str, list[dict[str, Any]]]:
-        """The times the user seemed to correct the assistant. Denied approvals and failed tasks are left out on purpose: behaviour
-        alone never makes a rule."""
-        corrections, last_answer = [], ""
-        for m in msgs:
-            text = _clean(m["content"])
-            if m["role"] != "user":
-                last_answer = text
-            elif self.from_user(m) and is_correction(text):
-                corrections.append({"user": text[:200], "after": last_answer[:160]})
-        return {"corrections": corrections[-8:]}
-
-    @staticmethod
-    def signals_text(sig: dict[str, list[dict[str, Any]]]) -> str:
-        out = [f"Times the user seemed to correct the assistant (a word match; judge each yourself): {len(sig['corrections'])}"]
-        out += [f'- user: "{c["user"]}"' + (f' (after: "{c["after"]}")' if c["after"] else "") for c in sig["corrections"]]
-        return "\n".join(out)
-
     def conversation_text(self, msgs: list[dict[str, Any]], budget: int) -> str:
         tz, lines, used = self.tz(), [], 0
         for m in reversed(msgs):   # the newest that fit
@@ -394,8 +346,6 @@ class Reflection:
         return ((f"[{left} earlier messages left out]\n" if left else "") + "\n".join(reversed(lines))).strip()
 
     def build_request(self, msgs: list[dict[str, Any]], since: float) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        sig = self.signals(msgs, since)
-
         def head(name: str, tokens: int) -> str:
             p = self.home.root / name
             return clip_tokens(p.read_text(encoding="utf-8", errors="replace").strip(), tokens) if p.is_file() else ""
@@ -405,8 +355,7 @@ class Reflection:
         parts = [f"Language for rules, evidence and goals: {LANG_NAMES.get(lang, lang)}",
                  f"Rules so far:\n{clip_tokens(current, 1_200)}",
                  f"user.md (start):\n{head('user.md', 500) or '(empty)'}",
-                 f"MEMORY.md (start):\n{head('MEMORY.md', 800) or '(empty)'}",
-                 clip_tokens(self.signals_text(sig), 900)]
+                 f"MEMORY.md (start):\n{head('MEMORY.md', 800) or '(empty)'}"]
         if self.goals is not None:
             taken = "\n".join(f"- {t}" for t in self.goals.taken_titles()) or "(none)"
             parts.append(f"Goals and earlier suggestions (tracked, accepted or declined):\n{clip_tokens(taken, 500)}")
@@ -423,7 +372,7 @@ class Reflection:
         convo = self.conversation_text(msgs, max(1_000, INPUT_TOKENS - fixed))
         user = "\n\n".join([*parts, f"Conversation:\n{convo}"])
         return ([{"role": "system", "content": system}, {"role": "user", "content": user}],
-                {"signals": sig, "tokens": est_tokens(system) + est_tokens(user)})
+                {"tokens": est_tokens(system) + est_tokens(user)})
 
     # ------------------------------------------------------------------ the run
     def _record(self, status: str, code: str = "", reason: str = "", changed: bool = False, **counts: int) -> dict[str, Any]:

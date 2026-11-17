@@ -141,21 +141,24 @@ public struct PairStart: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// GET /api/about.
+/// GET /api/about. appUpdate: a newer released app that works with this server (docs/version-notices.md); nil = none.
 public struct About: Codable, Equatable, Hashable, Sendable {
     public var version: String
     public var build: String
+    public var appUpdate: String?
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         version = j.str("version", "")
         build = j.str("build", "")
+        appUpdate = j.optStr("app_update")
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: AnyKey.self)
         try c.encode(version, forKey: AnyKey("version"))
         try c.encode(build, forKey: AnyKey("build"))
+        try c.encodeIfPresent(appUpdate, forKey: AnyKey("app_update"))
     }
 }
 
@@ -745,7 +748,7 @@ public struct TaskPage: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// An approval as the history keeps it (never its arguments). decision: pending | allowed_once | allowed_always | allowed_by_rule | denied | expired | cancelled.
+/// An approval as the history keeps it (never its arguments). decision: pending | allowed_once | allowed_always | allowed_by_rule | denied | expired | cancelled. kind: read | change | send | delete; via: app | notification | messenger ("" nobody); result: allow | deny | expired; edited: the owner fixed the message first.
 public struct ApprovalRecord: Codable, Equatable, Hashable, Sendable {
     public var id: String
     public var taskId: Int64?
@@ -759,6 +762,11 @@ public struct ApprovalRecord: Codable, Equatable, Hashable, Sendable {
     public var ruleId: Int64?
     public var unattended: Bool
     public var canRemember: Bool
+    public var kind: String
+    public var place: String
+    public var via: String
+    public var edited: Bool
+    public var result: String
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -774,6 +782,11 @@ public struct ApprovalRecord: Codable, Equatable, Hashable, Sendable {
         ruleId = j.optInt64("rule_id")
         unattended = j.bool("unattended", false)
         canRemember = j.bool("can_remember", false)
+        kind = j.str("kind", "")
+        place = j.str("where", "")
+        via = j.str("via", "")
+        edited = j.bool("edited", false)
+        result = j.str("result", "")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -790,6 +803,11 @@ public struct ApprovalRecord: Codable, Equatable, Hashable, Sendable {
         try c.encodeIfPresent(ruleId, forKey: AnyKey("rule_id"))
         try c.encode(unattended, forKey: AnyKey("unattended"))
         try c.encode(canRemember, forKey: AnyKey("can_remember"))
+        try c.encode(kind, forKey: AnyKey("kind"))
+        try c.encode(place, forKey: AnyKey("where"))
+        try c.encode(via, forKey: AnyKey("via"))
+        try c.encode(edited, forKey: AnyKey("edited"))
+        try c.encode(result, forKey: AnyKey("result"))
     }
 }
 
@@ -5139,39 +5157,47 @@ public struct CliStatus: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// GET /api/actions items.
+/// GET /api/did items (the unified timeline: at, title, site, outcome; kind action | task | browser | reply) and the older GET /api/actions items (ts, line, state; kind send | change | delete). /api/did items carry no id.
 public struct ActionItem: Codable, Equatable, Hashable, Sendable {
     public var id: Int64
+    public var at: Double
     public var ts: Double
     public var runId: String
     public var taskId: Int64?
     public var turnId: String
     public var source: String
     public var sourceName: String
+    public var title: String
     public var line: String
+    public var site: String?
     public var tool: String
     public var kind: String
     public var connector: String?
     public var targets: [String]
     public var state: String
+    public var outcome: String
     public var outsideId: String
     public var detail: String
     public var checkedAt: Double?
 
-    public init(id: Int64, ts: Double = 0, runId: String = "", taskId: Int64? = nil, turnId: String = "", source: String = "", sourceName: String = "", line: String = "", tool: String = "", kind: String = "", connector: String? = nil, targets: [String] = [], state: String = "done", outsideId: String = "", detail: String = "", checkedAt: Double? = nil) {
+    public init(id: Int64 = 0, at: Double = 0, ts: Double = 0, runId: String = "", taskId: Int64? = nil, turnId: String = "", source: String = "", sourceName: String = "", title: String = "", line: String = "", site: String? = nil, tool: String = "", kind: String = "", connector: String? = nil, targets: [String] = [], state: String = "", outcome: String = "", outsideId: String = "", detail: String = "", checkedAt: Double? = nil) {
         self.id = id
+        self.at = at
         self.ts = ts
         self.runId = runId
         self.taskId = taskId
         self.turnId = turnId
         self.source = source
         self.sourceName = sourceName
+        self.title = title
         self.line = line
+        self.site = site
         self.tool = tool
         self.kind = kind
         self.connector = connector
         self.targets = targets
         self.state = state
+        self.outcome = outcome
         self.outsideId = outsideId
         self.detail = detail
         self.checkedAt = checkedAt
@@ -5179,19 +5205,23 @@ public struct ActionItem: Codable, Equatable, Hashable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
-        id = try j.require("id", j.optInt64("id"))
+        id = j.int64("id", 0)
+        at = j.double("at", 0)
         ts = j.double("ts", 0)
         runId = j.str("run_id", "")
         taskId = j.optInt64("task_id")
         turnId = j.str("turn_id", "")
         source = j.str("source", "")
         sourceName = j.str("source_name", "")
+        title = j.str("title", "")
         line = j.str("line", "")
+        site = j.optStr("site")
         tool = j.str("tool", "")
         kind = j.str("kind", "")
         connector = j.optStr("connector")
         targets = j.strings("targets")
-        state = j.str("state", "done")
+        state = j.str("state", "")
+        outcome = j.str("outcome", "")
         outsideId = j.str("outside_id", "")
         detail = j.str("detail", "")
         checkedAt = j.optDouble("checked_at")
@@ -5200,40 +5230,257 @@ public struct ActionItem: Codable, Equatable, Hashable, Sendable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: AnyKey.self)
         try c.encode(id, forKey: AnyKey("id"))
+        try c.encode(at, forKey: AnyKey("at"))
         try c.encode(ts, forKey: AnyKey("ts"))
         try c.encode(runId, forKey: AnyKey("run_id"))
         try c.encodeIfPresent(taskId, forKey: AnyKey("task_id"))
         try c.encode(turnId, forKey: AnyKey("turn_id"))
         try c.encode(source, forKey: AnyKey("source"))
         try c.encode(sourceName, forKey: AnyKey("source_name"))
+        try c.encode(title, forKey: AnyKey("title"))
         try c.encode(line, forKey: AnyKey("line"))
+        try c.encodeIfPresent(site, forKey: AnyKey("site"))
         try c.encode(tool, forKey: AnyKey("tool"))
         try c.encode(kind, forKey: AnyKey("kind"))
         try c.encodeIfPresent(connector, forKey: AnyKey("connector"))
         try c.encode(targets, forKey: AnyKey("targets"))
         try c.encode(state, forKey: AnyKey("state"))
+        try c.encode(outcome, forKey: AnyKey("outcome"))
         try c.encode(outsideId, forKey: AnyKey("outside_id"))
         try c.encode(detail, forKey: AnyKey("detail"))
         try c.encodeIfPresent(checkedAt, forKey: AnyKey("checked_at"))
     }
 }
 
-/// GET /api/actions.
+/// GET /api/did, GET /api/actions.
 public struct ActionList: Codable, Equatable, Hashable, Sendable {
     public var items: [ActionItem]
+    public var nextBefore: Double?
 
-    public init(items: [ActionItem] = []) {
+    public init(items: [ActionItem] = [], nextBefore: Double? = nil) {
         self.items = items
+        self.nextBefore = nextBefore
     }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         items = j.list("items", of: ActionItem.self)
+        nextBefore = j.optDouble("next_before")
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: AnyKey.self)
         try c.encode(items, forKey: AnyKey("items"))
+        try c.encodeIfPresent(nextBefore, forKey: AnyKey("next_before"))
+    }
+}
+
+/// One thing Kelo checks for an upcoming item (kind, the fields, a window, the next time).
+public struct FollowCheck: Codable, Equatable, Hashable, Sendable {
+    public var kind: String
+    public var fields: [String]
+    public var from: String
+    public var until: String
+    public var state: String
+    public var nextAt: Double?
+
+    public init(kind: String = "", fields: [String] = [], from: String = "", until: String = "", state: String = "active", nextAt: Double? = nil) {
+        self.kind = kind
+        self.fields = fields
+        self.from = from
+        self.until = until
+        self.state = state
+        self.nextAt = nextAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        kind = j.str("kind", "")
+        fields = j.strings("fields")
+        from = j.str("from", "")
+        until = j.str("until", "")
+        state = j.str("state", "active")
+        nextAt = j.optDouble("next_at")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(kind, forKey: AnyKey("kind"))
+        try c.encode(fields, forKey: AnyKey("fields"))
+        try c.encode(from, forKey: AnyKey("from"))
+        try c.encode(until, forKey: AnyKey("until"))
+        try c.encode(state, forKey: AnyKey("state"))
+        try c.encodeIfPresent(nextAt, forKey: AnyKey("next_at"))
+    }
+}
+
+/// One preparation Kelo runs ahead of time. state: later | running | done | failed. kind: check_in | other (the plan's own mark; empty from an older server).
+public struct FollowPrep: Codable, Equatable, Hashable, Sendable {
+    public var what: String
+    public var when: String
+    public var state: String
+    public var kind: String
+
+    public init(what: String = "", when: String = "", state: String = "later", kind: String = "") {
+        self.what = what
+        self.when = when
+        self.state = state
+        self.kind = kind
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        what = j.str("what", "")
+        when = j.str("when", "")
+        state = j.str("state", "later")
+        kind = j.str("kind", "")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(what, forKey: AnyKey("what"))
+        try c.encode(when, forKey: AnyKey("when"))
+        try c.encode(state, forKey: AnyKey("state"))
+        try c.encode(kind, forKey: AnyKey("kind"))
+    }
+}
+
+/// What Kelo tells: lead offsets ("-1d", "-3h") and whether a change is told.
+public struct FollowPlanTell: Codable, Equatable, Hashable, Sendable {
+    public var lead: [String]
+    public var onChange: Bool
+
+    public init(lead: [String] = [], onChange: Bool = true) {
+        self.lead = lead
+        self.onChange = onChange
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        lead = j.strings("lead")
+        onChange = j.bool("on_change", true)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(lead, forKey: AnyKey("lead"))
+        try c.encode(onChange, forKey: AnyKey("on_change"))
+    }
+}
+
+/// The plan of a followed item (only prep and tell are read).
+public struct FollowPlanData: Codable, Equatable, Hashable, Sendable {
+    public var prep: [FollowPrep]
+    public var tell: FollowPlanTell?
+
+    public init(prep: [FollowPrep] = [], tell: FollowPlanTell? = nil) {
+        self.prep = prep
+        self.tell = tell
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        prep = j.list("prep", of: FollowPrep.self)
+        tell = j.decode("tell", as: FollowPlanTell.self)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(prep, forKey: AnyKey("prep"))
+        try c.encodeIfPresent(tell, forKey: AnyKey("tell"))
+    }
+}
+
+/// GET /api/follow items. state: planned | watching | done | stopped; startsAt: epoch seconds.
+public struct FollowItem: Codable, Equatable, Hashable, Sendable {
+    public var key: String
+    public var kind: String
+    public var title: String
+    public var startsAt: Double
+    public var checks: [FollowCheck]
+    public var prep: [FollowPrep]
+    public var plan: FollowPlanData?
+    public var state: String
+
+    public init(key: String = "", kind: String = "", title: String = "", startsAt: Double = 0, checks: [FollowCheck] = [], prep: [FollowPrep] = [], plan: FollowPlanData? = nil, state: String = "planned") {
+        self.key = key
+        self.kind = kind
+        self.title = title
+        self.startsAt = startsAt
+        self.checks = checks
+        self.prep = prep
+        self.plan = plan
+        self.state = state
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        key = j.str("key", "")
+        kind = j.str("kind", "")
+        title = j.str("title", "")
+        startsAt = j.double("starts_at", 0)
+        checks = j.list("checks", of: FollowCheck.self)
+        prep = j.list("prep", of: FollowPrep.self)
+        plan = j.decode("plan", as: FollowPlanData.self)
+        state = j.str("state", "planned")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(key, forKey: AnyKey("key"))
+        try c.encode(kind, forKey: AnyKey("kind"))
+        try c.encode(title, forKey: AnyKey("title"))
+        try c.encode(startsAt, forKey: AnyKey("starts_at"))
+        try c.encode(checks, forKey: AnyKey("checks"))
+        try c.encode(prep, forKey: AnyKey("prep"))
+        try c.encodeIfPresent(plan, forKey: AnyKey("plan"))
+        try c.encode(state, forKey: AnyKey("state"))
+    }
+}
+
+/// GET /api/follow.
+public struct FollowItemList: Codable, Equatable, Hashable, Sendable {
+    public var items: [FollowItem]
+
+    public init(items: [FollowItem] = []) {
+        self.items = items
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        items = j.list("items", of: FollowItem.self)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(items, forKey: AnyKey("items"))
+    }
+}
+
+/// POST /api/follow/{key}/stop and /replan.
+public struct FollowActionResponse: Codable, Equatable, Hashable, Sendable {
+    public var ok: Bool
+    public var key: String
+    public var state: String
+
+    public init(ok: Bool = false, key: String = "", state: String = "") {
+        self.ok = ok
+        self.key = key
+        self.state = state
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        ok = j.bool("ok", false)
+        key = j.str("key", "")
+        state = j.str("state", "")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(ok, forKey: AnyKey("ok"))
+        try c.encode(key, forKey: AnyKey("key"))
+        try c.encode(state, forKey: AnyKey("state"))
     }
 }
 
@@ -5325,5 +5572,24 @@ public struct PushRegistered: Codable, Equatable, Hashable, Sendable {
         try c.encode(ok, forKey: AnyKey("ok"))
         try c.encode(push, forKey: AnyKey("push"))
         try c.encodeIfPresent(removed, forKey: AnyKey("removed"))
+    }
+}
+
+/// GET /api/notifications/settled?ids=: of the item ids asked about, the ones that do not wait any more.
+public struct SettledItems: Codable, Equatable, Hashable, Sendable {
+    public var ids: [String]
+
+    public init(ids: [String] = []) {
+        self.ids = ids
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        ids = j.strings("ids")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(ids, forKey: AnyKey("ids"))
     }
 }

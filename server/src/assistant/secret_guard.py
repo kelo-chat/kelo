@@ -9,15 +9,20 @@ What counts (kept narrow on purpose, so ordinary text passes):
 - known key and token shapes (sk-..., sk-ant-..., ghp_/github_pat_, xox?-, AKIA/ASIA, AIza, glpat-, Stripe live/test keys, JWTs, a
   "Bearer <token>" header, private key blocks) and the shapes installed key connectors declare (packages.py `key_pattern`);
 - a card number: 13-19 digits on a known card prefix that pass the Luhn check;
-- a password or code given with its word ("password: x9#...", "비밀번호는 ...", "OTP 123456");
-- a long random-looking token: a whole message that is one high-entropy word, or a very long high-entropy word inside a message.
+- a long random-looking token: a whole message that is one high-entropy word, or a very long high-entropy word inside a message;
+- CANDIDATES by shape (`candidates`: a token that mixes letters with digits or symbols, a standalone run of 4-8 digits, 3-8 digits after
+  ":" or "=", a message that is one number) that the owner's main model judges (secret_judge.py, one cached request). No word of any
+  language decides: no judge, an error or an unusable answer makes EVERY candidate a hit (the message is held back; the owner may mask
+  it or send it as it is).
 URLs, e-mail addresses, file paths, phone and order numbers, UUIDs, hex hashes and words in any script do not count.
 """
 
 from __future__ import annotations
 
+import asyncio
 import math
 import re
+import unicodedata
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
@@ -53,24 +58,10 @@ _KNOWN: list[tuple[re.Pattern[str], str, tuple[str, str], str]] = [
     (re.compile(r"(?i)(?<![A-Za-z])bearer\s+([A-Za-z0-9_\-.~+/]{20,}=*)" + r"(?![A-Za-z0-9_\-.~+/=])"), "token", ("vault", ""), ""),
 ]
 
-# ---- a password or code given with its word --------------------------------------------------------------------------------------
-_PW_WORDS = (r"password|passwd|passcode|pass\s?word|pwd|비밀\s?번호|비번|암호|패스워드|パスワード|密码|密碼|kennwort|passwort|contraseña"
-             r"|mot\s+de\s+passe|senha|пароль")
-_CODE_WORDS = (r"otp|one[-\s]?time\s+(?:pass)?code|verification\s+code|security\s+code|auth(?:entication)?\s+code|cvc|cvv|pin(?:\s?code)?"
-               r"|인증\s?번호|인증\s?코드|보안\s?코드|일회용\s?(?:비밀번호|코드)|핀\s?번호|認証コード|暗証番号|验证码|驗證碼")
-_SEP = r"\s*(?:is|was|=|:|：|->|은|는|이|가|는요|은요|は|是|为)?\s*[\"'“‘`]?"
-_PASSWORD = re.compile(rf"(?i)(?<![A-Za-z])(?:{_PW_WORDS})(?:\s*(?:is|was)\s+|\s*[=:：]\s*|\s*(?:은|는|이|가)\s+|\s*->\s*|\s+)[\"'“‘`]?"
-                       r"([!-~]{6,64})")
-_CODE = re.compile(rf"(?i)(?<![A-Za-z])(?:{_CODE_WORDS}){_SEP}(\d{{3,8}})(?!\d)")
-_NOT_A_VALUE = re.compile(r"(?i)^(?:stored|saved|kept|managed|handled|needed|required|changed|reset|set|not|in|on|at|the|a|an|with|from"
-                          r"|same|different|expired|correct|wrong|missing|unknown|manager|field|reset|policy|please|here)\b")
-
 # ---- card numbers ------------------------------------------------------------------------------------------------------------------
 _CARD = re.compile(r"(?<![\d\w-])(\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{1,7}|\d{4}[ -]?\d{6}[ -]?\d{5})(?![\d\w])")
 _CARD_PREFIX = re.compile(r"^(?:4\d{12}(?:\d{3}){0,2}|5[1-5]\d{14}|2(?:2[2-9]|[3-6]\d|7[01]|720)\d{12}|3[47]\d{13}|35(?:2[89]|[3-8]\d)\d{12,15}"
                           r"|6(?:011|5\d\d|4[4-9]\d)\d{12,15}|62\d{14,17}|9\d{15})$")
-_ORDER_WORDS = re.compile(r"(?i)(?:order|invoice|tracking|shipment|parcel|reference|ref\.?|receipt|booking|reservation|ticket|serial|account"
-                          r"|주문|송장|운송장|예약|영수증|접수|일련|계좌|注文|订单|訂單|#|no\.?)\s*(?:number|no\.?|#|번호)?\s*[:：#]?\s*$")
 
 # ---- long random tokens -----------------------------------------------------------------------------------------------------------
 _WORD = re.compile(r"\S+")
@@ -179,18 +170,9 @@ def find(text: str, connector_patterns: ConnectorPatterns = (), names: Callable[
         for m in rx.finditer(text):
             s, e = (m.start(1), m.end(1)) if rx.groups else (m.start(), m.end())
             hits.append(Hit(s, e, kind, target, label))
-    for m in _PASSWORD.finditer(text):
-        value = m.group(1).rstrip("\"'”’`")   # a closing quote is not part of it; "!" or "." may be
-        if (len(value) >= 6 and re.search(r"[A-Za-z]", value) and re.search(r"[\d!-/:-@\[-`{-~]", value)
-                and not _NOT_A_VALUE.match(value) and not value.startswith(("/", "~/", "./", "http")) and "://" not in value and "@" not in value[1:-1]):
-            hits.append(Hit(m.start(1), m.start(1) + len(value), "password", ("vault", "")))
-    for m in _CODE.finditer(text):
-        hits.append(Hit(m.start(1), m.end(1), "password", ("vault", "")))
     for m in _CARD.finditer(text):
         digits = re.sub(r"\D", "", m.group(1))
         if not (13 <= len(digits) <= 19 and _CARD_PREFIX.match(digits) and _luhn(digits)):
-            continue
-        if _ORDER_WORDS.search(text[max(0, m.start() - 30):m.start()]):
             continue
         hits.append(Hit(m.start(1), m.end(1), "card", ("wallet", "")))
     whole = text.strip()
@@ -207,6 +189,11 @@ def find(text: str, connector_patterns: ConnectorPatterns = (), names: Callable[
     return _merge(hits)
 
 
+def find_all(text: str, connector_patterns: ConnectorPatterns = (), names: Callable[[str], str] | None = None) -> list[Hit]:
+    """`find` plus EVERY candidate (no judge): for the places that cannot ask a model (text kept in a skill, a marked message read later)."""
+    return _merge(find(text, connector_patterns, names) + candidates(text))
+
+
 def key_hits(text: str) -> list[Hit]:
     """Only the known shapes of keys and tokens (provider prefixes, PEM private-key blocks, bearer tokens, JWTs with a signature).
     No words, codes or card numbers: the check for a package's files (packages.scan_secrets), which must not refuse ordinary text."""
@@ -218,6 +205,105 @@ def key_hits(text: str) -> list[Hit]:
             s, e = (m.start(1), m.end(1)) if rx.groups else (m.start(), m.end())
             hits.append(Hit(s, e, kind, target, label))
     return _merge(hits)
+
+
+# ---- candidates: shapes a secret may have, judged by the model (secret_judge.py) ------------------------------------------------------
+_SEPARATOR = re.compile(r"[:=：]")
+_FILE_OR_HOST = re.compile(r"[\w-]+(?:\.[\w-]+)+")
+_MAIL = re.compile(r"[^@\s]+@[^@\s]+\.[A-Za-z]{2,}")
+
+
+def password_shaped(tok: str) -> bool:
+    """A password-shaped token: 6-64 printable ASCII characters with a letter and a digit or a symbol, no address, path, UUID or hash."""
+    if not 6 <= len(tok) <= 64 or not all(33 <= ord(c) <= 126 for c in tok):
+        return False
+    if "://" in tok or tok.lower().startswith("www.") or _UUID.match(tok) or (len(tok) >= 16 and _HEX.match(tok)) or _MAIL.fullmatch(tok):   # a short hex word may be a password: judged
+        return False
+    if tok.startswith(("/", "~/", "./")) or tok.count("/") >= 2:
+        return False
+    if _FILE_OR_HOST.fullmatch(tok) and re.search(r"[A-Za-z]{2,}$", tok):   # a domain name or a file name
+        return False
+    return bool(re.search(r"[A-Za-z]", tok)) and bool(re.search(r"[\d!@#$%^&*+=~?|<>\[\]{}\\]", tok))   # a letter, and a digit or a symbol a word does not have
+
+
+def candidates(text: str) -> list[Hit]:
+    """Spans that MAY be a password, PIN or code (kind "password"), by shape only: a token that mixes letters with digits or symbols
+    (`password_shaped`), a standalone run of 4-8 digits, 3-8 digits after ":" or "=", a message that is one number of 3-8 digits. The caller
+    asks the judge (SecretJudge) which of them are secrets, and treats all of them as secrets when it cannot."""
+    out: list[Hit] = []
+    whole = text.strip()
+    for m in _WORD.finditer(text):
+        raw = m.group(0)
+        start = m.start()
+        after_sep = text[max(0, start - 3):start].rstrip().endswith((":", "=", "："))   # "cvc: 123": the separator ends the word before
+        if "://" not in raw and (sep := list(_SEPARATOR.finditer(raw))):
+            start, raw, after_sep = start + sep[-1].end(), raw[sep[-1].end():], True   # "cvc:123"
+        tok = raw.strip(_EDGE).rstrip(".")
+        if not tok:
+            continue
+        s = start + raw.index(tok)
+        e = s + len(tok)
+        if password_shaped(tok):
+            out.append(Hit(s, e, "password"))
+        elif tok.isascii() and tok.isdigit():
+            lone = tok == whole
+            if (4 <= len(tok) <= 8 or (3 <= len(tok) <= 8 and (after_sep or lone))) and not (s > 0 and unicodedata.category(text[s - 1]) == "Sc"):
+                out.append(Hit(s, e, "password"))
+    return out
+
+
+_SYMBOL = r"[!@#$%^&*+=~?|<>\[\]{}\\]"
+CHAT_TIMEOUT = 3.0   # seconds the judge may take for a chat message; unanswered = held (fail closed)
+
+
+def _plain_token_ok(tok: str) -> bool:
+    return all(33 <= ord(c) <= 126 for c in tok) and "://" not in tok and not tok.lower().startswith("www.") and not _UUID.match(tok) \
+        and not (len(tok) >= 16 and _HEX.match(tok)) and not _MAIL.fullmatch(tok) and not tok.startswith(("/", "~/", "./")) and tok.count("/") < 2 \
+        and not (_FILE_OR_HOST.fullmatch(tok) and re.search(r"[A-Za-z]{2,}$", tok))
+
+
+def chat_candidates(text: str) -> list[Hit]:
+    """The few spans of a CHAT message that may be a secret, so that ordinary messages never wait for the judge: (a) a token of 8+
+    characters with at least three of the four classes (lower, upper, digit, symbol); (b) the value of a `key: value` or `key=value`
+    pair when it holds a digit or a symbol; (c) the whole message being one 4-8 digit number. A digit run inside a sentence is none."""
+    out: list[Hit] = []
+    whole = text.strip()
+    if whole.isascii() and whole.isdigit() and 4 <= len(whole) <= 8:
+        s = text.index(whole)
+        return [Hit(s, s + len(whole), "password")]
+    for m in _WORD.finditer(text):
+        raw, start = m.group(0), m.start()
+        after_sep = text[max(0, start - 3):start].rstrip().endswith((":", "=", "\uff1a"))
+        if "://" not in raw and (sep := list(_SEPARATOR.finditer(raw))) and re.search(r"[^\W\d_]", raw[:sep[-1].start()]):   # "key=value", not "12:00"
+            start, raw, after_sep = start + sep[-1].end(), raw[sep[-1].end():], True
+        tok = raw.strip(_EDGE).rstrip(".")
+        if not tok or not _plain_token_ok(tok):
+            continue
+        s = start + raw.index(tok)
+        classes = sum(bool(re.search(p, tok)) for p in (r"[a-z]", r"[A-Z]", r"\d", _SYMBOL))   # a symbol: punctuation a word or a name does not carry
+        if (len(tok) >= 8 and classes >= 3) or (after_sep and re.search(rf"\d|{_SYMBOL}", tok)):
+            out.append(Hit(s, s + len(tok), "password"))
+    return out
+
+
+async def screen(text: str, connector_patterns: ConnectorPatterns = (), names: Callable[[str], str] | None = None, judge: object = None,
+                 chat: bool = False) -> list[Hit]:
+    """`find` plus the candidates the judge names. No judge, or a judge that cannot answer: every candidate is a hit (fail closed).
+    `chat`: a chat message, with the few `chat_candidates` and a CHAT_TIMEOUT for the judge (no candidate: no wait at all)."""
+    hits = find(text, connector_patterns, names)
+    cands = [c for c in (chat_candidates(text) if chat else candidates(text)) if not any(c.start < h.end and h.start < c.end for h in hits)]
+    if not cands:
+        return hits
+    picked: set[int] | None = None
+    if judge is not None:
+        try:
+            ask = judge.secrets(text, [(c.start, c.end) for c in cands])   # type: ignore[attr-defined]
+            picked = await (asyncio.wait_for(ask, CHAT_TIMEOUT) if chat else ask)
+        except Exception:  # noqa: BLE001 - fail closed
+            picked = None
+    if picked is not None:
+        cands = [c for i, c in enumerate(cands) if i in picked]
+    return _merge(hits + cands)
 
 
 _PRIORITY = {"private_key": 0, "api_key": 1, "card": 2, "token": 3, "password": 4}
@@ -311,6 +397,6 @@ def scrub_rows(store: object, rows: list[dict]) -> list[dict]:
     out = []
     for r in rows:
         if r.get("id") in ids and isinstance(r.get("content"), str):
-            r = {**r, "content": mask(r["content"], find(r["content"]), REMOVED)}
+            r = {**r, "content": mask(r["content"], find_all(r["content"]), REMOVED)}   # no judge here: every candidate goes
         out.append(r)
     return out

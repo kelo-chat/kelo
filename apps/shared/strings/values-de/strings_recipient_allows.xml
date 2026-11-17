@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">E-Mail</string>
+    <string name="trail_kind_file">Datei</string>
+    <string name="trail_kind_memory">Erinnerung</string>
+    <string name="trail_kind_contacts">Kontakte</string>
+    <string name="trail_kind_calendar">Kalender</string>
+    <string name="trail_kind_photos">Fotos</string>
+    <string name="trail_kind_messages">Nachrichten</string>
+    <string name="trail_kind_notes">Notizen</string>
+    <string name="trail_kind_vault">gespeicherte Logins</string>
+    <string name="trail_kind_profile">Profil</string>
+    <string name="trail_kind_web">Webseite</string>
+    <string name="trail_kind_channel">Chat</string>
+    <string name="trail_kind_device">Gerätedaten</string>
+    <string name="trail_kind_connector">verbundener Dienst</string>
+    <string name="trail_kind_other">Daten</string>
+    <string name="trail_recipient_link">ein öffentlicher Link</string>
+    <string name="trail_goes_to">An %2$s: %1$s</string>
+    <string name="trail_allow_once">Einmal erlauben</string>
+    <string name="trail_allow_always">Immer für diesen Empfänger</string>
+    <string name="recipient_approval_always">Erlaubt. Für diesen Empfänger frage ich nicht mehr.</string>
+    <string name="recipient_allows_title">Immer erlaubte Empfänger</string>
+    <string name="recipient_allows_empty">Noch keine. Wenn du auf einer Karte \"Immer für diesen Empfänger\" wählst, erscheint er hier.</string>
+    <string name="recipient_allow_since">Erlaubt %1$s</string>
+    <string name="recipient_allow_remove">%1$s entfernen</string>
+    <string name="recipient_allow_remove_confirm">Vor dem Senden von %1$s an %2$s wieder fragen?</string>
+    <string name="recipient_allow_removed">Ich frage wieder, bevor etwas dorthin geht.</string>
+</resources>

@@ -203,8 +203,8 @@ async def test_change_alerts_are_not_held_back_by_the_unanswered_guard_nor_count
     clock.t += 7200
     r = await p.tick()                                                                  # held: only the change goes out
     assert r["sent"] == 1 and [s["kind"] for s in sent] == ["", "change"] and sent[-1]["title"] == "항공편 변경 안내"
-    held = next(x for x in p.log() if x["title"] == "일반 둘")
-    assert held["status"] == "dropped" and "Waiting for your reply" in held["reason"]
+    held = next(x for x in p.held() if x["title"] == "일반 둘")                         # kept until its deadline, not dropped
+    assert held["why"] == "waiting_for_reply" and not any(x["title"] == "일반 둘" for x in p.log())
     assert p.guard()["unanswered"] == 1                                                 # the change was not counted
     box.rows["inbox"] = [mail(4, "일반 셋")]
     clock.t += 7200

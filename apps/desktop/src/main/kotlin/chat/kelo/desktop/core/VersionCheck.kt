@@ -19,6 +19,7 @@ object DesktopVersion {
     fun install() {
         AppVersion.header = header()
         AppVersion.minServer = ReleaseInfo.MIN_SERVER
+        AppVersion.channel = "download"   // the installer from kelo.chat/download (the server names a newer app for that channel)
     }
 }
 

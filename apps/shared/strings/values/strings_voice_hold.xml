@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hold the mic to dictate (release = text into the field, slide away = cancel), and the dictation problems; Read aloud on a reply -->
+    <string name="voice_hold_label">Hold to speak</string>
+    <string name="voice_hold_hint">Release to finish, slide away to cancel</string>
+    <string name="voice_dictation_offline">Dictation stopped because the connection dropped.</string>
+    <string name="voice_dictation_failed">Dictation couldn\'t be completed.</string>
+    <string name="msg_action_read_aloud">Read aloud</string>
+    <string name="msg_action_read_stop">Stop reading</string>
+</resources>

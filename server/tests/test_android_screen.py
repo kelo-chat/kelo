@@ -4,7 +4,7 @@ import pathlib
 
 import pytest
 
-from assistant.android.judge import tap_kind, type_kind
+from assistant.android.judge import type_kind
 from assistant.android.screen import MAX_ITEMS, Item, ScreenReader
 
 FIX = pathlib.Path(__file__).parent / "fixtures" / "android"
@@ -102,19 +102,11 @@ def item(text="", desc="", hint="", **kw):
     return Item("a1", "button", text=text, desc=desc, hint=hint, **kw)
 
 
-@pytest.mark.parametrize("words,kind", [("결제하기", "pay"), ("등록하기", "send"), ("설정", ""), ("Pay now", "pay"), ("Navigate up", "")])
-def test_tap_kind_follows_the_browsers_words(words, kind):
-    assert tap_kind(item(words)) == kind
-
-
-def test_tap_kind_reads_the_description_when_there_is_no_text():
-    assert tap_kind(item(desc="결제하기")) == "pay"
-
-
-def test_type_kind_asks_for_personal_details_and_not_for_a_review():
+def test_type_kind_asks_for_a_card_number_or_a_password_and_not_for_other_details_or_a_review():
     review = Item("a3", "edit", hint="상품에 대한 솔직한 평가를 남겨주세요", multiline=True, editable=True)
     assert type_kind(review, "소스가 맛있어요") == ""
-    assert type_kind(review, "연락처 010-1234-5678") == "personal"
-    assert type_kind(Item("a4", "edit", hint="Email", editable=True), "x") == "personal"
+    assert type_kind(review, "연락처 010-1234-5678") == ""                             # a phone number typed asks nothing (ask-less)
+    assert type_kind(Item("a4", "edit", hint="Email", editable=True), "x") == ""      # a field's hint decides nothing; the value and the password flag do
     assert type_kind(Item("a5", "edit", hint="Password", password=True, editable=True), "hunter2") == "personal"
-    assert type_kind(None, "kim@example.org") == "personal" and type_kind(None, "hello") == ""
+    assert type_kind(None, "kim@example.org") == "" and type_kind(None, "hello") == ""
+    assert type_kind(None, "4111 1111 1111 1111") == "personal"                       # a card number by value still asks

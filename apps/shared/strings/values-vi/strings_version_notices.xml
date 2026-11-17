@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">Cập nhật máy chủ</string>
+    <string name="server_old_failed">Bản cập nhật chưa hoàn tất. Hãy thử lại hoặc cập nhật máy chủ trên máy đang chạy nó.</string>
+    <string name="server_old_manual">Để cập nhật máy chủ, hãy làm theo các bước cập nhật trên máy đang chạy nó.</string>
+    <string name="server_old_guide">Mở hướng dẫn cập nhật</string>
+    <string name="app_notice_new">Ứng dụng Kelo mới (%1$s) hoạt động tốt nhất với máy chủ của bạn</string>
+    <string name="app_notice_store">Mở cửa hàng</string>
+    <string name="update_popup_title">Có phiên bản mới (%1$s)</string>
+    <string name="update_popup_update">Cập nhật</string>
+    <string name="update_popup_later">Để sau</string>
+</resources>

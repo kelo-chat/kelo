@@ -17,4 +17,6 @@
     <string name="perm_reset_q">Вернуть все настройки этого коннектора к значениям по умолчанию?</string>
     <string name="perm_read_off_q">Если чтение выключено, Kelo почти не сможет использовать этот коннектор. Выключить?</string>
     <string name="perm_limited">Ограничен</string>
+    <string name="perm_unattended">Использовать, когда я не в чате</string>
+    <string name="perm_unattended_about">Задания по расписанию, фоновые задачи и сообщения, которые Kelo отправляет первым, не будут использовать %1$s. В ваших чатах он по-прежнему доступен.</string>
 </resources>

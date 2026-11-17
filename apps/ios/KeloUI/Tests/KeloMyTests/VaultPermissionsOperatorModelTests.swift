@@ -367,3 +367,44 @@ private func vaultJSON(_ names: [String]) -> String {
         #expect(m.view?.locked == false)
     }
 }
+
+@MainActor @Suite struct RecipientAllowsModelTests {
+    @Test func listsTheRecipientsNewestFirstAndAnOlderServerHasNone() async {
+        let t = RoutedTransport()
+        t.on("GET /api/approvals/pending", "[]")
+        t.on("GET /api/approvals/rules", #"{"items":[]}"#)
+        t.on("GET /api/approvals/history", #"{"items":[]}"#)
+        t.on("GET /api/permissions/recipients", #"{"items":[{"id":1,"recipient":"a@x.example","kind":"mail","created_at":5},{"id":2,"recipient":"link","kind":"file","created_at":9}]}"#)
+        let m = PermissionsModel(api: t.api())
+        await m.load()
+        #expect(m.recipients.map(\.id) == [2, 1])
+        let old = RoutedTransport()
+        old.on("GET /api/approvals/pending", "[]")
+        old.on("GET /api/approvals/rules", #"{"items":[]}"#)
+        old.on("GET /api/approvals/history", #"{"items":[]}"#)
+        old.on("GET /api/permissions/recipients", 404, "{}")
+        let m2 = PermissionsModel(api: old.api())
+        await m2.load()
+        #expect(m2.recipients.isEmpty && !m2.failed)
+    }
+
+    @Test func removingOneCallsDeleteAndAFailureShowsANotice() async {
+        let t = RoutedTransport()
+        t.on("GET /api/approvals/pending", "[]")
+        t.on("GET /api/approvals/rules", #"{"items":[]}"#)
+        t.on("GET /api/approvals/history", #"{"items":[]}"#)
+        t.on("GET /api/permissions/recipients", #"{"items":[{"id":1,"recipient":"a@x.example","kind":"mail"},{"id":2,"recipient":"b@x.example","kind":"mail"}]}"#)
+        t.on("DELETE /api/permissions/recipients/1", #"{"ok":true}"#)
+        t.on("DELETE /api/permissions/recipients/2", 500, #"{"detail":"x"}"#)
+        let m = PermissionsModel(api: t.api())
+        await m.load()
+        m.removeRecipient(m.recipients.first { $0.id == 1 }!)
+        await m.jobs.settled()
+        #expect(m.recipients.map(\.id) == [2])
+        #expect(t.count("DELETE /api/permissions/recipients/1") == 1)
+        #expect(m.notice == nil)
+        m.removeRecipient(m.recipients[0])
+        await m.jobs.settled()
+        #expect(m.notice != nil)
+    }
+}

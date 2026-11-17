@@ -852,6 +852,22 @@
     <string name="agent_perm_rules_empty">Пока ничего. Выберите «Всегда разрешать на этом сайте» в карточке подтверждения — и правило появится здесь.</string>
     <string name="agent_perm_history">Прошлые подтверждения</string>
     <string name="agent_perm_history_empty">Вопросов пока не было.</string>
+    <string name="approval_edit_button">Изменить</string>
+    <string name="approval_edit_title">Сообщение для отправки</string>
+    <string name="approval_edit_save">Сохранить</string>
+    <string name="approval_edited_note">Вы изменили сообщение</string>
+    <string name="approval_edit_empty">Напишите сообщение.</string>
+    <string name="approval_edit_too_long">Слишком длинно. Сократите.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Прошлые подтверждения</string>
+    <string name="approval_history_empty">Подтверждений пока нет.</string>
+    <string name="approval_history_error">Не удалось загрузить прошлые подтверждения.</string>
+    <string name="approval_history_where">Куда</string>
+    <string name="approval_history_when">Когда</string>
+    <string name="approval_history_answered">Ответ дан</string>
+    <string name="approval_via_app">В приложении</string>
+    <string name="approval_via_notification">Из уведомления</string>
+    <string name="approval_via_messenger">В мессенджере</string>
     <string name="agent_perm_asked">Запрошено %1$s</string>
     <string name="approval_remember_site">Больше не спрашивать на этом сайте</string>
     <string name="approval_remember_scope">Применяется к %1$s и всем его подадресам</string>
@@ -967,6 +983,7 @@
     <string name="live_forward">Вперёд</string>
     <string name="live_reload">Обновить</string>
     <string name="live_page_not_responding">Страница не отвечает</string>
+    <string name="live_touch_missed">Касание не дошло до страницы</string>
     <string name="live_type_hint">Текст для ввода на странице</string>
     <string name="live_type_send">Ввести</string>
     <string name="live_type_hide">Скрыть текст</string>
@@ -1168,6 +1185,8 @@
     <string name="offer_reason_later">Позже</string>
     <string name="offer_busy">Сейчас пишется другой ответ. Нажмите снова, когда он завершится</string>
     <string name="offer_failed">Не удалось запустить</string>
+    <string name="offer_steps_show_all">Показать все шаги (%1$d)</string>
+    <string name="offer_steps_fewer">Показать меньше шагов</string>
     <string name="work_upcoming">Скоро</string>
     <string name="work_upcoming_unscheduled">Без времени</string>
     <string name="work_past">Ранее</string>
@@ -1202,6 +1221,7 @@
     <string name="work_kind_browser">Задача в браузере</string>
     <string name="work_kind_research">Исследование</string>
     <string name="work_kind_general">Обычная задача</string>
+    <string name="work_kind_phone">Задача на телефоне</string>
     <string name="work_job_title">Фоновая задача</string>
     <string name="work_job_line">%1$s · В фоне</string>
     <string name="work_task_in_background">В фоне</string>
@@ -1526,6 +1546,7 @@
     <string name="handover_verify_title">%1$s просит подтвердить вход</string>
     <string name="handover_verify_body">Подтвердите вход на телефоне или откройте просмотр вживую и введите там код. Потом Kelo продолжит.</string>
     <string name="handover_verify_open">Открыть просмотр вживую</string>
+    <string name="handover_device_open">Открыть экран телефона</string>
     <string name="handover_verify_done">Вход выполнен — Kelo продолжает</string>
     <string name="handover_verify_approve_body">Подтвердите вход в уведомлении на телефоне. После подтверждения Kelo продолжит.</string>
     <string name="handover_verify_approved">Я подтвердил</string>

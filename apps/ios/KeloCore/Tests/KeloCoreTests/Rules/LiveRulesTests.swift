@@ -123,7 +123,7 @@ import Testing
         #expect(LiveMessages.parse(#"{"type":"pong","ts":1}"#) == .pong)
         #expect(LiveMessages.parse("not json") == .other)
         #expect(LiveMessages.parse("[1,2]") == .other)
-        #expect(LiveMessages.parse(#"{"type":"input_ok"}"#) == .other)
+        #expect(LiveMessages.parse(#"{"type":"input_ok"}"#) == .inputReply(InputReply()))
     }
 
     @Test func myOwnControlShowsAsMine() {
@@ -275,40 +275,28 @@ import Testing
     }
 }
 
-/// The live page's capture rule (Android LiveRulesTest: guardScreen, frame "secure"). A picture that says no secret field shows
-/// lets the page be captured; a secret, a missing flag (an older server, no frame yet) or the user typing keeps it hidden.
+/// The live page is always capturable (owner decision 2026-11-16): there is no guard rule any more; the frame's "secure" flag is
+/// still read from the wire (a server that sends it, or not, both parse).
 @Suite struct LiveSecureRuleTests {
-    @Test func aFrameWithoutSecretFieldsLetsTheScreenBeCaptured() {
-        let f = LiveMessages.parse(#"{"type":"frame","seq":3,"w":720,"h":1280,"secure":false}"#)
-        guard case .frame(let header) = f else { Issue.record("not a frame: \(f)"); return }
-        #expect(header.secure == false)
-        #expect(LiveRules.guardScreen(secure: header.secure, typing: false) == false)
+    @Test func theSecureFlagStillParsesAndAbsenceIsNil() {
+        for (json, want) in [(#"{"type":"frame","seq":3,"w":720,"h":1280,"secure":false}"#, Bool?.some(false)),
+                             (#"{"type":"frame","seq":3,"w":720,"h":1280,"secure":true}"#, Bool?.some(true)),
+                             (#"{"type":"frame","seq":3,"w":720,"h":1280}"#, Bool?.none)] {
+            guard case .frame(let header) = LiveMessages.parse(json) else { Issue.record("not a frame"); continue }
+            #expect(header.secure == want)
+        }
     }
+}
 
-    @Test func aFrameWithASecretFieldKeepsItHidden() {
-        let f = LiveMessages.parse(#"{"type":"frame","seq":3,"w":720,"h":1280,"secure":true}"#)
-        guard case .frame(let header) = f else { Issue.record("not a frame: \(f)"); return }
-        #expect(header.secure == true)
-        #expect(LiveRules.guardScreen(secure: header.secure, typing: false))
-    }
-
-    @Test func aMissingFlagIsTreatedAsSecret() {
-        let f = LiveMessages.parse(#"{"type":"frame","seq":3,"w":720,"h":1280}"#)
-        guard case .frame(let header) = f else { Issue.record("not a frame: \(f)"); return }
-        #expect(header.secure == nil)
-        #expect(LiveRules.guardScreen(secure: header.secure, typing: false))
-        #expect(LiveRules.guardScreen(secure: nil, typing: false))   // no frame yet, or the frame-by-frame path
-    }
-
-    @Test func typingKeepsTheScreenHiddenEvenWhenNoSecretShows() {
-        #expect(LiveRules.guardScreen(secure: false, typing: true))
-        #expect(LiveRules.guardScreen(secure: false, typing: false) == false)
-    }
-
-    @Test func theNewestPictureDecides() {
-        // a password field shows on the second picture: the page hides again, and shows once the field is gone
-        #expect(LiveRules.guardScreen(secure: false, typing: false) == false)
-        #expect(LiveRules.guardScreen(secure: true, typing: false))
-        #expect(LiveRules.guardScreen(secure: false, typing: false) == false)
+@Suite struct LiveMetaTests {
+    @Test func aMetaLineIsParsedAndWinsOverTheLastPicturesHeaderUntilAPictureComes() {
+        #expect(LiveMessages.parse(#"{"type":"meta","url":"https://a.b/x","title":"새 제목"}"#) == .meta(LiveMeta(url: "https://a.b/x", title: "새 제목")))
+        let meta = LiveMeta(url: "https://new.example/pay", title: "Pay")
+        #expect(LiveHeader.title(meta: nil, frame: "Old") == "Old")
+        #expect(LiveHeader.title(meta: meta, frame: "Old") == "Pay")
+        #expect(LiveHeader.url(meta: meta, frame: "https://old.example/") == "https://new.example/pay")
+        #expect(LiveHeader.url(meta: nil, frame: "https://old.example/") == "https://old.example/")     // the model clears the meta when a picture arrives
+        #expect(LiveHeader.title(meta: LiveMeta(url: "https://a.b/", title: ""), frame: nil) == nil)     // a page without a title: the caller falls back to the host
+        #expect(LiveHeader.title(meta: nil, frame: nil) == nil)
     }
 }

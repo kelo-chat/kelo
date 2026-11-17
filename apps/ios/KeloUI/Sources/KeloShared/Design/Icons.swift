@@ -20,6 +20,7 @@ public enum KeloIcon: String, CaseIterable, Sendable {
     case chip = "cpu"
     case file = "doc"
     case mic = "mic"
+    case speaker = "speaker.wave.2"
     case spark = "sparkles"
     case check = "checkmark"
     case arrowDown = "arrow.down"

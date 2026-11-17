@@ -32,6 +32,7 @@ import chat.kelo.desktop.core.Autostart
 import chat.kelo.desktop.core.DesktopNote
 import chat.kelo.desktop.core.Log
 import chat.kelo.desktop.core.NotePoller
+import chat.kelo.app.notify.ItemIds
 import chat.kelo.desktop.core.DesktopPlatform
 import chat.kelo.desktop.core.SingleInstance
 import chat.kelo.app.ui.text.loadString
@@ -102,11 +103,12 @@ fun main(args: Array<String>) {
         }
         LaunchedEffect(Unit) {
             launch(Dispatchers.IO) {
-                NotePoller(app.settings, shown = { app.windowShown.value }) { n ->
+                NotePoller(app.settings, shown = { app.windowShown.value }, post = { n ->
                     // in the app's own words, as the phone's notifications; a click opens where the phone's would (NotifyRules.target)
                     val (title, body) = NoteText.of(n)
-                    app.notify(DesktopNote(title, body, if (NotePoller.isWarning(n)) DesktopNote.Kind.WARNING else DesktopNote.Kind.INFO, target = NotifyRules.target(n)))
-                }.loop { app.sessions.api.value }
+                    app.notify(DesktopNote(title, body, if (NotePoller.isWarning(n)) DesktopNote.Kind.WARNING else DesktopNote.Kind.INFO,
+                        target = NotifyRules.target(n), item = ItemIds.of(n)))
+                }, shownItems = { app.shelf.shownItems() }, settle = { app.settleItems(it) }).loop { app.sessions.api.value }
             }
         }
 
@@ -167,7 +169,7 @@ fun main(args: Array<String>) {
                 }
                 window.addWindowStateListener { app.windowShown.value = visible && (window.extendedState and Frame.ICONIFIED) == 0 }
                 window.addWindowFocusListener(object : java.awt.event.WindowAdapter() {
-                    override fun windowGainedFocus(e: java.awt.event.WindowEvent?) { app.windowShown.value = true }
+                    override fun windowGainedFocus(e: java.awt.event.WindowEvent?) { app.windowShown.value = true; app.clearNews() }
                 })
             }
             KeloApp(app, initialLink = pairArg)

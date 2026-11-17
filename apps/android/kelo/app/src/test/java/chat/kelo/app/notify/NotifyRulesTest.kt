@@ -149,8 +149,8 @@ class ReplyRulesTest {
         val plain = TurnEvent.ApprovalRequest("a", "browser_click", JsonObject(emptyMap()), null, label = "사이트에서 누르기")
         val pay = plain.copy(name = "confirm_purchase", label = "", payment = PaymentInfo("s", "책", 1.0, "KRW", "1원"))
         assertNull(ReplyRules.onApproval(plain, visible = true))
-        assertEquals(ReplyRules.Post.Approval("사이트에서 누르기", false), ReplyRules.onApproval(plain, visible = false))
-        assertEquals(ReplyRules.Post.Approval("confirm_purchase", true), ReplyRules.onApproval(pay, visible = false))
+        assertEquals(ReplyRules.Post.Approval("사이트에서 누르기", false, "a"), ReplyRules.onApproval(plain, visible = false))
+        assertEquals(ReplyRules.Post.Approval("confirm_purchase", true, "a"), ReplyRules.onApproval(pay, visible = false))
     }
 
     @Test fun addressQuestionWhileAway() {

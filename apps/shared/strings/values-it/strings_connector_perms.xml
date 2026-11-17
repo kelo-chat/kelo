@@ -17,4 +17,6 @@
     <string name="perm_reset_q">Riportare tutte le impostazioni di questo connettore ai valori predefiniti?</string>
     <string name="perm_read_off_q">Con la lettura disattivata, Kelo non può quasi usare questo connettore. Disattivarla?</string>
     <string name="perm_limited">Limitato</string>
+    <string name="perm_unattended">Usa anche quando non sto chattando</string>
+    <string name="perm_unattended_about">Le attività pianificate, i lavori in background e i messaggi che Kelo invia per primo non useranno %1$s. Le tue chat possono ancora farlo.</string>
 </resources>

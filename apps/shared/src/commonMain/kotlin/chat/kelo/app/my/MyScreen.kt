@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -61,6 +61,7 @@ private object MyView {
     const val AGENT = "agent"
     const val PERMISSIONS = "permissions"
     const val RECORDS = "records"
+    const val PAST_APPROVALS = "past-approvals"
     const val NOTIFY = MyPage.NOTIFY
     const val PROFILE = "profile"
     const val MODEL = "model"
@@ -75,6 +76,8 @@ private object MyView {
     const val ACTIONS = "actions"
     const val ANDROID_DEVICE = "android-device"
     const val PRIVACY = "privacy"
+    const val FORGET = "forget"
+    const val DATA = "data"
     const val LANGUAGE = "language"
     const val WALLET = "wallet"
     const val OPERATOR = "operator"
@@ -82,7 +85,7 @@ private object MyView {
     const val KEYGUARD = "keyguard"
 
     /** Sub pages a request may open by this name (the ones that need nothing but the name). */
-    val NAMED = setOf(PROFILE, NOTIFY, USAGE, DEVICES, DOCUMENTS, FILES, NEST, ACTIONS, PRIVACY, LANGUAGE, PERMISSIONS, RECORDS)
+    val NAMED = setOf(PROFILE, NOTIFY, USAGE, DEVICES, DOCUMENTS, FILES, NEST, ACTIONS, PRIVACY, FORGET, DATA, LANGUAGE, PERMISSIONS, RECORDS)
 }
 
 /**
@@ -173,7 +176,8 @@ fun MyScreen(profile: Profile, onProfile: (Profile) -> Unit, onSignedOut: () -> 
         when (shown.lastOrNull() ?: MyView.HOME) {
             MyView.PROFILE -> ProfilePage(profile, onProfile, back)
             MyView.AGENT -> AgentPage(profile, onProfile, back)
-            MyView.PERMISSIONS -> PermissionsPage(back, onOpenWork = { services.openRequests.value = OpenTarget.Activity })
+            MyView.PERMISSIONS -> PermissionsPage(back, onOpenWork = { services.openRequests.value = OpenTarget.Activity }, onOpenPast = { push(MyView.PAST_APPROVALS) })
+            MyView.PAST_APPROVALS -> PastApprovalsPage(back)
             MyView.RECORDS -> RecordsPage(back)
             MyView.NOTIFY -> NotifyPage(back, onDevices = { push(MyView.DEVICES) })
             MyView.MODEL -> ModelPage(profile, onProfile, back, cliProvider = modelCli)
@@ -186,13 +190,19 @@ fun MyScreen(profile: Profile, onProfile: (Profile) -> Unit, onSignedOut: () -> 
             MyView.DOCUMENTS -> DocumentsPage(back)
             MyView.FILES -> KeloFilesPage(back)
             MyView.NEST -> NestPage(back)
-            MyView.ACTIONS -> ActionsPage(back, onOpenTask = { taskId -> services.openRequests.value = OpenTarget.Task(taskId) })
+            MyView.ACTIONS -> ActionsPage(
+                back,
+                onOpenTask = { taskId -> services.openRequests.value = OpenTarget.Task(taskId) },
+                onOpenChat = { services.openRequests.value = OpenTarget.Chat },
+            )
             MyView.ANDROID_DEVICE -> AndroidDevicePage(
                 androidVm, back,
                 onOpenScreen = { services.openRequests.value = OpenTarget.Tab(AndroidDeviceRules.LIVE_KEY) },   // the live view the phone card opens
                 onOpenReadme = { services.browser.open(AndroidDeviceRules.README_URL) },
             )
             MyView.PRIVACY -> PrivacyPage(back)
+            MyView.FORGET -> ForgetPage(back)
+            MyView.DATA -> DataPage(back)
             MyView.OPERATOR -> OperatorPage(back)
             MyView.KEYGUARD -> hooks.keyguardPage?.invoke(back, keyguardCode)
             MyView.SERVER_UPDATE -> ServerUpdatePage(server, back)
@@ -231,11 +241,13 @@ private fun Home(
     val scope = rememberCoroutineScope()
     var confirmClear by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
+    var changeAddress by remember { mutableStateOf(false) }
+    services.sessions.api.collectAsStateWithLifecycle().value   // the address row follows a move
     val c = Kelo.colors
     val cleared = string(Res.string.my_clear_chat_done)
     val updates = services.appUpdates
     val update = updates?.state?.collectAsStateWithLifecycle()?.value
-    val sections = builtInSections(profile, o, server, android, update, go, hooks, onClearChat = { confirmClear = true }) + hooks.extraSections + nestSections()
+    val sections = builtInSections(profile, o, server, android, update, go, hooks, onClearChat = { confirmClear = true }, onChangeAddress = { changeAddress = true }) + hooks.extraSections + nestSections()
 
     val frame = LocalPageFrame.current   // a window: below the app's header, centred, at most this wide (the phone: whole screen)
     Box(Modifier.fillMaxSize().background(c.bg), contentAlignment = Alignment.TopCenter) {
@@ -265,13 +277,18 @@ private fun Home(
         Box(Modifier.height(16.dp))
         MenuGroup { row { MenuRow(KeloIcons.ArrowRight, string(Res.string.my_logout), { confirmLogout = true }, danger = true) } }
         AppVersionLine(
-            appVersion = services.appVersion, serverVersion = o.version, sourceCommit = services.sourceCommit, sourceDirty = services.sourceDirty,
+            appVersion = services.appVersion, serverVersion = o.version, sourceTag = services.sourceTag, sourceDirty = services.sourceDirty,
             openUrl = { url -> services.browser.open(url) },
             modifier = Modifier.padding(start = 16.dp, top = 12.dp),
         )
     }
     }
 
+    if (changeAddress) {
+        val base = services.sessions.api.value?.baseUrl.orEmpty()
+        val moved = string(Res.string.server_address_done)
+        ServerAddressSheet(base, onMoved = { changeAddress = false; toaster.show(moved) }, onClose = { changeAddress = false })
+    }
     if (confirmLogout) {
         ConfirmDialog(
             text = string(Res.string.my_logout_confirm), yes = string(Res.string.my_logout),
@@ -306,7 +323,7 @@ private fun nestSections(): List<MySection> {
 @Composable
 private fun builtInSections(
     profile: Profile, o: MyOverview, server: ServerUpdateStatus?, android: AndroidDeviceInfo?, update: chat.kelo.app.update.UpdateState?,
-    go: (String) -> Unit, hooks: MyScreenHooks, onClearChat: () -> Unit,
+    go: (String) -> Unit, hooks: MyScreenHooks, onClearChat: () -> Unit, onChangeAddress: () -> Unit = {},
 ): List<MySection> {
     val services = LocalAppServices.current
     val c = Kelo.colors
@@ -391,6 +408,7 @@ private fun builtInSections(
         }
         row { MenuRow(KeloIcons.Shield, string(Res.string.agent_tab_permissions), { go(MyView.PERMISSIONS) }, value = string(Res.string.my_perm_value)) }
         row { MenuRow(KeloIcons.Lock, string(Res.string.my_privacy_title), { go(MyView.PRIVACY) }) }
+        row { MenuRow(KeloIcons.Trash, string(Res.string.forget_title), { go(MyView.FORGET) }) }
         // the key of passwords, keys and cards on the owner's phones (Keyguard; owner only, the page says so otherwise)
         if (hooks.keyguardPage != null) row {
             MenuRow(KeloIcons.Shield, string(Res.string.keyguard_title), { go(MyView.KEYGUARD) },
@@ -404,6 +422,7 @@ private fun builtInSections(
         row { MenuRow(KeloIcons.Spark, string(Res.string.nest_title), { go(MyView.NEST) }, value = string(Res.string.nest_made_here)) }
         row { MenuRow(KeloIcons.Clock, string(Res.string.actions_title), { go(MyView.ACTIONS) }) }
         row { MenuRow(KeloIcons.Book, string(Res.string.my_records_title), { go(MyView.RECORDS) }, value = string(Res.string.my_records_value)) }
+        row { MenuRow(KeloIcons.File, string(Res.string.data_title), { go(MyView.DATA) }) }
         row { MenuRow(KeloIcons.Trash, string(Res.string.my_clear_chat), onClearChat, danger = true) }
     }
     list += MySection("app", string(Res.string.my_section_app)) {
@@ -427,6 +446,11 @@ private fun builtInSections(
         }
         row { MenuRow(KeloIcons.Globe, string(Res.string.my_language), { go(MyView.LANGUAGE) }, value = Languages.override(services.language.current)?.let(Languages::name) ?: string(Res.string.language_system)) }
         hooks.appRows?.invoke(this, go)
+        // the server this app talks to, one row (owner 2026-11-17: two rows opened the same sheet); tapping it changes the address, only
+        // on a phone that holds the server's key (an older server has no identity)
+        services.sessions.api.value?.baseUrl?.let { base ->
+            row { MenuRow(KeloIcons.Cloud, string(Res.string.server_address_row), { if (services.sessions.canMoveServer) onChangeAddress() }, value = base) }
+        }
         if (updates != null && update?.enabled == true) {
             // the running version, and a check right now (the Play build asks Google Play)
             row {

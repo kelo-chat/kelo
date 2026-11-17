@@ -29,15 +29,24 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..agent.fence import data as fenced
 from ..live_source import DEVICE_KEY
 from ..tools.live import (
-    CONTROL_GRACE, DEFAULT_MAX_WIDTH, DEFAULT_QUALITY, MAX_TEXT, VIEWER_TIMEOUT, Frame, LiveEnded, LiveError, Tickets, settings_from,
+    CONTROL_GRACE, DEFAULT_FPS, DEFAULT_MAX_WIDTH, DEFAULT_QUALITY, MAX_FPS as BROWSER_MAX_FPS, MAX_TEXT, RECENT_FRAMES, VIEWER_TIMEOUT, Frame,
+    LiveEnded,
+    LiveError, Tickets, settings_from, viewer_css_size,
 )
 from .device import DeviceClient, DeviceError
+from .screen import ScreenReader
 
 log = logging.getLogger(__name__)
 
 MAX_FPS = 3                    # frames a second, however many viewers
+HELD_FPS = 6                   # ...while the owner holds the phone (their taps should show at once)
+EDITING_EVERY = 1.5            # while held, the screen is read for a focused text field at most this often
+MAX_LINES = 8                  # lines in the summary of what the owner did
+TIMEOUT_NOTE = ("[The owner's control of the phone timed out (their screen went away), so it came back to you; they may not have finished "
+                "what they were doing.]")
 CONTROL_WAIT = 30.0            # an android_* step waits this long for the owner to hand the phone back
 OWNER_USING = "the owner is using the phone; try again in a moment"
 MAX_ERRORS = 5                 # pictures that fail one after the other before the live view ends
@@ -56,6 +65,9 @@ class DeviceCast:
     ended: bool = False
     last: tuple[str, int, int] | None = None                 # (PNG hash, max_width, quality) of the picture shown
     errors: int = 0
+    asked_fps: int = BROWSER_MAX_FPS                          # the rate a viewer asked for (the rate in force is capped by MAX_FPS / HELD_FPS)
+    recent: dict[int, tuple[int, int, tuple[int, int]]] = field(default_factory=dict)   # frame seq -> (w, h, device size), the newest RECENT_FRAMES
+    editing: bool = False                                     # the screen's focused node is a text field (read only while the owner holds the phone)
     cond: asyncio.Condition = field(default_factory=asyncio.Condition)
 
 
@@ -86,8 +98,10 @@ class DeviceLive:
 
     def __init__(self, client: DeviceClient, *, clock: Callable[[], float] = time.monotonic,
                  sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep, tickets: Tickets | None = None,
-                 frame_every: float = 1.0 / MAX_FPS, control_wait: float = CONTROL_WAIT, runner: bool = True):
+                 frame_every: float = 1.0 / MAX_FPS, control_wait: float = CONTROL_WAIT, runner: bool = True,
+                 reader: ScreenReader | None = None):
         self.client, self.clock, self._sleep = client, clock, sleep
+        self.reader = reader or ScreenReader()
         self.tickets = tickets or Tickets()
         self.frame_every, self.control_wait = frame_every, control_wait
         self.cast: DeviceCast | None = None
@@ -100,6 +114,16 @@ class DeviceLive:
         self._runner: asyncio.Task[None] | None = None
         self._use_runner = runner
         self.fetched = 0                          # pictures asked of the bridge (tests, diagnostics)
+        self.last_input: float | None = None      # clock() of the owner's last input event (a handover reads it to tell they are done)
+        self.name = ""                            # the device's own name from the bridge ("Pixel 8"), once known
+        self.control_listeners: list[Callable[[str, str | None], Any]] = []   # (key, device or None) on every change of hands
+        self.handback_listeners: list[Callable[[str, str, str, str], Any]] = []   # (key, what the owner did, reason, "phone") on every hand-back
+        self._journal: list[tuple[str, tuple[Any, ...]]] = []   # what the owner did while holding the phone (never typed text)
+        self._took_at = 0.0
+        self._note = ""                           # what the next android_* screen reading tells the agent (take_note)
+        self._editing_at: float | None = None
+        self._editing_busy = False
+        self._tasks: set[asyncio.Task[Any]] = set()
 
     # ------------------------------------------------------------------ tickets, availability
     def ticket(self, key: str, device: str) -> str:
@@ -125,11 +149,21 @@ class DeviceLive:
                 w, h = int(size[0]), int(size[1])
             except Exception:  # noqa: BLE001 - the bridge is away: the size is unknown
                 w, h = 0, 0
+        name = await self.device_name()
         holder, busy = self._holder, self.agent_turn(DEVICE_KEY, turns) is not None
-        return {"id": DEVICE_KEY, "key": DEVICE_KEY, "kind": "device", "source": "device", "label": TITLE, "title": TITLE, "width": w,
+        return {"id": DEVICE_KEY, "key": DEVICE_KEY, "kind": "device", "source": "device", "label": name or TITLE, "title": name or TITLE, "width": w,
                 "height": h, "url": "", "host": "", "status": "working" if busy else "idle", "status_text": "", "last_activity": None,
                 "task_id": None, "controller": "user" if holder else "agent", "controlled_by": holder, "viewers": self.watching(DEVICE_KEY),
                 "thumbnail": None, "thumbnail_width": 0, "thumbnail_height": 0, "ended_at": None}
+
+    async def device_name(self) -> str:
+        """The device's own name (the bridge's `device`), kept once read; "" when the bridge does not say or is away."""
+        if not self.name:
+            try:
+                self.name = str((await asyncio.wait_for(self.client.status(), 3.0)).get("device") or "").strip()[:80]
+            except Exception:  # noqa: BLE001 - the bridge is away: no name yet
+                return ""
+        return self.name
 
     # ------------------------------------------------------------------ viewers
     async def join(self, key: str, viewer: str, **quality: Any) -> DeviceCast:
@@ -141,12 +175,29 @@ class DeviceLive:
         elif quality:
             await self.configure(key, **quality)
         cast.viewers[viewer] = self.clock()
+        self._apply_fps(cast)
         self._ensure_runner()
         return cast
+
+    def fps_cap(self) -> int:
+        return HELD_FPS if self._holder is not None else MAX_FPS
+
+    def _apply_fps(self, cast: DeviceCast) -> None:
+        cast.settings["fps"] = min(cast.asked_fps, self.fps_cap())
+
+    def interval(self) -> float:
+        """Seconds between two pictures: `frame_every` normally, twice as often while the owner holds the phone."""
+        return self.frame_every * MAX_FPS / HELD_FPS if self._holder is not None else self.frame_every
 
     def touch(self, key: str, viewer: str) -> None:
         if self.cast is not None and viewer in self.cast.viewers:
             self.cast.viewers[viewer] = self.clock()
+
+    def rate(self, key: str) -> int:
+        """Frames a second the frame pump may send (the api's live view calls it on every tab, the browser's LiveHub.rate too): the fps in
+        force for the phone's cast (capped to HELD_FPS while the owner holds the phone), DEFAULT_FPS when nobody watches it. Missing
+        before 2026-11-17: the pump raised AttributeError on every phone WebSocket (commit 7a238aa0)."""
+        return int(self.cast.settings["fps"]) if self.cast is not None else DEFAULT_FPS
 
     def watching(self, key: str) -> int:
         return len(self.cast.viewers) if self.cast is not None else 0
@@ -184,10 +235,11 @@ class DeviceLive:
         cast = self.cast
         if cast is None:
             raise LiveError(404, "not_watching", "nobody is watching the device")
-        new = settings_from(max_width, quality, fps, every_nth_frame, base=cast.settings)
-        new["fps"] = min(new["fps"], MAX_FPS)
+        new = settings_from(max_width, quality, fps, every_nth_frame, base={**cast.settings, "fps": cast.asked_fps})
+        cast.asked_fps = new["fps"]
         cast.settings = new
-        return dict(new)
+        self._apply_fps(cast)
+        return dict(cast.settings)
 
     # ------------------------------------------------------------------ frames
     async def wait_frame(self, key: str, after: int, timeout: float) -> Frame | None:
@@ -230,7 +282,11 @@ class DeviceLive:
         cast.last, cast.device = mark, (dw, dh)
         async with cast.cond:
             cast.seq += 1
-            cast.frame = Frame(cast.seq, jpeg, w, h, time.time(), "", TITLE, {"deviceWidth": dw, "deviceHeight": dh}, secure=True)
+            cast.frame = Frame(cast.seq, jpeg, w, h, time.time(), "", TITLE, {"deviceWidth": dw, "deviceHeight": dh}, secure=True,
+                               editing=cast.editing)
+            cast.recent[cast.seq] = (w, h, (dw, dh))
+            for old in [q for q in cast.recent if q <= cast.seq - RECENT_FRAMES]:
+                cast.recent.pop(old, None)
             cast.cond.notify_all()
 
     # ------------------------------------------------------------------ the loop (frames while watched; control grace)
@@ -246,7 +302,7 @@ class DeviceLive:
                 await self.step()
             except Exception:  # noqa: BLE001 - housekeeping keeps going
                 log.exception("phone live view housekeeping failed")
-            await self._sleep(max(0.0, self.frame_every - (self.clock() - started)))
+            await self._sleep(max(0.0, self.interval() - (self.clock() - started)))
 
     async def step(self) -> None:
         """One round: drop silent viewers, hand the phone back when its controller is gone, and (only with a viewer) fetch a picture."""
@@ -260,9 +316,10 @@ class DeviceLive:
                 await self._end(cast, notify=False)
                 cast = None
         if self._holder is not None and not self._conns.get(self._holder) and now - self._seen.get(self._holder, now) > CONTROL_GRACE:
-            await self.give_back(DEVICE_KEY, self._holder)
+            await self.give_back(DEVICE_KEY, self._holder, reason="timeout")
         if cast is None or cast.ended:
             return
+        self._look_for_editing(cast)
         try:
             await self._fetch(cast)
             cast.errors = 0
@@ -295,17 +352,98 @@ class DeviceLive:
             return
         self._holder = device
         self._handed_back.clear()
+        self._journal.clear()
+        self._took_at = self.clock()
+        if self.cast is not None:
+            self._apply_fps(self.cast)
         self._ensure_runner()
         self._changed(DEVICE_KEY)
+        self._tell(device)
 
-    async def give_back(self, key: str, device: str) -> None:
+    async def give_back(self, key: str, device: str, *, reason: str = "owner") -> None:
+        """The owner hands the phone back (reason "owner") or its holder went away ("timeout"). What they did is written down for the
+        agent (`take_note`: the next android_* reading carries it) and told to `handback_listeners` (paused jobs go on)."""
         if self._holder is None:
             return
         if self._holder != device:
             raise LiveError(409, "held", "another device is controlling the phone")
+        entries, seconds = list(self._journal), self.clock() - self._took_at
+        self._journal.clear()
+        if self.cast is not None:
+            self.cast.editing = False
         self._holder = None
+        if self.cast is not None:
+            self._apply_fps(self.cast)
+        summary = summarize(entries, seconds, await self._app_now() if entries or reason == "timeout" else "")
+        if reason == "timeout":
+            summary = (TIMEOUT_NOTE + "\n" + summary) if summary else TIMEOUT_NOTE
+        if summary:
+            self._note = summary
         self._handed_back.set()
         self._changed(DEVICE_KEY)
+        self._tell(None)
+        for fn in list(self.handback_listeners):
+            try:
+                fn(DEVICE_KEY, summary, reason, "phone")
+            except Exception:  # noqa: BLE001 - a listener never breaks handing back
+                pass
+
+    def take_note(self) -> str:
+        """What the owner did by hand since the agent last looked, once (the android tools put it in front of their next screen reading)."""
+        note, self._note = self._note, ""
+        return note
+
+    async def _app_now(self) -> str:
+        """The app the phone shows now ("package (Activity)"), "" when it cannot be read in a moment."""
+        try:
+            got = await asyncio.wait_for(self.client.screen(False), 3.0)
+            screen = self.reader.parse(str(got.get("xml") or ""), str(got.get("app") or ""))
+        except Exception:  # noqa: BLE001 - the phone is busy or away: no app name
+            return ""
+        return screen.package + (f" ({screen.activity})" if screen.activity else "")
+
+    def _tell(self, device: str | None) -> None:
+        for fn in list(self.control_listeners):
+            try:
+                fn(DEVICE_KEY, device)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # ------------------------------------------------------------------ a text field has focus (the app raises its keyboard)
+    def _look_for_editing(self, cast: DeviceCast) -> None:
+        """While the owner holds the phone: is the focused node of the screen a text field? One read (the screen's items) at most every
+        EDITING_EVERY seconds, in the background."""
+        if self._holder is None or self._editing_busy:
+            return
+        now = self.clock()
+        if self._editing_at is not None and now - self._editing_at < EDITING_EVERY:
+            return
+        self._editing_at, self._editing_busy = now, True
+        t = asyncio.ensure_future(self._refresh_editing(cast))
+        self._tasks.add(t)
+        t.add_done_callback(self._tasks.discard)
+
+    async def _refresh_editing(self, cast: DeviceCast) -> None:
+        try:
+            got = await asyncio.wait_for(self.client.screen(False), 3.0)
+            screen = self.reader.parse(str(got.get("xml") or ""), str(got.get("app") or ""))
+            editing = any(i.focused and i.editable for i in screen.items)
+        except Exception:  # noqa: BLE001 - not readable now: the last answer stands
+            return
+        finally:
+            self._editing_busy = False
+        if editing != cast.editing and self._holder is not None:
+            cast.editing = editing
+            cast.last = None   # the next round sends a frame again, so the new answer reaches the app even when the picture did not change
+
+    async def view(self, key: str, device: str, ev: dict[str, Any]) -> dict[str, Any]:
+        """`{"type": "view", ...}`: the phone keeps its own screen, so the size of the owner's live area changes nothing here."""
+        if not self.available(key):
+            raise LiveError(404, "no_tab", "no such device")
+        if viewer_css_size(ev.get("width"), ev.get("height"), ev.get("density")) is None:
+            raise LiveError(422, "bad_event", "width, height and density must be positive numbers")
+        self.seen(key, device)
+        return {"ok": True, "applied": False}
 
     async def hold_for_user(self, _args: dict[str, Any] | None = None) -> str | None:
         """An android_* tool's `hold`: wait while the owner has the phone (at most `control_wait`). None = go on, else the words the
@@ -330,6 +468,7 @@ class DeviceLive:
         if self._holder != device:
             raise LiveError(409, "not_controller", "take control of the phone first")
         self.seen(key, device)
+        self.last_input = self.clock()
         out: dict[str, Any] = {"ok": True, "type": kind}
 
         def num(name: str, default: float | None = None) -> float:
@@ -339,11 +478,16 @@ class DeviceLive:
             return float(v)
 
         def mapping() -> tuple[tuple[int, int], tuple[int, int]]:
+            """(the picture's size, the device's size) of the frame the owner was looking at (`frame_seq`), else of the newest one."""
             cast = self.cast
             frame = cast.frame if cast is not None else None
             if cast is None or frame is None or not all(cast.device):
                 raise LiveError(409, "no_frame", "no frame yet: open the live view first")
-            return (int(num("frame_w", frame.w)) or frame.w, int(num("frame_h", frame.h)) or frame.h), cast.device
+            seq = ev.get("frame_seq")
+            known = cast.recent.get(seq) if isinstance(seq, int) and not isinstance(seq, bool) else None
+            out["mapped_with"] = "frame" if known is not None else "latest"
+            w, h, dev = known if known is not None else (frame.w, frame.h, cast.device)
+            return (int(num("frame_w", w)) or w, int(num("frame_h", h)) or h), dev
 
         try:
             if kind == "tap":
@@ -351,6 +495,7 @@ class DeviceLive:
                 x, y = to_device(num("x"), num("y"), size, dev)
                 await self.client.tap(x, y)
                 out.update(x=x, y=y)
+                self._journal.append(("tap", (x, y)))
             elif kind == "swipe":
                 size, dev = mapping()
                 x1, y1 = to_device(num("x1"), num("y1"), size, dev)
@@ -358,6 +503,7 @@ class DeviceLive:
                 ms = int(min(3000.0, max(50.0, num("ms", 300))))
                 await self.client.swipe(x1, y1, x2, y2, ms)
                 out.update(x1=x1, y1=y1, x2=x2, y2=y2)
+                self._journal.append(("swipe", (x1, y1, x2, y2)))
             elif kind == "text":
                 text = ev.get("text")
                 if not isinstance(text, str) or not text or len(text) > MAX_TEXT:
@@ -367,12 +513,14 @@ class DeviceLive:
                 except DeviceError as e:
                     raise DeviceError(str(e).replace(text, "[hidden]")) from None
                 out["chars"] = len(text)
+                self._journal.append(("text", (len(text),)))   # the length only, never the text
             else:
                 name = KEYS.get(str(ev.get("key") or ""))
                 if name is None:
                     raise LiveError(422, "bad_event", "key must be one of: back, home, enter, recents")
                 await self.client.key(name)
                 out["key"] = "recents" if name == "recent" else name
+                self._journal.append(("key", (out["key"],)))
         except DeviceError as e:
             raise LiveError(502, "device", f"the phone could not do that ({str(e)[:160]})") from None
         return out
@@ -386,7 +534,41 @@ class DeviceLive:
                 pass
 
     async def close(self) -> None:
+        for t in list(self._tasks):
+            t.cancel()
         if self._runner is not None:
             self._runner.cancel()
         if self.cast is not None:
             await self._end(self.cast, notify=False)
+
+
+def summarize(entries: list[tuple[str, tuple[Any, ...]]], seconds: float, app: str = "") -> str:
+    """A few plain lines for the agent: what the owner did on the phone and where it stands now. Typed text is never in `entries`, only its
+    length; the app name comes from the device, so the lines are fenced as outside text. "" when the owner did nothing."""
+    if not entries:
+        return ""
+    lines: list[str] = []
+    for kind, a in entries:
+        if kind == "tap":
+            lines.append(f"- tapped the screen at ({a[0]}, {a[1]})")
+        elif kind == "swipe":
+            lines.append(f"- swiped from ({a[0]}, {a[1]}) to ({a[2]}, {a[3]})")
+        elif kind == "text":
+            lines.append(f"- typed {a[0]} characters (the text is not recorded)")
+        elif kind == "key":
+            lines.append(f"- pressed {a[0]}")
+    merged: list[str] = []
+    for line in lines:   # a run of the same line once, with its count
+        if merged and merged[-1][0] == line:
+            merged[-1][1] += 1
+        else:
+            merged.append([line, 1])
+    out = [l if n == 1 else f"{l} (x{n})" for l, n in merged]
+    if len(out) > MAX_LINES - 1:
+        out = out[:2] + [f"- ... {len(out) - (MAX_LINES - 4)} more steps ..."] + out[-(MAX_LINES - 4):]
+    if app:
+        out.append(f"- the phone now shows {app}")
+    mins = max(1, round(seconds / 60))
+    return (f"[While the owner used the phone (about {mins} min) they did this themselves:\n" + fenced("\n".join(out))
+            + "\nThe screen has changed and refs from before no longer apply: look at it first and carry on from there; do not redo these steps. "
+              "Handing the phone back approved no purchase and no sign-in step.]")

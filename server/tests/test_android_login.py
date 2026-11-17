@@ -15,12 +15,15 @@ from cryptography.fernet import Fernet
 
 from assistant.android.device import DeviceClient
 from assistant.android.screen import ScreenReader
-from assistant.android.signin import SignInReader, find_fields, find_submit, masked
-from assistant.android.tools import AndroidSession
+from assistant.android.signin import SignInReader, choose_submit, find_fields, masked, submit_candidates
+from assistant.step_judge import StepVerdict
+from assistant.android.tools import PHONE_ONCE, AndroidSession, PhoneUse, _phone_gated, android_tools
+from assistant.i18n import t
 from assistant.store import Store
 from assistant.tools import vault_tools as vt
 from assistant.tools.vault_tools import login_site_ok, site_host, vault_tools
 from assistant.vault import Transient
+from assistant.workers import current_turn
 
 FIX = pathlib.Path(__file__).parent / "fixtures" / "android"
 TOKEN = "t" * 40
@@ -45,8 +48,9 @@ def screen_of(name):
 class Bridge:
     """The bridge with a device that moves on: `moves` maps a screen to the one a submit leads to (Enter, or a tap on its button)."""
 
-    def __init__(self, screen, moves=None, enter_moves=True):
+    def __init__(self, screen, moves=None, enter_moves=True, tap_moves=None):
         self.screen, self.moves, self.enter_moves, self.log = screen, dict(moves or {}), enter_moves, []
+        self.tap_moves = tap_moves   # (x0, y0, x1, y1): a tap inside it moves the screen on (the submit control), when Enter does not
 
     def __call__(self, request):
         path = request.url.path
@@ -56,10 +60,8 @@ class Bridge:
             return httpx.Response(200, json={"xml": dump(self.screen), "png": None, "app": APPS[self.screen]})
         if path == "/key" and body.get("key") == "enter" and self.enter_moves:
             self.screen = self.moves.get(self.screen, self.screen)
-        if path == "/tap" and not self.enter_moves:
-            button = find_submit(screen_of(self.screen))
-            if button is not None and button.contains(body["x"], body["y"]):
-                self.screen = self.moves.get(self.screen, self.screen)
+        if path == "/tap" and self.tap_moves and self.tap_moves[0] <= body["x"] <= self.tap_moves[2] and self.tap_moves[1] <= body["y"] <= self.tap_moves[3]:
+            self.screen = self.moves.get(self.screen, self.screen)
         return httpx.Response(200, json={"ok": True})
 
     def typed(self):
@@ -120,16 +122,10 @@ def test_play_with_no_window_gives_no_screen_and_no_fields():
     What the bridge makes of that is an error (test_android_bridge); a dump that is only the root finds nothing, without errors."""
     empty = ScreenReader().parse('<?xml version="1.0"?><hierarchy rotation="0"><node bounds="[0,0][720,1280]" package="com.android.vending"/></hierarchy>',
                                  "com.android.vending/.AssetBrowserActivity")
-    assert find_fields(empty) == (None, None) and find_submit(empty) is None
+    assert find_fields(empty) == (None, None)
     assert SignInReader().read(screen_of("google_password"), empty)[0] == "unknown"
     assert SignInReader().read(empty, empty)[0] == "unknown"
     assert not SignInReader.left_sign_in(empty, GMS)
-
-
-def test_the_submit_button_is_the_one_named_next_or_sign_in():
-    assert find_submit(screen_of("google_email")).words == "Next"
-    assert find_submit(screen_of("app_signin_form")).words == "Sign in"
-    assert find_submit(screen_of("settings")) is None
 
 
 def test_what_is_typed_in_a_field_is_replaced_in_the_screen_the_model_reads():
@@ -141,15 +137,16 @@ def test_what_is_typed_in_a_field_is_replaced_in_the_screen_the_model_reads():
     assert "Email or phone" in masked(screen_of("google_email"))      # an empty field keeps its name
 
 
-@pytest.mark.parametrize("after,want", [("google_password_wrong", "failed"), ("google_check_phone", "code_needed"),
-                                        ("play_signed_in", "success"), ("google_password", "unknown")])
+@pytest.mark.parametrize("after,want", [("google_password_wrong", "unknown"), ("google_check_phone", "unknown"),
+                                        ("play_signed_in", "success"), ("google_password", "unknown")])   # words and the password field alone say nothing
 def test_the_screen_after_a_submit_is_read(after, want):
     assert SignInReader().read(screen_of("google_password"), screen_of(after))[0] == want
 
 
-def test_a_check_your_phone_screen_is_an_approval_not_a_code():
-    assert SignInReader().step(screen_of("google_check_phone")) == "approve"
+def test_a_code_box_without_a_password_field_is_a_code_step_and_nothing_is_read_from_words():
+    assert SignInReader().step(screen_of("google_email")) == "code"          # an input and no password field
     assert SignInReader().step(screen_of("google_password")) == ""
+    assert SignInReader().step(screen_of("google_check_phone")) == ""
 
 
 # ------------------------------------------------------------------------------------------------ app hosts
@@ -200,29 +197,59 @@ def test_googles_two_pages_are_typed_one_step_at_a_time(tmp_path):
     assert store.credential("google")["last_result"] == "ok"
 
 
-def test_a_wrong_password_is_failed_and_the_login_is_not_tried_again(tmp_path):
+def test_a_rejected_password_is_left_unknown_and_the_result_shows_the_screen(tmp_path):
     bridge = Bridge("google_password", {"google_password": "google_password_wrong"})
     store, _, tools, _ = setup(tmp_path, bridge, hosts=("accounts.google.com",), name="google")
     out = call(tools, name="google", step="password")
-    assert "[sign-in result: failed" in out and "will not be tried again" in out and PASSWORD not in out
-    bridge.screen, bridge.log = "google_password", []
-    again = call(tools, name="google", step="password")
-    assert again.startswith("error:") and "rejected" in again and bridge.typed() == []
+    assert "[sign-in result: unknown" in out and PASSWORD not in out
 
 
-def test_check_your_phone_is_a_pending_verification_and_points_to_android_show(tmp_path):
-    bridge = Bridge("google_password", {"google_password": "google_check_phone"})
-    _, _, tools, _ = setup(tmp_path, bridge, hosts=("accounts.google.com",), name="google")
-    out = call(tools, name="google", step="password")
-    assert "[sign-in result: verification_pending (approve)" in out and "NOT finished" in out and "android_show" in out
+class PlainJudge:
+    """Stands for the step judge (the main model): the controls named in `plain` change nothing; the others sign up, reset or delete."""
+
+    def __init__(self, plain=("Next", "Sign in"), none=False):
+        self.plain, self.none, self.asked = plain, none, []
+
+    async def phone(self, package, activity, item, screen):
+        self.asked.append(item["text"] or item["desc"])
+        if self.none:
+            return None
+        ok = item["text"] in self.plain
+        return StepVerdict(False, False, False, False, not ok)
 
 
-def test_enter_that_moves_nothing_is_followed_by_a_tap_on_next(tmp_path):
-    bridge = Bridge("google_email", {"google_email": "google_password"}, enter_moves=False)
-    _, _, tools, _ = setup(tmp_path, bridge, hosts=("accounts.google.com",), name="google")
+def test_one_control_after_the_field_is_the_submit_control_without_any_judge():
+    one = ScreenReader().parse(dump("google_email").replace("Forgot email?", "").replace("Create account", ""), GMS)
+    assert [i.words for i in submit_candidates(one)] == ["Next"]
+    import asyncio as _a
+    assert _a.run(choose_submit(one, None)).words == "Next"
+
+
+async def test_several_controls_after_the_field_go_to_the_step_judge_nearest_first():
+    screen = screen_of("google_email")       # Forgot email?, Create account, Next: all after the field
+    assert [i.words for i in submit_candidates(screen)] == ["Forgot email?", "Create account", "Next"]
+    judge = PlainJudge()
+    assert (await choose_submit(screen, judge)).words == "Next" and judge.asked == ["Forgot email?", "Create account", "Next"]
+    assert await choose_submit(screen, None) is None                           # several and no judge: Enter alone
+    assert await choose_submit(screen, PlainJudge(none=True)) is None          # the judge cannot tell: Enter alone
+    assert (await choose_submit(screen_of("settings"), judge)) is None         # no input field, no sign-in form
+
+
+def test_enter_that_moves_nothing_is_followed_by_a_tap_on_the_control_the_judge_names(tmp_path):
+    bridge = Bridge("google_email", {"google_email": "google_password"}, enter_moves=False, tap_moves=(540, 1000, 672, 1080))
+    _, _, tools, session = setup(tmp_path, bridge, hosts=("accounts.google.com",), name="google")
+    session.step_judge = PlainJudge()
     out = call(tools, name="google", step="username")
     assert "Welcome" in out and ("/key", {"key": "enter"}) in bridge.log
     assert {"x": 606, "y": 1040} in [b for p, b in bridge.log if p == "/tap"]      # the centre of Next
+    assert not [b for p, b in bridge.log if p == "/tap" and b.get("x") == 174]      # Create account was never tapped
+
+
+def test_without_a_judge_and_with_several_candidates_only_enter_is_used(tmp_path):
+    bridge = Bridge("google_email", {"google_email": "google_password"}, enter_moves=False, tap_moves=(540, 1000, 672, 1080))
+    _, _, tools, _ = setup(tmp_path, bridge, hosts=("accounts.google.com",), name="google")
+    call(tools, name="google", step="username")
+    assert ("/key", {"key": "enter"}) in bridge.log and not [b for p, b in bridge.log if p == "/tap" and b.get("y") == 1040]
 
 
 def test_the_values_are_in_no_result_and_no_log(tmp_path, caplog):
@@ -317,3 +344,27 @@ def test_the_card_names_the_login_and_the_app_and_the_vaults_rules_decide_whethe
     assert tool.auto_approve({"name": "shop"})
     assert not tool.auto_approve({"name": "nobody"})
     assert bridge.typed() == []                                           # asking typed nothing
+
+
+# ------------------------------------------------------------------------------------------------ one phone card per task
+def test_android_login_asks_on_the_first_phone_use_of_a_task_and_goes_on_after_another_phone_step(tmp_path):
+    # wired as server.py does it: the vault's android_login wrapped with the app's PhoneUse, the phone steps sharing it
+    _, transient, tools, session = setup(tmp_path, Bridge("settings"), hosts=("app:com.example.shop",))
+    transient.put("shop", USER, PASSWORD)   # typed in for this sign-in: the login's own rule has no card (the phone gate adds none)
+    phone_use = PhoneUse()
+    login = _phone_gated(tools["android_login"], phone_use)
+    phone = {t_.name: t_ for t_ in android_tools(session.client, session=session, phone_use=phone_use)}
+    token = current_turn.set({"task_id": 7})
+    try:
+        assert login.requires_approval is True
+        assert asyncio.run(login.auto_approve({"name": "shop"})) is False       # first phone use of task 7: a card
+        assert asyncio.run(login.describe({"name": "shop"})).startswith(t(PHONE_ONCE))
+        asyncio.run(phone["android_look"].handler({}))                           # another phone step of task 7 ran
+        assert asyncio.run(login.auto_approve({"name": "shop"})) is True         # the task is allowed and the login's rule says no card
+    finally:
+        current_turn.reset(token)
+    token = current_turn.set({"task_id": 8})                                    # another task asks again
+    try:
+        assert asyncio.run(login.auto_approve({"name": "shop"})) is False
+    finally:
+        current_turn.reset(token)

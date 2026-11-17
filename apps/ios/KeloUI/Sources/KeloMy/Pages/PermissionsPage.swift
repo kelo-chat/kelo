@@ -12,6 +12,10 @@ struct PermissionsPage: View {
     @Environment(\.kelo) private var c
     @State private var model: PermissionsModel
     @State private var revoking: ApprovalRule?
+    @State private var removing: RecipientAllow?
+    @State private var removingOrder: Preapproval?
+    @State private var removingAllow: PayAllow?
+    @State private var opened: ApprovalRecord?
 
     init(api: KeloApi, phoneData: PhoneDataSync) {
         self.phoneData = phoneData
@@ -41,14 +45,35 @@ struct PermissionsPage: View {
                         }
                     }
                 }
-                SectionLabel(L(R.string.agent_perm_history)).padding(.horizontal, -16)
+                SectionLabel(L(R.string.recipient_allows_title)).padding(.horizontal, -16)
+                if model.recipients.isEmpty {
+                    MutedText(L(R.string.recipient_allows_empty), small: true)
+                } else {
+                    MenuCard {
+                        ForEach(Array(model.recipients.enumerated()), id: \.element.id) { i, r in
+                            if i > 0 { Hairline() }
+                            recipientRow(r)
+                        }
+                    }
+                }
+                if let cover = model.cover {
+                    SectionLabel(L(R.string.paycover_title)).padding(.horizontal, -16)
+                    PaymentCoverSection(cover: cover, onSwitch: model.setCover, onRemoveOrder: { removingOrder = $0 },
+                                        onRemoveAllow: { removingAllow = $0 })
+                }
+                SectionLabel(L(R.string.approval_history_title)).padding(.horizontal, -16)
                 if history.isEmpty {
-                    EmptyNote(L(R.string.agent_perm_history_empty))
+                    EmptyNote(L(R.string.approval_history_empty))
                 } else {
                     MenuCard {
                         ForEach(Array(history.enumerated()), id: \.offset) { i, a in
                             if i > 0 { Hairline() }
-                            ApprovalRecordRow(a: a, when: a.askedAt > 0 ? MyFormat.dayTime(a.askedAt) : "")
+                            // a tap says what it was: where, when, who answered, whether the message was fixed first
+                            Button { opened = a } label: {
+                                ApprovalRecordRow(a: a, when: a.askedAt > 0 ? MyFormat.dayTime(a.askedAt) : "")
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -65,7 +90,35 @@ struct PermissionsPage: View {
             Button(L(R.string.agent_rule_revoke_yes), role: .destructive) { if let r = revoking { model.revoke(r) } }
             Button(L(R.string.cancel), role: .cancel) {}
         }
+        .alert(removing.map { L(R.string.recipient_allow_remove_confirm, trailKindWord($0.kind), trailRecipientWord($0.recipient)) } ?? "",
+               isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button(L(R.string.agent_rule_revoke_yes), role: .destructive) { if let r = removing { model.removeRecipient(r) } }
+            Button(L(R.string.cancel), role: .cancel) {}
+        }
+        .keloConfirm(L(R.string.paycover_remove_order_confirm), isPresented: Binding(get: { removingOrder != nil }, set: { if !$0 { removingOrder = nil } }),
+                     yes: L(R.string.agent_rule_revoke_yes)) { if let p = removingOrder { model.removeOrder(p) } }
+        .keloConfirm(removingAllow.map { L(R.string.paycover_remove_allow_confirm, TokenText.fit($0.scheduleName.isEmpty ? L(R.string.paycover_for_a_schedule) : $0.scheduleName, max: 30)) } ?? "",
+                     isPresented: Binding(get: { removingAllow != nil }, set: { if !$0 { removingAllow = nil } }),
+                     yes: L(R.string.agent_rule_revoke_yes)) { if let a = removingAllow { model.removeAllow(a) } }
         .toast(model.notice, clear: model.clearNotice)
+        .sheet(isPresented: Binding(get: { opened != nil }, set: { if !$0 { opened = nil } })) {
+            if let a = opened { PastApprovalSheet(a: a) { opened = nil } }
+        }
+    }
+
+    private func recipientRow(_ r: RecipientAllow) -> some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(trailRecipientWord(r.recipient)).font(KeloFont.bodyLarge).foregroundStyle(c.ink).lineLimit(2)
+                Text(trailKindWord(r.kind)).font(KeloFont.small).foregroundStyle(c.muted)
+                if r.createdAt > 0 { Text(L(R.string.recipient_allow_since, MyFormat.agoText(r.createdAt))).font(KeloFont.label).foregroundStyle(c.muted) }
+            }
+            Spacer(minLength: 8)
+            Button { removing = r } label: { KeloIconView(.trash, size: 20, tint: c.muted).frame(width: 40, height: 40) }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L(R.string.recipient_allow_remove, trailRecipientWord(r.recipient)))
+        }
+        .padding(.vertical, 10)
     }
 
     private func ruleRow(_ r: ApprovalRule) -> some View {

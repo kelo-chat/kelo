@@ -83,13 +83,24 @@ fun ProvideAndroidPlatform(reduceMotion: Boolean, content: @Composable () -> Uni
         NetworkInfo { cm?.isActiveNetworkMetered == true }
     }
     val sharer = remember(context) { TextSharer { text -> shareText(context, text) } }
+    // the phone's own text-to-speech for "Read aloud"; it is only started when a reply is read, and let go when the app root leaves
+    val speech = remember(context) { chat.kelo.app.voice.AndroidSpeechEngine(context.applicationContext) }
+    androidx.compose.runtime.DisposableEffect(speech) { onDispose { speech.shutdown() } }
+    // the window's width decides the layout (a split screen, a cover screen and an unfolded foldable all differ): from the configuration, which
+    // the activity receives itself on a fold or a resize (the manifest says so), so nothing is recreated
+    val config = LocalConfiguration.current
+    val shape = chat.kelo.app.ui.platform.WindowRules.shapeFor(config.screenWidthDp.toFloat(), config.screenHeightDp.toFloat())
+    val column = chat.kelo.app.ui.platform.WindowRules.pageColumn(shape)
     CompositionLocalProvider(
+        chat.kelo.app.ui.platform.LocalWindowShape provides shape,
+        chat.kelo.app.ui.platform.LocalPageFrame provides (column?.let { chat.kelo.app.ui.platform.PageFrame(androidx.compose.ui.unit.Dp(0f), it) } ?: chat.kelo.app.ui.platform.PageFrame.None),
         LocalFormFactor provides FormFactor.Phone,
         LocalHaptics provides haptics,
         LocalReduceMotion provides reduceMotion,
         LocalTextLocale provides LocalConfiguration.current.locales[0],
         LocalBackHandler provides AndroidBackHandler,
         LocalTextSharer provides sharer,
+        chat.kelo.app.chat.LocalSpeechEngine provides speech,
         LocalNetworkInfo provides network,
         LocalChromeHider provides { key, hidden -> HideShellChrome(key, hidden) },
         LocalSecureWindow provides { SecureWindow() },

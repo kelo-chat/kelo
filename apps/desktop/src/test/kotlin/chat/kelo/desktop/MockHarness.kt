@@ -133,7 +133,7 @@ class MockServer(vararg args: String, env: Map<String, String> = emptyMap()) {
     }
 
     companion object {
-        private val TAKEN = setOf(8080, 8765, 8786, 8787, 6080) + (8100..8103) + (6100..6102)
+        private val TAKEN = setOf(8080, 8765, 8786, 8787) + (8100..8103)
 
         fun freePort(): Int {
             while (true) {

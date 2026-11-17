@@ -1,0 +1,101 @@
+{
+  "name": "checkout-split-off-chat-pays",
+  "about": "ASSISTANT_PAYMENT_SPECIALIST=0: the chat has the payment tools again and reaches the approval card itself; nothing is paid.",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Buy me 2 blue Trail Mugs from shop.example.test. 50 USD at most, send them to my saved home address."
+  ],
+  "model": [],
+  "tools": {
+    "web_search": {
+      "real_schema": true,
+      "result": "1. Trail Mug, blue enamel, 350 ml — shop.example.test — https://shop.example.test/products/trail-mug-blue — $12.00 each, free delivery over $20\n2. Camp Cup set, 4 pieces — other.example.test — https://other.example.test/camp-cups — $39.00",
+      "untrusted": true,
+      "source": "web"
+    },
+    "browser_open": {
+      "real_schema": true,
+      "untrusted": true,
+      "source": "page",
+      "by": "url",
+      "results": {
+        "https://shop.example.test/products/trail-mug-blue": "Page https://shop.example.test/products/trail-mug-blue — Trail Mug, blue enamel, 350 ml. $12.00 each, in stock. Free delivery over $20.\nQuantity: [1] (e3). Button: Add to cart (e4). Link: Cart (e5) -> https://shop.example.test/cart",
+        "https://shop.example.test/cart": "Page https://shop.example.test/cart — Your cart and checkout\nLine: Trail Mug, blue enamel — Quantity: 2 — $12.00 each\nSubtotal $24.00 · Delivery (standard, 3-5 days) $0.00 · Tax $0.00\nTotal due now: $24.00 USD\nDeliver to: Home (saved address) · Payment: card on file\nButton: Place order (e9)"
+      },
+      "result": "Page https://shop.example.test/cart — Your cart and checkout\nLine: Trail Mug, blue enamel — Quantity: 2 — $12.00 each\nSubtotal $24.00 · Delivery (standard, 3-5 days) $0.00 · Tax $0.00\nTotal due now: $24.00 USD\nDeliver to: Home (saved address) · Payment: card on file\nButton: Place order (e9)"
+    },
+    "browser_read": {
+      "real_schema": true,
+      "untrusted": true,
+      "source": "page",
+      "result": "Page https://shop.example.test/cart — Your cart and checkout\nLine: Trail Mug, blue enamel — Quantity: 2 — $12.00 each\nSubtotal $24.00 · Delivery (standard, 3-5 days) $0.00 · Tax $0.00\nTotal due now: $24.00 USD\nDeliver to: Home (saved address) · Payment: card on file\nButton: Place order (e9)"
+    },
+    "browser_click": {
+      "real_schema": true,
+      "untrusted": true,
+      "source": "page",
+      "result": "Clicked. Added to cart. The cart page is https://shop.example.test/cart",
+      "refuse_selector_containing": {"e9": "$REFUSAL"}
+    },
+    "browser_type": {
+      "real_schema": true,
+      "result": "Typed."
+    },
+    "browser_fill_shipping": {
+      "real_schema": true,
+      "result": "Delivery fields filled from the saved home address."
+    },
+    "begin_order": {
+      "real_schema": true,
+      "result": "Order started for this shop. Use the saved home address."
+    },
+    "end_order": {
+      "real_schema": true,
+      "result": "Order closed."
+    },
+    "checkout_review": {
+      "real_schema": true,
+      "by": "status",
+      "results": {
+        "draft": "confirm: the cart matches the terms you gave; the terms are recorded. Call checkout_review again with status ready and the same terms to ask for the payment approval.",
+        "ready": "The owner declined the payment approval (or did not answer). Nothing was paid. Do not try again: end with a report that says the approval is waiting."
+      },
+      "result": "confirm"
+    },
+    "checkout_submit": {
+      "real_schema": true,
+      "result": "Error: that review was not approved"
+    },
+    "purchase_result": {
+      "real_schema": true,
+      "result": "Recorded."
+    }
+  },
+  "workers": true,
+  "live_only": true,
+  "expect": {},
+  "live": {
+    "expect": {
+      "called_with": [
+        {
+          "tool": "checkout_review",
+          "args": {
+            "status": "ready"
+          }
+        }
+      ],
+      "not_called": [
+        "checkout_submit"
+      ],
+      "main_run_has": [
+        "checkout_review"
+      ]
+    },
+    "note": "Live only (the scripted tier skips it). Fixture shop = canned page texts; the browser, search and payment tools are fakes."
+  },
+  "settings": {
+    "payment_specialist": false
+  }
+}

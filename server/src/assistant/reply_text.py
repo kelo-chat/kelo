@@ -24,7 +24,7 @@ from typing import Any
 
 LEAD_IN_MAX = 160
 BOOKKEEPING = frozenset({
-    "react", "quick_replies", "compare_options", "find_tools", "offer_post", "set_tone", "await_reply", "job_progress", "goal_log",
+    "react", "quick_replies", "compare_options", "find_tools", "offer_post", "set_tone", "finish_first_chat", "await_reply", "job_progress", "goal_log",
     "recheck_later", "recheck_result", "read_skill", "search_skills", "vault_status",
 })
 _BREAK = re.compile(r"<message_break\s*/?>")

@@ -73,18 +73,18 @@ def router(ctx: AppContext) -> APIRouter:
         provider, model = resolve_model(body.provider, body.model)
         for m in body.messages:   # an API client's own conversation: its user messages are checked like the app's
             if m.get("role") == "user" and isinstance(m.get("content"), str):
-                m["content"] = secret_check(m["content"], body.secrets)
+                m["content"] = await secret_check(m["content"], body.secrets)
         return turn_response(provider, model, with_system(body.messages), effort=body.effort, fallback=body.fallback, source="api")
 
     @router.post("/api/talk", dependencies=[Depends(require_auth)])
     async def talk(body: TalkIn, request: Request) -> StreamingResponse:
         """The reply as a stream (the page that leaves stops it). Quick tunnels and sleeping phones drop streams: the app uses /api/turns."""
-        provider, model, ctx, observe, started = prepare_talk(body, request)
+        provider, model, ctx, observe, started = await prepare_talk(body, request)
         return stream_turn(started(start_turn(provider, model, ctx.tail, observe, context=ctx)))
 
     @router.post("/api/turns", dependencies=[Depends(require_auth)])
     async def begin_turn(body: TalkIn, request: Request) -> dict[str, str]:
         """Start a reply and return at once; the page follows it with short requests to GET /api/turns/{id}."""
-        provider, model, ctx, observe, started = prepare_talk(body, request)
+        provider, model, ctx, observe, started = await prepare_talk(body, request)
         return {"id": started(start_turn(provider, model, ctx.tail, observe, context=ctx)).id}
     return router

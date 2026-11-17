@@ -265,7 +265,9 @@ def test_a_task_permission_that_covers_the_call_does_not_skip_the_card(tmp_path)
         assert grants.action_check("connector_send", {**args, "url": "/api/v1/tags"}).grant is not None
     hit = forbidden.classify("connector_send", args)
     assert hit is not None and hit.rule.mode == "ask"                                   # ... but the gate forces a card, which approve() never lets a grant skip
+    effects.remember_judged("n8n-api", "POST /api/v1/tags", "change", False)             # the tool judge's reading of the other call
     assert effects.keeps_own_checks("connector_send", args) and not effects.keeps_own_checks("connector_send", {**args, "url": "/api/v1/tags"})
+    effects.forget_mcp_tools()
 
 
 async def test_a_never_call_is_off_at_the_gate_and_the_owners_allow_does_not_lift_it():
@@ -385,3 +387,24 @@ def test_the_table_is_sound():
     never = {(pid, r.path.pattern) for pid, r in forbidden.table() if r.mode == "never"}
     assert all(r.methods <= {"POST", "PUT", "PATCH", "*"} for pid, r in forbidden.table() if r.mode == "never")
     assert len(never) >= 20
+
+
+def test_the_per_service_rules_are_data_in_a_file_not_code():
+    """Phase E (docs/no-word-lists.md): the tables live in content/forbidden_rules.json; the module only loads them."""
+    import json
+    from pathlib import Path
+    raw = json.loads((Path(forbidden.__file__).resolve().parents[2] / "content" / "forbidden_rules.json").read_text(encoding="utf-8"))
+    assert {k: len(v) for k, v in raw.items()} == {k: len(v) for k, v in RULES.items()} and len(raw) == 22
+    assert {"telegram", "github", "forgejo", "gitea", "home_assistant", "slack", "datadog"} <= set(raw)
+    src = Path(forbidden.__file__).read_text(encoding="utf-8")
+    assert "setwebhook" not in src and "api/services/" not in src and "conversions" not in src       # no service's path in code
+
+
+def test_a_missing_rules_file_stops_the_server_from_starting(tmp_path, monkeypatch):
+    import importlib
+    monkeypatch.setenv("ASSISTANT_CONTENT_DIR", str(tmp_path))
+    with pytest.raises(OSError):
+        importlib.reload(forbidden)
+    monkeypatch.delenv("ASSISTANT_CONTENT_DIR")
+    importlib.reload(forbidden)
+    assert forbidden.RULES and forbidden.refusal("telegram", "POST", "/bot123:abc/setWebhook")

@@ -44,7 +44,7 @@ class MyOverviewViewModel(private val sessions: Sessions, val server: ServerUpda
                     runCatching { api.get<Resources>("/api/resources") }
                         .onSuccess { r -> change { it.copy(sizes = r.profile, storage = StorageRules.key(StorageRules.state(r.alert)), storagePercent = r.alert.percent) } }
                 },
-                async { runCatching { api.get<About>("/api/about") }.onSuccess { a -> change { it.copy(version = a.version) } } },
+                async { runCatching { api.get<About>("/api/about") }.onSuccess { a -> chat.kelo.app.core.AppVersion.setUpdate(a.appUpdate); change { it.copy(version = a.version) } } },
                 // 서버 업데이트: an owner sign-in on a server whose updater is set up (403, 404 and "unavailable": nothing shows)
                 async { runCatching { server.loadForHome() } },
                 async { runCatching { api.get<WalletNotifications>("/api/wallet/notifications?limit=1") }.onSuccess { n -> change { it.copy(walletUnseen = n.unseen) } } },

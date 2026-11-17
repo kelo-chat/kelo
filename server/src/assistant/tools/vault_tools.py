@@ -11,8 +11,9 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ..agent import Tool, emit_ui
+from ..android.browser_signin import refusal as browser_refusal
 from ..android.device import DeviceError
-from ..android.signin import APP_HOST, APP_SIGNIN_HOSTS, SignInReader, find_fields, find_submit, fingerprint, masked
+from ..android.signin import APP_HOST, APP_SIGNIN_HOSTS, SignInReader, choose_submit, find_fields, fingerprint, masked
 from ..credentials import clean_name
 from ..i18n import N_, t
 from ..netguard import NetGuardError, valid_host
@@ -26,6 +27,18 @@ from .browser import BrowserPolicyError, BrowserSession, SignIn, browser_owner
 
 def _when(t: float | None) -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(t)) if t else "never"
+
+
+USERNAME_HINT_MAX = 200
+
+
+def clean_username_hint(value: Any) -> str:
+    """The account name the card is pre-filled with (not a secret): at most 200 characters, no control characters; anything else is
+    dropped (an empty pre-fill, never an error that blocks the request)."""
+    text = value.strip() if isinstance(value, str) else ""
+    if len(text) > USERNAME_HINT_MAX or any(ord(c) < 32 or ord(c) == 127 for c in text):
+        return ""
+    return text
 
 
 def site_host(site: str) -> str:
@@ -48,8 +61,6 @@ ASK_CODE = "A verification step is open (codes are never stored)."
 ASK_CODE_NOW = "A verification step is open now (codes are never stored)."
 REMEMBER_NOTE = ("If the site now asks whether to remember this device or keep you signed in, choose the option that keeps the owner "
                  "signed in (it goes on without a card); never choose the 'don't register / not now' option on your own.")
-# Mail named on the page: only then may a code be looked for in the user's mailbox (find_login_code)
-_BY_MAIL = re.compile(r"e-?mail|\bmail\b|inbox|메일|이메일|メール|邮件|郵件|邮箱|correo|courriel|posta|почт", re.I)
 
 
 # A sign-in whose verification is still open is not a sign-in: said plainly, so the model never tells the user they are signed in.
@@ -173,6 +184,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         except NetGuardError as e:
             return f"error: {e}"
         label = str(args.get("label") or host).strip()[:80] or host
+        hint = clean_username_hint(args.get("username"))
         def long_for(login: str) -> str:
             if host.startswith("app:"):   # an app on the Android device: its sign-in screen and android_login, not a page and browser_login
                 return f"open the sign-in screen of {host[4:]} on the phone (android_open) and call android_login(name={login!r})"
@@ -217,7 +229,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                 if item and item["secret"]:
                     return f"{name} already has a saved login for {host}. {short}"
                 req = entries.create("login", name=name, label=label, hosts=[host],
-                                     reason=str(args.get("reason") or "").strip()[:300],
+                                     reason=str(args.get("reason") or "").strip()[:300], username_hint=hint,
                                      turn=turn, worker_id=current_worker.get() or "", owner=browser_owner.get() or "")
 
         def saved_reply(rid: str, state: str) -> str:
@@ -273,7 +285,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
     tools = [
         Tool("vault_status", "List the keychain: saved website logins and service keys, whether each holds a value, when last used. "
              "Never shows a value, user name or password.",
-             {"type": "object", "properties": {}}, vault_status, read_only=True),
+             {"type": "object", "properties": {}}, vault_status, read_only=True),   # names, sites and dates only (no secret values: those are guarded by the data trail's secret check); a label made every search or open of a saved site ask (2026-11-16)
         Tool("request_login", "Ask the user for a website's login when none is saved: a fill-in card (user name, password) appears "
              "below your message; they fill it there and you never see it. A service from the Connectors list goes through "
              "connect_service instead.",
@@ -281,6 +293,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                                                "name": {"type": "string", "description": "short slug for this login"},
                                                "label": {"type": "string"},
                                                "reason": {"type": "string", "description": "one short line: why you need it now"},
+                                               "username": {"type": "string", "description": "the account name or email the sign-in will use, only when the owner gave it or it is one of the owner's connected account addresses; never guess"},
                                                "deadline": {"type": "string", "description": "local date-time when the login is too late"}},
               "required": ["site"]},
              request_login),   # no approval card: filling the entry is the user's choice (they can just cancel it)
@@ -385,9 +398,13 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                     return f"error: {e}"
                 package = screen.package
                 if not package or not login_site_ok("app:" + package.lower(), item["hosts"]):
-                    store.add_vault_log(name, "denied", f"android_login: the device was on {package or 'no app'}", False)
-                    raise VaultError(f"the phone is on {package or 'no app'}, but this login is only for {', '.join(item['hosts'])}. "
-                                     "Open that app's sign-in screen first (android_open).")
+                    # an app may hand its sign-in to a browser: that page is the app's sign-in when the device says so (android/browser_signin.py)
+                    why = await browser_refusal(android.client, screen, [h[4:] for h in item["hosts"] if h.startswith("app:")]) if package else "no app"
+                    if why:
+                        store.add_vault_log(name, "denied", f"android_login: the device was on {package or 'no app'} ({why})", False)
+                        raise VaultError(f"the phone is on {package or 'no app'}, but this login is only for {', '.join(item['hosts'])}. "
+                                         "Open that app's sign-in screen first (android_open).")
+                    store.add_vault_log(name, "used", f"android_login on {package} for {', '.join(item['hosts'])}: app sign-in page")
                 user_box, pass_box = find_fields(screen)
                 want_user, want_pass = step in ("both", "username"), step in ("both", "password")
                 if not ((want_user and user_box is not None) or (want_pass and pass_box is not None)):
@@ -411,9 +428,10 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                         await android.client.key("enter")
                         await asyncio.sleep(ANDROID_SUBMIT_WAIT)
                         now = await android.peek()
-                        button = find_submit(now) if fingerprint(now) == fingerprint(typed) else None   # Enter moved nothing: the button
-                        if button is not None:
-                            await android.client.tap(*button.center)
+                        if fingerprint(now) == fingerprint(typed):   # Enter moved nothing: the submit control by structure, then the step judge
+                            button = await choose_submit(now, getattr(android, "step_judge", None))
+                            if button is not None:
+                                await android.client.tap(*button.center)
                 except DeviceError as e:   # a message could quote what was typed: only its kind, cleaned of the values
                     msg = str(e)
                     for secret in secrets:
@@ -475,7 +493,8 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
 
         tools.append(Tool("android_login", "Type a saved login into the sign-in screen of the phone app in front on the Android device "
                           "and submit it; the user approves unless they allowed that login. Works only in the app (or the service's sign-in "
-                          "screen, e.g. Google in Play) the login was saved for: request_login with site app:<package>. You never see the "
+                          "screen, e.g. Google in Play) the login was saved for: request_login with site app:<package>. If the app opens its sign-in "
+                          "in a browser on the phone, call android_login there: the phone says whether that page belongs to the app. You never see the "
                           "values. Google asks for the e-mail first: call it with step username, then again with step password on the next "
                           "screen. If the result is failed, do not try again: tell the user. Signed in only when the result says success.",
                           {"type": "object", "properties": {"name": {"type": "string"},
@@ -515,7 +534,9 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                 session.sign_ins[browser_owner.get()] = {"site": site_key(parts.hostname or ""), "at": time.time(),
                                                          "task": (current_turn.get() or {}).get("task_id")}
             try:
-                result = await session.fill_login(username, password, step=step, submit=submit)
+                result = await session.fill_login(
+                    username, password, step=step, submit=submit,
+                    origin_ok=lambda url: urlsplit(url).scheme == "https" and login_site_ok(urlsplit(url).hostname or "", item["hosts"]))
             except BrowserPolicyError as e:
                 store.add_vault_log(name, "used", f"browser_login on {parts.hostname}: failed ({str(e)[:80]})", False)
                 raise
@@ -538,7 +559,9 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                         note = note.replace(ask, "").strip()
                     return (f"[sign-in result: {shown_outcome(result)} — {result.detail}]\n{not_signed_in(result.step)} {note}\n"
                             f"{typed}").replace("\n\n\n", "\n\n")
-                if _BY_MAIL.search(result.text or "") and any(c["kind"] == "email" and c["has_secret"] for c in store.credentials()):
+                # a code step and a connected mailbox: find_login_code decides by the mail itself (code_judge, the user's grant for that
+                # site's login), not by a word of the page; an approval step has no code (NO_CODE)
+                if any(c["kind"] == "email" and c["has_secret"] for c in store.credentials()):
                     note += (f" The user's mailbox is connected: if the site emails the code, call find_login_code(site={parts.hostname!r}) — "
                              "it types a clear code from that site's own mail by itself when the user's setting allows it, else shows the "
                              "code to the user and types it only after they allow it.")

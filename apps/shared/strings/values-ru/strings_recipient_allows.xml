@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">почта</string>
+    <string name="trail_kind_file">файл</string>
+    <string name="trail_kind_memory">память</string>
+    <string name="trail_kind_contacts">контакты</string>
+    <string name="trail_kind_calendar">календарь</string>
+    <string name="trail_kind_photos">фото</string>
+    <string name="trail_kind_messages">сообщения</string>
+    <string name="trail_kind_notes">заметки</string>
+    <string name="trail_kind_vault">сохранённые логины</string>
+    <string name="trail_kind_profile">профиль</string>
+    <string name="trail_kind_web">веб-страница</string>
+    <string name="trail_kind_channel">чат</string>
+    <string name="trail_kind_device">данные устройства</string>
+    <string name="trail_kind_connector">подключённый сервис</string>
+    <string name="trail_kind_other">данные</string>
+    <string name="trail_recipient_link">публичная ссылка</string>
+    <string name="trail_goes_to">Кому: %2$s — %1$s</string>
+    <string name="trail_allow_once">Разрешить один раз</string>
+    <string name="trail_allow_always">Всегда для этого получателя</string>
+    <string name="recipient_approval_always">Разрешено. Для этого получателя больше не спрошу.</string>
+    <string name="recipient_allows_title">Всегда разрешённые получатели</string>
+    <string name="recipient_allows_empty">Пока нет. Когда на карточке выберете «Всегда для этого получателя», он появится здесь.</string>
+    <string name="recipient_allow_since">Разрешено %1$s</string>
+    <string name="recipient_allow_remove">Удалить %1$s</string>
+    <string name="recipient_allow_remove_confirm">Спрашивать снова перед отправкой (%1$s) получателю %2$s?</string>
+    <string name="recipient_allow_removed">Спрошу снова перед отправкой туда.</string>
+</resources>

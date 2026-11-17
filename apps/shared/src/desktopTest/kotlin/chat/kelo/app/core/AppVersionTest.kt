@@ -14,7 +14,7 @@ import org.junit.Test
 
 /** docs/versioning.md: X-Kelo-App on every call, X-Kelo-Server compared with min_server, 426 app_too_old as one ApiError kind. */
 class AppVersionTest {
-    @After fun reset() { AppVersion.header = ""; AppVersion.minServer = ""; AppVersion.reset() }
+    @After fun reset() { AppVersion.header = ""; AppVersion.minServer = ""; AppVersion.channel = ""; AppVersion.reset() }
 
     @Test fun versionsCompareByNumber() {
         assertTrue(AppVersion.compare("0.9.0+1", "0.9.0") == 0)
@@ -70,6 +70,28 @@ class AppVersionTest {
             val api = KeloApi(server.url("/").toString(), "t")
             try { api.get<JsonElement>("/a"); fail() } catch (e: ApiError) { assertEquals("locked", e.code) }
             try { api.get<JsonElement>("/b"); fail() } catch (e: ApiError) { assertEquals("secret_in_message", e.code) }
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test fun theChannelGoesOutAndANewerAppComesBackOnAboutAndProfileOnly() = runBlocking {
+        val server = MockWebServer().apply { start() }
+        try {
+            AppVersion.header = "android/0.10.1+410372"
+            AppVersion.channel = "play"
+            fun json(update: String?) = MockResponse().setHeader("Content-Type", "application/json").apply { update?.let { setHeader("X-Kelo-App-Update", it) } }.setBody("{}")
+            server.enqueue(json("0.10.3")); server.enqueue(json(null)); server.enqueue(json(null)); server.enqueue(json(null))
+            val api = KeloApi(server.url("/").toString(), "t")
+            api.get<JsonElement>("/api/about")
+            assertEquals("play", server.takeRequest().getHeader("X-Kelo-App-Channel"))
+            assertEquals("0.10.3", AppVersion.update.value)
+            api.get<JsonElement>("/api/goals")                      // another call says nothing about it: kept
+            assertEquals("0.10.3", AppVersion.update.value)
+            api.get<JsonElement>("/api/profile")                    // the profile without the header: no newer app any more
+            assertNull(AppVersion.update.value)
+            AppVersion.setUpdate(" 0.10.4 "); assertEquals("0.10.4", AppVersion.update.value)
+            AppVersion.reset(); assertNull(AppVersion.update.value)
         } finally {
             server.shutdown()
         }

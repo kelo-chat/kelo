@@ -33,7 +33,7 @@ def prompt_text():
 
 
 def test_shipped_prompt_is_short_and_names_nothing_from_other_products(prompt_text):
-    assert len(prompt_text.encode("utf-8")) <= 12_000
+    assert len(prompt_text.encode("utf-8")) <= 12_250   # 12_000 before the line on delegating phone work (2026-11-16, docs/phone-worker.md)
     assert not FOREIGN.search(prompt_text), FOREIGN.search(prompt_text)
     assert "{agent_name}" in prompt_text and "~/" not in prompt_text
     assert not (CONTENT / "prompts" / "system.original.md").exists() and not (CONTENT / "prompts" / "CHANGES.md").exists()
@@ -41,7 +41,7 @@ def test_shipped_prompt_is_short_and_names_nothing_from_other_products(prompt_te
 
 @pytest.mark.parametrize("fact", [
     "Kelo", "[UNTRUSTED CONTENT <id>]", "[END UNTRUSTED CONTENT <id>]", "request_login", "browser_login", "vault_status", "connect_service",
-    "add_service_key", "confirm_purchase", "APPROVED", "wallet_cards", "browser_fill_card", "card numbers", "find_tools",
+    "add_service_key", "checkout_review", "approved", "wallet_cards", "browser_fill_card", "card numbers", "find_tools",
     "schedule_create", "watch_add", "CHECKLIST.md", "NOTIFY_PREFS.md",
     "journal_search", "extract_document", "view_image", "workroom_run", "assistant.md", "user.md", "MEMORY.md", "AGENTS.md",
     "memory/people/", "Now:", "Keep names, quotes and code", "<message_break/>", "notes/services/"])
@@ -92,7 +92,7 @@ def test_facts_moved_out_of_the_prompt_sit_where_the_model_sees_them():
 def test_the_short_rules_are_kelos_own_and_cover_the_same_ground():
     short = Settings(token=TOKEN).system_prompt
     assert not FOREIGN.search(short) and len(short) < 2_500
-    for fact in ("Kelo", "UNTRUSTED CONTENT", "request_login", "connect_service", "add_service_key", "confirm_purchase", "APPROVED",
+    for fact in ("Kelo", "UNTRUSTED CONTENT", "request_login", "connect_service", "add_service_key", "checkout_review", "approved",
                  "schedule_create", "delegate", "extract_document"):
         assert fact in short, fact
 
@@ -119,7 +119,7 @@ def test_the_real_content_loads_and_stays_small():
     b = PromptBuilder.load(CONTENT, None, Skills(CONTENT / "skills"))
     out = b.build(agent_name="Sage", now=NOW)
     assert "You are Sage, a personal agent" in out and "- shopping-and-bookings:" in out and "- work-room:" in out
-    assert len(out) < 14_050, len(out)   # 13_800 before the lines on showing pictures unasked when looks matter and never giving a path the user cannot open (owner 2026-11-15); 13_100 before the five everyday-life skills joined the skill list (2026-11-15); 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
+    assert len(out) < 14_950, len(out)   # 14_700 before the line on delegating phone work (2026-11-16, docs/phone-worker.md); 14_500 before the line telling the agent to read its help pages (kelo_help) for questions about Kelo itself (2026-11-16, server/content/help); 14_050 before the rule on never promising what nothing will do (2026-11-16, docs/scheduled-runs.md); 13_800 before the lines on showing pictures unasked when looks matter and never giving a path the user cannot open (owner 2026-11-15); 13_100 before the five everyday-life skills joined the skill list (2026-11-15); 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
     # and the clause on answering from the closest data; 12_700 before remembering the browser on the owner's sign-ins (2026-11-10)
     assert not FOREIGN.search(out)
 
@@ -178,7 +178,7 @@ async def test_the_agents_tools_exist_only_when_files_are_enabled_and_can_write_
         async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
             async with c.stream("POST", "/api/talk", json={"text": "hi"}) as r:
                 await read_events(r)
-    connect = {"find_tools", "web_search", "web_fetch", "add_service_key", "save_found_secret", "vault_status", "request_login", "request_card", "request_payment_pin", "connector_get", "connector_download", "connector_send", "mcp_list_tools", "mcp_call_tool",
+    connect = {"find_tools", "kelo_help", "read_earlier_messages", "web_search", "web_fetch", "add_service_key", "save_found_secret", "vault_status", "request_login", "request_card", "request_payment_pin", "connector_get", "connector_download", "connector_send", "mcp_list_tools", "mcp_call_tool",
                "connect_service", "email_list", "email_read", "email_send", "email_update",
                "gcal_calendars", "gcal_events", "gcal_create_event", "gcal_update_event", "gcal_delete_event", "phone_calendar_events",
                "phone_calendar_add", "phone_calendar_update", "phone_calendar_delete", "phone_contacts", "phone_messages", "phone_send_text",
@@ -189,12 +189,12 @@ async def test_the_agents_tools_exist_only_when_files_are_enabled_and_can_write_
                "delegate", "workers_list", "worker_status", "worker_message", "worker_stop", "resume",
                "await_reply", "followup_snooze", "followup_cancel", "action_result",   # (action_result: offered only while a result is unknown, done_once.py)
                "goal_get", "goal_set_facts", "goal_plan", "goal_step_done", "goal_log", "goal_metric_add", "goal_link_schedule",
-               "goal_add_document", "goal_suggest", "quick_replies", "compare_options", "react", "set_tone", "big_event_notice", "briefing", "recheck_later", "recheck_watch", "recheck_stop", "recheck_result", "offer_post",
+               "goal_add_document", "goal_suggest", "quick_replies", "compare_options", "react", "set_tone", "set_owner_settings", "finish_first_chat", "big_event_notice", "briefing", "recheck_later", "recheck_watch", "recheck_stop", "recheck_result", "offer_post",
                "follow_list", "follow_stop",
                "package_entries", "package_entry_add", "package_entry_delete",   # entries of installed Nest packages (nest.py)
                "nest_draft_create", "nest_draft_write", "nest_draft_check", "nest_draft_delete", "nest_draft_from_skill", "nest_share_github",
                "weather", "my_location", "places_near", "messenger"}   # forecasts without a browser, the phone's last location, places near it
-    files = {"read_file", "write_file", "list_files", "read_skill", "search_skills", "extract_document", "generate_image", "save_product_image", "list_product_images", "view_image", "remember",
+    files = {"read_file", "write_file", "list_files", "read_skill", "search_skills", "extract_document", "generate_image", "save_product_image", "list_product_images", "view_image", "remember", "memory_explain", "forget_plan", "forget_confirm",
              "propose_skill", "storage_cleanup_list", "storage_cleanup", "show_picture"}
     assert every[0] == files | connect
     assert every[1] == connect                                       # connections need no files area

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">email</string>
+    <string name="trail_kind_file">berkas</string>
+    <string name="trail_kind_memory">memori</string>
+    <string name="trail_kind_contacts">kontak</string>
+    <string name="trail_kind_calendar">kalender</string>
+    <string name="trail_kind_photos">foto</string>
+    <string name="trail_kind_messages">pesan</string>
+    <string name="trail_kind_notes">catatan</string>
+    <string name="trail_kind_vault">login tersimpan</string>
+    <string name="trail_kind_profile">profil</string>
+    <string name="trail_kind_web">halaman web</string>
+    <string name="trail_kind_channel">obrolan</string>
+    <string name="trail_kind_device">data perangkat</string>
+    <string name="trail_kind_connector">layanan terhubung</string>
+    <string name="trail_kind_other">data</string>
+    <string name="trail_recipient_link">tautan publik</string>
+    <string name="trail_goes_to">Ke %2$s: %1$s</string>
+    <string name="trail_allow_once">Izinkan sekali</string>
+    <string name="trail_allow_always">Selalu untuk penerima ini</string>
+    <string name="recipient_approval_always">Diizinkan. Tidak akan bertanya lagi untuk penerima ini.</string>
+    <string name="recipient_allows_title">Penerima yang selalu diizinkan</string>
+    <string name="recipient_allows_empty">Belum ada. Saat Anda memilih \"Selalu untuk penerima ini\" pada kartu, penerima muncul di sini.</string>
+    <string name="recipient_allow_since">Diizinkan %1$s</string>
+    <string name="recipient_allow_remove">Hapus %1$s</string>
+    <string name="recipient_allow_remove_confirm">Tanya lagi sebelum mengirim %1$s ke %2$s?</string>
+    <string name="recipient_allow_removed">Akan bertanya lagi sebelum mengirim ke sana.</string>
+</resources>

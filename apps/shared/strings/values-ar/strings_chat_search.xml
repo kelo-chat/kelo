@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">البحث في المحادثة</string>
+    <string name="chat_search_title">البحث في المحادثة</string>
+    <string name="chat_search_field">ابحث في رسائلك</string>
+    <string name="chat_search_clear">مسح البحث</string>
+    <string name="chat_search_hint">اكتب كلمة أو جزءًا منها. اضغط على نتيجة لفتح المحادثة عند تلك الرسالة.</string>
+    <string name="chat_search_none">لا توجد رسائل تطابق هذا البحث.</string>
+    <string name="chat_search_failed">تعذّر الوصول إلى الخادم للبحث. حاول مرة أخرى بعد قليل.</string>
+    <string name="chat_search_you">أنت</string>
+</resources>

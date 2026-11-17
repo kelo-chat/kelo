@@ -57,7 +57,29 @@ public enum LiveGeometry {
         return (min(max(panX, -maxX), maxX) + 0, min(max(panY, -maxY), maxY) + 0)
     }
 
+    /// The pan kept inside the zoomed PICTURE (not the view): along an axis the picture, zoomed, is wider than the view it may be
+    /// moved by half the difference each way, otherwise it stays centred (a letterbox bar is never panned into view).
+    public static func clampPan(panX: Double, panY: Double, zoom: Double, viewW: Double, viewH: Double, frameW: Int, frameH: Int) -> (Double, Double) {
+        guard let box = fit(viewW: viewW, viewH: viewH, frameW: frameW, frameH: frameH) else { return (0, 0) }
+        let z = max(zoom, minZoom)
+        let maxX = max(box.width * z - viewW, 0) / 2
+        let maxY = max(Double(frameH) * box.scale * z - viewH, 0) / 2
+        return (min(max(panX, -maxX), maxX) + 0, min(max(panY, -maxY), maxY) + 0)
+    }
+
     public static func clampZoom(_ zoom: Double) -> Double { min(max(zoom, minZoom), maxZoom) }
+
+    /// The inverse of `toFrame`: where a frame pixel is drawn in the view (zoom and pan included), so the mark of a touch sits on the
+    /// point that was sent. nil while a size is unknown.
+    public static func frameToView(_ p: FramePoint, viewW: Double, viewH: Double, frameW: Int, frameH: Int,
+                                   zoom: Double = 1, panX: Double = 0, panY: Double = 0) -> (x: Double, y: Double)? {
+        guard let box = fit(viewW: viewW, viewH: viewH, frameW: frameW, frameH: frameH) else { return nil }
+        let z = max(zoom, 0.01)
+        let cx = viewW / 2, cy = viewH / 2
+        let ux = box.left + (Double(p.x) + 0.5) * box.scale
+        let uy = box.top + (Double(p.y) + 0.5) * box.scale
+        return (cx + (ux - cx) * z + panX, cy + (uy - cy) * z + panY)
+    }
 
     /// Maps a point in CSS pixels (as sent in pointer messages) to frame pixels.
     public static func cssToFrame(cssX: Double, cssY: Double, frameW: Int, frameH: Int, cssW: Int, cssH: Int) -> FramePoint? {
@@ -123,12 +145,35 @@ public struct FrameHeader: Equatable, Sendable {
     public var cssW: Int = 0, cssH: Int = 0
     /// A secret field (password, card, one-time code) shows in the picture; nil = the server did not say (an older one).
     public var secure: Bool? = nil
+    /// The live protocol the server speaks (2 = knows `view`, `frame_seq`, `editing`); 0 = an older server that says nothing.
+    public var liveV: Int = 0
+    /// A text field has focus on the page (the phone's screen); false from an older server.
+    public var editing: Bool = false
 
     init(_ o: Lenient) {
         seq = o.int64("seq"); w = o.int("w"); h = o.int("h"); url = o.str("url"); title = o.str("title")
         cssW = o.int("css_w"); cssH = o.int("css_h")
         secure = o.optBool("secure")
+        liveV = o.int("live_v"); editing = o.bool("editing")
     }
+}
+
+/// The server's answer to one input: where it landed, whether the page was too busy, which frame it was mapped with.
+public struct InputReply: Equatable, Sendable {
+    public var ok = true, busy = false
+    public var x: Double? = nil, y: Double? = nil
+    /// "frame" (the frame the owner saw) or "latest" (that frame was unknown); nil from an older server.
+    public var mappedWith: String? = nil
+
+    public init(ok: Bool = true, busy: Bool = false, x: Double? = nil, y: Double? = nil, mappedWith: String? = nil) {
+        self.ok = ok; self.busy = busy; self.x = x; self.y = y; self.mappedWith = mappedWith
+    }
+    init(_ o: Lenient) {
+        ok = o.has("ok") ? o.bool("ok") : true; busy = o.bool("busy")
+        x = o.has("x") ? o.double("x") : nil; y = o.has("y") ? o.double("y") : nil
+        mappedWith = o.optStr("mapped_with")
+    }
+    public init(json: JSON) { self.init(Lenient(json)) }
 }
 
 /// An agent pointer position on the page in CSS pixels.
@@ -181,6 +226,25 @@ public struct LiveStatus: Equatable, Sendable {
     public var someoneElse: Bool { controller == "user" && !youControl }
 }
 
+/// `{"type":"meta","url","title"}`: the tab's address and title, sent while this viewer's frames are off (the VNC screen shows, so the frame
+/// headers that normally carry them do not come). A frame arriving again takes over.
+public struct LiveMeta: Equatable, Sendable {
+    public var url: String, title: String
+    public init(url: String = "", title: String = "") { self.url = url; self.title = title }
+}
+
+/// What the live page's header shows of the page: a meta line while frames are off, else the newest frame's header.
+public enum LiveHeader {
+    public static func title(meta: LiveMeta?, frame: String?) -> String? {
+        let t = meta?.title ?? frame
+        return t?.isEmpty == false ? t : nil
+    }
+    public static func url(meta: LiveMeta?, frame: String?) -> String? {
+        let u = meta?.url ?? frame
+        return u?.isEmpty == false ? u : nil
+    }
+}
+
 /// One text message from the server, sorted by type.
 public enum LiveIn: Equatable, Sendable {
     case frame(FrameHeader)
@@ -189,6 +253,9 @@ public enum LiveIn: Equatable, Sendable {
     case ended(reason: String)
     case error(code: String, forType: String)
     case pong
+    case meta(LiveMeta)
+    /// The answer to an input sent with `ack` (the WebSocket's input_ok).
+    case inputReply(InputReply)
     case other
 }
 
@@ -206,11 +273,37 @@ public enum LiveMessages {
         case "ended": return .ended(reason: o.str("reason"))
         case "error": return .error(code: o.str("code"), forType: o.str("for"))
         case "pong": return .pong
+        case "meta": return .meta(LiveMeta(url: o.str("url"), title: o.str("title")))
+        case "input_ok": return .inputReply(InputReply(o))
         default: return .other
         }
     }
 
     public static func ping() -> String { #"{"type":"ping"}"# }
+
+    /// What the owner sees of the live area, in physical pixels and the screen density: sent when controlling starts, on rotation and when
+    /// the soft keyboard opens or closes. Only for a server that speaks live protocol 2.
+    public static func view(width: Int, height: Int, density: Double) -> JSON {
+        ["type": "view", "width": n(width), "height": n(height), "density": .number(density)]
+    }
+
+    /// The protocol version from which `view`, `frame_seq` and `editing` exist.
+    public static let protocolV = 2
+    public static func speaksV2(_ liveV: Int) -> Bool { liveV >= protocolV }
+
+    /// `frame_seq` (the frame the owner was looking at) on an input; nothing for an older server or when no frame has been seen.
+    public static func stamp(_ event: JSON, frameSeq: Int64?, liveV: Int) -> JSON {
+        guard speaksV2(liveV), let frameSeq, frameSeq > 0, case .object(var o) = event, o["frame_seq"] == nil else { return event }
+        o["frame_seq"] = .number(Double(frameSeq))
+        return .object(o)
+    }
+
+    /// Ask the server to answer an input (input_ok) so the touch mark can tell landed from not-reached.
+    public static func acked(_ event: JSON) -> JSON {
+        guard case .object(var o) = event else { return event }
+        o["ack"] = .bool(true)
+        return .object(o)
+    }
     public static func tap(_ p: FramePoint, frameW: Int, frameH: Int) -> JSON { point("tap", p, frameW, frameH) }
     public static func longPress(_ p: FramePoint, frameW: Int, frameH: Int) -> JSON { point("long_press", p, frameW, frameH) }
 
@@ -232,6 +325,10 @@ public enum LiveMessages {
     public static func nav(_ kind: String) -> JSON { ["type": .string(kind)] }
     /// The body of POST .../control.
     public static func control(take: Bool) -> JSON { ["take": .bool(take)] }
+
+    /// Whether the server sends JPEG frames over this live socket (`frames`): off while the VNC screen shows, on again when the
+    /// picture is the fallback. Input, control and status stay on the socket either way.
+    public static func frames(on: Bool) -> JSON { ["type": "frames", "on": .bool(on)] }
 
     static func n(_ i: Int) -> JSON { .number(Double(i)) }
     static func point(_ type: String, _ p: FramePoint, _ w: Int, _ h: Int) -> JSON {
@@ -264,12 +361,6 @@ public enum LiveRules {
     public static func autoTake(asked: Bool, done: Bool, hasFrame: Bool, controlling: Bool, someoneElse: Bool, busy: Bool) -> Bool {
         asked && !done && hasFrame && !controlling && !someoneElse && !busy
     }
-
-    /// Whether the live screen is kept out of screenshots and recordings. Yes while the newest picture says a secret field shows,
-    /// when it says nothing (no frame yet, the frame-by-frame path, an older server), and while the user is typing (`typing`: the
-    /// text row is open, i.e. the user holds the tab). Only a picture that says "no secret field" and a user who is not typing lets
-    /// the page be captured (Android LiveRules.guardScreen).
-    public static func guardScreen(secure: Bool?, typing: Bool) -> Bool { typing || secure != false }
 }
 
 /// Where the live view is.

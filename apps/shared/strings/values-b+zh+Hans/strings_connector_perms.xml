@@ -17,4 +17,6 @@
     <string name="perm_reset_q">将此连接器的所有设置恢复为默认值？</string>
     <string name="perm_read_off_q">关闭读取后，Kelo 几乎无法使用此连接器。要关闭吗？</string>
     <string name="perm_limited">受限</string>
+    <string name="perm_unattended">不聊天时也使用</string>
+    <string name="perm_unattended_about">定时任务、后台任务以及 Kelo 主动发送的消息不会使用 %1$s。你自己的聊天仍然可以使用。</string>
 </resources>

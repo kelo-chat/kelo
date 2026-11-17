@@ -30,6 +30,13 @@ A copy sends a push for each notification nobody saw arrive:
 - `watch_disabled`: a watcher kept failing and switched itself off.
 - `proactive`: a message the agent sent without being asked (only when the user turned proactive messages on).
 
+- `settled`: a waiting item (an approval, sign-in, location or payment card, by its approval id) was answered on any device, ran out
+  or was cancelled. It is sent once per item, batched when several settle together, and carries ids only: `{"type": "settled",
+  "id": "<first id>", "ids": "<id>,<id>"}` (at most 10 ids). It is silent (on an iPhone a background push, with no banner). The apps
+  take down the notification whose identifier is that item id (Android: its tag, iPhone: its identifier, desktop: its note), and the
+  notification bundle with its last child. Older apps ignore the kind. The apps also ask `GET /api/notifications/settled?ids=a,b`
+  (the item ids they still show) when they check or open, and take down the ones that answer back.
+
 Each push goes to every phone paired with that copy that registered a token. A device removed from the app gets no more pushes.
 
 ## Rechecks

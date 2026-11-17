@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The server-too-old screen offers the update; a newer compatible app is announced once (docs/version-notices.md) -->
+<resources>
+    <string name="server_old_update">Update the server</string>
+    <string name="server_old_failed">The update didn\'t go through. Try again, or update the server on the machine it runs on.</string>
+    <string name="server_old_manual">To update the server, follow the update steps on the machine it runs on.</string>
+    <string name="server_old_guide">Open the update guide</string>
+    <string name="app_notice_new">A new Kelo app (%1$s) works best with your server</string>
+    <string name="app_notice_store">Open the store</string>
+    <string name="update_popup_title">A new version is out (%1$s)</string>
+    <string name="update_popup_update">Update</string>
+    <string name="update_popup_later">Later</string>
+</resources>

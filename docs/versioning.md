@@ -56,6 +56,14 @@ CHANGELOG's `## Unreleased` into `## 0.9.1 (build 2, <date>)` under a new empty 
 Every app reads `version.json` at **build time** (never at run time from the network), shows `version` to people (My → About,
 settings), and compiles in `min_server`.
 
+- **The version line in My** (all apps, `apps/shared/.../core/SourceLink.kt`, iPhone `KeloCore SourceLink.swift`, same test vectors):
+  "App version: 0.10.2 · android-0.10.2". The label is the release tag and links to `https://github.com/kelo-chat/kelo/tree/<tag>`.
+  Tags: `android-<versionName>`, `ios-<marketing version>`, `windows-<package version>`, `macos-<package version>`. The public repository
+  has one commit per release, so a commit of the private repository would be a 404 there; no commit is built into the app (it is
+  empty unless `-PkeloCommit=<sha>` is passed), which keeps a build of the public tag identical to the release. A build from changed
+  files shows "(modified)" and no link. The server line links to `https://github.com/kelo-chat/kelo-server/tree/release-<server version>`
+  (the version from `GET /api/about`). A version is valid only as digits separated by dots; anything else (empty, `dev`, `1.0.2-rc1`)
+  shows no tag. iPhone: the Info.plist key `KeloSourceCommit` is empty by default; `KELO_EMBED_COMMIT=1` embeds the commit.
 - **Android**: `versionName` = `version` (e.g. `0.9.0`). `versionCode` stays the store's rising number
   (`apps/android/kelo/version.properties`, set at release time), because Google Play needs it to grow and it is already above any
   `build`. Gradle reads `../../version.json` (relative to `apps/android/kelo/app`). The Android source is `apps/android/kelo` plus `apps/shared/` (the Kotlin module both apps use).
@@ -121,6 +129,13 @@ assistant release-record <android|ios|desktop> <version> <build> <download|play|
 
 It checks its input, refuses a duplicate, and appends to `releases/apps.json`; commit the file. A minimum of `0.0.0` demands
 nothing.
+
+**When an app release goes live** its request fixture is added too: `server/tests/fixtures/app_requests/<platform>-<version>.json`,
+recorded from that release's API client code at its tag (the requests it makes on start and in normal use, and the answer fields it
+reads). `server/tests/test_released_apps_contract.py` replays the newest fixture of each platform against a fresh server and fails when
+a server change would give that app a 426, a missing route or a lost field (docs/version-notices.md). Record the oldest server the app
+works with too: `assistant release-record ... --min-server 0.9.0`; the server only tells an app about a newer app whose `min_server`
+it meets (`X-Kelo-App-Update`, `app_update` in /api/about; the app sends `X-Kelo-App-Channel`).
 
 **What refuses anything else** (`server/src/assistant/app_releases.py`):
 

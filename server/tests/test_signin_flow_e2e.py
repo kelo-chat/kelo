@@ -16,12 +16,14 @@ import pytest
 
 from assistant.agent import handover
 from assistant.agent.fence import plain
+from assistant.page_judge import PageJudge
 from assistant.store import Store
 from assistant.tools import humanize
 from assistant.tools.browser import BrowserSession, browser_tools
 from assistant.tools.vault_tools import vault_tools
 
 from fixtures.order_harness import public as PUBLIC
+from fake_page_judge import FakePageJudge
 from test_vault import KEY, PASSWORD, USER
 
 pw = pytest.importorskip("playwright.async_api")
@@ -78,6 +80,7 @@ async def setup(ctx, tmp_path):
     async def connect():
         return page
     s = BrowserSession(connect=connect, resolver=PUBLIC)
+    s.page_judge = PageJudge(FakePageJudge().ask)   # stands in for the owner's main model
     s.overlay_pause = 0.05
     s.check_poll = 0.2
     s.settle_seconds = 0.2

@@ -210,7 +210,7 @@ def app_for(tmp_path, **kw):
 
 
 async def test_resources_carry_the_warning_and_the_cleanup_switch(tmp_path):
-    app = app_for(tmp_path, disk_limit=1_000_000)   # well above the empty database (~0.5 MB of tables), so it starts below 80%
+    app = app_for(tmp_path, disk_limit=1_500_000)   # well above the empty database (~0.85 MB of tables, 2026-11-16), so it starts below 80%
     app.state.storage_watch._usage = lambda p: Usage(500 * GB, 100 * GB, 400 * GB)   # not this test machine's own disk
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH, timeout=20) as c:
         res = (await c.get("/api/resources")).json()

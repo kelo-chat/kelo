@@ -66,11 +66,45 @@ object LiveGeometry {
         return FramePoint((-dx / k).roundToInt(), (-dy / k).roundToInt())
     }
 
-    /** The pan kept inside the zoomed picture: at 1x no pan, at 2x up to half the view each way. */
-    fun clampPan(panX: Float, panY: Float, zoom: Float, viewW: Float, viewH: Float): Pair<Float, Float> {
-        val maxX = (zoom - 1f).coerceAtLeast(0f) * viewW / 2f
-        val maxY = (zoom - 1f).coerceAtLeast(0f) * viewH / 2f
+    /**
+     * The pan kept inside the zoomed picture: the picture (the frame's box, not the whole view) may not leave a gap at an edge it
+     * is wider or taller than the view at; a picture smaller than the view stays centred. Without the frame size ([frameW] or
+     * [frameH] 0) the whole view stands in for the picture.
+     */
+    fun clampPan(panX: Float, panY: Float, zoom: Float, viewW: Float, viewH: Float, frameW: Int = 0, frameH: Int = 0): Pair<Float, Float> {
+        val box = fit(viewW, viewH, frameW, frameH)
+        val picW = box?.width ?: viewW
+        val picH = box?.height ?: viewH
+        val z = zoom.coerceAtLeast(0f)
+        val maxX = ((picW * z - viewW) / 2f).coerceAtLeast(0f)
+        val maxY = ((picH * z - viewH) / 2f).coerceAtLeast(0f)
         return (panX.coerceIn(-maxX, maxX) + 0f) to (panY.coerceIn(-maxY, maxY) + 0f)   // + 0f: never -0.0
+    }
+
+    /**
+     * The pan that keeps the picture point under ([cx], [cy]) where it is while the zoom goes from [zoom] to [newZoom] (a pinch
+     * around the fingers' middle, not around the view's centre).
+     */
+    fun panForZoomAround(cx: Float, cy: Float, zoom: Float, newZoom: Float, panX: Float, panY: Float, viewW: Float, viewH: Float): Pair<Float, Float> {
+        val z = zoom.coerceAtLeast(0.01f)
+        val k = newZoom / z
+        val mx = viewW / 2f
+        val my = viewH / 2f
+        return (cx - mx - (cx - mx - panX) * k + 0f) to (cy - my - (cy - my - panY) * k + 0f)
+    }
+
+    /**
+     * The other way of [toFrame]: where the frame point ([fx], [fy]) is in the view, with the zoom and pan. The pointer overlay, the
+     * touch marks and the hit test all go through [fit] and this pair, so what is drawn and what is hit are one transform.
+     */
+    fun frameToView(fx: Float, fy: Float, viewW: Float, viewH: Float, frameW: Int, frameH: Int, zoom: Float = 1f, panX: Float = 0f, panY: Float = 0f): Offset? {
+        val box = fit(viewW, viewH, frameW, frameH) ?: return null
+        val ux = box.left + fx * box.scale
+        val uy = box.top + fy * box.scale
+        val z = zoom.coerceAtLeast(0.01f)
+        val cx = viewW / 2f
+        val cy = viewH / 2f
+        return Offset(cx + (ux - cx) * z + panX, cy + (uy - cy) * z + panY)
     }
 
     fun clampZoom(zoom: Float): Float = zoom.coerceIn(MIN_ZOOM, MAX_ZOOM)
@@ -93,14 +127,8 @@ object LiveGeometry {
         cssW: Int, cssH: Int,
         zoom: Float = 1f, panX: Float = 0f, panY: Float = 0f,
     ): Offset? {
-        val box = fit(viewW, viewH, frameW, frameH) ?: return null
         val framePt = cssToFrame(cssX, cssY, frameW, frameH, cssW, cssH)
-        val ux = box.left + framePt.x * box.scale
-        val uy = box.top + framePt.y * box.scale
-        val z = zoom.coerceAtLeast(0.01f)
-        val cx = viewW / 2f
-        val cy = viewH / 2f
-        return Offset(cx + (ux - cx) * z + panX, cy + (uy - cy) * z + panY)
+        return frameToView(framePt.x, framePt.y, viewW, viewH, frameW, frameH, zoom, panX, panY)
     }
 }
 
@@ -133,6 +161,10 @@ data class FrameHeader(
     @SerialName("css_h") val cssH: Int = 0,
     /** A secret field (password, card, one-time code) shows in the picture; null = the server did not say (an older one). */
     val secure: Boolean? = null,
+    /** 2 or more: the server takes `view`, `frame_seq` and says `editing` (older servers leave it 0). */
+    @SerialName("live_v") val liveV: Int = 0,
+    /** A text field has focus on the page / phone. */
+    val editing: Boolean = false,
 )
 
 @Serializable
@@ -169,13 +201,48 @@ data class LiveStatus(
     val someoneElse: Boolean get() = controller == "user" && !youControl
 }
 
+/**
+ * {"type":"meta","url","title","editing"}: the tab's address and title and whether a text field has focus, sent while this viewer's
+ * frames are off (the VNC screen shows, so the frame headers that normally carry them do not come). A frame arriving again takes over.
+ * A server from before `editing` leaves it out: false.
+ */
+@Serializable
+data class LiveMeta(val url: String = "", val title: String = "", val editing: Boolean = false)
+
+/** What the live page's header shows of the page: the newest word from the server, a meta line while frames are off, else the frame header. */
+object LiveHeader {
+    fun title(meta: LiveMeta?, header: FrameHeader?): String? = (meta?.title ?: header?.title)?.ifBlank { null }
+    fun url(meta: LiveMeta?, header: FrameHeader?): String? = (meta?.url ?: header?.url)?.ifBlank { null }
+
+    /**
+     * A text field has focus on the page: the meta line while frames are off (the last frame header is old then and would never say
+     * it), else the frame header. This is what raises the keyboard into the type line.
+     */
+    fun editing(meta: LiveMeta?, header: FrameHeader?): Boolean = meta?.editing ?: (header?.editing == true)
+}
+
+/** Text going between the phone's clipboard and the page's: only when the owner taps, never on its own, never kept past use. */
+object ClipboardRules {
+    /** The most text taken from the browser's clipboard for the owner to copy */
+    const val MAX_OFFER = 10_000
+
+    /** The phone's clipboard text to type into the page: null when there is none (the paste key stays off), cut at what one entry takes. */
+    fun pasteText(clip: String?): String? = clip?.takeIf { it.isNotEmpty() }?.take(LiveMessages.MAX_TEXT)
+
+    /** The browser's clipboard text offered to the owner: null for nothing worth offering, cut at [MAX_OFFER]. */
+    fun offer(text: String?): String? = text?.takeIf { it.isNotBlank() }?.take(MAX_OFFER)
+}
+
 /** One text message from the server, sorted by type. */
 sealed interface LiveIn {
+    data class Meta(val meta: LiveMeta) : LiveIn
     data class Frame(val header: FrameHeader) : LiveIn
     data class Status(val status: LiveStatus) : LiveIn
     data class Pointer(val pointer: LivePointer) : LiveIn
     data class Ended(val reason: String) : LiveIn
     data class Error(val code: String) : LiveIn
+    /** The answer to an input sent with "ack" (a server with live_v 2 or more). */
+    data class InputOk(val reply: InputReply) : LiveIn
     data object Pong : LiveIn
     data object Other : LiveIn
 }
@@ -191,9 +258,11 @@ object LiveMessages {
             when (s("type")) {
                 "frame" -> LiveIn.Frame(json.decodeFromJsonElement(FrameHeader.serializer(), o))
                 "status" -> LiveIn.Status(json.decodeFromJsonElement(LiveStatus.serializer(), o))
+                "meta" -> LiveIn.Meta(json.decodeFromJsonElement(LiveMeta.serializer(), o))
                 "pointer" -> LiveIn.Pointer(json.decodeFromJsonElement(LivePointer.serializer(), o))
                 "ended" -> LiveIn.Ended(s("reason"))
                 "error" -> LiveIn.Error(s("code"))
+                "input_ok" -> LiveIn.InputOk(InputReply.of(o))
                 "pong" -> LiveIn.Pong
                 else -> LiveIn.Other
             }
@@ -202,27 +271,41 @@ object LiveMessages {
 
     fun ping(): String = """{"type":"ping"}"""
 
-    fun tap(p: FramePoint, frameW: Int, frameH: Int): JsonObject = point("tap", p, frameW, frameH)
+    /** [frameSeq] = the frame the owner was looking at (only for a server with live_v 2: see [LiveProtocol.seqFor]); null leaves it out. */
+    fun tap(p: FramePoint, frameW: Int, frameH: Int, frameSeq: Long? = null): JsonObject = point("tap", p, frameW, frameH, frameSeq)
 
-    fun longPress(p: FramePoint, frameW: Int, frameH: Int): JsonObject = point("long_press", p, frameW, frameH)
+    fun longPress(p: FramePoint, frameW: Int, frameH: Int, frameSeq: Long? = null): JsonObject = point("long_press", p, frameW, frameH, frameSeq)
 
-    fun scroll(d: FramePoint, at: FramePoint?, frameW: Int, frameH: Int): JsonObject = buildJsonObject {
+    fun scroll(d: FramePoint, at: FramePoint?, frameW: Int, frameH: Int, frameSeq: Long? = null): JsonObject = buildJsonObject {
         put("type", "scroll"); put("dx", d.x); put("dy", d.y)
         if (at != null) { put("x", at.x); put("y", at.y) }
         put("frame_w", frameW); put("frame_h", frameH)
+        if (frameSeq != null) put("frame_seq", frameSeq)
     }
 
-    fun text(text: String): JsonObject = buildJsonObject { put("type", "text"); put("text", text) }
+    fun text(text: String, frameSeq: Long? = null): JsonObject = buildJsonObject {
+        put("type", "text"); put("text", text)
+        if (frameSeq != null) put("frame_seq", frameSeq)
+    }
 
-    fun key(name: String): JsonObject = buildJsonObject { put("type", "key"); put("key", name) }
+    fun key(name: String, frameSeq: Long? = null): JsonObject = buildJsonObject {
+        put("type", "key"); put("key", name)
+        if (frameSeq != null) put("frame_seq", frameSeq)
+    }
 
     /** The Android device's keys: back | home | enter | recents. */
     fun deviceKey(name: String): JsonObject = key(name)
 
     /** A finger drag on the device's screen, from [from] to [to] in frame pixels, taking [ms] milliseconds. */
-    fun swipe(from: FramePoint, to: FramePoint, frameW: Int, frameH: Int, ms: Int): JsonObject = buildJsonObject {
+    fun swipe(from: FramePoint, to: FramePoint, frameW: Int, frameH: Int, ms: Int, frameSeq: Long? = null): JsonObject = buildJsonObject {
         put("type", "swipe"); put("x1", from.x); put("y1", from.y); put("x2", to.x); put("y2", to.y); put("ms", ms)
         put("frame_w", frameW); put("frame_h", frameH)
+        if (frameSeq != null) put("frame_seq", frameSeq)
+    }
+
+    /** The size of the live area in physical pixels and its density (sent when controlling starts, on rotation, when the keyboard moves). */
+    fun view(v: ViewSize): JsonObject = buildJsonObject {
+        put("type", "view"); put("width", v.width); put("height", v.height); put("density", v.density)
     }
 
     /** Back | forward | reload */
@@ -230,8 +313,13 @@ object LiveMessages {
 
     fun control(take: Boolean): JsonObject = buildJsonObject { put("take", take) }
 
-    private fun point(type: String, p: FramePoint, frameW: Int, frameH: Int) = buildJsonObject {
+    /** Whether the server sends JPEG frames over this socket (`frames`, live socket only). */
+    fun frames(on: Boolean): JsonObject = buildJsonObject { put("type", "frames"); put("on", on) }
+
+    private fun point(type: String, p: FramePoint, frameW: Int, frameH: Int, frameSeq: Long?) = buildJsonObject {
         put("type", type); put("x", p.x); put("y", p.y); put("frame_w", frameW); put("frame_h", frameH)
+        if (frameSeq != null) put("frame_seq", frameSeq)
+        put("ack", true)   // the reply (input_ok) says where it landed, and whether it was dropped (busy)
     }
 
     /** The control answer (POST …/control) or the X-You-Control / X-Controller headers, as a [LiveStatus] update. */
@@ -387,9 +475,9 @@ object LiveRules {
         asked && !done && hasFrame && !controlling && !someoneElse && !busy
 
     /**
-     * Whether the live screen is kept out of screenshots and recordings (FLAG_SECURE). Yes while the newest picture says a secret
-     * field shows, when it says nothing (no frame yet, an older server), and while the user is typing ([typing]: the text row is
-     * open). Only a picture that says "no secret field" and a user who is not typing lets the page be captured.
+     * Whether the live screen is kept out of screenshots and recordings (FLAG_SECURE): never (owner decision 2026-11-16). The live
+     * browser view and the phone view can always be captured, whatever the picture shows. The secret entry sheets, the keychain and
+     * the card screens keep their own guard (LocalSecureWindow there). The frame header's `secure` hint is still read but not used here.
      */
-    fun guardScreen(header: FrameHeader?, typing: Boolean): Boolean = typing || header?.secure != false
+    fun guardScreen(): Boolean = false
 }

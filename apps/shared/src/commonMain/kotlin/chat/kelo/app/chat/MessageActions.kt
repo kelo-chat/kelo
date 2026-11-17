@@ -1,16 +1,20 @@
 package chat.kelo.app.chat
 
 /** What a long press on a chat bubble offers. */
-enum class MsgAction { COPY, SHARE, SELECT, RETRY, EDIT, REPORT }
+enum class MsgAction { COPY, SHARE, SELECT, READ_ALOUD, RETRY, EDIT, REPORT }
 
 /** Which actions a bubble's long-press menu shows, and what 다시 시도 sends; kept apart from the UI so it can be tested. */
 object MessageActions {
-    /** [actions] as this app can do them: without 공유 when it has no way to share a text (the desktop, for now). */
-    fun offered(actions: List<MsgAction>, canShare: Boolean): List<MsgAction> = if (canShare) actions else actions.filter { it != MsgAction.SHARE }
+    /**
+     * [actions] as this app can do them: without 공유 when it has no way to share a text (the desktop, for now), and without
+     * 소리 내어 읽기 when the system has no text-to-speech to use.
+     */
+    fun offered(actions: List<MsgAction>, canShare: Boolean, canSpeak: Boolean = true): List<MsgAction> =
+        actions.filter { (canShare || it != MsgAction.SHARE) && (canSpeak || it != MsgAction.READ_ALOUD) }
 
     /**
      * The actions for the row [key]: the user's own message can be copied, shared, selected and edited into the composer; a reply can
-     * be copied, shared, selected, when it is the newest reply tried again, and reported to the Kelo developer (신고하기); an error
+     * be copied, shared, selected, read aloud, when it is the newest reply tried again, and reported to the Kelo developer (신고하기); an error
      * can be copied and tried again. Nothing is tried again while a reply is in progress.
      */
     fun actions(items: List<ChatItem>, key: String, busy: Boolean): List<MsgAction> {
@@ -19,7 +23,7 @@ object MessageActions {
         return when (item) {
             is ChatItem.Msg ->
                 if (item.mine) listOf(MsgAction.COPY, MsgAction.SHARE, MsgAction.SELECT, MsgAction.EDIT)
-                else listOfNotNull(MsgAction.COPY, MsgAction.SHARE, MsgAction.SELECT, MsgAction.RETRY.takeIf { retry }, MsgAction.REPORT)
+                else listOfNotNull(MsgAction.COPY, MsgAction.SHARE, MsgAction.SELECT, MsgAction.READ_ALOUD, MsgAction.RETRY.takeIf { retry }, MsgAction.REPORT)
             is ChatItem.Error -> listOfNotNull(MsgAction.COPY, MsgAction.RETRY.takeIf { retry })
             else -> emptyList()
         }

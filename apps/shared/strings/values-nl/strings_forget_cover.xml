@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">Vergeten onderwerpen</string>
+    <string name="forget_intro">Onderwerpen die Kelo moest vergeten. Kelo heeft verwijderd wat het vond en schrijft ze niet opnieuw op.</string>
+    <string name="forget_empty">Nog niets vergeten. Als je Kelo vraagt een onderwerp te vergeten, verschijnt het hier.</string>
+    <string name="forget_date">Vergeten op %1$s</string>
+    <string name="forget_removed">Verwijderd: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Er is niets gevonden om te verwijderen.</string>
+    <string name="forget_cat_memory">Geheugen</string>
+    <string name="forget_cat_notes">Notities</string>
+    <string name="forget_cat_reminders">Herinneringen</string>
+    <string name="forget_cat_skills">Vaardigheden</string>
+    <string name="forget_cat_history">Logboeken</string>
+    <string name="forget_cat_other">Overig</string>
+    <string name="forget_allow_again">Weer toestaan</string>
+    <string name="forget_allow_confirm">Mag Kelo weer over “%1$s” schrijven? Wat is verwijderd, komt niet terug.</string>
+    <string name="forget_allowed">Kelo mag er weer over schrijven.</string>
+    <string name="paycover_title">Vooraf goedgekeurde betalingen</string>
+    <string name="paycover_switch">Vooraf goedgekeurde betalingen toestaan</string>
+    <string name="paycover_switch_note">Uit: elke betaling vraagt eerst aan jou.</string>
+    <string name="paycover_empty">Niets vooraf goedgekeurd. Een bestelling of geplande betaling die je vooraf goedkeurt, verschijnt hier.</string>
+    <string name="paycover_off_note">Uitgeschakeld: deze blijven in de lijst staan, maar elke betaling vraagt.</string>
+    <string name="paycover_orders">Bestellingen</string>
+    <string name="paycover_allows">Geplande betalingen</string>
+    <string name="paycover_cap">Tot %1$s in totaal</string>
+    <string name="paycover_until">Tot %1$s</string>
+    <string name="paycover_for_task">Voor één taak</string>
+    <string name="paycover_for_schedule">Voor het schema “%1$s”</string>
+    <string name="paycover_for_a_schedule">Voor een geplande taak</string>
+    <string name="paycover_one_order">één bestelling</string>
+    <string name="paycover_allow_scope">Dezelfde winkel, dezelfde betaalmethode</string>
+    <string name="paycover_remove">%1$s verwijderen</string>
+    <string name="paycover_remove_order_confirm">Deze goedkeuring verwijderen? De bestelling vraagt dan vóór het betalen.</string>
+    <string name="paycover_remove_allow_confirm">De toestemming voor “%1$s” verwijderen? De betalingen vragen weer elke keer.</string>
+    <string name="paycover_removed">Verwijderd. Betalingen vragen weer.</string>
+    <string name="preapprove_what">Bestelling</string>
+    <string name="preapprove_cap">Maximaal te betalen</string>
+    <string name="preapprove_cap_value">%1$s totaal (inclusief belasting en verzending)</string>
+    <string name="preapprove_until">Tot</string>
+    <string name="preapprove_covers">Geldt voor</string>
+    <string name="preapprove_covers_value">Alleen deze ene bestelling</string>
+    <string name="preapprove_requirements">Vereist</string>
+    <string name="preapprove_shipping">Levering</string>
+    <string name="preapprove_shops">Winkels</string>
+    <string name="preapprove_delegated">Kelo beslist</string>
+    <string name="chat_payment_cover_order">Gedekt door de bestelling die je vooraf hebt goedgekeurd</string>
+    <string name="chat_payment_cover_schedule">Gedekt door je toestemming voor de betalingen van dit schema</string>
+</resources>

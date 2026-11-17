@@ -3,6 +3,8 @@ package chat.kelo.app.notify
 import android.content.Context
 import android.util.Log
 import chat.kelo.app.agent.NotificationPage
+import chat.kelo.app.agent.PendingApproval
+import chat.kelo.app.agent.SettledItems
 import chat.kelo.app.appContainer
 import chat.kelo.app.core.ApiError
 import chat.kelo.app.core.KeloApi
@@ -13,6 +15,7 @@ import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -60,10 +63,29 @@ class NotificationPoller(private val prefs: NotifyPrefs, private val notifier: N
         val page = api.get<NotificationPage>("/api/notifications?after=${last ?: 0}&limit=50")
         if (last != null && !visible()) {
             NotifyRules.fresh(page.items, last).forEach { n ->
-                if (NotifyRules.shouldPost(foreground = visible(), seen = n.seen, alreadyPosted = n.id <= last)) notifier.post(n)
+                if (NotifyRules.shouldPost(foreground = visible(), seen = n.seen, alreadyPosted = n.id <= last)) {
+                    // an approval's notification gets the buttons its waiting item allows (none when the item cannot be read)
+                    val offered = if (n.type == NoteTypes.APPROVAL_WAITING) n.approvalId?.let { pendingActions(api, it) }.orEmpty() else emptyList()
+                    notifier.post(n, offered)
+                }
             }
         }
         prefs.setLastNote(api.baseUrl, NotifyRules.nextCursor(last ?: 0, page.lastId, page.items))
+        dropSettled(api)
+    }
+
+    /** What the notification of waiting approval [id] may offer (GET /api/approvals/pending "notify_actions"); empty when it cannot be read. */
+    private suspend fun pendingActions(api: KeloApi, id: String): List<String> =
+        withTimeoutOrNull(8_000) { runCatching { PendingApproval.notifyActionsFor(api.get<JsonElement>("/api/approvals/pending"), id) }.getOrNull() }.orEmpty()
+
+    /**
+     * Takes down the notifications whose waiting item does not wait any more (answered on another device, ran out, cancelled): asks
+     * the server about the item ids that are up. Used on every check, so it also runs when the app opens. A failed ask changes nothing.
+     */
+    suspend fun dropSettled(api: KeloApi) {
+        val path = ItemIds.settledPath(notifier.shownItems()) ?: return
+        val gone = runCatching { api.get<SettledItems>(path).ids }.getOrNull().orEmpty()
+        notifier.settle(gone)
     }
 }
 
@@ -193,6 +215,10 @@ class KeloMessagingService : FirebaseMessagingService() {
         val api = c.sessions.api.value ?: return
         if (push.type == PushData.DEVICE_TASK) {   // a text, the dialer or a calendar change waits for this phone
             kotlinx.coroutines.runBlocking { runCatching { kotlinx.coroutines.withTimeout(70_000) { chat.kelo.app.device.DeviceTasks.check(applicationContext) } } }
+            return
+        }
+        if (push.type == PushData.SETTLED) {   // item ids only: take those notifications down; nothing is shown or fetched
+            c.notifier.settle(push.ids)
             return
         }
         kotlinx.coroutines.runBlocking {   // onMessageReceived runs on a worker thread and may take a few seconds

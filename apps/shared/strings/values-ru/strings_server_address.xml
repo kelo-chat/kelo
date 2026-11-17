@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Адрес сервера</string>
+    <string name="server_address_title">Смена адреса сервера</string>
+    <string name="server_address_body">Подключённый адрес: %1$s\nЧтобы перейти на новый адрес того же сервера Kelo, введите новый адрес https. Чаты и ключи сохранятся, подключаться заново не нужно.</string>
+    <string name="server_address_switch">Сменить</string>
+    <string name="server_address_checking">Проверка…</string>
+    <string name="server_address_invalid">Это не похоже на адрес https. Введите его так: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">Не удалось связаться с этим адресом. Проверьте его и подключение к сети и повторите попытку.</string>
+    <string name="server_address_other">Этот адрес принадлежит другому серверу, поэтому ничего не изменено. Чтобы подключить другой сервер, выйдите из аккаунта и подключите его с самого начала.</string>
+    <string name="server_address_same">Этот телефон уже использует этот адрес.</string>
+    <string name="server_address_done">Адрес сервера изменён.</string>
+</resources>

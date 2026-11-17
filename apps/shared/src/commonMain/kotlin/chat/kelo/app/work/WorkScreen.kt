@@ -35,7 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.layout.onSizeChanged
@@ -101,6 +101,7 @@ fun WorkScreen(start: OpenTarget?, onStartUsed: () -> Unit, onOpenLive: (String)
     val container = LocalAppServices.current
     val vm: AgentViewModel = viewModel { AgentViewModel(container.sessions, hooks.platform) }
     val offersVm = rememberViewModel { chat.kelo.app.offers.OffersViewModel(container.sessions) }
+    val followVm = rememberViewModel { chat.kelo.app.follow.FollowViewModel(container.sessions) }
     var stack by rememberSaveable { mutableStateOf(listOf<String>()) }
     fun setStack(s: List<String>) { stack = s; hooks.hideChrome(CHROME_KEY, s.isNotEmpty()) }
     fun push(p: String) = setStack(stack + p)
@@ -132,7 +133,7 @@ fun WorkScreen(start: OpenTarget?, onStartUsed: () -> Unit, onOpenLive: (String)
             snackbar.showSnackbar(if (m.detail != null) loadString(m.text, m.detail) else loadString(m.text, *m.args.toTypedArray()))
         }
     }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.loadWork(); offersVm.load() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.loadWork(); offersVm.load(); followVm.load() }
     // new things show up while the tab is open: often while the agent works, now and then otherwise
     val status by container.agentActivity.status.collectAsStateWithLifecycle()
     val following by container.agentActivity.following.collectAsStateWithLifecycle()
@@ -143,6 +144,7 @@ fun WorkScreen(start: OpenTarget?, onStartUsed: () -> Unit, onOpenLive: (String)
             delay(if (busy) LIVE_POLL_MS else IDLE_POLL_MS)
             vm.refreshLive()
             offersVm.load()
+            followVm.load()
         }
     }
     LaunchedEffect(workChanged) { if (workChanged > 0) vm.refreshLive() }
@@ -163,21 +165,21 @@ fun WorkScreen(start: OpenTarget?, onStartUsed: () -> Unit, onOpenLive: (String)
                     var barH by remember { mutableStateOf(0.dp) }
                     val density = LocalDensity.current
                     val statusTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-                    val topBarHeight = if (barH > 0.dp) barH else statusTop + 64.dp
+                    val topBarHeight = if (barH > 0.dp) barH else statusTop + 64.dp + below
 
                     Box(Modifier.fillMaxSize().background(Kelo.colors.bg)) {
                         Box(Modifier.fillMaxSize()) {
-                            CompositionLocalProvider(chat.kelo.app.ui.platform.LocalHeaderHeight provides topBarHeight + below) {
-                                Timeline(vm, offersVm, list, jumpTo, onJumped = { jumpTo = null }, push = ::push, onOpenLive = onOpenLive)
+                            CompositionLocalProvider(chat.kelo.app.ui.platform.LocalHeaderHeight provides topBarHeight) {
+                                Timeline(vm, offersVm, followVm, list, jumpTo, onJumped = { jumpTo = null }, push = ::push, onOpenLive = onOpenLive)
                             }
                         }
                         Box(
                             Modifier
                                 .fillMaxWidth()
                                 .background(barColor)
+                                .onSizeChanged { barH = with(density) { it.height.toDp() } }   // WITH the status bar and the window header
                                 .statusBarsPadding()
                                 .padding(top = below)
-                                .onSizeChanged { barH = with(density) { it.height.toDp() } }
                                 .align(Alignment.TopCenter)
                         ) {
                             if (onClose != null) chat.kelo.app.ui.components.BackTitleBar(string(Res.string.tab_work), onClose)
@@ -195,7 +197,7 @@ fun WorkScreen(start: OpenTarget?, onStartUsed: () -> Unit, onOpenLive: (String)
                     onArchive = { push(WorkPages.ARCHIVED) })
                 page == WorkPages.ARCHIVED -> ArchivedSchedulesPage(vm, back)
                 page.startsWith("watch:") -> WatcherPage(vm, page.removePrefix("watch:").toLongOrNull() ?: 0, back)
-                else -> Timeline(vm, offersVm, list, jumpTo, onJumped = { jumpTo = null }, push = ::push, onOpenLive = onOpenLive)
+                else -> Timeline(vm, offersVm, followVm, list, jumpTo, onJumped = { jumpTo = null }, push = ::push, onOpenLive = onOpenLive)
             }
             }
         }
@@ -218,7 +220,8 @@ const val SECTION_PAST = "sec:past"
 
 @Composable
 private fun Timeline(
-    vm: AgentViewModel, offersVm: chat.kelo.app.offers.OffersViewModel, list: androidx.compose.foundation.lazy.LazyListState, jumpTo: String?, onJumped: () -> Unit,
+    vm: AgentViewModel, offersVm: chat.kelo.app.offers.OffersViewModel, followVm: chat.kelo.app.follow.FollowViewModel,
+    list: androidx.compose.foundation.lazy.LazyListState, jumpTo: String?, onJumped: () -> Unit,
     push: (String) -> Unit, onOpenLive: (String) -> Unit,
 ) {
     val tasks by vm.tasks.collectAsStateWithLifecycle()
@@ -230,6 +233,8 @@ private fun Timeline(
     val followups by vm.followups.collectAsStateWithLifecycle()
     val followupBusy by vm.followupBusy.collectAsStateWithLifecycle()
     val offersState by offersVm.state.collectAsStateWithLifecycle()
+    val followState by followVm.state.collectAsStateWithLifecycle()
+    var selectedFollow by remember { mutableStateOf<chat.kelo.app.follow.FollowItem?>(null) }
     var filter by rememberSaveable { mutableStateOf(PastFilter.ALL) }
     var showPaused by rememberSaveable { mutableStateOf(false) }
     val today = remember { LocalDate.now() }
@@ -267,7 +272,7 @@ private fun Timeline(
     val schedulesLoaded = schedules.data != null || schedules.failed
     val watchersLoaded = watchers.data != null || watchers.failed
     val rows = remember(
-        tasks, workers, perms, schedules, browser, watchers, followups, followupBusy, entries, filter, showPaused, vm, offersState,
+        tasks, workers, perms, schedules, browser, watchers, followups, followupBusy, entries, filter, showPaused, vm, offersState, followState,
     ) {
         buildWorkRows(
             WorkRowsInput(
@@ -287,6 +292,8 @@ private fun Timeline(
                 onOfferDismiss = { o, reason ->
                     offersVm.dismiss(o, reason)
                 },
+                followItems = followState.items,
+                onFollowClick = { selectedFollow = it },
             ),
         )
     }
@@ -304,6 +311,16 @@ private fun Timeline(
         rows, list, keep,
         PaddingValues(start = 12.dp, end = 16.dp, top = headerHeight() + 8.dp, bottom = LocalWorkHooks.current.bottomInset + 32.dp),
     )
+
+    if (selectedFollow != null) {
+        val currentFollow = followState.items.firstOrNull { it.key == selectedFollow?.key } ?: selectedFollow!!
+        chat.kelo.app.follow.FollowPlanSheet(
+            item = currentFollow,
+            onDismiss = { selectedFollow = null },
+            onStop = { key -> followVm.stop(key) },
+            onReplan = { key -> followVm.replan(key) },
+        )
+    }
 }
 
 /** Draws the rows, exactly as [buildWorkRows] lists them. */

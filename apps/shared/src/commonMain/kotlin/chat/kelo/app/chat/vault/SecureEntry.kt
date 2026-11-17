@@ -26,7 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -192,59 +192,76 @@ fun vaultWhat(item: VaultItem): String =
     string(if (item.isLogin) Res.string.vault_what_login else Res.string.vault_what_key, item.label)
 
 /**
- * The card that appears in the chat when the assistant asks for a login or a key. [onNotify] sends a message to
- * the agent ("…를 보관함에 저장했어요. 이어서 진행해 줘.").
+ * The compact card shown when the assistant asks for a login or a key by its Keychain name (the older request path; a server that
+ * sends secure entries uses [SecretEntryCard]): key icon, title, "for <site>", ONE button that opens the [LoginSheet], and a small
+ * "Not now". When the sheet saves, a notice says so and [onNotify] gets the line that tells the agent, once, with no button to press.
  */
 @Composable
 fun SecureCard(name: String, onNotify: ((String) -> Unit)?, modifier: Modifier = Modifier) {
     val sessions = LocalAppServices.current.sessions
     val vm = rememberViewModel(name) { SecureCardViewModel(sessions, name) }
+    val form = rememberViewModel("form-$name") { SecureFormViewModel(sessions) }
+    val formState by form.state.collectAsStateWithLifecycle()
     val item = vm.state.collectAsStateWithLifecycle().value.item
     var done by rememberSaveable(name) { mutableStateOf<VaultMode?>(null) }
     var closed by rememberSaveable(name) { mutableStateOf(false) }
+    var sheet by rememberSaveable(name) { mutableStateOf(false) }
+    var sent by rememberSaveable(name) { mutableStateOf(false) }
+    val toaster = chat.kelo.app.platform.LocalToaster.current
     val it = item ?: return
     val what = vaultWhat(it)
     val c = Kelo.colors
+    val d = done
+    // the agent is told right after a save, once (the same line the "notify agent" button sent before)
+    val notifyText = if (d != null) string(if (d == VaultMode.NOW) Res.string.vault_card_notify_saved else Res.string.vault_card_notify_entered, what) else ""
+    val added = string(if (it.isLogin) Res.string.secret_added_login else Res.string.secret_added_key)
+    androidx.compose.runtime.LaunchedEffect(d) {
+        if (LoginSheetRules.shouldNotify(d != null, sent, onNotify != null)) { sent = true; onNotify?.invoke(notifyText) }
+    }
     CardBox(modifier) {
         if (closed) {
             MutedText(string(Res.string.vault_card_cancelled, what), small = true)
             return@CardBox
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(KeloIcons.Shield, contentDescription = null, tint = c.ink, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.size(8.dp))
-            Text(string(Res.string.vault_card_needed, what), fontWeight = FontWeight.Bold, color = c.ink)
-        }
-        MutedText(string(Res.string.vault_card_hosts, it.hosts.joinToString(", ")), small = true)
-        val d = done
         if (d != null) {
-            Text(
-                string(
-                    when (d) {
-                        VaultMode.AFTER_SUCCESS -> Res.string.vault_card_done_after_success
-                        VaultMode.ONCE -> Res.string.vault_card_done_once
-                        VaultMode.NOW -> Res.string.vault_card_done_now
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall, color = c.ink,
-            )
-            if (onNotify != null) {
-                val text = string(if (d == VaultMode.NOW) Res.string.vault_card_notify_saved else Res.string.vault_card_notify_entered, what)
-                PrimaryButton(string(Res.string.notify_agent), onClick = { onNotify(text) })
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(KeloIcons.Shield, contentDescription = null, tint = c.ink, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    string(
+                        when (d) {
+                            VaultMode.AFTER_SUCCESS -> Res.string.vault_card_done_after_success
+                            VaultMode.ONCE -> Res.string.vault_card_done_once
+                            VaultMode.NOW -> Res.string.vault_card_done_now
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall, color = c.ink,
+                )
             }
         } else {
-            SecureEntryForm(it, onSaved = { m -> done = m }, defaultMode = if (it.isLogin) VaultMode.AFTER_SUCCESS else VaultMode.NOW)
-            LinkButton(string(Res.string.cancel), onClick = {
+            val forName = LoginSheetRules.forName(it.isLogin, it.hosts, it.label, it.name)
+            LoginCompact(it.isLogin, forName, onOpen = { sheet = true }, onNotNow = {
                 // nothing was entered: the request is forgotten, and nothing is left in the vault
                 vm.cancel { closed = true }
             })
+            if (sheet) {
+                LoginSheet(
+                    login = it.isLogin, forName = forName, hint = it.usernameHint.orEmpty(),
+                    busy = formState.busy, problem = formState.error, note = "",
+                    onSave = { user, pass, keep ->
+                        val mode = if (it.isLogin) LoginSheetRules.mode(keep) else VaultMode.NOW
+                        form.submit(it, user, pass, mode) { sheet = false; toaster.show(added); done = mode }
+                    },
+                    onClose = { sheet = false },
+                )
+            }
         }
     }
 }
 
 /** Marks a field for the Android autofill service (password managers fill it on focus). */
 @OptIn(ExperimentalComposeUiApi::class)
-private fun Modifier.autofill(types: List<AutofillType>, onFill: (String) -> Unit): Modifier = composed {
+internal fun Modifier.autofill(types: List<AutofillType>, onFill: (String) -> Unit): Modifier = composed {
     val fill by rememberUpdatedState(onFill)
     val node = remember { AutofillNode(autofillTypes = types, onFill = { fill(it) }) }
     val autofill = LocalAutofill.current

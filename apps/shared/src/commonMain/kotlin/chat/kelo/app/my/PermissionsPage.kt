@@ -23,6 +23,8 @@ import chat.kelo.app.agent.AgentViewModel
 import chat.kelo.app.agent.ApprovalRecordRow
 import chat.kelo.app.agent.GroupCard
 import chat.kelo.app.agent.RuleRow
+import chat.kelo.app.agent.RecipientAllowRow
+import chat.kelo.app.agent.PaymentCoverSection
 import chat.kelo.app.ui.components.ErrorText
 import chat.kelo.app.ui.components.LinkButton
 import chat.kelo.app.ui.components.MutedText
@@ -34,7 +36,7 @@ import chat.kelo.app.ui.theme.Kelo
  * the answer it got. Questions still waiting are answered in the 작업 tab.
  */
 @Composable
-fun PermissionsPage(onBack: () -> Unit, onOpenWork: () -> Unit) {
+fun PermissionsPage(onBack: () -> Unit, onOpenWork: () -> Unit, onOpenPast: () -> Unit) {
     val services = LocalAppServices.current
     val vm = rememberViewModel("my-permissions") { AgentViewModel(services.sessions) }
     val state by vm.perms.collectAsStateWithLifecycle()
@@ -50,7 +52,7 @@ fun PermissionsPage(onBack: () -> Unit, onOpenWork: () -> Unit) {
         }
         if (data.pending.isNotEmpty()) {
             MyCard(onClick = onOpenWork) {
-                androidx.compose.material3.Text(
+                chat.kelo.app.ui.text.Text(
                     plural(Res.plurals.my_perm_waiting, data.pending.size, data.pending.size),
                     color = c.accent, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
                 )
@@ -67,18 +69,26 @@ fun PermissionsPage(onBack: () -> Unit, onOpenWork: () -> Unit) {
                 }
             }
         }
-        SectionLabel(string(Res.string.agent_perm_history))
-        if (data.history.isEmpty()) {
-            EmptyNote(string(Res.string.agent_perm_history_empty))
+        SectionLabel(string(Res.string.recipient_allows_title))
+        if (data.recipients.isEmpty()) {
+            MutedText(string(Res.string.recipient_allows_empty), small = true)
         } else {
             GroupCard {
-                data.history.forEachIndexed { i, a ->
+                data.recipients.forEachIndexed { i, r ->
                     if (i > 0) HorizontalDivider(color = c.line, modifier = Modifier.padding(horizontal = 16.dp))
-                    ApprovalRecordRow(a)
+                    RecipientAllowRow(r, onRemove = { vm.removeRecipient(r) })
                 }
             }
         }
-        if (data.historyNext != null) LinkButton(string(Res.string.agent_more), onClick = vm::loadMoreHistory)
+        data.cover?.let { cover ->
+            SectionLabel(string(Res.string.paycover_title))
+            PaymentCoverSection(cover, onSwitch = vm::setPaymentCover, onRemoveOrder = vm::removePreapproval, onRemoveAllow = vm::removePayAllow)
+        }
+        MyCard(onClick = onOpenPast) {
+            chat.kelo.app.ui.text.Text(
+                string(Res.string.approval_history_title), color = c.ink, style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
+            )
+        }
     }
     VmMessages(vm)
 }

@@ -442,40 +442,9 @@ async def test_a_cut_answer_goes_on_at_most_twice():
     assert isinstance(events[-1], AgentDone)
 
 
-async def test_a_reply_that_says_it_does_the_next_step_now_but_calls_nothing_is_told_to_do_it():
-    """"바로 등록할게요" with no tool call after working with tools: the model is told to make the call, and the run goes on."""
+async def test_a_reply_without_a_tool_call_ends_the_run_whatever_it_says():
+    """No promise or skill words are read (docs/no-word-lists.md D): a reply with no call is the end; the prompt asks for the call."""
     fn = scripted([ToolCall("c1", "echo", '{"x":"A"}'), Done("tool_calls")],
-                  [TextDelta("첫 리뷰를 올렸어요. 이어서 두 번째 리뷰를 바로 등록할게요."), Done("stop")],
-                  [ToolCall("c2", "echo", '{"x":"B"}'), Done("tool_calls")],
-                  [TextDelta("두 리뷰 모두 올렸어요."), Done("stop")])
+                  [TextDelta("첫 리뷰를 올렸어요. 이어서 두 번째 리뷰를 바로 등록할게요."), Done("stop")])
     events = await run([echo_tool()], fn)
-    assert len(fn.seen) == 4 and isinstance(events[-1], AgentDone)
-    assert any("you called no tool" in str(m.get("content")) for m in fn.seen[2].messages)
-
-
-async def test_said_it_do_it_is_told_at_most_twice_and_never_without_tools_used():
-    from assistant.agent.said_do import MAX_SAID_DO
-    fn = scripted([ToolCall("c1", "echo", '{"x":"A"}'), Done("tool_calls")],
-                  *[[TextDelta("이어서 바로 등록할게요."), Done("stop")] for _ in range(MAX_SAID_DO + 1)])
-    events = await run([echo_tool()], fn)
-    assert len(fn.seen) == MAX_SAID_DO + 2 and isinstance(events[-1], AgentDone)
-    fn = scripted([TextDelta("네, 바로 찾아볼게요."), Done("stop")])   # no tool used yet in this run: an ordinary answer
-    await run([echo_tool()], fn)
-    assert len(fn.seen) == 1
-
-
-async def test_a_way_the_owner_set_that_went_through_is_offered_as_a_skill_once():
-    from assistant.agent import Tool
-    from assistant.agent.said_do import MIN_SKILL_STEPS
-
-    async def propose(args):
-        return "proposed"
-
-    skill = Tool("propose_skill", "save a skill", {"type": "object"}, propose)
-    steps = [[ToolCall(f"c{k}", "echo", '{"x":"A"}'), Done("tool_calls")] for k in range(MIN_SKILL_STEPS)]
-    fn = scripted(*steps, [TextDelta("리뷰 4개를 모두 올렸어요."), Done("stop")],
-                  [ToolCall("s1", "propose_skill", '{"name":"x"}'), Done("tool_calls")], [TextDelta("스킬로 저장할지 물어봤어요."), Done("stop")])
-    msgs = [{"role": "user", "content": "내가 했던 거 보고 그런 식으로 리뷰 써 줘"}]
-    events = [e async for e in run_agent("p", "m", msgs, [echo_tool(), skill], stream_fn=fn)]
-    assert any("propose_skill" in str(m.get("content")) for m in fn.seen[MIN_SKILL_STEPS + 1].messages)
-    assert isinstance(events[-1], AgentDone) and len(fn.seen) == MIN_SKILL_STEPS + 3
+    assert len(fn.seen) == 2 and isinstance(events[-1], AgentDone)

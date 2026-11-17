@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- b+zh+Hant text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">按住說話</string>
+    <string name="voice_hold_hint">放開完成，滑出取消</string>
+    <string name="voice_dictation_offline">網路中斷，聽寫已停止。</string>
+    <string name="voice_dictation_failed">無法完成聽寫。</string>
+    <string name="msg_action_read_aloud">朗讀</string>
+    <string name="msg_action_read_stop">停止朗讀</string>
+</resources>

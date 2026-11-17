@@ -12,6 +12,7 @@ import android.graphics.Bitmap
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import chat.kelo.app.MainActivity
 import chat.kelo.app.R
@@ -54,7 +55,8 @@ class Notifier(private val context: Context) {
     }
 
     fun post(id: Int, channel: Channel, title: String, body: String, target: OpenTarget, noteId: Long? = null,
-             actions: List<Pair<String, OpenTarget>> = emptyList()) {
+             actions: List<Pair<String, OpenTarget>> = emptyList(), item: String? = null, buttons: List<NotifyAction> = emptyList(),
+             quiet: Boolean = false) {
         if (!enabled()) return
         ensureChannels()
         val n = NotificationCompat.Builder(context, channel.id)
@@ -64,6 +66,7 @@ class Notifier(private val context: Context) {
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
+            .setOnlyAlertOnce(quiet)   // the same notification again with its buttons: no second sound
             .setPriority(if (channel == Channel.URGENT) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(
                 when (channel) {
@@ -85,10 +88,13 @@ class Notifier(private val context: Context) {
                 actions.forEachIndexed { i, (label, to) ->
                     addAction(0, label, openIntent(NotifyRules.idFor("action$i", id.toString()), to, noteId))
                 }
+                // buttons that answer without opening the app: each needs the phone unlocked; swiping the notification away answers
+                // nothing (no delete intent on purpose)
+                buttons.forEach { addAction(compatAction(it)) }
             }
             .build()
         try {
-            manager.notify(id, n)
+            manager.notify(item, id, n)   // the tag is the waiting item's id (same on every app): settled items are found by it
             postSummary()
         } catch (e: SecurityException) {
             // the permission was taken away between the check and now
@@ -127,8 +133,11 @@ class Notifier(private val context: Context) {
         manager.notify(NotifyRules.SUMMARY_ID, n)
     }
 
-    /** A server notification (from the 15-minute check or a push), in the app's own words. */
-    fun post(n: ServerNotification) {
+    /**
+     * A server notification (from the 15-minute check or a push), in the app's own words. [offered]: the names on the waiting item's
+     * notify_actions (GET /api/approvals/pending), which decide the Allow / Deny buttons of an approval; none = no buttons.
+     */
+    fun post(n: ServerNotification, offered: Collection<String> = emptyList()) {
         val own = when (n.type) {
             NoteTypes.TASK_DONE -> R.string.notify_task_done
             NoteTypes.TASK_FAILED -> R.string.notify_task_failed
@@ -150,8 +159,99 @@ class Notifier(private val context: Context) {
         val body = n.body.ifBlank { n.title }.ifBlank { context.getString(R.string.notify_open_hint) }
         val key = n.approvalId ?: n.taskId?.toString() ?: n.scheduleId?.toString() ?: n.id.toString()
         val actions = NotifyRules.actions(n.type).map { to -> context.getString(R.string.storage_clean_up) to to }
-        post(NotifyRules.idFor(n.type, key), NotifyRules.channelOf(n.type, n.scheduleId, n.urgent), title, body, NotifyRules.target(n), n.id, actions)
+        val noteId = NotifyRules.idFor(n.type, key)
+        val tag = ItemIds.of(n)
+        val buttons = when {
+            n.type == NoteTypes.APPROVAL_WAITING && n.approvalId != null -> approvalButtons(n.approvalId!!, offered, noteId, tag)
+            ReplyActionRules.replyable(n.type) -> listOf(replyButton(noteId, tag))
+            else -> emptyList()
+        }
+        post(noteId, NotifyRules.channelOf(n.type, n.scheduleId, n.urgent), title, body, NotifyRules.target(n), n.id, actions,
+            item = tag, buttons = buttons)
     }
+
+    /** Allow / Deny buttons for the names the server put on the pending item's notify_actions (none: only tapping opens the app). */
+    fun approvalButtons(approvalId: String, offered: Collection<String>, noteId: Int, tag: String?): List<NotifyAction> =
+        ApprovalActionRules.plan(approvalId, offered).buttons.map { b ->
+            val intent = Intent(context, ApprovalActionReceiver::class.java)
+                .putExtra(ApprovalActionRules.EXTRA_ID, approvalId)
+                .putExtra(ApprovalActionRules.EXTRA_APPROVE, b.approve)
+                .putExtra(ApprovalActionRules.EXTRA_OFFERED, offered.joinToString(","))
+                .putExtra(ApprovalActionRules.EXTRA_NOTE_ID, noteId)
+                .putExtra(ApprovalActionRules.EXTRA_NOTE_TAG, tag)
+            NotifyAction(
+                context.getString(if (b.approve) R.string.chat_approval_allow else R.string.chat_approval_deny),
+                PendingIntent.getBroadcast(context, b.requestCode, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),
+                b.authRequired,
+            )
+        }
+
+    /** The "Reply" action of an answer's notification: a text field in the notification; the text goes to [ReplyActionReceiver]. */
+    fun replyButton(noteId: Int, tag: String?): NotifyAction {
+        val intent = Intent(context, ReplyActionReceiver::class.java)
+            .putExtra(ApprovalActionRules.EXTRA_NOTE_ID, noteId)
+            .putExtra(ApprovalActionRules.EXTRA_NOTE_TAG, tag)
+        val label = context.getString(R.string.notify_action_reply)
+        // RemoteInput needs a mutable PendingIntent (the system fills in the typed text); before Android 12 every one is
+        val mutable = if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0
+        return NotifyAction(
+            label,
+            PendingIntent.getBroadcast(context, noteId, intent, mutable or PendingIntent.FLAG_UPDATE_CURRENT),
+            authRequired = true,
+            remoteInput = RemoteInput.Builder(ReplyActionRules.KEY_TEXT).setLabel(label).build(),
+        )
+    }
+
+    private fun compatAction(a: NotifyAction): NotificationCompat.Action =
+        NotificationCompat.Action.Builder(0, a.label, a.pendingIntent).apply {
+            a.remoteInput?.let { addRemoteInput(it); setAllowGeneratedReplies(false) }
+            setAuthenticationRequired(a.authRequired)
+        }.build()
+
+    /** What a notification says after an answer from it, under the same id (see [ApprovalNotes] and [ReplyNotes]). */
+    enum class Repost { KeepActions, OpenOnly }
+
+    /**
+     * Posts the notification (tag, id) again with [text]: the same title, channel and group, the text replaced; the actions kept or
+     * replaced by one Open. [history]: a sent reply, shown under the text (this also stops the reply field's spinner). The notification
+     * is made new when it was dismissed meanwhile, so a failure is never silent.
+     */
+    fun repost(tag: String?, id: Int, text: String, mode: Repost, history: String? = null, channel: Channel = Channel.APPROVALS) {
+        if (!enabled()) return
+        val old = runCatching {
+            context.getSystemService(NotificationManager::class.java)?.activeNotifications?.firstOrNull { it.id == id && it.tag == tag }?.notification
+        }.getOrNull()
+        ensureChannels()
+        val b = NotificationCompat.Builder(context, old?.channelId ?: channel.id).setSmallIcon(R.drawable.ic_notification).setColor(ACCENT)
+            .setContentTitle(old?.extras?.getCharSequence(Notification.EXTRA_TITLE) ?: context.getString(R.string.app_name))
+            .setGroup(NotifyRules.GROUP).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setContentIntent(old?.contentIntent ?: openIntent(id, OpenTarget.Chat, null))
+        old?.publicVersion?.let { b.setPublicVersion(it) }
+        if (mode == Repost.KeepActions && old != null) {
+            for (i in 0 until NotificationCompat.getActionCount(old)) NotificationCompat.getAction(old, i)?.let { b.addAction(it) }
+        } else if (mode == Repost.KeepActions && channel == Channel.REPLIES) {
+            b.addAction(compatAction(replyButton(id, tag)))   // the notification was swiped away meanwhile: a new one still lets the user reply
+        }
+        b.setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text)).setOnlyAlertOnce(true).setAutoCancel(true)
+        if (mode == Repost.OpenOnly) {
+            b.addAction(0, context.getString(R.string.nest_open), openIntent(NotifyRules.idFor("open", id.toString()), OpenTarget.Chat, null))
+        }
+        if (history != null) b.setRemoteInputHistory(arrayOf<CharSequence>(history))
+        try {
+            manager.notify(tag, id, b.build())
+        } catch (e: SecurityException) {
+            // the permission was taken away
+        }
+    }
+
+    /** The text a shown notification has now (null: it is not up). */
+    fun bodyOf(tag: String?, id: Int): String? = runCatching {
+        context.getSystemService(NotificationManager::class.java)?.activeNotifications?.firstOrNull { it.id == id && it.tag == tag }
+            ?.notification?.extras?.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+    }.getOrNull()
+
+    /** Takes down one notification by its tag and id. */
+    fun cancel(tag: String?, id: Int) = manager.cancel(tag, id)
 
     /**
      * The quiet ongoing line while a reply is followed in the background (the foreground service's notification): the step it is
@@ -209,6 +309,25 @@ class Notifier(private val context: Context) {
             .filter { sbn -> NotifyRules.channelOfId(sbn.notification.channelId)?.let(NotifyRules::isNews) == true }
             .forEach { manager.cancel(it.tag, it.id) }
         postSummary()
+    }
+
+    /** The ids of the waiting items whose notifications are up (the notifications' tags). */
+    fun shownItems(): Set<String> {
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return emptySet()
+        return runCatching { nm.activeNotifications.mapNotNull { it.tag } }.getOrDefault(emptyList()).toSet()
+    }
+
+    /**
+     * These waiting items do not wait any more (answered here or on another device, ran out, cancelled): their notifications are taken
+     * down, and the bundle is redrawn (removed with its last child).
+     */
+    fun settle(items: Collection<String>) {
+        if (items.isEmpty()) return
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        val up = runCatching { nm.activeNotifications.toList() }.getOrDefault(emptyList())
+        val gone = up.filter { it.tag != null && it.tag in items }
+        gone.forEach { manager.cancel(it.tag, it.id) }
+        if (gone.isNotEmpty()) postSummary()
     }
 
     /** Redraws the bundle after one notification went away by itself (DeviceTasks posts outside [post]). */

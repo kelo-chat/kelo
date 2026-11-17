@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 
 import pytest
 
+from assistant.page_judge import PageJudge
 from assistant.tools.browser import BrowserSession
+from fake_page_judge import FakePageJudge
 
 from test_purchase import PUBLIC
 
@@ -43,7 +45,8 @@ PAGES = {
         <option>1</option></select></label><label>Coupon code <input name=code></label></form>""",
     "https://shop.example.com/split-exp": """<form><label>Card number <input id=cc maxlength=19></label>
         <label>Expiry month <input id=em placeholder="MM" maxlength=2></label><label>Expiry year <input id=ey placeholder="YY" maxlength=2></label>
-        <label>Security code <input id=sc></label><p>Please complete 3-D Secure in your bank app.</p></form>""",
+        <label>Security code <input id=sc></label><p>Please complete 3-D Secure in your bank app.</p>
+        <input id=otp autocomplete="one-time-code" maxlength=6></form>""",
 }
 
 
@@ -71,6 +74,7 @@ async def open_session(ctx, url):
     async def connect():
         return page
     session = BrowserSession(connect=connect, resolver=PUBLIC)
+    session.page_judge = PageJudge(FakePageJudge().ask)   # stands in for the owner's main model: it reads the labels of fields without autocomplete
     await (await session.page()).goto(url)
     return session, page
 
@@ -121,4 +125,4 @@ async def test_separate_month_and_year_inputs_and_extra_authentication(browser):
     res = await session.fill_card(VISA, "987", M, Y)
     got = dict(await values(page))
     assert got["cc"] == VISA and got["em"] == f"{M:02d}" and got["ey"] == f"{Y % 100:02d}" and got["sc"] == "987"
-    assert res.filled == ["number", "expiry", "cvc"] and res.auth == "3-d secure"
+    assert res.filled == ["number", "expiry", "cvc"] and res.auth == "a one-time-code box"   # by structure: the words of the page ("3-D Secure ...") decide nothing

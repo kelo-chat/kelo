@@ -252,7 +252,7 @@ async def test_a_scheduled_run_waits_for_the_unlock_and_says_it_waited(tmp_path,
             if seen:
                 break
             await asyncio.sleep(0.1)
-        assert seen and "because Kelo was locked" in seen[-1]
+        assert seen and "because Kelo was locked" in seen[0]   # the working request (a closing request may follow)
 
 
 def test_cli_enable_moves_the_env_key_out_safely(tmp_path, monkeypatch, capsys):

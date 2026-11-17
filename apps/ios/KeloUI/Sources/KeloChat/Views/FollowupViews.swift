@@ -21,7 +21,8 @@ struct MessageFollowups: View {
                 if case .openLogin(let name) = step { login = LoginName(name: name) } else { model.runAction(followup, step: step) }
             }
             .keloSheet(item: $login, detents: [.large]) { l in
-                SignInSheet(name: l.name, onNotify: { text in model.actionSignedIn(followup); model.send(text) }, onClose: { login = nil })
+                SignInSheet(name: l.name, onNotify: { text in model.actionSignedIn(followup); model.send(text) },
+                            onAdded: { model.entryToast = $0 }, onClose: { login = nil })
             }
         }
     }
@@ -70,6 +71,7 @@ struct FollowupButtons: View {
 struct SignInSheet: View {
     let name: String
     let onNotify: (String) -> Void
+    var onAdded: (String) -> Void = { _ in }
     let onClose: () -> Void
     @Environment(\.keloApi) private var api
     @State private var lookup = SecureLookupModel()
@@ -80,7 +82,7 @@ struct SignInSheet: View {
                 SheetHeader(L(R.string.signin_sheet_title), onClose: onClose)
                 switch lookup.state {
                 case 0: ProgressView()
-                case 1: SecureCard(name: name) { text in onNotify(text); onClose() }
+                case 1: SecureCard(name: name, embedded: true, onClose: onClose, onAdded: onAdded, onNotify: { text in onNotify(text); onClose() })
                 default: MutedText(L(R.string.signin_sheet_gone), small: true)
                 }
             }
@@ -90,43 +92,46 @@ struct SignInSheet: View {
     }
 }
 
-/// The card that appears when the agent asks for a login or a key (Android vault/SecureEntry.kt SecureCard). `onNotify` sends the
-/// line that tells the agent. The value goes to the server and is never shown again; the agent never sees it.
+/// The card that appears when the agent asks for a login or a key (Android vault/SecureEntry.kt SecureCard): a compact card whose
+/// button opens a bottom sheet with the form (`embedded`: already inside a sheet, so the form is shown right there). `onNotify` sends
+/// the line that tells the agent, once, right after a save; `onAdded` gets the short message to show. The value goes to the server and
+/// is never shown again; the agent never sees it.
 struct SecureCard: View {
     let name: String
+    var embedded = false
+    var onClose: () -> Void = {}
+    var onAdded: (String) -> Void = { _ in }
     let onNotify: ((String) -> Void)?
     @Environment(\.keloApi) private var api
-    @Environment(\.kelo) private var c
     @State private var lookup = SecureLookupModel()
-    @State private var done: SecretLoginMode?
+    @State private var save = SecureEntrySaveModel()
+    @State private var showSheet = false
+    @State private var once = ContinueOnce()
 
     var body: some View {
         let closed = lookup.closed
         Group {
             if let it = lookup.item {
                 let what = L(it.isLogin ? R.string.vault_what_login : R.string.vault_what_key, it.label)
-                CardBox {
-                    if closed {
-                        MutedText(L(R.string.vault_card_cancelled, what), small: true)
-                    } else {
-                        HStack(spacing: 8) {
-                            KeloIconView(.shield, size: 20, tint: c.ink)
-                            Text(L(R.string.vault_card_needed, what)).font(KeloFont.button).foregroundStyle(c.ink)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        MutedText(L(R.string.vault_card_hosts, it.hosts.joined(separator: ", ")), small: true)
-                        if let d = done {
-                            Text(L(d == .afterSuccess ? R.string.vault_card_done_after_success
-                                   : d == .once ? R.string.vault_card_done_once : R.string.vault_card_done_now))
-                                .font(KeloFont.small).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
-                            if let onNotify {
-                                let text = L(d == .now ? R.string.vault_card_notify_saved : R.string.vault_card_notify_entered, what)
-                                PrimaryButton(L(R.string.notify_agent)) { onNotify(text) }
-                            }
+                if embedded {
+                    LoginSheetForm(login: it.isLogin, hosts: it.hosts, hint: it.usernameHint, busy: save.busy, problem: save.msg,
+                                   onSave: { u, p, m in submit(it, what, u, p, m) }, onCancel: onClose)
+                        .id(name)
+                } else {
+                    CardBox {
+                        if closed {
+                            MutedText(L(R.string.vault_card_cancelled, what), small: true)
                         } else {
-                            SecureEntryForm(item: it, defaultMode: it.isLogin ? .afterSuccess : .now) { done = $0 }
-                            // nothing was entered: the request is forgotten, and nothing is left in the keychain
-                            LinkButton(L(R.string.cancel)) { lookup.discard(name, api: api) }
+                            // nothing was entered: "Not now" forgets the request, and nothing is left in the keychain
+                            LoginCompactCard(login: it.isLogin, hosts: it.hosts, reason: nil, onOpen: { showSheet = true },
+                                             onNotNow: { lookup.discard(name, api: api) })
+                        }
+                    }
+                    .keloSensitive()
+                    .sheet(isPresented: $showSheet) {
+                        LoginSheetFrame {
+                            LoginSheetForm(login: it.isLogin, hosts: it.hosts, hint: it.usernameHint, busy: save.busy, problem: save.msg,
+                                           onSave: { u, p, m in submit(it, what, u, p, m) }, onCancel: { showSheet = false })
                         }
                     }
                 }
@@ -136,64 +141,14 @@ struct SecureCard: View {
         }
         .task(id: name) { await lookup.load(name, api: api) }
     }
-}
 
-/// The form where a login or a key is typed. A login's fields are marked as username / password, so iOS offers the saved
-/// passwords above the keyboard by itself (no extra button, no hint text); a service key is never offered for AutoFill.
-struct SecureEntryForm: View {
-    let item: ChatVaultItem
-    let defaultMode: SecretLoginMode
-    let onSaved: (SecretLoginMode) -> Void
-    @Environment(\.keloApi) private var api
-    @Environment(\.kelo) private var c
-    @State private var user = ""
-    @State private var pass = ""
-    @State private var mode: SecretLoginMode?
-    @State private var save = SecureEntrySaveModel()
-    @FocusState private var focus: Field?
-
-    enum Field { case user, pass }
-
-    var body: some View {
-        let login = item.isLogin
-        let chosen = mode ?? defaultMode
-        VStack(alignment: .leading, spacing: 10) {
-            if login {
-                FieldLabel(L(R.string.vault_username))
-                field(TextField("", text: $user, prompt: Text(L(R.string.vault_username)).foregroundStyle(c.muted)), focused: .user)
-                    .textContentType(.username)
-                    .keloKeyboard(.email)
-            }
-            FieldLabel(L(login ? R.string.vault_password : R.string.vault_key))
-            field(SecureField("", text: $pass, prompt: Text(L(login ? R.string.vault_password : R.string.vault_key)).foregroundStyle(c.muted)),
-                  focused: .pass)
-                .textContentType(login ? .password : nil)
-                .keloKeyboard(.ascii)
-            if login {
-                FieldLabel(L(R.string.vault_mode))
-                LoginModeMenu(mode: chosen) { mode = $0 }
-            }
-            let ready = !pass.isEmpty && (login ? !user.trimmingCharacters(in: .whitespaces).isEmpty : pass.trimmingCharacters(in: .whitespaces).count >= 8)
-            PrimaryButton(L(save.busy ? R.string.vault_saving : R.string.vault_save), enabled: !save.busy && ready) { submit(mode: chosen) }
-            if !save.msg.isEmpty { ErrorText(save.msg, small: true) }
-            MutedText(L(R.string.vault_footer), small: true)
-        }
-        .keloSensitive()
-        .onAppear { focus = login ? .user : .pass }
-    }
-
-    private func field<F: View>(_ f: F, focused: Field) -> some View {
-        f.lineLimit(1).font(KeloFont.bodyLarge).foregroundStyle(c.ink)
-            .focused($focus, equals: focused)
-            .padding(.horizontal, 14).padding(.vertical, 13)
-            .background(RoundedRectangle(cornerRadius: 12).fill(c.card))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(focus == focused ? c.accent : c.line, lineWidth: focus == focused ? 2 : 1))
-    }
-
-    private func submit(mode: SecretLoginMode) {
-        save.save(item, user: user, pass: pass, mode: mode, api: api) {
-            user = ""; pass = ""
-            onSaved(mode)
+    /// Saved: the sheet closes, a short message says so, and the agent carries on by itself (told once).
+    private func submit(_ it: ChatVaultItem, _ what: String, _ user: String, _ pass: String, _ mode: SecretLoginMode) {
+        save.save(it, user: user, pass: pass, mode: mode, api: api) {
+            showSheet = false
+            guard once.take() else { return }
+            onAdded(L(LoginSheetRules.addedKey(login: it.isLogin)))
+            onNotify?(L(R.string.vault_card_notify_entered, what))
         }
     }
 }

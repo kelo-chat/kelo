@@ -39,6 +39,17 @@ import KeloCore
         #expect(PermissionRules.kindBody("send", "off") == ["send": .string("off")])
     }
 
+    @Test func theUseWhenNotChattingSwitchDecodesDefaultsToOnAndIsPutBack() throws {
+        var p = try parsed()
+        #expect(p.unattended == "allow" && PermissionRules.unattendedOn(p))      // an old server sends none: on
+        let off = try JSONDecoder().decode(ConnectorPermissions.self, from: Data(#"{"connector":"gmail","name":"Gmail","unattended":{"mode":"off","default":"allow"},"kinds":[]}"#.utf8))
+        #expect(!PermissionRules.unattendedOn(off) && PermissionRules.changed(off))
+        p.unattended = "off"
+        #expect(PermissionRules.changed(p))
+        #expect(PermissionRules.unattendedBody(false) == ["unattended": .string("off")])
+        #expect(PermissionRules.unattendedBody(true) == ["unattended": .null])
+    }
+
     @Test func theListRowKnowsLimited() throws {
         let x = try JSONDecoder().decode(ConnectorInfo.self, from: Data(#"{"id":"github","limited":true}"#.utf8))
         #expect(x.limited)

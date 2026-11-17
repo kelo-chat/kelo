@@ -1,6 +1,7 @@
 package chat.kelo.app.chat
 
 import chat.kelo.app.agent.PendingApproval
+import chat.kelo.app.agent.RecipientRules
 import chat.kelo.app.wallet.CardSendError
 
 /*
@@ -14,7 +15,7 @@ import chat.kelo.app.wallet.CardSendError
 enum class AskOrigin { JOB, SCHEDULE, AUTO, CHAT }
 
 /** How a question answered from the chat ended. SOLVED / SKIPPED: a human check (solved in the live view, or the site skipped). PROGRESSED: a sign-in's step done, the sign-in goes on. */
-enum class AskEnd { ALLOWED, ALWAYS, KEPT_FOR_SCHEDULE, DENIED, GONE, SOLVED, SKIPPED, PROGRESSED }
+enum class AskEnd { ALLOWED, ALWAYS, ALWAYS_RECIPIENT, KEPT_FOR_SCHEDULE, DENIED, GONE, SOLVED, SKIPPED, PROGRESSED }
 
 /**
  * One waiting question in the chat. [working]: the answer (or the card for a payment) is on its way. [end]: answered here; its short
@@ -82,9 +83,9 @@ object ChatAsks {
     }
 
     /** How an answer given here ended: a human check's "skip" is SKIPPED (its "done" from an older card, SOLVED). */
-    fun answerEnd(a: PendingApproval, approve: Boolean, rememberSite: Boolean, rememberSchedule: Boolean): AskEnd = when {
+    fun answerEnd(a: PendingApproval, approve: Boolean, rememberSite: Boolean, rememberSchedule: Boolean, rememberRecipient: Boolean = false): AskEnd = when {
         a.isHumanCheck -> if (approve) (if (a.isVerification) AskEnd.PROGRESSED else AskEnd.SOLVED) else AskEnd.SKIPPED
-        approve -> allowEnd(a, rememberSite, rememberSchedule)
+        approve -> allowEnd(a, rememberSite, rememberSchedule, rememberRecipient)
         else -> AskEnd.DENIED
     }
 
@@ -92,7 +93,8 @@ object ChatAsks {
     fun question(ask: String): String? = ask.trim().ifEmpty { null }
 
     /** How an allow ended: remembered for the site or the scheduled job only when the card offered it. */
-    fun allowEnd(a: PendingApproval, rememberSite: Boolean, rememberSchedule: Boolean): AskEnd = when {
+    fun allowEnd(a: PendingApproval, rememberSite: Boolean, rememberSchedule: Boolean, rememberRecipient: Boolean = false): AskEnd = when {
+        rememberRecipient && RecipientRules.canAlways(a.event.offers) -> AskEnd.ALWAYS_RECIPIENT
         rememberSite && a.canRemember -> AskEnd.ALWAYS
         rememberSchedule && a.canRememberSchedule -> AskEnd.KEPT_FOR_SCHEDULE
         else -> AskEnd.ALLOWED

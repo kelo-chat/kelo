@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- es text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Mantén pulsado para hablar</string>
+    <string name="voice_hold_hint">Suelta para terminar, desliza fuera para cancelar</string>
+    <string name="voice_dictation_offline">El dictado se detuvo porque se perdió la conexión.</string>
+    <string name="voice_dictation_failed">No se pudo completar el dictado.</string>
+    <string name="msg_action_read_aloud">Leer en voz alta</string>
+    <string name="msg_action_read_stop">Dejar de leer</string>
+</resources>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">Unutulan konular</string>
+    <string name="forget_intro">Kelo\'dan unutmasını istediğin konular. Kelo bulduklarını sildi ve bunları bir daha yazmayacak.</string>
+    <string name="forget_empty">Henüz unutulan bir şey yok. Kelo\'dan bir konuyu unutmasını istediğinde burada görünür.</string>
+    <string name="forget_date">Unutulma tarihi: %1$s</string>
+    <string name="forget_removed">Silinenler: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Silinecek bir şey bulunamadı.</string>
+    <string name="forget_cat_memory">Bellek</string>
+    <string name="forget_cat_notes">Notlar</string>
+    <string name="forget_cat_reminders">Hatırlatıcılar</string>
+    <string name="forget_cat_skills">Beceriler</string>
+    <string name="forget_cat_history">Kayıtlar</string>
+    <string name="forget_cat_other">Diğer</string>
+    <string name="forget_allow_again">Yeniden izin ver</string>
+    <string name="forget_allow_confirm">Kelo “%1$s” hakkında yeniden yazabilsin mi? Silinenler geri gelmez.</string>
+    <string name="forget_allowed">Kelo bu konuda yeniden yazabilir.</string>
+    <string name="paycover_title">Önceden onaylanan ödemeler</string>
+    <string name="paycover_switch">Önceden onaylanan ödemelere izin ver</string>
+    <string name="paycover_switch_note">Kapalıyken her ödeme önce sana sorar.</string>
+    <string name="paycover_empty">Önceden onaylanan bir şey yok. Önceden onayladığın sipariş veya zamanlanmış ödeme burada görünür.</string>
+    <string name="paycover_off_note">Kapalı: bunlar listede kalır ama her ödeme sorar.</string>
+    <string name="paycover_orders">Siparişler</string>
+    <string name="paycover_allows">Zamanlanmış ödemeler</string>
+    <string name="paycover_cap">Toplamda en fazla %1$s</string>
+    <string name="paycover_until">%1$s tarihine kadar</string>
+    <string name="paycover_for_task">Tek bir görev için</string>
+    <string name="paycover_for_schedule">“%1$s” zamanlaması için</string>
+    <string name="paycover_for_a_schedule">Zamanlanmış bir görev için</string>
+    <string name="paycover_one_order">tek sipariş</string>
+    <string name="paycover_allow_scope">Aynı mağaza, aynı ödeme yöntemi</string>
+    <string name="paycover_remove">%1$s öğesini kaldır</string>
+    <string name="paycover_remove_order_confirm">Bu onay kaldırılsın mı? Sipariş ödenmeden önce sorar.</string>
+    <string name="paycover_remove_allow_confirm">“%1$s” için izin kaldırılsın mı? Ödemeleri yine her seferinde sorar.</string>
+    <string name="paycover_removed">Kaldırıldı. Ödemeler yine sorar.</string>
+    <string name="preapprove_what">Sipariş</string>
+    <string name="preapprove_cap">Ödenecek en yüksek tutar</string>
+    <string name="preapprove_cap_value">%1$s toplam (vergi ve kargo dahil)</string>
+    <string name="preapprove_until">Son tarih</string>
+    <string name="preapprove_covers">Kapsam</string>
+    <string name="preapprove_covers_value">Yalnızca bu tek sipariş</string>
+    <string name="preapprove_requirements">Olmazsa olmaz</string>
+    <string name="preapprove_shipping">Teslimat</string>
+    <string name="preapprove_shops">Mağazalar</string>
+    <string name="preapprove_delegated">Kelo karar verir</string>
+    <string name="chat_payment_cover_order">Önceden onayladığın sipariş kapsamında ödendi</string>
+    <string name="chat_payment_cover_schedule">Bu zamanlamanın ödemeleri için verdiğin izin kapsamında ödendi</string>
+</resources>

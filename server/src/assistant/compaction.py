@@ -24,13 +24,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from .providers import ChatRequest, TextDelta
 from .secret_guard import scrub_rows
-from .providers.types import CONVERSATION_SUMMARY_HEAD as SUMMARY_HEAD
+from .providers.types import CODES_CONTEXT, CONVERSATION_SUMMARY_HEAD as SUMMARY_HEAD
 from .windows import Window
 
 log = logging.getLogger("assistant.compaction")
@@ -63,6 +65,9 @@ SUMMARY_PROMPT = (
     "## Decisions\n## Decided against (declined or ruled out; do not offer again)\n## Facts and numbers\n## People and places\n"
     "## Open tasks and next steps\n## User preferences\n"
     "Keep names, numbers, dates and promises exactly; drop greetings, small talk and finished business. Never invent anything. "
+    "Each message starts with the date and time it was sent in [YYYY-MM-DD HH:MM]. Write every date and time as an absolute date "
+    "and time (for example 2026-11-17 15:00), never 'today', 'tomorrow' or 'next week'; work them out from the time each message "
+    "was sent. "
     "At most about {tokens} tokens (about {chars} characters). Reply with the summary only.")
 MEMORY_FLUSH_PROMPT = (
     "Older messages of your conversation with the user (below) are about to be condensed into a short summary, and their details will "
@@ -170,12 +175,28 @@ class Assembled:
         return [*self.head, *self.summary_msgs, *self.history]
 
 
-def _line(m: dict[str, Any]) -> str:
+def zone_of(name: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(name or "UTC")
+    except Exception:  # noqa: BLE001 - an unknown name: UTC, as elsewhere in the server
+        return ZoneInfo("UTC")
+
+
+def stamp(created_at: Any, zone: ZoneInfo) -> str:
+    """"[YYYY-MM-DD HH:MM]" of a message's send time (epoch seconds) in the profile's timezone; "" when it has none."""
+    try:
+        return datetime.fromtimestamp(float(created_at), zone).strftime("[%Y-%m-%d %H:%M]")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return ""
+
+
+def _line(m: dict[str, Any], zone: ZoneInfo | None = None) -> str:
     who = "User" if m.get("role") == "user" else "Assistant"
     text = TIME_TAG.sub("", str(m.get("content") or "")).strip()
     if len(text) > FOLD_MESSAGE_CHARS:
         text = text[:FOLD_MESSAGE_CHARS] + SHORTENED
-    return f"{who}: {text}"
+    when = stamp(m.get("created_at"), zone or zone_of(None))
+    return f"{when} {who}: {text}" if when else f"{who}: {text}"
 
 
 class Compactor:
@@ -188,9 +209,17 @@ class Compactor:
         """`flush_fn(provider, model, transcript)`: the silent memory step (None = the agent has no files: skipped)."""
         self.store, self.stream_fn, self.key_args, self.flush_fn = store, stream_fn, key_args, flush_fn
         self.threshold, self.target = threshold, min(target, threshold * 0.9)
+        self.forgotten: Callable[[], str] = lambda: ""   # forget.Tombstones.block: topics the owner asked to forget (docs/forget.md)
         self.lock = asyncio.Lock()
         self.last_error = ""
         self.last_request_tokens = 0
+
+    def _zone(self) -> ZoneInfo:
+        """The profile's timezone: the send times a fold reads are written in it."""
+        try:
+            return zone_of(self.store.profile().get("timezone"))
+        except Exception:  # noqa: BLE001 - a store without a profile: UTC
+            return zone_of(None)
 
     def limit(self, window: Window) -> int:
         return int(window.context * self.threshold)
@@ -279,14 +308,17 @@ class Compactor:
             if not rows:
                 break
             lines, size, batch = [], 0, []
+            zone = self._zone()
             for m in rows:
-                line = _line(m)
+                line = _line(m, zone)
                 if batch and size + est_tokens(line) > cap:
                     break
                 lines.append(line)
                 batch.append(m)
                 size += est_tokens(line)
             prompt = SUMMARY_PROMPT.format(tokens=target, chars=target * 2)
+            if forgotten := self.forgotten():   # the summary never refers to a forgotten topic, even when the messages still do
+                prompt += f"\n\n{forgotten}\nDo not make any reference to the forgotten topics in the summary, and do not note that they were left out."
             body = f"Previous summary:\n{cur['summary'].strip() or '(none)'}\n\nNew messages:\n" + "\n".join(lines)
             req = ChatRequest(model=model, messages=[{"role": "system", "content": prompt}, {"role": "user", "content": body}],
                               tools=[], extra={})
@@ -314,32 +346,34 @@ class Compactor:
 
     async def _flush(self, provider: str, model: str, rows: list[dict[str, Any]]) -> None:
         lines, size = [], 0
+        zone = self._zone()
         for m in rows:
-            line = _line(m)
+            line = _line(m, zone)
             if lines and size + est_tokens(line) > FLUSH_INPUT_TOKENS:
                 break
             lines.append(line)
             size += est_tokens(line)
         try:
-            await self.flush_fn(provider, model, "\n".join(lines))   # type: ignore[misc]
+            transcript = "\n".join(lines)
+            if forgotten := self.forgotten():
+                transcript += f"\n\n{forgotten}\nDo not write anything about the forgotten topics to memory."
+            await self.flush_fn(provider, model, transcript)   # type: ignore[misc]
         except Exception as e:  # noqa: BLE001 - the fold goes on without it
             log.warning("memory step before compaction failed: %s: %s", type(e).__name__, str(e)[:160])
         self.store.note_memory_flush()
 
 
 # ---- context-length errors: the request was larger than the model takes
-_CONTEXT_ERROR = re.compile(
-    r"context[_ ]length[_ ]exceeded|maximum context length|context window|prompt is too long|too many tokens|input is too long|"
-    r"request too large|reduce the length|exceeds? the (model'?s? )?(maximum|context|token)|string_above_max_length|"
-    r"input token count|prompt too long|context size", re.I)
+CONTEXT_REJECT_SHARE = 0.9   # a request this near the model's window that the provider rejects (4xx) was rejected for its size
 
 
-def is_context_error(e: BaseException) -> bool:
+def is_context_error(e: BaseException, size: int = 0, window: int = 0) -> bool:
+    """Whether the provider rejected a request for being too large, by structure: HTTP 413, the provider's own code (CODES_CONTEXT), or
+    a client-error rejection (400 / 422) of a request whose estimated `size` is within CONTEXT_REJECT_SHARE of the model's `window`."""
     status = getattr(e, "status", None) or getattr(e, "status_code", None)
-    text = f"{e} {getattr(e, 'body', '') or ''}"
-    if status == 413:
+    if status == 413 or getattr(e, "code", "") in CODES_CONTEXT:
         return True
-    return bool(_CONTEXT_ERROR.search(text)) and status in (None, 400, 413, 422, 500)
+    return bool(size and window and status in (400, 422) and size >= window * CONTEXT_REJECT_SHARE)
 
 
 class ContextOverflow(Exception):

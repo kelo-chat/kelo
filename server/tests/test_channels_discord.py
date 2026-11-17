@@ -305,7 +305,7 @@ async def test_events_become_items():
     gw.backlog += [
         ("GUILD_CREATE", {"id": "g1", "name": "Home", "owner_id": "u1", "channels": [{"id": "c1", "name": "general"}]}),
         ("MESSAGE_CREATE", dm("hi", mid="a1")),
-        ("MESSAGE_CREATE", {**dm("bot talk", mid="a2"), "author": {"id": "b1", "bot": True}}),                    # other bots: never
+        ("MESSAGE_CREATE", {**dm("bot talk", mid="a2"), "author": {"id": "b1", "bot": True}}),                    # other bots: kept
         ("MESSAGE_CREATE", dm("me", mid="a3", uid=BOT)),                                                           # itself: never
         ("MESSAGE_CREATE", guild_msg(f"<@{BOT}> hello there", mid="a4")),
         ("MESSAGE_CREATE", guild_msg("chatter", mid="a5", mention=False)),
@@ -321,9 +321,10 @@ async def test_events_become_items():
         ("GUILD_DELETE", {"id": "g1", "unavailable": True}),                                                         # an outage, not a removal
         ("GUILD_DELETE", {"id": "g1"}),
     ]
-    items = await take(dc, 9)
-    member, hi, mention, chatter, reply, files, sticker, tap, left = items
+    items = await take(dc, 10)
+    member, hi, botmsg, mention, chatter, reply, files, sticker, tap, left = items
     assert member == Membership("guild:g1", "Home", "u1", True, 0)
+    assert botmsg.text == "bot talk"
     assert (hi.text, hi.private, hi.chat_id, hi.user_id, hi.name, hi.message_id) == ("hi", True, "dm1", "u1", "Ann", "a1")
     assert not mention.private and mention.group_id == "guild:g1" and mention.chat_id == "c1" and mention.chat_title == "Home #general"
     assert mention.mentioned and not mention.reply_to_bot and mention.text == "@kelobot hello there" and mention.name == "bob"
@@ -415,18 +416,20 @@ async def test_download_reads_only_discords_cdn():
 
 # ---- the manager, in a whole app with a fake gateway and a scripted model
 class DRig:
-    def __init__(self, tmp_path, *steps, tools=None):
+    def __init__(self, tmp_path, *steps, tools=None, model=None, split=None):
         self.rest, self.gw = FakeREST(), FakeGateway()
         self.seen: list = []
         self.steps = steps or ([TextDelta("Hello from Kelo"), Done("stop")],)
 
-        async def model(prov, request, **kw):
+        async def model_steps(prov, request, **kw):
             self.seen.append(request)
             for ev in self.steps[min(len(self.seen) - 1, len(self.steps) - 1)]:
                 yield ev
+        from split_pay import app_args   # `model`: a role-aware fake (split_pay.Split); `split`: payment_specialist on/off (None = default)
+        settings_extra, app_extra = app_args(split)
         app = create_app(Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "s.db"), home_dir=str(tmp_path / "home"),
-                                  content_dir=str(CONTENT)), tools=tools if tools is not None else [], stream_fn=model,
-                         mcp_fetcher=self.rest.fetch, channel_fetch=self.rest.fetch, channel_connect=self.gw.connect)
+                                  content_dir=str(CONTENT), **settings_extra), tools=tools if tools is not None else [], stream_fn=model or model_steps,
+                         mcp_fetcher=self.rest.fetch, channel_fetch=self.rest.fetch, channel_connect=self.gw.connect, **app_extra)
         self.app, self.run = app, Running(app)
 
     async def __aenter__(self):
@@ -603,3 +606,19 @@ async def test_4004_stops_like_an_auth_error(rig):
         notes = stopped(r)
         assert len(notes) == 1 and notes[0]["body"] == "Discord stopped: the bot token no longer works. Connect it again."
         assert not r.mgr.status("discord")["connected"]
+
+
+async def test_a_card_a_checkout_job_needs_the_app_for_comes_to_the_chat_that_started_it(rig):
+    """A checkout job outlives the reply that handed it over; its approval card is sent to the chat (no buttons: only the app answers it)."""
+    from split_pay import Split, job
+    from test_channels_telegram import send_tool
+    ran = []
+    async with rig(tools=[send_tool(ran, "request_card")], model=Split(job(("request_card", {})), closing="It is done."), split=True) as r:
+        await r.pair()
+        r.gw.push("MESSAGE_CREATE", dm("go", mid="p2"))
+        card = await until(lambda: next((b for b in r.rest.of("POST", r"/channels/dm1/messages") if "Open the Kelo app to answer this one." in b["content"]), None))
+        assert not card.get("components")
+        aid = next(iter((await r.c.get("/api/approvals/pending")).json()["items"]))["approval_id"]
+        assert (await r.c.post(f"/api/approvals/{aid}", json={"approve": False})).status_code == 200
+        await until(lambda: "It is done." in r.rest.sent("dm1"))
+        assert ran == []

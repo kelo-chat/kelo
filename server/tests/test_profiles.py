@@ -294,7 +294,7 @@ def test_where_nothing_is_set_the_computers_own_capacity_is_shown_not_just_no_li
     assert (cap.cpus, cap.ram, cap.disk_free) == (4, 8 * GB, 20 * GB)
     inst = m.load()
     assert limits.shown(inst, "memory", cap) == "whole computer (8.0GB)" and limits.shown(inst, "cpus", cap) == "all 4 CPUs"
-    assert limits.shown(inst, "disk", cap) == "whole disk (20.0GB free)" and limits.shown(inst, "browser_cache", cap) == "browser default"
+    assert limits.shown(inst, "disk", cap) == "whole disk (20.0GB free)" and limits.shown(inst, "browser_cache", cap) == "browser default (1 GB)"
     limits.save(inst, {"SERVER_MEMORY": str(GB), "SERVER_CPUS": "1.5"}, [])
     assert limits.shown(m.load(), "memory", cap) == "1.0GB" and limits.shown(m.load(), "cpus", cap) == "1.5"        # a limit that was set is shown as is
     assert limits.shown(m.load(), "disk", cap) == "whole disk (20.0GB free)"

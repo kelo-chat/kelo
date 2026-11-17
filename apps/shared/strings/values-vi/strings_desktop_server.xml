@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<resources>
+    <string name="desktop_server_row">Dùng máy tính này làm máy chủ Kelo</string>
+    <string name="desktop_server_row_hint">Cài máy chủ Kelo lên máy tính này. Windows sẽ hỏi quyền quản trị viên một lần.</string>
+    <string name="desktop_server_checking">Đang kiểm tra</string>
+    <string name="desktop_server_downloading">Đang tải xuống</string>
+    <string name="desktop_server_installing">Đang cài đặt</string>
+    <string name="desktop_server_starting">Đang khởi động</string>
+    <string name="desktop_server_done">Xong</string>
+    <string name="desktop_server_restart">Khởi động lại Windows để hoàn tất. Cài đặt sẽ tiếp tục sau khi đăng nhập.</string>
+    <string name="desktop_server_cancelled">Đã hủy. Không có gì thay đổi.</string>
+    <string name="desktop_server_failed">Không thể cài đặt.</string>
+    <string name="desktop_server_show_log">Xem nhật ký</string>
+    <string name="desktop_server_installed">Máy chủ Kelo đã có trên máy tính này</string>
+    <string name="desktop_server_open_setup">Mở cài đặt</string>
+    <string name="desktop_server_update">Cập nhật</string>
+    <string name="desktop_server_install">Cài đặt</string>
+    <string name="desktop_server_unavailable">Máy chủ Kelo cho Windows chưa sẵn sàng.</string>
+</resources>

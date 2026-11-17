@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">서버 주소</string>
+    <string name="server_address_title">서버 주소 바꾸기</string>
+    <string name="server_address_body">지금 연결된 주소: %1$s\n같은 Kelo 서버의 새 주소로 옮기려면 새 https 주소를 입력해 주세요. 대화와 키는 그대로 두고, 다시 연결하지 않아도 돼요.</string>
+    <string name="server_address_switch">바꾸기</string>
+    <string name="server_address_checking">확인하는 중…</string>
+    <string name="server_address_invalid">https 주소가 아닌 것 같아요. https://kelo.example.com 처럼 입력해 주세요.</string>
+    <string name="server_address_unreachable">그 주소에 닿지 못했어요. 주소와 인터넷 연결을 확인한 뒤 다시 시도해 주세요.</string>
+    <string name="server_address_other">그 주소는 다른 서버예요. 아무것도 바꾸지 않았어요. 다른 서버에 연결하려면 로그아웃한 뒤 처음부터 연결해 주세요.</string>
+    <string name="server_address_same">이 폰은 이미 그 주소를 쓰고 있어요.</string>
+    <string name="server_address_done">서버 주소를 바꿨어요.</string>
+</resources>

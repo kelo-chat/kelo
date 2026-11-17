@@ -154,6 +154,8 @@ class RegistrySource:
     later). From the terminal (`assistant update` on release images) `finish()` moves the updater container too, since nothing
     there runs inside it."""
 
+    builds = False      # pulls finished, signed images: the disk preflight needs no room for a build
+
     def __init__(self, release: rel.Release, verifier: rel.Verifier, *, terminal: bool = False):
         self.release, self.verifier, self.terminal = release, verifier, terminal
         self.updater_id: str | None = None
@@ -729,10 +731,10 @@ KELO_REFRESH_SECONDS = 6 * 3600
 
 def kelo_loop(service: Service, every: float = KELO_REFRESH_SECONDS, *, refresh: Callable[..., Any] | None = None,
               sleep: Callable[[float], None] = time.sleep, rounds: int | None = None) -> None:
-    """Every few hours: each copy on a Kelo address asks for its own name again (connect.kelo_refresh), so a tunnel the broker parked
+    """Every few hours: each copy on a Kelo address asks for its own name again (kelo_address.kelo_refresh), so a tunnel the broker parked
     while the copy was offline, or one that is gone, is made again and the tunnel container gets the new token by itself."""
-    from . import connect
-    refresh = refresh or connect.kelo_refresh
+    from . import kelo_address     # not connect: that needs httpx and segno, which the updater image does not have
+    refresh = refresh or kelo_address.kelo_refresh
     n = 0
     while rounds is None or n < rounds:
         n += 1

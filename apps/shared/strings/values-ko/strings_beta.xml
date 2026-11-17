@@ -8,7 +8,7 @@
     <string name="beta_email_invalid">올바른 이메일 주소를 입력해 주세요.</string>
     <string name="beta_send">보내기</string>
     <string name="beta_sending">보내는 중…</string>
-    <string name="beta_sent">신청을 보냈어요. 승인되면 %1$s(으)로 메일을 드릴게요. 그때 다시 와서 연결해 주세요.</string>
+    <string name="beta_sent">신청을 보냈어요. 승인되면 %1$s 주소로 메일을 드릴게요. 그때 다시 와서 연결해 주세요.</string>
     <string name="beta_declined">이번 베타 신청은 승인되지 않았어요. Google 검토가 끝나면 모두가 Google 로그인을 쓸 수 있어요.</string>
     <string name="operator_section_beta">베타 신청</string>
     <string name="operator_beta_note">Google 로그인을 써 보고 싶다는 신청이에요. 먼저 Google Cloud Console에서 테스트 사용자로 추가한 뒤 ‘승인’을 눌러 주세요. 처리한 신청은 30일 뒤에 지워져요.</string>
@@ -28,7 +28,7 @@
     <string name="operator_beta_decline_confirm">이 신청을 거절할까요?</string>
     <string name="operator_beta_decline_mail">짧은 안내 메일 보내기</string>
     <string name="operator_beta_mailed">%1$s에 메일을 보냈어요.</string>
-    <string name="operator_tester_steps">Play Console → 테스트 → 비공개 테스트 → 테스터에 %1$s 을(를) 넣은 뒤 아래를 눌러 주세요.</string>
+    <string name="operator_tester_steps">Play Console → 테스트 → 비공개 테스트 → 테스터에 %1$s 계정을 넣은 뒤 아래를 눌러 주세요.</string>
     <string name="operator_tester_added">Play에 넣었어요</string>
     <string name="notify_beta_request">베타 신청</string>
 </resources>

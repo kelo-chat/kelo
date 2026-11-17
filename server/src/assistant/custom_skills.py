@@ -74,7 +74,7 @@ def one_line(text: Any, limit: int) -> str:
 
 def scrub(text: str, patterns: Iterable[tuple[str, str]] = ()) -> tuple[str, int]:
     """`text` with every secret replaced by SECRET_PLACEHOLDER, and how many were found."""
-    hits = secret_guard.find(text, list(patterns))
+    hits = secret_guard.find_all(text, list(patterns))   # no model here: every candidate by shape is taken out (secret_guard.candidates)
     return (secret_guard.mask(text, hits, SECRET_PLACEHOLDER), len(hits)) if hits else (text, 0)
 
 
@@ -261,7 +261,9 @@ class SkillProposals:
         try:
             pkg = self.registry.write_custom(sid, {SKILL_FILE: skill_md(sid, str(e.get("description") or ""), str(e.get("body") or ""),
                                                                          str(e.get("name") or ""))},
-                                             origin={"type": "proposal", "origin": e.get("origin") or {}, "approved_proposal": entry_id})
+                                             origin={"type": "proposal", "origin": e.get("origin") or {}, "approved_proposal": entry_id,
+                                                     "outside_text": bool(e.get("outside_text")), "body": str(e.get("body") or "")},
+                                             keep_others=False)
         except PackageError as err:
             raise ProposalError(str(err)) from None
         self._write([x for x in self._read() if x.get("id") != entry_id])
@@ -320,6 +322,27 @@ def skill_tools(proposals: SkillProposals, origin: Callable[[], Mapping[str, Any
             return "id and body are required"
         return None
 
+    def propose_approval_extra(approval_id: str, args: dict[str, Any]) -> dict[str, Any]:
+        from .i18n import t
+        name = str(args.get("name") or "").strip() or skill_title(str(args.get("id") or ""))
+        desc = str(args.get("description") or "").strip()
+        body = str(args.get("body") or "")
+        seen = outside_seen.get()
+        outside = bool(seen and seen[0])
+        lines = [
+            {"label": t("Name"), "value": name},
+            {"label": t("Task"), "value": desc},
+            {"label": t("Content"), "value": body, "full": True},
+        ]
+        if outside:
+            lines.append({"label": t("Why it asks"), "value": t("Kelo read outside text (a page, mail or message) before this step, and you did not name {target}.", target=name)})
+        return {
+            "outside_text": outside,
+            "body": body,
+            "lines": lines,
+            "scrollable": True,
+        }
+
     return [Tool(
         "propose_skill",
         "Save a reusable procedure as a skill (or change one of this server's custom skills). The owner gets ONE approval card in "
@@ -334,6 +357,7 @@ def skill_tools(proposals: SkillProposals, origin: Callable[[], Mapping[str, Any
             "reason": {"type": "string", "description": "one line for the owner: what run this comes from"}},
          "required": ["id", "description", "body"]},
         propose_skill, requires_approval=True, describe=describe, validate=validate,
+        approval_extra=propose_approval_extra,
         declined="The owner did not want this saved as a skill. Nothing was saved; do not propose it again in this conversation.")]
 
 

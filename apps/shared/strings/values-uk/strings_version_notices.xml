@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">Оновити сервер</string>
+    <string name="server_old_failed">Оновлення не завершилося. Спробуйте ще раз або оновіть сервер на машині, де він працює.</string>
+    <string name="server_old_manual">Щоб оновити сервер, виконайте кроки оновлення на машині, де він працює.</string>
+    <string name="server_old_guide">Відкрити посібник з оновлення</string>
+    <string name="app_notice_new">Новий застосунок Kelo (%1$s) найкраще працює з вашим сервером</string>
+    <string name="app_notice_store">Відкрити магазин</string>
+    <string name="update_popup_title">Вийшла нова версія (%1$s)</string>
+    <string name="update_popup_update">Оновити</string>
+    <string name="update_popup_later">Пізніше</string>
+</resources>

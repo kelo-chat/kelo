@@ -30,7 +30,10 @@ from assistant.providers import Done, TextDelta, ToolCall
 from assistant.store import Store
 from assistant.tools import payment_step as ps
 from assistant.tools.browser import BrowserSession, browser_owner, browser_tools
+from assistant.page_judge import PageJudge
 from assistant.tools.payment_step import classify, payment_step_tools, seconds_left
+
+from fake_page_judge import FakePageJudge
 from assistant.tools.purchase import purchase_tools
 from assistant.wallet import Wallet
 from assistant.workers import current_turn
@@ -148,6 +151,8 @@ class Env:
         async def connect():
             return ctx_page
         self.session = BrowserSession(connect=connect, resolver=public)
+        self.judge = FakePageJudge()
+        self.session.page_judge = PageJudge(self.judge.ask)   # stands in for the owner's main model
         self.wallet = Wallet(self.store)
         self.pins = PaymentPins(self.store)
         self.pin_deliveries = PinDeliveries()
@@ -232,15 +237,18 @@ def save_pin(env: Env, site: str = "mugshop.example") -> dict[str, Any]:
 # ---------------------------------------------------------------------------------------------------------------- pure helpers
 def test_countdown_and_kind_readings():
     assert seconds_left(["남은 시간 02:59"]) == 179
-    assert seconds_left(["유효시간 2분 30초"]) == 150
-    assert seconds_left(["3분 이내에 승인해 주세요"]) == 180
-    assert seconds_left(["Expires in 4 min 10 s"]) == 250
-    assert seconds_left(["90 seconds left"]) == 90
-    assert seconds_left(["오후 3:15까지"]) is None and seconds_left([]) is None
-    assert classify({"text": "카드사 앱에서 승인해 주세요", "code": None, "qr": False, "timers": []}) == "app"
-    assert classify({"text": "Confirm with your passkey", "code": None, "qr": False, "timers": []}) == "passkey"
-    assert classify({"text": "Enter the verification code we sent", "otp_box": True, "code": None, "qr": False, "timers": []}) == "otp"
+    # units written in words are the page judge's (the "seconds" of its answer), not read here (hc-pagefields)
+    assert seconds_left(["유효시간 2분 30초"]) is None and seconds_left(["90 seconds left"]) is None and seconds_left([]) is None
+    # structure alone: a QR picture, a shown code with a countdown, a one-time-code input; the words of the page decide nothing
+    assert classify({"text": "카드사 앱에서 승인해 주세요", "code": None, "qr": False, "timers": []}) == ""
+    assert classify({"text": "", "code": None, "qr": True, "timers": []}) == "app"
+    assert classify({"text": "", "code": {"text": "482913"}, "qr": False, "timers": ["02:59"]}) == "app"
+    assert classify({"text": "", "otp_box": True, "code": None, "qr": False, "timers": []}) == "otp"
     assert classify({"text": "Thank you for your order", "code": None, "qr": False, "timers": []}) == ""
+    # the judge's verdict names the kind when structure is silent (a passkey prompt has no structure), and never overrules a present structure
+    assert classify({"text": "x", "code": None, "qr": False, "timers": [], "judged": {"kind": "passkey"}}) == "passkey"
+    assert classify({"text": "x", "code": None, "qr": True, "timers": [], "judged": {"kind": "none"}}) == "app"
+    assert classify({"text": "x", "code": None, "qr": False, "timers": [], "judged": {"kind": "none"}}) == ""
 
 
 def test_pin_store_keeps_only_ciphertext_and_the_slot_is_single_use():
@@ -305,6 +313,41 @@ async def test_app_approval_card_then_the_completion_click(ctx):
     assert not env.steps.open_for("owner")
 
 
+async def test_without_a_page_judge_structure_alone_still_shows_the_card_and_a_silent_page_is_taken_for_an_approval(ctx):
+    # hc-pagefields: no word of the page is read by code. Structure present (QR, code + countdown) = the card, judge or not; structure
+    # silent and the judge unavailable = the safer side, an approval card the user can cancel
+    shop = Shop()
+    env = Env(await ctx.new_page(), shop)
+    env.session.page_judge = None
+
+    def user(ev):
+        if ev["state"] == "waiting":
+            asyncio.get_running_loop().call_later(0.3, lambda: env.steps.answer(ev["step_id"], {"answer": "cancel"}))
+    env.on_step = user
+    await env.run([*TO_PAY, ("payment_step_wait", {"instruction": "approve"})])
+    first = env.step_events()[0]
+    assert first["kind"] == "app" and first["code"] == "482913" and first["qr"].startswith("data:image/png")
+    assert first["can_resend"] is False   # nothing names the control without the judge: the user is told when the code runs out
+
+    shop2 = Shop()
+    shop2.respond = lambda method, path, form: page("<p>Please wait while the bank checks this payment.</p>")   # no structure at all
+    env2 = Env(await ctx.new_page(), shop2)
+    env2.session.page_judge = None
+    shop2.mode = "app"
+    env2.on_step = user
+    await env2.run([*TO_PAY[:2], ("browser_open", {"url": f"{SHOP}/anything"}), ("payment_step_wait", {})])
+    assert env2.step_events() and env2.step_events()[0]["kind"] == "app"
+
+
+async def test_a_judge_that_says_none_on_a_page_without_structure_finds_no_step(ctx):
+    shop = Shop()
+    shop.respond = lambda method, path, form: page("<h1>Thank you</h1><p>Your order is complete.</p>")
+    env = Env(await ctx.new_page(), shop)
+    await env.run([*TO_PAY[:2], ("browser_open", {"url": f"{SHOP}/done"}), ("payment_step_wait", {})])
+    assert "No step that asks to approve the payment elsewhere" in env.result("payment_step_wait").output
+    assert env.step_events() == [] and env.judge.calls.count("step") >= 1
+
+
 async def test_expired_code_gets_a_new_one_then_approval(ctx):
     shop = Shop()
     shop.seconds = 2
@@ -340,8 +383,7 @@ async def test_cancel_means_no_payment(ctx):
     await env.run([*TO_PAY, ("payment_step_wait", {}), FINISH], allow=lambda req: req.name == "confirm_purchase")
     assert "CANCELLED" in env.result("payment_step_wait").output
     assert env.step_events()[-1]["state"] == "cancelled" and "code" not in env.step_events()[-1]
-    assert env.cards == ["confirm_purchase", "browser_click"]  # the completion click asked again, and was denied
-    assert shop.orders == []
+    assert env.cards == ["confirm_purchase"]   # (a button's words no longer make its click ask; a checkout page refuses plain clicks)
 
 
 async def test_step_needs_an_approved_payment_first(ctx):

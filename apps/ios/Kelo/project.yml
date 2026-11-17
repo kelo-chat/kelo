@@ -15,11 +15,11 @@ settings:
     # published 1.0.0); the release people see is version.json's "version" (0.9.0), compiled in by apps/ios/tools/gen_version.py
     # (KeloVersion), shown in My and sent as X-Kelo-App: ios/<version>+<CFBundleVersion> (docs/versioning.md).
     MARKETING_VERSION: "1.0.2"
-    CURRENT_PROJECT_VERSION: "26111613"   # build number (CFBundleVersion): whole number, must grow with every upload (YYMMDDHH)
+    CURRENT_PROJECT_VERSION: "26111411"   # build number (CFBundleVersion): whole number, must grow with every upload (YYMMDDHH)
     DEVELOPMENT_TEAM: P6GD4DM9C5     # Apple team id (App Store Connect team that owns chat.kelo.app)
     CODE_SIGN_STYLE: Automatic
-    # the commit the source came from (40 hex) and whether files differed from it (YES/NO); tools/build/ios.sh passes both to xcodebuild,
-    # they end up in Info.plist (KeloSourceCommit / KeloSourceDirty) and My links to that commit on GitHub (docs/versioning.md)
+    # whether files differed from the commit (YES/NO) goes to Info.plist (KeloSourceDirty); My links to the public tag ios-<MARKETING_VERSION>
+    # (docs/versioning.md). The commit stays empty: tools/build/ios.sh passes it only with KELO_EMBED_COMMIT=1 (builders of the public source)
     KELO_SOURCE_COMMIT: ""
     KELO_SOURCE_DIRTY: "NO"
 packages:
@@ -88,7 +88,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: chat.kelo.app
         PRODUCT_NAME: Kelo
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: YES
@@ -126,7 +126,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: chat.kelo.app.share
         PRODUCT_NAME: KeloShare
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.10"
   # The Live Activity of a running reply (lock screen, Dynamic Island): its words arrive sealed and are opened here (KeloLive module).
   KeloLiveWidget:
@@ -159,7 +159,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: chat.kelo.app.live
         PRODUCT_NAME: KeloLiveWidget
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.10"
   # Walks the app against a pretend server (apps/desktop/tools/mock_server.py on another port) and saves screenshots; see
   # UITests/KeloScreensTests.swift. Simulator only, never signed.
@@ -174,7 +174,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: chat.kelo.app.uitests
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
 schemes:
   Kelo:

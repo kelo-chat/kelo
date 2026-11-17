@@ -246,7 +246,15 @@ def test_no_dependency_loop():
 def test_a_role_spec_is_immutable_and_has_the_defaults_of_the_design():
     role = RoleSpec(name="x")
     assert role.network_access is NetworkAccess.INTERNET and role.health_path == "/healthz" and role.data_folders == ()
+    assert role.required is False
     with pytest.raises(AttributeError):
         role.name = "y"
     with pytest.raises(AttributeError):
         DataFolder("a", "/a", FolderAccess.READ_ONLY).name = "b"
+
+
+def test_required_roles_match_native_server_design():
+    required = {name for name, role in ROLES.items() if role.required}
+    assert required == {"server", "keyring", "egress", "workroom"}
+    optional = {name for name, role in ROLES.items() if not role.required}
+    assert optional == {"browser", "cloudflared", "kelo-tunnel", "caddy", "android", "agy-cli", "claude-cli", "updater", "vpn"}

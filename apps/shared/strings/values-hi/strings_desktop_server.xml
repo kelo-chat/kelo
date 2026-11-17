@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<resources>
+    <string name="desktop_server_row">इस PC को Kelo सर्वर की तरह इस्तेमाल करें</string>
+    <string name="desktop_server_row_hint">इस कंप्यूटर पर Kelo सर्वर इंस्टॉल करता है। Windows एक बार एडमिन अनुमति माँगेगा।</string>
+    <string name="desktop_server_checking">जाँच हो रही है</string>
+    <string name="desktop_server_downloading">डाउनलोड हो रहा है</string>
+    <string name="desktop_server_installing">इंस्टॉल हो रहा है</string>
+    <string name="desktop_server_starting">शुरू हो रहा है</string>
+    <string name="desktop_server_done">हो गया</string>
+    <string name="desktop_server_restart">पूरा करने के लिए Windows दोबारा शुरू करें। साइन इन के बाद सेटअप आगे बढ़ेगा।</string>
+    <string name="desktop_server_cancelled">रद्द किया गया। कुछ नहीं बदला।</string>
+    <string name="desktop_server_failed">इंस्टॉल नहीं हो पाया।</string>
+    <string name="desktop_server_show_log">लॉग देखें</string>
+    <string name="desktop_server_installed">इस PC पर Kelo सर्वर है</string>
+    <string name="desktop_server_open_setup">सेटअप खोलें</string>
+    <string name="desktop_server_update">अपडेट करें</string>
+    <string name="desktop_server_install">इंस्टॉल करें</string>
+    <string name="desktop_server_unavailable">Windows के लिए Kelo सर्वर अभी उपलब्ध नहीं है।</string>
+</resources>

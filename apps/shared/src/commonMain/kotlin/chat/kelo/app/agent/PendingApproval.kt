@@ -25,6 +25,8 @@ data class PendingApproval(
     val workerId: String? = null,
     /** That run's title (a job's own title) */
     val title: String = "",
+    /** What a phone notification for it may offer: "allow", "deny" (the server's one rule: a payment only "deny", a card that needs input in the app nothing) */
+    val notifyActions: List<String> = emptyList(),
 ) {
     val id: String get() = event.approvalId
     val isPayment: Boolean get() = event.payment != null
@@ -32,6 +34,8 @@ data class PendingApproval(
     val isHumanCheck: Boolean get() = event.kind == HUMAN_CHECK
     /** A human check that is a sign-in's second step (approve on the phone, or type the code), not a person check */
     val isVerification: Boolean get() = isHumanCheck && event.check?.isVerification == true
+    /** A human check that is the Android phone's screen handed to the owner ([CheckInfo.isDevice]): its own words and a Done button, no skip */
+    val isDevice: Boolean get() = isHumanCheck && event.check?.isDevice == true
     /** The browser tab a human check is on */
     val tab: String get() = event.tab.ifBlank { "owner" }
 
@@ -47,8 +51,20 @@ data class PendingApproval(
                 p("source")?.takeIf { it.isString }?.content.orEmpty(),
                 p("worker_id")?.takeIf { it.isString }?.content?.ifBlank { null },
                 p("title")?.takeIf { it.isString }?.content.orEmpty(),
+                notifyActionsOf(o),
             )
         }
+
+        /** The item's "notify_actions" (an older server sends none: no buttons). */
+        fun notifyActionsOf(o: JsonObject): List<String> =
+            (o["notify_actions"] as? kotlinx.serialization.json.JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+
+        /** What the notification of waiting item [id] may offer, from the answer of GET /api/approvals/pending; empty when the item is not listed. */
+        fun notifyActionsFor(list: JsonElement, id: String): List<String> =
+            ((list as? JsonObject)?.get("items") as? kotlinx.serialization.json.JsonArray).orEmpty()
+                .mapNotNull { it as? JsonObject }
+                .firstOrNull { (it["approval_id"] as? JsonPrimitive)?.takeIf { p -> p.isString }?.content == id }
+                ?.let(::notifyActionsOf).orEmpty()
 
         fun parseList(e: JsonElement): List<PendingApproval> =
             ((e as? JsonObject)?.get("items")?.jsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.let(::parse) }

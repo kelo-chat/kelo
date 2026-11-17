@@ -18,9 +18,12 @@ from .items import UpcomingItem
 log = logging.getLogger(__name__)
 
 MIN_EVERY = 5          # minutes
+PREP_KINDS = ("check_in", "other")   # what a preparation is, as the apps show it (the plan prompt names them)
 MAX_CHECKS = 6         # safety cap against model loops
 MAX_WINDOW_DAYS = 3    # at most 3 days of checks
 MAX_WINDOW_SECONDS = MAX_WINDOW_DAYS * 86400
+PARCEL_EVERY = 60       # minutes: a carrier page is not read more often
+PARCEL_WINDOW_DAYS = 14
 TIMEOUT = 30.0
 MAX_TOKENS = 600
 
@@ -108,6 +111,16 @@ class Planner:
 
             # Verify that at least one available source covers these refs
             refs = ch.get("refs") if isinstance(ch.get("refs"), dict) else dict(item.refs)
+            if kind == "weather":
+                # a forecast is about where and when the item is, unless the plan names another place or hour
+                refs = {"place": item.place, "at": str(int(item.starts_at)), **{str(k): str(v) for k, v in refs.items() if v}}
+            if kind == "parcel":
+                # a parcel is the item's own tracking number and page; the plan cannot point the check elsewhere. Watched for the
+                # parcel's two weeks, once an hour at most
+                tracking, url = item.refs.get("tracking"), item.refs.get("url")
+                if not (tracking and url):
+                    continue
+                refs = {"tracking": str(tracking), "carrier": str(item.refs.get("carrier") or ""), "url": str(url)}
             if not any(s.covers(refs) for s in self.sources if s.kind == kind and s.available()):
                 continue
 
@@ -116,7 +129,7 @@ class Planner:
                 every = int(ch.get("every_minutes", 10))
             except (ValueError, TypeError):
                 every = 10
-            every = max(MIN_EVERY, every)
+            every = max(PARCEL_EVERY if kind == "parcel" else MIN_EVERY, every)
 
             # Clamp window to at most 3 days
             from_str = str(ch.get("from") or "-3h")
@@ -126,15 +139,20 @@ class Planner:
             w_start = item.starts_at + from_sec
             w_end = item.starts_at + until_sec
 
+            if kind == "parcel":
+                from_str, until_str = "+0m", f"+{PARCEL_WINDOW_DAYS}d"
+                w_start, w_end = item.starts_at, item.starts_at + PARCEL_WINDOW_DAYS * 86400
+
             if w_end < w_start:
                 w_start, w_end = w_end, w_start
 
-            if (w_end - w_start) > MAX_WINDOW_SECONDS:
-                w_start = w_end - MAX_WINDOW_SECONDS
+            if (w_end - w_start) > (PARCEL_WINDOW_DAYS if kind == "parcel" else MAX_WINDOW_DAYS) * 86400:
+                w_start = w_end - (PARCEL_WINDOW_DAYS if kind == "parcel" else MAX_WINDOW_DAYS) * 86400
 
             fields = ch.get("fields")
             if not isinstance(fields, list):
-                fields = ["gate", "departure_time", "status"] if kind == "flight_status" else ["value"]
+                fields = ["gate", "departure_time", "status"] if kind == "flight_status" else list(
+                    next((s.default_fields for s in self.sources if s.kind == kind), ("value",)))
 
             valid_checks.append({
                 "kind": kind,
@@ -165,7 +183,8 @@ class Planner:
                     "what": what,
                     "when": when,
                     "state": "later",
-                    **{k: v for k, v in pr.items() if k not in ("what", "when", "state")},
+                    **{k: v for k, v in pr.items() if k not in ("what", "when", "state", "kind")},
+                    "kind": str(pr.get("kind") or "") if pr.get("kind") in PREP_KINDS else "other",   # the apps read this, never the words of `what`
                 })
 
         tell = raw_plan.get("tell") if isinstance(raw_plan.get("tell"), dict) else {"on_change": True}
@@ -239,6 +258,8 @@ class Planner:
 
     def _scripted_plan(self, item: UpcomingItem) -> FollowPlan:
         """Scripted fallback when no model is available or model call fails."""
+        if item.kind == "parcel":
+            return self.validate({"checks": [{"kind": "parcel"}], "tell": {"on_change": True}}, item)
         if item.kind == "flight" or "flight" in item.refs:
             raw = {
                 "checks": [{
@@ -250,7 +271,7 @@ class Planner:
                     "every_minutes": 10,
                 }] if item.refs.get("flight") else [],
                 "prep": [
-                    {"what": "online check-in", "when": "-24h", "needs": ["browser"]},
+                    {"what": "online check-in", "when": "-24h", "needs": ["browser"], "kind": "check_in"},
                 ],
                 "tell": {"lead": ["-1d", "-3h"], "on_change": True},
             }

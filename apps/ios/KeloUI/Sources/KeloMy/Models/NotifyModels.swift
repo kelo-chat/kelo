@@ -70,6 +70,22 @@ import KeloShared
     }
 }
 
+/// 마이 → 알림 → the items Kelo keeps for a later message: read once when the page opens (Android ProactiveHeldViewModel).
+@MainActor @Observable final class ProactiveHeldModel {
+    private(set) var items: [HeldItem]?
+    private(set) var missing = false
+    private(set) var error = ""
+    @ObservationIgnored private let api: KeloApi
+
+    init(api: KeloApi) { self.api = api }
+
+    func load() async {
+        do { items = try await api.get("/api/proactive/held", as: HeldList.self).items }
+        catch let e as ApiError { if e.status == 404 { missing = true } else { error = ApiMessage.text(e) } }
+        catch {}
+    }
+}
+
 /// 마이 → 알림 → 아침 브리핑: the briefing's settings, the owner's own weather keys, "Get one now", and the location the weather needs.
 @MainActor @Observable final class BriefingSettingsModel {
     private(set) var settings: BriefingSettings?

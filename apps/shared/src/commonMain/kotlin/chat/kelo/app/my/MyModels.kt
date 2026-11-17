@@ -122,7 +122,11 @@ data class UsageWindow(
 
 /** GET /api/about */
 @Serializable
-data class About(val version: String = "", val build: String = "")
+data class About(
+    val version: String = "", val build: String = "",
+    /** A newer released app that works with this server (docs/version-notices.md); null/absent = none */
+    @SerialName("app_update") val appUpdate: String? = null,
+)
 
 /**
  * GET /api/uploads items: a file the user uploaded. [path] is "uploads/<name>"; [kind] is document | image | video | audio;

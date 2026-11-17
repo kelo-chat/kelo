@@ -51,8 +51,11 @@ while [ $# -gt 0 ]; do
 done
 
 IOS="$REPO/apps/ios"
-# the commit this build's source came from, asked now (before this script edits project.yml for a TestFlight build number): My links to it
+# whether the source differs from HEAD, asked now (before this script edits project.yml for a TestFlight build number): My links to the
+# public release tag ios-<version> and says "modified" instead for a dirty build. The private commit is NOT embedded unless
+# KELO_EMBED_COMMIT=1 (a public-source builder): a build of the public tag must be the store build (docs/verify-builds.md).
 source_commit apps/ios apps/shared/strings version.json
+[ "${KELO_EMBED_COMMIT:-0}" = 1 ] || SOURCE_COMMIT=""
 SOURCE_ARGS=("KELO_SOURCE_COMMIT=$SOURCE_COMMIT" "KELO_SOURCE_DIRTY=$([ "$SOURCE_DIRTY" = true ] && echo YES || echo NO)")
 PROJ_DIR="$IOS/Kelo"
 SPEC="$PROJ_DIR/project.yml"

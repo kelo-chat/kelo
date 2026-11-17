@@ -831,6 +831,22 @@
     <string name="agent_perm_rules_empty">अभी कुछ नहीं। मंज़ूरी कार्ड पर “इस साइट पर हमेशा अनुमति दें” चुनें, तो वह यहाँ दिखेगा।</string>
     <string name="agent_perm_history">पिछली मंज़ूरियाँ</string>
     <string name="agent_perm_history_empty">अभी कुछ नहीं पूछा गया।</string>
+    <string name="approval_edit_button">बदलें</string>
+    <string name="approval_edit_title">भेजा जाने वाला संदेश</string>
+    <string name="approval_edit_save">सहेजें</string>
+    <string name="approval_edited_note">आपने संदेश बदल दिया</string>
+    <string name="approval_edit_empty">एक संदेश लिखें।</string>
+    <string name="approval_edit_too_long">बहुत लंबा है। इसे छोटा करें।</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">पिछली मंज़ूरियाँ</string>
+    <string name="approval_history_empty">अभी तक कोई मंज़ूरी नहीं।</string>
+    <string name="approval_history_error">पिछली मंज़ूरियाँ लोड नहीं हो सकीं।</string>
+    <string name="approval_history_where">कहाँ</string>
+    <string name="approval_history_when">कब</string>
+    <string name="approval_history_answered">जवाब</string>
+    <string name="approval_via_app">ऐप में</string>
+    <string name="approval_via_notification">सूचना से</string>
+    <string name="approval_via_messenger">मैसेंजर में</string>
     <string name="agent_perm_asked">%1$s पूछा गया</string>
     <string name="approval_remember_site">इस साइट पर फिर न पूछें</string>
     <string name="approval_remember_scope">%1$s और इसके सभी उप-पतों पर लागू होता है</string>
@@ -942,6 +958,7 @@
     <string name="live_forward">आगे</string>
     <string name="live_reload">रीलोड करें</string>
     <string name="live_page_not_responding">पेज जवाब नहीं दे रहा है</string>
+    <string name="live_touch_missed">आपका स्पर्श पेज तक नहीं पहुँचा</string>
     <string name="live_type_hint">पेज पर टाइप करने के लिए टेक्स्ट</string>
     <string name="live_type_send">टाइप करें</string>
     <string name="live_type_hide">टेक्स्ट छिपाएँ</string>
@@ -1121,6 +1138,8 @@
     <string name="offer_reason_later">बाद में</string>
     <string name="offer_busy">अभी दूसरा उत्तर लिखा जा रहा है। समाप्त होने पर फिर दबाएं</string>
     <string name="offer_failed">शुरू नहीं हो सका</string>
+    <string name="offer_steps_show_all">सभी %1$d चरण दिखाएँ</string>
+    <string name="offer_steps_fewer">कम चरण दिखाएँ</string>
     <string name="work_upcoming">आने वाले</string>
     <string name="work_upcoming_unscheduled">समय तय नहीं</string>
     <string name="work_past">पहले के</string>
@@ -1151,6 +1170,7 @@
     <string name="work_kind_browser">ब्राउज़र का काम</string>
     <string name="work_kind_research">रिसर्च</string>
     <string name="work_kind_general">सामान्य काम</string>
+    <string name="work_kind_phone">फ़ोन कार्य</string>
     <string name="work_job_title">बैकग्राउंड काम</string>
     <string name="work_job_line">%1$s · बैकग्राउंड</string>
     <string name="work_task_in_background">बैकग्राउंड में</string>
@@ -1455,6 +1475,7 @@
     <string name="handover_verify_title">%1$s साइन-इन की पुष्टि करने को कह रहा है</string>
     <string name="handover_verify_body">अपने फ़ोन पर साइन-इन मंज़ूर करें, या लाइव व्यू खोलकर वहाँ कोड डालें। इसके बाद Kelo आगे बढ़ेगा।</string>
     <string name="handover_verify_open">लाइव व्यू खोलें</string>
+    <string name="handover_device_open">फ़ोन की स्क्रीन खोलें</string>
     <string name="handover_verify_done">साइन-इन हो गया — Kelo आगे बढ़ रहा है</string>
     <string name="handover_verify_approve_body">अपने फ़ोन के नोटिफ़िकेशन में साइन-इन मंज़ूर करें। मंज़ूर होते ही Kelo आगे बढ़ेगा।</string>
     <string name="handover_verify_approved">मैंने मंज़ूर कर दिया</string>

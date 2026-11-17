@@ -14,7 +14,7 @@ Personal values never enter a plan.
 Replay (ReplayStream): wraps the turn's stream function. While the plan runs it answers each request with the next tool call; refs are
 found in the tab's latest reading: the one element whose role and name equal the step's (whitespace and case folded), else the one
 of that role whose name contains the step's name; none or several, after one fresh reading, is a stop. The confirm step is checked
-here in code: the permission's `what` must show in the page text, the total is read with purchase_total(), and purchase_check() must
+here in code: the permission's `what` must show in the page text, the total is read with purchase_total() from the page's order-total elements, and purchase_check() must
 cover it; then confirm_purchase gets those values (the tool checks everything again). A stop (no element, a click that changed
 nothing, a tool error, an unclear total, a refused check, a payment not confirmed) hands the SAME run to the model with a note of what
 was done and why it stopped. After the last step the replay calls end_order and ends the run with one line, with no model call.
@@ -32,7 +32,9 @@ from urllib.parse import urlsplit, urlunsplit
 
 from .i18n import N_, t
 from .providers.types import Done, TextDelta, ToolCall
+from .receipt import currency_ok, parse_money
 from .schedule_grants import words_of
+from .tools.checkout import read_page
 from .tools.page_tree import ref_of, role_name
 from .wallet import money_text, site_key
 
@@ -48,51 +50,20 @@ STOP_NOTE = ("[Kelo] The remembered checkout steps for this site ran first: {don
              "now. Go on from here with the steps of your instructions. A payment confirmed above is not confirmed again.")
 
 # --------------------------------------------------------------------------- the total on a checkout page
-TOTAL_STRONG = re.compile(r"총\s*결제\s*(?:예정\s*)?금액|최종\s*결제\s*금액|결제\s*예정\s*금액|총\s*주문\s*금액|order\s*total|grand\s*total|"
-                          r"total\s*(?:to\s*pay|due|payable)|お支払い?金額|ご請求額|合計金額|应付|实付", re.I)
-TOTAL_WEAK = re.compile(r"\btotal\b|합계|총액|総額|合計|总计|总额", re.I)
-AMOUNT = re.compile(r"[₩$€£¥]\s*(\d[\d,.\s]*\d|\d)|(\d[\d,.]*\d|\d)\s*(?:원|円|元|KRW|USD|EUR|JPY|GBP)")
-NO_DECIMALS = {"KRW", "JPY"}
-
-
-def _money(raw: str, currency: str) -> float | None:
-    s = re.sub(r"\s", "", raw or "")
-    if currency.upper() in NO_DECIMALS:
-        d = re.sub(r"\D", "", s)
-        return float(d) if d else None
-    m = re.match(r"^(.*?)[.,](\d{2})$", s)
-    whole, cents = (m.group(1), m.group(2)) if m else (s, "00")
-    whole = re.sub(r"\D", "", whole)
-    return float(f"{whole or '0'}.{cents}") if (whole or cents != "00") else None
-
-
-def _first_amount(text: str, currency: str) -> float | None:
-    m = AMOUNT.search(text or "")
-    return _money(m.group(1) or m.group(2), currency) if m else None
-
-
-def purchase_total(text: str, currency: str) -> float | None:
-    """The amount on the line that names the total ("총 결제금액", "Order total", ...; the label's own line after the label, else the
-    next two lines). A strong label wins over a plain "Total"/"합계"; candidates of the winning kind that differ give None."""
-    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
-    found: dict[int, list[float]] = {0: [], 1: []}
-    for i, ln in enumerate(lines):
-        for rank, rx in ((0, TOTAL_STRONG), (1, TOTAL_WEAK)):
-            m = rx.search(ln)
-            if not m:
-                continue
-            got = _first_amount(ln[m.end():], currency)
-            for nxt in lines[i + 1:i + 3]:
-                if got is not None:
-                    break
-                got = _first_amount(nxt, currency)
-            if got is not None:
-                found[rank].append(round(got, 2))
-            break   # a line counts once, as its strongest label
-    for rank in (0, 1):
-        if found[rank]:
-            return found[rank][0] if len(set(found[rank])) == 1 else None
-    return None
+def purchase_total(totals: list[str], currency: str, declared: str = "") -> float | None:
+    """The order total by the page's STRUCTURE: the texts of its order-total elements (checkout.Probe.totals: schema.org totals,
+    data-total style attributes, <output>). Exactly one distinct amount, in the granted currency; none, several, an amount that cannot
+    be read, a currency named by the element or declared by the page that differs, or no total element at all give None (the caller
+    stops and the model takes over). No label word is read."""
+    if declared and currency and declared.upper() != currency.upper():
+        return None
+    amounts: set[float] = set()
+    for text in totals:
+        amount, named = parse_money(text)
+        if amount is None or not currency_ok(currency, named):
+            return None
+        amounts.add(round(amount, 2))
+    return next(iter(amounts)) if len(amounts) == 1 else None
 
 
 # --------------------------------------------------------------------------- plans
@@ -154,8 +125,10 @@ class Plans:
 
 
 # --------------------------------------------------------------------------- recording
-PERSONAL = re.compile(r"pass|비밀번호|암호|e-?mail|이메일|메일|phone|tel\b|전화|휴대|mobile|address|주소|우편|zip|postal|name|이름|성명|"
-                      r"수령인|받는\s*분|card|카드|cvc|cvv|birth|생년|주민|account|계좌|\bid\b|아이디", re.I)
+# Typed text is remembered only for the roles that hold no personal data by their nature: a number stepper (a quantity) or a search box.
+# Every other field (name, address, mail, phone, card ...) makes the plan unusable: the shipping and card tools fill those from the owner's
+# saved data on replay. The role is the page's own (ARIA); no label word is read.
+IMPERSONAL_ROLES = ("spinbutton", "searchbox")
 LONG_DIGITS = re.compile(r"\d{5,}")
 RECORDED = ("browser_open", "browser_click", "browser_type", "browser_fill_shipping", "browser_fill_card", "confirm_purchase",
             "browser_login", "browser_click_at", "browser_drag")
@@ -206,7 +179,7 @@ class Recorder:
             self.steps.append({"do": "click", "role": role, "name": label, "path": path})
         elif name == "browser_type":
             value = str(args.get("text") or "")
-            if (not role or not label or PERSONAL.search(label) or "@" in value or LONG_DIGITS.search(value)
+            if (not role or not label or role not in IMPERSONAL_ROLES or "@" in value or LONG_DIGITS.search(value)
                     or not value.strip() or len(value) > 40):
                 self.unusable = self.unusable or "a personal or unnamed field was typed"
                 return
@@ -264,7 +237,7 @@ class ReplayStream:
     def wrap(self, real: Callable[..., AsyncIterator[Any]]) -> Callable[..., AsyncIterator[Any]]:
         async def stream(provider: Any, request: Any, **kw: Any) -> AsyncIterator[Any]:
             if not self.why and not self.finished:
-                ev = self._next(list(request.messages))
+                ev = await self._next(list(request.messages))
                 if isinstance(ev, ToolCall):
                     yield ev
                     yield Done("tool_calls")
@@ -297,7 +270,7 @@ class ReplayStream:
         self._out = {"kind": kind, "step": step}
         return ToolCall(id=f"replay-{self._n}", name=name, arguments=json.dumps(args, ensure_ascii=False))
 
-    def _next(self, msgs: list[dict[str, Any]]) -> ToolCall | str | None:
+    async def _next(self, msgs: list[dict[str, Any]]) -> ToolCall | str | None:
         last = _content_text(msgs[-1]) if msgs and msgs[-1].get("role") == "tool" else ""
         out, self._out = self._out, None
         if out is not None:
@@ -309,7 +282,7 @@ class ReplayStream:
                 self.finished = True
                 return None
             if kind == "read_for_confirm":
-                return self._confirm(step, last, msgs)
+                return await self._confirm(step, last, msgs)
             if kind == "read":
                 self._reread = True
             elif kind == "step":
@@ -356,13 +329,14 @@ class ReplayStream:
         self._stop(f"an unknown step {do!r}", msgs)
         return None
 
-    def _confirm(self, step: dict[str, Any], page: str, msgs: list[dict[str, Any]]) -> ToolCall | None:
+    async def _confirm(self, step: dict[str, Any], page: str, msgs: list[dict[str, Any]]) -> ToolCall | None:
         what = str(self.grant.get("what") or "")
         want, have = words_of(what), words_of(page)
         if want and len(want & have) < max(1, (len(want) + 1) // 2):
             self._stop(f"the page does not name {what}", msgs)
             return None
-        amount = purchase_total(page, self.currency)
+        probe = await read_page(self.session)
+        amount = purchase_total(probe.totals, self.currency, probe.currency) if probe is not None else None
         if amount is None:
             self._stop("the total on the page is not clear", msgs)
             return None

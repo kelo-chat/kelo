@@ -36,7 +36,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -91,6 +91,10 @@ fun SecretEntryCard(
     framed: Boolean = true,
 ) {
     var showSheet by rememberSaveable(request.id) { mutableStateOf(false) }
+    // a login or a key (framed in the chat): the compact card and the login sheet; a card and a payment PIN keep their own form
+    val simple = framed && (request.isLogin || request.isKey)
+    val sessions = LocalAppServices.current.sessions
+    val entryVm = if (simple) rememberViewModel(request.id) { SecretEntryViewModel(sessions) } else null
 
     val body: @Composable () -> Unit = {
         Column(
@@ -103,6 +107,9 @@ fun SecretEntryCard(
             when {
                 !request.open -> FoldedEntry(request)
                 !framed -> OpenEntry(request, onSaved, onCancel, onGone)
+                simple -> LoginCompact(request.isLogin,
+                    LoginSheetRules.forName(request.isLogin, request.hosts, request.label, request.name),
+                    onOpen = { showSheet = true }, onNotNow = onCancel)
                 else -> SummaryEntry(request, onEnter = { showSheet = true }, onCancel = onCancel)
             }
         }
@@ -110,7 +117,10 @@ fun SecretEntryCard(
 
     if (framed) CardBox(modifier) { body() } else Column(modifier) { body() }
 
-    if (showSheet && request.open) {
+    if (showSheet && request.open && entryVm != null) {
+        LoginKeySheet(request, entryVm, onSaved = { ans, res -> showSheet = false; onSaved(ans, res) },
+            onClose = { showSheet = false }, onGone = { showSheet = false; onGone() })
+    } else if (showSheet && request.open) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { showSheet = false },
@@ -140,6 +150,41 @@ fun SecretEntryCard(
             }
         }
     }
+}
+
+/**
+ * The sheet of a login or a key request. Save keeps it open with the server's words when it fails; when it works the sheet closes, a
+ * short notice says it was added, and the assistant goes on by itself (the server carries on the reply that asked; no button).
+ */
+@Composable
+private fun LoginKeySheet(
+    r: SecretRequest,
+    vm: SecretEntryViewModel,
+    onSaved: (SaveAnswer, SecretResult?) -> Unit,
+    onClose: () -> Unit,
+    onGone: () -> Unit,
+) {
+    val ui by vm.state.collectAsStateWithLifecycle()
+    val haptics = LocalHaptics.current
+    val toaster = chat.kelo.app.platform.LocalToaster.current
+    val added = string(if (r.isLogin) Res.string.secret_added_login else Res.string.secret_added_key)
+    fun done(outcome: SecretOutcome) {
+        haptics.done(outcome)
+        if (outcome is SecretOutcome.Saved) toaster.show(added)
+        outcome.deliver(onSaved, onGone)
+    }
+    LoginSheet(
+        login = r.isLogin,
+        forName = LoginSheetRules.forName(r.isLogin, r.hosts, r.label, r.name),
+        hint = r.usernameHint,
+        busy = ui.busy,
+        problem = ui.problem.text(),
+        note = if (r.isKey && r.check) string(Res.string.secret_check_note) else "",
+        onSave = { user, pass, keep ->
+            if (r.isLogin) vm.saveLogin(r.name, user, pass, LoginSheetRules.mode(keep), ::done) else vm.saveKey(r.name, pass, ::done)
+        },
+        onClose = onClose,
+    )
 }
 
 /** Compact summary in the chat: site, what is asked, cancel, and a primary button "입력하기" / "Enter". */
@@ -398,7 +443,7 @@ private fun SecretOutcome.deliver(onSaved: (SaveAnswer, SecretResult?) -> Unit, 
 
 /** A labelled field; [masked] values show as dots until Show is pressed (the system's own paste works in it). */
 @Composable
-private fun SecretField(
+internal fun SecretField(
     label: String,
     value: String,
     onChange: (String) -> Unit,
@@ -407,6 +452,7 @@ private fun SecretField(
     imeAction: ImeAction = ImeAction.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     modifier: Modifier = Modifier,
+    fieldModifier: Modifier = Modifier,
 ) {
     val c = Kelo.colors
     var shown by remember { mutableStateOf(false) }
@@ -414,7 +460,7 @@ private fun SecretField(
         Text(label, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = c.ink)
         // no placeholder: the label is right above, and the same words inside the empty field showed them twice ("키 또는 토큰")
         KeloTextField(
-            value, onChange, "", modifier = Modifier.semantics { contentDescription = label }, maxLength = 4096, password = masked && !shown,
+            value, onChange, "", modifier = fieldModifier.semantics { contentDescription = label }, maxLength = 4096, password = masked && !shown,
             keyboardOptions = KeyboardOptions(
                 autoCorrectEnabled = false,
                 keyboardType = if (shown && masked) KeyboardType.Ascii else keyboard,

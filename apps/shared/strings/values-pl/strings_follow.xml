@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">O co dba Kelo</string>
+    <string name="follow_stop">Przestań obserwować</string>
+    <string name="follow_stop_confirm">Przestać dbać o to wydarzenie?</string>
+    <string name="follow_stop_confirm_detail">Kelo nie będzie już sprawdzać zmian ani przygotowywać niczego z wyprzedzeniem.</string>
+    <string name="follow_stop_yes">Przestań obserwować</string>
+    <string name="follow_keep_watching">Obserwuj dalej</string>
+    <string name="follow_replan">Zaplanuj ponownie</string>
+    <string name="follow_sheet_title">Plan opieki</string>
+    <string name="follow_plan_checks">Co sprawdzamy</string>
+    <string name="follow_plan_prep">Przygotowania</string>
+    <string name="follow_plan_tell">Powiadomienia</string>
+    <string name="follow_plan_tell_change">Powiadom o zmianach</string>
+    <string name="follow_next_check">Następne sprawdzenie: %1$s</string>
+    <string name="follow_last_check">Ostatnie sprawdzenie: %1$s</string>
+    <string name="follow_prep_later">Zaplanowane</string>
+    <string name="follow_prep_running">W trakcie</string>
+    <string name="follow_prep_done">Przygotowane</string>
+    <string name="follow_prep_failed">Niepowodzenie</string>
+    <string name="follow_state_watching">W trakcie obserwacji</string>
+    <string name="follow_state_stopped">Zatrzymano</string>
+    <string name="follow_state_done">Zakończono</string>
+    <string name="follow_summary_lead_flight">Powiadomienie 1 dzień przed wylotem</string>
+    <string name="follow_summary_lead_general">Powiadomienie 1 dzień wcześniej</string>
+    <string name="follow_summary_lead_hours">Powiadomienie %1$d godz. wcześniej</string>
+    <string name="follow_summary_prep_checkin">Przygotuj odprawę po jej otwarciu</string>
+    <string name="follow_summary_prep_general">Przygotuj: %1$s</string>
+    <string name="follow_summary_watch_changes">Sprawdzaj zmiany</string>
+    <string name="follow_summary_default">Dbanie o harmonogram</string>
+</resources>

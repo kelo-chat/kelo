@@ -48,7 +48,11 @@ def test_every_catalog_provider_has_a_company_or_is_local():
     ("freellmapi", True), ("host.docker.internal", True), ("box.tail1234.ts.net", True), ("nas.local", True),
     ("api.example.com", False), ("8.8.8.8", False),
 ])
-def test_private_hosts(host, private):
+def test_private_hosts(host, private, monkeypatch):
+    import socket
+    real = socket.getaddrinfo
+    monkeypatch.setattr(socket, "getaddrinfo", lambda h, *a, **k: [(2, 1, 6, "", ("100.64.1.2", 443))] if h.endswith(".ts.net") else (_ for _ in ()).throw(OSError("offline")))
+    ai_consent._resolves_private.cache_clear()
     assert ai_consent.is_private_host(host) is private
 
 

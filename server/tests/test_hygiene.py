@@ -35,5 +35,6 @@ def test_the_removed_reference_material_stays_removed():
 
 
 def test_english_source_for_the_prompt_skills_and_docs():
-    for f in [ROOT / "server" / "content" / "prompts" / "system.md", *(ROOT / "server" / "content" / "skills").rglob("*.md"), *(ROOT / "docs").glob("*.md")]:
+    for f in [ROOT / "server" / "content" / "prompts" / "system.md", *(ROOT / "server" / "content" / "skills").rglob("*.md"), *(ROOT / "server" / "content" / "help").glob("*.md"),
+              *(ROOT / "docs").glob("*.md")]:
         assert not re.search(r"[가-힣]", f.read_text(encoding="utf-8")), f.relative_to(ROOT)

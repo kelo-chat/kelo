@@ -206,6 +206,10 @@ async def test_a_declined_ask_card_stops_the_call():
 async def test_payments_and_account_steps_keep_their_own_checks_with_allow():
     _, p = perms()
     p.put(Info("notion", "Notion", "mcp"), {"read": "allow", "change": "allow", "send": "allow", "delete": "allow"})
+    effects.forget_mcp_tools()
+    effects.remember_judged("notion", "create_page", "change", False)           # what the tool judge said about each tool's description
+    effects.remember_judged("notion", "create_payment_link", "change", True)
+    effects.remember_judged("notion", "sign_up_user", "change", True)
     ran = []
     tool = counting("mcp_call_tool", ran)
     calls = [("mcp_call_tool", {"name": "notion", "tool": "create_page"}), ("mcp_call_tool", {"name": "notion", "tool": "create_payment_link"}),
@@ -213,6 +217,9 @@ async def test_payments_and_account_steps_keep_their_own_checks_with_allow():
     res, asked, _ = await run_calls([tool], Gate(p), *calls)
     assert [r.arguments["tool"] for r in asked] == ["create_payment_link", "sign_up_user"] and len(ran) == 3
     assert all(r.force is False for r in asked)                                                        # their own card, rules and grants apply
+    effects.forget_mcp_tools()
+    _, asked, _ = await run_calls([counting("mcp_call_tool", ran)], Gate(p), ("mcp_call_tool", {"name": "notion", "tool": "create_page"}))
+    assert [r.arguments["tool"] for r in asked] == ["create_page"]                                      # a tool nothing judged yet asks too
 
 
 async def test_a_tool_is_not_offered_when_every_target_of_it_is_off_but_is_when_one_target_is_not():
@@ -302,6 +309,7 @@ async def test_an_mcp_services_own_tools_appear_as_it_lists_them_and_their_kinds
             httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
         effects.remember_mcp_tools("notion-mcp", [{"name": "search_pages", "annotations": {"readOnlyHint": True}}, {"name": "send_comment"},
                                                   {"name": "archive_page", "annotations": {"destructiveHint": True}}])
+        effects.remember_judged("notion-mcp", "send_comment", "send", False)   # the tool judge's reading of its description
         got = (await c.get("/api/connectors/notion/permissions")).json()
         by_kind = {k["kind"]: [a["id"] for a in k["actions"]] for k in got["kinds"]}
         assert "search_pages" in by_kind["read"] and by_kind["send"] == ["send_comment"] and by_kind["delete"] == ["archive_page"]

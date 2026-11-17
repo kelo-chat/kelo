@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- pt-BR text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">Pesquisar no chat</string>
+    <string name="chat_search_title">Pesquisar no chat</string>
+    <string name="chat_search_field">Pesquisar nas suas mensagens</string>
+    <string name="chat_search_clear">Limpar pesquisa</string>
+    <string name="chat_search_hint">Digite uma palavra ou parte dela. Toque em um resultado para abrir o chat nessa mensagem.</string>
+    <string name="chat_search_none">Nenhuma mensagem corresponde a esta pesquisa.</string>
+    <string name="chat_search_failed">A pesquisa não conseguiu chegar ao servidor. Tente de novo em instantes.</string>
+    <string name="chat_search_you">Você</string>
+</resources>

@@ -212,7 +212,7 @@ async def test_a_service_that_only_takes_approved_apps_says_so_plainly(tmp_path)
     try:
         await conn.start("notion", "https://abc.trycloudflare.com")
     except McpOAuthError as e:
-        assert str(e) == "Notion가 미리 승인한 앱만 연결을 받아 줘서, 이 앱으로는 연결할 수 없어요."
+        assert str(e) == "Notion 서비스는 미리 승인한 앱만 연결을 받아 줘서, 이 앱으로는 연결할 수 없어요."
     else:
         raise AssertionError("a refused registration must be reported")
     finally:

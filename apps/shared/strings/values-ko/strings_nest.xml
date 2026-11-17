@@ -15,7 +15,7 @@
     <string name="nest_share">공유</string>
     <string name="nest_delete">삭제</string>
     <string name="nest_share_github">GitHub에 올리기</string>
-    <string name="nest_delete_q">“%1$s”을(를) 삭제할까요? 되돌릴 수 없어요.</string>
+    <string name="nest_delete_q">“%1$s” 삭제할까요? 되돌릴 수 없어요.</string>
     <string name="nest_share_failed">공유를 시작하지 못했어요.</string>
     <string name="nest_connect_title">먼저 GitHub를 연결해 주세요</string>
     <string name="nest_connect_hint">내 GitHub에 올리려면 Kelo가 저장소에 쓸 수 있어야 해요. 공개 저장소라면 “공개 저장소만”으로 충분해요.</string>
@@ -54,5 +54,5 @@
     <string name="nest_update">업데이트</string>
     <string name="nest_update_ready">%1$s 버전이 나왔어요</string>
     <string name="nest_update_asks_more">“%1$s” 새 버전이 더 많은 걸 요청해요</string>
-    <string name="nest_remove_pkg_q">“%1$s”을(를) 지울까요? 저장된 항목도 함께 지워져요.</string>
+    <string name="nest_remove_pkg_q">“%1$s” 지울까요? 저장된 항목도 함께 지워져요.</string>
 </resources>

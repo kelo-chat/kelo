@@ -42,10 +42,10 @@ class MessageActionsTest {
     @Test fun theMenuForEachKindOfRow() {
         val items = listOf(user("u", "q"), reply("r", "a"), error("e"))
         assertEquals(listOf(MsgAction.COPY, MsgAction.SHARE, MsgAction.SELECT, MsgAction.EDIT), MessageActions.actions(items, "u", busy = false))
-        assertEquals(listOf(MsgAction.COPY, MsgAction.SHARE, MsgAction.SELECT, MsgAction.RETRY, MsgAction.REPORT), MessageActions.actions(items, "r", busy = false))
+        assertEquals(listOf(MsgAction.COPY, MsgAction.SHARE, MsgAction.SELECT, MsgAction.READ_ALOUD, MsgAction.RETRY, MsgAction.REPORT), MessageActions.actions(items, "r", busy = false))
         assertEquals(listOf(MsgAction.COPY, MsgAction.RETRY), MessageActions.actions(items, "e", busy = false))
         // while a reply is being written nothing is tried again
-        assertEquals(listOf(MsgAction.COPY, MsgAction.SHARE, MsgAction.SELECT, MsgAction.REPORT), MessageActions.actions(items, "r", busy = true))
+        assertEquals(listOf(MsgAction.COPY, MsgAction.SHARE, MsgAction.SELECT, MsgAction.READ_ALOUD, MsgAction.REPORT), MessageActions.actions(items, "r", busy = true))
         assertEquals(listOf(MsgAction.COPY), MessageActions.actions(items, "e", busy = true))
         assertEquals(emptyList<MsgAction>(), MessageActions.actions(items + tool("t"), "t", busy = false))
     }

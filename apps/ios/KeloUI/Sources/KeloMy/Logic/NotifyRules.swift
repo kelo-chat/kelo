@@ -132,10 +132,38 @@ public enum NotifyRules {
         return String(plain.prefix(max - 1)).trimmingCharacters(in: .whitespaces) + "…"
     }
 
-    /// The notification's own id, per kind, so one task never shows twice and a newer one replaces the older.
+    /// The id of the waiting item a notification is about (the server's approval id), or nil when it only tells something. The same
+    /// scheme on every app: Android tags its notification with it, the iPhone uses it as the notification's identifier, the desktop keys
+    /// its notes by it. So one list of settled ids (a settled push, or GET /api/notifications/settled) works everywhere.
+    public static func itemId(_ n: ServerNotification) -> String? {
+        guard let a = n.approvalId?.trimmingCharacters(in: .whitespaces), !a.isEmpty else { return nil }
+        return a
+    }
+
+    /// The waiting item of a delivered notification: a local one keeps it under `itemKey`, a push carries it as "approval_id".
+    public static func approvalItem(userInfo: [AnyHashable: Any]) -> String? {
+        let raw = (userInfo[itemKey] as? String) ?? (userInfo["approval_id"] as? String)
+        guard let raw, !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return raw
+    }
+
+    /// The userInfo key that keeps a local notification's waiting item id (only notifications that wait for an item have one).
+    public static let itemKey = "item"
+
+    /// The item ids of the delivered notifications that wait for an item: what to ask the server about. A notification with no item
+    /// (news, a follow-up, a bare push) is never asked about, so the server's "unknown id = settled" never takes it down.
+    public static func itemsToAskAbout(_ delivered: [(id: String, userInfo: [AnyHashable: Any])]) -> [String] {
+        delivered.compactMap { d in
+            guard let item = d.userInfo[itemKey] as? String, !item.isEmpty, d.id == item else { return nil }
+            return item
+        }
+    }
+
+    /// The notification's own id: a waiting item's own id (see [itemId]); else per kind, so one task never shows twice and a newer
+    /// one replaces the older.
     public static func identifier(_ n: ServerNotification) -> String {
+        if let item = itemId(n) { return item }
         if let t = n.taskId { return "task:\(t)" }
-        if let a = n.approvalId { return "approval:\(a)" }
         return "note:\(n.id)"
     }
 }

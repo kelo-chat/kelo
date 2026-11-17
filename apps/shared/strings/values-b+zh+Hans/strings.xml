@@ -823,6 +823,22 @@
     <string name="agent_perm_rules_empty">暂无。在批准卡片上选择“在此网站始终允许”后，就会显示在这里。</string>
     <string name="agent_perm_history">以往的批准</string>
     <string name="agent_perm_history_empty">还没有询问过。</string>
+    <string name="approval_edit_button">修改</string>
+    <string name="approval_edit_title">要发送的内容</string>
+    <string name="approval_edit_save">保存</string>
+    <string name="approval_edited_note">你修改了要发送的内容</string>
+    <string name="approval_edit_empty">请输入要发送的内容。</string>
+    <string name="approval_edit_too_long">太长了，请缩短。</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">过往批准</string>
+    <string name="approval_history_empty">还没有批准过任何内容。</string>
+    <string name="approval_history_error">无法加载过往批准。</string>
+    <string name="approval_history_where">发往</string>
+    <string name="approval_history_when">时间</string>
+    <string name="approval_history_answered">回复方式</string>
+    <string name="approval_via_app">在应用中</string>
+    <string name="approval_via_notification">通过通知</string>
+    <string name="approval_via_messenger">在即时通讯应用中</string>
     <string name="agent_perm_asked">%1$s 询问</string>
     <string name="approval_remember_site">在此网站不再询问</string>
     <string name="approval_remember_scope">适用于 %1$s 及其所有子地址</string>
@@ -932,6 +948,7 @@
     <string name="live_forward">前进</string>
     <string name="live_reload">刷新</string>
     <string name="live_page_not_responding">页面未响应</string>
+    <string name="live_touch_missed">这次触摸没有传到页面</string>
     <string name="live_type_hint">要在页面上输入的文字</string>
     <string name="live_type_send">输入</string>
     <string name="live_type_hide">隐藏文字</string>
@@ -1100,6 +1117,8 @@
     <string name="offer_reason_later">稍后</string>
     <string name="offer_busy">正在撰写其他回复。完成后请重试</string>
     <string name="offer_failed">无法开始</string>
+    <string name="offer_steps_show_all">显示全部 %1$d 个步骤</string>
+    <string name="offer_steps_fewer">收起步骤</string>
     <string name="work_upcoming">即将进行</string>
     <string name="work_upcoming_unscheduled">未设定时间</string>
     <string name="work_past">之前</string>
@@ -1128,6 +1147,7 @@
     <string name="work_kind_browser">浏览器任务</string>
     <string name="work_kind_research">调研</string>
     <string name="work_kind_general">一般任务</string>
+    <string name="work_kind_phone">手机任务</string>
     <string name="work_job_title">后台任务</string>
     <string name="work_job_line">%1$s · 后台</string>
     <string name="work_task_in_background">后台运行中</string>
@@ -1422,6 +1442,7 @@
     <string name="handover_verify_title">%1$s 要求确认登录</string>
     <string name="handover_verify_body">请在手机上批准这次登录，或打开实时画面输入验证码。完成后 Kelo 会继续。</string>
     <string name="handover_verify_open">打开实时画面</string>
+    <string name="handover_device_open">打开手机屏幕</string>
     <string name="handover_verify_done">已登录 — Kelo 正在继续</string>
     <string name="handover_verify_approve_body">请在手机通知中批准这次登录。批准后 Kelo 会继续。</string>
     <string name="handover_verify_approved">我已批准</string>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Do que o Kelo cuida</string>
+    <string name="follow_stop">Parar de acompanhar</string>
+    <string name="follow_stop_confirm">Parar de acompanhar este item?</string>
+    <string name="follow_stop_confirm_detail">O Kelo não verificará alterações nem preparará nada com antecedência.</string>
+    <string name="follow_stop_yes">Parar de acompanhar</string>
+    <string name="follow_keep_watching">Continuar acompanhando</string>
+    <string name="follow_replan">Replanejar</string>
+    <string name="follow_sheet_title">Plano de acompanhamento</string>
+    <string name="follow_plan_checks">Itens para verificar</string>
+    <string name="follow_plan_prep">Preparações</string>
+    <string name="follow_plan_tell">Notificações</string>
+    <string name="follow_plan_tell_change">Avisar se houver alterações</string>
+    <string name="follow_next_check">Próxima verificação: %1$s</string>
+    <string name="follow_last_check">Última verificação: %1$s</string>
+    <string name="follow_prep_later">Agendado</string>
+    <string name="follow_prep_running">Em andamento</string>
+    <string name="follow_prep_done">Preparado</string>
+    <string name="follow_prep_failed">Falhou</string>
+    <string name="follow_state_watching">Acompanhando</string>
+    <string name="follow_state_stopped">Parado</string>
+    <string name="follow_state_done">Concluído</string>
+    <string name="follow_summary_lead_flight">Aviso 1 dia antes da partida</string>
+    <string name="follow_summary_lead_general">Aviso 1 dia antes</string>
+    <string name="follow_summary_lead_hours">Aviso %1$d horas antes</string>
+    <string name="follow_summary_prep_checkin">Preparar check-in ao abrir</string>
+    <string name="follow_summary_prep_general">Preparar %1$s</string>
+    <string name="follow_summary_watch_changes">Verificar alterações</string>
+    <string name="follow_summary_default">Cuidar do compromisso</string>
+</resources>

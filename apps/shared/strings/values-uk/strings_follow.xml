@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Чим опікується Kelo</string>
+    <string name="follow_stop">Припинити стежити</string>
+    <string name="follow_stop_confirm">Припинити стежити за цією подією?</string>
+    <string name="follow_stop_confirm_detail">Kelo більше не перевірятиме зміни та не готуватиметься заздалегідь.</string>
+    <string name="follow_stop_yes">Припинити стежити</string>
+    <string name="follow_keep_watching">Продовжувати стежити</string>
+    <string name="follow_replan">Спланувати знову</string>
+    <string name="follow_sheet_title">План супроводу</string>
+    <string name="follow_plan_checks">Що перевіряємо</string>
+    <string name="follow_plan_prep">Підготовка</string>
+    <string name="follow_plan_tell">Сповіщення</string>
+    <string name="follow_plan_tell_change">Сповіщати про зміни</string>
+    <string name="follow_next_check">Наступна перевірка: %1$s</string>
+    <string name="follow_last_check">Остання перевірка: %1$s</string>
+    <string name="follow_prep_later">Заплановано</string>
+    <string name="follow_prep_running">У процесі</string>
+    <string name="follow_prep_done">Підготовлено</string>
+    <string name="follow_prep_failed">Не вдалося</string>
+    <string name="follow_state_watching">Відстежується</string>
+    <string name="follow_state_stopped">Зупинено</string>
+    <string name="follow_state_done">Завершено</string>
+    <string name="follow_summary_lead_flight">Сповіщення за день до вильоту</string>
+    <string name="follow_summary_lead_general">Сповіщення за день</string>
+    <string name="follow_summary_lead_hours">Сповіщення за %1$d год.</string>
+    <string name="follow_summary_prep_checkin">Підготувати реєстрацію, коли відкриється</string>
+    <string name="follow_summary_prep_general">Підготувати %1$s</string>
+    <string name="follow_summary_watch_changes">Перевіряти зміни</string>
+    <string name="follow_summary_default">Супровід події</string>
+</resources>

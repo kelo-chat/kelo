@@ -83,12 +83,12 @@ export function SecureCard({ name, onNotify }: { name: string; onNotify?: (text:
   if (closed) return <div className="approval secure-card"><span className="small muted">{what} 입력을 취소했어요. 아무것도 저장하지 않았어요.</span></div>;
   return (
     <div className="approval secure-card">
-      <strong><ShieldIcon /> {what}가 필요해요</strong>
+      <strong><ShieldIcon /> 필요한 항목: {what}</strong>
       <span className="small muted">{item.hosts.join(", ")} 에서만 쓸 수 있도록 등록돼요. 여기에 입력하면 에이전트는 값을 볼 수 없어요.</span>
       {done ? (
         <>
           <span className="small">{done === "after_success" ? "받았어요 ✓ 로그인에 성공하면 보관함에 저장돼요." : done === "once" ? "받았어요 ✓ 한 번만 쓰고 지워요." : "저장했어요 ✓"}</span>
-          {onNotify && <button type="button" className="primary" onClick={() => onNotify(`${what}를 보관함에 ${done === "now" ? "저장" : "입력"}했어요. 이어서 진행해 줘.`)}>에이전트에게 알리기</button>}
+          {onNotify && <button type="button" className="primary" onClick={() => onNotify(`보관함에 ${done === "now" ? "저장" : "입력"}했어요: ${what}. 이어서 진행해 줘.`)}>에이전트에게 알리기</button>}
         </>
       ) : (
         <>
@@ -112,7 +112,7 @@ function ItemPage({ item, locked, verifying, onChanged, onBack }: { item: VaultI
     try { await api(`/api/vault/${item.name}`, { method: "PATCH", json: { auto_allow: v } }); onChanged(); } catch (e) { setMsg((e as Error).message); }
   }
   async function remove() {
-    if (!confirm(`"${item.label}"을(를) 보관함에서 지울까요? 저장된 값도 함께 지워져요.`)) return;
+    if (!confirm(`보관함에서 "${item.label}" 지울까요? 저장된 값도 함께 지워져요.`)) return;
     await api(`/api/credentials/${item.name}`, { method: "DELETE" });
     onChanged(); onBack();
   }

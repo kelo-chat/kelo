@@ -123,6 +123,18 @@ class KeloApi(
         return ((answer as? JsonObject)?.get("path") as? JsonPrimitive)?.content.orEmpty()
     }
 
+    /**
+     * PUT the raw body read from [open] to [path] (one request, never all in memory) and return the JSON answer. For routes that take a
+     * file as their body, e.g. /api/data/import/file. [length] is the size when known (-1 sends it chunked).
+     */
+    suspend fun putStream(
+        path: String, length: Long, contentType: String?, open: () -> java.io.InputStream,
+        onProgress: ((sent: Long, total: Long) -> Unit)? = null,
+    ): JsonElement {
+        val body = StreamBody(open, length, contentType?.toMediaTypeOrNull(), onProgress)
+        return readJson(send(requestBuilder(path).put(body).build()).toString(Charsets.UTF_8))
+    }
+
     /** Raw bytes of a GET (e.g. /api/uploads/{name}/file). Errors as for [request]. */
     suspend fun download(path: String): ByteArray = send(requestBuilder(path).get().build())
 

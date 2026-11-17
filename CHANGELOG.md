@@ -9,6 +9,45 @@ build's version and date, and copy the app lines into the Play release notes (en
 
 ## Unreleased
 
+## 0.10.4 (build 20, 2026-11-17)
+
+### Added
+- Live view: a desktop page keeps its desktop layout and the phone zooms in with two fingers; the keyboard comes up on a focused field, with a paste key and a "copy from the browser" chip (Android).
+- Open browser tabs stay visible in the Work tab, even after the chat that opened them is done.
+- Search across your chat history (Android, iPhone), with the messages after a result loaded as you scroll.
+- Kelo looks at what changed once an hour and tells you only what matters (at most one urgent and one regular message).
+- Mail can be sent with a designed (HTML) version next to the plain text; files you ask for (CSV, TXT, Excel, Word, PowerPoint, PDF) arrive in your files.
+
+### Fixed
+- My shows the server address in one row; tapping it changes the address (two rows opened the same window).
+- The connector search stays on top while the list scrolls.
+- Fewer approval cards: typing your name or e-mail and ordinary form submits no longer ask; payments, sends and sign-ups still do.
+- A model that is only busy is retried quietly instead of saying its usage limit is used up.
+- Kelo no longer reopens a page that is already open, and no longer adds "nothing is set up" lines after questions.
+
+## 0.10.3 (build 19, 2026-11-17)
+
+### Added
+- Live browser view runs on a real screen stream (VNC) on Android and iPhone: smooth, touch lands where you press, and it follows rotation.
+- Answer approvals from the notification: Allow / Deny / Reply on Android and iPhone (unlock first; a payment can only be denied there; swiping it away is not a no).
+- Fix the message in an approval card before Kelo sends it, and see past approvals.
+- Payment specialist on by default: a checkout runs as its own job, which also shows its cards in Telegram, Discord and Slack chats.
+- Kelo asks once per task before using the phone, and the phone can take over a whole job.
+- A short first chat learns your name, time zone, waking hours and how often Kelo may start a conversation.
+- Hold to dictate (Android, iPhone) and Read aloud (all apps).
+- Your data: download a copy (without secrets), bring memories from another assistant, or start over.
+- Connectors: choose which ones Kelo may use when you are not chatting; a busy service is retried later instead of failing.
+- My shows the server address; moving to a new address keeps the pairing.
+- Phones that fold and tablets: centred columns and two panes on wide screens (Android, iPhone on iPad).
+- In a group chat Kelo can ask another bot with an @mention.
+
+### Fixed
+- The morning briefing has the weather again: when the nearest weather server does not answer, another one or MET Norway is asked (US places use the National Weather Service).
+- One follow-through item per real thing (the same flight was listed twice).
+- The first row of My sub-pages and the connector list is no longer cut off under the top bar.
+- Kelo's browser reads as a normal Pixel 7 phone or a normal PC to sites; a search box's Enter no longer asks for approval.
+- Long chats keep exact dates when they are condensed, and Kelo can read the earlier messages again.
+
 ## 0.10.2 (build 18, 2026-11-16)
 
 ### Added

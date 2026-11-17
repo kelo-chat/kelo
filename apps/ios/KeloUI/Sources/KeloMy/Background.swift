@@ -62,13 +62,26 @@ import UIKit
         let fresh = NotifyRules.fresh(page.items, lastPosted: last)
         var posted = 0
         if last > 0 && !foreground {
-            for n in fresh { await post(n); posted += 1 }
+            // the buttons of a new approval come from the server's notify_actions on the waiting item (one list for all of them)
+            let offers = fresh.contains { $0.type == NoteTypes.approvalWaiting } ? await offeredActions(api: api) : [:]
+            for n in fresh {
+                let category = n.approvalId.flatMap { offers[$0] }.flatMap { NotifyActionRules.category(offered: $0) }
+                await post(n, category: category)
+                posted += 1
+            }
         }
+        await dropSettled(api: api)   // answered on another device, ran out, cancelled: the notification goes
         if posted > 0 || foreground { await takeDownBarePushes() }   // the detailed ones replace the push's generic banner
         prefs.set(cursorKey, Int(NotifyRules.nextCursor(last, serverLast: page.lastId, items: page.items)))
         // the icon's number: only what waits for the owner, not unseen notifications (WorkBadge)
         if let s = try? await api.agentStatus() { AppIconBadge.set(WorkBadge.waiting(s)) }
         return posted
+    }
+
+    /// The waiting items' notify_actions by item id (GET /api/approvals/pending); a failed ask gives no buttons.
+    static func offeredActions(api: KeloApi) async -> [String: [String]] {
+        guard let items = try? await api.pendingApprovals() else { return [:] }
+        return Dictionary(items.map { ($0.id, $0.notifyActions) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Takes down the notifications already shown and the badge (after the chat history was cleared: they name tasks that are gone).
@@ -90,6 +103,25 @@ import UIKit
         #endif
     }
 
+    /// Takes down the delivered notifications of these waiting items (their identifiers ARE the item ids).
+    static func settle(_ ids: [String]) {
+        #if canImport(UserNotifications)
+        guard !ids.isEmpty else { return }
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
+        #endif
+    }
+
+    /// Asks the server which of the waiting items that still have a notification up do not wait any more, and takes those down.
+    /// A failed ask changes nothing.
+    static func dropSettled(api: KeloApi) async {
+        #if canImport(UserNotifications)
+        let delivered = await UNUserNotificationCenter.current().deliveredNotifications().map { (id: $0.request.identifier, userInfo: $0.request.content.userInfo) }
+        let shown = NotifyRules.itemsToAskAbout(delivered)
+        guard !shown.isEmpty, let gone = try? await api.settledItems(shown) else { return }
+        settle(gone)
+        #endif
+    }
+
     /// Takes down the push banners that carry only ids ("Kelo has an update"): the details were fetched and posted, or the app is open.
     private static func takeDownBarePushes() async {
         #if canImport(UserNotifications)
@@ -99,7 +131,7 @@ import UIKit
         #endif
     }
 
-    private static func post(_ n: ServerNotification) async {
+    private static func post(_ n: ServerNotification, category: String? = nil) async {
         #if canImport(UserNotifications)
         let content = UNMutableNotificationContent()
         content.title = n.title.isEmpty ? "Kelo" : n.title
@@ -116,10 +148,12 @@ import UIKit
         #endif
         var info: [String: String] = ["open": NotifyRules.target(n).encoded]
         info[NotifyRules.channelKey] = channel.rawValue
+        if let item = NotifyRules.itemId(n) { info[NotifyRules.itemKey] = item }   // the identifier is the item's id (same on every app)
         if let action = NotifyRules.actions(n.type).first {   // a storage warning: 정리하기 under it opens the cleanup screen
             content.categoryIdentifier = NotificationTaps.cleanCategory
             info[NotificationTaps.cleanAction] = action.encoded
         }
+        if let category { content.categoryIdentifier = category }   // an approval: Allow / Deny (or Deny alone) under it; a reply: Reply
         content.userInfo = info
         let req = UNNotificationRequest(identifier: NotifyRules.identifier(n), content: content, trigger: nil)
         try? await UNUserNotificationCenter.current().add(req)
@@ -139,9 +173,71 @@ import UIKit
     /// The notification buttons, named in the app's language (registered again on each start, after a language change too).
     static func registerCategories() {
         let clean = UNNotificationAction(identifier: cleanAction, title: L(R.string.storage_clean_up), options: [.foreground])
+        // the answers work on an unlocked phone only (authenticationRequired); swiping the notification away answers nothing
+        let allow = UNNotificationAction(identifier: NotifyActionRules.allowAction, title: L(R.string.chat_approval_allow),
+                                         options: [.authenticationRequired])
+        let deny = UNNotificationAction(identifier: NotifyActionRules.denyAction, title: L(R.string.chat_approval_deny),
+                                        options: [.authenticationRequired, .destructive])
+        let reply = UNTextInputNotificationAction(identifier: NotifyActionRules.replyAction, title: L(R.string.notify_action_reply),
+                                                  options: [.authenticationRequired], textInputButtonTitle: L(R.string.notify_action_reply),
+                                                  textInputPlaceholder: "")
         UNUserNotificationCenter.current().setNotificationCategories([
             UNNotificationCategory(identifier: cleanCategory, actions: [clean], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: NotifyActionRules.approvalCategory, actions: [allow, deny], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: NotifyActionRules.denyOnlyCategory, actions: [deny], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: NotifyActionRules.replyCategory, actions: [reply], intentIdentifiers: [], options: []),
         ])
+    }
+
+    /// Allow / Deny from a notification: the answer, then the notification goes (or says "open Kelo" when it could not be sent).
+    func answerApproval(itemId: String?, approve: Bool, notification identifier: String) async {
+        #if canImport(UserNotifications)
+        let center = UNUserNotificationCenter.current()
+        guard let itemId, !itemId.isEmpty, let api = app?.api else {
+            await NotificationTaps.postFailed(open: .chat)
+            center.removeDeliveredNotifications(withIdentifiers: [identifier])
+            return
+        }
+        switch await NotifyAnswers.approve(id: itemId, approve: approve, api: KeloNotifyApi(api: api)) {
+        case .answered, .gone:
+            center.removeDeliveredNotifications(withIdentifiers: [identifier])
+        case .refused, .failed:
+            center.removeDeliveredNotifications(withIdentifiers: [identifier])
+            await NotificationTaps.postFailed(open: .chat)
+        }
+        #endif
+    }
+
+    /// A typed reply from its notification (blank text: nothing happens).
+    func reply(text: String?, notification identifier: String) async {
+        #if canImport(UserNotifications)
+        let center = UNUserNotificationCenter.current()
+        guard let api = app?.api else {
+            await NotificationTaps.postFailed(open: .chat)
+            center.removeDeliveredNotifications(withIdentifiers: [identifier])
+            return
+        }
+        switch await NotifyAnswers.reply(text: text, timezone: TimeZone.current.identifier, api: KeloNotifyApi(api: api)) {
+        case .blank: return
+        case .sent: center.removeDeliveredNotifications(withIdentifiers: [identifier])
+        case .failed:
+            center.removeDeliveredNotifications(withIdentifiers: [identifier])
+            await NotificationTaps.postFailed(open: .chat, body: L(R.string.notify_send_failed_tap))
+        }
+        #endif
+    }
+
+    /// "Couldn't send. Open Kelo to answer." (or the given text), a local notification that opens the chat.
+    static func postFailed(open: OpenTarget, body: String? = nil) async {
+        #if canImport(UserNotifications)
+        let content = UNMutableNotificationContent()
+        content.title = "Kelo"
+        content.body = body ?? L(R.string.notify_send_failed_open)
+        content.sound = .default
+        content.threadIdentifier = NotifyRules.thread
+        content.userInfo = ["open": open.encoded, NotifyRules.channelKey: NoteChannel.replies.rawValue]
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        #endif
     }
     #endif
 }
@@ -151,6 +247,24 @@ extension NotificationTaps: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                             withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
+        let identifier = response.notification.request.identifier
+        // Allow / Deny / Reply answer from the notification itself (the app need not open)
+        if let approve = NotifyActionRules.decision(action: response.actionIdentifier) {
+            let item = NotifyRules.approvalItem(userInfo: info)
+            Task { @MainActor in
+                await self.answerApproval(itemId: item, approve: approve, notification: identifier)
+                completionHandler()
+            }
+            return
+        }
+        if response.actionIdentifier == NotifyActionRules.replyAction {
+            let text = (response as? UNTextInputNotificationResponse)?.userText
+            Task { @MainActor in
+                await self.reply(text: text, notification: identifier)
+                completionHandler()
+            }
+            return
+        }
         // a local notification carries "open"; a push carries only its kind and ids (PushRules.target maps them to the same places)
         let raw = (response.actionIdentifier == NotificationTaps.cleanAction ? info[NotificationTaps.cleanAction] as? String : nil)
             ?? PushRules.openText(userInfo: info)
@@ -231,8 +345,12 @@ extension NotificationTaps: UNUserNotificationCenterDelegate {
         await phoneData.syncAll(app: app, force: false)
         phoneData.watch(app: app)
         await deviceTasks.check(app: app)   // an approved calendar change or call may wait for this phone
+        ApprovalHooks.itemSettled = { id in NotificationCheck.settle([id]) }   // answered here: its notification goes at once
         ApprovalHooks.afterAllow = { [weak app, deviceTasks] in if let app { deviceTasks.afterApproval(app: app) } }
+        if ApprovalHooks.signer.available == false { ApprovalHooks.signer = ApprovalSigners.platform() }
         while !Task.isCancelled {
+            // this phone's approval key goes to the server once per key (a local check when it already did)
+            if let api = app.api { await ApprovalKeyRegistrar.refresh(ApprovalHooks.signer, api: api) }
             if let api = app.api { await NotificationCheck.run(api: api, foreground: true) }
             try? await Task.sleep(nanoseconds: 60_000_000_000)
         }
@@ -250,6 +368,7 @@ extension NotificationTaps: UNUserNotificationCenterDelegate {
     /// A push woke the app (content-available): fetch the details now and post them in place of the generic banner. Best effort:
     /// iOS may not wake the app at all (low power, force-quit); then the banner stays and a tap opens the right place.
     public func pushArrived(_ p: PushPayload?) async -> Bool {
+        if let p, p.type == PushRules.settledType { NotificationCheck.settle(p.ids); return false }   // silent: nothing to fetch or show
         guard p != nil, let api = model?.api else { return false }
         let posted = await NotificationCheck.run(api: api, foreground: false)
         return posted > 0

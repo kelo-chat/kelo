@@ -39,7 +39,9 @@ def test_still_signing_in_needs_positive_evidence():
     assert still_signing_in(probe(url="https://site.example.com/home", otp=1))                     # a one-time code box
     assert still_signing_in(probe(url="https://accounts.example.com/login/two-step", text="Approve"))   # a sign-in address
     assert still_signing_in(probe(url="https://site.example.com/x", title="2-Step Verification"))
-    assert not still_signing_in(probe(url="https://site.example.com/gift/home", title="Gifts", text="Welcome back"))
+    # a short page after a sign-in the agent started is a verification step until the page judge says it is none (fail closed, hc-pagefields)
+    assert still_signing_in(probe(url="https://site.example.com/gift/home", title="Gifts", text="Welcome back"))
+    assert not still_signing_in({**probe(url="https://site.example.com/gift/home", title="Gifts", text="Welcome back"), "judged_step": "none"})
 
 
 async def test_a_verification_whose_step_only_moved_on_ends_progressed_never_solved(tmp_path):
@@ -139,17 +141,6 @@ def test_the_browser_profile_lives_on_a_kept_volume():
     compose = (root / "compose.yml").read_text()
     assert '"browser-data:/data"' in compose and "\n  browser-data:" in compose
     assert "self._browser.contexts[0] if self._browser.contexts" in (root / "server" / "src" / "assistant" / "tools" / "browser.py").read_text()
-
-
-async def test_a_click_the_request_covered_is_in_the_approval_log(tmp_path):
-    from assistant.activity import DECISIONS
-    assert "progressed" in DECISIONS
-    app = create_app(app_settings(tmp_path), tools=[])
-    app.state.orders.on_request_use("browser_click", "apply", "event.example.com", "체험단 신청해 줘")
-    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers={**AUTH, "Accept-Language": "ko"}) as c:
-        hist = (await c.get("/api/approvals/history")).json()["items"]
-    assert hist[0]["tool"] == "browser_click" and hist[0]["decision"] == "allowed_by_rule" and hist[0]["site"] == "event.example.com"
-    assert "체험단 신청해 줘" in hist[0]["detail"]
 
 
 async def test_a_solved_sign_in_verification_marks_the_login_that_stopped_at_it_as_ok(tmp_path):

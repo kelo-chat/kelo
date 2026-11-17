@@ -16,6 +16,7 @@ from pathlib import Path
 _LIST = Path(__file__).with_name("public_suffix_list.dat")
 _lock = threading.Lock()
 _rules: tuple[frozenset[str], frozenset[str], frozenset[str]] | None = None   # (plain, wildcard parents, exceptions)
+_tlds: frozenset[str] | None = None   # the top-level domains of the list's ICANN section (the delegated root zone)
 
 
 def _ascii(label_path: str) -> str:
@@ -104,3 +105,36 @@ def same_site(a: str, b: str) -> bool:
     """`a` and `b` are hosts of one site (the same registrable domain)."""
     ra, rb = registrable(a), registrable(b)
     return bool(ra) and ra == rb
+
+
+def _root_zone() -> frozenset[str]:
+    global _tlds
+    with _lock:
+        if _tlds is None:
+            found: set[str] = set()
+            inside = False
+            try:
+                lines = _LIST.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                lines = []
+            for raw in lines:
+                line = raw.strip()
+                if line.startswith("// ===BEGIN ICANN"):
+                    inside = True
+                elif line.startswith("// ===END ICANN"):
+                    inside = False
+                elif inside and line and not line.startswith("//") and "." not in line.split(" ", 1)[0] and not line.startswith(("*", "!")):
+                    rule = line.split(" ", 1)[0].lower()
+                    found.update({rule, _ascii(rule)})
+            _tlds = frozenset(found - {"arpa"})   # .arpa is infrastructure (home.arpa is the special-use name of a home network)
+        return _tlds
+
+
+def in_public_dns(host: str) -> bool:
+    """The name can exist in the public DNS: more than one label and a top-level domain delegated in the root zone (the Public Suffix
+    List's ICANN section). Names a home or office network invents ('printer.lan', 'nas.local', 'wiki.corp', '.internal', 'home.arpa')
+    and a single label ('freellmapi', a Docker service) are not. An IP address is not a name."""
+    h = _clean(host)
+    if not h or _is_ip(h) or "." not in h:
+        return False
+    return h.rsplit(".", 1)[-1] in _root_zone()

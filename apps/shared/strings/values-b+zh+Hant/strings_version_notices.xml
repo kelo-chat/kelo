@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">更新伺服器</string>
+    <string name="server_old_failed">更新沒有完成。請重試，或在伺服器所在的機器上更新。</string>
+    <string name="server_old_manual">要更新伺服器，請在它所在的機器上依更新步驟操作。</string>
+    <string name="server_old_guide">開啟更新指南</string>
+    <string name="app_notice_new">新版 Kelo 應用程式（%1$s）與你的伺服器搭配最佳</string>
+    <string name="app_notice_store">開啟應用程式商店</string>
+    <string name="update_popup_title">有新版本了 (%1$s)</string>
+    <string name="update_popup_update">更新</string>
+    <string name="update_popup_later">稍後</string>
+</resources>

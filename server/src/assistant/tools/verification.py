@@ -1,14 +1,15 @@
 """A sign-in verification page (two-step / two-factor sign-in, "approve on your phone", a code sent by text, mail or an app), told
-apart from other pages by structure and words in many languages, never by a list of sites.
+apart from other pages by STRUCTURE and, when that is silent, by the page judge (page_judge.py), never by words or a list of sites
+(docs/no-word-lists.md, hc-pagefields).
 
 `verification_step(probe, signing_in=...)` reads what challenge.PROBE_JS read from the page:
-- "code": the page wants a one-time code typed (one-time-code boxes by structure, or a short visible input next to verification words);
-- "approve": the page waits for the user to confirm somewhere else (a push or a message to their phone, an app, a number to tap)
-  and has nothing to type;
-- "": not a verification page.
-A page with a visible password box is a sign-in form, not this. Without code boxes the words must stand on a short page that belongs to
-a sign-in (a sign-in the agent started on this tab, or a sign-in / verify address or title), so an article or a settings page that only
-talks about two-step verification is not taken for one.
+- "code": one-time-code boxes (autocomplete one-time-code, or a row of one-character boxes) stand on the page, or the agent's own
+  sign-in left a short page with a short input and the judge did not say otherwise;
+- "approve": the agent's own sign-in left a short page with nothing to type and the judge did not say otherwise: the page may wait for
+  the user to confirm somewhere else;
+- "": not a verification page (a visible password box means a sign-in form; a page the judge read and called none).
+Fail closed: with no judge (or no answer) a short page right after a sign-in the agent started is taken for a verification step, so the
+user is asked and the agent never says "signed in" on a guess. `probe["judged_step"]` is the judge's answer (BrowserSession sets it).
 
 What happens then (BrowserSession.snapshot): the user is told plainly what to do (the browser card's status line, and the app's hand-over
 card with the live view, `handover` with kind "verification"), the step waits with the hand-over's time limit, and goes on when the page
@@ -16,38 +17,12 @@ moves on. A code the site mailed is first looked for in the user's mailbox (find
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
 from ..i18n import NAMES, N_, current, t
 
-# Words of a page that verifies a sign-in, in many languages (lower-cased text)
-_VERIFY = re.compile(
-    r"two[-\s]?(?:step|factor)|\b2[-\s]?(?:step|fa)\b|multi[-\s]?factor|\bmfa\b|verify (?:it'?s|that it'?s) (?:you|really you)|"
-    r"confirm (?:it'?s|that it'?s) you|verify your (?:identity|sign[-\s]?in|login|account|device)|"
-    r"(?:approve|confirm|allow) (?:the |this |your )?(?:sign[-\s]?in|log[-\s]?in|login)(?: request)?|check your (?:phone|device|mobile)|"
-    r"we(?:'ve| have| just)? sent (?:a |an |you a |you an )?(?:code|notification|push|request|text|sms|message|prompt)|"
-    r"(?:enter|type) (?:the |your )?(?:\d[-\s]?digit )?(?:code|verification code|security code|one[-\s]?time)|"
-    r"verification (?:code|required|request)|security code|one[-\s]?time (?:code|password|passcode|pin)|authenticator app|"
-    r"tap (?:yes|approve|allow)|sign[-\s]?in request|login request|"
-    r"2\s?단계\s?인증|2\s?차\s?인증|추가\s?인증|본인\s?확인|인증\s?요청|인증\s?번호|인증\s?코드|보안\s?코드|일회용\s?(?:비밀번호|코드)|"
-    r"(?:휴대폰|휴대전화|앱|기기)(?:에서|으로|로)\s?(?:확인|승인|인증)|알림을\s?(?:보냈|확인)|로그인\s?(?:요청|승인)|"
-    r"2\s?段階認証|二段階認証|[2二]\s?要素認証|認証コード|確認コード|ワンタイムパスワード|本人確認|ログインを承認|"
-    r"两步验证|兩步驟驗證|兩步驗證|双重验证|雙重驗證|验证码|驗證碼|安全验证|安全驗證|确认登录|確認登入|"
-    r"zwei[-\s]?(?:faktor|schritt)|bestätigungscode|sicherheitscode|anmeldung bestätigen|"
-    r"(?:validation|vérification|authentification) en deux (?:étapes|facteurs)|code de (?:vérification|sécurité|confirmation)|"
-    r"verificación en dos pasos|autenticación de dos factores|código de (?:verificación|seguridad|confirmación)|"
-    r"verificação em (?:duas|2) etapas|autenticação de dois fatores|código de (?:verificação|segurança)|"
-    r"verifica in due passaggi|autenticazione a due fattori|codice di (?:verifica|sicurezza)|"
-    r"tweestapsverificatie|verificatiecode|weryfikacja dwuetapowa|kod weryfikacyjny|"
-    r"двухэтапн|двухфакторн|код подтверждения|подтвердите вход|двоетапн|код підтвердження|"
-    r"iki adımlı doğrulama|doğrulama kodu|xác minh 2 bước|mã xác minh|ยืนยันตัวตน|รหัสยืนยัน|รหัส otp|"
-    r"verifikasi 2 langkah|kode verifikasi|التحقق بخطوتين|رمز التحقق|सत्यापन कोड|दो-चरणीय", re.I)
-# A sign-in or verification address or title (path and title only, never the host)
-_SIGN_IN_PAGE = re.compile(r"log[-_]?in|sign[-_]?in|signin|auth|verif|2fa|mfa|otp|challenge|two[-_]?step|second[-_]?factor|"
-                           r"account|session|security|로그인|인증|ログイン|認証|登录|登入|验证|驗證", re.I)
-MAX_TEXT = 6_000   # a verification page is short; longer pages are articles or settings
+MAX_TEXT = 1_500   # a verification page is short; longer pages are articles, settings or a signed-in page
 SIGN_IN_SECONDS = 20 * 60.0   # a sign-in the agent started on a tab counts this long
 
 # The owner's decision (2026-11-10, no setting): on the owner's own account, an offer to keep this browser signed in or not to ask
@@ -81,9 +56,12 @@ class Verification:
         return t(APPROVE_SAY if self.step == "approve" else CODE_SAY)
 
 
-def _path_and_title(probe: dict[str, Any]) -> str:
-    url = str(probe.get("url") or "")
-    return re.sub(r"^[a-z]+://[^/]+", "", url, flags=re.I) + " " + str(probe.get("title") or "")
+def unconfirmed(probe: Any, *, signing_in: bool = False) -> bool:
+    """True when `verification_step` would rest on the page being short right after a sign-in alone (no code box, no judge answer yet):
+    the case the page judge is asked about."""
+    if not isinstance(probe, dict) or probe.get("secret_box") or int(probe.get("otp") or 0) or not signing_in:
+        return False
+    return probe.get("judged_step") is None and int(probe.get("text_len") or len(str(probe.get("text") or ""))) <= MAX_TEXT
 
 
 def verification_step(probe: Any, *, signing_in: bool = False) -> Verification | None:
@@ -91,16 +69,16 @@ def verification_step(probe: Any, *, signing_in: bool = False) -> Verification |
     this tab a short while ago."""
     if not isinstance(probe, dict) or probe.get("secret_box"):
         return None
-    text = str(probe.get("text") or "")
-    hit = _VERIFY.search(text) or _VERIFY.search(str(probe.get("title") or ""))
-    boxes = int(probe.get("otp") or 0)
-    if boxes and (hit or signing_in or _SIGN_IN_PAGE.search(_path_and_title(probe))):
-        return Verification("code", hit.group(0) if hit else "")
-    if not hit or int(probe.get("text_len") or len(text)) > MAX_TEXT:
+    judged = probe.get("judged_step")
+    if judged == "none":
         return None
-    if not (signing_in or _SIGN_IN_PAGE.search(_path_and_title(probe))):
+    if judged in ("code", "approve"):
+        return Verification(judged, "")
+    if int(probe.get("otp") or 0):
+        return Verification("code", "")
+    if not signing_in or int(probe.get("text_len") or len(str(probe.get("text") or ""))) > MAX_TEXT:
         return None
-    return Verification("code" if int(probe.get("short_inputs") or 0) else "approve", hit.group(0))
+    return Verification("code" if int(probe.get("short_inputs") or 0) else "approve", "")
 
 
 def waiting_note(v: Verification, host: str) -> str:

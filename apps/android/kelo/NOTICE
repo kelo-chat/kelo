@@ -37,3 +37,9 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR
 CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
 NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+-------------------------------------------------------------------------------------------------------------------------------
+noVNC 1.5.0 (app/src/main/assets/vnc: core/, vendor/pako/, LICENSE.txt; source record in assets/vnc/SOURCE.md)
+Used for the live browser screen. noVNC is Copyright (C) 2022 The noVNC Authors (see AUTHORS in the upstream project) and is
+licensed under the Mozilla Public License 2.0 for the files in core/ (LICENSE.txt in that folder). The pako files in vendor/pako
+are MIT-licensed (their LICENSE file in that folder). Project: https://github.com/novnc/noVNC

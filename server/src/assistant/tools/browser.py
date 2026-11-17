@@ -10,7 +10,7 @@ Safety:
   ordering, booking, subscribing, sending or posting, deleting or cancelling, signing up or changing account settings, sending a
   form with personal details, typing personal details or a message. The element is read from the page just before the step to
   judge this (commits.py); the owner can still have every click and typing step ask (ASSISTANT_APPROVE_BROWSER_ACTIONS=1).
-- After the user allowed a purchase (confirm_purchase), the few committing steps that finish it on that same site are covered by
+- After the user allowed a purchase (checkout_review), the few committing steps that finish it on that same site are covered by
   that approval for a short while (`PURCHASE_WINDOW_SECONDS`, `PURCHASE_WINDOW_ACTIONS`).
 
 Card fields: `fill_card` types a wallet card (number, expiry, CVC, holder, postal code) straight from the server into the checkout form of
@@ -49,17 +49,18 @@ from urllib.parse import urlsplit
 from ..agent import Tool, emit_ui, handover
 from ..agent.loop import ToolStopped, ToolTimeout
 from ..agent.fence import data
+from ..data_trail import USES_PARAM
 from ..i18n import N_, t
 from ..signin_state import CLEAN_READINGS, still_signing_in
 from .challenge import (CHECK_TRIES, PROBE_JS, Challenge, blocked, blocked_again_note, blocked_note, check_boxes, detect, handover_note,
                         note_for, try_note)
 from . import humanize as human
-from .commits import (TARGET_JS, asks_to_keep_signed_in, cancel_words, continue_only, judge_click, judge_type, keep_signed_in, label_of,
-                      money_page, pressable)
+from .checkout import REFUSAL, guarded
+from .commits import TARGET_JS, click_route, judge_type, kind_of_verdict, label_of, pressable
 from .downloads import DownloadArea
 from .pacing import SitePacer
 from .sites import registrable, same_site
-from .verification import SIGN_IN_SECONDS, Verification, options_note, verification_note, verification_step, waiting_note
+from .verification import SIGN_IN_SECONDS, Verification, options_note, unconfirmed, verification_note, verification_step, waiting_note
 from .page_notes import (OVERLAY_JS, OVERLAY_ROUNDS, click_js, closed_note, masked_note, masked_values, not_found_note, open_note,
                          overlays, signature)
 from .page_tree import controls_only, for_reading, frame_hosts, frame_of, interactive_refs, ref_boxes, ref_name, ref_of, ref_selector, ref_words
@@ -109,13 +110,66 @@ OVERLAY_PAUSE = 0.4               # seconds a closed window gets to go away befo
 # The phone view (BrowserSession.set_view): a current Android phone's screen in CSS px, its pixel ratio, mobile and touch
 VIEWS = ("desktop", "mobile")
 PHONE = {"width": 412, "height": 915, "deviceScaleFactor": 2.625, "mobile": True, "screenWidth": 412, "screenHeight": 915}
+# The device the phone view claims to be: a Pixel 7 on Android 14 (the screen above). Passed to PHONE_SCRIPT as data, never written into it.
+PHONE_DEVICE = {"platform": "Linux armv81", "model": "Pixel 7", "platform_version": "14.0.0", "cores": 8,
+                "gl_vendor": "ARM", "gl_renderer": "Mali-G710 MP7"}
+# The GPU a desktop view reports (the Intel GPU of a common desktop; PHONE_DEVICE's is the phone's). Data only, passed to GPU_SCRIPT.
+DESKTOP_DEVICE = {"gl_vendor": "Google Inc. (Intel)", "gl_renderer": "ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL ES 3.2)"}
+# Run before each page's scripts (Page.addScriptToEvaluateOnNewDocument) with PHONE_DEVICE as its argument: what a phone's browser has
+# and a desktop Chromium does not (no plugins, no PDF viewer). Every replaced function or getter is a Proxy of the original,
+# so it still reads as native code, and it keeps the original's receiver checks (a call on the wrong object still throws).
+PHONE_SCRIPT = """(d) => {
+  const swap = (obj, name, wrap) => {
+    const desc = Object.getOwnPropertyDescriptor(obj, name);
+    if (!desc) return;
+    // wrap(call, args, self): `call()` runs the original (only when wanted: on a fake receiver it would throw)
+    const trap = {apply: (t, self, args) => wrap(() => Reflect.apply(t, self, args), args, self)};
+    if (desc.get) desc.get = new Proxy(desc.get, trap);
+    else desc.value = new Proxy(desc.value, trap);
+    Object.defineProperty(obj, name, desc);
+  };
+  // an empty list with no own properties: its prototype's own getters and methods answer for it (length 0, item/namedItem null),
+  // so Object.getOwnPropertyNames(navigator.plugins) is [] as on a phone and every member still reads as native code
+  const empty = (C) => {
+    const fake = Object.create(C.prototype);
+    swap(C.prototype, 'length', (call, args, self) => self === fake ? 0 : call());
+    for (const m of ['item', 'namedItem']) swap(C.prototype, m, (call, args, self) => self === fake ? null : call());
+    return fake;
+  };
+  const plugins = empty(PluginArray), mimeTypes = empty(MimeTypeArray);
+  swap(Navigator.prototype, 'plugins', (call) => (call(), plugins));   // call() keeps the receiver check
+  swap(Navigator.prototype, 'mimeTypes', (call) => (call(), mimeTypes));
+  swap(Navigator.prototype, 'pdfViewerEnabled', (call) => (call(), false));
+}"""
+# GPU_SCRIPT: one script for every Kelo context; the GPU answered is chosen at call time by the page's own mobile flag
+GPU_DATA = {"phone": {"gl_vendor": PHONE_DEVICE["gl_vendor"], "gl_renderer": PHONE_DEVICE["gl_renderer"]}, "desktop": DESKTOP_DEVICE}
+GPU_SCRIPT = """(d) => {
+  const swap = (obj, name, wrap) => {
+    const desc = Object.getOwnPropertyDescriptor(obj, name);
+    if (!desc) return;
+    desc.value = new Proxy(desc.value, {apply: (t, self, args) => wrap(Reflect.apply(t, self, args), args)});
+    Object.defineProperty(obj, name, desc);
+  };
+  for (const C of [globalThis.WebGLRenderingContext, globalThis.WebGL2RenderingContext]) {
+    if (!C) continue;
+    swap(C.prototype, 'getParameter', (r, args) => {
+      const g = navigator.userAgentData && navigator.userAgentData.mobile ? d.phone : d.desktop;
+      return args[0] === 0x9245 ? g.gl_vendor : args[0] === 0x9246 ? g.gl_renderer : r;
+    });
+  }
+}"""
 SITE_VIEWS_KEPT = 300             # sites whose working view is remembered (memory only)
 VIEW_NOTE = "[Now showing this tab in the {view} view (same sign-ins and cookies); the page was loaded again in it.]"
 VIEW_SAME_NOTE = "[This tab already shows the {view} view; the page was loaded again.]"
 VIEW_REMEMBERED_NOTE = "[Opened in the {view} view: it is the one that worked on this site before.]"
+# browser_open on a tab that already shows that address: nothing is loaded again (the model opened coupang 4 times in 6 minutes and then
+# told the owner the page was closed); it gets the page as it is.
+SAME_PAGE_NOTE = "This tab is open and already shows {url} ({title}). It was not loaded again; this is the page as it is now."
 # A window the page opened (window.open, a target=_blank link) becomes the tab's page: the agent goes on in it, with the tab's view.
 POPUP_WAIT_SECONDS = 0.4          # after a click: how long a new window may take to show up before the click is taken as staying put
 POPUP_NOTE = "[The click opened a new window ({url}); you are in it now (same sign-ins, same view). When it closes you are back on the page that opened it.]"
+TIMEOUT_NOTE = ("[The owner's control of this tab timed out (their screen went away), so it came back to you; they may not have finished "
+                "what they were doing.]")
 POPUP_BACK_NOTE = "[The window you were in closed; you are back on the page that opened it.]"
 NO_CHANGE_NOTE = ("[The click went through, but nothing changed: same address, same page content and form values, no new window, no "
                   "pop-up. Do not click the same element again. Look at the page below for what holds it (a message, an unticked box, "
@@ -175,15 +229,18 @@ FRAME_ORIGIN_JS = """(e) => { const r = e.getBoundingClientRect(), s = getComput
 
 def mobile_identity(full_version: str) -> dict[str, Any]:
     """Emulation.setUserAgentOverride parameters for Chrome of this version on an Android phone: the reduced User-Agent Chrome sends
-    there and its client hints (the same brands and versions as the desktop identity, platform Android, mobile, form factor Mobile)."""
+    there and its client hints (the same brands and versions as the desktop identity, platform Android, mobile, form factor Mobile).
+    `platform` is navigator.platform, as a phone reports it; the model and platform version are the PHONE_DEVICE's."""
     from ..browser_identity import brand_lists
     major = int(full_version.split(".")[0])
     brands, full_list = brand_lists(full_version)
     return {
         "userAgent": f"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{major}.0.0.0 Mobile Safari/537.36",
+        "platform": PHONE_DEVICE["platform"],
         "userAgentMetadata": {
             "brands": brands, "fullVersionList": full_list, "fullVersion": full_version,
-            "platform": "Android", "platformVersion": "", "architecture": "", "model": "", "mobile": True,
+            "platform": "Android", "platformVersion": PHONE_DEVICE["platform_version"], "architecture": "",
+            "model": PHONE_DEVICE["model"], "mobile": True,
             "bitness": "", "wow64": False, "formFactors": ["Mobile"],
         },
     }
@@ -199,11 +256,6 @@ TARGET_READ_MS = 1_500            # how long reading a click or typing target ma
 LISTENER_READ_MS = 1_200          # how long reading the target's click listeners (DevTools) may take before only its inline code is judged
 # listeners that run on a click (read to tell a click that only opens a window or a page from one that sends something)
 _CLICK_EVENTS = frozenset({"click", "mousedown", "mouseup", "pointerdown", "pointerup", "touchstart", "touchend", "auxclick"})
-
-# Words of a button that spends money or commits the user, read from a selector alone (the server keeps "allow on this site" rules away
-# from such clicks). Only a hint for when to insist on a card: never a permission. The finer judgement on the element is commits.py.
-_FINAL_WORDS = ("pay", "buy", "purchase", "checkout", "check out", "place order", "place-order", "order now", "confirm", "submit order",
-                "book now", "reserve", "subscribe", "donate", "결제", "구매", "주문", "예약", "신청", "확인", "충전", "송금", "이체", "후원")
 
 # Which phone is asking. Set per request, so each device keeps its own tab and two phones never click in each other's page.
 browser_owner: ContextVar[str] = ContextVar("browser_owner", default="owner")
@@ -257,6 +309,23 @@ def is_site_tab(key: str) -> bool:
 
 def site_tab_key(url: str) -> str:
     return SITE_TAB_PREFIX + (_site_of(url) or "site")
+
+
+def same_address(a: str, b: str) -> bool:
+    """Whether two addresses are the same page: same scheme, host (a leading "www." ignored), port, path (a trailing slash ignored) and
+    query; the #fragment is ignored. False for anything that is not http(s)."""
+    def parts(url: str) -> tuple[str, str, int | None, str, str] | None:
+        p = urlsplit((url or "").strip())
+        if p.scheme.lower() not in ("http", "https") or not p.hostname:
+            return None
+        try:
+            port = p.port
+        except ValueError:
+            return None
+        return (p.scheme.lower(), p.hostname.lower().removeprefix("www."), None if port in (None, 80, 443) else port,
+                p.path.rstrip("/") or "", p.query)
+    one, two = parts(a), parts(b)
+    return one is not None and one == two
 
 
 def _origin_of(url: str) -> str:
@@ -350,37 +419,31 @@ class SignIn:
     step: str = ""    # code_needed: the verification step the page asks for, "approve" | "code" (verification.py)
 
 
-_FAILED = ("incorrect", "invalid", "wrong password", "wrong username", "not recognized", "not recognised", "doesn't match", "does not match",
-           "do not match", "didn't match", "try again", "unable to log in", "unable to sign in", "bad credentials", "authentication failed",
-           "login failed", "log in failed", "sign in failed", "sign-in failed", "no account", "access denied", "is not correct", "isn't correct",
-           "잘못", "일치하지", "올바르지", "로그인 실패", "다시 시도", "맞지 않", "틀렸", "존재하지 않", "확인해 주세요", "확인해주세요")
-_CODE = ("verification code", "verify it's you", "verify your identity", "two-factor", "two factor", "2-step", "two-step", "2fa", "one-time code",
-         "one-time password", "authenticator app", "security code", "enter the code", "sent a code", "sent you a code",
-         "인증 코드", "인증코드", "인증번호", "인증 번호", "2단계", "보안 코드", "일회용")
-_SIGNED_IN = ("log out", "logout", "sign out", "signout", "log off", "로그아웃")
-
-
-def classify_sign_in(*, before_url: str, after_url: str, password_visible: bool, text: str, challenge: str = "") -> tuple[str, str]:
-    """Read a page after a sign-in was submitted. A reading, not a proof: when nothing is clear it says unknown, and what is stored is never
-    thrown away because of a reading (a 'failed' only stops the assistant from trying again until the user says so).
-    `challenge`: the name of a bot check found on the page by structure (challenge.detect), or ""; words on the page alone never count."""
-    t = (text or "").lower()
+def classify_sign_in(*, before_url: str, after_url: str, password_visible: bool, text: str = "", challenge: str = "", otp_boxes: int = 0,
+                     invalid_marked: bool = False) -> tuple[str, str]:
+    """Read a page after a sign-in was submitted, by structure only (docs/no-word-lists.md phase C): a bot check found by structure, a
+    one-time-code input (autocomplete=one-time-code), the sign-in form still shown and the page marking a field invalid or raising an
+    alert (aria-invalid, role=alert), the password field gone (the caller then checks the page is past every sign-in step). A reading, not a proof: when nothing is clear it says
+    unknown, and what is stored is never thrown away because of a reading (a 'failed' only stops the assistant from trying again until
+    the user says so). `text` is not read. A sign-in to approve on a phone has no input to see: verification.verification_step reads it
+    after this, and `signin_state` demands positive evidence before a hand-over counts as signed in."""
     if challenge:
         return "blocked", f"the site shows a human check ({challenge})"
-    if any(w in t for w in _CODE) and not password_visible:
+    if otp_boxes > 0 and not password_visible:
         return "code_needed", "the site accepted the password and asks for a verification code"
-    if password_visible and any(w in t for w in _FAILED):
-        return "failed", "the page still shows the sign-in form and says the user name or password is wrong"
-    if not password_visible and any(w in t for w in _SIGNED_IN):
-        return "success", "signed in"
-    if not password_visible and after_url.split("#")[0] != before_url.split("#")[0] and not any(w in t for w in _FAILED):
-        return "success", "the sign-in page was left"
+    if password_visible and invalid_marked:
+        return "failed", "the page still shows the sign-in form and marks a field as wrong"
+    if not password_visible:
+        return "success", ("the sign-in page was left" if after_url.split("#")[0] != before_url.split("#")[0]
+                           else "the password field is gone")   # the caller still demands positive evidence (signin_state.still_signing_in)
     return "unknown", "could not tell whether the site accepted the login"
 
 
 _PAGE_STATE = """() => {
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e); return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none'; };
-  return { pw: [...document.querySelectorAll('input[type=password]')].some(shown), text: (document.body ? document.body.innerText : '').slice(0, 20000) };
+  return { pw: [...document.querySelectorAll('input[type=password]')].some(shown), text: (document.body ? document.body.innerText : '').slice(0, 20000),
+           otp: [...document.querySelectorAll('input[autocomplete~="one-time-code"]')].filter(shown).length,
+           invalid: [...document.querySelectorAll('[aria-invalid="true"], [role="alert"]')].some(shown) };
 }"""
 
 # Marks the visible username and password inputs of the page (nothing else is read), so they can be filled by the server.
@@ -396,21 +459,34 @@ _TAG_LOGIN_FIELDS = """() => {
   if (p >= 0) { for (let k = p - 1; k >= 0; k--) { if (textish(inputs[k])) { u = k; break; } } }
   else { u = inputs.findIndex(textish); }
   if (u >= 0) inputs[u].setAttribute('data-vault-u', '1');
-  if (p >= 0) inputs[p].setAttribute('data-vault-p', '1');
-  return { u: u >= 0, p: p >= 0 };
+  if (p >= 0) { inputs[p].setAttribute('data-vault-p', '1'); inputs[p].__keloTagged = inputs[p].type; }
+  return { u: u >= 0, p: p >= 0, p_count: inputs.filter((e) => kind(e) === 'password').length };
+}"""
+# What the tagged password input is right now (the checks at the moment of typing): how many are tagged, whether it is an input of
+# type password that is still the type it had when it was tagged, whether it is rendered masked, and the LENGTH of its value (never the value).
+_LOGIN_STATE = """() => {
+  const els = [...document.querySelectorAll('[data-vault-p]')];
+  const e = els[0];
+  if (!e) return { n: 0 };
+  const c = getComputedStyle(e);
+  const sec = c.webkitTextSecurity || c.textSecurity || '';
+  return { n: els.length, input: e.tagName === 'INPUT', type: (e.type || '').toLowerCase(), tagged: String(e.__keloTagged || '').toLowerCase(),
+           masked: sec !== 'none', length: String(e.value || '').length };
 }"""
 # Marks the card fields of a checkout form in one frame (nothing is read from them but their kind, size and, for an expiry <select>, its
-# options). Recognised by autocomplete (cc-number, cc-exp, cc-exp-month, cc-exp-year, cc-csc, cc-name, postal-code), else by the words of
-# the field (name, id, placeholder, aria-label, its <label>). A card number split over several boxes is marked number-0, number-1, ...
-_TAG_CARD_FIELDS = r"""() => {
+# options). Recognised by their autocomplete tokens (cc-number, cc-exp, cc-exp-month, cc-exp-year, cc-csc, cc-name, postal-code; WHATWG) and, for
+# a field that says nothing, by `given`: {ref: kind} that the page judge (page_judge.py) named after reading the field's label (never a word
+# list here). `open` lists the fields left open: {ref, tag, type, inputmode, maxlength, placeholder, label, options}. A card number split over
+# several boxes is marked number-0, number-1, ...
+_TAG_CARD_FIELDS = r"""(given) => {
+  given = given || {};
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
     return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none' && !e.disabled && !e.readOnly; };
   document.querySelectorAll('[data-kelo-cc]').forEach((e) => e.removeAttribute('data-kelo-cc'));
   const skip = ['hidden', 'checkbox', 'radio', 'submit', 'button', 'image', 'file', 'reset', 'range', 'color', 'date', 'email', 'search', 'url'];
   const els = [...document.querySelectorAll('input, select')].filter((e) => shown(e) && !skip.includes((e.getAttribute('type') || '').toLowerCase()));
-  const words = (e) => {
-    const parts = [e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label'), e.getAttribute('title'), e.getAttribute('data-testid'),
-                   e.getAttribute('data-elements-stable-field-name')];
+  const label = (e) => {
+    const parts = [e.getAttribute('placeholder'), e.getAttribute('aria-label'), e.getAttribute('title'), e.name, e.id];
     if (e.labels) for (const l of e.labels) parts.push(l.innerText);
     const by = e.getAttribute('aria-labelledby');
     if (by) by.split(/\s+/).forEach((id) => { const x = document.getElementById(id); if (x) parts.push(x.innerText); });
@@ -418,25 +494,26 @@ _TAG_CARD_FIELDS = r"""() => {
       const near = (e.parentElement.innerText || '').trim();   // a caption written next to the box, without a <label>
       if (near.length <= 40) parts.push(near);
     }
-    return parts.filter(Boolean).join(' ').toLowerCase();
+    return parts.filter(Boolean).join(' ').slice(0, 80);
   };
   const ac = (e) => (e.getAttribute('autocomplete') || '').toLowerCase();
-  const kindOf = (e) => {
-    const a = ac(e), w = words(e);
-    if (/cc-number/.test(a) || /card.?num|cardnum|cc.?num|credit.?card|card[\s_\-]*no(\d|\b)|\bpan\b|카드\s*번호/.test(w)) return 'number';
-    if (/cc-csc/.test(a) || /\bcvc|\bcvv|\bcsc\b|security.?code|card.?code|cvc2|보안\s*코드|cvc|cvv/.test(w)) return 'cvc';
-    if (/cc-exp-month/.test(a) || /exp\w*[\s_\-]*(month|mm)\b|\b(month|mm)[\s_\-]*exp|(유효|만료).*월/.test(w)) return 'exp_month';
-    if (/cc-exp-year/.test(a) || /exp\w*[\s_\-]*(year|yy)|\b(year|yy)[\s_\-]*exp|(유효|만료).*(년|연도)/.test(w)) return 'exp_year';
-    if (/cc-exp/.test(a) || /expir|exp.?date|\bexp\b|mm\s*\/\s*yy|유효\s*기간|만료/.test(w)) return 'exp';
-    if (/cc-name/.test(a) || /name.?on.?card|card.?holder|holder.?name|cardholder|카드\s*소유자|명의/.test(w)) return 'name';
-    if (/postal-code/.test(a) || /postal|\bzip|post.?code|우편\s*번호/.test(w)) return 'postal';
-    return '';
+  const kindOf = (e, i) => {
+    const a = ac(e);
+    if (/cc-number/.test(a)) return 'number';
+    if (/cc-csc/.test(a)) return 'cvc';
+    if (/cc-exp-month/.test(a)) return 'exp_month';
+    if (/cc-exp-year/.test(a)) return 'exp_year';
+    if (/cc-exp/.test(a)) return 'exp';
+    if (/cc-name/.test(a)) return 'name';
+    if (/postal-code/.test(a)) return 'postal';
+    const g = String(given['f' + i] || '').replace(/-\d$/, '');
+    return ['number', 'cvc', 'exp', 'exp_month', 'exp_year', 'name', 'postal'].includes(g) ? g : '';
   };
-  const found = els.map((e) => [e, kindOf(e)]);
+  const found = els.map((e, i) => [e, kindOf(e, i)]);
   const card = found.some(([e, k]) => ['number', 'cvc', 'exp', 'exp_month', 'exp_year'].includes(k) && (k === 'number' || k === 'cvc' || /cc-/.test(ac(e))));
   const max = (e) => (e.maxLength && e.maxLength > 0 ? e.maxLength : 0);
   // a number split over boxes: several 'number' fields, or one short one followed by unlabeled short boxes
-  let numbers = found.filter(([, k]) => k === 'number').map(([e]) => e);
+  let numbers = found.filter(([e, k]) => k === 'number' && e.tagName !== 'SELECT').map(([e]) => e);
   if (numbers.length === 1 && max(numbers[0]) && max(numbers[0]) <= 6) {
     const at = els.indexOf(numbers[0]);
     for (let i = at + 1; i < els.length && numbers.length < 4; i++) {
@@ -445,17 +522,10 @@ _TAG_CARD_FIELDS = r"""() => {
     }
   }
   if (numbers.length > 1 && !numbers.every((e) => max(e) && max(e) <= 7)) numbers = numbers.slice(0, 1);   // two whole-number fields: use the first
-  const out = { any: false, card, number: [], exp: null, exp_month: null, exp_year: null, cvc: false, name: false, postal: false };
+  if (numbers.length === 1 && max(numbers[0]) && max(numbers[0]) >= 8 && max(numbers[0]) < 13) numbers = [];   // no card number is this short
+  const out = { any: false, card, number: [], exp: null, exp_month: null, exp_year: null, cvc: false, name: false, postal: false, open: [] };
   numbers.forEach((e, i) => { e.setAttribute('data-kelo-cc', 'number-' + i); out.number.push(max(e)); });
   const first = (k) => { const hit = found.find(([e, kk]) => kk === k && !e.hasAttribute('data-kelo-cc')); return hit ? hit[0] : null; };
-  if (card) {   // unlabeled expiry boxes next to a card form: month / year by their own words
-    for (const [e, k] of found) {
-      if (k || e.hasAttribute('data-kelo-cc')) continue;
-      const w = words(e);
-      if (!first('exp_month') && /\bmm\b|month|월/.test(w)) { found[found.findIndex(([x]) => x === e)][1] = 'exp_month'; continue; }
-      if (!first('exp_year') && /\byy(yy)?\b|year|년/.test(w)) { found[found.findIndex(([x]) => x === e)][1] = 'exp_year'; }
-    }
-  }
   const opts = (e) => (e.tagName === 'SELECT' ? [...e.options].map((o) => [o.value, (o.text || '').trim()]).slice(0, 60) : null);
   for (const k of ['exp', 'exp_month', 'exp_year']) {
     const e = first(k);
@@ -464,58 +534,64 @@ _TAG_CARD_FIELDS = r"""() => {
     out[k] = { max: max(e), placeholder: (e.getAttribute('placeholder') || '').toLowerCase(), options: opts(e) };
   }
   const cvc = first('cvc');
-  if (cvc) { cvc.setAttribute('data-kelo-cc', 'cvc'); out.cvc = true; }
-  const extra = (e) => e && !e.value && (card || /cc-|billing/.test(ac(e)) || /billing|card/.test(words(e)));
+  if (cvc && cvc.tagName !== 'SELECT') { cvc.setAttribute('data-kelo-cc', 'cvc'); out.cvc = true; }
+  const extra = (e) => e && !e.value && (card || /cc-|billing/.test(ac(e)));
   const name = first('name'), postal = first('postal');
   if (extra(name)) { name.setAttribute('data-kelo-cc', 'name'); out.name = true; }
   if (extra(postal)) { postal.setAttribute('data-kelo-cc', 'postal'); out.postal = true; }
   out.any = out.number.length > 0 || !!out.exp || !!out.exp_month || !!out.exp_year || out.cvc;
   if (!out.any) { out.name = out.postal = false; document.querySelectorAll('[data-kelo-cc]').forEach((e) => e.removeAttribute('data-kelo-cc')); }
+  // the fields still open (no autocomplete token, not named by `given`): what the page judge reads, in a frame that has a field the
+  // shape of a card number or a code and no card fields recognised yet
+  if (els.length >= 3 && !(out.number.length && (out.exp || out.exp_month) && out.cvc)) {
+    els.forEach((e, i) => { if (!e.hasAttribute('data-kelo-cc') && !found[i][1] && !/\S/.test(ac(e).replace(/off/, ''))) {
+      out.open.push({ ref: 'f' + i, tag: e.tagName.toLowerCase(), type: (e.getAttribute('type') || '').toLowerCase(), inputmode: e.getAttribute('inputmode') || '', maxlength: max(e),
+                      placeholder: (e.getAttribute('placeholder') || '').slice(0, 40), label: label(e),
+                      options: opts(e) ? opts(e).slice(0, 4).map((o) => o[1]).concat([String(opts(e).length) + ' options']) : [] });
+    } });
+    out.open = out.open.slice(0, 24);
+  }
   return out;
 }"""
 _UNTAG_CARD_FIELDS = "() => document.querySelectorAll('[data-kelo-cc]').forEach((e) => e.removeAttribute('data-kelo-cc'))"
 
-# The shipping fields of a checkout (browser_fill_shipping): by their autocomplete tokens first, else by their words (label, name, id,
-# placeholder) in common languages. Billing-only, login, e-mail, card, coupon and search fields are never taken.
-_TAG_ADDRESS_FIELDS = r"""() => {
+# The shipping fields of a checkout (browser_fill_shipping): by their autocomplete tokens (WHATWG) and by their type (a telephone box), else by
+# `given`: {ref: kind} that the page judge (page_judge.py) named after reading the field's label, name and placeholder. No word list of any
+# language is read here. Billing-only, login, e-mail, card, coupon and search fields are never taken: the autocomplete tokens and input types
+# say so, and the judge names only the fields it is sure about. `open` lists the fields left open (ref, tag, type, inputmode, maxlength,
+# placeholder, label, options) for the judge.
+_TAG_ADDRESS_FIELDS = r"""(given) => {
+  given = given || {};
+  document.querySelectorAll('[data-kelo-addr]').forEach((e) => e.removeAttribute('data-kelo-addr'));
   const vis = (e) => { const r = e.getBoundingClientRect(); const st = getComputedStyle(e);
                        return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none'; };
-  const words = (e) => [e.labels && e.labels.length ? Array.from(e.labels).map((l) => l.innerText).join(' ') : '', e.getAttribute('aria-label'),
-                        e.getAttribute('placeholder'), e.getAttribute('name'), e.id, e.getAttribute('title')].filter(Boolean).join(' ');
+  const label = (e) => [e.labels && e.labels.length ? Array.from(e.labels).map((l) => l.innerText).join(' ') : '', e.getAttribute('aria-label'),
+                        e.getAttribute('placeholder'), e.getAttribute('name'), e.id, e.getAttribute('title')].filter(Boolean).join(' ').slice(0, 80);
   const AC = {'name': 'name', 'given-name': 'given', 'family-name': 'family', 'tel': 'tel', 'tel-national': 'tel', 'tel-local': 'tel',
               'tel-country-code': 'tel_country', 'postal-code': 'postal', 'address-line1': 'line1', 'address-line2': 'line2',
               'address-line3': 'line2', 'street-address': 'street', 'address-level1': 'level1', 'address-level2': 'level2',
               'address-level3': 'level3', 'country': 'country', 'country-name': 'country'};
-  const NOT = /coupon|promo|search|query|\bqty\b|quantity|수량|쿠폰|검색|password|e-?mail|이메일|메일|card|카드|cvc|cvv|user.?name|login|아이디|birth|생년/i;
-  const R = [
-    ['note', /memo|\bnote|request|instruction|배송\s*메모|요청\s*사항|요청사항|備考|配達.*(指定|メモ)|备注|lieferhinweis|hinweis/i],
-    ['tel_country', /country.?code|calling.?code|국가\s*번호|dial.?code/i],
-    ['tel', /phone|mobile|\btel|cell|휴대폰|핸드폰|전화|연락처|電話|携帯|电话|手机|telefon|téléphone|teléfono/i],
-    ['postal', /zip|postal|post.?code|우편|郵便|〒|邮编|郵遞|\bplz\b|code postal|código postal|\bcap\b/i],
-    ['line2', /address.?2|addr.?2|line.?2|상세|detail|\bapt|suite|\bunit\b|building|建物|地址.?2|zusatz|complément|complemento/i],
-    ['level1', /\bstate\b|province|region|prefecture|county|시\s*\/?\s*도|都道府県|bundesland|provincia|région/i],
-    ['level2', /\bcity\b|\btown\b|locality|시\s*\/?\s*군\s*\/?\s*구|市区町村|城市|\bort\b|\bstadt\b|\bville\b|ciudad|città|cidade|город/i],
-    ['country', /\bcountry\b|국가|^国$|país|\bpays\b|\bland\b/i],
-    ['family', /last.?name|family.?name|surname|nachname|nom de famille|(^|\s)(姓|セイ)(\s|$)/i],
-    ['given', /first.?name|given.?name|vorname|prénom|(^|\s)(名|メイ)(\s|$)/i],
-    ['name', /full.?name|\bname\b|recipient|receiver|받는\s*(분|사람)|수령인|수취인|성명|이름|氏名|お名前|姓名|收件人|收貨人|empfänger|destinatario/i],
-    ['line1', /address.?1|addr.?1|line.?1|street|address|주소|도로명|住所|番地|地址|straße|strasse|\brue\b|calle|indirizzo|endereço|адрес/i],
-  ];
+  const KINDS = ['name', 'given', 'family', 'tel', 'tel_country', 'postal', 'line1', 'line2', 'street', 'level1', 'level2', 'level3', 'country', 'note'];
+  const OTHER_AC = /(^|\s)(username|email|new-password|current-password|one-time-code|cc-[a-z-]+|bday[a-z-]*|organization[a-z-]*|url|photo|impp)(\s|$)/;
+  const open = [];
   const found = {};
   let n = 0;
+  let i = -1;
   for (const e of document.querySelectorAll('input, select, textarea')) {
+    i++;
     const type = (e.getAttribute('type') || '').toLowerCase();
     if (['hidden', 'password', 'email', 'search', 'checkbox', 'radio', 'submit', 'button', 'image', 'file', 'reset'].includes(type)) continue;
     if (e.disabled || !vis(e)) continue;
-    const ac = (e.getAttribute('autocomplete') || '').toLowerCase().split(/\s+/).filter((x) => x && !x.startsWith('section-'));
-    if (ac.includes('billing') || ac.some((x) => x.startsWith('cc-'))) continue;
-    let kind = AC[ac.filter((x) => x !== 'shipping').pop() || ''];
-    const w = words(e);
+    const acs = (e.getAttribute('autocomplete') || '').toLowerCase().split(/\s+/).filter((x) => x && !x.startsWith('section-'));
+    if (acs.includes('billing') || acs.some((x) => x.startsWith('cc-')) || OTHER_AC.test(acs.join(' '))) continue;
+    let kind = AC[acs.filter((x) => x !== 'shipping').pop() || ''];
+    if (!kind && type === 'tel') kind = 'tel';
     if (!kind) {
-      if (NOT.test(w)) continue;
-      const hit = R.find(([, re]) => re.test(w));
-      kind = hit ? hit[0] : '';
-      if (!kind && e.tagName === 'TEXTAREA' && /address|주소|住所|地址/i.test(w)) kind = 'street';
+      const g = String(given['f' + i] || '').replace(/-\d$/, '');
+      kind = KINDS.includes(g) ? g : '';
+      if (!kind && !String(given['f' + i] || '')) open.push({ ref: 'f' + i, tag: e.tagName.toLowerCase(), type, inputmode: e.getAttribute('inputmode') || '', maxlength: e.maxLength > 0 ? e.maxLength : 0,
+        placeholder: (e.getAttribute('placeholder') || '').slice(0, 40), label: label(e),
+        options: e.tagName === 'SELECT' ? Array.from(e.options).slice(0, 4).map((o) => (o.text || '').trim()).concat([String(e.options.length) + ' options']) : [] });
     }
     if (!kind) continue;
     const list = found[kind] = found[kind] || [];
@@ -525,7 +601,7 @@ _TAG_ADDRESS_FIELDS = r"""() => {
                ro: !!(e.readOnly), opts: e.tagName === 'SELECT' ? Array.from(e.options).map((o) => [o.value, (o.text || '').trim()]) : []});
     n++;
   }
-  return {n, found};
+  return {n, found, open: open.slice(0, 30)};
 }"""
 _SET_READONLY = r"""([tag, value]) => { const e = document.querySelector(`[data-kelo-addr="${tag}"]`); if (!e) return false;
   const proto = e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -568,24 +644,21 @@ def pick_select(options: list[list[str]], wants: list[str]) -> str | None:
     return None
 
 
-# Words of a page that asks the payer to prove it is them (the card's own app, 3-D Secure, ISP, a one-time code). Then the user must act
-# on their phone: the assistant says so and waits, instead of clicking around.
-_EXTRA_AUTH = ("3-d secure", "3d secure", "verified by visa", "visa secure", "securecode", "identity check", "safekey", "protectbuy",
-               "one-time password", "one time password", "authenticate this payment", "authenticate your payment", "approve the payment in",
-               "confirm in your bank", "bank app", "verify your card", "안심클릭", "앱카드", "카드사 앱", "카드사앱", "간편인증", "본인인증",
-               "공동인증", "인증서", "결제 비밀번호", "결제비밀번호", "인증번호", "ars 인증", "isp 인증", "isp결제", "페이북", "휴대폰 인증")
+# Whether a payment page asks the payer to prove it is them (the card's own app, 3-D Secure, a bank's code), by STRUCTURE (docs/no-word-lists.md,
+# hc-pagefields): a visible one-time-code input in the page or one of its frames, or the tab left the shop's site while a purchase was allowed
+# (the card network's or the bank's own page). No scheme name or word of a language is read. Then the user must act on their phone: the
+# assistant says so and waits (payment_step_wait reads the page with the page judge), instead of clicking around.
+_EXTRA_AUTH_JS = r"""() => [...document.querySelectorAll('input')].some((e) => {
+  const r = e.getBoundingClientRect(), c = getComputedStyle(e);
+  if (!(r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none') || e.disabled) return false;
+  const ac = (e.getAttribute('autocomplete') || '').toLowerCase();
+  if (ac.split(/\s+/).includes('one-time-code')) return true;
+  return ['', 'text', 'tel', 'number'].includes((e.getAttribute('type') || '').toLowerCase()) && /numeric|decimal/.test(e.getAttribute('inputmode') || '')
+    && e.maxLength >= 5 && e.maxLength <= 8 && !/(^|\s)(cc-[a-z-]+|tel[a-z-]*|postal-code)(\s|$)/.test(ac);
+})"""
 
 
-def extra_auth(text: str) -> str:
-    """The words that show the page asks for extra authentication of the payment, or ""."""
-    t = (text or "").lower()
-    hit = next((w for w in _EXTRA_AUTH if w in t), "")
-    if not hit and (m := re.search(r"\b(isp|otp|3ds)\b", t)):
-        hit = m.group(1).upper()
-    return hit
-
-
-EXTRA_AUTH_NOTE = ("[The page asks for extra authentication of the payment ({words}). If this payment was approved with confirm_purchase, "
+EXTRA_AUTH_NOTE = ("[The page asks for extra authentication of the payment ({words}). If this payment was approved with checkout_review, "
                    "call payment_step_wait now: it shows the user one card with the code, QR code and time left and WAITs for their answer. "
                    "Otherwise tell the user to complete it on their phone (the card company's app, bank app or code) and WAIT for them to "
                    "say it is done. Do not click, retry or fill anything meanwhile; afterwards read the page once with browser_read and report.]")
@@ -606,10 +679,12 @@ _TAG_CODE_FIELDS = r"""(sel) => {
     picked.slice(0, 8).forEach((e, i) => e.setAttribute('data-kelo-otp', String(i)));
     return { boxes: picked.length > 8 ? 8 : picked.length };
   }
-  const words = (e) => [e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label'), e.getAttribute('autocomplete')]
-    .concat(e.labels ? [...e.labels].map((l) => l.innerText) : []).filter(Boolean).join(' ').toLowerCase();
-  const one = inputs.find((e) => (e.getAttribute('autocomplete') || '').toLowerCase() === 'one-time-code')
-    || inputs.find((e) => (e.getAttribute('type') || '').toLowerCase() !== 'password' && /otp|one.?time|verif|2fa|mfa|totp|auth.?code|security.?code|\bcode\b|pin\b|token|인증|코드|확인\s*번호|보안\s*번호/.test(words(e)) && !/coupon|promo|zip|postal|우편|쿠폰|card|카드/.test(words(e)));
+  // a code box by STRUCTURE only: autocomplete one-time-code, else the one visible box shaped like a code (numeric input mode or a short
+  // maxlength of 4-8, no autocomplete token that names something else). Two or more such boxes that are not a one-character row: not guessed.
+  const named = /(^|\s)(username|email|tel[a-z-]*|cc-[a-z-]+|postal-code|street-address|address-[a-z0-9-]+|name|given-name|family-name|current-password|new-password|bday[a-z-]*|country[a-z-]*|organization[a-z-]*)(\s|$)/;
+  const shaped = inputs.filter((e) => (e.getAttribute('type') || '').toLowerCase() !== 'password' && !named.test((e.getAttribute('autocomplete') || '').toLowerCase())
+    && ((/numeric|decimal/.test(e.getAttribute('inputmode') || '') && e.maxLength !== 1) || (e.maxLength >= 4 && e.maxLength <= 8)));
+  const one = inputs.find((e) => (e.getAttribute('autocomplete') || '').toLowerCase() === 'one-time-code') || (shaped.length === 1 ? shaped[0] : null);
   const singles = inputs.filter((e) => e.maxLength === 1);
   if (singles.length >= 4 && singles.length <= 8 && (!one || one.maxLength === 1)) {
     singles.forEach((e, i) => e.setAttribute('data-kelo-otp', String(i)));
@@ -777,12 +852,6 @@ def _luhn(n: str) -> bool:
     return len(n) >= 12 and total % 10 == 0
 
 
-def looks_final(selector: str) -> bool:
-    """Whether a click target reads like the button that pays, orders, books or otherwise commits (a hint, never a permission)."""
-    t = re.sub(r"\s+", " ", (selector or "").lower())
-    return any(w in t for w in _FINAL_WORDS)
-
-
 def _country_names(cc: str) -> list[dict[str, str]]:
     from .. import address   # the country's English name, for a country list on the page
     return [c for c in address.countries() if c["code"] == (cc or "").upper()]
@@ -880,6 +949,8 @@ class BrowserSession:
         self._control: dict[str, str] = {}                       # tab -> the device that took control of it (absent = the agent's)
         self._handed_back: dict[str, asyncio.Event] = {}         # tab -> set whenever the agent may act on it
         self.control_listeners: list[Callable[[str, str | None], Any]] = []   # (tab, device or None) on every change
+        self.handback_listeners: list[Callable[[str, str, str, str], Any]] = []   # (tab, what the owner did, reason, "browser") on every hand-back
+        self.close_listeners: list[Callable[[str], Awaitable[Any]]] = []   # (tab) after close_tab closed it (the live view's X screen lets go)
         self.control_wait = CONTROL_WAIT_SECONDS
         # ---- S6: what the pages are, and what the browser is set up with (see the notes at each method)
         self._doc: dict[str, tuple[int, dict[str, str]]] = {}   # tab -> (status, headers) of its main document's last response
@@ -889,6 +960,7 @@ class BrowserSession:
         self._site_views: dict[str, str] = {}                    # site -> the view that last worked there ("desktop" | "mobile")
         self._checks: dict[str, tuple[str, float]] = {}          # tab -> (bot check vendor, when it was announced)
         self.check_listeners: list[Callable[[str, Challenge, str], Any]] = []   # (tab, check, host) when a check is first seen
+        self._gpu_ctx: dict[int, Any] = {}                       # id(context) -> context, given GPU_SCRIPT once (see _install_gpu)
         self._private: dict[str, Any] = {}                       # tab -> its own private context (nothing kept after it closes)
         self._type_cdp: dict[str, tuple[Any, Any]] = {}          # tab -> (page, the DevTools session) that types Korean (_ime_sender)
         self._tab_cdp: dict[str, Any] = {}                       # tab -> the CDP session that keeps its time zone / locale override
@@ -902,17 +974,22 @@ class BrowserSession:
         self.prepare_pages = connect is None                     # set up time zone / downloads on new tabs (off for the plain test fakes)
         self.journal: Any = None                                 # takeover.TakeoverJournal: what the user does while holding a tab
         self.has_mailbox: Callable[[], bool] = lambda: False     # a mailbox is connected (a code prompt then points to find_login_code)
+        self._login_url: dict[str, str] = {}                     # tab -> the address the agent's last fill_login started from
+        self._login_at: dict[str, float] = {}                    # tab -> when fill_login last typed a saved login there (a sign-in the agent started)
         self.sign_ins: dict[str, dict[str, Any]] = {}            # tab -> the sign-in the agent started there: {"site", "at", "task"}
         self.auto_code: Callable[[str], Awaitable[str | None]] = _no_auto_code   # types a code from the site's own mail (browser_more)
         self._judged: dict[str, tuple[str, str, bool]] = {}      # device -> (selector, commit kind, password field) of its last judged step
         self._carried: dict[str, tuple[str, str, str, float]] = {}   # device -> a step judge_ahead judged for the next judge() of it
         self._judged_info: dict[str, dict[str, Any] | None] = {}  # device -> what was read of that step's element (commits.TARGET_JS)
+        self._verdict: dict[str, Any] = {}   # device -> the step judge's last verdict (its flags; use_cancel_action reads them)
         # device -> {(page, label): commit kind}: the first judgement of an element stays its judgement on that page (a retry with
         # another selector for the same button gets the same card words)
         self._kinds_seen: dict[str, dict[tuple[str, str], str]] = {}
         # device -> (page, label, monotonic deadline, tries left) of a step the user allowed whose click then failed: the same element
         # tried again with another selector does not ask again
         self._allowed_failed: dict[str, tuple[str, str, float, int]] = {}
+        self.page_judge: Any = None   # page_judge.PageJudge: what a page asks (a verification step, a payment approval) and which field is which when structure is silent (None = no model wired: the safer side)
+        self.step_judge: Any = None   # step_judge.StepJudge: what a submit control does when the page's structure cannot tell (None = no model wired)
         self.order_dialog: Callable[[str, str, str], bool] | None = None   # (tab, host, message): a pop-up an open order may accept
         self._wake: dict[str, asyncio.Event] = {}                # tab -> set when it is handed back (a waiting human check looks again)
         self._options: dict[str, set[str]] = {}                  # tab -> option selectors marked on its page (data-kelo-opt)
@@ -947,6 +1024,7 @@ class BrowserSession:
         self._blocked: dict[tuple[str, str], tuple[int, float]] = {}
         self._steps: dict[str, asyncio.Future] = {}              # tab -> the agent step running on it now (run_step)
         self._step_clock: dict[str, dict[str, float]] = {}       # tab -> {"spent", "limit"}: the running step's clock (run_step)
+        self.nav_block: Callable[[], str | None] | None = None   # set by the checkout tools: why this tab may not be reloaded or navigated now
         self.pacer = SitePacer(clock)                            # per-site gaps between submits and navigations (pacing.py)
         self.sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep   # waits of the pacer (tests: a fake clock's)
         self._typed: dict[str, bool] = {}                        # tab -> text was typed since its last submit or navigation
@@ -977,9 +1055,22 @@ class BrowserSession:
                 pass
         self._tell(key, device)
 
-    async def release_control(self, key: str) -> bool:
+    def phone_cdp(self, key: str) -> Any:
+        """The DevTools session holding the phone view's overrides for this tab (None in the desktop view)."""
+        return self._view_cdp.get(key)
+
+    def tab_cdp(self, key: str) -> Any:
+        """The DevTools session the tab was prepared with (None when it has none)."""
+        return self._tab_cdp.get(key)
+
+    def target_id(self, key: str) -> str:
+        """The DevTools target id of the tab's page ("" when it was not read)."""
+        return self._targets.get(key, ("", ""))[0]
+
+    async def release_control(self, key: str, reason: str = "owner") -> bool:
         """Hand the tab back to the agent. The purchase window of that tab is closed (the user's own clicks never count towards it),
-        and a page the agent would not be allowed to open is left for about:blank. False when nobody held it."""
+        and a page the agent would not be allowed to open is left for about:blank. `reason` "timeout": the owner's connection went away
+        and the tab came back on its own, which the agent is told (they may not have finished). False when nobody held it."""
         if self._control.pop(key, None) is None:
             return False
         self._purchase.pop(key, None)
@@ -993,14 +1084,22 @@ class BrowserSession:
                     await page.goto("about:blank")
         except Exception:  # noqa: BLE001 - a tab that went away meanwhile
             pass
+        summary = ""
         if self.journal is not None:
             try:
                 summary = self.journal.stop(key)
             except Exception:  # noqa: BLE001
                 summary = ""
-            if summary:
-                self.note(key, summary)            # the agent reads it with its next look at the page
+        if reason == "timeout":
+            summary = (TIMEOUT_NOTE + "\n" + summary) if summary else TIMEOUT_NOTE
+        if summary:
+            self.note(key, summary)            # the agent reads it with its next look at the page
         self._tell(key, None)   # first, so whoever listens hears it before a waiting agent step moves on
+        for fn in list(self.handback_listeners):   # the paused jobs of the tab go on; a chat turn that ended hears of it (workers.handed_back)
+            try:
+                fn(key, summary, reason, "browser")
+            except Exception:  # noqa: BLE001 - a listener never breaks handing back
+                pass
         self._handed_back.setdefault(key, asyncio.Event()).set()
         self._wake.setdefault(key, asyncio.Event()).set()   # a human check waiting on this tab looks again right away
         return True
@@ -1137,6 +1236,14 @@ class BrowserSession:
             pass
         return key not in self._control
 
+    async def hold_for_navigation(self, args: dict[str, Any] | None = None) -> str | None:
+        """hold_for_user, then the order journal's block: while an order of this task may have gone through (pressed or unknown) the tab
+        is not reloaded or navigated (browser_open, browser_view): the confirmation may be on it."""
+        held = await self.hold_for_user(args)
+        if held:
+            return held
+        return self.nav_block() if self.nav_block is not None else None
+
     async def hold_for_user(self, _args: dict[str, Any] | None = None) -> str | None:
         """A tool's `hold`: before an agent step on this device's tab, wait while the user controls it. None = go on; otherwise the
         words the agent gets instead of a result."""
@@ -1242,11 +1349,13 @@ class BrowserSession:
         if info is None and ref_of(selector) and words == selector:
             kind = "unknown"
         elif tool == "browser_type":
-            kind = judge_type(info, words, str(args.get("text", "")), bool(args.get("submit", False)))
+            kind = await self.type_kind(info, words, str(args.get("text", "")), bool(args.get("submit", False)))
         else:
-            kind = judge_click(info, words, url=self.current_url())
+            kind = await self.click_kind(info, words)
+        # a typed value is secret when its field is a password field, or when the field cannot be read at all (fail closed: the
+        # value is masked; no word of the label decides, hc-final-a)
         secret = (bool(info) and (str(info.get("type") or "") == "password" or "password" in str(info.get("autocomplete") or ""))) or (
-            info is None and bool(re.search(r"passw|\bpw\b|비밀번호", words, re.I)))
+            info is None and tool == "browser_type")
         target = self._target_key(info, selector)
         if kind and target[1]:
             seen = self._kinds_seen.setdefault(browser_owner.get(), {})
@@ -1256,6 +1365,82 @@ class BrowserSession:
         self._judged[browser_owner.get()] = (selector, kind, tool == "browser_type" and secret)
         self._judged_info[browser_owner.get()] = info
         return kind
+
+    @staticmethod
+    def is_submit_step(tool: str, info: dict[str, Any], args: dict[str, Any]) -> bool:
+        """A step that submits a form by the page's structure: a submit control inside a form, or Enter typed into a field of one."""
+        if tool == "browser_type":
+            return bool(args.get("submit")) and bool(info.get("in_form"))
+        return bool(info.get("submits"))
+
+    async def judged_kind(self, info: dict[str, Any]) -> str:
+        """The commit kind the step judge gives a control ("" = nothing to ask for; "unknown" = the judge could not answer, or there is
+        none wired: the owner is asked, never a pass)."""
+        if self.step_judge is None:
+            return "unknown"
+        verdict = await self.step_judge.web(info)
+        self._verdict[browser_owner.get()] = verdict
+        return kind_of_verdict(verdict, info)
+
+    async def click_kind(self, info: dict[str, Any] | None, words: str) -> str:
+        """The commit kind of a click (docs/click-judge.md): structure first (a link, a window opener, plain text, a page-state
+        control only looks), the step judge for a step that changes something or cannot be read."""
+        if click_route(info) == "":
+            return ""
+        if info is None:
+            info = {"text": words, "url": self.current_url()}   # unreadable: the judge sees its name only
+        return await self.judged_kind(info)
+
+    async def type_kind(self, info: dict[str, Any] | None, words: str, text: str, submit: bool) -> str:
+        """The commit kind of typing: a card number or a password field asks (judge_type); Enter into a form that is no search form is
+        a submit, judged like a click, and the judge's kind wins when it says one (no flag = no card)."""
+        own = judge_type(info, words, text, submit)
+        if info is None or not submit or not info.get("in_form") or info.get("search_form"):
+            return own
+        return await self.judged_kind(info) or own
+
+    async def submit_refusal(self, tool: str, args: dict[str, Any]) -> str | None:
+        """The safety net's refusal: a submit control on a page WITHOUT checkout structure that the step judge says spends money. The
+        way to pay is checkout_review / checkout_submit (tools/checkout.py REFUSAL). None for everything else (the judge being
+        unavailable asks the owner in judge())."""
+        if tool in POINT_TOOLS:
+            return await self._point_refusal(tool, args)
+        selector = str(args.get("selector") or "")
+        if self.step_judge is None or not selector or (tool == "browser_type" and not args.get("submit")):
+            return None
+        info = await self.read_target(selector)
+        if info is None or not self.is_submit_step(tool, info, args):
+            return None
+        verdict = await self.step_judge.web(info)
+        return REFUSAL if verdict is not None and verdict.spends_money else None
+
+    @staticmethod
+    def is_point_submit(info: dict[str, Any] | None) -> bool:
+        """What is at a point is a submit control, or a control inside a form (pressing it may submit the form)."""
+        return bool(info) and bool(info.get("submits") or info.get("in_form"))
+
+    async def _point_infos(self, tool: str, args: dict[str, Any]) -> list[dict[str, Any] | None]:
+        """What is at the places of a point step (a drag: where it starts and where it lets go), read like a click target."""
+        try:
+            pts = step_points(tool, args)
+            ends = [pts[0]] if len(pts) == 1 else [pts[0], pts[-1]]
+            return [await asyncio.wait_for(self.read_point(*self.page_point(*p)), TARGET_READ_MS / 1000 + LISTENER_READ_MS / 1000 + 1)
+                    for p in ends]
+        except Exception:  # noqa: BLE001 - nothing readable: judge() asks the owner for an unreadable point
+            return [None]
+
+    async def _point_refusal(self, tool: str, args: dict[str, Any]) -> str | None:
+        """The safety net for a point press (click at coordinates, drag) on a page without checkout structure: when the control at the
+        point is a submit control, or inside a form, the step judge says what it does (cached per page path + control); spends_money
+        is refused with the checkout tools message. A judge that cannot answer refuses nothing here (judge() turns it into a card)."""
+        if self.step_judge is None:
+            return None
+        for info in await self._point_infos(tool, args):
+            if self.is_point_submit(info):
+                verdict = await self.step_judge.web(info)
+                if verdict is not None and verdict.spends_money:
+                    return REFUSAL
+        return None
 
     async def _judge_point(self, tool: str, args: dict[str, Any]) -> str:
         """A point step is judged by the element at its point, as a click on it; a drag by the elements where it starts AND where it
@@ -1269,8 +1454,11 @@ class BrowserSession:
                      for p in ends]
         except Exception:  # noqa: BLE001
             infos = [None]
-        judged = [("unknown" if i is None else judge_click(i, "", url=self.current_url()), i) for i in infos]
+        judged = [("unknown" if i is None else await self.click_kind(i, ""), i) for i in infos]
         # the weightiest: "unknown" (always asks), then any commit kind, then "" (only looking)
+        for n, (k, i) in enumerate(judged):   # a submit control (or one inside a form) the older rules call ordinary: the step judge decides
+            if not k and self.is_point_submit(i):
+                judged[n] = (await self.judged_kind(i), i)
         kind, info = max(judged, key=lambda ki: 2 if ki[0] == "unknown" else 1 if ki[0] else 0)
         target = self._target_key(info, "")
         if kind not in ("", "unknown") and target[1]:
@@ -1452,15 +1640,16 @@ class BrowserSession:
         return left > 0 and time.monotonic() < until and bool(host) and (host == h or same_site(host, h))
 
     def use_cancel_action(self, selector: str) -> bool:
-        """One click that cancels an order (words like "cancel order" / "주문 취소", never "delete account") inside the open cancel window
-        on its site. False = ask the user as usual."""
+        """One click the step judge says deletes something, inside the open cancel window on its site (the window counts the clicks).
+        False = ask the user as usual."""
         if not self.cancel_active() or self.judged(selector) != "delete":
             return False
-        words = self.selector_words(selector)
-        if not cancel_words(words):
+        v = self._verdict.get(browser_owner.get())   # a deletion only: never closing the account or a membership, security, money or sending
+        if v is None or any(getattr(v, f, False) for f in ("opts_out", "account_security", "spends_money", "sends", "signs_up", "applies")):
             return False
         h, until, left, no = self._cancel[browser_owner.get()]
         self._cancel[browser_owner.get()] = (h, until, left - 1, no)
+        words = self.selector_words(selector)
         if self.on_cancel_click is not None:
             try:
                 self.on_cancel_click(self.current_host(), ref_name(words) if ref_of(selector) else words, no)
@@ -1564,6 +1753,20 @@ class BrowserSession:
         except Exception:  # noqa: BLE001 - it stays in the desktop view
             pass
 
+    async def _install_gpu(self, ctx: Any) -> None:
+        """GPU_SCRIPT on a context Kelo uses: added for its future pages once, and run once on the pages already open in it, so an open
+        tab changes without a reload. Kept per context (by id, the context kept alive so its id is not reused)."""
+        if ctx is None or id(ctx) in self._gpu_ctx:
+            return
+        self._gpu_ctx[id(ctx)] = ctx
+        src = f"({GPU_SCRIPT})({json.dumps(GPU_DATA)})"
+        await ctx.add_init_script(script=src)
+        for page in list(getattr(ctx, "pages", None) or []):
+            try:
+                await page.evaluate(src)
+            except Exception:  # noqa: BLE001 - a page closing meanwhile: its next page gets the script anyway
+                pass
+
     async def _ensure_browser(self) -> None:
         """Connect to the browser container (first use, or after it restarted). Everything tied to the old connection is forgotten."""
         from playwright.async_api import async_playwright
@@ -1575,6 +1778,8 @@ class BrowserSession:
             ip = (await asyncio.to_thread(socket.gethostbyname, self.cdp_host))
             self._browser = await self._pw.chromium.connect_over_cdp(f"http://{ip}:{self.cdp_port}")
             self._ctx = self._browser.contexts[0] if self._browser.contexts else await self._browser.new_context()
+            self._gpu_ctx.clear()
+            await self._install_gpu(self._ctx)
             self._pages.clear()
             for d in (self._private, self._tab_cdp, self._type_cdp, self._targets, self._doc, self._ref_words, self._look_url, self._shot_scale):
                 d.clear()
@@ -1891,7 +2096,7 @@ class BrowserSession:
         if key in self._tries or key in self._checks or not hasattr(page, "evaluate"):
             return []   # a human check is on this tab: never touch it
         url = str(getattr(page, "url", "") or "").split("#")[0]
-        if self.in_checkout() or money_page(None, url):
+        if self.in_checkout():
             return []   # a payment or booking window is never closed for the user
         if self._own_layers.get(key, ("", set()))[0] != url:
             self._own_layers[key] = (url, set())
@@ -2214,45 +2419,11 @@ class BrowserSession:
             except asyncio.TimeoutError:
                 pass
 
-    def sign_in_continue(self, selector: str) -> bool:
-        """The click only goes on with the owner's own sign-in on this tab: browser_login ran here a short while ago, the page is
-        still a sign-in step (signin_state.still_signing_in) on the same site as that sign-in (its OAuth pages too: the same
-        registrable domain), and the element's words, as read on the page, only go on ("Continue", "Next", "OK", "Sign in"). Consent
-        ("Allow", "Agree"), sign-up and settings words are not this and keep their card (2026-11-10)."""
-        key = browser_owner.get()
-        info = self.judged_info(selector)
-        probe = self._probes.get(key)
-        if info is None or not self._signing_in(key) or not (isinstance(probe, dict) and probe.get("kelo_check")):
-            return False
-        site = str((self.sign_ins.get(key) or {}).get("site") or "")
-        if not site or registrable(self.current_host()) != site or not still_signing_in(probe):
-            return False
-        if str(info.get("type") or "").lower() == "checkbox" or str(info.get("role") or "") in ("checkbox", "switch") \
-                or selector in self._options.get(key, ()):
-            return True   # ticking a box of the sign-in page sends nothing ("stay signed in", "don't ask again on this browser")
-        return continue_only(label_of(info, selector))
-
-    def sign_in_remember(self, selector: str) -> bool:
-        """The click keeps the owner signed in on Kelo's own browser: browser_login ran on this tab a short while ago, the page is on the
-        same site as that sign-in, its reading is from Kelo's check and asks whether to remember this device or stay signed in (a
-        device-registration page may sit on a non-login path, so it need not still look like a sign-in), and the element's words
-        choose to keep it (commits.keep_signed_in). The negative choice is not this: it keeps today's rules (2026-11-15)."""
-        key = browser_owner.get()
-        info = self.judged_info(selector)
-        probe = self._probes.get(key)
-        if info is None or not self._signing_in(key) or not (isinstance(probe, dict) and probe.get("kelo_check")):
-            return False
-        site = str((self.sign_ins.get(key) or {}).get("site") or "")
-        if not site or registrable(self.current_host()) != site:
-            return False
-        page = f"{probe.get('title') or ''} {probe.get('text') or ''}"
-        return asks_to_keep_signed_in(page) and keep_signed_in(label_of(info, selector), page)
-
     def _signing_in(self, key: str) -> bool:
         """The agent started a sign-in on this tab a short while ago (browser_login)."""
         got = self.sign_ins.get(key) or {}
         try:
-            return time.time() - float(got.get("at") or 0) < SIGN_IN_SECONDS
+            return time.time() - max(float(got.get("at") or 0), self._login_at.get(key, 0.0)) < SIGN_IN_SECONDS
         except (TypeError, ValueError):
             return False
 
@@ -2310,7 +2481,7 @@ class BrowserSession:
         page = self.raw_page(key)
         if outcome == "done" and page is not None:   # the user said it is done (an older app's button): believed only past signing in
             _found, probe = await self._read_check(page, key)
-            if still_signing_in(probe):
+            if still_signing_in(probe, self._login_url.get(key, "")):
                 outcome = "pending"
         if outcome in ("solved", "done", "progressed"):
             self._hand_end[key] = (site, v.step, time.monotonic())
@@ -2338,6 +2509,7 @@ class BrowserSession:
                 probe = await page.evaluate(PROBE_JS)
             except Exception:  # noqa: BLE001 - the page is changing
                 continue
+            await self.judge_probe(probe, True)
             now = verification_step(probe, signing_in=True)
             if isinstance(probe, dict) and probe.get("kelo_check") and (now is None or now.step != v.step):
                 return True
@@ -2380,9 +2552,10 @@ class BrowserSession:
             if not (isinstance(probe, dict) and probe.get("kelo_check")):
                 clean = 0
             else:
+                await self.judge_probe(probe, True)
                 now = verification_step(probe, signing_in=True)
                 same = now is not None and now.step == step.step
-                signed = not same and not still_signing_in(probe)
+                signed = not same and not still_signing_in(probe, self._login_url.get(key, ""))
                 clean = clean + 1 if signed else 0
                 away = 0 if same else away + 1
                 if same:
@@ -2432,9 +2605,26 @@ class BrowserSession:
             frame_urls = []
         return detect(probe, status=status, headers=headers, frame_urls=frame_urls), probe
 
+    def password_box_shown(self, key: str) -> bool | None:
+        """Whether the page of tab `key`, as last read, shows a password box (the structure of a sign-in form); None when it was not read."""
+        probe = self._probes.get(key)
+        if not isinstance(probe, dict) or not probe.get("kelo_check"):
+            return None
+        return bool(probe.get("secret_box"))
+
+    async def judge_probe(self, probe: Any, signing_in: bool) -> None:
+        """A short page right after a sign-in with no code box: the page judge says whether it is a verification step (code | approve) or
+        none (probe["judged_step"]). No judge or no answer leaves it unset: verification_step then takes the page for one (the safer side)."""
+        if self.page_judge is None or not unconfirmed(probe, signing_in=signing_in):
+            return
+        got = await self.page_judge.verification(probe)
+        if got is not None:
+            probe["judged_step"] = got
+
     async def _look(self, page: Any, key: str) -> tuple[Challenge | None, int]:
         """Read the page's structure once: a bot check (challenge.detect) and how many one-time-code boxes it shows."""
         found, probe = await self._read_check(page, key)
+        await self.judge_probe(probe, self._signing_in(key))
         self._probes[key] = probe
         if found is None:
             self._checks.pop(key, None)
@@ -2541,6 +2731,14 @@ class BrowserSession:
         if said := self.blocked_site(url):
             return said
         page = await self.page()
+        wanted_view = view if view in VIEWS else self._site_views.get(_site_of(url), "")
+        if same_address(str(getattr(page, "url", "") or ""), url) and (not wanted_view or wanted_view == self.view()):
+            title = ""
+            try:
+                title = str(await page.title())[:120]
+            except Exception:  # noqa: BLE001 - the page has no title to give
+                pass
+            return SAME_PAGE_NOTE.format(url=str(page.url), title=title) + "\n" + await self.snapshot(clear=True)
         host = urlsplit(url).hostname or ""
         if note := self._pace_note(host, "nav", browser_owner.get()):
             return note
@@ -2603,6 +2801,12 @@ class BrowserSession:
         page = await self.page()
         if view == "desktop":
             cdp = self._view_cdp.pop(key, None)
+            script = (self._mobile_id.get(key) or {}).get("_script")
+            try:
+                if script:
+                    await cdp.send("Page.removeScriptToEvaluateOnNewDocument", {"identifier": script})
+            except Exception:  # noqa: BLE001 - detaching drops it anyway
+                pass
             try:
                 await cdp.send("Emulation.clearDeviceMetricsOverride", {})
                 await cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": False})
@@ -2634,6 +2838,14 @@ class BrowserSession:
         await cdp.send("Emulation.setUserAgentOverride", ident)
         await cdp.send("Emulation.setDeviceMetricsOverride", dict(PHONE))
         await cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        try:
+            await cdp.send("Emulation.setHardwareConcurrencyOverride", {"hardwareConcurrency": PHONE_DEVICE["cores"]})
+        except Exception:  # noqa: BLE001 - an older Chrome may not have it
+            pass
+        await cdp.send("Page.enable", {})   # a DevTools session without the Page domain on is not run for the pages it loads
+        added = await cdp.send("Page.addScriptToEvaluateOnNewDocument",
+                               {"source": f"({PHONE_SCRIPT})({json.dumps(PHONE_DEVICE)})", "runImmediately": True})
+        ident["_script"] = (added or {}).get("identifier")   # kept for set_view; never sent with the User-Agent override above
         return ident
 
     async def keep_view(self, key: str) -> None:
@@ -3099,27 +3311,65 @@ class BrowserSession:
     settle_seconds = 0.8     # how long a page gets to show its answer after Enter (a sign-in error often appears without a page load)
     sign_in_wait = 12.0      # how long a sign-in is watched for a clear answer (a site that redirects through a few pages takes seconds)
 
-    async def fill_login(self, username: str, password: str, *, step: str = "both", submit: bool = True) -> SignIn:
+    async def _password_field_ok(self, page: Any, origin_ok: Callable[[str], bool] | None, *, after: int | None = None) -> None:
+        """The checks at the moment of typing a password (docs/data-trail.md, browser login checks): the page is https and on the credential's
+        site, the tagged field is ONE input of type password, still the type it had when tagged, rendered masked; `after`: the length the
+        field must hold now (the secret's own length; only lengths are compared, the value is never read). Raises BrowserPolicyError."""
+        parts = urlsplit(str(getattr(page, "url", "") or ""))
+        if parts.scheme != "https" or (origin_ok is not None and not origin_ok(page.url)):
+            raise BrowserPolicyError("the page is not the credential's own site over https; nothing was typed")
+        st = await page.evaluate(_LOGIN_STATE)
+        if not isinstance(st, dict) or st.get("n") != 1:
+            raise BrowserPolicyError("ambiguous target: the password field to type into could not be told from the others; nothing was typed")
+        if not st.get("input") or st.get("type") != "password" or st.get("tagged") != "password":
+            raise BrowserPolicyError("the target is not a password field or is not masked (its type is not password, or changed after it was "
+                                     "found); nothing was typed")
+        if not st.get("masked"):
+            raise BrowserPolicyError("the password field is not masked (it would show what is typed); nothing was typed")
+        if after is not None and int(st.get("length") or 0) != after:
+            raise BrowserPolicyError("the password was not applied: the field's value length does not match; the field was cleared and the "
+                                     "sign-in was not sent. Do not retry; tell the user")
+
+    async def fill_login(self, username: str, password: str, *, step: str = "both", submit: bool = True,
+                         origin_ok: Callable[[str], bool] | None = None) -> SignIn:
         """Type a saved login into the visible sign-in form of the current page, and (optionally) press Enter.
         The values go straight from here to the page: the answer is the page afterwards with both values removed from it,
-        and a reading of whether the site accepted the login."""
+        and a reading of whether the site accepted the login. The password goes only into one masked input of type password on a
+        https page of the credential's site (`origin_ok(url)`), and its length in the field must equal the password's, else
+        nothing is sent, the field is cleared and a precise error says why (no retry)."""
         page = await self.page()
         await self._guard(page.url)
         before = page.url
+        self._login_url[browser_owner.get()] = before
+        self._login_at[browser_owner.get()] = time.time()   # a sign-in the agent started on this tab: a short page after it may be a verification step
         found = await page.evaluate(_TAG_LOGIN_FIELDS)
         want_user, want_pass = step in ("both", "username"), step in ("both", "password")
         if not ((want_user and found["u"]) or (want_pass and found["p"])):
             await page.evaluate(_UNTAG_LOGIN_FIELDS)
             raise BrowserPolicyError("no sign-in form with the expected field was found on this page")
         try:
+            if want_pass and found["p"]:
+                if int(found.get("p_count", 1)) > 1:
+                    raise BrowserPolicyError("ambiguous target: the page has more than one password field; nothing was typed")
+                await self._password_field_ok(page, origin_ok)   # before anything is typed
             if want_user and found["u"]:
                 user_box = page.locator("[data-vault-u]")
                 await human.type_text(page, username, locator=user_box, secret=True, timeout_ms=10_000,
                                       fallback=lambda ms: user_box.fill(username, timeout=ms))
             if want_pass and found["p"]:
                 pass_box = page.locator("[data-vault-p]")
+                await pass_box.focus(timeout=10_000)   # a page that unmasks a field when it is focused shows here, before the typing
+                await self._password_field_ok(page, origin_ok)
                 await human.type_text(page, password, locator=pass_box, secret=True, timeout_ms=10_000,
                                       fallback=lambda ms: pass_box.fill(password, timeout=ms))
+                try:
+                    await self._password_field_ok(page, origin_ok, after=len(password.encode("utf-16-le")) // 2)
+                except BrowserPolicyError:
+                    try:
+                        await pass_box.fill("", timeout=5_000)
+                    except Exception:  # noqa: BLE001 - the page may be gone; the error below is what matters
+                        pass
+                    raise
             if submit:
                 target = "[data-vault-p]" if (want_pass and found["p"]) else "[data-vault-u]"
                 await human.pause_before_submit()
@@ -3151,13 +3401,15 @@ class BrowserSession:
                     state = await page.evaluate(_PAGE_STATE)
                 except Exception:  # noqa: BLE001 - the page was still changing (a redirect): look again
                     state = {"pw": True, "text": ""}
-                outcome, _ = classify_sign_in(before_url=before, after_url=page.url, password_visible=bool(state["pw"]), text=str(state["text"]))
+                outcome, _ = classify_sign_in(before_url=before, after_url=page.url, password_visible=bool(state["pw"]),
+                                              otp_boxes=int(state.get("otp") or 0), invalid_marked=bool(state.get("invalid")))
                 if outcome != "unknown" or waited >= self.sign_in_wait:
                     break
                 await asyncio.sleep(0.5)
                 waited += 0.5
             found, _ = await self._look(page, browser_owner.get())
-            outcome, detail = classify_sign_in(before_url=before, after_url=page.url, password_visible=bool(state["pw"]), text=str(state["text"]),
+            outcome, detail = classify_sign_in(before_url=before, after_url=page.url, password_visible=bool(state["pw"]),
+                                               otp_boxes=int(state.get("otp") or 0), invalid_marked=bool(state.get("invalid")),
                                                challenge=found.name if found is not None else "")
             ver = verification_step(self._probes.get(browser_owner.get()), signing_in=True) if found is None else None
             step = ver.step if ver is not None else ("code" if outcome == "code_needed" else "")
@@ -3173,16 +3425,41 @@ class BrowserSession:
         handed = self._handed.get(browser_owner.get())
         if outcome == "code_needed" and handed in ("solved", "done", "progressed"):
             outcome, detail = (("success", "the user completed the sign-in verification and the page is past signing in")
-                               if not still_signing_in(probe) else
+                               if not still_signing_in(probe, self._login_url.get(browser_owner.get(), "")) else
                                ("unknown", "the user did the verification step, but the sign-in is NOT finished: the page below shows the "
                                            "next step") if handed == "progressed" else
                                ("code_needed", "the sign-in verification is still pending: the page still shows a sign-in or verification step"))
-        elif outcome == "success" and isinstance(probe, dict) and probe.get("kelo_check") and still_signing_in(probe):
+        elif outcome == "success" and isinstance(probe, dict) and probe.get("kelo_check") and still_signing_in(probe, self._login_url.get(browser_owner.get(), "")):
             outcome, detail = "unknown", "the sign-in form was left, but the page still shows a sign-in or verification step"
         for secret in (password, username):
             if len(secret) >= 3:
                 text = text.replace(secret, "[hidden]")
         return SignIn(text, outcome, detail, step if outcome == "code_needed" else "")
+
+    async def extra_auth_signs(self) -> str:
+        """What shows, by structure, that the page asks the payer to prove it is them ("" = nothing): a one-time-code input in the page or a
+        frame, or the tab left the site a purchase was allowed on."""
+        key = browser_owner.get()
+        got = self._purchase.get(key)
+        page = self._pages.get(key)
+        if page is None:
+            return ""
+        signs: list[str] = []
+        host = (urlsplit(str(getattr(page, "url", "") or "")).hostname or "").lower()
+        if got and host and host != got[0] and not same_site(host, got[0]):
+            signs.append("the page left the shop's site")
+        try:
+            frames = list(page.frames) if hasattr(page, "frames") else [page]
+        except Exception:  # noqa: BLE001
+            frames = [page]
+        for frame in frames or [page]:
+            try:
+                if await frame.evaluate(_EXTRA_AUTH_JS) is True:
+                    signs.append("a one-time-code box")
+                    break
+            except Exception:  # noqa: BLE001 - a frame that is gone or closed to scripts
+                continue
+        return ", ".join(signs)
 
     def in_checkout(self) -> bool:
         """A purchase was allowed on this tab (the window may have run out): pages are read with payment authentication in mind."""
@@ -3204,7 +3481,12 @@ class BrowserSession:
         for frame in frames:
             where = urlsplit(str(getattr(frame, "url", "") or "")).hostname or "page"
             try:
-                found = await frame.evaluate(_TAG_CARD_FIELDS)
+                found = await frame.evaluate(_TAG_CARD_FIELDS, None)
+                if isinstance(found, dict) and found.get("open") and self.page_judge is not None:
+                    # fields with no autocomplete token: the page judge reads their labels (nothing is typed by a word list)
+                    named = await self.page_judge.fields("card", [r for r in found["open"] if isinstance(r, dict)])
+                    if named:
+                        found = await frame.evaluate(_TAG_CARD_FIELDS, named)
             except Exception:  # noqa: BLE001 - a frame that is gone or closed to scripts
                 unreachable.append(where)
                 continue
@@ -3229,7 +3511,7 @@ class BrowserSession:
             await page.goto("about:blank")
             raise
         text = scrub_card(await self.snapshot(), number)
-        return CardFill(filled, missing, unreachable, extra_auth(text), text)
+        return CardFill(filled, missing, unreachable, await self.extra_auth_signs(), text)
 
     async def _fill_frame(self, frame: Any, found: dict[str, Any], number: str, cvc: str, m: int, y: int, holder: str, postal: str) -> list[str]:
         done: list[str] = []
@@ -3286,7 +3568,12 @@ class BrowserSession:
         postcode search fills) gets its value set directly. The answer names the fields that were filled."""
         page = await self.page()
         await self._guard(page.url)
-        got = await page.evaluate(_TAG_ADDRESS_FIELDS)
+        got = await page.evaluate(_TAG_ADDRESS_FIELDS, None)
+        if isinstance(got, dict) and got.get("open") and self.page_judge is not None:
+            # fields with no autocomplete token or telephone type: the page judge reads their labels (nothing is matched by a word list)
+            named = await self.page_judge.fields("shipping", [r for r in got["open"] if isinstance(r, dict)])
+            if named:
+                got = await page.evaluate(_TAG_ADDRESS_FIELDS, named)
         found: dict[str, list[dict[str, Any]]] = (got or {}).get("found") or {}
         filled: list[str] = []
         try:
@@ -3493,7 +3780,7 @@ class BrowserSession:
         async with self._lock:
             page = self._pages.pop(key, None)
             for d in (self._used, self._seen_at, self._status, self._last_card, self._purchase, self._dialogs, self._doc, self._notes,
-                      self._checks, self._targets, self._tries, self._shot_scale, self._check_clicked, self.sign_ins, self._probes,
+                      self._checks, self._targets, self._tries, self._shot_scale, self._check_clicked, self.sign_ins, self._login_at, self._login_url, self._probes,
                       self._cancel, self._verified, self._last_text, self._ref_words, self._look_url):
                 d.pop(key, None)
             held = self._control.pop(key, None)
@@ -3519,6 +3806,8 @@ class BrowserSession:
             await self._quietly(lambda: page.close())
         if private is not None:
             await self._quietly(lambda: private.close())
+        for fn in list(self.close_listeners):
+            await self._quietly(lambda fn=fn: fn(key))
         return page is not None
 
     @staticmethod
@@ -3553,6 +3842,7 @@ class BrowserSession:
             else:
                 await self._ensure_browser()
                 ctx = await self._browser.new_context(no_viewport=True, accept_downloads=True)
+            await self._install_gpu(ctx)
             self._private[key] = ctx
             if state is not None:
                 carried = await self.import_site_state(state, ctx=ctx)
@@ -3628,16 +3918,9 @@ class BrowserSession:
     def forget_site_state(self, site: str) -> bool:
         return self._site_states.pop(site_of(site), None) is not None
 
-    async def forget_site(self, site: str, user_said: str = "") -> str:
-        """Clear cookies of `site`'s registrable domain from the default context, clear site data for known https origins, and drop saved sign-in state."""
-        words = (user_said or "").strip()
-        if not words:
-            return "Error: browser_forget_site refused: user agreement is required before clearing site data."
-        if re.search(r"\b(no|stop|cancel|don'?t|never)\b|그만|취소|중단|아니|안\s*해", words, re.I):
-            return "Error: browser_forget_site refused: user declined or chose to stop."
-        if not re.search(r"\b(yes|clear|retry|ok|sure|agree|proceed|yep|y)\b|지워|삭제|정리|다시|재시도|초기화|그래|응|좋아|쿠키", words, re.I):
-            return "Error: browser_forget_site refused: user did not agree to clear site data."
-
+    async def forget_site(self, site: str) -> str:
+        """Clear cookies of `site`'s registrable domain from the default context, clear site data for known https origins, and drop saved sign-in state.
+        The owner's yes is the approval card of the tool (browser_more), never words read from a message."""
         host = site_of(site)
         reg_domain = registrable(host)
         if not reg_domain:
@@ -3920,7 +4203,6 @@ SELECTOR_ARG = "ref (e12) or Playwright selector"
 
 # What the approval card adds, by commit kind (commits.py).
 _COMMIT_WARNINGS = {
-    "pay": N_("This may be the button that confirms a payment, order or booking."),
     "send": N_("This may send or post something in your name."),
     "delete": N_("This may delete or cancel something."),
     "apply": N_("This may send an application or an entry in your name."),
@@ -3946,17 +4228,12 @@ def step_decider(session: BrowserSession, tool: str, *, approve_actions: bool = 
         if kind == "unknown":
             return False   # Kelo could not read what this step acts on: the user always sees it (no rule, grant or order covers it)
         sel = step_key(tool, args)
-        if as_tool == "browser_click" and not approve_actions and kind != "pay" and session.sign_in_remember(sel):
-            return True   # the owner's own sign-in on Kelo's own browser: keeping it signed in is what the owner wants (2026-11-15)
         if kind == "security":
             # the account's protection or an official document: only the very element the user just allowed (a retry of its
             # failed click) goes without a card; no rule, grant, order, purchase window or sign-in shortcut covers it
             return as_tool == "browser_click" and session.retry_of_allowed(sel)
-        if kind and as_tool == "browser_click" and kind != "pay" and session.retry_of_allowed(sel):
+        if kind and as_tool == "browser_click" and session.retry_of_allowed(sel):
             return True   # the same element the user just allowed, whose click failed: another selector for it
-        if kind and as_tool == "browser_click" and not approve_actions and kind not in ("pay", "delete", "optout") \
-                and session.sign_in_continue(sel):
-            return True   # a plain "continue" of the owner's own sign-in (an OAuth step of the same site included)
         if kind and grants is not None and grants.use(kind, session.current_host(), tool=as_tool, secret=session.judged_secret(sel)):
             return True   # the user allowed this kind of step on this site for the task running now
         if as_tool == "browser_click" and kind == "delete" and session.use_cancel_action(sel):
@@ -3966,16 +4243,10 @@ def step_decider(session: BrowserSession, tool: str, *, approve_actions: bool = 
             # follow from where it was allowed; browser_open ends it). Checked before the "paid" rule below: the final button
             # of an approved order is itself a "buy" that the paid order would otherwise ask about again
             return True
-        if (kind == "pay" and orders is not None and orders.paid_here(session.current_host())
-                and not money_page(session.judged_info(sel), session.current_url())):
-            return False  # the order is paid and its purchase window is over: a "buy" on a product page or cart starts a new purchase
-        if kind and orders is not None and not approve_actions and orders.current() is None and orders.covers_request(
-                kind, session.current_host(), tool=as_tool, info=session.judged_info(sel), selector=sel, url=session.current_url()):
-            return True   # the user's request names this commit (apply / enter / sign up / send) on the site the task works on
-        if kind and orders is not None and not approve_actions and kind in ("pay", "apply", "form") \
+        if kind and orders is not None and not approve_actions and kind == "apply" \
                 and (o := orders.start_implicit(session.current_host())) is not None:
-            # buying without begin_order (a weaker model often skips it): the order the user asked for starts here, so its
-            # preparing steps don't each ask; the final payment still goes through confirm_purchase
+            # a form step without begin_order (a weaker model often skips it): the order the user asked for starts here, so its
+            # preparing steps don't each ask; the final payment still goes through checkout_review
             from .order import IMPLICIT_NOTE
             session.note(browser_owner.get(), IMPLICIT_NOTE.format(site=o.site, what=o.what))
         return bool(kind and orders is not None and not approve_actions and orders.covers(
@@ -4013,13 +4284,12 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
         except Exception:
             session.allowed_failed(target)   # tried again with another selector for the same element: no second card
             raise
-        if session.last_click_changed_nothing() and session.judged(str(args["selector"])) not in ("", "pay"):
-            # allowed, ran, changed nothing: the same element tried again (another selector) does not ask again; a payment button
-            # always does (the agent is told not to repeat the click)
+        if session.last_click_changed_nothing() and session.judged(str(args["selector"])):
+            # allowed, ran, changed nothing: the same element tried again (another selector) does not ask again
             session.allowed_failed(target)
         else:
             session.allowed_done()
-        if session.in_checkout() and (words := extra_auth(text)):
+        if session.in_checkout() and (words := await session.extra_auth_signs()):
             text += "\n\n" + EXTRA_AUTH_NOTE.format(words=words)
             return await shown(text, t("Waiting for payment verification"))
         return await shown(text, t("Working on the page"))
@@ -4069,32 +4339,33 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
                   "view": {"type": "string", "enum": list(VIEWS),
                            "description": "optional: open it as a desktop or a phone browser (default: the view that last worked on "
                                           "that site, else desktop); to switch later, load browser_view with find_tools"}}, ["url"]),
-             open_, untrusted=True, source="page", hold=session.hold_for_user),
+             open_, untrusted=True, source="page", hold=session.hold_for_navigation, trail="web"),
         Tool("browser_view", "Switch this tab between the desktop and the mobile (phone) view of sites and load the page again in "
              "it; sign-ins and cookies stay. If a page or a step fails in one view (blocked, broken layout, a button that can't be "
              "clicked, a dead end), try the other view before giving up.",
              obj({"view": {"type": "string", "enum": list(VIEWS)}}, ["view"]), view_, untrusted=True, source="page",
-             validate=view_ok, hold=session.hold_for_user),
+             validate=view_ok, hold=session.hold_for_navigation),
         Tool("browser_read", "Return the current page's title, URL and what it shows, one element per line. Readings mark elements "
              "with [ref=e12]: pass e12 to browser_click and browser_type. When the user questions a value you read, read the page again (or where it shows in full) "
              "before you answer.",
              obj({"only": {"type": "string", "enum": ["controls"],
                            "description": "controls: only what can be clicked or typed into, plus headings (shorter; use it when "
                                           "you only need to act)"}}, []),
-             read, untrusted=True, source="page", hold=session.hold_for_user),
+             read, untrusted=True, source="page", hold=session.hold_for_user, trail="web"),
         Tool("browser_click", "Click an element and return the page after (also inside frames of the page; a window the click "
              "opens becomes the page you are on). A click that commits something in "
              "the user's name shows them a card first.",
              obj({"selector": {"type": "string", "description": SELECTOR_ARG}}, ["selector"]), click, requires_approval=True, untrusted=True, source="page",
-             auto_approve=no_card("browser_click"), describe=describe_click, declined=declined_click, hold=session.hold_for_user),
+             auto_approve=no_card("browser_click"), describe=describe_click, declined=declined_click, hold=guarded(session, session.hold_for_user)),
         Tool("browser_type", "Type text into an input. On a list (a select or a dropdown) it chooses the option with that text instead: "
              "the one way to set a list (quantity, size, date). Personal details or "
              "a message show the user a card first.",
              obj({"selector": {"type": "string", "description": SELECTOR_ARG}, "text": {"type": "string"},
-                  "submit": {"type": "boolean", "description": "press Enter after"}},
+                  "submit": {"type": "boolean", "description": "press Enter after"},
+                  "uses": USES_PARAM},
                  ["selector", "text"]),
              type_, requires_approval=True, untrusted=True, source="page", auto_approve=no_card("browser_type"), describe=describe_type,
-             hold=session.hold_for_user),
+             hold=guarded(session, session.hold_for_user, only_submit=True)),
     ])
 
 
@@ -4152,7 +4423,7 @@ def point_tools(session: BrowserSession, *, approve_actions: bool = False, grant
               "required": ["x", "y"]},
              click_at, requires_approval=True, untrusted=True, source="page", validate=ok("browser_click_at"),
              auto_approve=step_decider(session, "browser_click_at", approve_actions=approve_actions, grants=grants, orders=orders),
-             describe=describe("browser_click_at"), hold=session.hold_for_user),
+             describe=describe("browser_click_at"), hold=guarded(session, session.hold_for_user, tool="browser_click_at")),
         Tool("browser_drag", "Drag along a path of points (x, y) of your last browser_look picture: press at the first, move through "
              "the others, let go at the last. Same rules as browser_click_at: canvas, map, slider or drag handle with no ref; look first, act, look again.",
              {"type": "object", "properties": {"path": {"type": "array", "items": point, "minItems": DRAG_POINTS[0],
@@ -4160,5 +4431,5 @@ def point_tools(session: BrowserSession, *, approve_actions: bool = False, grant
               "required": ["path"]},
              drag, requires_approval=True, untrusted=True, source="page", validate=ok("browser_drag"),
              auto_approve=step_decider(session, "browser_drag", approve_actions=approve_actions, grants=grants, orders=orders),
-             describe=describe("browser_drag"), hold=session.hold_for_user),
+             describe=describe("browser_drag"), hold=guarded(session, session.hold_for_user, tool="browser_drag")),
     ])

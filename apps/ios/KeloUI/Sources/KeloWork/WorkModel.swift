@@ -455,19 +455,35 @@ final class WorkModel {
     }
 
     /// Answers a waiting approval (`remember`: allow this kind of step on this site from now on; `rememberSchedule`: in that job).
-    func answer(_ a: PendingApproval, approve: Bool, remember: Bool = false, rememberSchedule: Bool = false) {
+    func answer(_ a: PendingApproval, approve: Bool, remember: Bool = false, rememberSchedule: Bool = false, rememberRecipient: Bool = false) {
         guard !answering.contains(a.id) else { return }
         answering.insert(a.id)
-        let mode: String? = approve && remember && a.canRemember ? "site"
-            : (approve && rememberSchedule && a.canRememberSchedule ? "schedule" : nil)
+        let mode: String? = approve && rememberRecipient && RecipientRules.canAlways(a.event.offers) ? "recipient"
+            : (approve && remember && a.canRemember ? "site"
+            : (approve && rememberSchedule && a.canRememberSchedule ? "schedule" : nil))
         Task {
             do {
-                _ = try await requireApi().answerApproval(a.id, approve: approve, remember: mode)
+                // a signed payment Allow: the owner's check and this phone's signature first (a cancelled one sends nothing)
+                var sig: String?
+                if approve && a.event.signable {
+                    switch await ApprovalSignFlow.sign(id: a.id, issuedAt: a.event.issuedAt) {
+                    case .ready(let s): sig = s
+                    case .cancelled: answering.remove(a.id); return
+                    case .failed(let reason): say(ApprovalSignFlow.failure(reason)); answering.remove(a.id); return
+                    }
+                }
+                let edited = approve ? ApprovalDrafts.edited(a.id, a.event.editable) : nil
+                ApprovalDrafts.clear(a.id)
+                _ = try await requireApi().answerApproval(a.id, approve: approve, remember: mode, sig: sig, edited: edited)
+                ApprovalHooks.itemSettled(a.id)
                 if approve { ApprovalHooks.afterAllow() }
                 if !approve && a.isHumanCheck { say(L(R.string.handover_skipped, a.site.isEmpty ? L(R.string.handover_this_site) : a.site)) }
-                else if !approve { say(L(R.string.agent_approval_denied)) } else if mode == "site" { say(L(R.string.agent_approval_always)) }
+                else if !approve { say(L(R.string.agent_approval_denied)) } else if mode == "recipient" { say(L(R.string.recipient_approval_always)) }
+                else if mode == "site" { say(L(R.string.agent_approval_always)) }
                 else if mode == "schedule" { say(L(R.string.approval_kept_for_schedule)) } else { say(L(R.string.agent_approval_allowed)) }
-            } catch let e as ApiError where e.status == 404 { say(L(R.string.agent_approval_gone)) } catch { sayError(error) }
+            } catch let e as ApiError where e.status == 404 { say(L(R.string.agent_approval_gone))
+            } catch let e as ApiError where ApprovalSigning.isSignature(e) { say(ApprovalSignFlow.refusal(e))
+            } catch { sayError(error) }
             answering.remove(a.id)
             pending.loading = false
             loadPending()

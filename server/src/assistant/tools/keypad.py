@@ -12,13 +12,6 @@ from typing import Any
 
 PRESS_PAUSE = 0.12      # seconds between two presses (pages animate the press)
 
-# Words of a page whose PIN entry needs a keyboard plug-in or its own keypad (reported as "protected").
-PROTECTED_WORDS = ("보안 프로그램", "보안프로그램", "키보드 보안", "키보드보안", "보안 키보드", "보안키보드", "보안 키패드", "보안키패드",
-                   "가상 키패드", "가상키패드", "설치가 필요", "설치 후 이용", "플러그인", "security program", "keyboard security",
-                   "security keyboard", "secure keypad", "virtual keypad", "install the security", "security plug-in", "security plugin",
-                   "install the plug-in", "install the plugin")
-
-
 class KeypadError(Exception):
     """Why the PIN was not typed. `kind`: none | protected | gone | failed. The message names no digit."""
 
@@ -27,27 +20,31 @@ class KeypadError(Exception):
         self.kind, self.pressed = kind, pressed
 
 
-# Marks where the PIN goes in this frame. Returns {"mode": "input"|"text"|"protected"|"", "boxes": n, "words": page text}.
-# - "input": data-kelo-pin="0".."n-1" on a PIN box (or one box per digit) that can be typed into;
+# Marks where the PIN goes in this frame, by STRUCTURE only (docs/no-word-lists.md): no label, placeholder or page word is read.
+# Returns {"mode": "input"|"text"|"protected"|"", "boxes": n}.
+# - "input": data-kelo-pin="0".."n-1" on the PIN box(es): one password input with a PIN's shape (maxlength 4-8, or numeric input mode),
+#   or one password / numeric box per digit (4-8 one-character boxes). Fields that say what they are by autocomplete (a user name, a
+#   card field, a one-time code, an address, the current password of a sign-in) are never taken. More than one candidate group, or a
+#   single field with no PIN shape: not typed ("" = the owner enters it themselves);
 # - "text": data-kelo-key="d0".."d9" on the buttons whose own visible words are exactly one digit, all ten close together;
-# - "protected": a keypad whose keys carry no digit text (pictures, canvas, empty buttons in a grid), or a page asking for a plug-in.
+# - "protected": a keypad whose keys carry no digit text (pictures, empty buttons in a grid of at least three rows), a canvas keypad
+#   next to a password box, a plug-in or embedded object that draws the keypad. The user enters the PIN there (payment_step.PinPad).
 FIND_JS = r"""() => {
   document.querySelectorAll('[data-kelo-key],[data-kelo-pin]').forEach((e) => { e.removeAttribute('data-kelo-key'); e.removeAttribute('data-kelo-pin'); });
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
     return r.width >= 8 && r.height >= 8 && c.visibility !== 'hidden' && c.display !== 'none' && parseFloat(c.opacity || '1') > 0.05; };
-  const text = (document.body ? document.body.innerText : '').slice(0, 4000);
-  const words = (e) => [e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label'), e.getAttribute('autocomplete')]
-    .concat(e.labels ? [...e.labels].map((l) => l.innerText) : []).filter(Boolean).join(' ').toLowerCase();
-  const pinWords = /pin|passcode|pay.?pass|payment.?password|결제\s*비밀번호|결제비번|간편\s*비밀번호|비밀번호/;
+  const taken = /(^|\s)(username|email|tel[a-z-]*|cc-[a-z-]+|one-time-code|current-password|name|given-name|family-name|street-address|address-[a-z0-9-]+|postal-code|country[a-z-]*|bday[a-z-]*|organization[a-z-]*)(\s|$)/;
+  const kind = (e) => (e.getAttribute('type') || '').toLowerCase();
+  const numeric = (e) => /numeric|decimal|tel/.test((e.getAttribute('inputmode') || '').toLowerCase());
   const inputs = [...document.querySelectorAll('input')].filter((e) => shown(e) && !e.disabled && !e.readOnly
-    && ['password', 'tel', 'number', 'text', ''].includes((e.getAttribute('type') || '').toLowerCase()));
-  const singles = inputs.filter((e) => e.maxLength === 1 && pinWords.test(words(e) + ' ' + text.slice(0, 400).toLowerCase()));
-  if (singles.length >= 4 && singles.length <= 8) {
+    && ['password', 'tel', 'number', 'text', ''].includes(kind(e)) && !taken.test((e.getAttribute('autocomplete') || '').toLowerCase()));
+  const singles = inputs.filter((e) => e.maxLength === 1 && kind(e) === 'password');   // one masked box per digit (an open row of boxes is a one-time code, not a PIN)
+  const shaped = inputs.filter((e) => e.maxLength !== 1 && kind(e) === 'password' && ((e.maxLength >= 4 && e.maxLength <= 8) || numeric(e)));
+  if (singles.length >= 4 && singles.length <= 8 && shaped.length === 0) {
     singles.forEach((e, i) => e.setAttribute('data-kelo-pin', String(i)));
-    return { mode: 'input', boxes: singles.length, words: text };
+    return { mode: 'input', boxes: singles.length };
   }
-  const one = inputs.find((e) => pinWords.test(words(e)) && !/login|username|user.?id|아이디|card|카드|cvc|cvv/.test(words(e)));
-  if (one) { one.setAttribute('data-kelo-pin', '0'); return { mode: 'input', boxes: 1, words: text }; }
+  if (shaped.length === 1 && singles.length < 4) { shaped[0].setAttribute('data-kelo-pin', '0'); return { mode: 'input', boxes: 1 }; }
   const clickable = (e) => e.matches('button,[role=button],a,input[type=button],input[type=image],[onclick],[tabindex]') || getComputedStyle(e).cursor === 'pointer';
   const keys = [...document.querySelectorAll('button,[role=button],a,input[type=button],input[type=image],td,li,span,div,img')]
     .filter((e) => shown(e) && clickable(e));
@@ -65,17 +62,20 @@ FIND_JS = r"""() => {
     const h = Math.max(...rs.map((r) => r.bottom)) - Math.min(...rs.map((r) => r.top));
     if (w <= 900 && h <= 900) {
       for (const [d, e] of Object.entries(byDigit)) e.setAttribute('data-kelo-key', 'd' + d);
-      return { mode: 'text', boxes: 0, words: text };
+      return { mode: 'text', boxes: 0 };
     }
   }
-  // a keypad whose digits are not words: 10+ like-sized clickable keys in 3+ rows without digit words, or a canvas, near PIN words
+  // a keypad whose digits are not words: 10+ like-sized clickable keys in 3+ rows without digit words, a canvas next to a password box,
+  // or a plug-in / embedded object that draws it
   const blank = keys.filter((e) => !/\d/.test(own(e)) && !keys.some((o) => o !== e && e.contains(o)));
   const sizes = {};
   for (const e of blank) { const r = e.getBoundingClientRect(); const k = Math.round(r.width / 8) + 'x' + Math.round(r.height / 8); (sizes[k] = sizes[k] || []).push(e); }
   const grid = Object.values(sizes).some((g) => g.length >= 10 && new Set(g.map((e) => Math.round(e.getBoundingClientRect().top / 6))).size >= 3);
-  const canvas = [...document.querySelectorAll('canvas')].some((e) => shown(e));
-  if ((grid || canvas) && pinWords.test(text.toLowerCase())) return { mode: 'protected', boxes: 0, words: text };
-  return { mode: '', boxes: 0, words: text };
+  const secretBox = [...document.querySelectorAll('input')].some((e) => shown(e) && kind(e) === 'password');
+  const canvas = secretBox && [...document.querySelectorAll('canvas')].some((e) => shown(e));
+  const plugin = [...document.querySelectorAll('object,embed')].some((e) => shown(e));
+  if (grid || canvas || plugin) return { mode: 'protected', boxes: 0 };
+  return { mode: '', boxes: 0 };
 }"""
 
 UNMARK_JS = ("() => document.querySelectorAll('[data-kelo-key],[data-kelo-pin]').forEach((e) => { e.removeAttribute('data-kelo-key'); "
@@ -87,11 +87,6 @@ class TypedPin:
     mode: str           # input | text
     frame: str          # the frame's host when the PIN went into a frame, else ""
     pressed: int
-
-
-def protected_words(text: str) -> bool:
-    low = (text or "").lower()
-    return any(w in low for w in PROTECTED_WORDS)
 
 
 async def find(page: Any) -> tuple[Any, dict[str, Any]]:
@@ -108,7 +103,7 @@ async def find(page: Any) -> tuple[Any, dict[str, Any]]:
             continue
         if not first:
             first = got
-        if got.get("mode") == "protected" or protected_words(str(got.get("words") or "")):
+        if got.get("mode") == "protected":
             return frame, {**got, "mode": "protected"}
         if got.get("mode") and found is None:
             found = (frame, got)

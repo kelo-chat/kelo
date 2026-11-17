@@ -86,8 +86,6 @@ class Mailboxes:
                 raise MailError("several mailboxes are connected; say which with account: " + ", ".join(m["name"] for m in mine))
             a = mine[0]["name"]
         low = a.lower()
-        if self.graph is not None and low in ("outlook", "microsoft-api", "hotmail", "microsoft 365", "office365", "live"):
-            return self.graph, "outlook"
         if self.nest is not None and any(m["name"] == low or m["name"] == "nest-" + low for m in self.nest.accounts()):
             return self.nest, low if low.startswith("nest-") else "nest-" + low
         named = next((m for m in mine if low in (m["name"].lower(), (m.get("address") or "").lower())), None)
@@ -123,9 +121,9 @@ class Mailboxes:
         return await b.update(name, action, sel, to, approved)
 
     async def send(self, account: str, to: list[str], subject: str, body: str, cc: list[str] | None = None, reply_to_uid: str = "",
-                   folder: str = "INBOX", reply_to: str = "") -> str:
+                   folder: str = "INBOX", reply_to: str = "", bcc: list[str] | None = None, html: str = "") -> str:
         b, name = self._pick(account)
-        return await b.send(name, to, subject, body, cc, reply_to_uid, folder, reply_to)
+        return await b.send(name, to, subject, body, cc, reply_to_uid, folder, reply_to, bcc=bcc, html=html)
 
     async def recent(self, minutes: float = 15, limit: int = 12, tool: str = "find_login_code") -> list[dict[str, Any]]:
         """The last minutes of mail from every connected mailbox, newest first (sign-in codes)."""

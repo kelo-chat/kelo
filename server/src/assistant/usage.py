@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 timing = logging.getLogger("uvicorn.error")   # the server's visible log (uvicorn sets it up)
 
 KINDS = ("chat", "schedule", "checklist", "task", "worker", "reflection", "memory", "journal", "proactive", "compaction", "followup",
-         "task_name", "probe", "follow_plan", "other")
+         "task_name", "probe", "follow_plan", "situation", "other")
 # may run on the background model: they only read the conversation and write the app's own notes
 BACKGROUND_KINDS = frozenset({"reflection", "memory", "journal", "proactive", "compaction", "task_name", "follow_plan"})
 LAST_FALLBACK = "background_model_fallback"   # store meta: the last time the background model failed and the main model ran instead
@@ -50,6 +50,8 @@ def kind_of_source(source: str | None) -> str:
         return "worker"
     if s == "background":
         return "task"
+    if s.startswith("situation"):
+        return "situation"
     return "other"
 
 
@@ -83,14 +85,24 @@ def metered(stream_fn: StreamFn, record: Callable[[dict[str, Any]], None], turn:
             name = provider if isinstance(provider, str) else getattr(provider, "name", str(provider))
             k = kind or kind_of_source((turn() or {}).get("source"))
             await guard.before(name, request.model, k)
-            try:
-                async for ev in plain(provider, request, **kw):
-                    yield ev
-            except Exception as e:  # noqa: BLE001 - only a used-up limit is turned into QuotaExhausted; the rest goes on as it was
-                hit = await guard.classify(name, request.model, e)
-                if hit is None or hit is e:
-                    raise
-                raise hit from e
+            attempt = 0
+            while True:
+                answered = False   # the stream gave something: from here on nothing is retried (there is partial output)
+                try:
+                    async for ev in plain(provider, request, **kw):
+                        answered = True
+                        yield ev
+                except Exception as e:  # noqa: BLE001 - busy is retried; a used-up limit becomes QuotaExhausted; the rest goes on as it was
+                    if not answered and (wait := await guard.busy_wait(name, request.model, e, attempt)) is not None:
+                        attempt += 1
+                        log.info("model busy (%s), retrying in %.0f s", getattr(e, "status", None) or "429", wait)
+                        await guard.pause(wait)
+                        continue
+                    hit = await guard.classify(name, request.model, e)
+                    if hit is None or hit is e:
+                        raise
+                    raise hit from e
+                break
             guard.clear(name)
 
         async def plain(provider: Any, request: ChatRequest, **kw: Any) -> AsyncIterator[Any]:

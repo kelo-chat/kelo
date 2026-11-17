@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">बोलने के लिए दबाए रखें</string>
+    <string name="voice_hold_hint">पूरा करने के लिए छोड़ें, रद्द करने के लिए बाहर खिसकाएँ</string>
+    <string name="voice_dictation_offline">कनेक्शन टूटने से बोलकर लिखना रुक गया।</string>
+    <string name="voice_dictation_failed">बोलकर लिखना पूरा नहीं हो सका।</string>
+    <string name="msg_action_read_aloud">ज़ोर से पढ़ें</string>
+    <string name="msg_action_read_stop">पढ़ना रोकें</string>
+</resources>

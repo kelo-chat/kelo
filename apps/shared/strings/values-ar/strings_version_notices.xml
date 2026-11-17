@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">تحديث الخادم</string>
+    <string name="server_old_failed">لم يكتمل التحديث. حاول مرة أخرى أو حدّث الخادم على الجهاز الذي يعمل عليه.</string>
+    <string name="server_old_manual">لتحديث الخادم، اتبع خطوات التحديث على الجهاز الذي يعمل عليه.</string>
+    <string name="server_old_guide">فتح دليل التحديث</string>
+    <string name="app_notice_new">تطبيق Kelo جديد (%1$s) يعمل بأفضل شكل مع خادمك</string>
+    <string name="app_notice_store">فتح المتجر</string>
+    <string name="update_popup_title">يتوفر إصدار جديد (%1$s)</string>
+    <string name="update_popup_update">تحديث</string>
+    <string name="update_popup_later">لاحقًا</string>
+</resources>

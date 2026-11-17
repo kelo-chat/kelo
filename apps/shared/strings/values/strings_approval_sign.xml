@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Signed payment approvals (docs/approval-signing.md): the phone signs the Allow of a payment; desktop shows the "phone" line -->
+    <string name="approval_sign_title">Approve payment</string>
+    <string name="approval_sign_subtitle">Confirm with your fingerprint or face</string>
+    <string name="approval_sign_failed">This payment could not be approved on this phone. Try again.</string>
+    <string name="approval_sign_key_lost">This phone\'s approval key is missing. Pair this phone with the server again.</string>
+    <string name="approval_pay_on_phone">Approve payments in the Kelo phone app.</string>
+</resources>

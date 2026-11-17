@@ -103,6 +103,21 @@ under Notifications → accounts Kelo reads, where the owner can switch it off),
 - Changes pick messages by the ids `list` gave (Kelo does not run a search through your tools to change mail), and sending stays with
   your own tools.
 
+### Which methods send, post or delete: `rules` (connectors only)
+
+A connector can declare, as data, which of its MCP tools or API requests send, post, forward or delete, how strongly each is
+protected and where its recipient is, so Kelo binds a permission to the exact recipient (full schema in `docs/connector-rules.md`):
+
+```json
+"rules": [
+  {"id": "post", "via": "request", "http": "POST", "path": "messages/{recipient}/send", "kind": "send", "policy": "task", "recipient": "path"},
+  {"id": "share", "via": "tool", "tool": "share_item", "kind": "send", "policy": "fresh", "recipient": ["arguments.with", "arguments.cc"]}
+]
+```
+
+`policy` is `standing` (default), `task` (a task permission that names the recipient may cover it; a lasting allow may not) or `fresh`
+(a card every time). A declaration can only make a call stricter, never weaker.
+
 ### Entries a package keeps: `store`
 
 A package can keep small records on the owner's server (habit check-ins, saved days, a list of things). It declares them:

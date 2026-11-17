@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">หัวข้อที่ลืมแล้ว</string>
+    <string name="forget_intro">หัวข้อที่คุณขอให้ Kelo ลืม Kelo ลบสิ่งที่พบแล้วและจะไม่จดบันทึกอีก</string>
+    <string name="forget_empty">ยังไม่มีหัวข้อที่ลืม เมื่อคุณขอให้ Kelo ลืมหัวข้อใด หัวข้อนั้นจะแสดงที่นี่</string>
+    <string name="forget_date">ลืมเมื่อ %1$s</string>
+    <string name="forget_removed">ลบแล้ว: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">ไม่พบสิ่งที่ต้องลบ</string>
+    <string name="forget_cat_memory">ความจำ</string>
+    <string name="forget_cat_notes">บันทึก</string>
+    <string name="forget_cat_reminders">การเตือน</string>
+    <string name="forget_cat_skills">ทักษะ</string>
+    <string name="forget_cat_history">บันทึกการทำงาน</string>
+    <string name="forget_cat_other">อื่น ๆ</string>
+    <string name="forget_allow_again">อนุญาตอีกครั้ง</string>
+    <string name="forget_allow_confirm">ให้ Kelo เขียนเรื่อง “%1$s” อีกครั้งไหม สิ่งที่ลบไปแล้วจะไม่กลับมา</string>
+    <string name="forget_allowed">Kelo เขียนเรื่องนี้ได้อีกครั้ง</string>
+    <string name="paycover_title">การชำระเงินที่อนุมัติล่วงหน้า</string>
+    <string name="paycover_switch">อนุญาตการชำระเงินที่อนุมัติล่วงหน้า</string>
+    <string name="paycover_switch_note">ปิดไว้: ทุกการชำระเงินจะถามคุณก่อน</string>
+    <string name="paycover_empty">ยังไม่มีอะไรที่อนุมัติล่วงหน้า คำสั่งซื้อหรือการชำระเงินตามกำหนดที่คุณอนุมัติล่วงหน้าจะแสดงที่นี่</string>
+    <string name="paycover_off_note">ปิดอยู่: รายการเหล่านี้ยังอยู่ในรายการ แต่ทุกการชำระเงินจะถามก่อน</string>
+    <string name="paycover_orders">คำสั่งซื้อ</string>
+    <string name="paycover_allows">การชำระเงินตามกำหนด</string>
+    <string name="paycover_cap">รวมไม่เกิน %1$s</string>
+    <string name="paycover_until">ถึง %1$s</string>
+    <string name="paycover_for_task">สำหรับงานหนึ่งงาน</string>
+    <string name="paycover_for_schedule">สำหรับกำหนดการ “%1$s”</string>
+    <string name="paycover_for_a_schedule">สำหรับงานตามกำหนดการ</string>
+    <string name="paycover_one_order">หนึ่งคำสั่งซื้อ</string>
+    <string name="paycover_allow_scope">ร้านเดียวกัน วิธีชำระเงินเดียวกัน</string>
+    <string name="paycover_remove">ลบ %1$s</string>
+    <string name="paycover_remove_order_confirm">ลบการอนุมัตินี้ไหม คำสั่งซื้อจะถามก่อนชำระเงิน</string>
+    <string name="paycover_remove_allow_confirm">ลบการอนุญาตของ “%1$s” ไหม การชำระเงินของกำหนดการนี้จะถามทุกครั้งอีกครั้ง</string>
+    <string name="paycover_removed">ลบแล้ว การชำระเงินจะถามอีกครั้ง</string>
+    <string name="preapprove_what">คำสั่งซื้อ</string>
+    <string name="preapprove_cap">ยอดสูงสุดที่จ่าย</string>
+    <string name="preapprove_cap_value">%1$s รวมทั้งหมด (รวมภาษีและค่าจัดส่ง)</string>
+    <string name="preapprove_until">ถึงวันที่</string>
+    <string name="preapprove_covers">ครอบคลุม</string>
+    <string name="preapprove_covers_value">เฉพาะคำสั่งซื้อนี้หนึ่งรายการ</string>
+    <string name="preapprove_requirements">ต้องมี</string>
+    <string name="preapprove_shipping">การจัดส่ง</string>
+    <string name="preapprove_shops">ร้านค้า</string>
+    <string name="preapprove_delegated">Kelo ตัดสินใจ</string>
+    <string name="chat_payment_cover_order">ชำระตามคำสั่งซื้อที่คุณอนุมัติล่วงหน้า</string>
+    <string name="chat_payment_cover_schedule">ชำระตามที่คุณอนุญาตไว้สำหรับการชำระเงินของกำหนดการนี้</string>
+</resources>

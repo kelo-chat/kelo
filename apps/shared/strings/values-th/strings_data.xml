@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">ข้อมูลของคุณ</string>
+    <string name="data_intro">ดาวน์โหลดสำเนาสิ่งที่ Kelo เก็บเกี่ยวกับคุณ นำความทรงจำจากผู้ช่วยอื่นมา หรือเริ่มใหม่ตั้งแต่ต้น</string>
+    <string name="data_export_title">ดาวน์โหลดข้อมูลของคุณ</string>
+    <string name="data_export_body">ไฟล์ ZIP เดียวที่มีบทสนทนา สิ่งที่ Kelo จำได้ กำหนดการ สิ่งที่ Kelo ติดตาม บริการที่เชื่อมต่อ และการตั้งค่าของคุณ จะไม่มีรหัสผ่าน คีย์ หรือโทเค็นอยู่ในนั้นเลย</string>
+    <string name="data_export_make">สร้างไฟล์</string>
+    <string name="data_export_making">กำลังสร้างไฟล์…</string>
+    <string name="data_export_ready">ไฟล์ของคุณพร้อมแล้ว (%1$s)</string>
+    <string name="data_export_save">บันทึกไฟล์</string>
+    <string name="data_export_saved">บันทึกแล้ว</string>
+    <string name="data_export_again">สร้างไฟล์ใหม่</string>
+    <string name="data_export_failed">สร้างไฟล์ไม่สำเร็จ ลองอีกครั้ง</string>
+    <string name="data_import_title">นำความทรงจำจากผู้ช่วยอื่นมา</string>
+    <string name="data_import_private">ไม่มีอะไรถูกส่งไปที่อื่น โมเดลที่คุณเลือกบนเซิร์ฟเวอร์ Kelo จะอ่านข้อความและเก็บข้อเท็จจริงสั้น ๆ เกี่ยวกับคุณ</string>
+    <string name="data_import_step1">1. คัดลอกคำขอนี้แล้ววางในผู้ช่วยเดิมของคุณ (ChatGPT, Claude, Gemini ฯลฯ)</string>
+    <string name="data_import_copy">คัดลอกคำขอ</string>
+    <string name="data_import_copied">คัดลอกแล้ว</string>
+    <string name="data_import_step2">2. วางคำตอบของเขาที่นี่</string>
+    <string name="data_import_paste_hint">วางคำตอบ</string>
+    <string name="data_import_add">เพิ่มลงในความจำ</string>
+    <string name="data_import_zip_body">หรือเลือกไฟล์ส่งออกแชตที่คุณดาวน์โหลดจาก ChatGPT, Claude หรือ Gemini (ไฟล์ ZIP ไม่เกิน 100 MB)</string>
+    <string name="data_import_zip">เลือกไฟล์ ZIP</string>
+    <string name="data_import_running">กำลังอ่าน… %1$d จาก %2$d</string>
+    <string name="data_import_reading">กำลังเปิดไฟล์…</string>
+    <string name="data_import_cancel">หยุด</string>
+    <string name="data_import_failed">ไม่มีอะไรถูกเพิ่ม: %1$s</string>
+    <string name="data_import_none">ไม่พบสิ่งใหม่ที่จะเพิ่ม</string>
+    <string name="data_import_added">เพิ่มลงในความจำแล้ว (%1$d):</string>
+    <string name="data_zip_too_big">ไฟล์นี้ใหญ่กว่า 100 MB</string>
+    <string name="data_reset_title">เริ่มใหม่ตั้งแต่ต้น</string>
+    <string name="data_reset_body">ลบบทสนทนา สิ่งที่ Kelo จำได้ สิ่งที่ Kelo ติดตาม และกำหนดการของคุณ ตัวเชื่อมต่อ การเข้าสู่ระบบที่บันทึกไว้ โมเดล และโทรศัพท์ของคุณจะยังอยู่ โดยจะบันทึกสำเนาเป็นไฟล์ก่อน</string>
+    <string name="data_reset_signout">ออกจากระบบ ตัวเชื่อมต่อ และลบการเข้าสู่ระบบที่บันทึกไว้ด้วย</string>
+    <string name="data_reset_type">พิมพ์ %1$s เพื่อยืนยัน</string>
+    <string name="data_reset_button">เริ่มใหม่ตั้งแต่ต้น</string>
+    <string name="data_reset_wrong">ไม่ใช่คำที่ถูกต้อง ยังไม่มีอะไรเปลี่ยนแปลง</string>
+    <string name="data_reset_confirm">เริ่มใหม่ตอนนี้ไหม จะบันทึกสำเนาก่อน แล้วลบบทสนทนา ความจำ สิ่งที่ติดตาม และกำหนดการ ย้อนกลับไม่ได้</string>
+    <string name="data_reset_done">เรียบร้อย ลบทุกอย่างข้างต้นแล้ว บันทึกสำเนาเป็น %1$s</string>
+</resources>

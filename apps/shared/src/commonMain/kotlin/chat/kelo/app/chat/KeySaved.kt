@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,16 +22,19 @@ import chat.kelo.app.ui.components.SecondaryButton
 import chat.kelo.app.ui.icons.KeloIcons
 import chat.kelo.app.ui.text.string
 import chat.kelo.app.ui.theme.Kelo
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
-/** The server's line after `save_found_secret` (connect_tools.py) as a card's facts; pure, so it is tested. */
+/** The server's facts after `save_found_secret` (agent/facts.py: saved_key {service, hosts}) as a card's facts; pure, so it is tested. */
 object KeySavedRules {
     data class Saved(val name: String, val hosts: List<String>)
 
-    private val LINE = Regex("^Saved the key for '([^']+)' in the keychain \\(hosts: ([^)]*)\\)")
-
-    fun parse(output: String): Saved? {
-        val m = LINE.find(output.trim()) ?: return null
-        return Saved(m.groupValues[1], m.groupValues[2].split(",").map { it.trim() }.filter { it.isNotEmpty() })
+    fun of(ev: TurnEvent.ToolResult): Saved? {
+        val k = ev.facts["saved_key"] as? JsonObject ?: return null
+        val name = (k["service"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() } ?: return null
+        val hosts = (k["hosts"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content?.trim()?.ifEmpty { null } }
+        return Saved(name, hosts)
     }
 }
 

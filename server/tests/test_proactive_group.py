@@ -118,7 +118,7 @@ async def test_limits_still_count_per_item(tmp_path):
     box = Mailbox([mail(i, "same", "A <a@x.org>") for i in range(1, 6)])                    # five identical mails fold into one line ...
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), box)
     r = await p.run()
-    assert r["sent"] == 2 and r["dropped"] == 3 and len(sent) == 1                          # ... but only two fit the daily limit
+    assert r["sent"] == 2 and r["held"] == 3 and len(sent) == 1                             # ... but only two fit the daily limit (the rest is held)
     assert sent[0]["message"].endswith("(2 mails)") and p.today_counts() == {"보통": 2, "오늘": 0, "지금": 0}
     assert p.guard()["unanswered"] == 2
 

@@ -8,4 +8,8 @@
     <string name="actions_state_failed">Не удалось</string>
     <string name="actions_empty">Kelo пока ничего не делал снаружи.</string>
     <string name="actions_outside_text_note">Текст, который Kelo читает на веб-страницах, в письмах и файлах, считается данными, а не инструкциями; он не может заставить Kelo платить, отправлять или удалять что-либо.</string>
+    <string name="did_filter_all">Все</string>
+    <string name="did_filter_actions">Отправка и изменение</string>
+    <string name="did_filter_browser">Браузер</string>
+    <string name="did_filter_tasks">Задачи</string>
 </resources>

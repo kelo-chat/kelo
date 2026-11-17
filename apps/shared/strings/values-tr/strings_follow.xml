@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Kelo\'nun ilgilendiği konular</string>
+    <string name="follow_stop">Takibi bırak</string>
+    <string name="follow_stop_confirm">Bu etkinliği takip etmeyi bırakmak istiyor musunuz?</string>
+    <string name="follow_stop_confirm_detail">Kelo artık değişiklikleri kontrol etmeyecek ve önceden hazırlık yapmayacak.</string>
+    <string name="follow_stop_yes">Takibi bırak</string>
+    <string name="follow_keep_watching">Takibe devam et</string>
+    <string name="follow_replan">Yeniden planla</string>
+    <string name="follow_sheet_title">Takip planı</string>
+    <string name="follow_plan_checks">Kontrol edilecekler</string>
+    <string name="follow_plan_prep">Hazırlıklar</string>
+    <string name="follow_plan_tell">Bildirimler</string>
+    <string name="follow_plan_tell_change">Değişiklik olduğunda bildir</string>
+    <string name="follow_next_check">Sonraki kontrol: %1$s</string>
+    <string name="follow_last_check">Son kontrol: %1$s</string>
+    <string name="follow_prep_later">Planlandı</string>
+    <string name="follow_prep_running">Devam ediyor</string>
+    <string name="follow_prep_done">Hazırlandı</string>
+    <string name="follow_prep_failed">Başarısız</string>
+    <string name="follow_state_watching">Takip ediliyor</string>
+    <string name="follow_state_stopped">Durduruldu</string>
+    <string name="follow_state_done">Tamamlandı</string>
+    <string name="follow_summary_lead_flight">Kalkıştan 1 gün önce bildirim</string>
+    <string name="follow_summary_lead_general">1 gün önce bildirim</string>
+    <string name="follow_summary_lead_hours">%1$d saat önce bildirim</string>
+    <string name="follow_summary_prep_checkin">Check-in açıldığında hazırla</string>
+    <string name="follow_summary_prep_general">%1$s hazırla</string>
+    <string name="follow_summary_watch_changes">Değişiklikleri kontrol et</string>
+    <string name="follow_summary_default">Programla ilgilen</string>
+</resources>

@@ -27,7 +27,7 @@ from .loop import Tool, current_box
 # What nearly every turn may need, chosen from what the prompt names as first steps: answering and asking (quick_replies,
 # await_reply), the agent's own files and skills, looking things up (web_search, web_fetch), the browser's basic steps and signing
 # in (vault_status, request_login, browser_login), connecting a service, the payment check that must come before any final pay
-# click (confirm_purchase: kept in the core so it can never be skipped for want of loading it) and the start of an order the user asked
+# click (checkout_review and checkout_submit: kept in the core so they can never be skipped for want of loading them) and the start of an order the user asked
 # for (begin_order: the one-card order path), handing off long work (delegate),
 # a background job's final report and progress line, the reaction on the user's message (react), the weather (so a weather question never opens a
 # browser), and find_tools itself. Rare ones load with find_tools (the prompt diet, 2026-11-11): browser_click_at, browser_drag (points of
@@ -38,10 +38,13 @@ CORE_TOOLS: frozenset[str] = frozenset({
     "web_search", "web_fetch",
     "browser_open", "browser_read", "browser_click", "browser_type", "browser_login", "browser_look",
     "vault_status", "request_login", "connect_service", "add_service_key",
-    "begin_order", "confirm_purchase", "delegate", "report", "job_progress", "remember", "react",
-    "weather", "recheck_later",
+    "begin_order", "checkout_review", "checkout_submit", "delegate", "report", "job_progress", "remember", "react",
+    "weather", "recheck_later", "kelo_help", "read_earlier_messages",
+    "set_owner_settings", "finish_first_chat",   # shown only during the first conversation (first_chat.py: the gate hides them after)
     "action_result",   # shown only while a step's result is unknown (done_once.py: the gate hides it otherwise)
 })
+# The tool the checkout tools wrap (the same approval and grant checks, no page reading): code and tests call it, the model never sees it.
+INTERNAL_TOOLS: frozenset[str] = frozenset({"confirm_purchase"})
 # loaded up front for every automatic run of a schedule (the run note tells it to pause a job that cannot work any more, or to try again later when the block is temporary)
 SCHEDULE_RUN_TOOLS: tuple[str, ...] = ("schedule_pause", "schedule_retry")
 ACTIVE_MAX = 30            # at most this many activated tools per scope; the oldest go first
@@ -63,7 +66,7 @@ class ToolBox:
     def shown(self, tools: list[Tool]) -> list[Tool]:
         by_name = {t.name: t for t in tools}
         out = [t for t in tools if t.name in self.core] + [by_name[n] for n in self.active if n in by_name]
-        return [t for t in out if not (self.blocked is not None and self.blocked(t.name))]
+        return [t for t in out if t.name not in INTERNAL_TOOLS and not (self.blocked is not None and self.blocked(t.name))]
 
     def is_shown(self, name: str) -> bool:
         return name in self.core or name in self.active
@@ -95,12 +98,12 @@ class ToolBox:
 
 
 _WORD = re.compile(r"[^\w]+")
-_STOP = {"a", "an", "the", "to", "of", "for", "and", "or", "in", "on", "my", "me", "i", "with", "tool", "tools", "use", "using",
-         "do", "can", "want", "please", "some", "any", "from", "by", "it", "is", "be", "that", "this", "at", "as"}
+COMMON_SHARE = 0.5   # a query word found in more than this share of the tools' texts says nothing about which tool is meant
+MIN_SAMPLE = 8       # ... counted only when there are at least this many tools to count in
 
 
 def _words(text: str) -> list[str]:
-    return [w for w in _WORD.split((text or "").lower()) if len(w) > 1 and w not in _STOP]
+    return [w for w in _WORD.split((text or "").lower()) if len(w) > 1]
 
 
 def _stem(w: str) -> str:
@@ -116,11 +119,23 @@ def _haystack(t: Tool) -> tuple[set[str], str]:
     return set(t.name.lower().split("_")), f"{t.name.replace('_', ' ')} {t.description} {extra}".lower()
 
 
+def _common(tools: list[Tool], words: list[str]) -> set[str]:
+    """The query words found in most tools' texts (document frequency, no word list): they count for nothing. Never all of them: when
+    every word is common they all count; and with fewer than MIN_SAMPLE tools nothing is counted."""
+    usable = [t for t in tools if t.name != "find_tools"]
+    if len(usable) < MIN_SAMPLE:
+        return set()
+    hays = [_haystack(t)[1] for t in usable]
+    found = {w for w in set(words) if sum(1 for h in hays if re.search(rf"\b{re.escape(_stem(w))}", h)) > COMMON_SHARE * len(hays)}
+    return found if found != set(words) else set()
+
+
 def search(tools: list[Tool], query: str, limit: int = FIND_LIMIT) -> list[Tool]:
     """The tools that best match the query's words: whole tool names first, then words of the name, then the description."""
     q = (query or "").strip().lower()
     words = _words(q)
     scored: list[tuple[int, int, Tool]] = []
+    common = _common(tools, words)
     for i, t in enumerate(tools):
         if t.name == "find_tools":
             continue
@@ -129,6 +144,8 @@ def search(tools: list[Tool], query: str, limit: int = FIND_LIMIT) -> list[Tool]
         if t.name.lower() in q.replace(" ", "_").split(",") or re.search(rf"(?<![\w]){re.escape(t.name.lower())}(?![\w])", q):
             score += 100
         for w in words:
+            if w in common:
+                continue
             s = _stem(w)
             if w in parts or s in parts or any(p.startswith(s) for p in parts if len(s) >= 4):
                 score += 4
@@ -164,7 +181,7 @@ def find_tools_tool(loadable: Callable[[], list[str]] | None = None) -> Tool:
         if cur is None:
             return "All your tools are already in your list."
         box, tools = cur
-        hidden = [t for t in tools if box is not None and not box.is_shown(t.name) and not (box.blocked is not None and box.blocked(t.name))]
+        hidden = [t for t in tools if box is not None and t.name not in INTERNAL_TOOLS and not box.is_shown(t.name) and not (box.blocked is not None and box.blocked(t.name))]
         if box is None or not hidden:
             return "All your tools are already in your list."
         exact = args.get("names")

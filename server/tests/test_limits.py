@@ -156,7 +156,7 @@ def test_the_report_shows_what_each_container_uses_and_warns_about_overcommit_an
     assert "RAM 46MB now, limit 6.0GB" in text and "CPU 0.30% now, limit 2" in text and "RAM 264MB now, limit 1.0GB" in text
     assert "3.0MB used, limit 2.0GB" in text and "3.0MB used, limit whole disk (20.0GB free)" in text
     assert "This computer: RAM 8 GB · CPU 4 · 20 GB free disk" in text and "RAM limits added up: 15.0GB of 8.0GB" in text   # 11 GB set + the two work rooms' 2 GB default and "more than this computer has" in text
-    assert "limit no limit" not in text and "browser cache browser default" in text            # nothing is reported as a bare "no limit"
+    assert "limit no limit" not in text and "browser cache browser default (1 GB)" in text            # nothing is reported as a bare "no limit"
     assert "main/claude-cli" not in text                                                            # only containers that exist are listed
     assert "workroom    RAM limit 2.0GB (default)  |  CPU limit all 4 CPUs" in text and "work room scratch 2.0GB (default)" in text
     assert limits.report(m, only="alice")[0] == "alice  size: Custom (set one by one)" and "main" not in "\n".join(limits.report(m, only="alice", get=get)).split("This computer")[0]

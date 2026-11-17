@@ -9,10 +9,10 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from assistant.store import Store
-from assistant.weather import (KMA, OPEN_METEO, WEATHERAPI, Day, Place, Weather, WeatherError, in_korea, kma_base, kma_grid, notable,
-                               units_for)
+from assistant.weather import (KMA, METNO, OPEN_METEO, WEATHERAPI, Day, Place, Weather, WeatherError, describe, in_korea, kma_base, kma_grid,
+                               notable, units_for)
 
-from weather_fakes import FakeWeather, kma_items, open_meteo, air, ts, wapi_day
+from weather_fakes import FakeWeather, kma_items, met_norway, open_meteo, air, ts, wapi_day
 
 SEOUL_PLACE = Place("서울특별시", 37.566, 126.978, "KR", "서울특별시", "Asia/Seoul")
 TOKYO = Place("Tokyo", 35.6895, 139.6917, "JP", "Tokyo", "Asia/Tokyo")
@@ -249,3 +249,57 @@ async def test_the_tool_reaches_the_whole_forecast_range_and_past_values_for_a_f
     out = await tool.handler({"date": "2025-11-29"})                    # a past date: that day as recorded, and the typical values
     assert "a past date" in out and "Recorded on 2025-11-29" in out
     assert (await tool.handler({"date": "next week"})).startswith("Error")
+
+
+# ---------------------------------------------------------------------------------------------------------- MET Norway (the last fallback)
+async def test_open_meteo_down_means_met_norway_answers_with_its_credit_and_a_generic_user_agent():
+    store, fake, w = make()
+    fake.down.add("api.open-meteo.com")
+    fake.met = met_norway(rain_from=15)
+    fc = await w.forecast(SEOUL_PLACE)
+    assert fc.provider == METNO and fc.fallback_from == OPEN_METEO and "could not resolve" in fc.note
+    day = fc.day("2026-11-09")
+    assert day.high == 12.0 and day.low == 3.0 and day.sky in {"clear", "partly", "rain"}
+    assert any(h.precip_kind == "rain" and h.wet() for h in fc.hours) and fc.hours[0].wind_kmh == 10.8
+    assert fc.attribution() == ("Weather data from MET Norway", "https://api.met.no/")
+    text = describe(fc, ts(2026, 11, 9, 7, 0))
+    assert "MET Norway" in text and "Open-Meteo failed" in text and "CC BY 4.0" in text
+    i = next(n for n, u in enumerate(fake.calls) if "api.met.no" in u)
+    assert fake.calls[i].startswith("https://api.met.no/weatherapi/locationforecast/2.0/complete?lat=37.5660&lon=126.9780")
+    ua = fake.headers[i]["User-Agent"]
+    assert ua.startswith("Kelo/") and ua.endswith("(+https://kelo.chat)")
+    assert METNO not in [p["id"] for p in w.public()["providers"]] and METNO not in ("auto", OPEN_METEO, KMA, WEATHERAPI)
+
+
+async def test_a_keyed_service_and_open_meteo_both_down_still_get_met_norway():
+    store, fake, w = make()
+    await w.save_key(KMA, "good-kma-key-123")
+    fake.kma = "server error"
+    fake.down.add("api.open-meteo.com")
+    fc = await w.forecast(SEOUL_PLACE)
+    assert fc.provider == METNO and fc.fallback_from == KMA and fc.day("2026-11-09").high == 12.0
+
+
+async def test_when_every_service_is_down_a_young_forecast_is_used_and_an_old_one_is_not():
+    store = Store()
+    store.set_profile(timezone="Asia/Seoul")
+    fake = FakeWeather()
+    clock = {"t": ts(2026, 11, 9, 7, 0)}
+    w = Weather(store, fetcher=fake, clock=lambda: clock["t"], language=lambda: "ko")
+    first = await w.forecast(SEOUL_PLACE)                       # fetched at 07:00 and kept
+    clock["t"] += 30 * 60                                        # past the 20-minute cache, within an hour
+    fake.down |= {"api.open-meteo.com", "api.met.no"}
+    assert await w.forecast(SEOUL_PLACE, stale_seconds=3600) is first
+    clock["t"] += 3600                                           # now older than stale_seconds
+    with pytest.raises(WeatherError):
+        await w.forecast(SEOUL_PLACE, stale_seconds=3600)
+    with pytest.raises(WeatherError):
+        await w.forecast(SEOUL_PLACE)                            # no stale allowance at all
+
+
+async def test_with_every_service_down_and_nothing_kept_the_error_is_raised():
+    store, fake, w = make()
+    fake.down |= {"api.open-meteo.com", "api.met.no"}
+    with pytest.raises(WeatherError):
+        await w.forecast(SEOUL_PLACE)
+

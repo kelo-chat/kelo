@@ -1,4 +1,12 @@
-"""FlightAware AeroAPI flight status source with monthly free allowance counter."""
+"""FlightAware AeroAPI flight status source with a monthly call allowance.
+
+The allowance is a setting (Settings.aeroapi_allowance, env ASSISTANT_AEROAPI_ALLOWANCE) whose default, FREE_PER_MONTH, is the free
+amount of FlightAware's personal tier as published when this was written (500 result sets a month); an owner on another plan sets
+their own number. Calls are counted per month in follow_usage ("flight_aeroapi"). At ALLOWANCE_STOP (90 %) of the allowance the source
+stops: `paused()` says so, the runner uses the next flight source that covers the flight (the Incheon one), and a check nobody else
+covers waits for the next month and shows that it is paused. The owner is told once per month (follow_problem). Nothing is billed by
+surprise: the other 10 % absorbs calls that were already under way when the limit was reached.
+"""
 
 from __future__ import annotations
 
@@ -7,13 +15,20 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any, ClassVar
 
+from ...i18n import t
 from ...keyring_client import PLACEHOLDER
 from ...netguard import Reply, fetch
 from ..checks import Reading, Source
 
 AEROAPI_HOST = "aeroapi.flightaware.com"
-FREE_PER_MONTH = 500  # placeholder constant: the owner checks FlightAware's current personal-tier allowance
+USAGE_NAME = "flight_aeroapi"
+FREE_PER_MONTH = 500   # the default allowance (see above)
 ALLOWANCE_STOP = 0.9
+
+
+def stop_at(allowance: int) -> int:
+    """The number of calls in a month at which lookups stop (90 % of the allowance)."""
+    return int(allowance * ALLOWANCE_STOP + 1e-9)
 
 
 class AeroApiFlights(Source):
@@ -25,7 +40,9 @@ class AeroApiFlights(Source):
                  follow_store: Any = None,
                  fetcher: Callable[..., Awaitable[Reply]] = fetch,
                  notify: Callable[[str, str, str], Any] | None = None,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time,
+                 allowance: int | Callable[[], int] = FREE_PER_MONTH) -> None:
+        self._allowance = allowance
         self._explicit_key = key
         self.key_fn = key_fn
         self.store = store
@@ -58,22 +75,40 @@ class AeroApiFlights(Source):
     def _get_usage(self) -> int:
         fs = self.follow_store
         if fs is not None and hasattr(fs, "get_usage"):
-            return fs.get_usage("flight_aeroapi", self._month())
+            return fs.get_usage(USAGE_NAME, self._month())
         return 0
 
+    def allowance(self) -> int:
+        """This month's allowance: the setting, or the default when it is missing or not a number."""
+        try:
+            value = self._allowance() if callable(self._allowance) else self._allowance
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return FREE_PER_MONTH
+
     def allowance_exceeded(self) -> bool:
-        limit = int(FREE_PER_MONTH * ALLOWANCE_STOP)
-        return self._get_usage() >= limit
+        return self._get_usage() >= stop_at(self.allowance())
 
     def available(self) -> bool:
-        if not self._key():
-            return False
-        if self.allowance_exceeded():
-            return False
-        return True
+        return bool(self._key())   # a used-up allowance is `paused`, not unavailable: plans made now still hold next month
 
     def covers(self, refs: dict[str, str]) -> bool:
         return bool(refs.get("flight"))
+
+    def paused(self, refs: dict[str, str]) -> str:
+        """The reason lookups are stopped for the month (90 % of the allowance used), else "". Tells the owner once per month."""
+        if not self.covers(refs) or not self._key() or not self.allowance_exceeded():
+            return ""
+        self._tell_allowance_once()
+        return t("Flight lookups are paused until next month ({used} of {allowance} calls used).",
+                 used=self._get_usage(), allowance=self.allowance())
+
+    def usage(self) -> dict[str, Any] | None:
+        if self.follow_store is None:
+            return None
+        allowance = self.allowance()
+        return {"source": USAGE_NAME, "month": self._month(), "used": self._get_usage(), "allowance": allowance,
+                "stop_at": stop_at(allowance), "paused": self.allowance_exceeded()}
 
     async def read(self, refs: dict[str, str]) -> Reading:
         key = self._key()
@@ -94,8 +129,8 @@ class AeroApiFlights(Source):
             r = await self.fetcher("GET", url, allowed_hosts=[AEROAPI_HOST],
                                    headers={"x-apikey": key, "Accept": "application/json"})
             if self.follow_store is not None and hasattr(self.follow_store, "count_usage"):
-                calls = self.follow_store.count_usage("flight_aeroapi", self._month())
-                if calls >= int(FREE_PER_MONTH * ALLOWANCE_STOP):
+                calls = self.follow_store.count_usage(USAGE_NAME, self._month())
+                if calls >= stop_at(self.allowance()):
                     self._tell_allowance_once()
 
             if r.status != 200:
@@ -112,16 +147,16 @@ class AeroApiFlights(Source):
         fs = self.follow_store
         month = self._month()
         if fs is not None and hasattr(fs, "notified_allowance"):
-            if fs.notified_allowance("flight_aeroapi", month):
+            if fs.notified_allowance(USAGE_NAME, month):
                 return
-            fs.set_notified_allowance("flight_aeroapi", month, True)
+            fs.set_notified_allowance(USAGE_NAME, month, True)
 
         if self.notify is not None:
-            pct = int(ALLOWANCE_STOP * 100)
             self.notify(
                 "follow_problem",
                 "FlightAware",
-                f"FlightAware call allowance reached {pct}%: stopped checking to avoid charges.",
+                t("{pct}% of this month's FlightAware allowance is used: flight lookups with it are paused until next month, so nothing is billed.",
+                  pct=int(ALLOWANCE_STOP * 100)),
             )
 
     def _parse_flight_data(self, data: Any, flight_id: str) -> dict[str, Any] | None:
@@ -147,4 +182,5 @@ class AeroApiFlights(Source):
             "terminal": str(terminal),
             "departure_time": str(dep_time),
             "status": str(status),
+            "cancelled": f.get("cancelled") is True,   # AeroAPI's own boolean
         }

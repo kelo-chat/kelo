@@ -822,6 +822,22 @@
     <string name="agent_perm_rules_empty">Belum ada. Pilih “Selalu izinkan di situs ini” pada kartu persetujuan dan akan muncul di sini.</string>
     <string name="agent_perm_history">Persetujuan sebelumnya</string>
     <string name="agent_perm_history_empty">Belum ada yang ditanyakan.</string>
+    <string name="approval_edit_button">Ubah</string>
+    <string name="approval_edit_title">Pesan yang dikirim</string>
+    <string name="approval_edit_save">Simpan</string>
+    <string name="approval_edited_note">Kamu mengubah pesannya</string>
+    <string name="approval_edit_empty">Tulis pesan.</string>
+    <string name="approval_edit_too_long">Terlalu panjang. Persingkat.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Persetujuan sebelumnya</string>
+    <string name="approval_history_empty">Belum ada persetujuan.</string>
+    <string name="approval_history_error">Persetujuan sebelumnya tidak bisa dimuat.</string>
+    <string name="approval_history_where">Ke mana</string>
+    <string name="approval_history_when">Kapan</string>
+    <string name="approval_history_answered">Dijawab</string>
+    <string name="approval_via_app">Di aplikasi</string>
+    <string name="approval_via_notification">Dari notifikasi</string>
+    <string name="approval_via_messenger">Di aplikasi pesan</string>
     <string name="agent_perm_asked">Ditanyakan %1$s</string>
     <string name="approval_remember_site">Jangan tanyakan lagi di situs ini</string>
     <string name="approval_remember_scope">Berlaku untuk %1$s dan semua subalamatnya</string>
@@ -931,6 +947,7 @@
     <string name="live_forward">Maju</string>
     <string name="live_reload">Muat ulang</string>
     <string name="live_page_not_responding">Halaman tidak merespons</string>
+    <string name="live_touch_missed">Sentuhan tidak sampai ke halaman</string>
     <string name="live_type_hint">Teks untuk diketik di halaman</string>
     <string name="live_type_send">Ketik</string>
     <string name="live_type_hide">Sembunyikan teks</string>
@@ -1099,6 +1116,8 @@
     <string name="offer_reason_later">Nanti</string>
     <string name="offer_busy">Sedang menulis balasan lain. Ketuk lagi setelah selesai</string>
     <string name="offer_failed">Tidak dapat memulai</string>
+    <string name="offer_steps_show_all">Tampilkan semua %1$d langkah</string>
+    <string name="offer_steps_fewer">Tampilkan lebih sedikit langkah</string>
     <string name="work_upcoming">Akan datang</string>
     <string name="work_upcoming_unscheduled">Belum ada waktu</string>
     <string name="work_past">Sebelumnya</string>
@@ -1127,6 +1146,7 @@
     <string name="work_kind_browser">Tugas browser</string>
     <string name="work_kind_research">Riset</string>
     <string name="work_kind_general">Tugas umum</string>
+    <string name="work_kind_phone">Tugas di ponsel</string>
     <string name="work_job_title">Tugas latar belakang</string>
     <string name="work_job_line">%1$s · Latar belakang</string>
     <string name="work_task_in_background">Di latar belakang</string>
@@ -1421,6 +1441,7 @@
     <string name="handover_verify_title">%1$s meminta Anda mengonfirmasi login</string>
     <string name="handover_verify_body">Setujui login di ponsel Anda, atau buka tampilan langsung dan ketik kodenya di sana. Setelah itu Kelo melanjutkan.</string>
     <string name="handover_verify_open">Buka tampilan langsung</string>
+    <string name="handover_device_open">Buka layar ponsel</string>
     <string name="handover_verify_done">Sudah login — Kelo melanjutkan</string>
     <string name="handover_verify_approve_body">Setujui login di notifikasi ponsel Anda. Kelo melanjutkan setelah disetujui.</string>
     <string name="handover_verify_approved">Sudah kusetujui</string>

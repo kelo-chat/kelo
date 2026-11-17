@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">결제 승인</string>
+    <string name="approval_sign_subtitle">지문이나 얼굴로 확인해 주세요</string>
+    <string name="approval_sign_failed">이 휴대폰에서 결제를 승인하지 못했어요. 다시 해 주세요.</string>
+    <string name="approval_sign_key_lost">이 휴대폰의 결제 승인 열쇠가 없어요. 이 휴대폰을 서버에 다시 연결해 주세요.</string>
+    <string name="approval_pay_on_phone">결제 승인은 휴대폰 앱에서 해 주세요</string>
+</resources>

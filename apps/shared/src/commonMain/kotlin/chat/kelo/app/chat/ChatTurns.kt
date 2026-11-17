@@ -47,6 +47,17 @@ internal class ChatTurns(
     fun send(given: String? = null, words: AttachmentWords? = null, answers: List<ReplyAnswer> = emptyList()) {
         val s = host.state.value
         if (s.busy || s.secretAsk != null || s.consentAsk != null || (given == null && s.uploading)) return
+        // the list is a window around an opened message: the newest page comes back first, so the message lands at the end
+        if (s.hasNewer) {
+            host.scope.launch { history.toNewest(); sendNow(given, words, answers) }
+            return
+        }
+        sendNow(given, words, answers)
+    }
+
+    private fun sendNow(given: String?, words: AttachmentWords?, answers: List<ReplyAnswer>) {
+        val s = host.state.value
+        if (s.busy || s.secretAsk != null || s.consentAsk != null || (given == null && s.uploading)) return
         val sending = if (given == null && words != null) s.ready.filter { it.stored != null } else emptyList()
         val names = sending.mapNotNull { it.stored }
         val text = if (given != null) given.trim() else if (words != null) AttachmentText.compose(s.input, names, words) else s.input.trim()

@@ -73,7 +73,7 @@ LM Studio, Ollama 같은 OpenAI 호환 서버로 내 장비에서 직접 돌릴 
 지금 빌드의 버전, 크기, SHA-256: [kelo.chat/download/latest.json](https://kelo.chat/download/latest.json)
 
 - **Android:** APK를 여세요. Android가 물으면 이 출처(브라우저나 파일 앱)의 앱 설치를 허용하세요. Android 8.0 이상.
-- **Windows:** Microsoft Store에서 받으면 이 경고는 없어요. 직접 받는 설치 파일에는 아직 코드 서명이 없어서 SmartScreen이 막을 수 있어요. **추가 정보 → 실행**을 누르세요. Windows 10, 11.
+- **Windows:** Microsoft Store에서 받으면 이 경고는 없어요. 직접 받는 설치 파일에는 아직 코드 서명이 없어요. 파란 "Windows의 PC 보호" 창(SmartScreen)이 뜨면 **추가 정보**를 누른 뒤 **실행**을 누르세요. **스마트 앱 컨트롤**이 켜진 PC(Windows 11, 설정 → 개인 정보 및 보안 → Windows 보안 → 앱 및 브라우저 컨트롤)에서는 서명 없는 설치 .exe를 Windows가 막고, "실행" 버튼도 나오지 않아요. 그런 PC에서는 Microsoft Store 버전을 설치하세요. 스마트 앱 컨트롤이 켜져 있을 때 직접 받는 설치 파일은 아직 지원하지 않아요. Windows 10, 11.
 - **macOS:** Kelo를 응용 프로그램 폴더로 끌어 놓으세요. Apple 공증을 받은 앱이라 바로 열려요. Apple 실리콘(M1 이상) Mac용.
 
 <p align="center">
@@ -120,7 +120,14 @@ curl -fsSL https://kelo.chat/install.sh | bash
 ```
 
 ```powershell
-# Windows (PowerShell, WSL 2를 쓰는 Docker Desktop)
+# Windows (PowerShell): 한 줄이고, 터미널에서 묻는 것이 없어요. Docker는 필요 없어요.
+# 관리자 권한을 한 번만 물어본 뒤 Kelo 서버(자체 WSL 2 시스템)를 설치하고 설정 페이지를 열어요.
+irm https://kelo.chat/install-windows.ps1 | iex
+```
+
+Docker Desktop(WSL 2 사용)으로 설치하려면:
+
+```powershell
 irm https://kelo.chat/install.ps1 | iex
 ```
 

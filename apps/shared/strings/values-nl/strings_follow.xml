@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Waar Kelo voor zorgt</string>
+    <string name="follow_stop">Niet meer volgen</string>
+    <string name="follow_stop_confirm">Dit item niet meer volgen?</string>
+    <string name="follow_stop_confirm_detail">Kelo controleert geen wijzigingen meer en bereidt niets meer voor.</string>
+    <string name="follow_stop_yes">Niet meer volgen</string>
+    <string name="follow_keep_watching">Blijven volgen</string>
+    <string name="follow_replan">Opnieuw plannen</string>
+    <string name="follow_sheet_title">Opvolgplan</string>
+    <string name="follow_plan_checks">Controlepunten</string>
+    <string name="follow_plan_prep">Voorbereidingen</string>
+    <string name="follow_plan_tell">Meldingen</string>
+    <string name="follow_plan_tell_change">Waarschuwen bij wijzigingen</string>
+    <string name="follow_next_check">Volgende controle: %1$s</string>
+    <string name="follow_last_check">Laatste controle: %1$s</string>
+    <string name="follow_prep_later">Gepland</string>
+    <string name="follow_prep_running">Bezig</string>
+    <string name="follow_prep_done">Voorbereid</string>
+    <string name="follow_prep_failed">Mislukt</string>
+    <string name="follow_state_watching">Wordt gevolgd</string>
+    <string name="follow_state_stopped">Gestopt</string>
+    <string name="follow_state_done">Voltooid</string>
+    <string name="follow_summary_lead_flight">Melding 1 dag voor vertrek</string>
+    <string name="follow_summary_lead_general">Melding 1 dag van tevoren</string>
+    <string name="follow_summary_lead_hours">Melding %1$d uur van tevoren</string>
+    <string name="follow_summary_prep_checkin">Inchecken voorbereiden zodra beschikbaar</string>
+    <string name="follow_summary_prep_general">%1$s voorbereiden</string>
+    <string name="follow_summary_watch_changes">Controleren op wijzigingen</string>
+    <string name="follow_summary_default">Planning opvolgen</string>
+</resources>

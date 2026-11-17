@@ -625,6 +625,141 @@
    "methods": [
     "GET"
    ],
+   "name": "list_preapprovals",
+   "path": "/api/permissions/preapprovals",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "revoke_preapproval",
+   "path": "/api/permissions/preapprovals/{pid}",
+   "path_params": [
+    {
+     "alias": "pid",
+     "default": null,
+     "kind": "Path",
+     "name": "pid",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "list_pay_allows",
+   "path": "/api/permissions/pay-allows",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "remove_pay_allow",
+   "path": "/api/permissions/pay-allows/{aid}",
+   "path_params": [
+    {
+     "alias": "aid",
+     "default": null,
+     "kind": "Path",
+     "name": "aid",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "payment_cover",
+   "path": "/api/permissions/payment-cover",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "dict"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "PUT"
+   ],
+   "name": "set_payment_cover",
+   "path": "/api/permissions/payment-cover",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "injections",
    "path": "/api/security/injections",
    "path_params": [],
@@ -661,6 +796,49 @@
      "default": 7,
      "kind": "Query",
      "name": "days",
+     "required": false,
+     "type": "int"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "did",
+   "path": "/api/did",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "days",
+     "default": 7,
+     "kind": "Query",
+     "name": "days",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "before",
+     "default": null,
+     "kind": "Query",
+     "name": "before",
+     "required": false,
+     "type": "float | None"
+    },
+    {
+     "alias": "limit",
+     "default": 50,
+     "kind": "Query",
+     "name": "limit",
      "required": false,
      "type": "int"
     }
@@ -744,6 +922,24 @@
    ],
    "name": "put_proactive",
    "path": "/api/proactive",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_proactive_held",
+   "path": "/api/proactive/held",
    "path_params": [],
    "query": [],
    "response_class": "JSONResponse",
@@ -878,6 +1074,24 @@
    ],
    "name": "run_proactive",
    "path": "/api/proactive/run",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_research",
+   "path": "/api/proactive/research",
    "path_params": [],
    "query": [],
    "response_class": "JSONResponse",
@@ -2696,6 +2910,84 @@
    "headers": [],
    "kind": "APIRoute",
    "methods": [
+    "GET"
+   ],
+   "name": "search_messages",
+   "path": "/api/messages/search",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "q",
+     "default": "",
+     "kind": "Query",
+     "name": "q",
+     "required": false,
+     "type": "str"
+    },
+    {
+     "alias": "limit",
+     "default": 20,
+     "kind": "Query",
+     "name": "limit",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "before",
+     "default": null,
+     "kind": "Query",
+     "name": "before",
+     "required": false,
+     "type": "int | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "messages_around",
+   "path": "/api/messages/around",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "id",
+     "default": null,
+     "kind": "Query",
+     "name": "id",
+     "required": true,
+     "type": "int"
+    },
+    {
+     "alias": "n",
+     "default": 10,
+     "kind": "Query",
+     "name": "n",
+     "required": false,
+     "type": "int"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
     "DELETE"
    ],
    "name": "delete_messages",
@@ -6781,6 +7073,33 @@
    "status": null
   },
   {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "ApprovalKeyIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "put_approval_key",
+   "path": "/api/devices/approval-key",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
    "body": [],
    "deps": [
     "require_auth"
@@ -8557,6 +8876,51 @@
   {
    "body": [],
    "deps": [
+    "require_owner"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_recipient_allows",
+   "path": "/api/permissions/recipients",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_owner"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "delete_recipient_allow",
+   "path": "/api/permissions/recipients/{allow_id}",
+   "path_params": [
+    {
+     "alias": "allow_id",
+     "default": null,
+     "kind": "Path",
+     "name": "allow_id",
+     "required": true,
+     "type": "int"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
     "require_auth"
    ],
    "headers": [],
@@ -9420,6 +9784,13 @@
    "query": []
   },
   {
+   "deps": [],
+   "kind": "APIWebSocketRoute",
+   "name": "vnc_socket",
+   "path": "/api/browser/sessions/{key}/vnc",
+   "query": []
+  },
+  {
    "body": [],
    "deps": [
     "require_auth"
@@ -10243,6 +10614,33 @@
    "status": null
   },
   {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "settled_notifications",
+   "path": "/api/notifications/settled",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "ids",
+     "default": "",
+     "kind": "Query",
+     "name": "ids",
+     "required": false,
+     "type": "str"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
    "body": [
     {
      "alias": "body",
@@ -10395,6 +10793,22 @@
    "methods": [
     "GET"
    ],
+   "name": "site_install_windows_ps1",
+   "path": "/install-windows.ps1",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": false,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "site_privacy",
    "path": "/privacy",
    "path_params": [],
@@ -10413,6 +10827,22 @@
    ],
    "name": "site_support",
    "path": "/support",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": false,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "site_download",
+   "path": "/download",
    "path_params": [],
    "query": [],
    "response_class": "JSONResponse",
@@ -10603,6 +11033,258 @@
    ],
    "response_class": "JSONResponse",
    "schema": false,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "list_forgotten",
+   "path": "/api/forget",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "allow_again",
+   "path": "/api/forget/{tid}",
+   "path_params": [
+    {
+     "alias": "tid",
+     "default": null,
+     "kind": "Path",
+     "name": "tid",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "forget_plan_view",
+   "path": "/api/forget/plans/{pid}",
+   "path_params": [
+    {
+     "alias": "pid",
+     "default": null,
+     "kind": "Path",
+     "name": "pid",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_data",
+   "path": "/api/data",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_export",
+   "path": "/api/data/export",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "start_export",
+   "path": "/api/data/export",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "import_prompt",
+   "path": "/api/data/import/prompt",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_import",
+   "path": "/api/data/import",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "ImportTextIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "import_text",
+   "path": "/api/data/import/text",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "PUT"
+   ],
+   "name": "import_file",
+   "path": "/api/data/import/file",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "cancel_import",
+   "path": "/api/data/import",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "ResetIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "reset",
+   "path": "/api/data/reset",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
    "status": null
   }
  ],
@@ -11232,6 +11914,141 @@
    "methods": [
     "GET"
    ],
+   "name": "list_preapprovals",
+   "path": "/api/permissions/preapprovals",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "revoke_preapproval",
+   "path": "/api/permissions/preapprovals/{pid}",
+   "path_params": [
+    {
+     "alias": "pid",
+     "default": null,
+     "kind": "Path",
+     "name": "pid",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "list_pay_allows",
+   "path": "/api/permissions/pay-allows",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "remove_pay_allow",
+   "path": "/api/permissions/pay-allows/{aid}",
+   "path_params": [
+    {
+     "alias": "aid",
+     "default": null,
+     "kind": "Path",
+     "name": "aid",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "payment_cover",
+   "path": "/api/permissions/payment-cover",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "dict"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "PUT"
+   ],
+   "name": "set_payment_cover",
+   "path": "/api/permissions/payment-cover",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "injections",
    "path": "/api/security/injections",
    "path_params": [],
@@ -11268,6 +12085,49 @@
      "default": 7,
      "kind": "Query",
      "name": "days",
+     "required": false,
+     "type": "int"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "did",
+   "path": "/api/did",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "days",
+     "default": 7,
+     "kind": "Query",
+     "name": "days",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "before",
+     "default": null,
+     "kind": "Query",
+     "name": "before",
+     "required": false,
+     "type": "float | None"
+    },
+    {
+     "alias": "limit",
+     "default": 50,
+     "kind": "Query",
+     "name": "limit",
      "required": false,
      "type": "int"
     }
@@ -11351,6 +12211,24 @@
    ],
    "name": "put_proactive",
    "path": "/api/proactive",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_proactive_held",
+   "path": "/api/proactive/held",
    "path_params": [],
    "query": [],
    "response_class": "JSONResponse",
@@ -11485,6 +12363,24 @@
    ],
    "name": "run_proactive",
    "path": "/api/proactive/run",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_research",
+   "path": "/api/proactive/research",
    "path_params": [],
    "query": [],
    "response_class": "JSONResponse",
@@ -13240,6 +14136,84 @@
    "headers": [],
    "kind": "APIRoute",
    "methods": [
+    "GET"
+   ],
+   "name": "search_messages",
+   "path": "/api/messages/search",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "q",
+     "default": "",
+     "kind": "Query",
+     "name": "q",
+     "required": false,
+     "type": "str"
+    },
+    {
+     "alias": "limit",
+     "default": 20,
+     "kind": "Query",
+     "name": "limit",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "before",
+     "default": null,
+     "kind": "Query",
+     "name": "before",
+     "required": false,
+     "type": "int | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "messages_around",
+   "path": "/api/messages/around",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "id",
+     "default": null,
+     "kind": "Query",
+     "name": "id",
+     "required": true,
+     "type": "int"
+    },
+    {
+     "alias": "n",
+     "default": 10,
+     "kind": "Query",
+     "name": "n",
+     "required": false,
+     "type": "int"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
     "DELETE"
    ],
    "name": "delete_messages",
@@ -17325,6 +18299,33 @@
    "status": null
   },
   {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "ApprovalKeyIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "put_approval_key",
+   "path": "/api/devices/approval-key",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
    "body": [],
    "deps": [
     "require_auth"
@@ -19101,6 +20102,51 @@
   {
    "body": [],
    "deps": [
+    "require_owner"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_recipient_allows",
+   "path": "/api/permissions/recipients",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_owner"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "delete_recipient_allow",
+   "path": "/api/permissions/recipients/{allow_id}",
+   "path_params": [
+    {
+     "alias": "allow_id",
+     "default": null,
+     "kind": "Path",
+     "name": "allow_id",
+     "required": true,
+     "type": "int"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
     "require_auth"
    ],
    "headers": [],
@@ -19964,6 +21010,13 @@
    "query": []
   },
   {
+   "deps": [],
+   "kind": "APIWebSocketRoute",
+   "name": "vnc_socket",
+   "path": "/api/browser/sessions/{key}/vnc",
+   "query": []
+  },
+  {
    "body": [],
    "deps": [
     "require_auth"
@@ -20787,6 +21840,33 @@
    "status": null
   },
   {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "settled_notifications",
+   "path": "/api/notifications/settled",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "ids",
+     "default": "",
+     "kind": "Query",
+     "name": "ids",
+     "required": false,
+     "type": "str"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
    "body": [
     {
      "alias": "body",
@@ -20939,6 +22019,22 @@
    "methods": [
     "GET"
    ],
+   "name": "site_install_windows_ps1",
+   "path": "/install-windows.ps1",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": false,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "site_privacy",
    "path": "/privacy",
    "path_params": [],
@@ -20957,6 +22053,22 @@
    ],
    "name": "site_support",
    "path": "/support",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": false,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "site_download",
+   "path": "/download",
    "path_params": [],
    "query": [],
    "response_class": "JSONResponse",
@@ -21147,6 +22259,258 @@
    ],
    "response_class": "JSONResponse",
    "schema": false,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "list_forgotten",
+   "path": "/api/forget",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "allow_again",
+   "path": "/api/forget/{tid}",
+   "path_params": [
+    {
+     "alias": "tid",
+     "default": null,
+     "kind": "Path",
+     "name": "tid",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "forget_plan_view",
+   "path": "/api/forget/plans/{pid}",
+   "path_params": [
+    {
+     "alias": "pid",
+     "default": null,
+     "kind": "Path",
+     "name": "pid",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_data",
+   "path": "/api/data",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_export",
+   "path": "/api/data/export",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "start_export",
+   "path": "/api/data/export",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "import_prompt",
+   "path": "/api/data/import/prompt",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_import",
+   "path": "/api/data/import",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "ImportTextIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "import_text",
+   "path": "/api/data/import/text",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "PUT"
+   ],
+   "name": "import_file",
+   "path": "/api/data/import/file",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "cancel_import",
+   "path": "/api/data/import",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "ResetIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "reset",
+   "path": "/api/data/reset",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
    "status": null
   }
  ]

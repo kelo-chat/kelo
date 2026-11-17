@@ -86,9 +86,9 @@ class ChatViewModel(
      * fails the question stays open and says why.
      */
     fun answerAsk(
-        id: String, approve: Boolean, rememberSite: Boolean = false, rememberSchedule: Boolean = false,
+        id: String, approve: Boolean, rememberSite: Boolean = false, rememberSchedule: Boolean = false, rememberRecipient: Boolean = false,
         sendCard: (suspend () -> chat.kelo.app.wallet.CardSendError?)? = null,
-    ) = cardActions.answerAsk(id, approve, rememberSite, rememberSchedule, sendCard)
+    ) = cardActions.answerAsk(id, approve, rememberSite, rememberSchedule, sendCard, rememberRecipient)
 
     /** True once for a row made in this session: the screen lets it rise in, rows from history just appear. */
     fun takeFresh(key: String): Boolean = host.fresh.remove(key)
@@ -116,6 +116,22 @@ class ChatViewModel(
 
     // ---- history
     fun reload() = history.reload()
+
+    /**
+     * Opens the chat at message [id] (a search result, a notification): [done] gets whether it is shown ([ChatHistory.openAt]).
+     * The caller scrolls to it once it is in the list.
+     */
+    fun openAt(id: Long, done: (Boolean) -> Unit = {}) {
+        viewModelScope.launch { done(runCatching { history.openAt(id) }.getOrDefault(false)) }
+    }
+
+    /** The messages after a search window, when the reader reaches its bottom ([ChatHistory.loadNewer]). */
+    fun loadNewer() = history.loadNewer()
+
+    /** Back to the newest page when the list is a window around an opened message (the reader is at its bottom). */
+    fun toNewest() {
+        viewModelScope.launch { history.toNewest() }
+    }
 
     /** The follow-ups and the messages they belong to (also after a reply, and when a follow-up notification is opened). */
     fun loadFollowups() = sync.loadFollowups()
@@ -227,8 +243,8 @@ class ChatViewModel(
     fun showError(e: ChatError) = host.addError(e)
 
     /** Answers an approval; [rememberSchedule]: keep allowing this step in the scheduled job it came from. */
-    fun approve(id: String, ok: Boolean, rememberSite: Boolean = false, rememberSchedule: Boolean = false) =
-        cardActions.approve(id, ok, rememberSite = rememberSite, rememberSchedule = rememberSchedule)
+    fun approve(id: String, ok: Boolean, rememberSite: Boolean = false, rememberSchedule: Boolean = false, rememberRecipient: Boolean = false) =
+        cardActions.approve(id, ok, rememberSite = rememberSite, rememberSchedule = rememberSchedule, rememberRecipient = rememberRecipient)
 
     /**
      * Allow on a payment with an end-to-end card: [send] asks for the owner's check, decrypts the card and sends it to the

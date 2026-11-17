@@ -13,8 +13,8 @@
 
   What it does:
    1. unpacks the MSI (msiexec /a, an "administrative install" into a temporary folder: nothing is installed) or the MSIX (a zip)
-   2. reads from the app's own jar which commit of the source it was built from, and its package number (windows has no tag per package
-      number, the app carries the commit; -Commit overrides it)
+   2. reads the package number from the app's own jar (the app carries no commit, it links by release tag windows-<package number>:
+      give -Commit <the 40-character commit of that tag> or -Source)
    3. downloads that commit's source from GitHub (a zip, no git) or takes -Source <folder> (an unpacked zip of the commit)
    4. builds it with the pinned Java runtime (apps\desktop\packaging\windows\JDK: Eclipse Temurin, downloaded once into
       %LOCALAPPDATA%\kelo\jdk and checked against its SHA-256): gradlew createDistributable. The first run downloads about 1 GB of build
@@ -124,7 +124,7 @@ try {
     }
     if ($Commit -and $appCommit -and $Commit -ne $appCommit) { Write-Note "note: -Commit $Commit is not the commit the app names; the comparison will show the difference" }
     $useCommit = if ($Commit) { $Commit } else { $appCommit }
-    if (-not $Source -and -not $useCommit) { Fail 'the app names no source commit: give -Commit <40 hex characters> or -Source <folder>' }
+    if (-not $Source -and -not $useCommit) { Fail 'the app does not name a source commit (it links by release tag, e.g. windows-<package number>): give -Commit <the 40-character commit of that tag in the public repository> or -Source <folder>' }
     if ($info['SOURCE_DIRTY'] -eq 'true') { Write-Note 'warning: the app was built from files that differed from its commit; a difference below is then expected' }
 
     Write-Step '3. the source'

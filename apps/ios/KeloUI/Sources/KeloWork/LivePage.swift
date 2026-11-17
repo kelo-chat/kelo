@@ -17,6 +17,7 @@ struct BrowserTabPage: View {
     @State private var confirmClose = false
     @State private var model: WorkModel
     @Environment(\.scenePhase) private var phase
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.kelo) private var c
     @Environment(AppModel.self) private var app
     private var activity: AgentActivityModel { app.activity }
@@ -32,9 +33,9 @@ struct BrowserTabPage: View {
     var body: some View {
         let controlling = live.status.youControl
         let device = LiveKinds.isDevice(id)   // the Android device: a portrait screen, Back / Home / Recents, no tab to close
-        let title = device ? L(R.string.chat_phone_title)
-            : (firstNonEmpty(live.frame?.title, tab?.title, tab?.host) ?? L(R.string.agent_tab_browser))
-        let host = device ? "" : (firstNonEmpty(live.frame.map { hostOf($0.url) }, tab?.host) ?? "")
+        let title = device ? (firstNonEmpty(tab?.title) ?? L(R.string.chat_phone_title))   // the phone's own name when the server says it
+            : (firstNonEmpty(LiveHeader.title(meta: live.meta, frame: live.frame?.title), tab?.title, tab?.host) ?? L(R.string.agent_tab_browser))
+        let host = device ? "" : (firstNonEmpty(LiveHeader.url(meta: live.meta, frame: live.frame?.url).map { hostOf($0) }, tab?.host) ?? "")
         VStack(spacing: 0) {
             top(title: title, host: host, canClose: !device && !controlling && live.mode != .ended)
             if live.mode != .ended { strip }
@@ -49,10 +50,17 @@ struct BrowserTabPage: View {
                         .padding(.horizontal, 4)
                     } else if live.mode == .ended {
                         ScreenshotView(model: model, id: id)
+                    } else if live.showsVnc, let relay = live.vncRelay {
+                        // the tab's X screen (noVNC); the take-over and give-back buttons, the text line and the keys stay as they are
+                        VncScreenView(relay: relay, holding: controlling)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     } else {
                         LiveCanvas(live: live, controlling: controlling, device: device)
                     }
                 }
+                .background(GeometryReader { g in
+                    Color.clear.task(id: g.size) { live.reportVncArea(width: g.size.width, height: g.size.height, scale: displayScale) }
+                })
                 if let n = live.notice {
                     Text(n).font(KeloFont.small).foregroundStyle(c.bg).fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 12).padding(.vertical, 8)
@@ -66,6 +74,11 @@ struct BrowserTabPage: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 8)
+            // the phone was handed to the owner (android_show): the same answer as the card's button, always in reach
+            if device, let handed = model.pending.data?.first(where: { $0.isDevice }) {
+                PrimaryButton(L(R.string.live_done)) { Haptics.success(); model.answer(handed, approve: true); onBack() }
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+            }
             if controlling {
                 ControlBar(live: live, device: device)
             } else if live.mode != .ended {
@@ -78,7 +91,6 @@ struct BrowserTabPage: View {
             }
         }
         .background(c.bg.ignoresSafeArea())
-        .keloSensitive(when: LiveRules.guardScreen(secure: live.frame?.secure, typing: controlling))
         .keloHideNavigationBar()
         .workToast($model.toast)
         .onAppear {
@@ -92,6 +104,12 @@ struct BrowserTabPage: View {
             if p == .active { live.start() } else if p == .background { live.stop(giveBack: false) }
         }
         .task { await live.loadTab() }
+        #if os(iOS)
+        // the keyboard shortens the live area: that is not a size change for the VNC screen (a rotation is)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in live.setKeyboard(up: true) }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in live.setKeyboard(up: false) }
+        #endif
+        .task { if LiveKinds.isDevice(id) { model.loadPending() } }
         .task(id: AutoTakeKey(hasFrame: live.frame != nil, controlling: controlling, someoneElse: live.status.someoneElse)) {
             guard LiveRules.autoTake(asked: takeControl, done: autoTaken, hasFrame: live.frame != nil, controlling: controlling,
                                      someoneElse: live.status.someoneElse, busy: live.controlBusy) else { return }
@@ -204,8 +222,10 @@ struct BrowserTabPage: View {
     }
 }
 
-/// The picture. Watching: pinch to zoom (1x to 5x), drag to move, double tap to zoom in or out. Controlling: a tap or a long press
-/// goes to that point of the page and a drag scrolls it (sent at most every 50 ms); the zoom stays and is accounted for.
+/// The picture. Watching: pinch to zoom (1x to 5x), drag to move, double tap to zoom in or out. Controlling: a tap (at the point where
+/// the finger went down) or a long press goes to that point of the page, one finger dragging scrolls it (sent at most every 50 ms),
+/// two fingers pinch and move the picture (so a small target can be enlarged before it is touched). Every touch shows where it is:
+/// a ring under the finger at once, a ring and dot at the point that was sent, a different mark when it did not reach the page.
 private struct LiveCanvas: View {
     let live: LiveModel
     let controlling: Bool
@@ -216,14 +236,26 @@ private struct LiveCanvas: View {
     @State private var basePan: CGSize = .zero
     @State private var size: CGSize = .zero
     @State private var pending = PendingScroll()
-    @State private var pressStart: (at: CGPoint, time: Date, moved: Bool)?
+    @State private var pressStart: Press?
     @State private var dragEnd: CGPoint = .zero
     @State private var lastDrag: CGSize = .zero
+    @State private var scrolled: CGSize = .zero
+    @State private var pinching = false
+    @State private var pinchDragOrigin: CGSize = .zero
+    @State private var holdTask: Task<Void, Never>?
+    @State private var marks: [TouchMark] = []
+    @State private var markIds = 0
+    @State private var lastTouch: (id: Int, at: CGPoint, mark: Int)?
     @State private var lastPointerAt: Date? = nil
     @State private var pointerExpired: Bool = false
     @Environment(\.kelo) private var c
+    @Environment(\.displayScale) private var displayScale
 
     struct PendingScroll { var dx = 0.0; var dy = 0.0; var x = 0.0; var y = 0.0 }
+    /// A finger that is down: where, since when, the frame it was looking at, whether it moved, whether it has been held long enough.
+    struct Press { let at: CGPoint, time: Date, seq: Int64; var moved = false, held = false, mark = 0 }
+    /// What reports the live area's size: it changes with rotation and with the soft keyboard.
+    private struct ViewKey: Equatable { let size: CGSize, controlling: Bool, liveV: Int }
 
     var body: some View {
         GeometryReader { g in
@@ -246,6 +278,10 @@ private struct LiveCanvas: View {
                         .allowsHitTesting(false)
                 }
 
+                ForEach(marks) { m in
+                    TouchMarkView(mark: m).position(m.at).allowsHitTesting(false)
+                }
+
                 if live.isPageBusy && live.frame != nil {
                     PageBusyBanner(live: live)
                         .padding(12)
@@ -263,11 +299,18 @@ private struct LiveCanvas: View {
                     pointerExpired = false
                 }
             }
+            .onChange(of: live.touchReply) { _, r in answered(r) }
             .task(id: lastPointerAt) {
                 guard lastPointerAt != nil else { return }
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
                 pointerExpired = true
             }
+        }
+        .task(id: ViewKey(size: size, controlling: controlling, liveV: live.frame?.liveV ?? 0)) {
+            // the size settles for a moment while the keyboard slides or the phone turns; then the server is told once
+            guard controlling, size.width > 0 else { return }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            if !Task.isCancelled { live.reportView(width: size.width, height: size.height, scale: displayScale) }
         }
         .task(id: controlling) {
             // drags add up and leave as one scroll every 50 ms
@@ -301,50 +344,180 @@ private struct LiveCanvas: View {
         return SimultaneousGesture(SimultaneousGesture(pinch, drag), double)
     }
 
+    /// The pan kept inside the zoomed picture (not the view: no blank letterbox bar is panned into sight).
     private func clampPan(_ p: CGSize) {
-        let (x, y) = LiveGeometry.clampPan(panX: p.width, panY: p.height, zoom: zoom, viewW: size.width, viewH: size.height)
+        guard let f = live.frame else { pan = .zero; return }
+        let (x, y) = LiveGeometry.clampPan(panX: p.width, panY: p.height, zoom: zoom, viewW: size.width, viewH: size.height,
+                                           frameW: f.w, frameH: f.h)
         pan = CGSize(width: x, height: y)
     }
 
-    /// One gesture for tap, long press and drag: no movement → a tap (or a long press after half a second); movement → scroll.
+    private func frameAt(_ p: CGPoint, _ f: LiveShown) -> FramePoint? {
+        LiveGeometry.toFrame(x: p.x, y: p.y, viewW: size.width, viewH: size.height, frameW: f.w, frameH: f.h,
+                             zoom: zoom, panX: pan.width, panY: pan.height)
+    }
+
+    // ---- touch marks
+
+    private func addMark(_ kind: TouchMark.Kind, at: CGPoint, keep: Bool = false) -> Int {
+        markIds += 1
+        let id = markIds
+        marks.append(TouchMark(id: id, kind: kind, at: at))
+        if !keep { fadeOut(id) }
+        return id
+    }
+
+    private func fadeOut(_ id: Int, after: Double = TouchRules.markFadeSeconds) {
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(after * 1_000_000_000))
+            if let i = marks.firstIndex(where: { $0.id == id }) { withAnimation(.easeOut(duration: 0.25)) { marks[i].fading = true } }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            marks.removeAll { $0.id == id }
+        }
+    }
+
+    private func drop(_ id: Int) { marks.removeAll { $0.id == id } }
+
+    /// The server's answer to the last tap: busy or refused turns its mark into "did not reach the page".
+    private func answered(_ r: TouchReply?) {
+        guard let r, let t = lastTouch, t.id == r.id else { return }
+        guard TouchOutcome.of(mapped: FramePoint(x: 0, y: 0), reply: r.reply).missed else { return }
+        drop(t.mark)
+        _ = addMark(.missed, at: t.at)
+        live.notice = L(R.string.ios_takeover_missed)
+    }
+
+    // ---- one-finger tap / hold / scroll, two-finger zoom and move
+
+    private func begin(at p: CGPoint) {
+        guard let f = live.frame else { pressStart = Press(at: p, time: Date(), seq: 0); return }
+        let ring = addMark(.finger, at: p, keep: true)   // instantly, under the finger, before anything is sent
+        pressStart = Press(at: p, time: Date(), seq: f.seq, mark: ring)
+        lastDrag = .zero
+        holdTask?.cancel()
+        if !device {
+            holdTask = Task {
+                try? await Task.sleep(nanoseconds: UInt64(TouchRules.longPressSeconds * 1_000_000_000))
+                guard !Task.isCancelled, pressStart?.moved == false else { return }
+                pressStart?.held = true
+                if let m = pressStart?.mark, let i = marks.firstIndex(where: { $0.id == m }) { marks[i].kind = .held }
+                Haptics.tick()
+            }
+        }
+    }
+
     private var controlGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+        let pinch = MagnificationGesture()
             .onChanged { v in
-                if pressStart == nil { pressStart = (v.startLocation, Date(), false); lastDrag = .zero }
-                let moved = abs(v.translation.width) > 8 || abs(v.translation.height) > 8
-                if moved { pressStart?.moved = true }
-                dragEnd = v.location
-                if pressStart?.moved == true && !device {
-                    pending.dx += v.translation.width - lastDrag.width
-                    pending.dy += v.translation.height - lastDrag.height
-                    pending.x = v.location.x; pending.y = v.location.y
-                    lastDrag = v.translation
+                if !pinching {
+                    pinching = true
+                    holdTask?.cancel()
+                    pending = PendingScroll()
+                    basePan = pan; baseZoom = zoom
+                    pinchDragOrigin = lastDrag
+                    if let m = pressStart?.mark { drop(m) }
+                    pressStart?.moved = true
                 }
+                zoom = LiveGeometry.clampZoom(baseZoom * v)
+                clampPan(pan)
+            }
+            .onEnded { _ in baseZoom = zoom; basePan = pan }
+        let drag = DragGesture(minimumDistance: 0)
+            .onChanged { v in
+                if pressStart == nil { begin(at: v.startLocation) }
+                dragEnd = v.location
+                if pinching {
+                    // the middle of the two fingers moves the picture
+                    clampPan(CGSize(width: basePan.width + v.translation.width - pinchDragOrigin.width,
+                                    height: basePan.height + v.translation.height - pinchDragOrigin.height))
+                    lastDrag = v.translation
+                    return
+                }
+                if !TouchRules.isStill(dx: v.translation.width, dy: v.translation.height), pressStart?.moved != true {
+                    pressStart?.moved = true
+                    holdTask?.cancel()
+                    if let m = pressStart?.mark { drop(m) }
+                    scrolled = .zero
+                }
+                if pressStart?.moved == true && !device {
+                    pending.dx += v.translation.width - scrolled.width
+                    pending.dy += v.translation.height - scrolled.height
+                    pending.x = v.location.x; pending.y = v.location.y
+                    scrolled = v.translation
+                }
+                lastDrag = v.translation
             }
             .onEnded { v in
-                defer { pressStart = nil; lastDrag = .zero }
-                if device, let start = pressStart, start.moved, let f = live.frame {
+                let start = pressStart
+                defer {
+                    holdTask?.cancel(); pressStart = nil; lastDrag = .zero; scrolled = .zero
+                    pinching = false; baseZoom = zoom; basePan = pan
+                    if let m = start?.mark { fadeOut(m, after: 0.05) }
+                }
+                guard let start, !pinching, let f = live.frame else { return }
+                if device, start.moved {
                     // the device has no wheel scroll: a drag is one swipe from where the finger went down to where it came up
-                    let a = LiveGeometry.toFrame(x: start.at.x, y: start.at.y, viewW: size.width, viewH: size.height, frameW: f.w, frameH: f.h,
-                                                 zoom: zoom, panX: pan.width, panY: pan.height)
-                    let b = LiveGeometry.toFrame(x: dragEnd.x, y: dragEnd.y, viewW: size.width, viewH: size.height, frameW: f.w, frameH: f.h,
-                                                 zoom: zoom, panX: pan.width, panY: pan.height)
-                    if let a, let b {
+                    if let a = frameAt(start.at, f), let b = frameAt(dragEnd, f) {
                         let ms = LiveKinds.swipeMs(Int(Date().timeIntervalSince(start.time) * 1000))
                         live.send(LiveMessages.swipe(from: a, to: b, frameW: f.w, frameH: f.h, ms: ms))
                     }
                     return
                 }
-                guard let start = pressStart, !start.moved, let f = live.frame else { return }
-                guard let p = LiveGeometry.toFrame(x: v.location.x, y: v.location.y, viewW: size.width, viewH: size.height,
-                                                   frameW: f.w, frameH: f.h, zoom: zoom, panX: pan.width, panY: pan.height) else { return }
-                Haptics.tick()
-                if !device && Date().timeIntervalSince(start.time) >= 0.5 {
-                    live.send(LiveMessages.longPress(p, frameW: f.w, frameH: f.h))
-                } else {
-                    live.send(LiveMessages.tap(p, frameW: f.w, frameH: f.h))
+                guard !start.moved else { return }
+                // a tap is where the finger WENT DOWN (it may drift a little before it lifts), judged on the picture it was looking at
+                guard let p = frameAt(start.at, f) else {
+                    // on a letterbox bar: nothing can be sent, and it must not look like a tap that was ignored
+                    _ = addMark(.missed, at: start.at)
+                    live.notice = L(R.string.ios_takeover_missed)
+                    return
                 }
+                Haptics.tick()
+                let event = (!device && start.held) ? LiveMessages.longPress(p, frameW: f.w, frameH: f.h)
+                                                    : LiveMessages.tap(p, frameW: f.w, frameH: f.h)
+                let id = live.sendTouch(event, frameSeq: start.seq)
+                let at = LiveGeometry.frameToView(p, viewW: size.width, viewH: size.height, frameW: f.w, frameH: f.h,
+                                                  zoom: zoom, panX: pan.width, panY: pan.height).map { CGPoint(x: $0.x, y: $0.y) } ?? start.at
+                lastTouch = (id, at, addMark(.landed, at: at))
             }
+        return SimultaneousGesture(drag, pinch)
+    }
+}
+
+/// A mark on the picture for the owner's own touch.
+private struct TouchMark: Identifiable {
+    enum Kind { case finger, held, landed, missed }
+    let id: Int
+    var kind: Kind
+    let at: CGPoint
+    var fading = false
+}
+
+private struct TouchMarkView: View {
+    let mark: TouchMark
+    @State private var shown = false
+    @Environment(\.kelo) private var c
+
+    var body: some View {
+        ZStack {
+            switch mark.kind {
+            case .finger, .held:
+                Circle().stroke(Color.white, lineWidth: 4).frame(width: 44, height: 44)
+                Circle().stroke(c.accent, lineWidth: 2).frame(width: 44, height: 44)
+                if mark.kind == .held { Circle().fill(c.accent.opacity(0.25)).frame(width: 44, height: 44) }
+            case .landed:
+                Circle().stroke(Color.white, lineWidth: 4).frame(width: 30, height: 30)
+                Circle().stroke(c.accent, lineWidth: 2).frame(width: 30, height: 30)
+                Circle().fill(c.accent).frame(width: 8, height: 8)
+            case .missed:
+                Circle().stroke(Color.white, lineWidth: 4).frame(width: 36, height: 36)
+                Circle().stroke(Color.orange, style: StrokeStyle(lineWidth: 2, dash: [4, 3])).frame(width: 36, height: 36)
+                Image(systemName: "xmark").font(.system(size: 14, weight: .bold)).foregroundStyle(Color.orange)
+            }
+        }
+        .shadow(color: Color.black.opacity(0.3), radius: 2)
+        .opacity(shown && !mark.fading ? 1 : 0)
+        .scaleEffect(shown ? 1 : 0.6)
+        .onAppear { withAnimation(.easeOut(duration: 0.08)) { shown = true } }
     }
 }
 
@@ -384,7 +557,7 @@ private struct ControlBar: View {
             }
             }
             HStack(spacing: 6) {
-                KeloTextField(L(device ? R.string.live_phone_type_hint : R.string.live_type_hint), text: $text, secure: hidden, keyboard: .ascii, maxLength: LiveMessages.maxText, onSubmit: sendText)
+                KeloTextField(L(device ? R.string.live_phone_type_hint : R.string.live_type_hint), text: $text, secure: hidden, keyboard: .ascii, maxLength: LiveMessages.maxText, focusRequest: live.editing, onSubmit: sendText)
                 Button { hidden.toggle() } label: { KeloIconView(hidden ? .lock : .eye, size: 22, tint: c.muted).frame(width: 40, height: 40) }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L(hidden ? R.string.live_type_show : R.string.live_type_hide))

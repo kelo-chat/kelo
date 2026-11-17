@@ -1,5 +1,5 @@
-"""Signing in on the device (docs/android-device.md, "android_login"): where the sign-in fields are on a screen, which button submits,
-and what the screen says after a submit. Pure: screens in, answers out; the typing is android_login's (tools/vault_tools.py).
+"""Signing in on the device (docs/android-device.md, "android_login"): where the sign-in fields are on a screen and what the
+screen looks like after a submit (by structure: no button label or message is read). Pure: screens in, answers out; the typing is android_login's (tools/vault_tools.py).
 
 A saved login may be typed only where its hosts name the app (`app:<package>`) or the service whose sign-in screen the app shows
 (APP_SIGNIN_HOSTS: Google's account pages inside Google Play services and the Play Store)."""
@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import dataclasses
 import re
+from typing import Any
 
-from ..tools.browser import _CODE, _FAILED
 from .screen import Item, Screen
 
 # The host form of a login for an app on the device: "app:" and the package name (lower case).
@@ -20,12 +20,6 @@ APP_SIGNIN_HOSTS: dict[str, tuple[str, ...]] = {
     "com.android.vending": ("accounts.google.com", "google.com"),
 }
 
-SUBMIT_WORDS = ("next", "sign in", "log in", "login", "continue", "다음", "로그인", "계속")
-_FAILED_MORE = ("wrong password", "couldn't find your google account", "couldn't sign you in", "enter a valid email",
-                "잘못된 비밀번호", "비밀번호가 잘못", "계정을 찾을 수 없")
-_APPROVE = ("check your phone", "tap yes", "open the gmail app", "approve the sign-in", "approve this sign-in", "notification to your phone", "휴대전화를 확인",
-            "휴대폰을 확인", "알림을 보냈")
-_CODE_MORE = ("2-step verification", "enter the 6-digit", "6-digit code", "get a verification code", "2단계 인증", "인증 코드")
 FILLED = "(filled)"
 
 
@@ -44,11 +38,37 @@ def find_fields(screen: Screen) -> tuple[Item | None, Item | None]:
     return next((i for i in others if i.focused), others[0]), None
 
 
-def find_submit(screen: Screen) -> Item | None:
-    """The button that sends the sign-in on: one named Next / Sign in (or the like, in the owner's language). The lowest such button
-    when there are several (the page's own heading is never a button)."""
-    hits = [i for i in screen.items if i.kind == "button" and " ".join(i.words.casefold().split()) in SUBMIT_WORDS]
-    return max(hits, key=lambda i: i.bounds[1], default=None)
+MAX_SUBMIT_CANDIDATES = 4
+
+
+def submit_candidates(screen: Screen) -> list[Item]:
+    """The controls that may send a sign-in on, by structure: clickable buttons that come after the lowest input field (below it), the
+    nearest first. No label is read."""
+    edits = [i for i in screen.items if i.kind == "edit"]
+    if not edits:
+        return []
+    password = next((i for i in edits if i.password), None)
+    floor = (password or max(edits, key=lambda i: i.bounds[3])).bounds[3]
+    below = [i for i in screen.items if i.kind == "button" and i.clickable and i.bounds[1] >= floor]
+    return sorted(below, key=lambda i: (i.bounds[1] - floor, i.bounds[0]))[:MAX_SUBMIT_CANDIDATES]
+
+
+async def choose_submit(screen: Screen, judge: Any = None) -> Item | None:
+    """The control that sends the sign-in on. One candidate by structure is it. Several: the step judge (step_judge.StepJudge, the main
+    model) is asked what each does, nearest first, and the first one that signs nothing up, deletes nothing, sends nothing and changes no
+    account security (a plain step) is it. No judge, or none plain: None (Enter alone)."""
+    found = submit_candidates(screen)
+    if len(found) <= 1:
+        return found[0] if found else None
+    if judge is None:
+        return None
+    nodes = [{"class": i.cls, "text": i.text[:60], "desc": i.desc[:60]} for i in screen.items[:60]]
+    for item in found:
+        verdict = await judge.phone(screen.package, screen.activity, {"class": item.cls, "text": item.text[:80], "desc": item.desc[:80],
+                                                                       "hint": item.hint[:60]}, nodes)
+        if verdict is not None and not verdict.kind:
+            return item
+    return None
 
 
 def fingerprint(screen: Screen) -> tuple:
@@ -74,29 +94,24 @@ def masked(screen: Screen, secrets: tuple[str, ...] = ()) -> str:
 
 
 class SignInReader:
-    """Reads the screen after a sign-in was submitted: (outcome, detail), outcome one of success | failed | code_needed | unknown.
-    A reading, not a proof: when nothing is clear it says unknown."""
+    """Reads the screen after a sign-in was submitted, by structure only (no word of any language): (outcome, detail), outcome one of
+    success | code_needed | unknown. The password field still shown, or nothing changed, says nothing certain, so it is unknown (the
+    caller looks again until its wait is over). A reading, not a proof."""
 
     def read(self, before: Screen, after: Screen) -> tuple[str, str]:
-        said = texts(after)
         password = find_fields(after)[1] is not None
-        if not password and any(w in said for w in (*_CODE, *_CODE_MORE, *_APPROVE)):
-            return "code_needed", ("the app accepted the password and waits for the user to approve the sign-in on their phone"
-                                   if self.step(after) == "approve" else "the app accepted the password and asks for a verification code")
-        failed = any(w in said for w in (*_FAILED, *_FAILED_MORE))
-        if password and failed:
-            return "failed", "the screen still shows the password field and says the user name or password is wrong"
-        if not password and after.items and after.app and after.app != before.app and not failed:
+        if password or not after.items:
+            return "unknown", "could not tell whether the app accepted the login"
+        if after.app and after.app != before.app:
             return "success", "the sign-in screen was left"
+        if self.step(after) == "code":   # no password field any more, but an input of its own: a code to type
+            return "code_needed", "the app accepted the password and asks for a verification code"
         return "unknown", "could not tell whether the app accepted the login"
 
     @staticmethod
     def step(after: Screen) -> str:
-        """The verification step a screen asks for: "approve" (something to approve on the phone), "code" (a code to type), or ""."""
-        said = texts(after)
-        if any(w in said for w in _APPROVE):
-            return "approve"
-        return "code" if any(w in said for w in (*_CODE, *_CODE_MORE)) else ""
+        """The verification step a screen asks for: "code" when it shows an input field and no password field, else ""."""
+        return "code" if any(i.kind == "edit" and not i.password for i in after.items) and find_fields(after)[1] is None else ""
 
     @staticmethod
     def left_sign_in(now: Screen, signin_app: str) -> bool:

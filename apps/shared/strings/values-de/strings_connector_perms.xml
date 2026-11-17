@@ -17,4 +17,6 @@
     <string name="perm_reset_q">Alle Einstellungen dieses Connectors auf die Standardwerte zurücksetzen?</string>
     <string name="perm_read_off_q">Ist Lesen aus, kann Kelo diesen Connector kaum nutzen. Ausschalten?</string>
     <string name="perm_limited">Eingeschränkt</string>
+    <string name="perm_unattended">Auch nutzen, wenn ich nicht chatte</string>
+    <string name="perm_unattended_about">Zeitpläne, Hintergrundaufgaben und Nachrichten, die Kelo von sich aus sendet, nutzen %1$s dann nicht. Deine eigenen Chats können es weiterhin.</string>
 </resources>

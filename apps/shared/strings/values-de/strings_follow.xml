@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Worum sich Kelo kümmert</string>
+    <string name="follow_stop">Nicht mehr verfolgen</string>
+    <string name="follow_stop_confirm">Dieses Element nicht mehr verfolgen?</string>
+    <string name="follow_stop_confirm_detail">Kelo prüft keine Änderungen und bereitet nichts mehr vor.</string>
+    <string name="follow_stop_yes">Nicht mehr verfolgen</string>
+    <string name="follow_keep_watching">Weiter verfolgen</string>
+    <string name="follow_replan">Neu planen</string>
+    <string name="follow_sheet_title">Verfolgungsplan</string>
+    <string name="follow_plan_checks">Zu prüfende Punkte</string>
+    <string name="follow_plan_prep">Vorbereitungen</string>
+    <string name="follow_plan_tell">Benachrichtigungen</string>
+    <string name="follow_plan_tell_change">Bei Änderungen benachrichtigen</string>
+    <string name="follow_next_check">Nächste Prüfung: %1$s</string>
+    <string name="follow_last_check">Letzte Prüfung: %1$s</string>
+    <string name="follow_prep_later">Geplant</string>
+    <string name="follow_prep_running">In Bearbeitung</string>
+    <string name="follow_prep_done">Vorbereitet</string>
+    <string name="follow_prep_failed">Fehlgeschlagen</string>
+    <string name="follow_state_watching">Wird verfolgt</string>
+    <string name="follow_state_stopped">Gestoppt</string>
+    <string name="follow_state_done">Erledigt</string>
+    <string name="follow_summary_lead_flight">Benachrichtigung 1 Tag vor Abflug</string>
+    <string name="follow_summary_lead_general">Benachrichtigung 1 Tag vorher</string>
+    <string name="follow_summary_lead_hours">Benachrichtigung %1$d Stunden vorher</string>
+    <string name="follow_summary_prep_checkin">Check-in vorbereiten, sobald verfügbar</string>
+    <string name="follow_summary_prep_general">%1$s vorbereiten</string>
+    <string name="follow_summary_watch_changes">Auf Änderungen prüfen</string>
+    <string name="follow_summary_default">Plan im Blick behalten</string>
+</resources>

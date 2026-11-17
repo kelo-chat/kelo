@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_notify_actions.xml (generated from values/strings_notify_actions.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="notify_action_reply">回覆</string>
+    <string name="notify_unlock_retry">請先解鎖手機，然後再試一次。</string>
+    <string name="notify_send_failed_open">傳送失敗。請開啟 Kelo 作答。</string>
+    <string name="notify_send_failed_tap">傳送失敗。點一下即可開啟 Kelo。</string>
+</resources>

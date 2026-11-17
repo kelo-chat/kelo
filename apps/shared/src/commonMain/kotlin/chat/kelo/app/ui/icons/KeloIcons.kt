@@ -54,12 +54,16 @@ object KeloIcons {
     val Close by lazy { stroke("close", "M6 6l12 12M18 6 6 18") }
 
     val Copy by lazy { stroke("copy", rect(9f, 9f, 11f, 11f, 2f), "M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1") }
+    val Paste by lazy { stroke("paste", rect(8f, 2f, 8f, 4f, 1f), "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2") }
     val Share by lazy { stroke("share", "M12 3v12M7 8l5-5 5 5", "M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6") }
+    val Speaker by lazy { stroke("speaker", "M11 5 6 9H2v6h4l5 4V5Z", "M15.5 8.5a5 5 0 0 1 0 7", "M19 5a9 9 0 0 1 0 14") }
     val Retry by lazy { stroke("retry", "M3 12a9 9 0 0 1 15.5-6.2L21 8", "M21 3v5h-5", "M21 12a9 9 0 0 1-15.5 6.2L3 16", "M3 21v-5h5") }
     val Edit by lazy { stroke("edit", "M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z") }
     val Flag by lazy { stroke("flag", "M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z", "M4 22v-7") }
     val TextSelect by lazy { stroke("text-select", "M5 4h14M12 4v16M9 20h6") }
     val Image by lazy { stroke("image", rect(3f, 3f, 18f, 18f, 2f), circle(9f, 9f, 2f), "m21 15-5-5L5 21") }
+    /** A magnifier (the chat's search); Feather's search */
+    val Search by lazy { stroke("search", circle(11f, 11f, 8f), "m21 21-4.35-4.35") }
     val Play by lazy { stroke("play", "M8 5v14l11-7Z") }
     val Video by lazy { stroke("video", rect(2f, 6f, 14f, 12f, 2f), "m16 10 6-4v12l-6-4") }
     val Music by lazy { stroke("music", "M9 18V5l12-2v13", circle(6f, 18f, 3f), circle(18f, 16f, 3f)) }

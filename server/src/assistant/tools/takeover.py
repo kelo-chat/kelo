@@ -33,19 +33,24 @@ SCRIPT = r"""(() => {
   const send = (o) => { try { %(binding)s(JSON.stringify(o)); } catch (e) {} };
   const clip = (s, n) => (s || '').replace(/\s+/g, ' ').trim().slice(0, n);
   const label = (el) => clip(el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('alt')) || el.innerText
-    || (el.tagName === 'INPUT' ? el.value : '') || el.getAttribute && el.getAttribute('name') || el.id || el.tagName.toLowerCase(), 60);
+    || (el.tagName === 'INPUT' && /^(button|submit|reset)$/i.test(el.type) ? el.value : '') || el.getAttribute && el.getAttribute('name') || el.id || el.tagName.toLowerCase(), 60);
   const fieldLabel = (el) => {
     let t = '';
     if (el.labels && el.labels.length) t = el.labels[0].innerText;
     t = t || el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('name') || el.id || el.type || el.tagName.toLowerCase();
     return clip(t, 50);
   };
-  const secret = (el) => {
+  // What the journal may quote (docs/no-word-lists.md): by STRUCTURE only, never by a word of the field's label. A value is kept only
+  // for a check box, a radio button, a list and a search box; every other typed value (text, number, phone, e-mail, password, a
+  // one-time code, a card field, anything typed inside a frame) is masked. When unsure, mask.
+  const quotable = (el) => {
+    if (window !== window.top) return false;
     const type = (el.getAttribute('type') || '').toLowerCase(), ac = (el.getAttribute('autocomplete') || '').toLowerCase();
-    const words = [el.name, el.id, el.getAttribute('placeholder'), el.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase();
-    return type === 'password' || /cc-|one-time-code|password/.test(ac)
-      || /card|cvc|cvv|csc|security.?code|pin\b|otp|passcode|password|passwd|ssn|social.?security|iban|account.?num|routing|카드|비밀번호|보안\s*코드|인증|주민|계좌/.test(words);
+    if (/(^|\s)(cc-[a-z-]+|one-time-code|[a-z-]*password)(\s|$)/.test(ac)) return false;
+    if (el.tagName === 'SELECT') return true;
+    return type === 'checkbox' || type === 'radio' || type === 'search';
   };
+  const secret = (el) => !quotable(el);
   document.addEventListener('click', (e) => {
     const t = e.target && e.target.closest ? e.target : null;
     if (!t) return;
@@ -218,4 +223,4 @@ def summarize(entries: list[dict[str, Any]], seconds: float) -> str:
         merged = merged[:3] + [f"- ... {len(merged) - MAX_LINES + 2} more steps ..."] + merged[-(MAX_LINES - 4):]
     mins = max(1, round(seconds / 60))
     return (f"[While the user controlled this tab (about {mins} min) they did this themselves (labels come from the page):\n"
-            + data("\n".join(merged)) + "\nCarry on from the page as it is now; do not redo these steps.]")   # the steps quote the page: fenced
+            + data("\n".join(merged)) + "\nCarry on from the page as it is now; do not redo these steps. Handing the tab back approved no purchase and no sign-in step.]")   # the steps quote the page: fenced

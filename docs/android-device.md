@@ -80,6 +80,9 @@ POST /text       {"text"}            ASCII with `input text` (spaces as %s); any
 POST /key        {"key": "back|home|enter|recent|delete|tab"}
 POST /open       {"package"}         the launcher activity (cmd package resolve-activity), started with `am start -n` (monkey exits with an error on redroid)
 GET  /apps                           {"items": [{"package", "label"}]} launchable apps
+GET  /handlers?url=  {"packages": [...]} the apps that handle VIEW for an address or scheme (read-only; the sign-in check below)
+GET  /intent                         {"data", "caller"} the address in the intent that started the activity in front, and who launched it (read-only)
+GET  /applinks?package=              {"hosts": [...]} the hosts with a verified App Link for the package (read-only)
 POST /install    {"apk_url"}         refused unless the owner turned installs on (ANDROID_ALLOW_INSTALL=1)
 ```
 
@@ -153,30 +156,38 @@ card (`request_login`, the vault: values never reach the model) and Kelo types i
   -> the same notes as the browser (find_login_code, ask the owner). The vault's settle() is reused.
 - Approval card: "Type your <label> login into <app>" (the card the browser's login shows, with the app's name).
 
-## Seeing and using the screen through Kelo's browser view (no app update)
+### An app that signs in through a browser (2026-11-16)
+Many apps open their sign-in page in the phone's browser (OAuth with PKCE) and come back through a redirect address. The login is saved for
+the app, so android_login also types on the browser's page when the DEVICE proves the page is the app's (android/browser_signin.py, no
+site, package or word lists): the app in front handles VIEW for the page's https address (a browser); the page is https and has a
+`redirect_uri`/`redirect_url` whose custom scheme resolves only to the bound package, or whose https host has a verified App Link for it; the
+sign-in fields are on the screen. The redirect is the page's own parameter, so it proves nothing about the page: the page's HOST must belong to the app too (its registrable domain, Public Suffix List, equals that of a host the app has a verified App Link for; no verified links = refused), and where the bridge reports who launched the browser activity (`caller` of `/intent`, from `launchedFromPackage`) it must be the bound package (unknown: the host rule alone decides). The page address is the one the app's intent opened (`/intent`), else the browser's address field;
+if both are known they must be the same host. Anything else keeps today's refusal; the reason goes to the vault log.
+Browser on the image: the redroid image's only browser is `org.chromium.webview_shell` (WebView Browser Tester). Its source
+(WebViewBrowserFragment) hands non-http(s) URLs to `startActivity` with a BROWSABLE intent, so a custom-scheme redirect should reach
+the app; this is read from source, NOT yet proven on a device. If a live test shows it does not, the image needs a pinned open-source
+browser with Custom Tabs (exact version + sha256 from its official release page, checked before install, set as default at provisioning).
+Nothing is installed from the Mac.
 
-When the owner must look (a human check, an app's first-run screens, a step Kelo cannot read), Kelo shows the device inside its own
-browser and the owner uses the apps' existing browser "take control" view. The browser never talks to the bridge: the server is the
-middle.
+## Handing the screen to the owner (`android_show`)
 
-- `AndroidMirror` (server/src/assistant/android/mirror.py) opens a tab of its own (`<owner>:phone`, so the agent's own page stays) in Kelo's browser on `about:blank` and writes a small page
-  into it over DevTools (`Page.setDocumentContent`): an `<img>` that fills the width, a text box with Send, and Back / Home / Enter
-  buttons. No network: the server pushes each new screenshot into the page (`Runtime.evaluate` setting the img's `src` to a
-  data URL), at most 2 frames per second and only when the picture changed (hash of the PNG).
-- Input: the page's script keeps a queue `window.__keloQueue` of {type: tap, x, y (image pixels), } / {type: text, value} / {type: key,
-  key}; the server drains it every 300 ms with `Runtime.evaluate`, maps image pixels to device pixels (the image is the device's
-  size, scaled by the page width) and calls the bridge. Typed text goes straight to `/text` and is never logged.
-- `android_show(reason)` tool: opens the mirror tab, moves the agent's live view to it, sends the owner the usual "take control"
-  notice with the reason ("Sign in to Play: a human check"), and waits like `request_human_check` does (the owner presses Done in the
-  page, or 10 minutes pass). The mirror stops when the tab closes or after 10 minutes without input.
-- Approval rules: the owner's own taps need none (it is the owner's hand), as with browser take-control.
+When the owner must look (a human check, an app's first-run screens, a step Kelo cannot read), `android_show(reason)` hands the
+phone's own live view (see "The phone card in the apps": portrait, titled with the device's name, take control with Back / Home /
+Recents) to the owner. There is no browser tab (the old browser-tab mirror was retired).
+
+- `PhoneHandover` (server/src/assistant/android/handover.py) raises a human_check item of kind `device`: `site` is the device's name,
+  `tab` is `android`, `ask` / `detail` are the server's own words in the owner's language. The apps show "Open the phone screen" and
+  "Done" (no "skip this site"); the phone live view has a Done button too. Both answer the item with approve=true = done.
+- It also ends by itself, judged from the live source (never while the owner still touches the phone): they took control and gave it
+  back, or they did something (an input, or the picture changed while they had the phone view open in an app) and then 20 s passed with
+  no input and an unchanged picture. A picture that changes by itself with no app view open (a spinner, a slow start) never counts. On a
+  physical phone (spare phone / next to it) without the app view open, the owner presses Done. 10 minutes end it.
 
 ## The phone card in the apps (phase 2, built)
 
 While Kelo drives the device the chat shows a **phone card** (the browser card for the device: phone icon, "Phone", the step line,
 a portrait picture) and its "View" opens a live view of the device inside the app, with take control / give back, taps, swipes,
-typing and Back / Home / Recents. No browser tab is involved (`android_show` is the fallback for apps that do not know the card; its
-description says the apps' card is preferred).
+typing and Back / Home / Recents. No browser tab is involved.
 
 - One live interface, two sources: `server/src/assistant/live_source.py` has the protocol `LiveSource` (ticket, viewer join/leave, newest
   frame, take / give back, input, control state) and the registry `LiveSources`. The browser's `LiveHub` and the device's
@@ -200,9 +211,9 @@ description says the apps' card is preferred).
 
 1. Bridge container + DeviceClient + ScreenReader + the tools + judge rules; tests with a fake bridge and saved dumps (a settings
    screen, a review form, a payment button). On by setting ANDROID_DEVICE.
-1b. `android_login` (vault fill-in card -> typed on the device) and `android_show` (the device inside Kelo's browser view).
+1b. `android_login` (vault fill-in card -> typed on the device) and `android_show` (the phone's live view handed to the owner).
 2. Live view (built): the apps show a phone card in the chat while Kelo drives the device and a live view of it (see "The phone card
-   in the apps" below), for sign-ins and checks the owner does by hand. `android_show` stays as the fallback for old apps.
+   in the apps" below), for sign-ins and checks the owner does by hand. `android_show` hands that live view to the owner.
 3. Inside Kelo: README and this page only (owner, 2026-11-15: no `assistant android setup` / `pair` commands, no compose service
    added by Kelo). The owner follows the README steps (kernel modules, `docker run` of redroid on the project's `android-out` network,
    `ANDROID_DEVICE=redroid:5555`).

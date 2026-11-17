@@ -8,6 +8,10 @@ public struct Offer: Codable, Identifiable, Equatable, Sendable {
     public var kind: String
     public var sentence: String
     public var needs: [String]
+    /// What will run when the owner taps: sent as Kelo's own turn (server offers.py).
+    public var request: String
+    /// The steps Kelo prepared for that turn.
+    public var steps: [String]
     public var createdAt: Double
     public var hasNumbers: Bool
     public var checkedAt: Double?
@@ -17,6 +21,8 @@ public struct Offer: Codable, Identifiable, Equatable, Sendable {
         kind: String = "",
         sentence: String = "",
         needs: [String] = [],
+        request: String = "",
+        steps: [String] = [],
         createdAt: Double = 0.0,
         hasNumbers: Bool = false,
         checkedAt: Double? = nil
@@ -25,17 +31,48 @@ public struct Offer: Codable, Identifiable, Equatable, Sendable {
         self.kind = kind
         self.sentence = sentence
         self.needs = needs
+        self.request = request
+        self.steps = steps
         self.createdAt = createdAt
         self.hasNumbers = hasNumbers
         self.checkedAt = checkedAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, sentence, needs
+        case id, kind, sentence, needs, request, steps
         case createdAt = "created_at"
         case hasNumbers = "has_numbers"
         case checkedAt = "checked_at"
     }
+}
+
+extension Offer {
+    /// An older server sends no `request` / `steps`: they stay empty rather than failing the whole list.
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try c.decodeIfPresent(String.self, forKey: .id) ?? "",
+            kind: try c.decodeIfPresent(String.self, forKey: .kind) ?? "",
+            sentence: try c.decodeIfPresent(String.self, forKey: .sentence) ?? "",
+            needs: try c.decodeIfPresent([String].self, forKey: .needs) ?? [],
+            request: try c.decodeIfPresent(String.self, forKey: .request) ?? "",
+            steps: try c.decodeIfPresent([String].self, forKey: .steps) ?? [],
+            createdAt: try c.decodeIfPresent(Double.self, forKey: .createdAt) ?? 0,
+            hasNumbers: try c.decodeIfPresent(Bool.self, forKey: .hasNumbers) ?? false,
+            checkedAt: try c.decodeIfPresent(Double.self, forKey: .checkedAt)
+        )
+    }
+}
+
+/// The steps list on a card: the first `collapsed` steps, the rest behind "show all". Pure (Android OfferSteps).
+public enum OfferSteps {
+    public static let collapsed = 3
+
+    public static func visible(_ steps: [String], expanded: Bool) -> [String] {
+        (expanded || steps.count <= collapsed) ? steps : Array(steps.prefix(collapsed))
+    }
+
+    public static func collapsible(_ steps: [String]) -> Bool { steps.count > collapsed }
 }
 
 public struct OfferList: Codable, Sendable {

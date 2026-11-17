@@ -18,33 +18,28 @@ LOGIN = "https://github.com/login"
 
 
 # ------------------------------------------------------------------------------------------------ reading the page after Enter
-@pytest.mark.parametrize("pw,text,after,want", [
-    (False, "Secure Area. You logged into a secure area! Logout", "https://x.com/secure", "success"),
-    (False, "Welcome back, Sign out", LOGIN, "success"),                                       # a sign-out link is a sign of being in, even on the same address
-    (False, "Dashboard", "https://x.com/home", "success"),                                    # the sign-in page was left
-    (True, "Your password is invalid!", LOGIN, "failed"),
-    (True, "Incorrect username or password. Try again", LOGIN, "failed"),
-    (True, "비밀번호가 올바르지 않습니다", LOGIN, "failed"),
-    (True, "아이디 또는 비밀번호가 일치하지 않아요", LOGIN, "failed"),
-    (False, "Enter the verification code we sent", "https://x.com/2fa", "code_needed"),
-    (False, "인증번호를 입력하세요", "https://x.com/otp", "code_needed"),
-    (True, "Please complete the CAPTCHA", LOGIN, "unknown"),                                   # words alone are no bot check (structure is: below)
-    (True, "Sign in to GitHub", LOGIN, "unknown"),                                             # the form is still there and nothing was said
-    (False, "Loading...", LOGIN, "unknown"),                                                  # same address, no form, no sign-out link
-    (False, "Invalid request", "https://x.com/err", "unknown"),                               # an error page without the form is not proof of a rejected login
-    (True, "Verification code sent. Password is invalid", LOGIN, "failed"),                   # the form is still there: it was refused
+@pytest.mark.parametrize("pw,after,kw,want", [
+    (False, "https://x.com/secure", {}, "success"),                                            # the sign-in page was left
+    (False, "https://x.com/home", {}, "success"),
+    (False, LOGIN, {}, "success"),                                                             # the password field is gone (checked again afterwards)
+    (True, LOGIN, {"invalid_marked": True}, "failed"),                                         # the form is still there and a field is marked invalid
+    (True, LOGIN, {}, "unknown"),                                                              # the form is still there and nothing marked
+    (False, "https://x.com/2fa", {"otp_boxes": 6}, "code_needed"),                             # a one-time-code input by structure
+    (False, "https://x.com/otp", {"otp_boxes": 1}, "code_needed"),
+    (True, LOGIN, {"otp_boxes": 1, "invalid_marked": True}, "failed"),                         # the form is still there: it was refused
 ])
-def test_the_page_after_a_sign_in_is_read_as_success_failure_a_code_prompt_or_a_robot_check(pw, text, after, want):
-    assert classify_sign_in(before_url=LOGIN, after_url=after, password_visible=pw, text=text)[0] == want
+def test_the_page_after_a_sign_in_is_read_by_structure_as_success_failure_or_a_code_prompt(pw, after, kw, want):
+    assert classify_sign_in(before_url=LOGIN, after_url=after, password_visible=pw, **kw)[0] == want
+
+
+def test_the_words_of_the_page_decide_nothing():
+    assert classify_sign_in(before_url=LOGIN, after_url=LOGIN, password_visible=True, text="Your password is invalid!")[0] == "unknown"
+    assert classify_sign_in(before_url=LOGIN, after_url=LOGIN, password_visible=True, text="Welcome, Log out")[0] == "unknown"
 
 
 def test_a_bot_check_found_by_structure_blocks_whatever_the_page_says():
     assert classify_sign_in(before_url=LOGIN, after_url=LOGIN, password_visible=True, text="Sign in", challenge="reCAPTCHA") == \
         ("blocked", "the site shows a human check (reCAPTCHA)")
-
-
-def test_a_success_page_that_happens_to_mention_an_error_word_is_still_success_when_there_is_a_sign_out_link():
-    assert classify_sign_in(before_url=LOGIN, after_url="https://x.com/home", password_visible=False, text="3 invalid invoices. Log out")[0] == "success"
 
 
 # ------------------------------------------------------------------------------------------------ what the tool does with it
@@ -60,11 +55,11 @@ def setup(tmp_path, state=None, found=None, url=LOGIN, wait=0.0):
     return st, t, tools, page
 
 
-WRONG = {"pw": True, "text": "Your password is invalid!"}
+WRONG = {"pw": True, "text": "Your password is invalid!", "invalid": True}
 BLOCKED = {"pw": True, "text": "Please complete the CAPTCHA",
            "probe": {"kelo_check": 1, "title": "Sign in", "marks": {}, "frames": [
                {"src": "https://www.google.com/recaptcha/api2/bframe?k=x", "w": 400, "h": 580, "shown": True}]}}
-CODE = {"pw": False, "text": "Enter the verification code we sent to your phone"}
+CODE = {"pw": False, "text": "Enter the verification code we sent to your phone", "otp": 6}
 UNSURE = {"pw": True, "text": "Sign in to GitHub"}
 
 

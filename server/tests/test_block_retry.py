@@ -229,7 +229,9 @@ def test_handoff_mentions_retry_time(tmp_path):
         # Second block handoff (needs_input with cookies) mentions quick_replies
         handoffs.clear()
         workers._live[wid] = _Live()
-        asyncio.run(report_tool.handler({"status": "needs_input", "summary": "Site keeps blocking. Clear cookies?"}))
+        # the cookie advice goes by the typed need, never by the words of the summary (hc-final-a, commit e35745b7)
+        asyncio.run(report_tool.handler({"status": "needs_input", "summary": "Site keeps blocking. Clear cookies?",
+                                         "need": "site_data_reset"}))
         asyncio.run(workers._settle(wid, ("needs_input", "Site keeps blocking. Clear cookies?", "", False), None))
         assert len(handoffs) == 1
         _, msg2, _ = handoffs[0]
@@ -250,7 +252,7 @@ def test_handoff_mentions_retry_time(tmp_path):
 
 
 # ------------------------------------------------------------------ 3. browser_forget_site
-async def test_browser_forget_site_removes_registrable_cookies_storage_and_refuses_without_consent():
+async def test_browser_forget_site_removes_registrable_cookies_storage_and_asks_by_card():
     ctx = FakeCtx([
         {"name": "c1", "value": "1", "domain": "example.test", "path": "/"},
         {"name": "c2", "value": "2", "domain": "www.example.test", "path": "/"},
@@ -271,23 +273,8 @@ async def test_browser_forget_site_removes_registrable_cookies_storage_and_refus
     sess._site_states["example.test"] = ({"cookies": [], "origins": []}, time.monotonic())
     sess._site_states["other.test"] = ({"cookies": [], "origins": []}, time.monotonic())
 
-    # Case A: Refuses without user agreement
-    # 1) Empty agreement
-    out1 = await sess.forget_site("example.test", user_said="")
-    assert out1.startswith("Error:") and "user agreement is required" in out1
-    assert len(await ctx.cookies()) == 4
-    assert "example.test" in sess._site_states
-
-    # 2) Refusal / stop words
-    out2 = await sess.forget_site("example.test", user_said="그만해")
-    assert out2.startswith("Error:") and ("declined" in out2 or "stop" in out2)
-    out3 = await sess.forget_site("example.test", user_said="no, stop")
-    assert out3.startswith("Error:") and ("declined" in out3 or "stop" in out3)
-    assert len(await ctx.cookies()) == 4
-    assert "example.test" in sess._site_states
-
-    # Case B: With user agreement
-    out4 = await sess.forget_site("https://www.example.test/shop", user_said="쿠키 지우고 다시 시도해줘")
+    # The owner's yes is the tool's approval card (requires_approval), so forget_site itself just clears.
+    out4 = await sess.forget_site("https://www.example.test/shop")
     assert "Removed 3 cookies for example.test" in out4
     assert "cleared its site data" in out4
     assert "browser_login" in out4
@@ -314,8 +301,7 @@ async def test_browser_forget_site_removes_registrable_cookies_storage_and_refus
     tools = {t.name: t for t in extras.tools()}
     assert "browser_forget_site" in tools
     tool = tools["browser_forget_site"]
-    res_tool = await tool.handler({"site": "example.test", "user_said": ""})
-    assert res_tool.startswith("Error:") and "user agreement is required" in res_tool
+    assert tool.requires_approval and "user_said" not in tool.parameters["properties"]
 
 
 # ------------------------------------------------------------------ 4. blocked_note wording

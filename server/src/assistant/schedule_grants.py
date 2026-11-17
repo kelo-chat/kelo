@@ -51,6 +51,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .agent import Tool, approval_of_current_call
+from .connector_rules import SEP
 from .effects import GRANTABLE, effect_of, norm_target  # noqa: F401  (norm_target: re-exported, other modules take it from here)
 from .i18n import N_, t
 from .wallet import CURRENCY, money_text, site_key, site_keys
@@ -79,8 +80,9 @@ MAX_WHAT = 80
 MAX_WORDS = 300
 MAX_TARGETS = 10
 MAX_COUNT = 100
-ACCOUNT_WORDS = re.compile(r"password|passcode|비밀번호|암호|계정|account|sign[ -]?up|회원\s*가입|탈퇴|delete my", re.I)
-DELETE_WORDS = re.compile(r"delete|remove|cancel|destroy|drop|erase|archive|삭제|취소|제거", re.I)
+ACCOUNT_REFUSED = "a standing permission never covers sign-ups, account or password changes"
+NOT_CHECKED = ("a standing permission could not be checked (the model that reads what it covers did not answer). Tell the user, and ask "
+               "again later; nothing was allowed")
 
 LOGIN_COVERED = N_("Allowed at setup: signing in with {login} on {site}")
 PURCHASE_COVERED = N_("Allowed at setup: buying {what} on {site} ({amount})")
@@ -89,6 +91,8 @@ ACTION_COVERED_FREE = N_("Allowed at setup: {action}")
 APPLY_COVERED = N_("apply for {what} on {site}")
 APPLIED_TITLE = N_("{count} application(s) sent")
 PROGRESS_TITLE = N_("{count} application(s) sent so far, still going")   # a long run's one progress notice (run_progress.py)
+PROGRESS_NOTICE = N_("Still working on it: {step} ({count} done)")       # any long run still working after 10 min (run_progress.py)
+ACK_LINE = N_("Got it, on it now")                                       # code-level acknowledgement before slow work (turn_engine.py)
 
 # why a run's purchase is NOT covered although its task has a purchase permission (the approval card and the model say this)
 MISSES = {
@@ -109,6 +113,7 @@ ACTION_MISSES = {
     "task_no_delete": "the user allowed this task to change things, but not to delete or cancel anything",
     "task_used_up": "this task already used the {count} time(s) the user allowed; another one needs the user's approval",
     "task_account": "account, password and sign-up steps are never covered by a standing permission",
+    "task_fresh_only": "this method of the service always needs the user's own approval; no task permission covers it",
     "task_other_site": "the user allowed this task to apply only on {site}; this is another site",
     "task_run_used_up": ("this run already sent the {count} application(s) the user allowed per run; another one needs the user's "
                          "approval"),
@@ -121,6 +126,7 @@ ACTION_REASONS = {
     "task_no_delete": N_("Deleting was not allowed at setup"),
     "task_used_up": N_("The number of times allowed at setup is used up"),
     "task_account": N_("Account and sign-up steps always ask"),
+    "task_fresh_only": N_("This action always asks, whatever was allowed at setup"),
     "task_other_site": N_("Not a recipient or place allowed at setup"),
     "task_run_used_up": N_("The number of times allowed at setup is used up"),
 }
@@ -196,8 +202,8 @@ def action_of(tool: str, args: dict[str, Any], site: str = "", commit: str = "")
     e = effect_of(tool, args, site=site, commit=commit)
     if e is None:
         return None
-    if tool == "mcp_call_tool":   # a standing permission has always seen every MCP call as a change, a delete by these words
-        return "change", e.targets, bool(DELETE_WORDS.search(str(args.get("tool") or "").strip().casefold())), ""
+    if tool == "mcp_call_tool":   # a standing permission has always seen every MCP call as a change; a delete is the effect's kind (hints, manifest, tool judge)
+        return "change", e.targets, e.kind == "delete", ""
     if tool == "connector_send":
         return "change", e.targets, e.kind == "delete", ""
     if e.kind == "read":
@@ -213,6 +219,8 @@ def _target_ok(want: str, have: set[str]) -> bool:
     if want.startswith("site:") and any(f"site:{k}" in have for k in site_keys(want[5:])):   # saved under the pre-2026-11-10 rule
         return True
     if want.startswith("connector:") and "/" in want and want.split("/", 1)[0] in have:   # a connector named whole covers its tools
+        return True
+    if want.startswith("connector:") and SEP in want and want.split(SEP, 1)[0] in have:   # ... and every recipient bound to it
         return True
     return False
 
@@ -260,6 +268,7 @@ class ConditionalGrants:
         self.watchers: Any = None   # watchers.Watchers, to name a watcher's grants
         self.workers: Any = None    # workers.Workers, to name a job's grants
         self.shipping: Any = None   # shipping.ShippingBook, to name a purchase permission's address
+        self.judge: Any = None      # step_judge.StepJudge: reads the words of a permission at setup (account steps are never covered)
         self.pins: Any = None       # payment_pins.PaymentPins: a purchase permission may offer the site's saved payment PIN (use_pin)
         # (grant, tool, host, detail): the server writes the approval log (decision allowed_by_rule)
         self.on_use: Callable[[dict[str, Any], str, str, str], None] | None = None
@@ -466,6 +475,17 @@ class ConditionalGrants:
     def drop_login(self, login: str) -> int:
         return self.store._run("DELETE FROM schedule_grants WHERE kind = 'login' AND login = ?", (login,)).rowcount
 
+    async def account_check(self, texts: list[str]) -> str:
+        """"" when none of these plain-words descriptions of what a permission covers signs up, changes an account's security or
+        deletes an account, else the reason. The step judge reads them (one cached request each); no judge or no answer is a refusal."""
+        for text in texts:
+            verdict = await self.judge.text(text) if self.judge is not None else None
+            if verdict is None:
+                return NOT_CHECKED
+            if verdict.signs_up or verdict.account_security:
+                return ACCOUNT_REFUSED
+        return ""
+
     def spent(self, gid: int, month: str | None = None) -> float:
         if self.wallet is None:
             return 0.0
@@ -586,8 +606,6 @@ class ConditionalGrants:
         want = _words(r["what"])
         if want and not (want & _words(summary)):
             return PurchaseCheck(None, "task_other_item", MISSES["task_other_item"].format(what=r["what"]))
-        if ACCOUNT_WORDS.search(summary or ""):
-            return PurchaseCheck(None, "task_other_item", MISSES["task_other_item"].format(what=r["what"]))
         if r["card_id"] and card is not None and card.get("id") != r["card_id"]:
             named = self.wallet.card(r["card_id"]) if self.wallet is not None else None
             return PurchaseCheck(None, "task_other_card", MISSES["task_other_card"].format(card=(named or {}).get("label") or "?"))
@@ -624,6 +642,8 @@ class ConditionalGrants:
         if found is None:
             return ActionCheck(None)
         kind, wanted, deleting, text = found
+        if (e := effect_of(tool, args, site=site, commit=commit)) is not None and e.policy == "fresh":
+            return ActionCheck(None, "task_fresh_only", ACTION_MISSES["task_fresh_only"], kind)   # declared in connector_rules.json
         rows = self._rows(kind, self.scopes())
         if not rows or not wanted:
             return ActionCheck(None, kind=kind)
@@ -811,6 +831,17 @@ def task_allow_tools(grants: ConditionalGrants, wallet: Any = None) -> list[Tool
         """A change permission's places: "calendar", a connected service by name, or a site address."""
         return [n for n in (change_target(x) for x in targets_of(p)) if n]
 
+    async def account_hold(args: dict[str, Any]) -> str | None:
+        """Before the card: what each part of the permission covers, read by the step judge (docs/no-word-lists.md H3). A sign-up or an
+        account / password change is refused; no judge or an answer it cannot give is refused too (fail closed)."""
+        texts = []
+        for kind, keys in (("purchase", ("what",)), ("send", ("template", "what")), ("change", ("what",)), ("apply", ("what",))):
+            if (p := part(args, kind)) is not None:
+                if text := " ".join(_clip(p.get(k)) for k in keys if _clip(p.get(k))):
+                    texts.append(text)
+        verdict = await grants.account_check(texts)
+        return f"Error: task_allow was not run: {verdict}" if verdict else None
+
     def validate(args: dict[str, Any]) -> str | None:
         if unattended_now():
             return ("this is asked once while the task is being set up, with the user there, never inside a run of a task (nobody is "
@@ -842,8 +873,6 @@ def task_allow_tools(grants: ConditionalGrants, wallet: Any = None) -> list[Tool
                 return "purchase.what is required: what is bought, in the user's words"
             if len(what) > MAX_WHAT:
                 return f"purchase.what is too long; keep it under {MAX_WHAT} characters"
-            if ACCOUNT_WORDS.search(what):
-                return "a standing permission never covers sign-ups, account or password changes"
             amount = _amount(p.get("max_amount"))
             if amount is None or amount <= 0:
                 return "purchase.max_amount is required: the most one purchase may cost, as a number above 0 (what the user agreed)"
@@ -865,15 +894,11 @@ def task_allow_tools(grants: ConditionalGrants, wallet: Any = None) -> list[Tool
                 return "send.to is required: the recipients (email addresses, phone numbers or contact names), or send.site for posts on a site"
             if len(targets_of(p)) > MAX_TARGETS:
                 return f"at most {MAX_TARGETS} recipients"
-            if ACCOUNT_WORDS.search(_clip(p.get("template")) + " " + _clip(p.get("what"))):
-                return "a standing permission never covers sign-ups, account or password changes"
         if (p := part(args, "change")) is not None:
             if not _clip(p.get("what")):
                 return "change.what is required: what may be changed, in plain words (e.g. 'move my run event to the evening')"
             if not where_of(p):
                 return "change.where is required: 'calendar', a connected service's name, or a site address"
-            if ACCOUNT_WORDS.search(_clip(p.get("what"))):
-                return "a standing permission never covers sign-ups, account or password changes"
         if (p := part(args, "apply")) is not None:
             if not _site(str(p.get("site") or "")):
                 return "apply.site is required: the address of the site where the applications are sent"
@@ -882,8 +907,6 @@ def task_allow_tools(grants: ConditionalGrants, wallet: Any = None) -> list[Tool
                 return "apply.what is required: what is applied for, in the user's words (e.g. 'gift trial campaigns')"
             if len(what) > MAX_WHAT:
                 return f"apply.what is too long; keep it under {MAX_WHAT} characters"
-            if ACCOUNT_WORDS.search(what):
-                return "a standing permission never covers sign-ups, account or password changes"
             if p.get("max_count") is not None and not 1 <= _int(p.get("max_count"), 0) <= MAX_COUNT:
                 return f"apply.max_count must be between 1 and {MAX_COUNT}: the most applications in one run"
             if p.get("total") is not None and _int(p.get("total"), -1) < 0:
@@ -1104,7 +1127,7 @@ def task_allow_tools(grants: ConditionalGrants, wallet: Any = None) -> list[Tool
                 "total": {"type": "integer", "minimum": 0, "description": "optional: most applications over all runs"}},
                 "required": ["site", "what"]},
         }, "required": ["trigger", "action"]},
-        handler, requires_approval=True, validate=validate, describe=describe, approval_extra=card_lines,
+        handler, requires_approval=True, validate=validate, describe=describe, approval_extra=card_lines, hold=account_hold,
         declined=("The user did NOT allow this task to act on its own. When it fires, each step will ask (an approval card then, which "
                   "may come too late). Tell the user that in one sentence; do not ask again."),
     )]

@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from .. import big_events
 
 LOOK_AHEAD_DAYS = 14
+PARCEL_DAYS = 14        # a parcel is watched this long after its shipping mail
 
 # Flight number: 2-character IATA airline designator followed by 1-4 digits (KE123, 7C101, AA1234)
 FLIGHT_RE = re.compile(r"\b([A-Z]{2}|[A-Z][0-9]|[0-9][A-Z])\s*(\d{1,4})\b")
@@ -35,6 +36,36 @@ def normalize_title(title: str) -> str:
     return re.sub(r"\s+", " ", str(title or "").strip().lower())
 
 
+def origin(key: str) -> str:
+    """Where a key comes from: 'cal:phone' / 'cal:gcal' for a calendar source named in the event id, else the key's first part."""
+    parts = str(key).split(":")
+    return ":".join(parts[:2]) if parts[0] == "cal" and len(parts) > 2 else parts[0]
+
+
+def same_thing(a: UpcomingItem, b: UpcomingItem) -> bool:
+    """One real-world thing, seen twice. Structure only: same key; the same flight designator and date; the same tracking number;
+    or (different origins) the same start time and the same title once case and spacing are ignored."""
+    if a.key == b.key:
+        return True
+    for ref in ("flight", "tracking"):
+        x = str(a.refs.get(ref) or "").upper().replace(" ", "")
+        y = str(b.refs.get(ref) or "").upper().replace(" ", "")
+        if x and y:
+            if x != y:
+                return False
+            if ref == "tracking" or a.refs.get("date") == b.refs.get("date"):
+                return True
+    return (origin(a.key) != origin(b.key) and normalize_title(a.title) == normalize_title(b.title)
+            and abs(a.starts_at - b.starts_at) <= 600)
+
+
+def from_row(it: dict[str, Any]) -> UpcomingItem:
+    """The stored item (a follow_items row as a dict) as an UpcomingItem."""
+    return UpcomingItem(key=it["key"], kind=it["kind"], title=it["title"], starts_at=float(it["starts_at"]),
+                        ends_at=it.get("ends_at"), place=it.get("place") or "", refs=it.get("refs") or {},
+                        source=it.get("source") or "", aliases=tuple(it.get("aliases") or ()))
+
+
 def make_chat_item(title: str, date: str, time_str: str | None = None, place: str = "",
                    what: str = "", quote: str = "", tz: ZoneInfo | None = None) -> UpcomingItem:
     """Create an upcoming item from chat look-back."""
@@ -44,7 +75,7 @@ def make_chat_item(title: str, date: str, time_str: str | None = None, place: st
     else:
         dt = datetime.strptime(date, "%Y-%m-%d").replace(hour=9, minute=0, tzinfo=zone)
     starts_at = dt.timestamp()
-    slug = re.sub(r"[^a-zA-Z0-9가-힣]+", "-", title.lower()).strip("-")[:40]
+    slug = re.sub(r"[\W_]+", "-", title.lower()).strip("-")[:40]
     key = f"chat:{date}:{slug}" if slug else f"chat:{date}:{int(starts_at)}"
     refs = {"date": date, "what": what, "quote": quote}
     if time_str:
@@ -72,28 +103,47 @@ def extract_flight_ref(text: str) -> str | None:
 class ItemFinder:
     def __init__(self, calendar: Callable[[], Awaitable[list[dict[str, Any]]]] | None = None,
                  mail: Callable[[], Awaitable[list[dict[str, Any]]]] | None = None,
-                 tz: ZoneInfo | None = None) -> None:
+                 tz: ZoneInfo | None = None, kinds: Any = None, bookings: Any = None) -> None:
         self.calendar = calendar
         self.mail = mail
+        self.kinds = kinds          # event_kinds.EventKinds: the main model's kind of events structure leaves (None: structure only)
+        self.bookings = bookings    # event_kinds.MailBookings: the model's read of mail (kind and booking reference; None: flight numbers only)
+        self._kind_map: dict[str, str] = {}
+        self._mail_read: dict[str, dict[str, str]] = {}
         self.tz = tz or ZoneInfo("UTC")
         self.aliases: dict[str, str] = {}
         self._seen: list[UpcomingItem] = []
+        self.seen_keys: set[str] = set()   # every calendar key the last look saw (merged or not, classified or not)
+        self.calendar_ok = False           # the calendar was read without an error at the last look
 
     def _is_duplicate(self, a: UpcomingItem, b: UpcomingItem) -> bool:
+        if same_thing(a, b):
+            return True
         return normalize_title(a.title) == normalize_title(b.title) and abs(a.starts_at - b.starts_at) <= 600
 
     async def find(self, now: float) -> list[UpcomingItem]:
         """Find upcoming items starting between now and now + LOOK_AHEAD_DAYS."""
         max_start = now + LOOK_AHEAD_DAYS * 86400
         raw_items: list[UpcomingItem] = []
+        self.seen_keys = set()
+        self.calendar_ok = False
 
         # 1. Calendar events
         if self.calendar is not None:
             try:
                 res = self.calendar()
                 events = await res if hasattr(res, "__await__") else res
+                self.calendar_ok = True
             except Exception:
                 events = []
+            for ev in events:
+                if now - 300 <= float(ev.get("start") or 0) <= max_start:
+                    self.seen_keys.add(self._event_key(ev))
+            if self.kinds is not None:
+                try:
+                    self._kind_map = await self.kinds.classify(big_events.unclassified(list(events), now, self.tz, LOOK_AHEAD_DAYS), self.tz)
+                except Exception:  # noqa: BLE001 - structure only
+                    self._kind_map = {}
             for ev in events:
                 item = self._item_from_event(ev, now, max_start)
                 if item is not None:
@@ -106,6 +156,12 @@ class ItemFinder:
                 messages = await res if hasattr(res, "__await__") else res
             except Exception:
                 messages = []
+            if self.bookings is not None:
+                try:
+                    self._mail_read = await self.bookings.read([(self._mail_id(m), str(m.get("subject") or m.get("title") or ""),
+                                                                 str(m.get("body") or m.get("detail") or "")) for m in messages])
+                except Exception:  # noqa: BLE001 - flight numbers only
+                    self._mail_read = {}
             for msg in messages:
                 item = self._item_from_mail(msg, now, max_start)
                 if item is not None:
@@ -176,10 +232,10 @@ class ItemFinder:
         title = str(ev.get("title") or "").strip()
         where = str(ev.get("where") or "").strip()
         text = f"{title} {where}"
-        ev_kind = big_events.kind(ev, self.tz)
+        ev_kind = big_events.kind(ev, self.tz, self._kind_map)
 
         flight_no = extract_flight_ref(text)
-        is_flight = ev_kind == "flight" or flight_no is not None or big_events.FLIGHT.search(text)
+        is_flight = ev_kind == "flight" or flight_no is not None
 
         refs: dict[str, str] = {}
         dt = datetime.fromtimestamp(start, self.tz)
@@ -199,8 +255,7 @@ class ItemFinder:
         else:
             return None
 
-        ev_id = str(ev.get("id") or f"{title}:{int(start)}")
-        key = f"cal:{ev_id}"
+        key = self._event_key(ev)
         ends_at = float(ev["end"]) if ev.get("end") else None
 
         return UpcomingItem(
@@ -214,6 +269,17 @@ class ItemFinder:
             source="calendar",
         )
 
+    @staticmethod
+    def _event_key(ev: dict[str, Any]) -> str:
+        ev_id = ev.get("id")
+        if not ev_id:
+            ev_id = f"{str(ev.get('title') or '').strip()}:{int(float(ev.get('start') or 0))}"
+        return f"cal:{ev_id}"
+
+    @staticmethod
+    def _mail_id(msg: dict[str, Any]) -> str:
+        return str(msg.get("id") or msg.get("message_id") or f"{msg.get('subject') or ''}:{int(float(msg.get('starts_at') or msg.get('start') or 0))}")
+
     def _item_from_mail(self, msg: dict[str, Any], now: float, max_start: float) -> UpcomingItem | None:
         subject = str(msg.get("subject") or msg.get("title") or "").strip()
         body = str(msg.get("body") or msg.get("detail") or "").strip()
@@ -226,10 +292,16 @@ class ItemFinder:
             # Try to use message timestamp if no starts_at provided
             start = float(msg.get("created_at") or msg.get("ts") or now)
 
-        if not (now - 300 <= start <= max_start):
+        read = self._mail_read.get(self._mail_id(msg)) or {}   # the model's read of this mail (event_kinds.MailBookings), if any
+        parcel = not flight_no and read.get("kind") == "parcel" and bool(read.get("tracking")) and bool(read.get("url"))
+        if parcel:   # the order may be days old when it ships: its window is the parcel's own
+            if not (now - PARCEL_DAYS * 86400 <= start <= max_start):
+                return None
+        elif not (now - 300 <= start <= max_start):
             return None
 
         refs: dict[str, str] = {}
+        ends_at = float(msg["ends_at"]) if msg.get("ends_at") else None
         dt = datetime.fromtimestamp(start, self.tz)
         date_str = dt.strftime("%Y-%m-%d")
 
@@ -237,13 +309,16 @@ class ItemFinder:
             refs["flight"] = flight_no
             refs["date"] = date_str
             kind = "flight"
+        elif parcel:
+            refs.update({"tracking": read["tracking"], "carrier": read.get("carrier", ""), "url": read["url"], "date": date_str})
+            kind = "parcel"
+            ends_at = start + PARCEL_DAYS * 86400
         else:
-            # Check for booking reference number
-            m = re.search(r"(?:booking|confirmation|reservation|ticket)\s*(?:#|no\.?|code|ref)?\s*[:]?\s*([A-Z0-9]{5,12})\b", text, re.I)
-            if m:
-                refs["booking"] = m.group(1)
-                refs["date"] = date_str
-                kind = "stay" if big_events.STAY.search(text) else "other"
+            if read.get("flight"):
+                refs["flight"], refs["date"], kind = read["flight"], date_str, "flight"
+            elif read.get("booking") and read.get("kind") != "other":
+                refs["booking"], refs["date"] = read["booking"], date_str
+                kind = read["kind"] if read["kind"] in ("stay", "trip") else "other"
             else:
                 return None
 
@@ -251,9 +326,9 @@ class ItemFinder:
         return UpcomingItem(
             key=f"mail:{mid}",
             kind=kind,
-            title=subject or f"Booking {refs.get('booking', '')}",
+            title=subject,
             starts_at=start,
-            ends_at=float(msg["ends_at"]) if msg.get("ends_at") else None,
+            ends_at=ends_at,
             place=str(msg.get("place") or msg.get("where") or ""),
             refs=refs,
             source="mail",

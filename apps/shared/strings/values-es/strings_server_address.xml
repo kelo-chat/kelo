@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">Dirección del servidor</string>
+    <string name="server_address_title">Cambiar la dirección del servidor</string>
+    <string name="server_address_body">Dirección conectada: %1$s\nPara pasar a una nueva dirección del mismo servidor Kelo, escribe la nueva dirección https. Tus chats y claves se conservan y no tendrás que conectarte de nuevo.</string>
+    <string name="server_address_switch">Cambiar</string>
+    <string name="server_address_checking">Comprobando…</string>
+    <string name="server_address_invalid">Eso no parece una dirección https. Escríbela así: https://kelo.example.com.</string>
+    <string name="server_address_unreachable">No se pudo acceder a esa dirección. Revísala y comprueba tu conexión, e inténtalo de nuevo.</string>
+    <string name="server_address_other">Esa dirección pertenece a otro servidor, así que no se cambió nada. Para conectar otro servidor, cierra sesión y conéctalo desde el principio.</string>
+    <string name="server_address_same">Este teléfono ya usa esa dirección.</string>
+    <string name="server_address_done">Dirección del servidor cambiada.</string>
+</resources>

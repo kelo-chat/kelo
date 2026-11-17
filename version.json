@@ -1,6 +1,6 @@
 {
-  "version": "0.10.2",
-  "build": 18,
+  "version": "0.10.4",
+  "build": 20,
   "min_app": "0.0.0",
   "min_server": "0.9.0"
 }

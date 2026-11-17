@@ -307,8 +307,10 @@ def limit_notices(ctx: Any, waits: list[dict[str, Any]], now: float) -> None:
             continue   # quiet time: told once the day starts, unless it has run by then
         reset = until or (float(r["retry_at"]) if r.get("retry_at") else None)
         known = bool(main and (limit_guard.state(main[0]) or {}).get("known"))
+        busy = bool(main and limit_guard.busy_now(main[0]))
         activity.notify("task_waiting", i18n.t(model_limits.DELAYED_HEAD, title=r["title"])[:120],
-                        model_limits.delayed_text(reset if known else None, store.profile()["timezone"], now), task_id=int(r["id"]),
+                        model_limits.delayed_text(reset if known else None, store.profile()["timezone"], now, busy=busy),
+                        task_id=int(r["id"]),
                         schedule_id=int(spec["schedule_id"]) if spec.get("kind") == "schedule" and spec.get("schedule_id") else None)
         activity.bump_wait(int(r["id"]), float(r.get("retry_at") or now), noted=True)
 

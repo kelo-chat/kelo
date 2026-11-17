@@ -86,7 +86,8 @@ async def run_ko(r, **kw):
 
 
 async def test_a_night_writes_the_day_the_counts_and_working_together(tmp_path):
-    store, home, r, clock = setup(tmp_path, answering(review()))
+    found = [{"quote": "아니 그게 아니라 영수증만 모아줘", "what_went_wrong": "서류를 다 모았어요", "how_to_act": "영수증만 먼저 모으기"}]
+    store, home, r, clock = setup(tmp_path, answering(review(corrections_new=found)))   # the model names the correction; the count follows its quote
     two_turns(store)
     out = await run_ko(r)
     assert out["status"] == "done"
@@ -94,7 +95,7 @@ async def test_a_night_writes_the_day_the_counts_and_working_together(tmp_path):
     assert (row["day"], row["user_turns"], row["correction_turns"], row["correction_free_rate"], row["doc_path"]) == (
         "2026-11-08", 2, 1, 0.5, "reviews/2026-11-08.md")
     doc = (home.root / "reviews/2026-11-08.md").read_text(encoding="utf-8")
-    assert doc.startswith("---\nday: 2026-11-08\nuser_turns: 2\ncorrection_turns: 1\ncorrection_free_rate: 0.5\nopen_corrections: 0\n---\n")
+    assert doc.startswith("---\nday: 2026-11-08\nuser_turns: 2\ncorrection_turns: 1\ncorrection_free_rate: 0.5\nopen_corrections: 1\n---\n")
     for h in ("제가 이해한 모습", "아직 진행 중인 일", "아직 제가 할 일", "잘된 점", "더 잘할 점", "다음에 가장 먼저 할 일"):
         assert f"## {h}" in doc
     assert "- 세금 서류 정리" in doc and "영수증부터 찾기" in doc

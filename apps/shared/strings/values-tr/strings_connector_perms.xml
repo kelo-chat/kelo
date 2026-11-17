@@ -17,4 +17,6 @@
     <string name="perm_reset_q">Bu bağlayıcının tüm ayarları varsayılanlara döndürülsün mü?</string>
     <string name="perm_read_off_q">Okuma kapalıyken Kelo bu bağlayıcıyı neredeyse hiç kullanamaz. Kapatılsın mı?</string>
     <string name="perm_limited">Sınırlı</string>
+    <string name="perm_unattended">Sohbet etmediğimde de kullan</string>
+    <string name="perm_unattended_about">Zamanlanmış görevler, arka plan işleri ve Kelo\'nun kendiliğinden gönderdiği mesajlar %1$s hizmetini kullanmaz. Kendi sohbetlerinizde yine kullanılabilir.</string>
 </resources>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">За чем следит Kelo</string>
+    <string name="follow_stop">Перестать следить</string>
+    <string name="follow_stop_confirm">Перестать следить за этим событием?</string>
+    <string name="follow_stop_confirm_detail">Kelo больше не будет проверять изменения и заранее готовиться.</string>
+    <string name="follow_stop_yes">Перестать следить</string>
+    <string name="follow_keep_watching">Продолжить следить</string>
+    <string name="follow_replan">Спланировать заново</string>
+    <string name="follow_sheet_title">План сопровождения</string>
+    <string name="follow_plan_checks">Что проверяем</string>
+    <string name="follow_plan_prep">Подготовка</string>
+    <string name="follow_plan_tell">Уведомления</string>
+    <string name="follow_plan_tell_change">Уведомить при изменениях</string>
+    <string name="follow_next_check">Следующая проверка: %1$s</string>
+    <string name="follow_last_check">Последняя проверка: %1$s</string>
+    <string name="follow_prep_later">Запланировано</string>
+    <string name="follow_prep_running">В процессе</string>
+    <string name="follow_prep_done">Подготовлено</string>
+    <string name="follow_prep_failed">Сбой</string>
+    <string name="follow_state_watching">Отслеживается</string>
+    <string name="follow_state_stopped">Остановлено</string>
+    <string name="follow_state_done">Готово</string>
+    <string name="follow_summary_lead_flight">Напоминание за день до вылета</string>
+    <string name="follow_summary_lead_general">Напоминание за день</string>
+    <string name="follow_summary_lead_hours">Напоминание за %1$d ч.</string>
+    <string name="follow_summary_prep_checkin">Подготовить регистрацию при открытии</string>
+    <string name="follow_summary_prep_general">Подготовить: %1$s</string>
+    <string name="follow_summary_watch_changes">Проверять изменения</string>
+    <string name="follow_summary_default">Сопровождение события</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ru text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">Поиск в чате</string>
+    <string name="chat_search_title">Поиск в чате</string>
+    <string name="chat_search_field">Поиск по сообщениям</string>
+    <string name="chat_search_clear">Очистить поиск</string>
+    <string name="chat_search_hint">Введите слово или его часть. Нажмите на результат, чтобы открыть чат на этом сообщении.</string>
+    <string name="chat_search_none">Нет сообщений, подходящих под этот запрос.</string>
+    <string name="chat_search_failed">Не удалось связаться с сервером для поиска. Попробуйте чуть позже.</string>
+    <string name="chat_search_you">Вы</string>
+</resources>

@@ -25,6 +25,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from .chat_clear import clear_tables
 from .eval_export import copy_database, db_of, env_for
 from .store import Store
 
@@ -98,6 +99,27 @@ def scenario_runner():
     return importlib.import_module("evals.runner")
 
 
+def read_only_keyring() -> Callable[[], None]:
+    """A live run on a copy of the database may share the instance's key container (docs/browser-workers.md). The copy can be older than
+    the instance, so nothing may be moved, written or deleted there: the two start-up jobs that do that are switched off. Sending the ring key
+    (unlock) and reading the entries stay. Returns the function that puts the originals back."""
+    from . import cred_keyring, keyring_client
+
+    old = cred_keyring.sync, keyring_client.move_keys
+
+    async def nothing(*a: Any, **k: Any) -> dict[str, int]:
+        return {}
+
+    async def no_moves(*a: Any, **k: Any) -> int:
+        return 0
+
+    cred_keyring.sync, keyring_client.move_keys = nothing, no_moves
+
+    def restore() -> None:
+        cred_keyring.sync, keyring_client.move_keys = old
+    return restore
+
+
 def run_live(env_file: Path, *, name: str | None, yes: bool, out: Callable[[str], None] = print,
              environ: dict[str, str] | None = None, results_home: Path | None = None) -> int:
     """Runs the live scenarios. Returns the exit status: 0 all passed, 1 some failed, 2 refused."""
@@ -105,6 +127,7 @@ def run_live(env_file: Path, *, name: str | None, yes: bool, out: Callable[[str]
 
     environ = dict(os.environ) if environ is None else environ
     rows: list[dict[str, Any]] = []
+    restore = read_only_keyring()
     try:
         check_gates(yes=yes, environ=environ)
         env = env_for(env_file)
@@ -115,7 +138,9 @@ def run_live(env_file: Path, *, name: str | None, yes: bool, out: Callable[[str]
         work = Path(tempfile.mkdtemp(prefix="kelo-live-"))
         try:
             copy = copy_database(db, work)
-            profile = Store(copy, key or None).profile()
+            store = Store(copy, key or None)
+            profile = store.profile()
+            clear_tables(store)   # a scenario is a fresh conversation: the owner's chat, tasks and jobs in the copy would be read as its past
             check_profile(profile, env)
             if not profile.get("provider") or not profile.get("model"):
                 raise LiveRefused("refused: no main model is set in the app; set one first")
@@ -130,11 +155,25 @@ def run_live(env_file: Path, *, name: str | None, yes: bool, out: Callable[[str]
                 failures = runner.check(runner.live_expect(sc), outcome)
                 ok = not failures
                 out(f"{'PASS' if ok else 'FAIL'} {sc['name']}" + ("" if ok else ": " + "; ".join(failures)))
-                rows.append({"name": sc["name"], "passed": ok, "failures": failures, "model_requests": len(outcome.model_requests)})
+                rows.append({"name": sc["name"], "passed": ok, "failures": failures, "model_requests": len(outcome.model_requests),
+                             "tools_called": [n for n, _ in getattr(outcome, "calls", [])],   # tool names in order, never arguments or texts
+                             "jobs": [(j["kind"], j["status"]) for j in getattr(outcome, "jobs", [])]})
+                if hasattr(outcome, "observed_calls"):   # every tool call in order (names and the kind of a delegate, never other arguments)
+                    seen = [n + (f"[{a.get('kind')}]" if n == "delegate" else "") + (f"[{a.get('status')}]" if n == "checkout_review" else "")
+                            for n, a in outcome.observed_calls()[len(outcome.calls):]]
+                    jobs = ", ".join(j["kind"] + ":" + j["status"] for j in outcome.jobs)
+                    out(f"  requests {len(outcome.model_requests)}; calls {', '.join(seen)}; delegate errors {outcome.refused('delegate')}; jobs {jobs}")
+                    rows[-1]["calls"] = seen
+                if environ.get("KELO_EVAL_SHOW"):   # debugging a failed scenario: the fixture texts the model saw last and its reply (never written to the results file)
+                    tool_texts = [str(m.get("content") or "")[:300] for m in (outcome.model_requests[-1] if outcome.model_requests else []) if m.get("role") == "tool"]
+                    out("  last tool results: " + " | ".join(t.replace("\n", " / ") for t in tool_texts[-4:]))
+                    out("  reply: " + getattr(outcome, "reply", "")[:800].replace("\n", " / "))
         finally:
             shutil.rmtree(work, ignore_errors=True)
     except LiveRefused as e:
         out(str(e))
         return 2
+    finally:
+        restore()
     write_results(results_path(home=results_home), rows)
     return 0 if all(r["passed"] for r in rows) else 1

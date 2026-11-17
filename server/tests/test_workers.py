@@ -487,7 +487,7 @@ def test_no_site_specific_or_borrowed_words_in_the_jobs_code_tools_or_prompt():
     for text in (code, para):
         assert not re.search(r"\b[\w-]+\.(com|net|org|kr|co|io)\b", text)       # no web addresses
         assert not re.search(r"lotto|로또|복권|coupang|쿠팡|naver|네이버|amazon|subagent", text, re.I)
-    assert len(para) < 600                                                      # a few short lines
+    assert len(para) < 780                                                      # a few short lines (600 before the checkout and phone kinds)
 
 
 async def test_job_progress_shows_how_far_a_long_job_is_on_the_job_card(tmp_path):
@@ -536,3 +536,34 @@ def test_the_progress_line_counts_what_went_through_from_the_servers_own_records
     line = w._progress_line({"id": "wjob", "steps": 123, "last_url": "https://gift.kakao.com/giftbox/trial-campaign/x"})
     assert line.startswith("Progress (server record): 123 steps") and "14 on gift.kakao.com" in line and "trial-campaign" in line
     assert "x.example" not in line
+
+
+# ---------------------------------------------------------------------------------------------------------- hc-final-a: typed need
+def _bare_workers():
+    from assistant.workers import WorkerHost, Workers
+    host = WorkerHost(start_turn=lambda *a: None, cancel_turn=lambda t: None, handoff=None, emit=None, tools=lambda: [])
+    return Workers(Store(), host, Limits())
+
+
+def test_a_needs_input_with_need_site_data_reset_offers_the_clear_and_retry_choice_and_a_word_does_not():
+    from assistant.workers import _Live, current_worker
+    ws = _bare_workers()
+    row = {"id": "w-need", "title": "shop", "kind": "general", "parent_source": "chat"}
+    wait = {"kind": "user"}
+    typed = {"status": "needs_input", "summary": "The shop keeps refusing me.", "details": "", "need": "site_data_reset"}
+    assert "quick_replies" in ws._handoff_text(row, typed, wait)
+    # the same words in the summary, with no typed need, do not decide anything
+    words_only = {"status": "needs_input", "summary": "cookie problem, 쿠키 문제", "details": ""}
+    assert "quick_replies" not in ws._handoff_text(row, words_only, wait)
+    # the report tool keeps only the two typed values; anything else is dropped, not read from the summary
+    ws._live["w-need"] = _Live()
+    token = current_worker.set("w-need")
+    try:
+        tool = ws.report_tool()
+        import asyncio
+        asyncio.run(tool.handler({"status": "needs_input", "summary": "cookie problem", "need": "site_data_reset"}))
+        assert ws._live["w-need"].report["need"] == "site_data_reset"
+        asyncio.run(tool.handler({"status": "needs_input", "summary": "cookie problem", "need": "cookies"}))
+        assert "need" not in ws._live["w-need"].report
+    finally:
+        current_worker.reset(token)

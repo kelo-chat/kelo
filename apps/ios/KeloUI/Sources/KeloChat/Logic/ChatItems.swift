@@ -126,6 +126,17 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         public var items: [String] = []
         /// The site's saved payment PIN that Allow also releases from this phone.
         public var pin: PinAsk? = nil
+        /// A payment the server checks this phone's signature for on Allow; `issuedAt` is what it signs.
+        public var signable = false
+        public var issuedAt: Int64 = 0
+        /// The data trail's question (data of a kind to a recipient): the card then has Allow once / Always for this recipient / Deny.
+        public var offers: [TrailOffer] = []
+        /// `order_preapprove`: the order approved in advance (what, the all-in cap, until when).
+        public var preapproval: PreapprovalAsk? = nil
+        /// `forget_confirm`: the waiting plan whose list the card shows ("" for any other card).
+        public var forgetPlan = ""
+        /// The message this card sends, which the owner may fix first (a mail's body, a text); nil for any other card.
+        public var editable: EditableMessage? = nil
 
         public var open: Bool { answer == nil && !expired }
         public var shown: String { label.isEmpty ? name : label }
@@ -159,6 +170,8 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         public var key: String, site: String, amountText: String, cardLabel: String
         /// The order's items and where it goes, when the server sent them.
         public var order: PaymentInfo? = nil
+        /// Covered by an order approved in advance, or the schedule's allow.
+        public var cover: PreapprovalCover? = nil
     }
 
     /// A secure entry (`request`: what it is for and where the value goes; never the value).
@@ -251,18 +264,11 @@ public struct Phase: Equatable, Sendable {
     public init(_ kind: PhaseKind, label: String? = nil, since: Double) { self.kind = kind; self.label = label; self.since = since }
 }
 
-/// The server's line after `save_found_secret` (connect_tools.py) as a card's facts; pure, so it is tested.
+/// The server's facts after `save_found_secret` (agent/facts.py: saved_key {service, hosts}) as a card's facts; pure, so it is tested.
 public enum KeySavedRules {
-    private static let line = try? NSRegularExpression(pattern: "^Saved the key for '([^']+)' in the keychain \\(hosts: ([^)]*)\\)")
-
-    public static func parse(_ output: String) -> (name: String, hosts: [String])? {
-        guard let re = line else { return nil }
-        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        let ns = trimmed as NSString
-        guard let m = re.firstMatch(in: trimmed, range: NSRange(location: 0, length: ns.length)) else { return nil }
-        let name = ns.substring(with: m.range(at: 1))
-        let hostsRaw = ns.substring(with: m.range(at: 2))
-        let hosts = hostsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    public static func of(_ r: TurnEvent.ToolResult) -> (name: String, hosts: [String])? {
+        guard let k = r.facts["saved_key"]?.objectValue, let name = k["service"]?.stringValue, !name.isEmpty else { return nil }
+        let hosts = (k["hosts"]?.arrayValue ?? []).compactMap { $0.stringValue?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         return (name, hosts)
     }
 }
@@ -333,11 +339,11 @@ public enum ChatReducer {
                 chip = c
             }
             // the assistant asked the user to connect a service: the card appears right here
-            if r.name == "connect_service" && !r.isError && !r.output.contains("already connected"), let service = chip?.service {
+            if r.name == "connect_service" && !r.isError && !r.already, let service = chip?.service {
                 supersede(&next) { if case .connect(let c) = $0 { return c.service == service }; return false }
                 next.append(.connect(.init(key: newKey(), service: service)))
             }
-            if r.name == "save_found_secret" && !r.isError, let s = KeySavedRules.parse(r.output) {
+            if r.name == "save_found_secret" && !r.isError, let s = KeySavedRules.of(r) {
                 supersede(&next) { if case .keySaved(let k) = $0 { return k.name == s.name }; return false }
                 next.append(.keySaved(.init(key: newKey(), name: s.name, hosts: s.hosts)))
             }
@@ -370,7 +376,10 @@ public enum ChatReducer {
                 canRememberSchedule: a.canRememberSchedule && a.payment == nil,
                 site: a.site, canRemember: a.canRemember && a.payment == nil && a.grant == nil,
                 lines: a.lines, ask: a.ask,
-                grant: a.grant, urgent: a.urgent, missed: a.missed, items: a.items, pin: a.pin)))
+                grant: a.grant, urgent: a.urgent, missed: a.missed, items: a.items, pin: a.pin,
+                signable: a.signable, issuedAt: a.issuedAt,
+                offers: a.payment == nil && a.grant == nil ? a.offers : [],
+                preapproval: a.preapproval, forgetPlan: a.forgetPlan, editable: a.editable)))
         case .browser(let b):
             // one live card per reply and tab: a new step, or another site in the same tab, updates it; only a new tab adds one
             let start = (next.lastIndex(where: \.isMine) ?? -1) + 1
@@ -426,7 +435,8 @@ public enum ChatReducer {
             next.append(.paymentAuto(.init(key: newKey(), site: p.site, amountText: p.amountText, cardLabel: p.card?.label ?? "",
                                            order: p.items.isEmpty && p.shipping == nil ? nil
                                                : PaymentInfo(site: p.site, summary: p.summary, amount: 0, currency: "", amountText: p.amountText,
-                                                             items: p.items, shipping: p.shipping))))
+                                                             items: p.items, shipping: p.shipping),
+                                           cover: p.cover)))
         case .shippingForm(let f):
             // the same form again (a resend): it keeps its row and its state
             if let i = next.firstIndex(where: { if case .shipping(let s) = $0 { return s.formId == f.formId }; return false }),

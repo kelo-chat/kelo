@@ -177,7 +177,7 @@ private func msg(_ key: String, mine: Bool, _ text: String, id: Int64? = nil) ->
         let items = [msg("u1", mine: true, "first"), msg("r1", mine: false, "one"), msg("u2", mine: true, "second"),
                      msg("r2", mine: false, "two"), ChatItem.error(key: "e", .network)]
         #expect(MessageActions.actions(items, key: "u1", busy: false) == [.copy, .share, .select, .edit])
-        #expect(MessageActions.actions(items, key: "r1", busy: false) == [.copy, .share, .select, .report])
+        #expect(MessageActions.actions(items, key: "r1", busy: false) == [.copy, .share, .select, .readAloud, .report])
         #expect(MessageActions.retryText(items, key: "r1") == nil)
         #expect(MessageActions.retryText(items, key: "e") == "second")
         #expect(MessageActions.actions(items, key: "e", busy: false) == [.copy, .retry])
@@ -204,16 +204,11 @@ private func msg(_ key: String, mine: Bool, _ text: String, id: Int64? = nil) ->
         let form = ReplySet(questions: [
             ReplyQuestion(question: "체중 (현재 → 목표)", options: ["직접 입력할게요", "말하고 싶지 않아요"], typed: ["직접 입력할게요"], hint: "현재 체중과 목표 체중"),
             ReplyQuestion(question: "기간", options: ["1개월", "3개월", "6개월"]),
-            ReplyQuestion(question: "식단 제한", options: ["없어요", "있어요 (직접 입력)", "말하고 싶지 않아요"]),   // an older server: no "typed"
+            ReplyQuestion(question: "식단 제한", options: ["없어요", "있어요 (직접 입력)", "말하고 싶지 않아요"], typed: ["있어요 (직접 입력)"]),
         ])
         #expect(QuickReplyRules.isTyped(form.questions[2], "있어요 (직접 입력)"))
+        #expect(!QuickReplyRules.isTyped(ReplyQuestion(question: "Q", options: ["Other", "기타"]), "Other"))   // no mark: its words say nothing to the app
         #expect(!QuickReplyRules.isTyped(form.questions[2], "없어요"))
-        for l in ["Other", "기타", "Other (please specify)", "Something else…", "その他", "其他", "Otro", "Свой вариант", "Tự nhập", "I'll type it"] {
-            #expect(QuickReplyRules.asksTyping(l), "\(l)")
-        }
-        for l in ["말하고 싶지 않아요", "없어요", "Rather not say", "Prefiero no decirlo", "Otra vez", "1개월", "Another time", "직접 할게요"] {
-            #expect(!QuickReplyRules.asksTyping(l), "\(l)")
-        }
         let picks = [0: "직접 입력할게요", 1: "3개월", 2: "있어요 (직접 입력)"]
         #expect(QuickReplyRules.writing(form, picks: picks) == [0, 2])
         #expect(!QuickReplyRules.canSend(form, picks: picks, typed: [:]))
@@ -222,7 +217,7 @@ private func msg(_ key: String, mine: Bool, _ text: String, id: Int64? = nil) ->
         #expect(QuickReplyRules.canSend(form, picks: picks, typed: typed))
         #expect(QuickReplyRules.compose(form, picks: picks, typed: typed) == "체중 (현재 → 목표): 80kg → 70kg\n기간: 3개월\n식단 제한: 유당불내증 견과류")
         #expect(QuickReplyRules.compose(form, picks: [1: "1개월", 2: "없어요"], typed: [0: "ignored"]) == "기간: 1개월\n식단 제한: 없어요")
-        let one = ReplySet(questions: [ReplyQuestion(question: "Diet", options: ["None", "Other"])])
+        let one = ReplySet(questions: [ReplyQuestion(question: "Diet", options: ["None", "Other"], typed: ["Other"])])
         #expect(QuickReplyRules.sendsOnTap(one, one.questions[0], "None"))
         #expect(!QuickReplyRules.sendsOnTap(one, one.questions[0], "Other"))
         #expect(!QuickReplyRules.showsSend(one, picks: [:]))

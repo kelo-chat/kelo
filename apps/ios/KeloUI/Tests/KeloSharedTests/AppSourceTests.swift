@@ -3,37 +3,35 @@ import Foundation
 import KeloCore
 @testable import KeloShared
 
-/// What the build writes into Info.plist (KeloSourceCommit / KeloSourceDirty) and what the version line in My makes of it.
+/// What the build writes into Info.plist (CFBundleShortVersionString / KeloSourceDirty) and what the version line in My makes of it.
 @Suite struct AppSourceTests {
-    let sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
-
-    @Test func aCleanBuildHasTheCommitAndAUrl() {
-        let s = AppSource.parse(["KeloSourceCommit": sha, "KeloSourceDirty": "NO"])
-        #expect(s == AppSource(commit: sha, dirty: false))
-        #expect(s.url?.absoluteString == "https://github.com/kelo-chat/kelo/tree/\(sha)")
+    @Test func aCleanBuildLinksTheReleaseTag() {
+        let s = AppSource.parse(["CFBundleShortVersionString": "1.0.2", "KeloSourceDirty": "NO"])
+        #expect(s == AppSource(version: "1.0.2", dirty: false))
+        #expect(s.tag == "ios-1.0.2")
+        #expect(s.url?.absoluteString == "https://github.com/kelo-chat/kelo/tree/ios-1.0.2")
     }
 
-    @Test func aModifiedBuildHasNoUrl() {
+    @Test func aModifiedBuildHasNoUrlButKeepsTheLabel() {
         for yes in ["YES", "yes", "true", "1"] {
-            let s = AppSource.parse(["KeloSourceCommit": sha, "KeloSourceDirty": yes])
+            let s = AppSource.parse(["CFBundleShortVersionString": "1.0.2", "KeloSourceDirty": yes])
             #expect(s.dirty, "\(yes)")
             #expect(s.url == nil, "\(yes)")
+            #expect(SourceLink.label(tag: s.tag, dirty: s.dirty, modified: "modified") == "ios-1.0.2 (modified)")
         }
-        #expect(AppSource.parse(["KeloSourceCommit": sha, "KeloSourceDirty": true]).dirty)
+        #expect(AppSource.parse(["CFBundleShortVersionString": "1.0.2", "KeloSourceDirty": true]).dirty)
     }
 
-    @Test func aBuildThatWasNotGivenTheCommitShowsNothing() {
-        // not in the plist at all, empty (project.yml's default), or the setting never expanded
-        for info in [[:], ["KeloSourceCommit": "", "KeloSourceDirty": "NO"], ["KeloSourceCommit": "$(KELO_SOURCE_COMMIT)", "KeloSourceDirty": "$(KELO_SOURCE_DIRTY)"]] as [[String: Any]] {
+    @Test func aMissingOrUnexpandedVersionShowsNothing() {
+        for info in [[:], ["CFBundleShortVersionString": "", "KeloSourceDirty": "NO"], ["CFBundleShortVersionString": "$(MARKETING_VERSION)"]] as [[String: Any]] {
             let s = AppSource.parse(info)
             #expect(s.url == nil)
-            #expect(SourceLink.label(commit: s.commit, dirty: s.dirty, modified: "modified") == nil)
-            #expect(!s.dirty)
+            #expect(SourceLink.label(tag: s.tag, dirty: s.dirty, modified: "modified") == nil)
         }
-        #expect(AppSource.parse(nil) == AppSource(commit: "", dirty: false))
+        #expect(AppSource.parse(nil) == AppSource(version: "", dirty: false))
     }
 
     @Test func spacesAroundTheValuesAreIgnored() {
-        #expect(AppSource.parse(["KeloSourceCommit": " \(sha)\n", "KeloSourceDirty": " NO "]) == AppSource(commit: sha, dirty: false))
+        #expect(AppSource.parse(["CFBundleShortVersionString": " 1.0.2\n", "KeloSourceDirty": " NO "]) == AppSource(version: "1.0.2", dirty: false))
     }
 }

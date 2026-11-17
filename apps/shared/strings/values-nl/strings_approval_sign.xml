@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_approval_sign.xml (generated from values/strings_approval_sign.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="approval_sign_title">Betaling goedkeuren</string>
+    <string name="approval_sign_subtitle">Bevestig met je vingerafdruk of gezicht</string>
+    <string name="approval_sign_failed">Deze betaling kon op deze telefoon niet worden goedgekeurd. Probeer het opnieuw.</string>
+    <string name="approval_sign_key_lost">De goedkeuringssleutel van deze telefoon ontbreekt. Koppel deze telefoon opnieuw aan de server.</string>
+    <string name="approval_pay_on_phone">Keur betalingen goed in de Kelo-app op de telefoon.</string>
+</resources>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">posta</string>
+    <string name="trail_kind_file">dosya</string>
+    <string name="trail_kind_memory">bellek</string>
+    <string name="trail_kind_contacts">kişiler</string>
+    <string name="trail_kind_calendar">takvim</string>
+    <string name="trail_kind_photos">fotoğraflar</string>
+    <string name="trail_kind_messages">mesajlar</string>
+    <string name="trail_kind_notes">notlar</string>
+    <string name="trail_kind_vault">kayıtlı girişler</string>
+    <string name="trail_kind_profile">profil</string>
+    <string name="trail_kind_web">web sayfası</string>
+    <string name="trail_kind_channel">sohbet</string>
+    <string name="trail_kind_device">cihaz verileri</string>
+    <string name="trail_kind_connector">bağlı hizmet</string>
+    <string name="trail_kind_other">veri</string>
+    <string name="trail_recipient_link">herkese açık bir bağlantı</string>
+    <string name="trail_goes_to">Alıcı %2$s: %1$s</string>
+    <string name="trail_allow_once">Bir kez izin ver</string>
+    <string name="trail_allow_always">Bu alıcı için her zaman</string>
+    <string name="recipient_approval_always">İzin verildi. Bu alıcı için bir daha sormayacağım.</string>
+    <string name="recipient_allows_title">Her zaman izin verilen alıcılar</string>
+    <string name="recipient_allows_empty">Henüz yok. Bir kartta \"Bu alıcı için her zaman\" seçtiğinde burada görünür.</string>
+    <string name="recipient_allow_since">İzin verildi %1$s</string>
+    <string name="recipient_allow_remove">%1$s kaldır</string>
+    <string name="recipient_allow_remove_confirm">%1$s verisini %2$s alıcısına göndermeden önce tekrar sorulsun mu?</string>
+    <string name="recipient_allow_removed">Oraya göndermeden önce tekrar soracağım.</string>
+</resources>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="deliveries_label">จำนวนข้อความที่ Kelo ส่งก่อนในแต่ละวัน</string>
+    <string name="deliveries_about">Kelo จะรวมสิ่งที่อยากบอกคุณเป็นข้อความตามจำนวนนี้ต่อวัน ถ้าเป็น 0 จะส่งเฉพาะเรื่องที่รอไม่ได้</string>
+    <plurals name="deliveries_today">
+        <item quantity="other">วันนี้ส่งแล้ว %d ครั้ง</item>
+    </plurals>
+    <plurals name="deliveries_held">
+        <item quantity="other">พักไว้ %d รายการ</item>
+    </plurals>
+    <string name="deliveries_held_title">ข้อความที่พักไว้</string>
+    <string name="deliveries_held_about">สิ่งเหล่านี้ Kelo เก็บไว้สำหรับข้อความถัดไป ก่อนส่งจะดูอีกครั้งและตัดสิ่งที่ไม่สำคัญแล้วออก</string>
+    <string name="deliveries_held_empty">ตอนนี้ไม่มีรายการที่พักไว้</string>
+    <string name="deliveries_held_until">พักไว้ถึง %1$s</string>
+    <string name="deliveries_why_slots">รอข้อความถัดไปของวัน</string>
+    <string name="deliveries_why_cap">ยังไม่เร่งด่วนพอที่จะส่งเพิ่มวันนี้</string>
+    <string name="deliveries_why_reply">รอคำตอบของคุณสำหรับข้อความล่าสุด</string>
+    <string name="deliveries_why_other">รอจังหวะที่เหมาะกว่านี้</string>
+</resources>

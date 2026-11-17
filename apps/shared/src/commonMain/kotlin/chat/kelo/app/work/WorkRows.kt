@@ -30,7 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.lifecycle.Lifecycle
@@ -100,7 +100,12 @@ class WorkRowsInput(
     val offerProblem: Pair<String, chat.kelo.app.offers.OfferStart>? = null,
     val onOfferStart: (chat.kelo.app.offers.Offer) -> Unit = {},
     val onOfferDismiss: (chat.kelo.app.offers.Offer, chat.kelo.app.offers.OfferReason) -> Unit = { _, _ -> },
+    val followItems: List<chat.kelo.app.follow.FollowItem> = emptyList(),
+    val onFollowClick: (chat.kelo.app.follow.FollowItem) -> Unit = {},
 )
+
+const val SECTION_FOLLOW = "sec:follow"
+const val SECTION_OPEN_TABS = "sec:opentabs"
 
 /**
  * The rows of the 작업 timeline, in order: the one place that says what is in the list and where. The screen draws exactly this list,
@@ -111,6 +116,7 @@ fun buildWorkRows(i: WorkRowsInput): List<WorkRow> = WorkRowSink().apply {
     val watchers = i.watchers; val followups = i.followups; val followupBusy = i.followupBusy; val entries = i.entries
     val filter = i.filter; val showPaused = i.showPaused; val today = i.today; val push = i.push; val onOpenLive = i.onOpenLive; val container = i.container
     val offers = i.offers; val offerStarting = i.offerStarting; val offerProblem = i.offerProblem; val onOfferStart = i.onOfferStart; val onOfferDismiss = i.onOfferDismiss
+    val followItems = i.followItems; val onFollowClick = i.onFollowClick
     val taskItems = tasks.data?.items.orEmpty()
     val workerItems = workers.data?.items.orEmpty()
     val nested = Timeline.nest(taskItems, workerItems)
@@ -146,6 +152,15 @@ fun buildWorkRows(i: WorkRowsInput): List<WorkRow> = WorkRowSink().apply {
             WorkShortcuts(
                 onBrowsers = { push(WorkPages.BROWSERS) }, onSchedules = { push(WorkPages.ARCHIVE) },
             )
+        }
+    }
+    // ---- Kelo가 챙기는 일 (at the top when there are items, hidden when empty)
+    if (followItems.isNotEmpty()) {
+        item(key = SECTION_FOLLOW, contentType = "section") { SectionTitle(string(Res.string.follow_section_title), followItems.size) }
+        followItems.forEach { item ->
+            item(key = "follow:" + item.key, contentType = "follow") {
+                chat.kelo.app.follow.FollowItemRow(item = item, onClick = { onFollowClick(item) })
+            }
         }
     }
     if (asks.isNotEmpty()) asksSection()
@@ -190,6 +205,17 @@ fun buildWorkRows(i: WorkRowsInput): List<WorkRow> = WorkRowSink().apply {
     perms.data?.taskGrants.orEmpty().forEach { g ->
         item(key = "grant:" + g.id, contentType = "grant") {
             RailItem(RailMarker.LIVE, label = null) { TaskGrantCard(g, onRevoke = { vm.revokeTaskPermission(g) }) }
+        }
+    }
+
+    // ---- 열린 브라우저: tabs left open that no running task shows (the chat's tab after its reply is done)
+    val openTabs = Timeline.openTabs(tabs, now, workerItems)
+    if (openTabs.isNotEmpty()) {
+        item(key = SECTION_OPEN_TABS, contentType = "section") { SectionTitle(string(Res.string.work_open_browsers), openTabs.size) }
+        openTabs.forEach { t ->
+            item(key = "tab:" + t.id, contentType = "tab") {
+                RailItem(RailMarker.LIVE, label = null) { OpenTabCard(t, onOpen = { onOpenLive(t.id) }) }
+            }
         }
     }
 

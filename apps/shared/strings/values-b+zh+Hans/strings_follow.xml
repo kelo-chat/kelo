@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Kelo 关照的事项</string>
+    <string name="follow_stop">停止关照</string>
+    <string name="follow_stop_confirm">确定要停止关照此事项吗？</string>
+    <string name="follow_stop_confirm_detail">Kelo 将不再检查变更或提前准备。</string>
+    <string name="follow_stop_yes">停止关照</string>
+    <string name="follow_keep_watching">继续关照</string>
+    <string name="follow_replan">重新规划</string>
+    <string name="follow_sheet_title">关照计划</string>
+    <string name="follow_plan_checks">检查项目</string>
+    <string name="follow_plan_prep">提前准备</string>
+    <string name="follow_plan_tell">提醒</string>
+    <string name="follow_plan_tell_change">有变动时提醒</string>
+    <string name="follow_next_check">下次检查：%1$s</string>
+    <string name="follow_last_check">上次检查：%1$s</string>
+    <string name="follow_prep_later">预计</string>
+    <string name="follow_prep_running">进行中</string>
+    <string name="follow_prep_done">已准备好</string>
+    <string name="follow_prep_failed">失败</string>
+    <string name="follow_state_watching">关照中</string>
+    <string name="follow_state_stopped">已停止</string>
+    <string name="follow_state_done">已完成</string>
+    <string name="follow_summary_lead_flight">出发前一天提醒</string>
+    <string name="follow_summary_lead_general">前一天提醒</string>
+    <string name="follow_summary_lead_hours">提前 %1$d 小时提醒</string>
+    <string name="follow_summary_prep_checkin">值机开启后准备</string>
+    <string name="follow_summary_prep_general">准备 %1$s</string>
+    <string name="follow_summary_watch_changes">确认变更事项</string>
+    <string name="follow_summary_default">关照行程</string>
+</resources>

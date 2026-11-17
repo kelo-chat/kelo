@@ -6,11 +6,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import secrets
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from assistant.agent import ToolResult, current_approval, run_agent, ui_sink
+from assistant.page_judge import PageJudge
 from assistant.providers import Done, TextDelta, ToolCall
 from assistant.tools.browser import BrowserSession, browser_tools
 from assistant.tools.purchase import purchase_tools
@@ -18,6 +20,8 @@ from assistant.tools.vault_tools import vault_tools
 from assistant.vault import Transient
 from assistant.wallet import CardDeliveries, Wallet
 from assistant.workers import current_turn
+
+from fake_page_judge import FakePageJudge
 
 VISA, CVC = "4242424242424242", "123"
 KR, US, OTHER = "https://www.mugshop.example", "https://www.usmugs.example", "https://www.othershop.example"
@@ -29,14 +33,49 @@ def public(host: str, port: int) -> list[tuple]:
 
 
 def scripted(steps: list[tuple[str, dict[str, Any]]]):
-    turns = [[ToolCall(f"c{i}", name, json.dumps(args, ensure_ascii=False)), Done("tool_calls")] for i, (name, args) in enumerate(steps)]
-    turns.append([TextDelta("done"), Done("stop")])
-    it = iter(turns)
+    """The model's calls in order. An argument "$review" is the review_id of the last checkout_review in the conversation so far."""
+    expanded: list[tuple[str, dict[str, Any]]] = []
+    for name, args in steps:
+        if name == "checkout_review" and args.get("status") == "ready":
+            expanded.append((name, {**args, "status": "draft"}))
+        expanded.append((name, args))
+    it = iter(enumerate(expanded))
+    done = [TextDelta("done"), Done("stop")]
+
+    def review_id(request) -> str:
+        found = re.findall(r'"review_id": "((?:rv|pa)_[0-9a-f]+)"', " ".join(str(getattr(m, "content", "") or "") if not isinstance(m, dict)
+                                                                       else str(m.get("content") or "") for m in request.messages))
+        return found[-1] if found else "rv_none"
 
     async def fn(provider, request, **kw):
-        for ev in next(it, [TextDelta("."), Done("stop")]):
+        got = next(it, None)
+        if got is None:
+            events = [TextDelta("."), Done("stop")]
+        else:
+            i, (name, args) = got
+            args = {k: (review_id(request) if v == "$review" else v) for k, v in args.items()}
+            events = [ToolCall(f"c{i}", name, json.dumps(args, ensure_ascii=False)), Done("tool_calls")]
+        for ev in events:
             yield ev
     return fn
+
+
+def review(summary: str, amount: float, currency: str, site: str, *, card: str | None = None, pay_with: str = "",
+           items: list[dict[str, Any]] | None = None, ship_to: str = "") -> tuple[str, dict[str, Any]]:
+    """A checkout_review call of the scripts (the review tool's own argument names). It is the ready step: Env.run puts the draft (the
+    order check, which asks nobody) in front of it and keeps the draft's result out of Run.results."""
+    args: dict[str, Any] = {"site": site, "merchant": summary, "total": amount, "currency": currency, "status": "ready",
+                            "items": items or [{"name": summary, "qty": 1}]}
+    if card:
+        args["card"] = card
+    if pay_with:
+        args["payment_method"] = pay_with
+    if ship_to:
+        args["ship_to"] = ship_to
+    return "checkout_review", args
+
+
+SUBMIT = ("checkout_submit", {"review_id": "$review"})
 
 
 @dataclass
@@ -61,6 +100,11 @@ class Run:
         return [r for r in self.results if r.name == name][nth]
 
 
+async def confirm_order(system: str, user: str) -> dict[str, Any]:
+    """The order check's model request, answered: the cart matches (the checks of this module's tests are about cards, not the check)."""
+    return {"verdict": "confirm", "reason": "matches"}
+
+
 class Env:
     """One test's Kelo side: the store, wallet, shipping book, orders and the tools, on one browser page."""
 
@@ -70,6 +114,7 @@ class Env:
         async def connect():
             return page
         self.session = BrowserSession(connect=connect, resolver=public)
+        self.session.page_judge = PageJudge(FakePageJudge().ask)   # stands in for the owner's main model: it reads the labels of fields without autocomplete
         self.wallet = Wallet(store)
         self.deliveries = CardDeliveries()
         self.transient = Transient()
@@ -87,11 +132,11 @@ class Env:
             self.logged: list[tuple[str, str, str]] = []
             self.orders.on_use = lambda o, tool, kind, host: self.logged.append((tool, kind, host))
             self.tools = [*browser_tools(self.session, orders=self.orders),
-                          *purchase_tools(self.session, self.wallet, self.deliveries, grants=grants, orders=self.orders),
+                          *purchase_tools(self.session, self.wallet, self.deliveries, grants=grants, orders=self.orders, ask=confirm_order),
                           *vault_tools(store, self.session, self.transient, grants=grants, orders=self.orders),
                           *order_tools(self.orders, self.session, self.book, self.forms, grants=grants, wallet=self.wallet)]
         else:
-            self.tools = [*browser_tools(self.session), *purchase_tools(self.session, self.wallet, self.deliveries, grants=grants),
+            self.tools = [*browser_tools(self.session), *purchase_tools(self.session, self.wallet, self.deliveries, grants=grants, ask=confirm_order),
                           *vault_tools(store, self.session, self.transient, grants=grants)]
         self.by_name = {t.name: t for t in self.tools}
 
@@ -121,12 +166,12 @@ class Env:
                     loop.call_later(0.05, lambda: self.forms.answer(item["form_id"], body))
 
         current_turn.set({"turn_id": turn_id or "t" + secrets.token_hex(3), "task_id": 1, "source": self.source,
-                          "unattended": self.source.startswith("schedule:")})
+                          "unattended": self.source.startswith("schedule:"), "request": "order it"})
         ui_sink.set(sink)
         agen = run_agent("p", "m", [{"role": "user", "content": "order it"}], self.tools, approve=approve, max_steps=60,
                          stream_fn=scripted(steps))
         async for ev in agen:
-            if isinstance(ev, ToolResult):
+            if isinstance(ev, ToolResult) and not (ev.name == "checkout_review" and '"status": "draft"' in ev.output):   # the order check's answer
                 out.results.append(ev)
         return out
 
@@ -158,19 +203,12 @@ def kr_to_checkout(mode: str, what: str = "블루 머그 화이트 2개") -> lis
 
 def kr_pay(mode: str, *, card: str | None = "생활비 카드", ship_to: str = "", amount: int = 24000, pay_with: str = "",
            fill_card: bool = True) -> list[tuple[str, dict[str, Any]]]:
-    args: dict[str, Any] = {"summary": "블루 머그 화이트 x2", "amount": amount, "currency": "KRW", "site": "www.mugshop.example"}
-    if card:
-        args["card"] = card
-    if pay_with:
-        args["pay_with"] = pay_with
-    if mode == "after":
-        args["items"] = KR_ITEMS
-        if ship_to:
-            args["ship_to"] = ship_to
-    steps: list[tuple[str, dict[str, Any]]] = [("browser_read", {}), ("confirm_purchase", args)]
+    steps: list[tuple[str, dict[str, Any]]] = [("browser_read", {}), review("블루 머그 화이트 x2", amount, "KRW", "www.mugshop.example", card=card,
+                                                                         pay_with=pay_with, ship_to=ship_to if mode == "after" else "",
+                                                                         items=KR_ITEMS if mode == "after" else None)]
     if card and fill_card:
         steps.append(("browser_fill_card", {"card": card}))
-    steps.append(("browser_click", {"selector": "button:has-text('결제하기')"}))
+    steps.append(SUBMIT)
     return steps
 
 
@@ -196,11 +234,8 @@ def us_to_checkout(mode: str) -> list[tuple[str, dict[str, Any]]]:
 
 
 def us_pay(mode: str, card: str = "Everyday card", amount: float = 24.0) -> list[tuple[str, dict[str, Any]]]:
-    args: dict[str, Any] = {"summary": "Blue mug, white, x2", "amount": amount, "currency": "USD", "site": "www.usmugs.example", "card": card}
-    if mode == "after":
-        args["items"] = US_ITEMS
-    return [("browser_read", {}), ("confirm_purchase", args), ("browser_fill_card", {"card": card}),
-            ("browser_click", {"selector": "button:has-text('Place order')"})]
+    return [("browser_read", {}), review("Blue mug, white, x2", amount, "USD", "www.usmugs.example", card=card,
+                                         items=US_ITEMS if mode == "after" else None), ("browser_fill_card", {"card": card}), SUBMIT]
 
 
 US_TYPED = [("browser_type", {"selector": "input[name=ship_name]", "text": "Jane Roe"}),

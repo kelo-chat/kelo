@@ -26,7 +26,7 @@ from typing import Any
 
 from ..i18n import N_, t
 
-# Reads what `detect` needs. Nothing typed by the user is read; only addresses, sizes, a few element marks and the title.
+# Reads what `detect` needs. Nothing typed by the user is read; only addresses, sizes, a few element marks and the title. One-time-code boxes are counted by structure.
 # (Kept free of words the test fakes route on: no attribute setters, no "pw:".)
 PROBE_JS = r"""() => {
   const kelo_check = 1;
@@ -44,17 +44,23 @@ PROBE_JS = r"""() => {
   const whole = document.body ? document.body.innerText : '';
   const text = whole.slice(0, 3000);
   const ins = [...document.querySelectorAll('input')].filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
-  const named = (e) => [e.name, e.id, e.getAttribute('placeholder'), e.getAttribute('aria-label')].filter(Boolean).join(' ').toLowerCase();
-  const otpOne = ins.filter((e) => (e.getAttribute('autocomplete') || '').toLowerCase() === 'one-time-code'
-    || /otp|one.?time|verif\w*.?code|2fa|mfa|totp|인증\s*번호|인증\s*코드|보안\s*코드/.test(named(e))).length;
-  const singles = ins.filter((e) => e.maxLength === 1).length;
+  // a code box by STRUCTURE only (no name, id or label is read): autocomplete one-time-code; a row of 4-8 one-character boxes; or the one
+  // visible box shaped like a code (numeric input mode, or a short maxlength of 4-8) that carries no autocomplete token naming something else
   const kind = (e) => (e.getAttribute('type') || '').toLowerCase();
+  const token = (e) => (e.getAttribute('autocomplete') || '').toLowerCase();
+  const other = (e) => token(e).split(/\s+/).some((t) => t && t !== 'off' && t !== 'on' && t !== 'one-time-code');
+  const tokened = ins.filter((e) => /(^|\s)one-time-code(\s|$)/.test(token(e))).length;
+  const singles = ins.filter((e) => e.maxLength === 1 && !e.disabled && !e.readOnly && ['', 'text', 'tel', 'number', 'password'].includes(kind(e))).length;
+  const shaped = ins.filter((e) => ['', 'text', 'tel', 'number'].includes(kind(e)) && !e.disabled && !e.readOnly && !other(e) && e.maxLength !== 1
+    && ((/numeric|decimal/.test(e.inputMode || '') && !(e.maxLength > 12)) || (e.maxLength >= 4 && e.maxLength <= 8))).length;
   const secret_box = ins.some((e) => kind(e) === 'password' && getComputedStyle(e).visibility !== 'hidden');
+  // a short box a person could type into: not a search box (type or role), not a box of a search form
+  const lookup = (e) => kind(e) === 'search' || e.getAttribute('role') === 'searchbox' || !!e.closest('[role=search]');
   const short_inputs = ins.filter((e) => ['', 'text', 'tel', 'number'].includes(kind(e)) && !e.disabled && !e.readOnly
-    && !/search|query|keyword|검색/.test(named(e)) && ((e.maxLength > 0 && e.maxLength <= 12) || /numeric|decimal/.test(e.inputMode || '') || kind(e) !== 'text' || ins.length <= 3)).length;
+    && !lookup(e) && ((e.maxLength > 0 && e.maxLength <= 12) || /numeric|decimal/.test(e.inputMode || '') || kind(e) !== 'text' || ins.length <= 3)).length;
   return { kelo_check, title: (document.title || '').slice(0, 160), frames, marks, scripts, text, text_len: whole.length, url: location.href.slice(0, 300),
            secret_box, short_inputs,
-           inputs: document.querySelectorAll('input:not([type=hidden])').length, otp: otpOne + (singles >= 4 && singles <= 8 ? 1 : 0) };
+           inputs: document.querySelectorAll('input:not([type=hidden])').length, otp: tokened + (singles >= 4 && singles <= 8 ? 1 : (tokened === 0 && shaped === 1 ? 1 : 0)) };
 }"""
 
 
@@ -87,10 +93,6 @@ _FRAMES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(?:awswaf\.com|captcha\.awswaf)"), "aws_waf"),
     (re.compile(r"(?:px-cdn\.net|perimeterx\.net|px-cloud\.net|/px/captcha)"), "perimeterx"),
 ]
-_TITLES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"^just a moment\.{0,3}$|^attention required!? \| cloudflare|^잠시만 기다리십시오|^please wait\.{0,3}$|^one more step$", re.I), "cloudflare"),
-    (re.compile(r"access to this page has been denied|^human verification$|^are you a robot\??$", re.I), "perimeterx"),
-]
 _MIN_SIDE = 30   # a frame or box smaller than this (both sides) is a badge or a hidden helper, not a check the user must do
 
 
@@ -121,10 +123,7 @@ def detect(probe: Any, *, status: int | None = None, headers: dict[str, str] | N
     if blocked_status and any(k.startswith("x-px") for k in h):
         return Challenge("perimeterx", "interstitial", [f"HTTP {status} with a PerimeterX header"])
 
-    # 2. a full-page check: its title or its running marks, or a Cloudflare server answering 403/503 with its check page
-    for rx, vendor in _TITLES:
-        if rx.search(title):
-            return Challenge(vendor, "interstitial", [f"title {title[:60]!r}"])
+    # 2. a full-page check: its running marks (never its title words), or a Cloudflare server answering 403/503 with its check page
     if "cf_running" in marks:
         return Challenge("cloudflare", "interstitial", ["Cloudflare check page elements"])
     if blocked_status and h.get("server", "").lower() == "cloudflare" and (any("challenges.cloudflare.com" in s for s in scripts) or "turnstile" in marks):
@@ -151,31 +150,22 @@ def detect(probe: Any, *, status: int | None = None, headers: dict[str, str] | N
     return None
 
 
-_DENIED = re.compile(r"access\s+denied|forbidden|request\s+blocked|blocked\s+request|you\s+don'?t\s+have\s+permission|unusual\s+traffic|"
-                     r"temporarily\s+blocked|too\s+many\s+requests|has\s+been\s+blocked|reference\s*#?\s*\d+[.\w]*|errors?\.edgesuite|"
-                     r"접근\s*(?:이\s*)?(?:거부|차단)|액세스\s*(?:가\s*)?거부|차단되었|(?:사용|접근|이용)\s*권한이\s*(?:없|제한)|권한이\s*없습니다|アクセス.{0,6}(?:拒否|できません)|访问被拒绝|存取被拒", re.I)
-_EDGE_SERVER = re.compile(r"akamaighost|cloudflare|cloudfront|fastly|varnish|awselb|imperva|incapsula|sucuri", re.I)
 BLOCKED_MAX_TEXT = 1500   # a blocking page is short; a long page that answered 403 is an ordinary page
 
 
 def blocked(status: int | None, headers: dict[str, str] | None, title: str, text: str) -> str | None:
-    """An access-denied page: the site's edge answers a short error page instead of the page (HTTP 401/403/429/503, a short body that
-    says access denied / forbidden / blocked / a reference number, or a CDN edge's bare error). It is not a puzzle a person can solve,
-    so waiting and retrying do not help. Returns what the site said ('HTTP 403 "Access Denied"') or None. A human check (challenge.detect
-    finds a vendor's check page, frame or marks, or the answer carries a check vendor's header) is never blocked here: it keeps its
-    hand-over path. `text` is the page's visible text."""
-    if status not in (401, 403, 429, 503):
+    """An access-denied page, by structure: the site answered HTTP 403, 429 or 503 for the page with a short body (a refusal page, not
+    an ordinary page that happens to answer 403) and it is not a human check (a check vendor's header, mark or frame is never blocked
+    here: it keeps its hand-over path). It is not a puzzle a person can solve, so waiting and retrying do not help. Returns what the
+    site said ('HTTP 403 "<first line>"') or None. 401 is a request to sign in, not a block. No word of any language is read.
+    `text` is the page's visible text."""
+    if status not in (403, 429, 503):
         return None
     h = {str(k).lower(): str(v) for k, v in (headers or {}).items()}
     if h.get("cf-mitigated") or h.get("x-amzn-waf-action") or any(k.startswith(("x-px", "x-datadome", "x-dd-")) for k in h):
         return None
     title, body = (title or "").strip(), (text or "").strip()
-    if any(rx.search(title) for rx, _ in _TITLES) or len(body) > BLOCKED_MAX_TEXT:
-        return None
-    edge = bool(_EDGE_SERVER.search(h.get("server", ""))) or any(k.startswith("x-akamai") for k in h) or "x-amz-cf-id" in h \
-        or "error from cloudfront" in h.get("x-cache", "").lower()
-    said = _DENIED.search(title) or _DENIED.search(body)
-    if not said and not (edge and len(body) < 400):
+    if len(body) > BLOCKED_MAX_TEXT:
         return None
     words = " ".join((title or body.split("\n", 1)[0]).split())[:60]
     return f'HTTP {status} "{words}"' if words else f"HTTP {status}"

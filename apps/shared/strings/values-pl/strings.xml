@@ -851,6 +851,22 @@
     <string name="agent_perm_rules_empty">Jeszcze nic. Wybierz „Zawsze zezwalaj na tej stronie” na karcie zgody, a pojawi się to tutaj.</string>
     <string name="agent_perm_history">Wcześniejsze zgody</string>
     <string name="agent_perm_history_empty">Jeszcze o nic nie pytano.</string>
+    <string name="approval_edit_button">Edytuj</string>
+    <string name="approval_edit_title">Wiadomość do wysłania</string>
+    <string name="approval_edit_save">Zapisz</string>
+    <string name="approval_edited_note">Zmieniono treść wiadomości</string>
+    <string name="approval_edit_empty">Wpisz wiadomość.</string>
+    <string name="approval_edit_too_long">Za długie. Skróć to.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Wcześniejsze zatwierdzenia</string>
+    <string name="approval_history_empty">Brak zatwierdzeń.</string>
+    <string name="approval_history_error">Nie udało się wczytać wcześniejszych zatwierdzeń.</string>
+    <string name="approval_history_where">Gdzie</string>
+    <string name="approval_history_when">Kiedy</string>
+    <string name="approval_history_answered">Odpowiedź</string>
+    <string name="approval_via_app">W aplikacji</string>
+    <string name="approval_via_notification">Z powiadomienia</string>
+    <string name="approval_via_messenger">W komunikatorze</string>
     <string name="agent_perm_asked">Zapytano %1$s</string>
     <string name="approval_remember_site">Nie pytaj ponownie na tej stronie</string>
     <string name="approval_remember_scope">Dotyczy %1$s i wszystkich jego podadresów</string>
@@ -966,6 +982,7 @@
     <string name="live_forward">Dalej</string>
     <string name="live_reload">Odśwież</string>
     <string name="live_page_not_responding">Strona nie odpowiada</string>
+    <string name="live_touch_missed">Dotyk nie dotarł do strony</string>
     <string name="live_type_hint">Tekst do wpisania na stronie</string>
     <string name="live_type_send">Wpisz</string>
     <string name="live_type_hide">Ukryj tekst</string>
@@ -1167,6 +1184,8 @@
     <string name="offer_reason_later">Później</string>
     <string name="offer_busy">Trwa pisanie innej odpowiedzi. Stuknij ponownie po jej zakończeniu</string>
     <string name="offer_failed">Nie udało się uruchomić</string>
+    <string name="offer_steps_show_all">Pokaż wszystkie kroki (%1$d)</string>
+    <string name="offer_steps_fewer">Pokaż mniej kroków</string>
     <string name="work_upcoming">Wkrótce</string>
     <string name="work_upcoming_unscheduled">Bez ustalonej pory</string>
     <string name="work_past">Wcześniej</string>
@@ -1201,6 +1220,7 @@
     <string name="work_kind_browser">Zadanie w przeglądarce</string>
     <string name="work_kind_research">Wyszukiwanie informacji</string>
     <string name="work_kind_general">Zadanie ogólne</string>
+    <string name="work_kind_phone">Zadanie na telefonie</string>
     <string name="work_job_title">Zadanie w tle</string>
     <string name="work_job_line">%1$s · W tle</string>
     <string name="work_task_in_background">W tle</string>
@@ -1525,6 +1545,7 @@
     <string name="handover_verify_title">%1$s prosi o potwierdzenie logowania</string>
     <string name="handover_verify_body">Zatwierdź logowanie na telefonie albo otwórz podgląd na żywo i wpisz tam kod. Potem Kelo będzie kontynuować.</string>
     <string name="handover_verify_open">Otwórz podgląd na żywo</string>
+    <string name="handover_device_open">Otwórz ekran telefonu</string>
     <string name="handover_verify_done">Zalogowano — Kelo kontynuuje</string>
     <string name="handover_verify_approve_body">Zatwierdź logowanie w powiadomieniu na telefonie. Po zatwierdzeniu Kelo będzie kontynuować.</string>
     <string name="handover_verify_approved">Zatwierdziłem</string>

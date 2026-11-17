@@ -74,6 +74,11 @@ private func pa(_ id: String, at: Double = 0, source: String = "", worker: Strin
         #expect(ChatAsks.answerEnd(pa("a"), approve: true, rememberSite: true, rememberSchedule: false) == .allowed)
         #expect(ChatAsks.answerEnd(pa("a", schedule: true), approve: true, rememberSite: false, rememberSchedule: true) == .keptForSchedule)
         #expect(ChatAsks.answerEnd(pa("a"), approve: false, rememberSite: false, rememberSchedule: false) == .denied)
+        let offered = PendingApproval(event: TurnEvent.ApprovalRequest(approvalId: "o", name: "send", offers: [TrailOffer(recipient: "a@x.example", kind: "mail")]))
+        #expect(ChatAsks.answerEnd(offered, approve: true, rememberSite: false, rememberSchedule: false, rememberRecipient: true) == .alwaysRecipient)
+        #expect(ChatAsks.answerEnd(offered, approve: true, rememberSite: false, rememberSchedule: false) == .allowed)
+        #expect(ChatAsks.answerEnd(offered, approve: false, rememberSite: false, rememberSchedule: false, rememberRecipient: true) == .denied)
+        #expect(ChatAsks.answerEnd(pa("a"), approve: true, rememberSite: false, rememberSchedule: false, rememberRecipient: true) == .allowed)
     }
 
     @Test func skipFetchAndNotifyAsk() {

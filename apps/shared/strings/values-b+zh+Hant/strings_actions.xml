@@ -8,4 +8,8 @@
     <string name="actions_state_failed">未成功</string>
     <string name="actions_empty">Kelo 尚未在外部進行過操作。</string>
     <string name="actions_outside_text_note">從網頁、電子郵件和檔案讀取的內容僅視為資料，絕不作為指令；此類文字無法促使 Kelo 進行付款、傳送或刪除任何內容。</string>
+    <string name="did_filter_all">全部</string>
+    <string name="did_filter_actions">傳送與變更</string>
+    <string name="did_filter_browser">瀏覽器</string>
+    <string name="did_filter_tasks">任務</string>
 </resources>

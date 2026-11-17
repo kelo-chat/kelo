@@ -35,7 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -69,6 +69,7 @@ import chat.kelo.app.ui.platform.FormFactor
 import chat.kelo.app.ui.platform.LocalFormFactor
 import chat.kelo.app.ui.platform.LocalPageFrame
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
@@ -148,7 +149,7 @@ fun ConnectorsScreen(openId: String? = null, frame: TabPageFrame = TabPageFrame.
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = LocalFormFactor.current == FormFactor.Desktop && maxWidth > WIDE_WINDOW
+        val wide = LocalFormFactor.current == FormFactor.Desktop && maxWidth > WIDE_WINDOW || chat.kelo.app.ui.platform.LocalWindowShape.current.twoPane
         if (wide) {
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxHeight()) { list() }
@@ -200,104 +201,119 @@ private fun ConnectorList(
     val hidden = remember(state.list, state.creds) { ConnectorList.hiddenCount(state.list, state.creds) }
     val skeleton = rememberSkeletonShown(!state.loaded)
     val phoneData = LocalAppServices.current.phoneData
+    // the search block is drawn over the list, so the list's top padding (its measured height) is hidden under it: the jump to
+    // the "device" item starts that many pixels lower, below the block
+    var topHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
     LaunchedEffect(state.phoneCalendar, sections, skeleton) {
-        // the "device" item comes after "top" and, per section, its head, its rows and its gap
-        if (state.phoneCalendar && !skeleton) listState.animateScrollToItem(1 + sections.sumOf { it.items.size + 2 })
+        // the "device" item comes after each section's head, its rows and its gap (the search block is not a list item)
+        if (state.phoneCalendar && !skeleton) {
+            listState.animateScrollToItem(sections.sumOf { it.items.size + 2 }, scrollOffset = -with(density) { topHeight.roundToPx() })
+        }
     }
-    LazyColumn(
-        Modifier.fillMaxSize().background(c.bg).imePadding(),
-        state = listState,
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 8.dp, bottom = bottom + 24.dp),
-    ) {
-        item(key = "top", contentType = "top") {
-            KeloTextField(
-                state.query, vm::setQuery, string(Res.string.connectors_search),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            )
-            Spacer(Modifier.height(10.dp))
-            if (full && !searching && home != null) {
-                LinkButton(string(Res.string.connectors_back_to_popular), onClick = { vm.setShowAll(false) })
+    // the search field, the "back to popular" link and the group chips stay on top while the list scrolls: drawn over the list
+    // (not an item of it), and the list starts below them, measured
+    val topBlock: @Composable () -> Unit = {
+        KeloTextField(
+            state.query, vm::setQuery, string(Res.string.connectors_search),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        )
+        Spacer(Modifier.height(10.dp))
+        if (full && !searching && home != null) {
+            LinkButton(string(Res.string.connectors_back_to_popular), onClick = { vm.setShowAll(false) })
+        }
+        if (full && !searching && chips.size > 1) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChoiceChip(string(Res.string.connectors_filter_all), selected = state.filter == null, onClick = { vm.setFilter(null) })
+                chips.forEach { ch ->
+                    ChoiceChip(ch.label?.let { string(it) } ?: ch.title, selected = state.filter == ch.key,
+                        onClick = { vm.setFilter(if (state.filter == ch.key) null else ch.key) })
+                }
             }
-            if (full && !searching && chips.size > 1) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChoiceChip(string(Res.string.connectors_filter_all), selected = state.filter == null, onClick = { vm.setFilter(null) })
-                    chips.forEach { ch ->
-                        ChoiceChip(ch.label?.let { string(it) } ?: ch.title, selected = state.filter == ch.key,
-                            onClick = { vm.setFilter(if (state.filter == ch.key) null else ch.key) })
+        }
+        Spacer(Modifier.height(14.dp))
+    }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            Modifier.fillMaxSize().background(c.bg).imePadding(),
+            state = listState,
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = topHeight, bottom = bottom + 24.dp),
+        ) {
+            if (skeleton) {
+                item(key = "loading", contentType = "loading") {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        SkeletonBar(width = 90.dp, height = 12.dp, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+                        SkeletonRows(4)
+                        SkeletonBar(width = 70.dp, height = 12.dp, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
+                        SkeletonRows(3)
+                    }
+                }
+                return@LazyColumn
+            }
+            sections.forEach { section ->
+                val category = section.key
+                val items = section.items
+                item(key = "head:$category", contentType = "head") {
+                    Text(
+                        section.label?.let { string(it) } ?: section.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = when (category) { "reconnect" -> c.danger; "connected", "popular" -> c.accent; else -> c.muted },
+                        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
+                    )
+                }
+                // one lazy item per connector (not one big item per group), so only the rows on screen are composed
+                itemsIndexed(items, key = { _, x -> "row:${x.id}" }, contentType = { _, _ -> "row" }) { i, x ->
+                    val shape = when {
+                        items.size == 1 -> GroupShape
+                        i == 0 -> FirstShape
+                        i == items.lastIndex -> LastShape
+                        else -> RectangleShape
+                    }
+                    Column(Modifier.fillMaxWidth().background(c.card, shape)) {
+                        if (i == 0) Spacer(Modifier.height(2.dp))
+                        if (i > 0) HorizontalDivider(color = c.line, modifier = Modifier.padding(horizontal = 16.dp))
+                        ConnectorRow(x, shape, ConnectorList.reconnect(x, state.creds) != null, x.id == selectedId, onOpen)
+                        if (i == items.lastIndex) Spacer(Modifier.height(2.dp))
+                    }
+                }
+                item(key = "gap:$category", contentType = "gap") { Spacer(Modifier.height(14.dp)) }
+            }
+            if (!searching && state.filter == null) {
+                // what this phone itself can share (calendar, contacts, messages, dialer, notifications, call log, Health Connect): not
+                // services to sign in to, one switch each; also found in 마이 → 권한
+                if (phoneData != null) item(key = "device", contentType = "device") {
+                    phoneData.Section(openCalendar = state.phoneCalendar, onCalendarOpened = vm::phoneCalendarShown)
+                    Spacer(Modifier.height(14.dp))
+                }
+            }
+            if (!full && !searching && hidden > 0) {
+                item(key = "all", contentType = "all") {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { vm.setShowAll(true) }.padding(vertical = 14.dp),
+                        horizontalArrangement = Arrangement.Center,
+                    ) {
+                        Text(plural(Res.plurals.connectors_show_all, hidden, hidden), color = c.muted,
+                            style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
-            Spacer(Modifier.height(14.dp))
-        }
-        if (skeleton) {
-            item(key = "loading", contentType = "loading") {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    SkeletonBar(width = 90.dp, height = 12.dp, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
-                    SkeletonRows(4)
-                    SkeletonBar(width = 70.dp, height = 12.dp, modifier = Modifier.padding(start = 4.dp, top = 6.dp))
-                    SkeletonRows(3)
-                }
-            }
-            return@LazyColumn
-        }
-        sections.forEach { section ->
-            val category = section.key
-            val items = section.items
-            item(key = "head:$category", contentType = "head") {
-                Text(
-                    section.label?.let { string(it) } ?: section.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = when (category) { "reconnect" -> c.danger; "connected", "popular" -> c.accent; else -> c.muted },
-                    modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 8.dp),
-                )
-            }
-            // one lazy item per connector (not one big item per group), so only the rows on screen are composed
-            itemsIndexed(items, key = { _, x -> "row:${x.id}" }, contentType = { _, _ -> "row" }) { i, x ->
-                val shape = when {
-                    items.size == 1 -> GroupShape
-                    i == 0 -> FirstShape
-                    i == items.lastIndex -> LastShape
-                    else -> RectangleShape
-                }
-                Column(Modifier.fillMaxWidth().background(c.card, shape)) {
-                    if (i == 0) Spacer(Modifier.height(2.dp))
-                    if (i > 0) HorizontalDivider(color = c.line, modifier = Modifier.padding(horizontal = 16.dp))
-                    ConnectorRow(x, shape, ConnectorList.reconnect(x, state.creds) != null, x.id == selectedId, onOpen)
-                    if (i == items.lastIndex) Spacer(Modifier.height(2.dp))
-                }
-            }
-            item(key = "gap:$category", contentType = "gap") { Spacer(Modifier.height(14.dp)) }
-        }
-        if (!searching && state.filter == null) {
-            // what this phone itself can share (calendar, contacts, messages, dialer, notifications, call log, Health Connect): not
-            // services to sign in to, one switch each; also found in 마이 → 권한
-            if (phoneData != null) item(key = "device", contentType = "device") {
-                phoneData.Section(openCalendar = state.phoneCalendar, onCalendarOpened = vm::phoneCalendarShown)
-                Spacer(Modifier.height(14.dp))
-            }
-        }
-        if (!full && !searching && hidden > 0) {
-            item(key = "all", contentType = "all") {
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) { vm.setShowAll(true) }.padding(vertical = 14.dp),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Text(plural(Res.plurals.connectors_show_all, hidden, hidden), color = c.muted,
-                        style = MaterialTheme.typography.bodyMedium)
+            if (state.loaded && shown.isEmpty()) {
+                item(key = "empty") {
+                    if (state.failed) {
+                        MutedText(string(Res.string.connect_failed))
+                        Spacer(Modifier.height(10.dp))
+                        SecondaryButton(string(Res.string.retry), onClick = vm::reload)
+                    } else {
+                        MutedText(string(Res.string.connectors_empty))
+                    }
                 }
             }
         }
-        if (state.loaded && shown.isEmpty()) {
-            item(key = "empty") {
-                if (state.failed) {
-                    MutedText(string(Res.string.connect_failed))
-                    Spacer(Modifier.height(10.dp))
-                    SecondaryButton(string(Res.string.retry), onClick = vm::reload)
-                } else {
-                    MutedText(string(Res.string.connectors_empty))
-                }
-            }
-        }
+        Column(
+            Modifier.fillMaxWidth().background(c.bg)
+                .onSizeChanged { topHeight = with(density) { it.height.toDp() } }
+                .padding(start = 20.dp, end = 20.dp, top = top + 8.dp),
+        ) { topBlock() }
     }
 }
 
@@ -434,8 +450,8 @@ private fun ConnectorDetailContent(
             Modifier
                 .fillMaxWidth()
                 .background(barColor)
+                .onSizeChanged { barH = with(density) { it.height.toDp() } }   // measured WITH the status bar: the page's top spacer is this whole height
                 .statusBarsPadding()
-                .onSizeChanged { barH = with(density) { it.height.toDp() } }
                 .align(Alignment.TopCenter)
         ) {
             BackTitleBar(x?.name.orEmpty(), onBack)

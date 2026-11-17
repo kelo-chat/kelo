@@ -17,4 +17,6 @@
     <string name="perm_reset_q">このコネクタの設定をすべてデフォルトに戻しますか?</string>
     <string name="perm_read_off_q">読み取りをオフにすると、Keloはこのコネクタをほとんど使えません。オフにしますか?</string>
     <string name="perm_limited">制限あり</string>
+    <string name="perm_unattended">チャットしていないときも使う</string>
+    <string name="perm_unattended_about">スケジュール、バックグラウンド作業、Keloから先に送るメッセージでは%1$sを使いません。ご自身のチャットでは引き続き使えます。</string>
 </resources>

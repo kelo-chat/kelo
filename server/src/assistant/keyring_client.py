@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from .keyguard import Locked
 from .netguard import is_public
+from .tools.sites import in_public_dns
 
 log = logging.getLogger("uvicorn.error")
 
@@ -26,7 +27,6 @@ PLACEHOLDER = "KELO_KEYRING_SECRET"
 INFO = b"kelo-keyring v1"
 TOKEN_HEADER = "x-keyring-token"
 UPSTREAM_HEADER = "x-keyring-upstream"
-PRIVATE_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localhost")
 
 
 class KeyringError(Exception):
@@ -198,8 +198,8 @@ def ring_of(master: bytes) -> bytes:
 
 
 def host_entry(base_url: str) -> tuple[list[str], bool] | None:
-    """The host of a base URL (lower case) and whether it is private (`local`): RFC 1918, loopback, link-local, CGNAT, .local, .lan,
-    .home.arpa, or a name that resolves to such an address. None when there is no host."""
+    """The host of a base URL (lower case) and whether it is private (`local`): RFC 1918, loopback, link-local, CGNAT, a name that is
+    not in the public DNS (sites.in_public_dns), or a name that resolves to such an address. None when there is no host."""
     try:
         host = (urlsplit(base_url or "").hostname or "").lower().rstrip(".")
     except ValueError:
@@ -211,7 +211,7 @@ def host_entry(base_url: str) -> tuple[list[str], bool] | None:
         return [host], not is_public(host)
     except ValueError:
         pass
-    if "." not in host or host.endswith(PRIVATE_SUFFIXES):
+    if not in_public_dns(host):
         return [host], True
     try:
         ips = {i[4][0] for i in socket.getaddrinfo(host, 443, 0, socket.SOCK_STREAM)}

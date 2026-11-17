@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">Kelo が担当する予定</string>
+    <string name="follow_stop">見守りをやめる</string>
+    <string name="follow_stop_confirm">この予定の見守りをやめますか？</string>
+    <string name="follow_stop_confirm_detail">変更の確認や事前準備を行わなくなります。</string>
+    <string name="follow_stop_yes">見守りをやめる</string>
+    <string name="follow_keep_watching">見守りを続ける</string>
+    <string name="follow_replan">計画し直す</string>
+    <string name="follow_sheet_title">見守り計画</string>
+    <string name="follow_plan_checks">確認項目</string>
+    <string name="follow_plan_prep">事前準備</string>
+    <string name="follow_plan_tell">通知</string>
+    <string name="follow_plan_tell_change">変更時に通知</string>
+    <string name="follow_next_check">次回確認: %1$s</string>
+    <string name="follow_last_check">最終確認: %1$s</string>
+    <string name="follow_prep_later">予定</string>
+    <string name="follow_prep_running">処理中</string>
+    <string name="follow_prep_done">完了</string>
+    <string name="follow_prep_failed">失敗</string>
+    <string name="follow_state_watching">見守り中</string>
+    <string name="follow_state_stopped">停止中</string>
+    <string name="follow_state_done">完了</string>
+    <string name="follow_summary_lead_flight">出発前日に通知</string>
+    <string name="follow_summary_lead_general">前日に通知</string>
+    <string name="follow_summary_lead_hours">%1$d時間前に通知</string>
+    <string name="follow_summary_prep_checkin">チェックイン開始時に準備</string>
+    <string name="follow_summary_prep_general">%1$sの準備</string>
+    <string name="follow_summary_watch_changes">変更を確認</string>
+    <string name="follow_summary_default">予定を見守る</string>
+</resources>

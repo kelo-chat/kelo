@@ -8,4 +8,8 @@
     <string name="actions_state_failed">Gagal</string>
     <string name="actions_empty">Kelo belum melakukan apa pun di luar.</string>
     <string name="actions_outside_text_note">Apa yang dibaca Kelo dari halaman web, email, dan file diperlakukan sebagai data, bukan instruksi; teks tersebut tidak dapat membuat Kelo membayar, mengirim, atau menghapus apa pun.</string>
+    <string name="did_filter_all">Semua</string>
+    <string name="did_filter_actions">Kirim &amp; ubah</string>
+    <string name="did_filter_browser">Browser</string>
+    <string name="did_filter_tasks">Tugas</string>
 </resources>

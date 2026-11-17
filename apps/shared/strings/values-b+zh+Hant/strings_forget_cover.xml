@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">已忘記的主題</string>
+    <string name="forget_intro">你請 Kelo 忘記的主題。Kelo 已刪除找到的內容，不會再記錄。</string>
+    <string name="forget_empty">還沒有忘記的主題。請 Kelo 忘記某個主題後，會顯示在這裡。</string>
+    <string name="forget_date">忘記於 %1$s</string>
+    <string name="forget_removed">已刪除：%1$s</string>
+    <string name="forget_count">%1$s：%2$s</string>
+    <string name="forget_nothing_removed">沒有找到需要刪除的內容。</string>
+    <string name="forget_cat_memory">記憶</string>
+    <string name="forget_cat_notes">筆記</string>
+    <string name="forget_cat_reminders">提醒</string>
+    <string name="forget_cat_skills">技能</string>
+    <string name="forget_cat_history">記錄</string>
+    <string name="forget_cat_other">其他</string>
+    <string name="forget_allow_again">重新允許</string>
+    <string name="forget_allow_confirm">允許 Kelo 再次記錄「%1$s」嗎？已刪除的內容不會恢復。</string>
+    <string name="forget_allowed">Kelo 可以再次記錄了。</string>
+    <string name="paycover_title">預先核准的付款</string>
+    <string name="paycover_switch">允許預先核准的付款</string>
+    <string name="paycover_switch_note">關閉後，每筆付款都會先詢問你。</string>
+    <string name="paycover_empty">沒有預先核准的項目。你預先核准的訂單或排程付款會顯示在這裡。</string>
+    <string name="paycover_off_note">已關閉：這些項目仍會保留在清單中，但每筆付款都會詢問。</string>
+    <string name="paycover_orders">訂單</string>
+    <string name="paycover_allows">排程付款</string>
+    <string name="paycover_cap">合計最多 %1$s</string>
+    <string name="paycover_until">截止 %1$s</string>
+    <string name="paycover_for_task">用於一項任務</string>
+    <string name="paycover_for_schedule">用於排程「%1$s」</string>
+    <string name="paycover_for_a_schedule">用於排程任務</string>
+    <string name="paycover_one_order">一筆訂單</string>
+    <string name="paycover_allow_scope">同一間商店、同一種付款方式</string>
+    <string name="paycover_remove">移除 %1$s</string>
+    <string name="paycover_remove_order_confirm">移除這項核准嗎？這筆訂單在付款前會詢問。</string>
+    <string name="paycover_remove_allow_confirm">移除對「%1$s」的允許嗎？它的付款將再次每次詢問。</string>
+    <string name="paycover_removed">已移除。付款將會詢問。</string>
+    <string name="preapprove_what">訂單</string>
+    <string name="preapprove_cap">最高支付</string>
+    <string name="preapprove_cap_value">%1$s（含稅和運費）</string>
+    <string name="preapprove_until">有效期限至</string>
+    <string name="preapprove_covers">適用範圍</string>
+    <string name="preapprove_covers_value">僅限這一筆訂單</string>
+    <string name="preapprove_requirements">必須符合</string>
+    <string name="preapprove_shipping">配送</string>
+    <string name="preapprove_shops">商店</string>
+    <string name="preapprove_delegated">由 Kelo 決定</string>
+    <string name="chat_payment_cover_order">已由你預先核准的訂單涵蓋</string>
+    <string name="chat_payment_cover_schedule">已由你對此排程付款的允許涵蓋</string>
+</resources>

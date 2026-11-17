@@ -256,7 +256,7 @@ async def test_events_become_items():
             "type": "message", "channel": "C0200", "user": "U200", "ts": "1700000000.000300", "text": "reply in thread",
             "thread_ts": "1700000000.000200", "parent_user_id": BOT_ID
         }}},
-        # ignored: bot_id message and message_changed
+        # a bot_id message is kept; message_changed is ignored
         {"type": "events_api", "envelope_id": "e4", "payload": {"event": {
             "type": "message", "channel": "C0200", "user": "U300", "ts": "1700000000.000400", "text": "bot msg", "bot_id": "B999"
         }}},
@@ -280,7 +280,7 @@ async def test_events_become_items():
     for f in frames:
         sm.backlog.append(f)
     async with Feed(sl) as feed:
-        items = await feed.got(5)
+        items = await feed.got(6)
         # 1. DM
         assert isinstance(items[0], Incoming) and items[0].private and items[0].text == "dm text"
         # 2. Channel mention
@@ -288,10 +288,12 @@ async def test_events_become_items():
         assert items[1].text == f"@{BOT_NAME} hello bot" and items[1].chat_title == "#general"
         # 3. Thread reply to bot
         assert isinstance(items[2], Incoming) and items[2].reply_to_bot
-        # 4. member_joined_channel
-        assert isinstance(items[3], Membership) and items[3].joined and items[3].added_by == "U1"
-        # 5. channel_left
-        assert isinstance(items[4], Membership) and not items[4].joined
+        # 4. a bot's message
+        assert isinstance(items[3], Incoming) and items[3].text == "bot msg"
+        # 5. member_joined_channel
+        assert isinstance(items[4], Membership) and items[4].joined and items[4].added_by == "U1"
+        # 6. channel_left
+        assert isinstance(items[5], Membership) and not items[5].joined
 
 
 # ---- 6. disconnect and refused errors
@@ -483,27 +485,30 @@ async def test_keyconnect_slack():
 
 # ---- 12. Server level with the rig
 class SRig:
-    def __init__(self, tmp_path, *steps, tools=None):
+    def __init__(self, tmp_path, *steps, tools=None, model=None, split=None):
         self.rest = FakeREST()
         self.sm = FakeSocketManager()
         self.seen: list = []
         self.steps = steps or ([TextDelta("Hello from Slack Kelo"), Done("stop")],)
 
-        async def model(prov, request, **kw):
+        async def model_steps(prov, request, **kw):
             self.seen.append(request)
             for ev in self.steps[min(len(self.seen) - 1, len(self.steps) - 1)]:
                 yield ev
 
+        from split_pay import app_args   # `model`: a role-aware fake (split_pay.Split); `split`: payment_specialist on/off (None = default)
+        settings_extra, app_extra = app_args(split)
         app = create_app(
             Settings(
                 token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "s.db"),
-                home_dir=str(tmp_path / "home"), content_dir=str(CONTENT)
+                home_dir=str(tmp_path / "home"), content_dir=str(CONTENT), **settings_extra
             ),
             tools=tools if tools is not None else [],
-            stream_fn=model,
+            stream_fn=model or model_steps,
             mcp_fetcher=self.rest.fetch,
             channel_fetch=self.rest.fetch,
             channel_connect=self.sm.connect,
+            **app_extra,
         )
         self.app, self.run = app, Running(app)
 
@@ -582,3 +587,23 @@ async def test_server_slack_channel_pairing_turn_and_legacy_secret(srig):
         await until(lambda: "Hello from Slack Kelo" in r.rest.sent("D01"))
         assert any(b.get("channel") == "D01" and "Hello from Slack Kelo" in b.get("text", "")
                    for b in r.rest.of("chat.postMessage"))
+
+
+async def test_a_card_a_checkout_job_needs_the_app_for_comes_to_the_chat_that_started_it(srig):
+    """A checkout job outlives the reply that handed it over; its approval card is sent to the chat (no buttons: only the app answers it)."""
+    from split_pay import Split, job
+    from test_channels_telegram import send_tool
+    ran = []
+    async with srig(tools=[send_tool(ran, "request_card")], model=Split(job(("request_card", {})), closing="It is done."), split=True) as r:
+        r.store.save_credential("slack-api", "Slack", ["slack.com"], {"type": "bearer_header"}, kind="api")
+        r.store.set_credential_secret("slack-api", SECRET)
+        await until(lambda: r.mgr.status("slack")["connected"] and r.mgr.state("slack")["pairing"])
+        r.push_dm(r.code(), uid="U01", cid="D01", ts="1700000001.000100")
+        await until(lambda: r.mgr.state("slack")["paired"])
+        r.push_dm("go", uid="U01", cid="D01", ts="1700000002.000200")
+        await until(lambda: any("Open the Kelo app to answer this one." in s for s in r.rest.sent("D01")))
+        assert not any("blocks" in b and any(x["type"] == "actions" for x in b["blocks"]) for b in r.rest.of("chat.postMessage"))
+        aid = next(iter((await r.c.get("/api/approvals/pending")).json()["items"]))["approval_id"]
+        assert (await r.c.post(f"/api/approvals/{aid}", json={"approve": False})).status_code == 200
+        await until(lambda: "It is done." in r.rest.sent("D01"))
+        assert ran == []

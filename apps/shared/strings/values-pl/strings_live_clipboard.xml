@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Wklej z telefonu</string>
+    <string name="live_pasted">Wklejono. Sprawdź pole.</string>
+    <string name="live_copy_from_browser">Skopiuj z przeglądarki</string>
+    <string name="live_copied_to_phone">Skopiowano do telefonu</string>
+</resources>

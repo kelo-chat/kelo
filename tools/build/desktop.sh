@@ -52,8 +52,8 @@ gradle_desktop() {   # gradle_desktop step|soft_step NAME TIMEOUT LOG tasks...
     if [ "${PIN_JDK:-0}" = 1 ]; then kelo_packaging_jdk; kelo_zip_clock "$REPO"; else use_jdk17; fi
   fi
   cd "$DESKTOP"
-  source_commit apps/desktop apps/shared version.json   # the version line in My links to this commit (apps/desktop/build.gradle.kts: ReleaseInfo.SOURCE_COMMIT)
-  "$how" "$name" "$secs" "$logf" ./gradlew --no-daemon --console=plain -PkeloCommit="$SOURCE_COMMIT" -PkeloDirty="$SOURCE_DIRTY" \
+  source_commit apps/desktop apps/shared version.json   # only "modified" is used: the version line in My links by release tag (docs/versioning.md)
+  "$how" "$name" "$secs" "$logf" ./gradlew --no-daemon --console=plain -PkeloDirty="$SOURCE_DIRTY" \
     -Pkotlin.compiler.execution.strategy=in-process \
     ${GRADLE_REPRO_ARGS[@]+"${GRADLE_REPRO_ARGS[@]}"} "$@"
   cd "$REPO"

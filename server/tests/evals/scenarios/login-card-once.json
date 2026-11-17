@@ -5,14 +5,14 @@
     "model": "scripted"
   },
   "user": [
-    "Sign in to my shop account at shop.example.test"
+    "Sign in to my shop account at shop.example.com"
   ],
   "model": [
     [
       {
         "tool": "request_login",
         "args": {
-          "site": "https://shop.example.test/login"
+          "site": "https://shop.example.com/login"
         }
       }
     ],
@@ -20,7 +20,7 @@
       {
         "tool": "request_login",
         "args": {
-          "site": "https://shop.example.test/login"
+          "site": "https://shop.example.com/login"
         }
       }
     ],

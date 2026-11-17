@@ -174,3 +174,47 @@ private final class NoNetwork: HTTPTransport, @unchecked Sendable {
     func send(_ request: URLRequest) async throws -> (Int, Data) { throw URLError(.notConnectedToInternet) }
     func stream(_ request: URLRequest) async throws -> (Int, AsyncThrowingStream<UInt8, Error>) { throw URLError(.notConnectedToInternet) }
 }
+
+/// "Change address" through the app model: the session moves only to the same server (same pinned key).
+@MainActor @Suite struct MoveServerModelTests {
+    struct Hosts: HTTPTransport {
+        var answers: [String: (Int, Data)]
+        func send(_ request: URLRequest) async throws -> (Int, Data) {
+            guard let a = answers[request.url?.host ?? ""] else { throw URLError(.cannotConnectToHost) }
+            return a
+        }
+        func stream(_ request: URLRequest) async throws -> (Int, AsyncThrowingStream<UInt8, Error>) { throw URLError(.badURL) }
+    }
+
+    static func info(_ key: KE2EServerKey) -> (Int, Data) {
+        (200, Data(#"{"v": 1, "kid": "\#(key.kid)", "pk": "\#(key.base64url)", "fingerprint": "\#(key.fingerprint)"}"#.utf8))
+    }
+
+    private func model(pin: KE2EServerKey?, answers: [String: (Int, Data)]) -> AppModel {
+        let defaults = UserDefaults(suiteName: "kelo-move-test-\(UUID().uuidString)")!
+        let s = Session(serverUrl: "https://old.example.com", token: "tok", e2e: pin.map { KE2EPin(key: $0, verified: true) })
+        return AppModel(store: MemorySessionStore(s), prefs: Prefs(defaults: defaults), strings: Strings(code: "en"),
+                        transport: Hosts(answers: answers), strictE2E: false)
+    }
+
+    @Test func theSameServerSwitchesAndKeepsTokenAndKey() async throws {
+        let key = try KE2EServerKey(publicKey: Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation)
+        let app = model(pin: key, answers: ["new.example.com": Self.info(key)])
+        #expect(app.canMoveServer)
+        let r = await app.moveServer(to: "https://new.example.com")
+        guard case .moved = r else { Issue.record("not moved: \(r)"); return }
+        #expect(app.session?.serverUrl == "https://new.example.com" && app.session?.token == "tok" && app.session?.e2e?.key == key)
+    }
+
+    @Test func aDifferentServerOrNoKeyChangesNothing() async throws {
+        let a = try KE2EServerKey(publicKey: Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation)
+        let b = try KE2EServerKey(publicKey: Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation)
+        let app = model(pin: a, answers: ["other.example.com": Self.info(b)])
+        #expect(await app.moveServer(to: "https://other.example.com") == .otherServer)
+        #expect(await app.moveServer(to: "https://gone.example.com") == .unreachable)
+        #expect(app.session?.serverUrl == "https://old.example.com")
+        let old = model(pin: nil, answers: ["new.example.com": Self.info(a)])
+        #expect(!old.canMoveServer)
+        #expect(await old.moveServer(to: "https://new.example.com") == .notSupported)
+    }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">لصق من هاتفك</string>
+    <string name="live_pasted">تم اللصق. تحقق من الحقل.</string>
+    <string name="live_copy_from_browser">نسخ من المتصفح</string>
+    <string name="live_copied_to_phone">تم النسخ إلى هاتفك</string>
+</resources>

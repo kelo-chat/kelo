@@ -5,6 +5,7 @@ and only while the owner's setting "Use codes from my mail automatically" is on.
 Fake mailbox, fake pages."""
 
 import logging
+import re
 import time
 from email.message import EmailMessage
 from email.utils import formatdate
@@ -16,7 +17,7 @@ from cryptography.fernet import Fernet
 from assistant.server import create_app
 from assistant.store import Store
 from assistant.tools.browser_more import BrowserExtras
-from assistant.tools.login_code import AUTO_EARLY_SECONDS, pick_auto_code, sender_match, strict_codes
+from assistant.tools.login_code import AUTO_EARLY_SECONDS, candidate_codes, pick_auto_code, sender_match
 from assistant.tools.vault_tools import vault_tools
 from assistant.vault import Transient
 
@@ -31,6 +32,27 @@ CODE = "482913"
 NOW = 1_800_000_000.0
 
 
+class FakeJudge:
+    """Stands for the main model (code_judge.CodeJudge): a marked token is a sign-in code when the words before it say "code"."""
+
+    def __init__(self, fail=False):
+        self.fail, self.asked = fail, 0
+
+    async def codes(self, messages, count, key=""):
+        self.asked += 1
+        if self.fail:
+            return None
+        out = set()
+        for m in messages:
+            for hit in re.finditer(r"([^\[]{0,40})\[\[#(\d+): ", m["text"]):
+                if "code" in hit.group(1).lower():
+                    out.add(int(hit.group(2)))
+        return out
+
+
+JUDGE = FakeJudge()
+
+
 def mail(sender="Example <no-reply@example.com>", text=f"Your verification code is {CODE}.", at=NOW, **kw):
     return {"from": sender, "subject": "Sign-in code", "text": text, "at": at, "arrived": at, "dkim": [], "return_path": "", **kw}
 
@@ -38,16 +60,16 @@ def mail(sender="Example <no-reply@example.com>", text=f"Your verification code 
 # ------------------------------------------------------------------------------------------------ the strict match itself
 @pytest.mark.parametrize("arrived,ok", [(NOW - AUTO_EARLY_SECONDS - 5, False), (NOW - 30, True), (NOW + 60, True), (NOW + 590, True),
                                         (NOW + 700, False)])
-def test_only_mail_that_arrived_around_the_request_counts(arrived, ok):
-    found, why = pick_auto_code([mail(at=arrived)], "www.example.com", NOW, now=max(NOW + 1, min(arrived, NOW + 599)))
+async def test_only_mail_that_arrived_around_the_request_counts(arrived, ok):
+    found, why = await pick_auto_code([mail(at=arrived)], "www.example.com", NOW, now=max(NOW + 1, min(arrived, NOW + 599)), judge=JUDGE)
     assert (found is not None) == ok and (found.code == CODE if ok else why == "none")
 
 
-def test_nothing_is_typed_without_asking_once_ten_minutes_have_passed():
-    assert pick_auto_code([mail()], "example.com", NOW, now=NOW + 601) == (None, "late")
+async def test_nothing_is_typed_without_asking_once_ten_minutes_have_passed():
+    assert await pick_auto_code([mail()], "example.com", NOW, now=NOW + 601, judge=JUDGE) == (None, "late")
 
 
-def test_the_sender_must_be_the_site_and_the_header_that_showed_it_is_recorded():
+async def test_the_sender_must_be_the_site_and_the_header_that_showed_it_is_recorded():
     assert sender_match(mail(), "login.example.com") == "From example.com"
     assert sender_match(mail(sender="Accounts <a@accounts.example.co.kr>"), "www.example.co.kr") == "From accounts.example.co.kr"
     sent_by_a_service = mail(sender="Example <noreply@mailer.example-mail.net>", dkim=["example.com"])
@@ -58,30 +80,39 @@ def test_the_sender_must_be_the_site_and_the_header_that_showed_it_is_recorded()
     assert sender_match(mail(sender="example.com <x@other.net>"), "example.com") is None                   # the name is not the sender
     assert sender_match(mail(from_failed=True), "example.com") is None                                     # From failed DMARC
     assert sender_match(mail(), "github.com") is None
-    found, _ = pick_auto_code([sent_by_a_service], "example.com", NOW, NOW + 5)
+    found, _ = await pick_auto_code([sent_by_a_service], "example.com", NOW, NOW + 5, JUDGE)
     assert found.matched == "DKIM example.com" and found.sender == "noreply@mailer.example-mail.net"
 
 
-def test_mail_of_another_site_is_never_used():
-    assert pick_auto_code([mail(sender="Shop <no-reply@othershop.com>")], "example.com", NOW, NOW + 5) == (None, "none")
+async def test_mail_of_another_site_is_never_used():
+    assert await pick_auto_code([mail(sender="Shop <no-reply@othershop.com>")], "example.com", NOW, NOW + 5, JUDGE) == (None, "none")
 
 
 @pytest.mark.parametrize("msgs", [
     [mail(text="Your code is 111222"), mail(text="Your code is 333444", at=NOW + 30)],      # two mails, two codes (a resend)
     [mail(text="Verification code: 111222\nBackup code: 333444")],                         # one mail, two equally likely codes
 ])
-def test_an_unclear_match_is_left_to_the_owner(msgs):
-    assert pick_auto_code(msgs, "example.com", NOW, NOW + 60) == (None, "ambiguous")
+async def test_an_unclear_match_is_left_to_the_owner(msgs):
+    assert await pick_auto_code(msgs, "example.com", NOW, NOW + 60, JUDGE) == (None, "ambiguous")
 
 
-def test_the_same_code_mailed_twice_is_still_clear_and_codes_need_a_code_word():
-    found, _ = pick_auto_code([mail(), mail(at=NOW + 20)], "example.com", NOW, NOW + 60)
+async def test_the_same_code_mailed_twice_is_still_clear_and_codes_need_a_clear_place():
+    found, _ = await pick_auto_code([mail(), mail(at=NOW + 20)], "example.com", NOW, NOW + 60, JUDGE)
     assert found.code == CODE
-    assert strict_codes("Order 123456 shipped") == set()                                    # no code word: not for typing unasked
-    assert strict_codes("Ihr Bestätigungscode lautet 552901") == {"552901"}
-    assert strict_codes("Su código de verificación: 552901") == {"552901"}
-    assert strict_codes("Ваш код: 552901") == {"552901"}
-    assert strict_codes("인증번호 [552901]") == {"552901"}
+
+
+async def test_the_judge_decides_what_is_a_code_and_without_it_nothing_is_typed_unasked():
+    order = mail(text="Order 123456 shipped. Thanks for your order.", subject="Shipping")
+    assert await pick_auto_code([order], "example.com", NOW, NOW + 5, JUDGE) == (None, "none")           # shaped like a code, judged not to be
+    assert await pick_auto_code([mail()], "example.com", NOW, NOW + 5, FakeJudge(fail=True)) == (None, "none")   # judge cannot tell: fail closed
+    assert await pick_auto_code([mail()], "example.com", NOW, NOW + 5) == (None, "none")                  # no judge at all
+    other = mail(sender="Shop <no-reply@othershop.com>")
+    judge = FakeJudge()
+    await pick_auto_code([other], "example.com", NOW, NOW + 5, judge)
+    assert judge.asked == 0                                                                                # sender and time first: no request for strangers
+    for said, want in (("Ihr Bestätigungscode lautet 552901", ["552901"]), ("Ваш код: 552901", ["552901"]), ("인증번호 [552901]", ["552901"]),
+                       ("Order 123456 and 77 items", ["123456"])):
+        assert candidate_codes(said) == want                                                               # candidates by shape only
 
 
 def test_mail_headers_give_dkim_and_return_path_only_when_the_receiving_server_did_not_report_them_failing():
@@ -122,7 +153,7 @@ class CodeLoginPage(Page):
     """A sign-in page (test_vault.Page) that asks for a code after the password, with one code box."""
 
     def __init__(self, url="https://www.example.com/login"):
-        super().__init__(url=url, state={"pw": False, "text": "Enter the verification code we sent to your email"},
+        super().__init__(url=url, state={"pw": False, "text": "Enter the verification code we sent to your email", "otp": 6},
                          body="Enter the verification code we sent to your email. Welcome nahyun.kim@example.com")
 
     async def evaluate(self, js, arg=None):
@@ -143,6 +174,7 @@ def login_setup(tmp_path, msgs, *, setting=True, url="https://www.example.com/lo
     box = FakeMail(msgs, accounts=accounts)
     extras = BrowserExtras(session, mail=box, auto_codes=st.mail_codes_auto, vault_log=st.add_vault_log)
     extras.code_wait = extras.find_wait = 0
+    extras.code_judge = JUDGE
     tools = {x.name: x for x in [*vault_tools(st, session, Transient()), *extras.tools()]}
     return st, page, session, extras, tools, box
 

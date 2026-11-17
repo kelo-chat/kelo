@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">البريد</string>
+    <string name="trail_kind_file">ملف</string>
+    <string name="trail_kind_memory">الذاكرة</string>
+    <string name="trail_kind_contacts">جهات الاتصال</string>
+    <string name="trail_kind_calendar">التقويم</string>
+    <string name="trail_kind_photos">الصور</string>
+    <string name="trail_kind_messages">الرسائل</string>
+    <string name="trail_kind_notes">الملاحظات</string>
+    <string name="trail_kind_vault">بيانات الدخول المحفوظة</string>
+    <string name="trail_kind_profile">الملف الشخصي</string>
+    <string name="trail_kind_web">صفحة ويب</string>
+    <string name="trail_kind_channel">الدردشة</string>
+    <string name="trail_kind_device">بيانات الجهاز</string>
+    <string name="trail_kind_connector">خدمة متصلة</string>
+    <string name="trail_kind_other">بيانات</string>
+    <string name="trail_recipient_link">رابط عام</string>
+    <string name="trail_goes_to">إلى %2$s: %1$s</string>
+    <string name="trail_allow_once">السماح مرة واحدة</string>
+    <string name="trail_allow_always">دائمًا لهذا المستلم</string>
+    <string name="recipient_approval_always">تم السماح. لن أسأل مجددًا عن هذا المستلم.</string>
+    <string name="recipient_allows_title">المستلمون المسموح لهم دائمًا</string>
+    <string name="recipient_allows_empty">لا يوجد بعد. عندما تختار \"دائمًا لهذا المستلم\" على بطاقة، سيظهر هنا.</string>
+    <string name="recipient_allow_since">تم السماح %1$s</string>
+    <string name="recipient_allow_remove">إزالة %1$s</string>
+    <string name="recipient_allow_remove_confirm">هل تريد أن أسأل مجددًا قبل إرسال %1$s إلى %2$s؟</string>
+    <string name="recipient_allow_removed">سأسأل مجددًا قبل الإرسال إلى هناك.</string>
+</resources>

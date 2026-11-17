@@ -133,8 +133,8 @@ a product decision (section 13).
 
 **Run mode.** `--headless=new`, which is the same browser code as headful since Chrome 112. On macOS a hidden account has no
 WindowServer session, so Hardened mode *needs* headless. In Standard mode, headless keeps a Kelo window off the owner's desktop.
-The phone's live view is not affected: `tools/live.py` already uses `Page.startScreencast`. The noVNC viewer (`EGRESS_RELAY`, Xvfb,
-x11vnc) is dropped natively. Today's Docker browser also has no GPU (Xvfb), so the fingerprint posture is similar. Still,
+The phone's live view is not affected: `tools/live.py` already uses `Page.startScreencast`. The VNC live view (Xvnc, `tools/vnc.py`; Docker only) has no X screen natively, so the apps
+keep the screencast there. Today's Docker browser also has no GPU (Xvnc), so the fingerprint posture is similar. Still,
 bot-check behaviour under headless is the biggest product risk. **Spike 0.1** checks it against the vendors listed in
 `tools/challenge.py`.
 

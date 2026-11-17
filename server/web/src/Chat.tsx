@@ -181,7 +181,7 @@ export function Chat({ profile, onProfile }: { profile: Profile; onProfile: (p: 
     if (!file) return;
     try {
       const path = await uploadDocument(file);
-      setItems((p) => [...p, { kind: "notice", text: `📎 ${path.replace("uploads/", "")} 을(를) 올렸어요. 에이전트에게 읽어 달라고 말해 보세요.`, key: k() }]);
+      setItems((p) => [...p, { kind: "notice", text: `📎 올렸어요: ${path.replace("uploads/", "")}. 에이전트에게 읽어 달라고 말해 보세요.`, key: k() }]);
       setInput((v) => v || `${path.replace("uploads/", "")} 내용을 읽고 요약해줘.`);
     } catch (e) {
       apply({ type: "error", message: (e as Error).message });

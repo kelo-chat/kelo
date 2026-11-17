@@ -147,7 +147,8 @@ async def stream(
             elif kind == "error":
                 from ..types import ProviderError
 
-                raise ProviderError(f"provider stream error: {(ev.get('error') or {}).get('message', 'unknown')}")
+                raise ProviderError(f"provider stream error: {(ev.get('error') or {}).get('message', 'unknown')}",
+                                    code=str((ev.get("error") or {}).get("type") or ""))
 
     for index in sorted(blocks):
         b = blocks[index]

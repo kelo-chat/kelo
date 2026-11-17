@@ -218,11 +218,14 @@ public struct ChatVaultItem: Decodable, Equatable, Sendable {
     public var label: String
     public var kind: String
     public var hosts: [String]
+    /// The user name the agent knew for this login ("" when none; absent on an older server): shown prefilled and editable.
+    public var usernameHint: String
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         name = try j.require("name", j.optStr("name"))
         label = j.str("label"); kind = j.str("kind"); hosts = j.strings("hosts")
+        usernameHint = UsernameHint.clean(j.str("username_hint"))
     }
 
     public var isLogin: Bool { kind == "login" }

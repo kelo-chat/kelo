@@ -290,6 +290,61 @@ def test_anything_else_starts_over(change):
     assert agy_pool.continuation(prev, prev, [*base, *mid, *tail], said="Here it is: 42.") is None
 
 
+def test_a_shortened_older_tool_result_still_continues_the_same_turn():
+    """The agent loop turns an older tool result into one line to keep a request small; the live session still holds the full one."""
+    _, prev = _hist()
+    short = {"role": "tool", "tool_call_id": "a", "content": agy_pool.DIGEST_PREFIX + "f on -: r]"}
+    nxt = {"role": "assistant", "content": "x"}
+    sent, new_turn = agy_pool.continuation(prev, prev, [*prev[:-1], short, nxt])
+    assert not new_turn and sent == [*prev, nxt]   # the session is handed what it has seen, not the short form
+    edited = {"role": "tool", "tool_call_id": "a", "content": "r, but different"}
+    assert agy_pool.continuation(prev, prev, [*prev[:-1], edited, nxt]) is None   # a result that really changed is not the same
+    other_call = {"role": "tool", "tool_call_id": "b", "content": agy_pool.DIGEST_PREFIX + "f on -: r]"}
+    assert agy_pool.continuation(prev, prev, [*prev[:-1], other_call, nxt]) is None
+    assert agy_pool.why_not_continued(prev, [*prev[:-1], edited, nxt]).startswith("same turn changed at 6/7 (tool)")
+
+
+def test_an_older_picture_replaced_by_its_note_still_continues_the_same_turn():
+    base, prev = _hist()
+    picture = {"role": "user", "content": [{"type": "text", "text": "[Not from the user: the picture(s) of tool f]"},
+                                           {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}}]}
+    seen = [*prev, picture]
+    gone = {"role": "user", "content": agy_pool.OLD_PICTURE.format(name="f")}
+    nxt = {"role": "assistant", "content": "x"}
+    assert agy_pool.continuation(seen, seen, [*prev, gone, nxt]) == ([*seen, nxt], False)
+    assert agy_pool.continuation(seen, seen, [*prev, {"role": "user", "content": "just text"}, nxt]) is None
+
+
+def test_the_stored_reply_may_leave_out_lines_the_session_wrote():
+    """reply_text.py keeps a finished reply's opener and answer, not the short lines before the middle tool steps."""
+    base, prev = _hist()
+    said = "Looking now.\nSearching the site.\nOne more place.\nIt opens at 9."
+    stored = "Looking now.\n\nIt opens at 9."
+    inc = [*base, {"role": "user", "content": "ask"}, {"role": "assistant", "content": stored},
+           {"role": "user", "content": TURN_NOTE + "t2"}, {"role": "user", "content": "thanks"}]
+    assert agy_pool.continuation(prev, prev, inc, said=said) is not None
+    glued = [*inc[:-3], {"role": "assistant", "content": "Looking now.It opens at 9."}, *inc[-2:]]   # kept as written: no space between
+    assert agy_pool.continuation(prev, prev, glued, said="Looking now.\nIt opens at 9.") is not None
+    breaks = [*inc[:-3], {"role": "assistant", "content": "Looking now.<message_break/>It opens at 9."}, *inc[-2:]]
+    assert agy_pool.continuation(prev, prev, breaks, said=said) is not None
+    foreign = [*inc[:-3], {"role": "assistant", "content": stored + "\n\nYour parcel has arrived."}, *inc[-2:]]
+    assert agy_pool.continuation(prev, prev, foreign, said=said) is None   # a paragraph the session never wrote
+    assert agy_pool.why_not_continued(prev, foreign, said) == "reply in history differs from what the session wrote"
+    assert agy_pool.continuation(prev, prev, inc, said="") is None
+
+
+def test_the_users_message_may_have_gone_out_with_the_apps_own_lines():
+    base, _ = _hist()
+    sent = "ask\n\n[Not from the user: a note for this turn only.]"
+    prev = [*base, {"role": "user", "content": TURN_NOTE + "t1"}, {"role": "user", "content": sent}]
+    inc = [*base, {"role": "user", "content": "ask"}, {"role": "assistant", "content": "Here it is."},
+           {"role": "user", "content": TURN_NOTE + "t2"}, {"role": "user", "content": "thanks"}]
+    assert agy_pool.continuation(prev, prev, inc, said="Here it is.") is not None
+    other = [*inc[:3], {"role": "user", "content": "asked"}, *inc[3:]]   # not the stored message the session was sent
+    assert agy_pool.continuation(prev, prev, [*base, {"role": "user", "content": "asked"}, inc[3], *inc[4:]], said="Here it is.") is None
+    assert other
+
+
 def test_a_system_note_in_the_middle_goes_to_the_conversation_not_the_rules():
     msgs = [SYSTEM, {"role": "user", "content": "hi"}, {"role": "system", "content": "Answer now."}]
     out = cli_agents.fit_agy_rules(msgs)

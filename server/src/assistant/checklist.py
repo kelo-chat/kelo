@@ -34,7 +34,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from .home import CHECKLIST, Home, HomeError
+from .home import CHECKLIST, NOTIFY_PREFS, Home, HomeError
 from .i18n import t
 
 DEFAULT_EVERY_MINUTES = 120    # without a proactive pace (tests): the proactive default
@@ -45,7 +45,7 @@ ITEM = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(?:\[[ xX]?\]\s*)?(.+?)\s*$")
 
 NOTE = ("[Periodic check from CHECKLIST.md, not from the user. The user is NOT watching. Go through each item below quickly, with your "
         "tools where needed. If nothing needs the user's attention right now, reply exactly NO_REPLY. Otherwise say only what needs "
-        "attention, in a few short lines in the user's language. Follow NOTIFY_PREFS.md. Do not ask questions.]")
+        "attention, in a few short lines in the user's language. Follow the user's notification rules after the checks. Do not ask questions.]")
 
 StartFn = Callable[[str], Awaitable[dict[str, Any]]]   # runs the checks (led by NOTE) as a turn; returns {"task_id", "status", "quiet"}
 
@@ -156,6 +156,9 @@ class Checklist:
         async with self.lock:
             self.last_started = self.clock()
             body = "Checks:\n" + "\n".join(f"- {i}" for i in items)
+            rules = (self.home.policy(NOTIFY_PREFS) if self.home is not None and hasattr(self.home, "policy") else "").strip()
+            if rules:   # the owner's saved rules (owner_copies.py), not the agent's notes in the file
+                body += "\n\nThe user's notification rules (saved in the app):\n" + rules[:2000]
             try:
                 out = await self.start(body)   # the server adds NOTE (the user is away; NO_REPLY when nothing needs attention)
             except Exception as e:  # noqa: BLE001

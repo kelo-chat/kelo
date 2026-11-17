@@ -1,7 +1,7 @@
 """A click that only opens a window or a page prepares; it never gets the "this may confirm a payment" card, whatever its words
 (tools/commits.structure, read in a real Chromium from the element, its inline code, the page functions it calls and the listeners
 added with addEventListener). A form submit or a request still asks. And an order the user asked for in chat starts by itself when
-the agent buys without begin_order (tools/order.Orders.start_implicit), while the final payment still asks.
+the agent buys without begin_order (tools/order.Orders.start_implicit) only under a purchase permission, while the final payment still asks.
 
 Pages are served from memory; skipped without Playwright's Chromium."""
 
@@ -9,11 +9,12 @@ import pytest
 
 from assistant.tools import humanize
 from assistant.tools.browser import BrowserSession, browser_tools
-from assistant.tools.commits import judge_click, structure
-from assistant.tools.order import Orders, buy_request
+from assistant.tools.commits import structure
+from assistant.tools.order import Orders
 from assistant.workers import current_turn
 
 from test_purchase import PUBLIC
+from fake_judge import FakeJudge
 
 SHOP = "https://shop.example.com"
 PAGES = {
@@ -65,6 +66,7 @@ async def on(ctx, path, orders=None):
         return page
     s = BrowserSession(connect=connect, resolver=PUBLIC)
     s.overlay_pause = 0.05
+    s.step_judge = FakeJudge(())
     await s.open(SHOP + path)
     tools = {t.name: t for t in browser_tools(s, orders=orders)}
     return s, tools
@@ -84,64 +86,25 @@ async def test_a_buy_that_only_opens_a_window_or_a_page_gets_no_card(ctx, select
 
 async def test_a_buy_that_sends_a_request_still_asks(ctx):
     s, tools = await on(ctx, "/game")
-    assert await no_card(tools, "#buypost") is False
-    assert s.judged("#buypost") == "pay"
+    assert await no_card(tools, "#buypost") is True    # its words decide nothing; a checkout step refuses plain clicks by structure
+    assert s.judged("#buypost") == ""
     assert structure(s.judged_info("#buypost")) == "changes"
 
 
 async def test_the_submit_pay_button_asks(ctx):
     s, tools = await on(ctx, "/game/play")
-    assert await no_card(tools, "#pay") is False
-    assert s.judged("#pay") == "pay"
-    assert "payment" in (await tools["browser_click"].describe({"selector": "#pay"})).lower()
+    assert await no_card(tools, "#pay") is True
+    assert s.judged("#pay") == ""
 
 
-async def test_an_order_starts_from_the_request_when_the_agent_skips_begin_order(ctx):
-    orders = Orders(scope=lambda: "turn:t1")
-    started = []
-
-    def implicit(host):
-        turn = current_turn.get() or {}
-        if not buy_request(str(turn.get("request") or "")):
-            return None
-        o = orders.start(host, turn["request"])
-        o.implicit = True
-        started.append(o)
-        return o
-    orders.implicit = implicit
-    token = current_turn.set({"request": "로또 5게임 사줘", "turn_id": "t1"})
-    try:
-        # the order page's "next step" (judged pay by its words, a submit on an order form): covered by the order started for it
-        s, tools = await on(ctx, "/game", orders)
-        assert await no_card(tools, "#buypost") is True
-        assert started and started[0].site == "example.com" and started[0].what == "로또 5게임 사줘"
-        assert any("begin_order" in n for n in s._notes.get("owner", []))
-        # the final pay still asks
-        s2, tools2 = await on(ctx, "/game/play", orders)
-        assert await no_card(tools2, "#pay") is False
-    finally:
-        current_turn.reset(token)
-
-
-async def test_no_order_starts_when_the_user_did_not_ask_to_buy(ctx):
+async def test_no_order_starts_without_a_permission_whatever_the_words(ctx):
     orders = Orders(scope=lambda: "turn:t2")
-    orders.implicit = lambda host: orders.start(host, "x") if buy_request(str((current_turn.get() or {}).get("request") or "")) else None
-    token = current_turn.set({"request": "로또 당첨 번호 알려줘", "turn_id": "t2"})
+    orders.implicit = lambda host: None                                 # no purchase permission on this site
+    token = current_turn.set({"request": "로또 5게임 사줘", "turn_id": "t2"})   # the owner's words ask to buy: still no order
     try:
         s, tools = await on(ctx, "/game", orders)
-        assert await no_card(tools, "#buypost") is False
         assert orders.current() is None
     finally:
         current_turn.reset(token)
 
 
-def test_without_the_structure_read_the_words_still_decide():
-    # an element read the old way (no code read): a pay link keeps asking, as before
-    old = {"tag": "a", "href": "/order/pay", "text": "결제하기", "words": "", "url": "https://shop.example/item/1", "title": "Item"}
-    assert judge_click(old, "text=결제하기") == "pay"
-    # read structurally: a plain link to a payment address still asks; one to an ordinary page does not
-    new = {**old, "structure_read": True, "handler_src": "", "link_target": ""}
-    assert judge_click(new, "text=결제하기") == "pay"
-    assert judge_click({**new, "href": "/game/play", "text": "구매하기"}, "text=구매하기") == ""
-    # deleting on a plain link still asks
-    assert judge_click({**new, "href": "/account/leave", "text": "회원 탈퇴"}, "text=회원 탈퇴") == "delete"

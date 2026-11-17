@@ -33,6 +33,18 @@ public struct SecretResult: Equatable, Hashable, Sendable {
     }
 }
 
+/// The user name a login request may carry as a non-secret prefill (`username_hint`; "" when none, and absent on an older server).
+/// Kept only when it is one line of at most 200 characters without control characters; anything else counts as none.
+public enum UsernameHint {
+    public static let maxLength = 200
+
+    public static func clean(_ raw: String?) -> String {
+        let t = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.count > maxLength || t.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) { return "" }
+        return t
+    }
+}
+
 /// A secure entry the agent asked for: a service key (kind "key", the vault item `name`), a website login (`kindLogin`) or a payment
 /// card (`kindCard`, `name` empty). `hosts`: where the value may be sent (a card: where it will pay; may be empty). `state`: open,
 /// saved, cancelled, expired or replaced. `messageId`: the agent message it goes under (only from GET /api/secret-requests; nil while
@@ -56,15 +68,17 @@ public struct SecretRequest: Equatable, Hashable, Sendable, Identifiable {
     public var messageId: Int64?
     public var createdAt: Double
     public var result: SecretResult?
+    /// A login's prefilled user name (`UsernameHint`; "" when the agent gave none).
+    public var usernameHint: String
 
     public init(id: String, kind: String = "", name: String = "", label: String = "", hosts: [String] = [], reason: String = "",
                 check: Bool = false, source: String = SecretRequest.sourceAgent,
                 state: String = SecretRequest.stateOpen, messageId: Int64? = nil, createdAt: Double = 0,
-                result: SecretResult? = nil) {
+                result: SecretResult? = nil, usernameHint: String = "") {
         self.id = id; self.kind = kind; self.name = name; self.label = label; self.hosts = hosts; self.reason = reason
         self.check = check; self.source = source
         self.state = state; self.messageId = messageId; self.createdAt = createdAt
-        self.result = result
+        self.result = result; self.usernameHint = UsernameHint.clean(usernameHint)
     }
 
     public var open: Bool { state == Self.stateOpen }
@@ -87,7 +101,7 @@ public struct SecretRequest: Equatable, Hashable, Sendable, Identifiable {
             check: o.bool("check"), source: source.isEmpty ? sourceAgent : source,
             state: state.isEmpty ? stateOpen : state,
             messageId: o.optInt64("message_id"), createdAt: o.double("created_at"),
-            result: SecretResult.parse(o["result"]))
+            result: SecretResult.parse(o["result"]), usernameHint: o.str("username_hint"))
     }
 
     /// {"items": [...]} or a bare list; unreadable entries are left out.

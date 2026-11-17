@@ -25,6 +25,7 @@ final class PermissionsModel {
 
     func setKind(_ id: String, _ kind: String, _ mode: String) { put(id, PermissionRules.kindBody(kind, mode)) }
     func setAction(_ id: String, _ a: PermissionAction, _ mode: String) { put(id, PermissionRules.actionBody(a, mode)) }
+    func setUnattended(_ id: String, _ on: Bool) { put(id, PermissionRules.unattendedBody(on)) }
 
     private func put(_ id: String, _ body: [String: JSON]) {
         run { [api, path = path(id)] in try await api.put(path, body: .object(body)) }
@@ -81,6 +82,9 @@ struct PermissionsSection: View {
                             PermissionKindRow(k: k, enabled: !model.busy,
                                               onKind: { model.setKind(id, k.kind, $0) }, onAction: { model.setAction(id, $0, $1) })
                         }
+                        UnattendedRow(name: p.name.isEmpty ? id : p.name, on: PermissionRules.unattendedOn(p), enabled: !model.busy) {
+                            model.setUnattended(id, $0)
+                        }
                         if PermissionRules.changed(p) { LinkButton(L(R.string.perm_reset)) { confirmReset = true } }
                     }
                 }
@@ -88,6 +92,26 @@ struct PermissionsSection: View {
             }
         }
         .task(id: id) { await model.load(id) }
+    }
+}
+
+/// One switch for the connector as a whole: schedules, background jobs and messages Kelo sends first use it only while this is on.
+private struct UnattendedRow: View {
+    let name: String
+    let on: Bool
+    let enabled: Bool
+    let onChange: (Bool) -> Void
+    @Environment(\.kelo) private var c
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { on }, set: { if enabled { Haptics.tick(); onChange($0) } })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L(R.string.perm_unattended)).font(KeloFont.bodyLarge.weight(.semibold)).foregroundStyle(c.ink)
+                MutedText(L(R.string.perm_unattended_about, name), small: true)
+            }
+        }
+        .tint(c.accent)
+        .disabled(!enabled)
     }
 }
 

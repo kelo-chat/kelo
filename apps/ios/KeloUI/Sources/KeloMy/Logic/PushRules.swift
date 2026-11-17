@@ -13,13 +13,16 @@ public struct PushPayload: Equatable, Sendable {
     public var taskId: Int64?
     public var approvalId: String?
     public var scheduleId: Int64?
+    /// A "settled" push: the waiting items' ids that do not wait any more (empty for every other kind).
+    public var ids: [String]
 
-    public init(type: String, id: Int64, taskId: Int64? = nil, approvalId: String? = nil, scheduleId: Int64? = nil) {
+    public init(type: String, id: Int64, taskId: Int64? = nil, approvalId: String? = nil, scheduleId: Int64? = nil, ids: [String] = []) {
         self.type = type
         self.id = id
         self.taskId = taskId
         self.approvalId = approvalId
         self.scheduleId = scheduleId
+        self.ids = ids
     }
 }
 
@@ -56,8 +59,21 @@ public enum PushRules {
             if let s = userInfo[key] as? String { return Int64(s) }
             return (userInfo[key] as? NSNumber)?.int64Value
         }
-        guard let type = userInfo["type"] as? String, type.range(of: "^[a-z_]{2,40}$", options: .regularExpression) != nil, let id = int("id") else { return nil }
+        guard let type = userInfo["type"] as? String, type.range(of: "^[a-z_]{2,40}$", options: .regularExpression) != nil else { return nil }
+        if type == settledType { return PushPayload(type: type, id: 0, ids: settledIds(userInfo["ids"] as? String ?? userInfo["id"] as? String)) }   // item ids are words, not numbers
+        guard let id = int("id") else { return nil }
         return PushPayload(type: type, id: id, taskId: int("task_id"), approvalId: userInfo["approval_id"] as? String, scheduleId: int("schedule_id"))
+    }
+
+    /// The kind of a push that says waiting items stopped waiting (the server's push.py SETTLED): nothing is shown, notifications go.
+    public static let settledType = "settled"
+
+    /// The item ids of a settled push: comma-separated, each a plain id word, at most 10 (the same rules as Android PushData.settledIds).
+    public static func settledIds(_ raw: String?) -> [String] {
+        var seen = Set<String>()
+        let ids = (raw ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.range(of: "^[A-Za-z0-9_-]{1,64}$", options: .regularExpression) != nil && seen.insert($0).inserted }
+        return Array(ids.prefix(10))
     }
 
     /// Where a tapped push opens: the same place the local notification of that kind opens (NotifyRules.target); a follow-up's

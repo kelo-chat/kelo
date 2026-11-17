@@ -64,6 +64,7 @@ def test_other_names_are_not_openai(value):
 
 
 def test_an_openai_main_model_is_refused_before_any_run(tmp_path, monkeypatch):
+    monkeypatch.delenv("CI", raising=False)   # run_live reads os.environ when no environ is given; CI runners set CI=true
     home = home_with_profile(tmp_path, provider="openai", model="gpt-4o")
     fake = FakeRunner()
     monkeypatch.setattr(live, "scenario_runner", lambda: fake)
@@ -73,6 +74,7 @@ def test_an_openai_main_model_is_refused_before_any_run(tmp_path, monkeypatch):
 
 
 def test_an_openai_fallback_is_refused(tmp_path, monkeypatch):
+    monkeypatch.delenv("CI", raising=False)
     home = home_with_profile(tmp_path, provider="anthropic", model="claude-sonnet-4", fallback_provider="openai", fallback_model="gpt-5")
     monkeypatch.setattr(live, "scenario_runner", lambda: FakeRunner())
     lines = []
@@ -103,6 +105,7 @@ def test_ci_and_a_missing_yes_stop_the_run(tmp_path, monkeypatch):
 
 
 def test_the_cli_refuses_without_yes(tmp_path, monkeypatch):
+    monkeypatch.delenv("CI", raising=False)
     home = home_with_profile(tmp_path, provider="anthropic", model="claude-sonnet-4")
     monkeypatch.setattr(live, "scenario_runner", lambda: FakeRunner())
     lines = []
@@ -132,3 +135,46 @@ def test_select_and_estimate():
     assert live.estimate(live.select(scenarios, None)) == 2 * live.REQUESTS_PER_TURN
     with pytest.raises(live.LiveRefused):
         live.select(scenarios, "b")
+
+
+def test_a_live_run_never_moves_or_deletes_keys_in_the_shared_key_container(tmp_path, monkeypatch):
+    """The copy of the database can be older than the instance: while the run is on, the two start-up jobs that write to the key
+    container (move provider keys in, sync connector keys / delete entries) are switched off, and they are back afterwards."""
+    from assistant import cred_keyring, keyring_client
+
+    home = home_with_profile(tmp_path, provider="anthropic", model="claude-sonnet-4")
+    seen = {}
+
+    class Spy(FakeRunner):
+        def run_live(self, sc, workdir, base):
+            seen["sync"], seen["move"] = cred_keyring.sync, keyring_client.move_keys
+            return super().run_live(sc, workdir, base)
+
+    before = cred_keyring.sync, keyring_client.move_keys
+    monkeypatch.setattr(live, "scenario_runner", lambda: Spy())
+    live.run_live(env_file(tmp_path, home), name=None, yes=True, out=lambda s: None, environ={}, results_home=tmp_path / "r")
+    assert seen["sync"] is not before[0] and seen["move"] is not before[1]
+    assert (cred_keyring.sync, keyring_client.move_keys) == before
+
+
+def test_the_scenario_starts_in_an_empty_conversation(tmp_path, monkeypatch):
+    """The copy holds the owner's real chat, tasks and jobs; a scenario that reads them as its own past (old tool calls, an open
+    shop job) is not a fresh test. The copy's conversation is cleared first; the profile stays."""
+    import sqlite3
+
+    home = home_with_profile(tmp_path, provider="anthropic", model="claude-sonnet-4")
+    store = Store(home / "assistant.db", KEY)
+    store.add_message("user", "an old chat line")
+    seen = {}
+
+    class Spy(FakeRunner):
+        def run_live(self, sc, workdir, base):
+            db = sqlite3.connect(workdir / "app.db")
+            seen["messages"] = db.execute("SELECT count(*) FROM messages").fetchone()[0]
+            db.close()
+            return super().run_live(sc, workdir, base)
+
+    monkeypatch.setattr(live, "scenario_runner", lambda: Spy())
+    live.run_live(env_file(tmp_path, home), name=None, yes=True, out=lambda s: None, environ={}, results_home=tmp_path / "r")
+    assert seen["messages"] == 0
+    assert Store(home / "assistant.db", KEY).messages()   # the source database was not touched

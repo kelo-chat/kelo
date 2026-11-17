@@ -1,0 +1,54 @@
+<div class="doc">
+  <header class="doc-hero">
+    <div class="wrap doc-hero-in">
+      <div class="doc-hero-copy">
+        <p class="kicker"><span class="num">/download</span>내려받기</p>
+        <h1>Kelo 내려받기</h1>
+        <p class="lead">휴대폰이나 컴퓨터용 Kelo 앱을 받고, 내 Kelo 서버에 연결하세요.</p>
+      </div>
+      <div class="doc-hero-art" aria-hidden="true">{{svg:working}}</div>
+    </div>
+  </header>
+
+  <div class="wrap doc-grid">
+    <article class="prose">
+      <p>앱은 무료예요. 모든 앱은 직접 설치한 Kelo 서버에 연결해 써요. <a href="{{href:install}}">설치 안내</a>를 따라 서버를 만든 뒤 QR 코드로 연결하세요.</p>
+      <div class="dl-list">
+      <article class="dl-card">
+        <img class="ic" src="{{asset:logo-android.svg}}" width="62" height="36" alt="" loading="lazy" decoding="async">
+        <div class="dl-body"><h3>Android</h3>
+        <a class="btn btn--secondary dl-btn" href="{{href:tester}}">Google Play 비공개 테스트</a>
+        <p class="dl-meta">테스터로 신청하시면 Play 스토어에서 참여할 수 있는 링크를 보내 드려요.</p>
+        {{dl:android}}
+        <p class="dl-note">받은 APK를 열고, 물으면 이 출처의 앱 설치를 허용하세요. Android 8.0 이상.</p>
+        </div>
+      </article>
+      <article class="dl-card">
+        <img class="ic ic-ink" src="{{asset:logo-apple.svg}}" width="30" height="36" alt="" loading="lazy" decoding="async">
+        <div class="dl-body"><h3>iPhone</h3>
+        <a class="btn btn--secondary dl-btn" href="https://apps.apple.com/kr/app/kelo-ai/id6832422201">App Store</a>
+        <a class="btn btn--secondary dl-btn" href="https://testflight.apple.com/join/p2gqKkNu">TestFlight 베타 참여하기</a>
+        <p class="dl-note">베타는 Apple의 무료 TestFlight 앱이 있어야 해요. iPhone에서 링크를 열어 TestFlight를 설치한 뒤 초대를 수락하세요.</p>
+        </div>
+      </article>
+      <article class="dl-card">
+        <img class="ic" src="{{asset:logo-windows.svg}}" width="36" height="36" alt="" loading="lazy" decoding="async">
+        <div class="dl-body"><h3>Windows</h3>
+        <a class="btn btn--secondary dl-btn" href="https://apps.microsoft.com/detail/9P54HX2TX361?hl=ko-kr&amp;gl=KR">Microsoft Store</a>
+        {{dl:windows}}
+        {{dl:windows-msi}}
+        <p class="dl-note">이 파일들은 아직 서명 전이에요. 파란 “Windows의 PC 보호” 창이 뜨면 <strong>추가 정보 → 실행</strong>을 누르세요. Windows 11에서 스마트 앱 컨트롤이 켜져 있으면 설치 .exe는 지금 막혀요. 그때는 Microsoft Store에서 설치하세요. Windows 10, 11.</p>
+        </div>
+      </article>
+      <article class="dl-card">
+        <img class="ic ic-ink" src="{{asset:logo-apple.svg}}" width="30" height="36" alt="" loading="lazy" decoding="async">
+        <div class="dl-body"><h3>macOS</h3>
+        {{dl:mac}}
+        <p class="dl-note">Apple 공증을 받아 바로 열려요. Apple 실리콘용.</p>
+        </div>
+      </article>
+      </div>
+      <p class="muted">빌드마다 버전, 크기, SHA-256은 <a href="/download/latest.json">/download/latest.json</a>에 있어요.</p>
+    </article>
+  </div>
+</div>

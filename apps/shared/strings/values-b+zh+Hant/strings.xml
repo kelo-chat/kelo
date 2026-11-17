@@ -823,6 +823,22 @@
     <string name="agent_perm_rules_empty">目前沒有。在核准卡片上選擇「在這個網站一律允許」，就會出現在這裡。</string>
     <string name="agent_perm_history">過去的核准</string>
     <string name="agent_perm_history_empty">還沒有詢問過。</string>
+    <string name="approval_edit_button">修改</string>
+    <string name="approval_edit_title">要傳送的內容</string>
+    <string name="approval_edit_save">儲存</string>
+    <string name="approval_edited_note">你修改了要傳送的內容</string>
+    <string name="approval_edit_empty">請輸入要傳送的內容。</string>
+    <string name="approval_edit_too_long">太長了，請縮短。</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">過往核准</string>
+    <string name="approval_history_empty">還沒有核准過任何內容。</string>
+    <string name="approval_history_error">無法載入過往核准。</string>
+    <string name="approval_history_where">傳送至</string>
+    <string name="approval_history_when">時間</string>
+    <string name="approval_history_answered">回覆方式</string>
+    <string name="approval_via_app">在應用程式中</string>
+    <string name="approval_via_notification">透過通知</string>
+    <string name="approval_via_messenger">在通訊軟體中</string>
     <string name="agent_perm_asked">%1$s 詢問</string>
     <string name="approval_remember_site">在此網站不再詢問</string>
     <string name="approval_remember_scope">適用於 %1$s 及其所有子位址</string>
@@ -932,6 +948,7 @@
     <string name="live_forward">下一頁</string>
     <string name="live_reload">重新載入</string>
     <string name="live_page_not_responding">頁面未回應</string>
+    <string name="live_touch_missed">這次觸碰沒有傳到頁面</string>
     <string name="live_type_hint">要在頁面上輸入的文字</string>
     <string name="live_type_send">輸入</string>
     <string name="live_type_hide">隱藏文字</string>
@@ -1100,6 +1117,8 @@
     <string name="offer_reason_later">稍後</string>
     <string name="offer_busy">正在撰寫其他回覆。完成後請再按一次</string>
     <string name="offer_failed">無法開始</string>
+    <string name="offer_steps_show_all">顯示全部 %1$d 個步驟</string>
+    <string name="offer_steps_fewer">收合步驟</string>
     <string name="work_upcoming">即將進行</string>
     <string name="work_upcoming_unscheduled">未設定時間</string>
     <string name="work_past">先前</string>
@@ -1128,6 +1147,7 @@
     <string name="work_kind_browser">瀏覽器工作</string>
     <string name="work_kind_research">研究</string>
     <string name="work_kind_general">一般工作</string>
+    <string name="work_kind_phone">手機任務</string>
     <string name="work_job_title">背景工作</string>
     <string name="work_job_line">%1$s · 背景</string>
     <string name="work_task_in_background">背景執行中</string>
@@ -1422,6 +1442,7 @@
     <string name="handover_verify_title">%1$s 要求確認登入</string>
     <string name="handover_verify_body">請在手機上核准這次登入，或打開即時畫面輸入驗證碼。完成後 Kelo 會繼續。</string>
     <string name="handover_verify_open">打開即時畫面</string>
+    <string name="handover_device_open">開啟手機螢幕</string>
     <string name="handover_verify_done">已登入 — Kelo 正在繼續</string>
     <string name="handover_verify_approve_body">請在手機通知中核准這次登入。核准後 Kelo 會繼續。</string>
     <string name="handover_verify_approved">我已核准</string>

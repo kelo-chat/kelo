@@ -5,7 +5,10 @@ the hosts a key may be sent to, where it goes in the request, and the request th
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from .i18n import N_, t
@@ -207,26 +210,26 @@ GOOGLE = KeyPreset(
     fields=(Field("key", N_("Service account key (JSON)")),), mint="google")
 GOOGLE_CONNECTORS = ("google_calendar", "google_docs", "google_drive", "google_forms", "google_sheets", "google_slides")
 
-# The agent's own browser does the work; a login, when the site needs one, is kept in the vault and typed by the server.
-BROWSER: dict[str, str] = {
-    "agoda": "https://www.agoda.com", "canva": "https://www.canva.com", "expedia": "https://www.expedia.com", "opentable": "https://www.opentable.com",
-    "instacart": "https://www.instacart.com", "facebook_cli": "https://www.facebook.com", "instagram": "https://www.instagram.com", "threads": "https://www.threads.com",
-    "messenger_read": "https://www.messenger.com", "box": "https://app.box.com", "quickbooks": "https://qbo.intuit.com", "spotify": "https://open.spotify.com",
-    "google_contacts": "https://contacts.google.com", "google_tasks": "https://calendar.google.com/calendar/u/0/r/tasks", "meta_catalog_search": "https://www.facebook.com/marketplace",
-    # used mostly in Korea (featured there: catalog.Service.regions)
-    "naver": "https://www.naver.com", "kakao": "https://map.kakao.com", "coupang": "https://www.coupang.com", "baemin": "https://www.baemin.com",
-    "toss": "https://toss.im", "daangn": "https://www.daangn.com",
-}
-BLOCKS_BOTS = {"facebook_cli", "instagram", "threads", "messenger_read", "google_contacts", "google_tasks", "meta_catalog_search", "coupang"}
+def _ways() -> dict[str, Any]:
+    """content/connector_ways.json (ASSISTANT_CONTENT_DIR in the container): which catalog services are reached through the agent's own
+    browser (a login, when the site needs one, is kept in the vault and typed by the server) and which cannot be used, with the reason."""
+    root = Path(os.environ.get("ASSISTANT_CONTENT_DIR") or Path(__file__).resolve().parents[2] / "content")
+    try:
+        return json.loads((root / "connector_ways.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
-UNSUPPORTED: dict[str, str] = {
-    "apple_healthkit": N_("iPhone health data can only be read by an app installed on the phone. A web app can't."),
-    "google_health_connect": N_("Health Connect data can only be read by an app installed on Android. A web app can't."),
-    "shop-pay": N_("This app doesn't pay for you with a saved card."),
-    "stripe-link": N_("This app doesn't pay for you with a saved card."),
-    "shopify-ucp": N_("This payment link is made only for another product, so this app can't use it."),
-    "philips_hue": N_("For safety, the agent is blocked from devices on your home network."),
+
+_REASONS = {
+    "phone_app_only_ios": N_("iPhone health data can only be read by an app installed on the phone. A web app can't."),
+    "phone_app_only_android": N_("Health Connect data can only be read by an app installed on Android. A web app can't."),
+    "no_saved_card_pay": N_("This app doesn't pay for you with a saved card."),
+    "other_product_only": N_("This payment link is made only for another product, so this app can't use it."),
+    "home_network": N_("For safety, the agent is blocked from devices on your home network."),
 }
+BROWSER: dict[str, str] = {k: str(v["url"]) for k, v in (_ways().get("browser") or {}).items()}
+BLOCKS_BOTS = {k for k, v in (_ways().get("browser") or {}).items() if v.get("blocks_bots")}
+UNSUPPORTED: dict[str, str] = {k: _REASONS[v] for k, v in (_ways().get("unsupported") or {}).items() if v in _REASONS}
 
 
 def browser_hint(cid: str) -> str:

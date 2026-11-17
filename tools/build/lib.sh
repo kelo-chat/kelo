@@ -64,8 +64,8 @@ make_temp() {
 }
 
 # source_commit PATH...: sets SOURCE_COMMIT (the full sha of HEAD; "" without git) and SOURCE_DIRTY (true when a tracked file under
-# PATH... (relative to the repository root) differs from HEAD, else false). The apps show the commit in My and link to it on GitHub
-# (shared SourceLink); a build from changed files says "modified" instead. Never fails.
+# PATH... (relative to the repository root) differs from HEAD, else false). The apps link to their release tag on GitHub (shared
+# SourceLink, docs/versioning.md), not to the commit; a build from changed files says "modified" instead. Never fails.
 source_commit() {
   SOURCE_COMMIT="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
   case "$SOURCE_COMMIT" in *[!0-9a-f]*|"") SOURCE_COMMIT="" ;; esac

@@ -15,6 +15,16 @@ struct LiveShown {
     let title: String
     /// The newest picture's secure flag (nil: the server did not say, e.g. the frame-by-frame path).
     var secure: Bool? = nil
+    /// The frame's number (what an input says the owner was looking at) and the protocol / focus flags of its header.
+    var seq: Int64 = 0
+    var liveV: Int = 0
+    var editing = false
+}
+
+/// The server's answer to the touch with this id (taps and long presses ask for one).
+struct TouchReply: Equatable {
+    let id: Int
+    let reply: InputReply
 }
 
 /// One tab's live view (Android agent/LiveClient.kt) on KeloCore's LiveSocket / liveFrame, driven by `LiveMachine`: the WebSocket
@@ -35,6 +45,17 @@ final class LiveModel {
     var isPageBusy: Bool { status.pageBusy || status.stale || tapBusy }
     /// A short note over the picture ("the browser couldn't do that").
     var notice: String?
+    /// The newest answer to a touch, for its mark (landed / did not reach the page).
+    private(set) var touchReply: TouchReply?
+    /// A text field has focus on the page and the server says so (live protocol 2): the soft keyboard comes up.
+    var editing: Bool { frame?.editing ?? false }
+    /// The tab's X screen over VNC (noVNC in a web view): tried first once the page is live and knows its size; the JPEG picture is the
+    /// fallback (busy, unavailable, no answer in 4 s, socket lost). Android shared agent/VncRelay.kt + LivePage.kt.
+    private(set) var vnc: VncState = .idle
+    private(set) var vncRelay: VncRelay?
+    /// The tab's address and title from a `meta` line while the frames are off; nil while the frame headers carry them.
+    private(set) var meta: LiveMeta?
+    var showsVnc: Bool { VncRules.showsVnc(vnc) }
 
     @ObservationIgnored private var machine = LiveMachine()
     @ObservationIgnored private var socket: LiveSocket?
@@ -45,8 +66,21 @@ final class LiveModel {
     @ObservationIgnored private var running = false
     @ObservationIgnored private var lastSeq: Int64 = 0
     @ObservationIgnored private var socketOpen = false
+    @ObservationIgnored private var viewReporter = ViewReporter()
+    @ObservationIgnored private var viewOffer: (w: Double, h: Double, scale: Double)?
+    @ObservationIgnored private var touchIds = 0
+    @ObservationIgnored private var awaiting: [Int] = []   // ids of touches sent over the WebSocket whose answer has not come
 
     @ObservationIgnored private let cost: NetworkCost
+    /// Whether the server should send JPEG frames over the live socket (false while the VNC screen shows)
+    @ObservationIgnored private var framesOn = true
+    /// The live area, once the page has measured it
+    @ObservationIgnored private var vncArea: VncViewSize?
+    /// The soft keyboard is up (it shortens the live area; that is not a size change for the VNC screen)
+    @ObservationIgnored private var keyboardUp = false
+    @ObservationIgnored private var reopenTask: Task<Void, Never>?
+    /// How the tab's VNC screen is made (replaced in tests)
+    @ObservationIgnored var makeRelay: (KeloApi, String) -> VncRelay = { VncRelay(api: $0, tabId: $1) }
 
     init(api: KeloApi, tabId: String, cost: NetworkCost = .shared) { self.api = api; self.tabId = tabId; self.cost = cost }
 
@@ -63,7 +97,10 @@ final class LiveModel {
     func start() {
         guard !running else { return }
         running = true
+        // a screen that closed or failed is replaced when the page comes back on screen, so it is tried again
+        if vnc != .idle { vncRelay?.close(); vncRelay = nil; vnc = .idle }
         run(machine.mode == .polling ? .poll() : machine.start())
+        connectVncIfWanted()
     }
 
     /// Off screen: the connection closes. `giveBack` also hands a held tab back to the agent.
@@ -76,6 +113,11 @@ final class LiveModel {
         pointer = nil
         socket?.close(); socket = nil
         socketOpen = false
+        awaiting = []
+        viewReporter.reset()
+        vncRelay?.close()
+        reopenTask?.cancel(); reopenTask = nil
+        framesOn = true
         if giveBack && status.youControl {
             status.youControl = false; status.controller = "agent"
             let api = api, id = tabId
@@ -103,6 +145,7 @@ final class LiveModel {
             if statusTask == nil { statusTask = Task { [weak self] in await self?.statusLoop() } }
         case .end(let reason):
             mode = .ended; end = reason
+            vncRelay?.close()
             socket?.close(); socket = nil; socketOpen = false
             statusTask?.cancel(); statusTask = nil
         }
@@ -128,21 +171,29 @@ final class LiveModel {
         do {
             for try await ev in s.connect(ticket: ticket.ticket, quality: quality) {
                 if Task.isCancelled { return }
-                if !opened { opened = true; socketOpen = true; machine.opened(); mode = .live }
+                if !opened {
+                    opened = true; socketOpen = true; machine.opened(); mode = .live
+                    if !framesOn { sendFrames(false) }
+                }
                 switch ev {
                 case .message(let m):
                     switch m {
                     case .status(let st):
                         status = st
                         if let p = st.pointer { pointer = p }
+                        flushView()
                     case .pointer(let p):
                         pointer = p
+                    case .meta(let m): meta = m
                     case .ended(let reason): run(machine.ended(reason)); return
-                    case .error(let code, _): serverError(code)
+                    case .inputReply(let r): answered(r)
+                    case .error(let code, let forType):
+                        if (forType == "tap" || forType == "long_press") && !awaiting.isEmpty { awaiting.removeFirst() }   // that touch gets no answer
+                        serverError(code)
                     default: break
                     }
                 case .frame(let h, let data):
-                    show(data, seq: h.seq, w: h.w, h: h.h, cssW: h.cssW, cssH: h.cssH, url: h.url, title: h.title, secure: h.secure)
+                    show(data, seq: h.seq, w: h.w, h: h.h, cssW: h.cssW, cssH: h.cssH, url: h.url, title: h.title, secure: h.secure, liveV: h.liveV, editing: h.editing)
                 }
             }
             socketOpen = false
@@ -169,6 +220,7 @@ final class LiveModel {
                     status.youControl = f.youControl
                     status.controller = f.controller.isEmpty ? "agent" : f.controller
                     show(f.jpeg, seq: f.seq, w: f.w, h: f.h, cssW: f.cssW, cssH: f.cssH, url: f.url, title: f.title)
+                    flushView()
                 } else {
                     code = 204
                 }
@@ -202,12 +254,16 @@ final class LiveModel {
     }
 
     private func show(_ data: Data, seq: Int64, w: Int, h: Int, cssW: Int = 0, cssH: Int = 0, url: String, title: String,
-                      secure: Bool? = nil) {
+                      secure: Bool? = nil, liveV: Int? = nil, editing: Bool = false) {
         guard let img = PlatformImage(data: data) else { return }
         if seq > 0 { lastSeq = max(lastSeq, seq) }
+        meta = nil   // a picture came: its header carries the address and title again
         let size = img.size
+        // the frame-by-frame path carries no header flags: keep what the WebSocket's newest frame said
         frame = LiveShown(image: img, w: w > 0 ? w : Int(size.width), h: h > 0 ? h : Int(size.height),
-                          cssW: cssW, cssH: cssH, url: url, title: title, secure: secure)
+                          cssW: cssW, cssH: cssH, url: url, title: title, secure: secure,
+                          seq: seq, liveV: liveV ?? frame?.liveV ?? 0, editing: editing)
+        flushView()
     }
 
     private func serverError(_ code: String) {
@@ -221,6 +277,63 @@ final class LiveModel {
         }
     }
 
+    // ---- the VNC screen
+
+    /// The live area (points and screen scale) as the page measured it. The first time it is known the VNC screen opens.
+    func reportVncArea(width: Double, height: Double, scale: Double) {
+        guard width >= 1, height >= 1 else { return }
+        vncArea = VncViewSize(widthPoints: width, heightPoints: height, scale: scale)
+        connectVncIfWanted()
+        scheduleVncReopen()
+    }
+
+    /// The soft keyboard opened or closed (iOS).
+    func setKeyboard(up: Bool) {
+        keyboardUp = up
+        scheduleVncReopen()
+    }
+
+    /// A rotation or split screen: the /vnc socket is opened again at the new size, `VncRules.resizeDebounceMs` after the area settles; the
+    /// last picture stays meanwhile. The keyboard only shortens the area: no reopening for that.
+    private func scheduleVncReopen() {
+        reopenTask?.cancel()
+        reopenTask = nil
+        guard running, showsVnc, let relay = vncRelay, let area = vncArea,
+              VncRules.needsReconnect(opened: relay.openedWith, now: area, keyboardUp: keyboardUp) else { return }
+        reopenTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(VncRules.resizeDebounceMs) * 1_000_000)
+            guard !Task.isCancelled, let self else { return }
+            await relay.reopen(area)
+        }
+    }
+
+    private func connectVncIfWanted() {
+        // the Android device has no X screen to show: its picture is the only view
+        guard running, !LiveKinds.isDevice(tabId), vncRelay == nil || vnc == .idle,
+              VncRules.shouldConnect(vnc, area: vncArea, liveEnded: mode == .ended), let area = vncArea else { return }
+        let relay = vncRelay ?? makeRelay(api, tabId)
+        vncRelay = relay
+        relay.onState = { [weak self] s in self?.vncChanged(s) }
+        relay.onOpened = { [weak self] _ in self?.scheduleVncReopen() }   // the area may have changed while the screen was being opened
+        Task { await relay.connect(area) }
+    }
+
+    private func vncChanged(_ s: VncState) {
+        vnc = s
+        setFrames(VncRules.framesOn(s))
+    }
+
+    /// JPEG frames over the live socket on or off (off while the VNC screen shows); control and input stay.
+    func setFrames(_ on: Bool) {
+        framesOn = on
+        if socketOpen && mode == .live { sendFrames(on) }
+    }
+
+    private func sendFrames(_ on: Bool) {
+        guard let s = socket else { return }
+        Task { try? await s.send(LiveMessages.frames(on: on)) }
+    }
+
     // ---- control and input
 
     enum ControlResult: Equatable { case ok, held, gone, failed(String) }
@@ -232,6 +345,7 @@ final class LiveModel {
             let a = try await api.browserControl(tabId, take: take)
             status.youControl = a.youControl
             status.controller = a.controller.isEmpty ? status.controller : a.controller
+            flushView()
             return .ok
         } catch let e as ApiError {
             switch e.status {
@@ -244,21 +358,61 @@ final class LiveModel {
         }
     }
 
-    /// One input event (tap, scroll, key, text, back…), in order.
-    func send(_ event: JSON) {
+    /// The live area's size in points and the screen scale. Goes to the server as `view` while controlling a tab, once the server speaks
+    /// live protocol 2: now, after a rotation, after the soft keyboard opened or closed, and when control starts.
+    func reportView(width: Double, height: Double, scale: Double) {
+        viewOffer = (width, height, scale)
+        flushView()
+    }
+
+    private func flushView() {
+        guard let o = viewOffer else { return }
+        if !status.youControl { viewReporter.reset(); return }
+        if let m = viewReporter.offer(widthPoints: o.w, heightPoints: o.h, scale: o.scale, liveV: frame?.liveV ?? 0, controlling: true) {
+            sendRaw(m)
+        }
+    }
+
+    /// One touch (tap, long press) that will be answered: stamped with the frame the finger went down on, and its answer shows in
+    /// `touchReply` under the returned id.
+    @discardableResult
+    func sendTouch(_ event: JSON, frameSeq: Int64?) -> Int {
+        touchIds += 1
+        let id = touchIds
+        send(LiveMessages.acked(event), frameSeq: frameSeq, touchId: id)
+        return id
+    }
+
+    private func answered(_ r: InputReply) {
+        guard !awaiting.isEmpty else { return }
+        touchReply = TouchReply(id: awaiting.removeFirst(), reply: r)
+        if r.busy || !r.ok { notifyTapBusy() }
+    }
+
+    /// One input event (tap, scroll, key, text, back…), in order, carrying the number of the frame the owner was looking at
+    /// (`frameSeq`, the newest shown when not given) to a server that speaks live protocol 2.
+    func send(_ event: JSON, frameSeq: Int64? = nil, touchId: Int? = nil) {
+        sendRaw(LiveMessages.stamp(event, frameSeq: frameSeq ?? frame?.seq, liveV: frame?.liveV ?? 0), touchId: touchId)
+    }
+
+    private func sendRaw(_ event: JSON, touchId: Int? = nil) {
         let previous = inputChain
         let s = socketOpen && mode == .live ? socket : nil
         let api = api, id = tabId
         inputChain = Task { [weak self] in
             await previous?.value
             if let s {
-                do { try await s.send(event); return } catch {}
+                do {
+                    if let touchId { self?.awaiting.append(touchId) }
+                    try await s.send(event)
+                    return
+                } catch { if touchId != nil { self?.awaiting.removeAll { $0 == touchId } } }
             }
             do {
                 let resp = try await api.browserInput(id, event)
-                if resp.objectValue?["busy"]?.boolValue == true {
-                    self?.notifyTapBusy()
-                }
+                let reply = InputReply(json: resp)
+                if let touchId { self?.touchReply = TouchReply(id: touchId, reply: reply) }
+                if reply.busy { self?.notifyTapBusy() }
             } catch let e as ApiError {
                 switch e.status {
                 case 409: self?.serverError("not_controller")

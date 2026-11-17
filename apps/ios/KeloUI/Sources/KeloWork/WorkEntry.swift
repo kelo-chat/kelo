@@ -21,27 +21,38 @@ enum WorkPage: Hashable {
 /// day and time) and 지난 일 (finished work by day, with a filter). Reads `app.router.workStart` once. Entry point the shell uses.
 public struct WorkScreen: View {
     let onClose: () -> Void
+    /// Sitting in the second pane beside the chat: a title, no back arrow (there is nothing to go back to).
+    let docked: Bool
     @Environment(AppModel.self) private var app
     private var activity: AgentActivityModel { app.activity }
     @Environment(\.scenePhase) private var phase
     @State private var model: WorkModel
     @State private var offersModel: OffersModel
+    @State private var followModel: FollowModel
     @State private var path: [WorkPage] = []
     @State private var jumpTo: String?
     @Environment(\.kelo) private var c
 
     /// `api`: where the signed-in API comes from (the app model's, read when a call is made).
-    public init(api: @escaping () -> KeloApi?, onClose: @escaping () -> Void) {
+    public init(api: @escaping () -> KeloApi?, docked: Bool = false, onClose: @escaping () -> Void) {
         self.onClose = onClose
+        self.docked = docked
         _model = State(initialValue: WorkModel(api: api))
         _offersModel = State(initialValue: OffersModel(api: api))
+        _followModel = State(initialValue: FollowModel(api: api))
     }
 
     public var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
-                BackTitleBar(L(R.string.tab_work), onBack: onClose)
-                WorkTimeline(model: model, offersModel: offersModel, jumpTo: $jumpTo, push: { path.append($0) }, onOpenLive: openLive, onOpenChat: openChat,
+                if docked {
+                    Text(L(R.string.tab_work)).font(KeloFont.titleLarge).foregroundStyle(c.ink).lineLimit(2)
+                        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading).padding(.horizontal, 16)
+                        .accessibilityAddTraits(.isHeader)
+                } else {
+                    BackTitleBar(L(R.string.tab_work), onBack: onClose)
+                }
+                WorkTimeline(model: model, offersModel: offersModel, followModel: followModel, jumpTo: $jumpTo, push: { path.append($0) }, onOpenLive: openLive, onOpenChat: openChat,
                              onOpenEntry: { id in onClose(); app.router.open(.entry(id)) })
             }
             .background(c.bg.ignoresSafeArea())
@@ -54,10 +65,10 @@ public struct WorkScreen: View {
         .onAppear {
             useStart()
             model.loadWork()
-            Task { await offersModel.load() }
+            Task { await offersModel.load(); await followModel.load() }
         }
         .onChange(of: app.router.workStart) { _, _ in useStart() }
-        .onChange(of: phase) { _, p in if p == .active { model.loadWork(); Task { await offersModel.load() } } }
+        .onChange(of: phase) { _, p in if p == .active { model.loadWork(); Task { await offersModel.load(); await followModel.load() } } }
         // new things show up while the page is open: often while the agent works, now and then otherwise
         .task(id: busy) {
             while !Task.isCancelled {
@@ -65,6 +76,7 @@ public struct WorkScreen: View {
                 if Task.isCancelled { break }
                 model.loadWork()
                 await offersModel.load()
+                await followModel.load()
             }
         }
         .onChange(of: activity.workChanged) { _, _ in model.refreshLive() }
@@ -121,6 +133,7 @@ struct WorkTimeline: View {
 
     let model: WorkModel
     let offersModel: OffersModel
+    let followModel: FollowModel
     @Binding var jumpTo: String?
     let push: (WorkPage) -> Void
     let onOpenLive: (String) -> Void
@@ -129,6 +142,7 @@ struct WorkTimeline: View {
     @Environment(AppModel.self) private var app
     @State private var filter: PastFilter = .all
     @State private var showPaused = false
+    @State private var openFollow: String?
     @Environment(\.kelo) private var c
 
     /// 답이 필요해요: approvals, secure entries waiting for a value, stopped jobs and follow-ups on hold.
@@ -176,6 +190,15 @@ struct WorkTimeline: View {
         }
     }
 
+    /// Kelo가 챙기는 일: hidden while nothing is followed.
+    @ViewBuilder
+    private var followSection: some View {
+        SectionTitle(L(R.string.follow_section_title), count: followModel.items.count).id("sec:follow")
+        ForEach(followModel.items, id: \.key) { item in
+            FollowItemRow(item: item) { openFollow = item.key }
+        }
+    }
+
     var body: some View {
         let today = LocalDay.today()
         let taskItems = model.tasks.data?.items ?? []
@@ -199,6 +222,7 @@ struct WorkTimeline: View {
                     shortcuts
                     if !asks.isEmpty { asksSection(asks) }
                     if !offersModel.items.isEmpty { offersSection }
+                    if !followModel.items.isEmpty { followSection }
                     // ---- 지금 하는 일
                     SectionTitle(L(R.string.work_now), count: now.count).id(WorkTimeline.now)
                     if model.tasks.data == nil && model.tasks.failed {
@@ -273,7 +297,17 @@ struct WorkTimeline: View {
                 .padding(.leading, 12).padding(.trailing, 16).padding(.top, 4).padding(.bottom, 32)
                 .frame(maxWidth: 720).frame(maxWidth: .infinity)
             }
-            .refreshable { model.loadWork() }
+            .refreshable { model.loadWork(); await followModel.load() }
+            .keloSheet(isPresented: Binding(get: { openFollow != nil }, set: { if !$0 { openFollow = nil } }), detents: [.large]) {
+                if let item = followModel.items.first(where: { $0.key == openFollow }) {
+                    FollowPlanSheet(
+                        item: item,
+                        onClose: { openFollow = nil },
+                        onStop: { let k = item.key; Task { await followModel.stop(k) } },
+                        onReplan: { let k = item.key; Task { await followModel.replan(k) } }
+                    )
+                }
+            }
             .onChange(of: jumpTo) { _, key in jump(proxy, key) }
             .onChange(of: jumpReady) { _, _ in jump(proxy, jumpTo) }
             .onAppear { jump(proxy, jumpTo) }

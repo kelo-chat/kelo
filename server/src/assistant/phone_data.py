@@ -47,6 +47,8 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from .agent import Tool
+from .code_shelf import SHELF
+from .data_trail import USES_PARAM, note_item
 from .i18n import t
 from .phone_calendar import _parse, _zone, ago
 from .store import Store
@@ -482,12 +484,11 @@ def phone_tools(data: PhoneData, timezone_name: Callable[[], str | None]) -> lis
         found = exact or found
         if not found:
             return "", "", f"no contact called {to!r} with a phone number" + ("" if data.snapshots("contacts") else " (contacts are not shared)")
-        if len(found) > 1 or len(found[0]["phones"]) > 1 and not any("mobile" in p["label"].lower() or "휴대" in p["label"] for p in found[0]["phones"]):
+        if len(found) > 1 or len(found[0]["phones"]) > 1:   # which number is the mobile one is not guessed from its label: ask
             options = "; ".join(f"{c['name']}: " + ", ".join(p["number"] for p in c["phones"]) for c in found[:6])
             return "", "", f"{to!r} matches more than one number — ask which one, then give the number: {options}"
         c = found[0]
-        p = next((p for p in c["phones"] if "mobile" in p["label"].lower() or "휴대" in p["label"]), c["phones"][0])
-        return p["number"], c["name"], ""
+        return c["phones"][0]["number"], c["name"], ""
 
     # ---- contacts
     async def phone_contacts(args: dict[str, Any]) -> str:
@@ -514,6 +515,7 @@ def phone_tools(data: PhoneData, timezone_name: Callable[[], str | None]) -> lis
             parts += [work] if work else []
             parts += [f"birthday {c['birthday'].lstrip('-')}"] if c["birthday"] else []
             lines.append(f"- {c['name'] or '(no name)'}: " + " · ".join(parts))
+            note_item(f"contact:{c['name'] or parts[0] if parts else ''}", title=c["name"] or "", text=lines[-1])
         return "\n".join(lines)
 
     # ---- messages
@@ -550,10 +552,12 @@ def phone_tools(data: PhoneData, timezone_name: Callable[[], str | None]) -> lis
             return "\n".join(lines)
         lines.append(f"Messages ({getattr(tz(), 'key', 'UTC')}), newest first, {len(hits)}"
                      f"{' (first ' + str(limit) + ' shown)' if len(hits) > limit else ''}:")
-        for m in hits[:limit]:
+        shown_all = await SHELF.mask_many([(str(m["body"] or ""), str(m["address"] or ""), "") for m in hits[:limit]], channel="text")   # code_shelf.py
+        for m, shown in zip(hits[:limit], shown_all):
             who = _who(m["name"] or name_for(m["address"]), m["address"])
             arrow = f"to {who}" if m["box"] == "sent" else f"from {who}"
-            lines.append(f"- {fmt(m['at'])} {arrow}{' (MMS)' if m['kind'] == 'mms' else ''}: {m['body'] or '(no text)'}")
+            lines.append(f"- {fmt(m['at'])} {arrow}{' (MMS)' if m['kind'] == 'mms' else ''}: {shown or '(no text)'}")
+            note_item(f"message:{m['at']}:{m['address']}", party=str(m["address"] or ""), title=str(who), text=str(m["body"] or ""))
         return "\n".join(lines)
 
     def check_send(args: dict[str, Any]) -> str | None:
@@ -690,8 +694,12 @@ def phone_tools(data: PhoneData, timezone_name: Callable[[], str | None]) -> lis
             lines.append(f"No notifications in the last {hours} hours match." if (app or q) else f"No notifications in the last {hours} hours.")
             return "\n".join(lines)
         lines.append(f"Notifications ({getattr(tz(), 'key', 'UTC')}), newest first, {len(hits)}{' (first ' + str(limit) + ' shown)' if len(hits) > limit else ''}:")
-        for n in hits[:limit]:
-            lines.append(f"- {fmt(n['at'])} [{n['app'] or n['package']}] {n['title']}{': ' + n['text'] if n['text'] else ''}")
+        part = hits[:limit]
+        both = await SHELF.mask_many([*((str(n["text"] or ""), str(n["app"] or n["package"]), str(n["title"])) for n in part),
+                                      *((str(n["title"]), str(n["app"] or n["package"]), "") for n in part)], channel="text")   # one judge request
+        shown, titles = both[:len(part)], both[len(part):]
+        for n, title, text in zip(hits[:limit], titles, shown):
+            lines.append(f"- {fmt(n['at'])} [{n['app'] or n['package']}] {title}{': ' + text if n['text'] else ''}")
         return "\n".join(lines)
 
     # ---- health
@@ -744,16 +752,18 @@ def phone_tools(data: PhoneData, timezone_name: Callable[[], str | None]) -> lis
         Tool("phone_contacts", "Search the contacts on the user's phone.",
              {"type": "object", "properties": {"query": {"type": "string", "description": "part of a name, number, email or company; empty: all"},
                                                "limit": {"type": "integer"}}},
-             phone_contacts, read_only=True, untrusted=True, source="phone"),
-        Tool("phone_messages", "Read text messages on the user's phone, newest first (default: the last 30 days).",
+             phone_contacts, read_only=True, untrusted=True, source="phone", trail="contacts"),
+        Tool("phone_messages", "Read text messages on the user's phone, newest first (default: the last 30 days). One-time codes appear as "
+             "'[verification code #N]': you never see the code; a browser sign-in uses it with find_login_code code_ref N.",
              {"type": "object", "properties": {"query": {"type": "string"},
                                                "with": {"type": "string", "description": "only the conversation with this number or contact"},
                                                "days": {"type": "integer"},
                                                "box": {"type": "string", "enum": ["inbox", "sent"]}, "limit": {"type": "integer"}}},
-             phone_messages, read_only=True, untrusted=True, source="phone"),
+             phone_messages, read_only=True, untrusted=True, source="phone", trail="messages"),
         Tool("phone_send_text", "Send a text message from the user's phone; the user approves the recipient and the whole text first.",
              {"type": "object", "properties": {"to": {"type": "string", "description": who_desc},
-                                               "text": {"type": "string", "description": "the complete message, in the user's voice"}},
+                                               "text": {"type": "string", "description": "the complete message, in the user's voice"},
+                                               "uses": USES_PARAM},
               "required": ["to", "text"]},
              phone_send_text, requires_approval=True, describe=describe_send, validate=check_send, approval_extra=send_lines,
              declined="The user declined to send this text. Do not send it or retry; ask what they would like instead."),
@@ -766,16 +776,16 @@ def phone_tools(data: PhoneData, timezone_name: Callable[[], str | None]) -> lis
         Tool("phone_call_log", "Read the call history on the user's phone, newest first (default: the last 7 days, up to 30).",
              {"type": "object", "properties": {"days": {"type": "integer"}, "query": {"type": "string"},
                                                "type": {"type": "string", "enum": list(CALL_TYPES)}, "limit": {"type": "integer"}}},
-             phone_call_log, read_only=True, untrusted=True, source="phone"),
+             phone_call_log, read_only=True, untrusted=True, source="phone", trail="device"),
         Tool("phone_notifications", "Search the notifications the user's phone received, newest first (default: the last 24 hours, up to 7 "
              "days).",
              {"type": "object", "properties": {"hours": {"type": "integer"}, "app": {"type": "string"}, "query": {"type": "string"},
                                                "limit": {"type": "integer"}}},
-             phone_notifications, read_only=True, untrusted=True, source="phone"),
+             phone_notifications, read_only=True, untrusted=True, source="phone", trail="device"),
         Tool("phone_health", "Read daily health summaries the user chose to share from their phone (default: the last 7 days).",
              {"type": "object", "properties": {"start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
                                                "metrics": {"type": "array", "items": {"type": "string", "enum": list(HEALTH_TYPES)}}}},
-             phone_health, read_only=True, untrusted=True, source="phone"),
+             phone_health, read_only=True, untrusted=True, source="phone", trail="device"),
     ]
 
 

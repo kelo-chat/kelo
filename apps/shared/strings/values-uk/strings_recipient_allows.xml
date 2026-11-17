@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">пошта</string>
+    <string name="trail_kind_file">файл</string>
+    <string name="trail_kind_memory">пам\'ять</string>
+    <string name="trail_kind_contacts">контакти</string>
+    <string name="trail_kind_calendar">календар</string>
+    <string name="trail_kind_photos">фото</string>
+    <string name="trail_kind_messages">повідомлення</string>
+    <string name="trail_kind_notes">нотатки</string>
+    <string name="trail_kind_vault">збережені логіни</string>
+    <string name="trail_kind_profile">профіль</string>
+    <string name="trail_kind_web">вебсторінка</string>
+    <string name="trail_kind_channel">чат</string>
+    <string name="trail_kind_device">дані пристрою</string>
+    <string name="trail_kind_connector">підключений сервіс</string>
+    <string name="trail_kind_other">дані</string>
+    <string name="trail_recipient_link">публічне посилання</string>
+    <string name="trail_goes_to">Кому: %2$s — %1$s</string>
+    <string name="trail_allow_once">Дозволити один раз</string>
+    <string name="trail_allow_always">Завжди для цього одержувача</string>
+    <string name="recipient_approval_always">Дозволено. Для цього одержувача більше не питатиму.</string>
+    <string name="recipient_allows_title">Завжди дозволені одержувачі</string>
+    <string name="recipient_allows_empty">Поки що немає. Коли на картці оберете «Завжди для цього одержувача», він з\'явиться тут.</string>
+    <string name="recipient_allow_since">Дозволено %1$s</string>
+    <string name="recipient_allow_remove">Видалити %1$s</string>
+    <string name="recipient_allow_remove_confirm">Питати знову перед надсиланням (%1$s) одержувачу %2$s?</string>
+    <string name="recipient_allow_removed">Спитаю знову перед надсиланням туди.</string>
+</resources>

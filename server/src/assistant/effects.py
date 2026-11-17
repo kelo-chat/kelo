@@ -17,9 +17,10 @@ targets, and with what message text. Three things read it:
   action     the id the owner's per-action setting uses: the tool's name, an MCP server's own tool name, or one of the two virtual
              ids for a deleting variant of a tool ("email_trash", "connector_delete")
 
-How the kind of an MCP tool is found (mcp_kind): the server's own annotations when it gave them (readOnlyHint -> read, destructiveHint
--> delete), else the verbs in the tool's name: send / post / reply / share / invite / publish / message -> send; delete / remove / trash /
-destroy / purge -> delete; get / list / search / read / find / query / fetch -> read; anything else -> change.
+How the kind of an MCP tool is found (mcp_kind), never by the words in its name: the server's annotations (destructiveHint -> delete,
+readOnlyHint true -> read), then the connector's manifest (connector_rules.json, the per-method declaration, which can only tighten),
+then ONE cached judge call per tool (tool_judge.ToolJudge, strict JSON kind + own_check, run by ensure_judged before the call is
+checked). Unknown (no judge, an error) = a change that keeps its own card. keeps_own_checks reads the same sources.
 `docs/connector-permissions.md` is generated from the tables below by tools/connector_effects.py (a test keeps it in step).
 """
 
@@ -28,7 +29,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import urlsplit
 
+from . import connector_rules
 from .i18n import N_
 
 KINDS = ("read", "change", "send", "delete")
@@ -42,6 +45,7 @@ class Effect:
     targets: list[str] = field(default_factory=list)
     text: str = ""
     action: str = ""
+    policy: str = ""   # "" | "standing" | "task" | "fresh": how strongly connector_rules.json protects this method ("" = no declaration)
 
 
 @dataclass(frozen=True)
@@ -115,23 +119,13 @@ TOOL_FAMILY: dict[str, tuple[str, tuple[str, ...]]] = {
 # the tool behind an action id (virtual ids point at the tool that does it)
 ACTION_TOOL = {"email_trash": "email_update", "connector_delete": "connector_send"}
 
-OUTLOOK_NAMES = ("outlook", "microsoft-api", "hotmail", "microsoft 365", "office365", "live")
-
-VERBS = (("send", ("send", "post", "reply", "share", "invite", "publish", "message")),
-         ("delete", ("delete", "remove", "trash", "destroy", "purge")),
-         ("read", ("get", "list", "search", "read", "find", "query", "fetch")))
-VERB_KIND = {w: kind for kind, words in VERBS for w in words}
 
 # A call that keeps its own checks whatever the owner set: payments, purchases, card and PIN steps, sign-ups and account steps.
 OWN_CHECK_TOOLS = frozenset({
-    "confirm_purchase", "purchase_result", "begin_order", "end_order", "browser_fill_card", "browser_fill_shipping", "request_card", "request_payment_pin",
+    "confirm_purchase", "checkout_review", "checkout_submit", "order_preapprove", "purchase_result", "begin_order", "end_order", "browser_fill_card", "browser_fill_shipping", "request_card", "request_payment_pin",
     "browser_type_payment_pin", "browser_pin_keypad_card", "payment_step_wait", "browser_login", "android_login", "request_login", "add_service_key",
     "save_found_secret", "request_task_permission", "task_allow",
 })
-OWN_CHECK_WORDS = re.compile(r"pay(?:ment|out)?|purchase|checkout|check[ -]?out|\bbuy\b|order|charge|refund|transfer|withdraw|"
-                             r"card|\bpin\b|sign[ -]?up|register|create[ _-]?(?:an[ _-]?)?account|delete[ _-]?account|password|"
-                             r"결제|구매|주문|송금|이체|카드|비밀번호|가입|계정", re.I)
-
 # MCP tools as the servers described them: {connector name: {tool: annotations}}; filled from mcp_list_tools (remember_mcp_tools)
 _MCP_TOOLS: dict[str, dict[str, dict[str, Any]]] = {}
 
@@ -140,14 +134,24 @@ on_mcp_tools: Any = None   # (name, rows): told when a server's tool list was re
 
 
 def remember_mcp_tools(name: str, rows: Any, *, persist: bool = True) -> None:
-    """The tools a connected MCP server listed (the `tools` of a tools/list answer): their annotations decide the kind of a call."""
+    """The tools a connected MCP server listed (the `tools` of a tools/list answer): their annotations and description decide the kind
+    of a call. The description is kept inside the tool's annotation dict (key "description") so it is saved with them."""
     if not isinstance(rows, list):
         return
-    got = {str(r["name"]): (r.get("annotations") if isinstance(r.get("annotations"), dict) else {})
-           for r in rows if isinstance(r, dict) and isinstance(r.get("name"), str) and r["name"]}
+    got: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        if isinstance(r, dict) and isinstance(r.get("name"), str) and r["name"]:
+            ann = dict(r["annotations"]) if isinstance(r.get("annotations"), dict) else {}
+            if isinstance(r.get("description"), str) and r["description"].strip():
+                ann["description"] = r["description"].strip()[:500]
+            got[r["name"]] = ann
     if got:
         key = (name or "").strip().casefold()
-        _MCP_TOOLS[key] = {**_MCP_TOOLS.get(key, {}), **got}
+        before = _MCP_TOOLS.get(key, {})
+        for tool, ann in got.items():   # a changed description is judged again
+            if tool in before and before[tool].get("description") != ann.get("description"):
+                _JUDGED.pop((key, tool), None)
+        _MCP_TOOLS[key] = {**before, **got}
         if persist and on_mcp_tools is not None:
             on_mcp_tools(key, rows)
 
@@ -158,26 +162,72 @@ def known_mcp_tools(name: str) -> dict[str, dict[str, Any]]:
 
 def forget_mcp_tools() -> None:
     _MCP_TOOLS.clear()
+    _JUDGED.clear()
 
 
-def mcp_kind(sub: str, annotations: dict[str, Any] | None = None) -> str:
-    """read | change | send | delete for one MCP tool: its annotations when given, else the first verb in its name."""
+KIND_RANK = {"read": 0, "change": 1, "send": 2, "delete": 3}   # how strict a kind is: a higher one always asks first
+
+# What the tool judge said about a generic call: {(connector name, MCP tool or "METHOD /path"): ToolVerdict}; filled by ensure_judged
+_JUDGED: dict[tuple[str, str], Any] = {}
+JUDGE: Any = None   # tool_judge.ToolJudge (server.py wires it with the main model); None = no model: unknown calls keep a card
+
+
+def judged(cname: str, sub: str) -> Any:
+    return _JUDGED.get(((cname or "").strip().casefold(), sub))
+
+
+def remember_judged(cname: str, sub: str, kind: str, own_check: bool) -> None:
+    """Put a verdict in the cache (the judge's answer; a test's setup)."""
+    from .tool_judge import ToolVerdict
+    _JUDGED[((cname or "").strip().casefold(), sub)] = ToolVerdict(kind, own_check)
+
+
+def mcp_kind(sub: str, annotations: dict[str, Any] | None = None, cname: str = "") -> str:
+    """read | change | send | delete for one MCP tool, never from the words of its name: the server's destructiveHint -> delete, its
+    readOnlyHint true -> read, else what the tool judge said (ensure_judged), else change (unknown asks). readOnlyHint false is never a
+    read."""
     ann = annotations or {}
-    if ann.get("readOnlyHint") is True:
-        return "read"
     if ann.get("destructiveHint") is True:
         return "delete"
-    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", str(sub or "")).lower()
-    for w in re.split(r"[^a-z0-9]+", words):
-        if w in VERB_KIND:
-            return VERB_KIND[w]
-    return "change"
+    if ann.get("readOnlyHint") is True:
+        return "read"
+    v = judged(cname, sub)
+    kind = v.kind if v is not None else "change"
+    if ann.get("readOnlyHint") is False and KIND_RANK[kind] < KIND_RANK["change"]:
+        return "change"
+    return kind
 
 
-def mcp_by_name_only(sub: str, annotations: dict[str, Any] | None = None) -> bool:
-    """Whether mcp_kind had to fall back to the verbs in the tool's name (the server gave no usable hint)."""
-    ann = annotations or {}
-    return not (ann.get("readOnlyHint") is True or ann.get("destructiveHint") is True)
+async def ensure_judged(tool: Any, args: dict[str, Any]) -> None:
+    """Before a generic call is checked: ask the tool judge once about an MCP tool or a REST request that no annotation, manifest or
+    earlier answer covers. A failed request leaves nothing cached (the call then keeps its card)."""
+    name = getattr(tool, "name", tool)
+    if JUDGE is None or name not in ("mcp_call_tool", "connector_send"):
+        return
+    cname = str(args.get("name") or "").strip().casefold()
+    conn = credential_connector(cname)
+    if name == "mcp_call_tool":
+        sub = str(args.get("tool") or "").strip()
+        ann = known_mcp_tools(cname).get(sub) or {}
+        if not sub or ann.get("readOnlyHint") is True or judged(cname, sub) is not None or connector_rules.rules().for_tool(conn, sub, args) is not None:
+            return
+        schema = args.get("arguments")
+        context = {"connector": cname, "tool": sub, "description": str(ann.get("description") or ""),
+                   "argument_names": sorted(schema)[:20] if isinstance(schema, dict) else [],
+                   "server_hints": {k: v for k, v in ann.items() if k in ("readOnlyHint", "destructiveHint", "openWorldHint", "idempotentHint")}}
+        key = f"mcp|{cname}|{sub}|{context['description']}"
+    else:
+        method = str(args.get("method") or "POST").upper()
+        path = urlsplit(str(args.get("url") or "")).path or "/"
+        sub = f"{method} {path}"
+        if method == "GET" or judged(cname, sub) is not None or connector_rules.rules().for_request(conn, method, str(args.get("url") or ""), args) is not None:
+            return
+        body = args.get("json")
+        context = {"connector": cname, "http_method": method, "path": path, "body_keys": sorted(body)[:20] if isinstance(body, dict) else []}
+        key = f"rest|{cname}|{sub}"
+    verdict = await JUDGE.judge(key, context)
+    if verdict is not None:
+        _JUDGED[(cname, sub)] = verdict
 
 
 # ---------------------------------------------------------------------------------------------------------- ids and targets
@@ -200,7 +250,7 @@ def norm_target(value: str) -> str:
     low = text.casefold()
     if not low:
         return ""
-    if low in ("calendar", "phone calendar", "google calendar", "캘린더", "달력", "일정"):
+    if low == "calendar":   # the calendar effects name their target so (one place for every calendar connector)
         return "calendar"
     if low.startswith("site:"):
         return "site:" + site_target(low[5:])
@@ -221,6 +271,7 @@ def mail_connector(account: str, accounts: Any = None) -> str | None:
     `accounts`: a function giving the connected mailboxes ([{"name", "provider", "address"}]), to answer for an empty account when
     exactly one is connected and for an address."""
     from .mail import PROVIDERS
+    from .microsoft_mail import ACCOUNT as GRAPH_ACCOUNT
     a = (account or "").strip().casefold()
     boxes: list[dict[str, Any]] = []
     if accounts is not None:
@@ -236,7 +287,7 @@ def mail_connector(account: str, accounts: Any = None) -> str | None:
             a = str(hit.get("name") or "").casefold()
     if not a:
         return None
-    if a in OUTLOOK_NAMES:
+    if a == GRAPH_ACCOUNT:   # the Graph account's own name
         return "outlook_mail"
     if a.startswith("nest-"):
         return a[5:] or None
@@ -293,7 +344,7 @@ ACCOUNT_COMMITS = frozenset({"security"})   # a browser step that changes an acc
 
 def keeps_own_checks(tool: Any, args: dict[str, Any], commit: str = "") -> bool:
     """A step the owner's "allow" never switches off: payments, purchases, card and PIN steps, sign-ups and account steps (their own
-    checks always run). For the generic tools (MCP, a key service) the words of the call decide."""
+    checks always run). For the generic tools (MCP, a key service) the manifest, the server's hints or the tool judge decide; unknown asks."""
     name = getattr(tool, "name", tool)
     if name in OWN_CHECK_TOOLS or commit in ACCOUNT_COMMITS:
         return True
@@ -301,10 +352,27 @@ def keeps_own_checks(tool: Any, args: dict[str, Any], commit: str = "") -> bool:
         from . import forbidden
         if (hit := forbidden.classify(name, args)) is not None and hit.rule.mode == "ask":
             return True   # a call Kelo always asks about (forbidden.py)
-    if name in ("mcp_call_tool", "connector_send"):
-        sub = str(args.get("tool") or "") if name == "mcp_call_tool" else str(args.get("url") or "")
-        return bool(OWN_CHECK_WORDS.search(re.sub(r"[_./-]+", " ", sub)))
+    if name == "mcp_call_tool":
+        cname, sub = str(args.get("name") or "").strip().casefold(), str(args.get("tool") or "").strip()
+        if connector_rules.rules().for_tool(credential_connector(cname), sub, args) is not None:
+            return False   # declared in the connector's manifest: its policy decides
+        if (known_mcp_tools(cname).get(sub) or {}).get("readOnlyHint") is True:
+            return False   # a read cannot pay (the server's own hint)
+        v = judged(cname, sub)
+        return True if v is None else v.own_check   # unknown: a card
+    if name == "connector_send":
+        cname, method, url = str(args.get("name") or "").strip().casefold(), str(args.get("method") or "POST").upper(), str(args.get("url") or "")
+        if connector_rules.rules().for_request(credential_connector(cname), method, url, args) is not None:
+            return False
+        v = judged(cname, f"{method} {urlsplit(url).path or '/'}")
+        return True if v is None else v.own_check
     return False
+
+
+def _bound(cname: str, recipients: list[str]) -> list[str]:
+    """The targets of a call whose connector declares where its recipient is: one per recipient, or the connector whole (which a
+    recipient-bound permission does not cover: fail closed) when the call names none."""
+    return [connector_rules.bound_target(cname, r) for r in recipients] or [f"connector:{cname}"]
 
 
 # ---------------------------------------------------------------------------------------------------------- the classifier
@@ -319,9 +387,11 @@ def effect_of(tool: Any, args: dict[str, Any] | None, *, site: str = "", commit:
         box = str(args.get("account") or "").strip().casefold().removeprefix("mail-") or "mail"
         return Effect("read", mail_connector(str(args.get("account") or ""), accounts), [f"connector:{box}"], "", name)
     if name == "email_send":
-        to = [*(args.get("to") or []), *(args.get("cc") or [])] if isinstance(args.get("to") or [], list) else [args.get("to")]
+        from .prepared_send import recipients_of   # every To, Cc and Bcc address the message will really reach
+        # the designed (HTML) version is part of the text: the approval digest, done-once and the outside-text rule all read it
+        text = "\n\n".join(x for x in (str(args.get("body") or ""), str(args.get("html") or "")) if x)
         return Effect("send", mail_connector(str(args.get("account") or ""), accounts),
-                      [norm_target(str(x)) for x in to if str(x or "").strip()], str(args.get("body") or ""), name)
+                      [norm_target(x) for x in recipients_of(args)], text, name)
     if name == "email_update":
         box = str(args.get("account") or "").strip().casefold().removeprefix("mail-") or "mail"
         trash = str(args.get("action") or "").strip().lower() == "trash"
@@ -351,21 +421,33 @@ def effect_of(tool: Any, args: dict[str, Any] | None, *, site: str = "", commit:
         method = str(args.get("method") or ("GET" if name != "connector_send" else "POST")).upper()
         if name != "connector_send" or method == "GET":
             return Effect("read", conn, [f"connector:{cname}"], "", name)
-        if method == "DELETE":
-            return Effect("delete", conn, [f"connector:{cname}"], "", "connector_delete")
         body = args.get("json")
-        return Effect("send" if preset_sends(conn) else "change", conn, [f"connector:{cname}"],
-                      body if isinstance(body, str) else "", name)
+        kind = "delete" if method == "DELETE" else "send" if preset_sends(conn) else "change"
+        if (said := judged(cname, f"{method} {urlsplit(str(args.get('url') or '')).path or '/'}")) is not None:
+            kind = connector_rules.strictest(kind, said.kind)   # the tool judge can only tighten
+        found = connector_rules.rules().for_request(conn, method, str(args.get("url") or ""), args)
+        if found is not None:   # declared in data: its kind can only be stricter, its recipients bind the call
+            kind = connector_rules.strictest(kind, found.method.kind)
+            return Effect(kind, conn, _bound(cname, found.recipients), body if isinstance(body, str) else "",
+                          "connector_delete" if kind == "delete" else name, found.policy)
+        return Effect(kind, conn, [f"connector:{cname}"], "" if kind == "delete" else body if isinstance(body, str) else "",
+                      "connector_delete" if kind == "delete" else name)
     if name in ("mcp_list_tools", "mcp_call_tool"):
         cname = str(args.get("name") or "").strip().casefold()
         conn = credential_connector(cname, aliases)
         if name == "mcp_list_tools":
             return Effect("read", conn, [f"connector:{cname}"], "", name)
         sub = str(args.get("tool") or "").strip()
-        kind = mcp_kind(sub, known_mcp_tools(cname).get(sub))
+        kind = mcp_kind(sub, known_mcp_tools(cname).get(sub), cname)
         extra = args.get("arguments")
-        return Effect(kind, conn, [f"connector:{cname}/{sub.casefold()}"],
-                      " ".join(str(v) for v in extra.values() if isinstance(v, str)) if kind == "send" and isinstance(extra, dict) else "", sub)
+        found = connector_rules.rules().for_tool(conn, sub, args)
+        policy = ""
+        targets = [f"connector:{cname}/{sub.casefold()}"]
+        if found is not None:
+            kind, policy = connector_rules.strictest(kind, found.method.kind), found.policy
+            targets = _bound(cname, found.recipients) if found.recipients else targets
+        return Effect(kind, conn, targets,
+                      " ".join(str(v) for v in extra.values() if isinstance(v, str)) if kind == "send" and isinstance(extra, dict) else "", sub, policy)
     if name in ("package_entries", "package_entry_add", "package_entry_delete"):
         pkg = str(args.get("package") or "").strip().casefold()
         kind = {"package_entries": "read", "package_entry_add": "change", "package_entry_delete": "delete"}[name]

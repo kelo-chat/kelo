@@ -22,7 +22,6 @@ from .cli import ensure_keyring_token, ensure_secret_key, ensure_token, read_env
 
 NAME = re.compile(r"^[a-z][a-z0-9-]{1,30}[a-z0-9]$")
 SERVER_PORT_BASE = 8100
-VIEWER_PORT_BASE = 6100
 MAIN = "main"
 IMAGE = "assistant:local"
 WORKROOM_IMAGE = "assistant-workroom:local"   # the work room (runs code); also shared by every copy
@@ -46,7 +45,6 @@ class Instance:
     name: str
     env: Path
     server_port: int
-    viewer_port: int
     browser: bool
     public_url: str
     connect_mode: str = ""       # how phones reach it from outside: kelo, tailscale, funnel, cloudflare, direct, proxy or "" (not set up)
@@ -115,21 +113,32 @@ class Instances:
         env = self.env_path(name)
         if name == MAIN and not env.is_file():
             raise InstanceError("no .env here: run `assistant setup` in the folder that holds compose.yml first")
-        return Instance(name, env, int(read_env(env, "SERVER_PORT") or 8080), int(read_env(env, "VIEWER_PORT") or 6080),
+        return Instance(name, env, int(read_env(env, "SERVER_PORT") or 8080),
                         name == MAIN or "BROWSER_CDP_HOST=" not in env.read_text().splitlines(),
                         read_env(env, "ASSISTANT_PUBLIC_URL"), read_env(env, "CONNECT_MODE"), read_env(env, "CONNECT_URL"))
+
+    runtime_name = "Docker"    # what a message calls the program that runs the parts (an Apple container copy list says its own)
+
+    def host_capacity(self) -> tuple[int | None, int | None]:
+        """(CPUs, RAM bytes) that the runtime can hand out on this computer; None when it does not say."""
+        r = self.run(["docker", "info", "--format", "{{.NCPU}} {{.MemTotal}}"], capture_output=True, text=True)
+        try:
+            cpus, mem = (r.stdout or "").split()[:2]
+            return int(cpus), int(mem)
+        except (ValueError, TypeError):
+            return None, None
 
     def token(self, name: str | None = None) -> str:
         return read_env(self.load(name).env, "ASSISTANT_TOKEN")
 
-    def _next_port(self, base: int, avoid: frozenset[int] = frozenset()) -> int:
-        used: set[int] = set(avoid)
+    def _next_port(self, base: int) -> int:
+        used: set[int] = set()
         for n in [MAIN, *self.names()]:
             try:
                 inst = self.load(n)
             except InstanceError:
                 continue
-            used |= {inst.server_port, inst.viewer_port}
+            used.add(inst.server_port)
         port = base
         while port in used or not self.port_free(port):
             port += 1
@@ -146,11 +155,10 @@ class Instances:
         if domain is not None and not DOMAIN.match(domain):
             raise InstanceError(f"{domain!r} is not a domain name (example: example.com)")
         server_port = self._next_port(SERVER_PORT_BASE)
-        viewer_port = self._next_port(VIEWER_PORT_BASE, frozenset({server_port}))   # never the same number as the server port
         env = self.env_path(name)
         env.parent.mkdir(parents=True, exist_ok=True)
         env.parent.chmod(0o700)
-        write_env(env, {"ENV_FILE": f"instances/{name}/env", "SERVER_PORT": str(server_port), "VIEWER_PORT": str(viewer_port),
+        write_env(env, {"ENV_FILE": f"instances/{name}/env", "SERVER_PORT": str(server_port),
                         "BROWSER": read_env(self.root / ".env", "BROWSER") or "chromium"})
         if not browser:
             write_env(env, {"BROWSER_CDP_HOST": ""})

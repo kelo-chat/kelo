@@ -238,3 +238,14 @@ needs it disclosed).
     show "update your server" (same screen as a too-old server). There is no plaintext mode for a server that never offered KE2E,
     so nobody on the path can make a new app fall back by hiding the header or the info endpoint. (Replaces the "never offered"
     exception in item 5.)
+
+## 6. Signed payment approvals (2026-11-16)
+
+A payment approval (Allow on a card that spends money) carries an ES256 signature from a key that lives only in the phone's
+keystore (Android Keystore, Secure Enclave), used behind fingerprint or face. Details and endpoints: `docs/approval-signing.md`.
+Shared vectors for the apps: `docs/security/approval-sign-vectors.json` (exact message bytes and valid signatures, plus 2 bad cases).
+
+- Each phone stores its approval public key with `POST /api/devices/approval-key`; replacing it needs the old key's signature.
+- A payment answered with Allow needs `sig` from the calling device's key; a missing or bad signature is 403 and the card stays open.
+- A device without a key (older app) is allowed as before, unless the owner sets `require_signed_payments` (default off).
+- Denials and non-payment approvals are unchanged.

@@ -7,6 +7,7 @@ public struct OfferCard: View {
     public let problem: OfferStart?
     public let onStart: () -> Void
     public let onDismiss: (OfferReason) -> Void
+    @State private var expanded = false
     @Environment(\.kelo) private var c
 
     public init(
@@ -29,6 +30,35 @@ public struct OfferCard: View {
                 .font(KeloFont.bodyLarge)
                 .foregroundStyle(c.ink)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if !offer.request.isEmpty {
+                Text("\u{201C}\(offer.request)\u{201D}")
+                    .font(KeloFont.body)
+                    .foregroundStyle(c.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !offer.steps.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(OfferSteps.visible(offer.steps, expanded: expanded).enumerated()), id: \.offset) { i, step in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text("\(i + 1).").font(KeloFont.small).foregroundStyle(c.muted)
+                            Text(step).font(KeloFont.small).foregroundStyle(c.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    if OfferSteps.collapsible(offer.steps) {
+                        Button { expanded.toggle() } label: {
+                            Text(expanded ? L(R.string.offer_steps_fewer) : L(R.string.offer_steps_show_all, offer.steps.count))
+                                .font(KeloFont.small).foregroundStyle(c.accent)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
 
             if !offer.needs.isEmpty {
                 Text(L(R.string.offer_needs, offer.needs.joined(separator: ", ")))

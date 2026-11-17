@@ -31,13 +31,12 @@ private struct MyStack: View {
     }
 
     var body: some View {
-        NavigationStack(path: app.router.path(.my)) {
+        ListDetailStack<MyRoute, _, _>(tab: .my, root: {
             MyHome(api: api, app: app)
                 .keloShellInsets()
-                .navigationDestination(for: MyRoute.self) { route in
-                    MyDestination(route: route, api: api, vault: vault, phoneData: phoneData)
-                }
-        }
+        }, detail: { route in
+            MyDestination(route: route, api: api, vault: vault, phoneData: phoneData)
+        })
         // a login or key removed from the vault may leave data: asked here, since the item's page has closed by then
         .forgetAsk(Bindable(vault).forget, api: api)
     }
@@ -71,6 +70,7 @@ struct MyDestination: View {
             case .permissions: PermissionsPage(api: api, phoneData: phoneData)
             case .records: RecordsPage(api: api)
             case .notify: NotifyPage(api: api)
+            case .proactiveHeld: ProactiveHeldPage(api: api)
             case .model: ModelPage(api: api, cache: app.cache, prefs: app.prefs, host: app)
             case .modelCli(let p): ModelPage(api: api, cache: app.cache, prefs: app.prefs, host: app, cliProvider: p)
             case .usage: UsagePage(api: api)
@@ -89,6 +89,8 @@ struct MyDestination: View {
             case .nest: NestPage(api: api)
             case .document(let name): FileViewer(api: api, name: name)
             case .privacy: PrivacyPage()
+            case .forget: ForgetPage(api: api)
+            case .data: DataPage(api: api, onHistoryCleared: { app.historyWasCleared(); NotificationCheck.clearShown() })
             case .language: LanguagePage()
             case .wallet: WalletPage(api: api)
             case .operator: OperatorPage(api: api)
@@ -120,6 +122,7 @@ struct MyHome: View {
     @State private var notices: NoticesModel
     @State private var confirmClear = false
     @State private var confirmLogout = false
+    @State private var changeAddress = false
     @State private var notifyOn = NotifyPermission.cached()
 
     init(api: KeloApi, app: AppModel) {
@@ -206,6 +209,7 @@ struct MyHome: View {
                     MenuRow(.faceID, L(R.string.keyguard_title), value: app.locked ? L(R.string.keyguard_locked_title) : nil,
                             valueColor: app.locked ? c.danger : nil) { nav.push(.keyguard(code: false)) }
                     MenuRow(.lock, L(R.string.my_privacy_title)) { nav.push(.privacy) }
+                    MenuRow(.trash, L(R.string.forget_title)) { nav.push(.forget) }
 
                     SectionLabel(L(R.string.my_section_data))
                     MenuRow(.file, L(R.string.docs_title), value: o.documents.map { L(R.string.count_items, $0) }) { nav.push(.documents) }
@@ -214,6 +218,7 @@ struct MyHome: View {
                     MenuRow(.spark, L(R.string.nest_title), value: L(R.string.nest_made_here)) { nav.push(.nest) }
                     MenuRow(.clock, L(R.string.actions_title)) { nav.push(.actions) }
                     MenuRow(.book, L(R.string.my_records_title), value: L(R.string.my_records_value)) { nav.push(.records) }
+                    MenuRow(.file, L(R.string.data_title)) { nav.push(.data) }
                     MenuRow(.trash, L(R.string.my_clear_chat), danger: true) { confirmClear = true }
 
                     SectionLabel(L(R.string.my_section_app))
@@ -221,6 +226,12 @@ struct MyHome: View {
                             valueColor: notifyOn ? nil : c.danger) { nav.push(.notify) }
                     MenuRow(.globe, L(R.string.my_language),
                             value: Languages.override(app.languageChoice).map(Languages.name) ?? L(R.string.language_system)) { nav.push(.language) }
+
+                    // the server this app talks to, one row (owner 2026-11-17: two rows opened the same sheet); tapping it changes the
+                    // address, only on a phone that holds the server's key (an older server has none)
+                    if let base = app.session?.serverUrl {
+                        MenuRow(.cloud, L(R.string.server_address_row), value: base) { if app.canMoveServer { changeAddress = true } }
+                    }
 
                     if o.operator == true {
                         SectionLabel(L(R.string.my_section_operator))
@@ -261,6 +272,12 @@ struct MyHome: View {
         .task { notifyOn = await NotifyPermission.isOn() }
         .onAppear { handleRequest() }
         .onChange(of: app.router.myPageRequest) { _, _ in handleRequest() }
+        .keloSheet(isPresented: $changeAddress) {
+            ServerAddressSheet(current: app.session?.serverUrl ?? "", move: { await app.moveServer(to: $0) }, onMoved: {
+                changeAddress = false
+                model.say(L(R.string.server_address_done))
+            }, onClose: { changeAddress = false })
+        }
         .keloConfirm(L(R.string.my_logout_confirm), isPresented: $confirmLogout, yes: L(R.string.my_logout)) { model.signOut() }
         .keloConfirm(L(R.string.my_clear_chat_confirm), isPresented: $confirmClear, yes: L(R.string.delete)) { model.clearChat() }
         .toast(model.notice, clear: model.clearNotice)
@@ -296,9 +313,9 @@ enum AppInfo {
     static var source: AppSource { AppSource.current }
 }
 
-/// The version lines at the bottom of My: "App version: 0.9.3 (26111011) · a1b2c3d" and the server's version. The short hash is the commit
-/// the app was built from: a link to that source on GitHub for a clean build (it opens in the browser), plain "a1b2c3d (modified)" for a
-/// build from changed files, nothing when the build did not say (`SourceLink`, docs/versioning.md).
+/// The version lines at the bottom of My: "App version: 0.9.3 (26111011) · ios-1.0.2" and "Server version: 0.10.2 · release-0.10.2". The
+/// tag is the public release of the source: a link to it on GitHub for a clean build (it opens in the browser), plain "ios-1.0.2 (modified)"
+/// for a build from changed files (`SourceLink`, docs/versioning.md). The server's tag links to kelo-chat/kelo-server.
 struct AppVersionLines: View {
     let appVersion: String
     let serverVersion: String?
@@ -306,7 +323,7 @@ struct AppVersionLines: View {
     @Environment(\.kelo) private var c
 
     var body: some View {
-        let label = SourceLink.label(commit: source.commit, dirty: source.dirty, modified: L(R.string.my_source_modified))
+        let label = SourceLink.label(tag: source.tag, dirty: source.dirty, modified: L(R.string.my_source_modified))
         VStack(alignment: .leading, spacing: 0) {
             if !appVersion.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
@@ -321,7 +338,16 @@ struct AppVersionLines: View {
                     }
                 }
             }
-            if let server = serverVersion, !server.isEmpty { Text(L(R.string.my_server_version, server)).foregroundStyle(c.muted) }
+            if let server = serverVersion, !server.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    let tag = SourceLink.serverTag(version: server)
+                    Text(L(R.string.my_server_version, server) + (tag == nil ? "" : " · ")).foregroundStyle(c.muted)
+                    if let tag, let url = SourceLink.serverUrl(version: server).flatMap(URL.init(string:)) {
+                        Link(tag, destination: url).foregroundStyle(c.accent).underline()
+                            .accessibilityLabel(L(R.string.my_source_link))
+                    }
+                }
+            }
         }
         .font(KeloFont.small).padding(.leading, 16).padding(.top, 12)
         .fixedSize(horizontal: false, vertical: true)

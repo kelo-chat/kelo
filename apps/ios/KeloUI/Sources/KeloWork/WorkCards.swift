@@ -192,6 +192,27 @@ struct HumanCheckBody: View {
     @Environment(\.kelo) private var c
 
     var body: some View {
+        if a.isDevice { deviceBody } else { personBody }
+    }
+
+    /// The phone's screen handed to the owner: the server's own question and reason, "Open the phone screen" and "Done" (no skip).
+    private var deviceBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                KeloIconView(.user, size: 22, tint: c.accent)
+                Text(a.event.ask.isEmpty ? L(R.string.handover_device_open) : a.event.ask).font(KeloFont.titleMedium).foregroundStyle(c.ink)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let detail = a.event.detail, !detail.isEmpty {
+                Text(detail).font(KeloFont.body).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            if a.askedAt > 0 { Text(L(R.string.agent_perm_asked, WorkText.rel(a.askedAt))).font(KeloFont.label).foregroundStyle(c.muted) }
+            PrimaryButton(L(R.string.handover_device_open), enabled: !working) { Haptics.tick(); app.router.openLive(a.tab, takeControl: true) }
+            SecondaryButton(L(R.string.live_done), enabled: !working, fill: true, action: onDone)
+        }
+    }
+
+    @ViewBuilder private var personBody: some View {
         let site = a.site.isEmpty ? L(R.string.handover_this_site) : a.site
         // a sign-in's second step (approve on the phone, or a code) is not a person check: its own words, the server's step first
         let verify = a.isVerification
@@ -248,13 +269,24 @@ struct PendingApprovalCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !a.site.isEmpty && a.event.lines.isEmpty { MutedText(a.site, small: true) }
-                ApprovalFactsView(lines: a.event.lines, detail: a.event.detail)
+                if let pre = a.event.preapproval { PreapprovalFacts(pre) } else if let e = a.event.editable {
+                    ApprovalFactsView(lines: ApprovalEditRules.withoutMessage(a.event.lines, e), detail: nil)
+                    EditableMessageBlock(approvalId: a.id, editable: e, enabled: !working)
+                } else { ApprovalFactsView(lines: a.event.lines, detail: a.event.detail) }
+                if !a.event.forgetPlan.isEmpty { ForgetPlanList(planId: a.event.forgetPlan) }
                 if !a.event.items.isEmpty { ApprovalItems(items: a.event.items) }
                 if a.askedAt > 0 { Text(L(R.string.agent_perm_asked, WorkText.rel(a.askedAt))).font(KeloFont.label).foregroundStyle(c.muted) }
                 if a.canRemember && !a.site.isEmpty && a.event.payment == nil {
                     RememberSiteCheck(site: a.site, checked: rememberSite, enabled: !working) { rememberSite = $0 }
                 }
-                answerButtons(allow: { Haptics.success(); model.answer(a, approve: true, remember: rememberSite) })
+                if RecipientRules.canAlways(a.event.offers) {
+                    RecipientChoices(offers: a.event.offers, enabled: !working) { answer in
+                        if answer.approve { Haptics.success() } else { Haptics.warning() }
+                        model.answer(a, approve: answer.approve, rememberRecipient: answer == .always)
+                    }
+                } else {
+                    answerButtons(allow: { Haptics.success(); model.answer(a, approve: true, remember: rememberSite) })
+                }
                 if a.canRememberSchedule {
                     LinkButton(L(R.string.approval_keep_for_schedule)) { Haptics.success(); model.answer(a, approve: true, rememberSchedule: true) }
                 }
@@ -304,7 +336,15 @@ struct ApprovalFactsView: View {
         if !lines.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, l in
-                    FactRow(label: l.label, value: TokenText.fit(l.value, max: 28))
+                    if l.block {
+                        // the whole text (a schedule's task): the label above, every word below, scrolling past 8 lines
+                        VStack(alignment: .leading, spacing: 2) {
+                            if !l.label.isEmpty { Text(l.label).font(KeloFont.small).foregroundStyle(c.muted) }
+                            CappedScrollText(l.value)
+                        }
+                    } else {
+                        FactRow(label: l.label, value: TokenText.fit(l.value, max: 28))
+                    }
                 }
             }
             .padding(.horizontal, 12).padding(.vertical, 8)

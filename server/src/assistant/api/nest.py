@@ -29,7 +29,7 @@ def router(ctx: AppContext) -> APIRouter:
     async def nest_agent(shown: str, note: str, request: Request) -> str:
         """A button in a package's screen asked Kelo for something: a normal chat reply. The chat shows what was tapped; the package's
         words go to Kelo only as fenced third-party text (nest.py), so its rules and approvals apply as for any message."""
-        provider, model, ctx, observe, started = prepare_talk(TalkIn(text=shown[:200]), request)
+        provider, model, ctx, observe, started = await prepare_talk(TalkIn(text=shown[:200]), request)
         ctx.tail[-1]["content"] = f"{ctx.tail[-1]['content']}\n\n{note}"
         return started(start_turn(provider, model, ctx.tail, observe, context=ctx)).id
 
@@ -59,7 +59,7 @@ def router(ctx: AppContext) -> APIRouter:
                 f"and whether it should be public (suggest public), with quick replies. "
                 f"When they confirm, call nest_share_github. When it worked, give them the repository link and say anyone can "
                 f"install it by pasting that link in My -> Nest -> Install from link in their Kelo app.")
-        provider, model, talk_ctx, observe, started = prepare_talk(TalkIn(text=text), request)
+        provider, model, talk_ctx, observe, started = await prepare_talk(TalkIn(text=text), request)
         return started(start_turn(provider, model, talk_ctx.tail, observe, context=talk_ctx)).id
 
     nest.start_share_turn = nest_share_turn

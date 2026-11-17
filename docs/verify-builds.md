@@ -89,7 +89,7 @@ The SHA-256 of what the run built is in the run's summary and in `SHA256SUMS`. C
 |---|---|
 | Version from the build time | The version is `apps/android/kelo/version.properties` (`build=N` gives versionCode N and versionName `0.1.N`), committed with each release. `tools/build/android.sh version` writes it. The minutes-since-late-2026 rule only picks the number when the owner starts a release |
 | JDK, Gradle, Android SDK, build tools | `apps/android/reproducible/Dockerfile`: the JDK image by digest, Android platform 36 (r02) and build tools 36.0.0 by SHA-256; Gradle 8.11.1 by `distributionSha256Sum` in the wrapper properties |
-| The commit shown in My | The version line in My ends with the short commit the app was built from, a link to that commit on GitHub (`BuildConfig.SOURCE_COMMIT`, `ReleaseInfo.SOURCE_COMMIT`, Info.plist `KeloSourceCommit`). `tools/build/android-reproducible.sh` passes the sha of the commit it builds into the container (`-PkeloCommit`), so the same commit gives the same bytes; a `--worktree` build says "modified" and has no link. The sha is part of the file: an APK that `tools/build/android.sh` made at another commit differs from the tag's build in exactly that value |
+| The release shown in My | The version line in My ends with the release tag of the app (`android-0.10.2`, `ios-<version>`, `windows-<package number>`, `macos-<package number>`), a link to that tag in `kelo-chat/kelo` on GitHub (the server line links to `release-<version>` in `kelo-chat/kelo-server`). The link goes by tag because the public repository has one commit per release: the private development commit would give a 404 there. No commit is built into the app (`BuildConfig.SOURCE_COMMIT` and `ReleaseInfo.SOURCE_COMMIT` are empty unless `-PkeloCommit=<sha>` is passed, for people who want it), so a build of the public tag gives the same bytes as the release whatever commit it sits at. A `--worktree` build (or one from changed files) says "modified" and has no link. On the iPhone the Info.plist key `KeloSourceCommit` is empty by default, and `KELO_EMBED_COMMIT=1` embeds the commit. |
 | Libraries and plugins | Exact versions in `gradle/libs.versions.toml`; every downloaded file is checked against `gradle/verification-metadata.xml` (strict in the reproducible build) |
 | R8's timing note in the bundle | R8 writes how long it ran and with how many threads into `BUNDLE-METADATA/com.android.tools/r8.json`; the two numbers are blanked (`app/build.gradle.kts`). This was the only difference between two builds of the bundle |
 | Encrypted dependency list in the APK | `dependenciesInfo { includeInApk = false }`: a file APK has no per-build random value (the bundle keeps its plain list) |
@@ -132,8 +132,8 @@ The script:
 
 1. unpacks the MSI (`msiexec /a`, an administrative install into a temporary folder: no administrator rights needed) or the MSIX
    (as a zip), or reads the installed folder directly;
-2. reads from the app's own jar (`chat.kelo.desktop.core.ReleaseInfo`) which commit of the source it was built from, and its
-   package number (or takes `-Commit <40 hex>`);
+2. reads the package number from the app's own jar (`chat.kelo.desktop.core.ReleaseInfo`); the app does not name a commit, so you give
+   `-Commit <40 hex>` (the commit of the tag `windows-<package number>` in the public repository) or `-Source <dir>`;
 3. downloads that commit's source from GitHub (a zip: no `git` is needed on the PC) or takes an unpacked folder with `-Source <dir>`;
 4. builds it unsigned with the pinned Java runtime (`apps/desktop/packaging/windows/JDK`: Eclipse Temurin, downloaded once into
    `%LOCALAPPDATA%\kelo\jdk` and checked against its SHA-256) and the fixed zip entry times of `tools/build/zipclock`:

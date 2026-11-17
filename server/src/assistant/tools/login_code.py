@@ -1,14 +1,14 @@
 """Finding a one-time sign-in code that a site just mailed to the user (find_login_code, and the automatic path).
 
 `find_code(messages, site)` looks through recent messages (newest first) for one that comes from that site (the sender's address or name,
-or the subject, names it) and pulls the code out of it: digits or a short code of capitals and digits next to words like "code",
-"verification" (and the same words in many languages), or standing alone on a line. Years, phone numbers, amounts and dates are not
-codes. That loose match is only ever shown to the user on an approval card.
+or the subject, names it) and pulls the code out of it by its shape: digits or a short code of capitals and digits standing alone on
+its line, or in a short mail (no code words in any language are looked for). Phone numbers and amounts (a currency
+symbol before it) are not codes, and a year-like number counts only when it stands alone. That loose match is only ever shown to the user on an approval card.
 
 `pick_auto_code(messages, site, asked_at, now)` is the strict match used to type a code WITHOUT asking, during a sign-in the agent
 itself started on that site: the mail arrived from AUTO_EARLY_SECONDS before the code was asked for up to AUTO_WINDOW_SECONDS after;
 its sender is the site (the registrable domain of the From address, or of a DKIM signature d= or the Return-Path the mail carries,
-each dropped when the receiving server reported it failing); the code sits next to a code word; and there is exactly one such code.
+each dropped when the receiving server reported it failing); the main model (code_judge) names it as a sign-in code among the code-shaped tokens; and there is exactly one such code. Without a judge nothing is typed.
 Anything else is "none" or "ambiguous" and the normal flow (ask the user) takes over.
 
 The code is never stored or logged: it is kept in memory only between finding it and typing it (or the user saying no), and the model
@@ -18,16 +18,13 @@ only ever sees who sent it and how long it is.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
+from typing import Any
 from email.utils import parseaddr
 
-_KEYWORDS = re.compile(r"(code|verification|verify|one[-\s]?time|otp|passcode|security|sign[-\s]?in|log[-\s]?in|confirm|pin|인증|코드|확인\s*번호|"
-                       r"일회용|보안|로그인|認証|確認コード|コード|验证码|驗證碼|校验码|代码|código|codigo|codice|kode|kod|kodu|код|"
-                       r"bestätigung|verifica|vérification|verificación|verificação|weryfikac|doğrulama|подтвержд|mã|xác minh|รหัส|"
-                       r"رمز|التحقق|कोड|सत्यापन)", re.I)
 _CANDIDATE = re.compile(r"(?<![\w\-./:#@$₩€£])((?:\d[ \-]?){3,7}\d|[A-Z0-9]{1,4}-[A-Z0-9]{2,6}|(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{6,8})(?![\w\-/:%@]|\.\d)")
-_GENERIC_LABELS = {"www", "com", "net", "org", "co", "kr", "jp", "io", "app", "mail", "accounts", "account", "login", "auth", "id", "secure",
-                   "my", "m", "no-reply", "noreply"}
+SHORT_MAIL_LINES = 12   # every code in a mail this short counts (two of them make it ambiguous); no code word is looked for
 
 
 @dataclass(slots=True)
@@ -37,21 +34,24 @@ class FoundCode:
     subject: str
     at: float
     account: str = ""
+    ref: int = 0         # the handle number when the code came from the shelf (code_shelf.py): forgotten once typed
 
 
 def site_words(site: str) -> list[str]:
-    """The distinctive names of a site: "accounts.example.co.kr" -> ["example"]; "github.com" -> ["github"]."""
-    host = re.sub(r"^[a-z]+://", "", (site or "").lower()).split("/")[0].split(":")[0]
-    parts = [p for p in host.split(".") if p and p not in _GENERIC_LABELS and len(p) >= 3]
-    return parts[-1:] if parts else []
+    """The distinctive name of a site: its registrable domain's first label ("accounts.example.co.kr" -> ["example"], "github.com" ->
+    ["github"]); nothing for a label shorter than 3 letters. The Public Suffix List decides what is suffix (sites.py)."""
+    from .sites import registrable
+
+    reg = registrable(re.sub(r"^[a-z]+://", "", (site or "").lower()).split("/")[0].split(":")[0])
+    label = reg.split(".")[0] if "." in reg else ""
+    return [label] if len(label) >= 3 else []
 
 
 def base_domain(host: str) -> str:
-    """The registrable part of a host, roughly: "login.example.co.kr" -> "example.co.kr", "www.example.com" -> "example.com"."""
-    labels = [p for p in re.sub(r"^[a-z]+://", "", (host or "").lower()).split("/")[0].split(":")[0].split(".") if p]
-    if len(labels) >= 3 and len(labels[-1]) == 2 and labels[-2] in ("co", "or", "go", "ac", "ne", "re", "com", "net", "org", "gov", "edu"):
-        return ".".join(labels[-3:])
-    return ".".join(labels[-2:])
+    """The registrable domain of a host ("login.example.co.kr" -> "example.co.kr"), by the Public Suffix List."""
+    from .sites import registrable
+
+    return registrable(re.sub(r"^[a-z]+://", "", (host or "").lower()).split("/")[0].split(":")[0])
 
 
 def from_site(msg: dict, site: str) -> bool:
@@ -64,20 +64,21 @@ def from_site(msg: dict, site: str) -> bool:
     base = base_domain(site)
     if domain and (domain == base or domain.endswith("." + base)):
         return True
-    said = re.split(r"[^a-z0-9가-힣]+", " ".join([name.lower(), str(msg.get("subject") or "").lower()]))
+    said = re.split(r"[\W_]+", " ".join([name.lower(), str(msg.get("subject") or "").lower()]))
     return any(w in said for w in words)
 
 
-def _plausible(raw: str, context: str) -> str | None:
+def _plausible(raw: str, context: str, alone: bool) -> str | None:
     code = re.sub(r"[ ]", "", raw)
     digits = re.sub(r"\D", "", code)
     if code.isdigit():
         if not 4 <= len(code) <= 8:
             return None
-        if len(code) == 4 and re.fullmatch(r"(19|20)\d\d", code) and not _KEYWORDS.search(context):
+        if len(code) == 4 and re.fullmatch(r"(19|20)\d\d", code) and not alone:
             return None       # a year
-        if re.search(r"[₩$€£]\s*$|원|krw|usd", context[-12:], re.I):
-            return None
+        tail = context.rstrip()[-1:]
+        if tail and unicodedata.category(tail) == "Sc":
+            return None       # an amount: a currency symbol right before it
     elif "-" in code:
         if "-" in raw and raw.replace("-", "").isdigit() and len(digits) > 8:
             return None       # a phone number
@@ -87,26 +88,28 @@ def _plausible(raw: str, context: str) -> str | None:
 
 
 def _candidates(text: str) -> list[tuple[int, str, bool]]:
-    """Every plausible code in one message's text: (score, code, next to a code word), in reading order."""
+    """Every plausible code in one message's text: (score, code, clear), in reading order. A code is clear when it stands alone on its
+    line or sits in a short mail."""
     lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
-    out: list[tuple[int, str, bool]] = []
+    found: list[tuple[str, bool]] = []
     for i, line in enumerate(lines[:200]):
-        around = " ".join(lines[max(0, i - 2): i + 1])
         for m in _CANDIDATE.finditer(line):
-            ctx = (around[: around.rfind(line)] if line in around else "") + line[: m.start()]
-            code = _plausible(m.group(1), ctx)
-            if code is None:
-                continue
-            near = bool(_KEYWORDS.search(line) or _KEYWORDS.search(around))
             alone = line.replace(m.group(1), "").strip(" :.-()[]") == ""
-            score = (2 if near else 0) + (2 if alone else 0) + (1 if code.isdigit() and len(code) in (4, 6, 8) else 0)
-            if score >= 2:
-                out.append((score, code, near))
+            code = _plausible(m.group(1), line[: m.start()], alone)
+            if code is not None:
+                found.append((code, alone))
+    short = len(lines) <= SHORT_MAIL_LINES
+    out: list[tuple[int, str, bool]] = []
+    for code, alone in found:
+        clear = alone or short
+        score = (2 if clear else 0) + (2 if alone else 0) + (1 if code.isdigit() and len(code) in (4, 6, 8) else 0)
+        if score >= 2:
+            out.append((score, code, clear))
     return out
 
 
 def extract(text: str) -> str | None:
-    """The code in one message's text, or None. A candidate next to a code word wins; else one alone on its line."""
+    """The code in one message's text, or None. The best-scoring clear candidate wins."""
     best: tuple[int, str] | None = None
     for score, code, _ in _candidates(text):
         if best is None or score > best[0]:
@@ -114,11 +117,17 @@ def extract(text: str) -> str | None:
     return best[1] if best else None
 
 
-def strict_codes(text: str) -> set[str]:
-    """The best-scoring codes of one message that sit next to a code word (one element when the message is clear)."""
-    found = [(score, code) for score, code, near in _candidates(text) if near]
-    top = max((score for score, _ in found), default=0)
-    return {code for score, code in found if score == top}
+def candidate_codes(text: str) -> list[str]:
+    """Every code-shaped token of one message, distinct, in reading order (shape only: nothing here says it IS a sign-in code)."""
+    out: list[str] = []
+    for ln in (text or "").splitlines()[:200]:
+        line = ln.strip()
+        for m in _CANDIDATE.finditer(line):
+            alone = line.replace(m.group(1), "").strip(" :.-()[]") == ""
+            code = _plausible(m.group(1), line[: m.start()], alone)
+            if code is not None and code not in out:
+                out.append(code)
+    return out
 
 
 def find_code(messages: list[dict], site: str) -> FoundCode | None:
@@ -177,11 +186,14 @@ def sender_match(msg: dict, site: str) -> str | None:
     return None
 
 
-def pick_auto_code(messages: list[dict], site: str, asked_at: float, now: float) -> tuple[AutoCode | None, str]:
-    """The one code the site mailed for this sign-in, or (None, "none" | "ambiguous" | "late"). See the module notes."""
+async def pick_auto_code(messages: list[dict], site: str, asked_at: float, now: float, judge: Any = None) -> tuple[AutoCode | None, str]:
+    """The one code the site mailed for this sign-in, or (None, "none" | "ambiguous" | "late"). Messages are chosen by sender and time
+    (structure); the code-shaped tokens of those messages are put to the code judge (code_judge.CodeJudge: ONE main-model request that
+    names which are one-time sign-in codes). No judge, or one that cannot tell, types nothing: "none" (the owner's card still shows the
+    candidates through find_code)."""
     if now - asked_at > AUTO_WINDOW_SECONDS:
         return None, "late"
-    picks: list[AutoCode] = []
+    chosen: list[tuple[dict, str, float, list[str]]] = []
     for msg in messages:
         at = float(msg.get("arrived") or msg.get("at") or 0)
         if not at or at < asked_at - AUTO_EARLY_SECONDS or at > asked_at + AUTO_WINDOW_SECONDS or at > now + AUTO_EARLY_SECONDS:
@@ -189,11 +201,33 @@ def pick_auto_code(messages: list[dict], site: str, asked_at: float, now: float)
         how = sender_match(msg, site)
         if how is None:
             continue
-        codes = strict_codes(str(msg.get("subject") or "") + "\n" + str(msg.get("text") or ""))
-        if len(codes) > 1:
+        text = str(msg.get("subject") or "") + "\n" + str(msg.get("text") or "")
+        cands = candidate_codes(text)
+        if cands:
+            chosen.append((msg, how, at, cands))
+    if not chosen:
+        return None, "none"
+    if judge is None:
+        return None, "none"
+    marked, n = [], 0
+    for msg, _how, _at, cands in chosen:
+        text = str(msg.get("subject") or "") + "\n" + str(msg.get("text") or "")
+        for c in cands:
+            text = text.replace(c, f"[[#{n}: {c}]]", 1)
+            n += 1
+        marked.append({"sender": plain_address(str(msg.get("from") or "")), "subject": "", "text": text[:4000]})
+    yes = await judge.codes(marked, n)
+    if yes is None:
+        return None, "none"
+    picks: list[AutoCode] = []
+    i = 0
+    for msg, how, at, cands in chosen:
+        mine = [c for k, c in enumerate(cands) if i + k in yes]
+        i += len(cands)
+        if len(mine) > 1:
             return None, "ambiguous"
-        if codes:
-            picks.append(AutoCode(codes.pop(), plain_address(str(msg.get("from") or "")), how, at))
+        if mine:
+            picks.append(AutoCode(mine[0], plain_address(str(msg.get("from") or "")), how, at))
     if not picks:
         return None, "none"
     if len({p.code for p in picks}) > 1:

@@ -74,7 +74,9 @@ async def test_a_higher_total_with_free_cancel_opens_the_window_notifies_and_log
     res, asked = await drive(tools, [PAY2, result_call(bad), CANCEL_CLICK, other, END], [True, False])
     out = res[1].output
     assert "does NOT match" in out and "free" in out and "Cancel this order at once" in out
-    assert [a.name for a in asked] == ["confirm_purchase", "browser_click"]   # the cancel click needed no card; the other one did
+    # the window covers a few clicks the step judge says only delete something (docs/click-judge.md); closing the account is also
+    # "opts out" (a membership), so it asks even inside the window, and the owner said no
+    assert [a.name for a in asked] == ["confirm_purchase", "browser_click"]
     assert ("click", "text=Cancel order") in page.calls and ("click", "text=Delete account") not in page.calls
     assert len(notes) == 1 and "48,000" in notes[0][0] and "free" in notes[0][0]
     assert logged and logged[0][0] == "shop.example.com" and logged[0][2] == "A-1"
@@ -145,8 +147,17 @@ def test_quantity_item_and_total_checks():
 def test_money_and_terms_parsing():
     assert parse_money("$12.99")[0] == 12.99 and parse_money("1.234,56 €")[0] == 1234.56 and parse_money("24,000원")[0] == 24000
     now = time.time()
-    assert cancel_terms({"free_until": "전액 환불 가능"}, now).free_now
+    # (a free-cancel phrase in words used to count; now only an ISO deadline ahead or a fee that is the number 0 does)
+    assert cancel_terms({"free_until": "2999-01-01T00:00:00Z"}, now).free_now
+    assert not cancel_terms({"free_until": "2000-01-01"}, now).free_now
+    assert not cancel_terms({"free_until": "전액 환불 가능"}, now).free_now
+    assert not cancel_terms({"free_until": "free cancellation"}, now).free_now
+    assert cancel_terms({"fee": 0}, now).free_now
+    assert cancel_terms({"fee": "0원"}, now).free_now
+    assert not cancel_terms({"fee": "수수료 없음"}, now).free_now
+    assert not cancel_terms({"fee": "no fee"}, now).free_now
     assert not cancel_terms({"fee": "3,000원"}, now).free_now
+    assert not cancel_terms({"fee": 0, "free_until": "soon"}, now).free_now
     assert not cancel_terms(None, now).free_now
 
 

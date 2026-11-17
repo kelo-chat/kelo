@@ -31,14 +31,13 @@ private struct ConnectorsStack: View {
     }
 
     var body: some View {
-        NavigationStack(path: app.router.path(.connectors)) {
+        ListDetailStack<ConnectorRoute, _, _>(tab: .connectors, root: {
             ConnectorListView(model: model)
                 .keloShellInsets()
-                .navigationDestination(for: ConnectorRoute.self) { r in
-                    ConnectorDetailView(model: model, id: r.id, api: api)
-                }
                 .keloHideNavigationBar()
-        }
+        }, detail: { r in
+            ConnectorDetailView(model: model, id: r.id, api: api)
+        })
         .onAppear {
             model.warm()
             model.reload()
@@ -63,38 +62,43 @@ private struct ConnectorsStack: View {
 struct ConnectorListView: View {
     @Bindable var model: ConnectorsModel
     @Environment(\.kelo) private var c
+    @Environment(AppModel.self) private var app
 
     var body: some View {
         let s = model.state
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    top(s).id("top")
-                    if !s.loaded {
-                        SkeletonRows(rows: 6)
-                    } else {
-                        ForEach(s.sections) { section in sectionView(section) }
-                        if s.showsPhoneData {
-                            PhoneDataSection().padding(.bottom, 14)
-                        }
-                        if s.showsShowAll {
-                            Button { model.state.setShowAll(true) } label: {
-                                Text(P(R.plurals.connectors_show_all, s.hiddenCount, s.hiddenCount)).font(KeloFont.body)
-                                    .foregroundStyle(c.muted).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity).padding(.vertical, 14).contentShape(Rectangle())
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    TabTitle(L(R.string.tab_connectors)).padding(.bottom, 10).id("top")
+                    Section {
+                        if !s.loaded {
+                            SkeletonRows(rows: 6)
+                        } else {
+                            ForEach(s.sections) { section in sectionView(section) }
+                            if s.showsPhoneData {
+                                PhoneDataSection().padding(.bottom, 14)
                             }
-                            .buttonStyle(.plain)
-                        }
-                        if s.shownCount == 0 {
-                            if s.failed {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    MutedText(L(R.string.connect_failed))
-                                    SecondaryButton(L(R.string.retry)) { model.reload() }
+                            if s.showsShowAll {
+                                Button { model.state.setShowAll(true) } label: {
+                                    Text(P(R.plurals.connectors_show_all, s.hiddenCount, s.hiddenCount)).font(KeloFont.body)
+                                        .foregroundStyle(c.muted).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 14).contentShape(Rectangle())
                                 }
-                            } else {
-                                MutedText(L(R.string.connectors_empty))
+                                .buttonStyle(.plain)
+                            }
+                            if s.shownCount == 0 {
+                                if s.failed {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        MutedText(L(R.string.connect_failed))
+                                        SecondaryButton(L(R.string.retry)) { model.reload() }
+                                    }
+                                } else {
+                                    MutedText(L(R.string.connectors_empty))
+                                }
                             }
                         }
+                    } header: {
+                        searchBar(s)
                     }
                 }
                 .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 24)
@@ -111,9 +115,9 @@ struct ConnectorListView: View {
         }
     }
 
-    @ViewBuilder private func top(_ s: ConnectorsState) -> some View {
+    /// The search field, the "back to popular" link and the group chips: pinned at the top while the list scrolls under them.
+    @ViewBuilder private func searchBar(_ s: ConnectorsState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            TabTitle(L(R.string.tab_connectors))
             KeloTextField(L(R.string.connectors_search), text: $model.state.query, keyboard: .ascii)
                 .submitLabel(.search)
             if s.showsBackToPopular {
@@ -133,6 +137,8 @@ struct ConnectorListView: View {
             }
         }
         .padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(c.bg)
     }
 
     @ViewBuilder private func sectionView(_ section: ConnectorsState.Section) -> some View {
@@ -148,7 +154,8 @@ struct ConnectorListView: View {
         VStack(spacing: 0) {
             ForEach(Array(section.items.enumerated()), id: \.element.id) { i, x in
                 if i > 0 { Hairline().padding(.horizontal, 16) }
-                NavigationLink(value: ConnectorRoute(id: x.id)) {
+                // the tab's path is the router's, so the page opens in whichever pane shows the pushed pages
+                Button { app.router.paths[.connectors, default: NavigationPath()].append(ConnectorRoute(id: x.id)) } label: {
                     ConnectorRow(x: x, badge: ConnectorLogic.rowBadge(x, creds: model.state.creds))
                 }
                 .buttonStyle(.plain)

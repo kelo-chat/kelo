@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_chat_search.xml (generated from values/strings_chat_search.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="chat_search_open">チャットを検索</string>
+    <string name="chat_search_title">チャットを検索</string>
+    <string name="chat_search_field">メッセージを検索</string>
+    <string name="chat_search_clear">検索語を消す</string>
+    <string name="chat_search_hint">単語の一部を入力してください。結果をタップすると、そのメッセージのある場所を開きます。</string>
+    <string name="chat_search_none">この検索に合うメッセージはありません。</string>
+    <string name="chat_search_failed">サーバーに接続できず検索できませんでした。しばらくしてからもう一度お試しください。</string>
+    <string name="chat_search_you">自分</string>
+</resources>

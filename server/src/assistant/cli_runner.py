@@ -167,7 +167,7 @@ def create_app(provider_key: str, token: str, *, stream_fn: Any = None, login: c
                 async for ev in run(provider, req):
                     yield _sse(cli_remote.encode_event(ev))
             except ProviderError as e:
-                yield _sse({"type": "error", "message": str(e)[:500], "status": e.status})
+                yield _sse({"type": "error", "message": str(e)[:500], "status": e.status, "code": getattr(e, "code", "")})
             except Exception as e:  # noqa: BLE001 - relay to the server, never crash the stream
                 yield _sse({"type": "error", "message": f"{type(e).__name__}: {str(e)[:300]}"})
             finally:

@@ -17,4 +17,6 @@
     <string name="perm_reset_q">هل تريد إعادة كل إعدادات هذا الموصل إلى الافتراضية؟</string>
     <string name="perm_read_off_q">عند إيقاف القراءة لن يستطيع Kelo استخدام هذا الموصل في معظم الأمور. هل تريد إيقافها؟</string>
     <string name="perm_limited">مقيّد</string>
+    <string name="perm_unattended">الاستخدام عندما لا أكون في محادثة</string>
+    <string name="perm_unattended_about">لن تستخدم المهام المجدولة والمهام الخلفية والرسائل التي يرسلها Kelo بمبادرة منه %1$s. يمكن لمحادثاتك الخاصة استخدامه.</string>
 </resources>

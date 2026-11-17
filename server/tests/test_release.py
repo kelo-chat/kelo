@@ -166,3 +166,47 @@ def test_the_release_manifest_tool_writes_a_checked_file(tmp_path):
     r = subprocess.run([sys.executable, str(root / "tools" / "release_manifest.py"), "--version", "0.6.0", "--digests-dir", str(dig),
                         "--out", str(out)], capture_output=True, text=True, timeout=60)
     assert r.returncode == 1 and "missing images: updater" in r.stderr
+
+
+# ------------------------------------------------------------------------------------------------------------- one exact version
+class TagDocker(FakeDocker):
+    """A registry that has the tags of the versions in `published`: a tag pull works, and the tag's digest comes from RepoDigests."""
+
+    def __init__(self, published=("0.4.0",)):
+        super().__init__()
+        self.published = set(published)
+
+    def __call__(self, cmd, capture_output=False, text=False, **kw):
+        ref = cmd[-1]
+        if cmd[:2] == ["docker", "pull"] and "@" not in ref:
+            self.calls.append(cmd)
+            ok = ref.rsplit(":", 1)[1] in self.published
+            return subprocess.CompletedProcess(cmd, 0 if ok else 1, stdout="", stderr="" if ok else "manifest unknown")
+        if "{{json .RepoDigests}}" in cmd and "@" not in ref:
+            self.calls.append(cmd)
+            repo = ref.rsplit(":", 1)[0]
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps([f"{repo}@sha256:" + "a" * 64]), stderr="")
+        return super().__call__(cmd, capture_output, text, **kw)
+
+
+def test_one_exact_version_is_found_by_its_tags_and_still_checked_by_digest():
+    d = TagDocker()
+    r = rel.by_version("v0.4.0", "ghcr.io/kelo-chat", d)
+    assert r.version == "0.4.0" and set(r.images) == set(rel.REQUIRED)
+    assert r.images["server"].ref == "ghcr.io/kelo-chat/server@sha256:" + "a" * 64
+    assert ["docker", "pull", "--quiet", "ghcr.io/kelo-chat/workroom:0.4.0"] in d.calls
+    d.version = "0.4.0"
+    rel.Verifier(d).fetch_and_check(r.images["server"], r.version)          # the same three checks as for the newest release
+    d.version = "0.5.0"                                                      # a tag that points at another release's image
+    with pytest.raises(rel.ReleaseError, match="another version"):
+        rel.Verifier(d).fetch_and_check(r.images["server"], r.version)
+
+
+def test_a_version_with_no_images_or_no_version_form_is_refused_in_one_line():
+    with pytest.raises(rel.ReleaseError, match=r"release 9\.9\.9 has no published image server"):
+        rel.by_version("9.9.9", "ghcr.io/kelo-chat", TagDocker())
+    for bad in ("", "latest", "1.2", "1.2.3; rm -rf /", "../0.4.0"):
+        d = TagDocker()
+        with pytest.raises(rel.ReleaseError, match="not a release version"):
+            rel.by_version(bad, "ghcr.io/kelo-chat", d)
+        assert d.calls == []                                                 # nothing was pulled for it

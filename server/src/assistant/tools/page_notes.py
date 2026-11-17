@@ -1,15 +1,17 @@
-"""Two things about a page the agent reads that its text alone hides (used by browser.py's snapshot; never site-specific):
+"""Two things about a page the agent reads that its text alone hides (used by browser.py's snapshot; never site-specific, and no word of any
+language decides anything: docs/no-word-lists.md, hc-pagefields):
 
-Windows covering the page. A notice window ("오늘 그만 보기 / 닫기"), a cookie banner or any fixed layer over the middle of the
-page (role=dialog, aria-modal, <dialog open>, a high fixed element under the viewport's center) is found by OVERLAY_JS, which
-also marks its own close control (data-kelo-close). Only plain close controls count ("닫기", "Close", "×", an icon button labelled
-close; for a cookie banner also "reject" / "necessary only"); a "don't show again" / "오늘 그만 보기" control is never used, nor
-anything that could commit (OK, confirm, accept, subscribe). Windows with form fields (a sign-in or search form) or an embedded
-frame (payment, verification), human checks, any window on a checkout or payment page and windows the agent's own step opened are
-left alone. With no safe close control the window is reported, not guessed at.
+Windows covering the page. A notice window or any fixed layer over the middle of the page (role=dialog, aria-modal, <dialog open>,
+a high fixed element under the viewport's center) is found by OVERLAY_JS, which also marks its own close control
+(data-kelo-close) when it can tell by STRUCTURE: an icon-only control (no words) that is declared a close control (command=close,
+data-dismiss, data-bs-dismiss) or drawn in the top corner of the layer or of its sheet. A control that has words
+is never pressed (nothing can tell "Close" from "Accept" or "Don't show again" in a language the code does not read), nor anything that
+could commit. Windows with form fields (a sign-in or search form) or an embedded frame (payment, verification, a human check), any
+window on a checkout or payment page and windows the agent's own step opened are left alone. With no safe close control the window is
+reported, and the agent reads it and decides.
 
-Values that are masked or not loaded. "예치금 0* 원", "1,2**원", "●●●●", "$--": the text shows a value hidden or still loading, and
-the agent must not state it as a fact. masked_values() finds such spots and masked_note() is the line added to the page reading.
+Values that are masked or not loaded. "0*", "1,2**", "●●●●", "$--": the text shows a value hidden or still loading, and the agent must
+not state it as a fact. masked_values() finds such spots and masked_note() is the line added to the page reading.
 """
 
 from __future__ import annotations
@@ -17,23 +19,19 @@ from __future__ import annotations
 import re
 from typing import Any
 
-OVERLAY_ROUNDS = 3        # windows closed one after another on one reading (a notice over a cookie banner)
+OVERLAY_ROUNDS = 3        # windows closed one after another on one reading (a notice over another)
 LABEL_CHARS = 160         # how much of a window's text the note quotes
 
-# Returns {"kelo_overlay": 1, "found": [{"kind": dialog|overlay|cookie, "label", "close": index|null, "close_label", "skipped": [..]}]}
+# Returns {"kelo_overlay": 1, "found": [{"kind": dialog|overlay, "label", "close": index|null, "close_label", "skipped": [..]}]}
 OVERLAY_JS = r"""() => {
   const kelo_overlay = 1;
   const W = window.innerWidth, H = window.innerHeight, body = document.body;
   if (!body || !W || !H) return { kelo_overlay, found: [] };
-  const CLOSE = /^(?:닫기|창\s*닫기|팝업\s*닫기|close|close\s+(?:this\s+)?(?:dialog|window|popup|pop-up|modal|banner|notice|ad)|dismiss|no,?\s*thanks|not\s+now|maybe\s+later|나중에|괜찮아요|×|✕|✖|╳|x|閉じる|关闭|關閉|schließen|fermer|cerrar|chiudi|fechar|sluiten|zamknij|закрыть|kapat|tutup|đóng|ปิด|إغلاق|बंद\s*करें)$/i;
-  const CLOSE_HINT = /(?:^|[\s_-])(?:close|닫기|dismiss)(?:$|[\s_-])|^(?:close|닫기|dismiss)/i;
-  const CLOSE_CLASS = /(?:^|[\s_-])(?:btn[-_]?close|close[-_]?btn|closebtn|close[-_]?button|modal[-_]?close|popup[-_]?close|layer[-_]?close|close)(?:$|[\s_-])/i;
-  const COOKIE_CLOSE = /^(?:reject(?:\s+all)?|decline(?:\s+all)?|refuse(?:\s+all)?|necessary\s+(?:cookies\s+)?only|only\s+(?:necessary|essential)(?:\s+cookies)?|essential\s+(?:cookies\s+)?only|use\s+necessary\s+cookies\s+only|필수\s*(?:쿠키만|항목만|만)\s*(?:허용|사용)?|거부|모두\s*거부)$/i;
-  const NEVER = /오늘|하루|그만\s*보|다시\s*보지|보지\s*않|열지\s*않|일주일|\d+\s*일\s*(?:간|동안)|don'?t\s+show|do\s+not\s+show|never\s+show|not\s+show|show\s+again|hide\s+for|for\s+(?:today|\d+\s+days?)|今日|今天|不再|nicht\s+mehr|ne\s+plus/i;
-  // an "install / open the app" layer, in several languages: a control of it talks about the app, an install or a download
-  const APP = /앱|\bapps?\b|アプリ|application|aplicaci|applicazion|anwendung|приложени|install|설치|download|다운로드|ダウンロード|インストール|安装|安裝|下载|下載|应用|應用|herunterladen|télécharg|descargar|instalar|scaricare|installa|скачать|установить|indir|yükle|tải|ติดตั้ง/i;
-  const COOKIE = /cookie|쿠키|consent|gdpr|クッキー/i;
-  const CHECK = /captcha|recaptcha|hcaptcha|turnstile|challenge|verify\s+you\s+are\s+human|i'?m\s+not\s+a\s+robot|자동\s*입력\s*방지|보안\s*문자|사람인지/i;
+  // The layer's controls are found by STRUCTURE only (docs/no-word-lists.md): no word of any language is read. A control closes the layer
+  // when the HTML or the framework says so (a submit button of <form method=dialog>, command=close, data-dismiss / data-bs-dismiss),
+  // or when it is an icon-only control (no text, no label) drawn in the top corner of the layer or of its sheet. A control with words
+  // ("Close", "Accept", "Don't show again", a cookie choice) is NEVER pressed: the layer is reported and the agent reads it.
+  // Names of classes and ids decide nothing (hc-final-a): a dialog and a close control are told by geometry, roles and attributes.
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
     return r.width > 1 && r.height > 1 && c.visibility !== 'hidden' && c.display !== 'none' && Number(c.opacity) > 0.05
       && r.bottom > 0 && r.right > 0 && r.top < H && r.left < W; };
@@ -49,21 +47,17 @@ OVERLAY_JS = r"""() => {
     if (shown(f) && r.width * r.height >= 0.12 * W * H && zOf(f) >= 10 && (f.innerText || '').length < 0.7 * Math.max(bodyText, 1)) roots.push(f);
     break;
   }
-  document.querySelectorAll('[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],[aria-label*=cookie i]').forEach((e) => {
-    const f = fixedRoot(e) || (getComputedStyle(e).position === 'sticky' ? e : null);
-    if (f && shown(f) && COOKIE.test(f.innerText || '')) roots.push(f);
-  });
+  // A bar along an edge (a consent bar, a site's own header or tab bar) is NOT a layer: by geometry a consent bar and a sticky header
+  // with a cart icon in its corner look alike, and pressing that icon would be a wrong click. The agent reads such a bar in the page.
   const outer = [...new Set(roots)].filter((e, _i, all) => !all.some((o) => o !== e && o.contains(e)));
   const found = [];
   let n = 0;
   for (const root of outer.slice(0, 4)) {
     const text = (root.innerText || '').replace(/\s+/g, ' ').trim();
-    if (CHECK.test(text) || [...root.querySelectorAll('iframe')].some((f) => CHECK.test(f.src || '') || CHECK.test(f.title || ''))) continue;
     const fields = [...root.querySelectorAll('input,select,textarea')].filter((i) => shown(i) && !/^(?:checkbox|radio|hidden|button|submit|image|reset)$/i.test(i.type || ''));
     if (fields.length) continue;   // a sign-in, search or picker form the agent is using
     if ([...root.querySelectorAll('iframe')].some(shown)) continue;   // a payment, verification or other embedded window
-    const cookie = COOKIE.test(text) && !root.matches('[aria-modal=true],dialog');
-    const head = root.querySelector('h1,h2,h3,h4,[class*=title i]');
+    const head = root.querySelector('h1,h2,h3,h4');
     const label = (root.getAttribute('aria-label') || (head && head.innerText) || text).replace(/\s+/g, ' ').trim().slice(0, 160);
     let best = null, rank = 0;
     const skipped = [];
@@ -73,20 +67,16 @@ OVERLAY_JS = r"""() => {
     let sheet = null;
     for (const k of root.children) { const kr = k.getBoundingClientRect(); if (!sheet || kr.width * kr.height > sheet.width * sheet.height) sheet = kr; }
     if (sheet && sheet.width * sheet.height >= 0.9 * rr.width * rr.height) sheet = null;
-    const app = share >= 0.6 && [...root.querySelectorAll('a,button,[role=button],[onclick]')].some((c) => shown(c)
-      && APP.test(((c.innerText || c.value || '') + ' ' + (c.getAttribute('aria-label') || '') + ' ' + (c.getAttribute('title') || '')).replace(/\s+/g, ' ')));
-    for (const c of root.querySelectorAll('button,[role=button],a,input[type=button],input[type=submit],[aria-label],[title],[onclick],[class*=close i],[id*=close i]')) {
+    // an "open or install the app" layer by structure: a link whose scheme is not a web address (intent:, market:, itms-apps: ...)
+    const app = share >= 0.6 && [...root.querySelectorAll('a[href]')].some((c) => shown(c) && !/^(?:https?:|#|javascript:|mailto:|tel:)/i.test(c.getAttribute('href') || ''));
+    const declared = (c) => c.matches('[command=close],[data-dismiss],[data-bs-dismiss]');
+    for (const c of root.querySelectorAll('button,[role=button],a,input[type=button],input[type=submit],[onclick],[command],[data-dismiss],[data-bs-dismiss]')) {
       if (!shown(c)) continue;
       const words = ((c.innerText || c.value || '') + '').replace(/\s+/g, ' ').trim();
-      const hint = [c.getAttribute('aria-label'), c.getAttribute('title'), ...[...c.querySelectorAll('img[alt]')].map((i) => i.alt)].filter(Boolean).join(' ');
-      if (NEVER.test(words) || NEVER.test(hint)) { if (skipped.length < 2) skipped.push((words || hint).slice(0, 40)); continue; }
+      if (words && !/^[\u00d7\u2715\u2716\u2573\u2a2f\u2717]$/.test(words)) continue;   // a control with words is never pressed (no word decides what it does)
       const href = c.tagName === 'A' ? (c.getAttribute('href') || '') : '';
       if (href && !/^(?:#|javascript:)/i.test(href)) continue;   // a link to somewhere is not a close control
-      let r = 0;
-      if (CLOSE.test(words) || (cookie && COOKIE_CLOSE.test(words))) r = 3;
-      else if (!words && CLOSE_HINT.test(hint)) r = 2;
-      else if (!words && !hint && CLOSE_CLASS.test(((c.className && c.className.baseVal !== undefined) ? c.className.baseVal : c.className || '') + ' ' + (c.id || ''))) r = 1;
-      if (r > rank) { best = c; rank = r; }
+      if (declared(c) && 3 > rank) { best = c; rank = 3; }
     }
     if (rank < 2) {
       // an icon-only close control (a cross drawn by an svg, an image or CSS, no words, no label): small, in the top corner of the
@@ -104,8 +94,7 @@ OVERLAY_JS = r"""() => {
         seen.add(c);
         if (((c.innerText || c.value || '') + '').trim()) continue;
         const hint = [c.getAttribute('aria-label'), c.getAttribute('title')].filter(Boolean).join(' ');
-        if (hint && !CLOSE_HINT.test(hint)) continue;
-        if (APP.test(hint) || NEVER.test(hint)) continue;
+        if (hint && !declared(c)) continue;   // a labelled icon control (a menu, a back arrow, a share) is only taken when it is declared a close control
         const link = c.closest('a[href]');
         if (link && !/^(?:#|javascript:)/i.test(link.getAttribute('href') || '')) continue;   // intent://, market://, a store or app address
         const cr = c.getBoundingClientRect();
@@ -124,7 +113,7 @@ OVERLAY_JS = r"""() => {
         }
       }
     }
-    const item = { kind: cookie ? 'cookie' : (root.matches('[role=dialog],[role=alertdialog],[aria-modal=true],dialog') ? 'dialog' : 'overlay'), label, close: null, close_label: '', skipped, app,
+    const item = { kind: root.matches('[role=dialog],[role=alertdialog],[aria-modal=true],dialog') ? 'dialog' : 'overlay', label, close: null, close_label: '', skipped, app,
       backdrop: (app && sheet) ? [Math.max(rr.left + 4, 4), Math.max(rr.top + 4, 4)] : null };
     if (item.backdrop && sheet && item.backdrop[0] >= sheet.left && item.backdrop[0] <= sheet.right && item.backdrop[1] >= sheet.top && item.backdrop[1] <= sheet.bottom) item.backdrop = null;
     if (best) {
@@ -166,7 +155,7 @@ def signature(f: dict[str, Any]) -> str:
     return f"{f['kind']}:{f['label'][:60]}"
 
 
-KIND_WORDS = {"cookie": "A cookie banner", "dialog": "A pop-up window", "overlay": "A layer"}
+KIND_WORDS = {"dialog": "A pop-up window", "overlay": "A layer"}
 
 
 def closed_note(f: dict[str, Any], quote: Any) -> str:
@@ -186,9 +175,9 @@ def open_note(f: dict[str, Any], quote: Any, *, tried: bool = False) -> str:
 # ---------------------------------------------------------------------------------------------------------- masked values
 MASK = "*＊●•∙◦○"
 _MASKED = re.compile(
-    rf"(?<![\w{MASK}])[$€£¥₩]?\s?\d[\d,.]*[{MASK}]+[\d,.{MASK}]*(?:\s?[^\W\d_]{{1,4}}|\s?[$€£¥₩%])?"   # 0*, 1,2**원, 40,0** 원
+    rf"(?<![\w{MASK}])[$€£¥₩]?\s?\d[\d,.]*[{MASK}]+[\d,.{MASK}]*(?:\s?[^\W\d_]{{1,4}}|\s?[$€£¥₩%])?"   # 0*, 1,2**, 40,0** (a unit letter or symbol after it is allowed)
     rf"|[{MASK}]{{3,}}(?:[\s,.-]?[\d{MASK}]+)*"                                                       # ●●●●, ***, ****-1234
-    r"|(?<![\w-])[$€£¥₩]\s?-{1,3}(?![\w-])|(?<![\w-])-{1,3}\s?(?:원|₩|USD|KRW|EUR|JPY|円|元)(?!\w)"         # $--, - 원
+    r"|(?<![\w-])[$€£¥₩]\s?-{1,3}(?![\w-])|(?<![\w-])-{1,3}\s?[$€£¥₩](?!\w)"         # $--, --$
 )
 
 

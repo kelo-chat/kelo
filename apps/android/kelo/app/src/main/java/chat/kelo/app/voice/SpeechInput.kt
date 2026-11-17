@@ -190,6 +190,13 @@ class SpeechInput internal constructor(private val context: Context) {
         runCatching { recognizer?.stopListening() }
     }
 
+    /** Ends listening and drops what was heard: no result arrives (a slide off the held mic). */
+    fun cancel() {
+        if (!listening) return
+        runCatching { recognizer?.cancel() }
+        finish(null)
+    }
+
     private fun finish(problem: SpeechProblem?) {
         if (!listening) return
         listening = false

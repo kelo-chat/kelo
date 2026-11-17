@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">Jouw gegevens</string>
+    <string name="data_intro">Haal een kopie op van wat Kelo over jou bewaart, neem herinneringen mee van een andere assistent of begin opnieuw.</string>
+    <string name="data_export_title">Je gegevens downloaden</string>
+    <string name="data_export_body">Eén ZIP-bestand met je gesprek, wat Kelo onthoudt, schema’s, wat Kelo volgt, gekoppelde diensten en je instellingen. Wachtwoorden, sleutels en tokens zitten er nooit in.</string>
+    <string name="data_export_make">Bestand maken</string>
+    <string name="data_export_making">Bestand maken…</string>
+    <string name="data_export_ready">Je bestand is klaar (%1$s).</string>
+    <string name="data_export_save">Bestand opslaan</string>
+    <string name="data_export_saved">Opgeslagen.</string>
+    <string name="data_export_again">Nieuw bestand maken</string>
+    <string name="data_export_failed">Het bestand kon niet worden gemaakt. Probeer het opnieuw.</string>
+    <string name="data_import_title">Herinneringen van een andere assistent meenemen</string>
+    <string name="data_import_private">Er wordt niets naar elders gestuurd. Het model dat je op je Kelo-server koos, leest de tekst en bewaart korte feiten over jou.</string>
+    <string name="data_import_step1">1. Kopieer dit verzoek en plak het in je oude assistent (ChatGPT, Claude, Gemini, …).</string>
+    <string name="data_import_copy">Verzoek kopiëren</string>
+    <string name="data_import_copied">Gekopieerd.</string>
+    <string name="data_import_step2">2. Plak hier het antwoord.</string>
+    <string name="data_import_paste_hint">Antwoord plakken</string>
+    <string name="data_import_add">Aan geheugen toevoegen</string>
+    <string name="data_import_zip_body">Of kies de chatexport die je downloadde van ChatGPT, Claude of Gemini (een ZIP-bestand, tot 100 MB).</string>
+    <string name="data_import_zip">ZIP-bestand kiezen</string>
+    <string name="data_import_running">Lezen… %1$d van %2$d</string>
+    <string name="data_import_reading">Bestand openen…</string>
+    <string name="data_import_cancel">Stoppen</string>
+    <string name="data_import_failed">Er is niets toegevoegd: %1$s</string>
+    <string name="data_import_none">Er is niets nieuws gevonden om toe te voegen.</string>
+    <string name="data_import_added">Aan geheugen toegevoegd (%1$d):</string>
+    <string name="data_zip_too_big">Dit bestand is groter dan 100 MB.</string>
+    <string name="data_reset_title">Opnieuw beginnen</string>
+    <string name="data_reset_body">Wist je gesprek, wat Kelo onthoudt, wat Kelo volgt en je schema’s. Koppelingen, opgeslagen logins, modellen en je telefoons blijven. Eerst wordt een kopie als bestand opgeslagen.</string>
+    <string name="data_reset_signout">Ook afmelden bij Koppelingen en opgeslagen logins verwijderen</string>
+    <string name="data_reset_type">Typ %1$s om te bevestigen</string>
+    <string name="data_reset_button">Opnieuw beginnen</string>
+    <string name="data_reset_wrong">Dat is niet het woord. Er is niets veranderd.</string>
+    <string name="data_reset_confirm">Nu opnieuw beginnen? Eerst wordt een kopie opgeslagen, daarna worden je gesprek, geheugen, gevolgde zaken en schema’s gewist. Dit kan niet ongedaan worden gemaakt.</string>
+    <string name="data_reset_done">Klaar. Alles hierboven is gewist. De kopie is opgeslagen als %1$s.</string>
+</resources>

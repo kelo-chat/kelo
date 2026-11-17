@@ -65,8 +65,13 @@ sealed interface ChatItem {
         val send: CardSend = CardSend.Idle,
         /** The card may offer "keep allowing this in that scheduled job" */
         val canRememberSchedule: Boolean = false,
+        /** The data trail's question (data of a kind to a recipient): the card then has Allow once / Always for this recipient / Deny */
+        val offers: List<chat.kelo.app.agent.TrailOffer> = emptyList(),
         val site: String = "",
         val canRemember: Boolean = false,
+        /** A payment the server checks this phone's signature for on Allow ([issuedAt] is what it signs) */
+        val signable: Boolean = false,
+        val issuedAt: Long = 0,
         /** The readable pairs the card shows (never the raw arguments) */
         val lines: List<ApprovalLine> = emptyList(),
         /** The server's whole question for the title ("로그인할까요?"), or "" (then it is built from [shown]) */
@@ -80,6 +85,12 @@ sealed interface ChatItem {
         val items: List<String> = emptyList(),
         /** The site's saved payment PIN that Allow also releases from this phone */
         val pin: PinAsk? = null,
+        /** `order_preapprove`: what the Allow approves in advance, in words */
+        val preapproval: chat.kelo.app.agent.PreapprovalAsk? = null,
+        /** `forget_confirm`: the waiting cleanup plan, whose list shows under the card */
+        val forgetPlan: String = "",
+        /** The message this card sends, which the owner may fix first (mail body, text) */
+        val editable: chat.kelo.app.agent.EditableMessage? = null,
     ) : ChatItem {
         val answered: Boolean get() = answer != null
         val open: Boolean get() = answer == null && !expired
@@ -110,6 +121,8 @@ sealed interface ChatItem {
         override val key: String, val site: String, val amountText: String, val cardLabel: String,
         /** The order's items and where it goes, when the server sent them */
         val order: PaymentInfo? = null,
+        /** Covered by an order approved in advance or by the schedule's allow */
+        val cover: chat.kelo.app.agent.PreapprovalCover? = null,
     ) : ChatItem
     /**
      * The agent asks where an order goes ([ask]): the address form, prefilled. Once answered it folds into one line ([doneLabel] ·
@@ -165,6 +178,8 @@ sealed interface ChatNotice {
 sealed interface ChatError {
     data object StepLimit : ChatError
     data class Message(val text: String) : ChatError
+    /** A text the app already has in the user's language (shown as it is) */
+    data class Localized(val res: org.jetbrains.compose.resources.StringResource) : ChatError
     /** A 400 when starting a reply: no usable model */
     data class PickModel(val detail: String) : ChatError
     data object Network : ChatError
@@ -240,7 +255,7 @@ object ChatReducer {
                 val chip = if (i >= 0) (next[i] as ChatItem.Tool).copy(state = toolState(ev)) else null
                 if (chip != null) next[i] = chip
                 // the assistant asked the user to connect a service: the card appears right here
-                if (ev.name == "connect_service" && !ev.isError && !ev.output.contains("already connected")) {
+                if (ev.name == "connect_service" && !ev.isError && !ev.already) {
                     chip?.service?.let { service ->
                         supersede(next) { it is ChatItem.Connect && it.service == service }
                         next += ChatItem.Connect(newKey(), service)
@@ -248,7 +263,7 @@ object ChatReducer {
                 }
                 // a key the assistant found on a page went into the keychain: a small card says so (the value never reaches the app)
                 if (ev.name == "save_found_secret" && !ev.isError) {
-                    KeySavedRules.parse(ev.output)?.let { s ->
+                    KeySavedRules.of(ev)?.let { s ->
                         supersede(next) { it is ChatItem.KeySaved && it.name == s.name }
                         next += ChatItem.KeySaved(newKey(), s.name, s.hosts)
                     }
@@ -290,8 +305,11 @@ object ChatReducer {
                     newKey(), ev.approvalId, ev.name, TurnEvent.prettyArgs(ev.arguments), ev.detail, label = ev.label, payment = ev.payment, card = ev.card,
                     canRememberSchedule = ev.canRememberSchedule && ev.payment == null,
                     site = ev.site, canRemember = ev.canRemember && ev.payment == null && ev.grant == null,
+                    signable = ev.signable, issuedAt = ev.issuedAt,
                     lines = ev.lines, ask = ev.ask,
                     grant = ev.grant, urgent = ev.urgent, missed = ev.missed, items = ev.items, pin = ev.pin,
+                    offers = if (ev.payment == null && ev.grant == null) ev.offers else emptyList(),
+                    preapproval = ev.preapproval, forgetPlan = ev.forgetPlan, editable = ev.editable,
                 )
             is TurnEvent.Browser -> {
                 // one live card per reply and tab: a new step, or another site in the same tab, updates it; only a new tab adds one
@@ -328,7 +346,7 @@ object ChatReducer {
                 if (i >= 0) next[i] = (next[i] as ChatItem.CardNeeded).copy(expiresAt = ev.expiresAt)
                 else next += ChatItem.CardNeeded(newKey(), ev.approvalId, ev.card, ev.site, ev.amountText, ev.expiresAt)
             }
-            is TurnEvent.PaymentAuto -> next += ChatItem.PaymentAuto(newKey(), ev.site, ev.amountText, ev.card?.label.orEmpty(), ev.payment)
+            is TurnEvent.PaymentAuto -> next += ChatItem.PaymentAuto(newKey(), ev.site, ev.amountText, ev.card?.label.orEmpty(), ev.payment, ev.cover)
             is TurnEvent.SecretRequested -> {
                 val req = ev.request
                 if (!req.fromAgent) return items

@@ -10,6 +10,10 @@ data class ChatState(
     /** More stored messages before the first one shown */
     val hasOlder: Boolean = false,
     val loadingOlder: Boolean = false,
+    /** The list is a window around an opened message: newer messages are not loaded yet ([ChatHistory.openAt]); the newest page comes back at the bottom or before a send */
+    val hasNewer: Boolean = false,
+    /** The messages after a search window are being fetched ([ChatHistory.loadNewer]) */
+    val loadingNewer: Boolean = false,
     /** The last refresh did not reach the server: what shows may be old (kept from last time) */
     val offline: Boolean = false,
     /** Photos and files picked with "+", going with the next message */

@@ -44,7 +44,8 @@ let package = Package(
         .target(name: "KeloTestSupport", dependencies: [core, "KeloShared"]),
         .target(name: "KeloChat", dependencies: [core, live, "KeloShared"]),
         .target(name: "KeloMy", dependencies: [core, "KeloShared"]),
-        .target(name: "KeloWork", dependencies: [core, "KeloShared"]),
+        // Resources/vnc: noVNC 1.5.0 and Kelo's page for the live browser screen (the same folder as the Android app's assets/vnc)
+        .target(name: "KeloWork", dependencies: [core, "KeloShared"], resources: [.copy("Resources/vnc")]),
         .target(name: "KeloConnectors", dependencies: [core, "KeloShared"]),
         .target(name: "KeloShell", dependencies: [core, live, "KeloShared", "KeloChat", "KeloMy", "KeloWork", "KeloConnectors"]),
         // the module the app imports: re-exports KeloShell

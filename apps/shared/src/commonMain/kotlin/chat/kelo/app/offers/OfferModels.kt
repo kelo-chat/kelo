@@ -14,10 +14,26 @@ data class Offer(
     val kind: String = "",
     val sentence: String = "",
     val needs: List<String> = emptyList(),
+    /** what will run when the owner taps: sent as Kelo's own turn (server offers.py) */
+    val request: String = "",
+    /** the steps Kelo prepared for that turn */
+    val steps: List<String> = emptyList(),
     @SerialName("created_at") val createdAt: Double = 0.0,
     @SerialName("has_numbers") val hasNumbers: Boolean = false,
     @SerialName("checked_at") val checkedAt: Double? = null,
 )
+
+/** The steps list on a card: the first [COLLAPSED] steps, the rest behind "show all". Pure, so it is tested without a screen. */
+object OfferSteps {
+    const val COLLAPSED = 3
+
+    /** The steps to draw; all of them once [expanded], and always all when there are no more than [COLLAPSED]. */
+    fun visible(steps: List<String>, expanded: Boolean): List<String> =
+        if (expanded || steps.size <= COLLAPSED) steps else steps.take(COLLAPSED)
+
+    /** Whether the toggle is offered at all. */
+    fun collapsible(steps: List<String>): Boolean = steps.size > COLLAPSED
+}
 
 @Serializable
 data class OfferList(val items: List<Offer> = emptyList())

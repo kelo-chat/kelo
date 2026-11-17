@@ -18,7 +18,8 @@ from ..tools.browser import (
     CHAT_TAB_IDLE_SECONDS, SITE_TAB_IDLE_SECONDS, TAB_SWEEP_SECONDS, is_site_tab, one_run_tab,
 )
 from ..live_source import LiveSource, LiveSources
-from ..tools.live import Frame, LiveEnded, LiveError, PointerThrottle, TICKET_SECONDS, pump_frames
+from ..tools.live import Frame, FrameGate, LiveEnded, LiveError, PointerThrottle, TICKET_SECONDS, pump_frames, pump_meta, viewer_css_size
+from ..tools.vnc import CONNECT_SECONDS, ClientFilter, VncError, VncUnavailable
 from ..browser_history import history_routes
 from ..server import BACKGROUND_NOTE, ENDED_TABS_KEPT, HELD_STATUS, POLL_WAIT_MAX
 from fastapi import APIRouter
@@ -35,6 +36,14 @@ class BrowserTaskIn(BaseModel):
 
 class ControlIn(BaseModel):
     take: bool
+
+
+def _number(text: str | None) -> float | None:
+    """A number from a query string (None when it is missing or not one)."""
+    try:
+        return float(text) if text is not None else None
+    except ValueError:
+        return None
 
 
 def router(ctx: AppContext) -> APIRouter:
@@ -61,6 +70,7 @@ def router(ctx: AppContext) -> APIRouter:
     live_sources: LiveSources = ctx.live_sources   # the browser's hub and the Android device, by key (live_source.py)
     turn_line = ctx.turn_line
     turns = ctx.turns
+    vnc = ctx.vnc   # the X screen of the live view (tools/vnc.py), None without a browser
     workers = ctx.workers
 
     # ---- browser tabs (one per phone, per schedule, per background task) ----------------------------------------------------------
@@ -133,7 +143,7 @@ def router(ctx: AppContext) -> APIRouter:
         """Hand the agent a task to do in a tab of its own, while the user does something else (an unattended turn)."""
         if session is None:
             raise HTTPException(404, "this server has no browser")
-        body.prompt = secret_check(body.prompt, body.secrets)   # a pasted key or password stops here (409), as in chat
+        body.prompt = await secret_check(body.prompt, body.secrets)   # a pasted key or password stops here (409), as in chat
         key = f"task:{secrets.token_hex(4)}"
         prompt = body.prompt.strip() + (f"\nStart at: {body.url.strip()}" if body.url and body.url.strip() else "")
         title = title_from(body.prompt)
@@ -269,13 +279,14 @@ def router(ctx: AppContext) -> APIRouter:
     async def live_ticket(key: str, request: Request) -> dict[str, Any]:
         return {"ticket": need_source(key).ticket(key, device_of(request)), "expires_in": TICKET_SECONDS}
 
-    @router.websocket("/api/browser/sessions/{key}/live")
-    async def live_socket(ws: WebSocket, key: str) -> None:
+    async def sign_in_socket(ws: WebSocket, key: str) -> tuple[LiveSource | None, str | None]:
+        """Accept a live-view socket and sign it in: the one-time ticket from `live-ticket`, or the bearer header. (source, device); the
+        device is None after the refusal has been sent (unauthorized, or too many failed tries) and the socket closed."""
         device: str | None = None
         if auth_blocked(ws):
             await ws.accept()
             await ws.close(4429, "too many failed attempts")
-            return
+            return None, None
         ticket = ws.query_params.get("ticket", "")
         live = live_sources.get(key)   # the source of this key (None: the server has none)
         if ticket and live is not None:
@@ -292,6 +303,12 @@ def router(ctx: AppContext) -> APIRouter:
                 auth_failed(ws)
             await ws.send_text(json.dumps({"type": "error", "code": "unauthorized", "message": "a fresh ticket (or the bearer header) is needed"}))
             await ws.close(4401, "unauthorized")
+        return live, device
+
+    @router.websocket("/api/browser/sessions/{key}/live")
+    async def live_socket(ws: WebSocket, key: str) -> None:
+        live, device = await sign_in_socket(ws, key)
+        if device is None:
             return
         if live is None or not live.available(key):
             await ws.send_text(json.dumps({"type": "ended", "reason": "no_tab"}))
@@ -332,11 +349,19 @@ def router(ctx: AppContext) -> APIRouter:
                 at = live.pointer(key) if hasattr(live, "pointer") else None
                 await send_json({**st, "pointer": at} if at else st)   # a new watcher draws the pointer at once
 
+        gate = FrameGate()   # {"type":"frames","on":false}: this viewer shows the X screen (/vnc) and is sent no pictures
+
         async def frames() -> None:
             try:
-                await pump_frames(live, key, send_frame, fps=lambda: cast.settings["fps"])
+                await pump_frames(live, key, send_frame, fps=lambda: live.rate(key), gate=gate)   # 30 a second while the owner holds the tab
             except LiveEnded:
                 ending.update(reason="tab_closed", code=1000)
+
+        async def meta() -> None:   # {"type":"meta","url","title"} while this viewer's frames are off (the page header would go stale)
+            if hasattr(live, "meta"):
+                await pump_meta(live, key, send_json, gate)
+            else:
+                await asyncio.Event().wait()
 
         throttle = PointerThrottle()
         moved = asyncio.Event()
@@ -396,6 +421,10 @@ def router(ctx: AppContext) -> APIRouter:
                     elif kind == "quality":
                         got = await live.configure(key, data.get("max_width"), data.get("quality"), data.get("fps"), data.get("every_nth_frame"))
                         await send_json({"type": "quality", **got})
+                    elif kind == "frames":
+                        gate.set(data.get("on") is not False)
+                    elif kind == "view":   # the size of the owner's live area: the tab follows while they control it (live_v 2)
+                        await send_json({"type": "view_ok", **await live.view(key, device, data)})
                     elif kind == "control":
                         if data.get("take"):
                             live.take(key, device)
@@ -411,7 +440,7 @@ def router(ctx: AppContext) -> APIRouter:
                 except Exception as e:  # noqa: BLE001 - the browser refused one step; the live view goes on (never echo the event)
                     await send_json({"type": "error", "code": "browser", "message": f"the browser could not do that ({type(e).__name__})", "for": str(kind)[:20]})
 
-        tasks = [asyncio.ensure_future(c) for c in (frames(), status_loop(), receive(), pointer_loop())]
+        tasks = [asyncio.ensure_future(c) for c in (frames(), status_loop(), receive(), pointer_loop(), meta())]
         try:
             await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         finally:
@@ -430,6 +459,89 @@ def router(ctx: AppContext) -> APIRouter:
                 await ws.close(ending["code"], ending["reason"])
             except Exception:  # noqa: BLE001 - the phone already left
                 pass
+
+    @router.websocket("/api/browser/sessions/{key}/vnc")
+    async def vnc_socket(ws: WebSocket, key: str) -> None:
+        """The tab as the browser's real X screen over RFB. First message (text): {"type":"vnc","width","height"} (CSS px the screen was
+        sized to) and then only binary RFB bytes both ways, or {"type":"error","code":"busy"|"unavailable"|"unauthorized"} and a close
+        (the app shows the picture stream instead). Taking over, text and keys stay on the live socket: pointer, key and clipboard
+        messages of a device that does not hold the tab are dropped (tools/vnc.ClientFilter)."""
+        live, device = await sign_in_socket(ws, key)
+        if device is None:
+            return
+
+        async def refuse(code: str, close: int) -> None:
+            await ws.send_text(json.dumps({"type": "error", "code": code}))
+            await ws.close(close, code)
+
+        q = ws.query_params
+        size = viewer_css_size(*(_number(q.get(n)) for n in ("width", "height", "density")), session.view(key) if session is not None else "desktop")
+        if (live is None or live.kind != "browser" or vnc is None or size is None or not live.available(key)):
+            await refuse("unavailable", 4503)
+            return
+        width, height, _ratio = size
+        try:
+            if not await vnc.acquire(key, device, width, height):
+                await refuse("busy", 4409)
+                return
+        except VncUnavailable:
+            await refuse("unavailable", 4503)
+            return
+        up_writer: asyncio.StreamWriter | None = None
+        try:
+            try:
+                up_reader, up_writer = await asyncio.wait_for(asyncio.open_connection(*vnc.upstream), CONNECT_SECONDS)
+            except (OSError, asyncio.TimeoutError):
+                await refuse("unavailable", 4503)
+                return
+            got = vnc.size_of(key) or (width, height)   # the screen keeps the size the first viewer of this tab asked for
+            await ws.send_text(json.dumps({"type": "vnc", "width": got[0], "height": got[1]}))
+            screen = ClientFilter(lambda: live.holder(key) == device)   # asked per message: taking over and giving back count at once
+            gone = vnc.gone.get(key)
+
+            async def from_viewer() -> None:
+                while True:
+                    msg = await ws.receive()
+                    if msg["type"] == "websocket.disconnect":
+                        return
+                    data = msg.get("bytes")
+                    if not data:
+                        continue   # the RFB stream is binary only
+                    if live.holder(key) == device:
+                        live.seen(key, device)
+                    out = screen.feed(data)
+                    if out:
+                        up_writer.write(out)
+                        await up_writer.drain()
+
+            async def from_screen() -> None:
+                while data := await up_reader.read(65536):
+                    await ws.send_bytes(data)
+
+            async def watch_tab() -> None:
+                while live.available(key):
+                    try:
+                        await asyncio.wait_for((gone or asyncio.Event()).wait(), 1.0)
+                        return   # the tab was closed under the viewers
+                    except asyncio.TimeoutError:
+                        pass
+
+            tasks = [asyncio.ensure_future(c) for c in (from_viewer(), from_screen(), watch_tab())]
+            try:
+                await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            finally:
+                for t in tasks:
+                    t.cancel()
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+            bad = any(isinstance(r, VncError) for r in results)
+            try:
+                await ws.close(1003 if bad else 1000)
+            except Exception:  # noqa: BLE001 - the phone already left
+                pass
+        finally:
+            if up_writer is not None:
+                up_writer.close()
+            await vnc.release(key, device)
 
     @router.get("/api/browser/sessions/{key}/frame", dependencies=[Depends(require_auth)])
     async def live_frame(key: str, request: Request, after: int = 0, wait: float = 10.0, max_width: int | None = None,
@@ -457,7 +569,7 @@ def router(ctx: AppContext) -> APIRouter:
         from urllib.parse import quote
         headers.update({"X-Frame-Seq": str(frame.seq), "X-Frame-W": str(frame.w), "X-Frame-H": str(frame.h),
                         "X-Frame-Css-W": str(frame.meta.get("deviceWidth") or ""), "X-Frame-Css-H": str(frame.meta.get("deviceHeight") or ""),
-                        "X-Frame-Ts": f"{frame.ts:.3f}", "X-Frame-Url": quote(frame.url[:1000], safe=":/?&=#%"),
+                        "X-Frame-Ts": f"{frame.ts:.3f}", "X-Live-V": "2", "X-Frame-Editing": "1" if frame.editing else "0", "X-Frame-Url": quote(frame.url[:1000], safe=":/?&=#%"),
                         "X-Frame-Title": quote(frame.title[:200], safe=""), "X-Content-Type-Options": "nosniff"})
         return Response(frame.jpeg, media_type="image/jpeg", headers=headers)
 

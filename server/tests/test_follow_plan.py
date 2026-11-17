@@ -195,7 +195,7 @@ async def test_planner_model_call():
     assert len(plan.checks) == 1
     assert plan.checks[0]["kind"] == "flight_status"
     assert len(plan.prep) == 1
-    assert plan.prep[0]["what"] == "check-in"
+    assert plan.prep[0]["what"] == "check-in" and plan.prep[0]["kind"] == "other"   # the model named no kind: the apps show it as a plain preparation
     assert plan.prep[0]["state"] == "later"
 
 
@@ -240,3 +240,13 @@ async def test_scripted_plan_flight_and_booking():
     assert len(booking_plan.prep) >= 1
     assert "booking" in booking_plan.prep[0]["what"] or "document" in booking_plan.prep[0]["what"]
     assert booking_plan.tell.get("lead") == ["-1d", "-3h"]
+
+
+def test_the_prep_kind_comes_from_the_plan_not_from_the_words_of_what():
+    p = Planner(stream_fn=None, model=lambda: None, key_args=lambda p: {}, sources=[])
+    item = UpcomingItem(key="k", kind="flight", title="t", starts_at=1.0, ends_at=2.0, place="", refs={}, source="calendar")
+    plan = p.validate({"prep": [{"what": "online check-in", "when": "-24h", "kind": "check_in"}, {"what": "체크인", "when": "-24h"},
+                                {"what": "x", "kind": "made-up"}, {"what": "y", "kind": ["check_in"]}], "tell": {}}, item)
+    assert [x["kind"] for x in plan.prep] == ["check_in", "other", "other", "other"]
+    assert all(x["kind"] == "check_in" for x in p._scripted_plan(UpcomingItem(key="f", kind="flight", title="t", starts_at=1.0, ends_at=2.0, place="",
+                                                                                refs={"flight": "KE123"}, source="calendar")).prep)

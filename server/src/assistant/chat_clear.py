@@ -28,6 +28,7 @@ DELETES: tuple[tuple[str, str], ...] = (
     ("workers", "DELETE FROM workers"),
     ("worker_messages", "DELETE FROM worker_messages"),
     ("approvals", "DELETE FROM approval_log"),
+    ("trail_labels", "DELETE FROM trail_labels"),   # the data trail's labels of the runs (data_trail.py); the owner's recipient allows stay
     ("notifications", "DELETE FROM notifications"),
     ("followups", "DELETE FROM followups"),
     ("journal", "DELETE FROM journal"),
@@ -39,6 +40,7 @@ DELETES: tuple[tuple[str, str], ...] = (
     ("goal_suggestions", "DELETE FROM goal_suggestions WHERE status = 'proposed'"),
     ("turn_events", "DELETE FROM turn_events"),   # the reply log (turn_log.py): a cleared reply is not read again, not even after a restart
     ("turn_log", "DELETE FROM turn_log"),
+    ("proactive_held", "DELETE FROM proactive_held"),   # items kept for a later proactive message carry text made from the chats and mail
 )
 BLANKS: tuple[tuple[str, str], ...] = (
     ("proactive_log", "UPDATE proactive_log SET message = '', reason = '', task_id = NULL WHERE message != '' OR reason != '' OR task_id IS NOT NULL"),

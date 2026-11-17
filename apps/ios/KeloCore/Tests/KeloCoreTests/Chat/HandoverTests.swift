@@ -24,6 +24,21 @@ import Testing
         #expect(PendingApproval.parseResolved(try JSON.parse(#"{"items":[]}"#)).isEmpty)   // an older server
     }
 
+    /// Android HandoverTest.thePhoneScreenHandoverIsToldApartAndKeepsTheServersWords.
+    @Test func thePhoneScreenHandoverIsToldApartAndKeepsTheServersWords() throws {
+        let items = PendingApproval.parseList(try JSON.parse("""
+            {"items":[{"type":"approval_request","kind":"human_check","approval_id":"d1","name":"browser_check","site":"Pixel 8",
+               "ask":"Kelo needs you at the phone screen","detail":"Solve the check on the phone","tab":"owner:phone",
+               "check":{"vendor":"android","name":"Solve the check on the phone","kind":"device"}},
+               {"type":"approval_request","kind":"human_check","approval_id":"h1","name":"browser_check","site":"shop.example.com",
+               "check":{"vendor":"cloudflare","kind":"interstitial"}}]}
+            """))
+        let d = try #require(items.first { $0.id == "d1" })
+        #expect(d.isHumanCheck && d.isDevice && !d.isVerification)
+        #expect(d.event.ask == "Kelo needs you at the phone screen" && d.event.detail == "Solve the check on the phone")
+        #expect(items.first { $0.id == "h1" }?.isDevice == false)
+    }
+
     /// Android HandoverTest.aSignInVerificationIsToldApartFromAPersonCheck.
     @Test func aSignInVerificationIsToldApartFromAPersonCheck() throws {
         let items = PendingApproval.parseList(try JSON.parse("""

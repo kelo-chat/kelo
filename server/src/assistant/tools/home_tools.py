@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from ..agent import Ours, Tool, ToolOutput
 from ..agent.fence import data, marked
+from .. import data_trail
+from ..data_trail import note_item
+from ..deliverables import DIR as LIBRARY_DIR
+from ..deliverables import TEXT_SUFFIXES, Deliverables
 from ..home import DOCUMENT_SUFFIXES, Home, HomeError, Skills
 from ..photos import PhotoError, is_image, view_copy
 
@@ -66,7 +71,7 @@ HOW_TO = ("Call list_files with no path to see what you can read. Documents the 
 CLI_FILES = {"GEMINI.md", "AGENTS.md.orig", "CLAUDE.md"}   # rules files some CLIs load; their content is already in your context
 
 
-def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog: Any = None) -> list[Tool]:
+def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog: Any = None, library: Deliverables | None = None) -> list[Tool]:
     async def read_file(args: dict[str, Any]) -> str:
         try:
             raw = str(args.get("path", ""))
@@ -76,22 +81,48 @@ def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog
                 return Ours(f"{raw.rsplit('/', 1)[-1]} is a photo, not a text file: look at it with view_image.")
             if extractor and is_upload:
                 got = await extractor(raw)  # "reading" an uploaded PDF / Word / Excel file means extracting its text
+                note_item(rel, title=rel.rsplit("/", 1)[-1])
                 return got if marked(str(got)) else Ours(got)   # the extracted text comes marked; a refusal is ours
             in_home = not rel.startswith("/") and (home.root / rel).is_file()   # (an absolute path may exist in the CLI's own folder)
             if raw.replace("\\", "/").rsplit("/", 1)[-1] in CLI_FILES and not in_home:
                 return Ours("That is the rules file your command-line tool loads; its content is already in your context (your instructions). "
                             "Nothing to read there. " + HOW_TO + (f"\n\n{catalog()}" if catalog else ""))
             text = page(home.read(rel), args.get("offset"))
-            # a file from outside (an upload, a saved download, text read from an upload) is fenced; the agent's own files are not
-            return external_page(text) if is_upload or rel.startswith(EXTERNAL_DIRS) else Ours(text)
+            note_item(rel, title=rel.rsplit("/", 1)[-1], kind="memory" if rel in ("MEMORY.md", "user.md") or rel.startswith("memory/") else
+                      "notes" if rel.startswith("notes/") else "file")
+            carry = data_trail.carried(home.root / rel)   # labels the file took when it was written (user.kelo_trail)
+            for c in carry:
+                if not c.get("outside"):
+                    note_item(str(c.get("source_id") or rel), party=str(c.get("party") or ""), title=str(c.get("title") or ""), kind=str(c.get("kind") or ""))
+            # a file from outside (an upload, a saved download, text read from an upload, a file written from outside text) is fenced;
+            # the agent's own files are not
+            return external_page(text) if is_upload or rel.startswith(EXTERNAL_DIRS) or any(c.get("outside") for c in carry) else Ours(text)
         except HomeError as e:
             return Ours(f"error: {e}. {HOW_TO}")
 
     async def write_file(args: dict[str, Any]) -> str:
         try:
-            return f"saved {home.write(home.relativize(str(args.get('path', ''))), args.get('content', ''))}"
+            rel = home.relativize(str(args.get("path", "")))
+            if rel.replace("\\", "/").lstrip("./").split("/")[0] == LIBRARY_DIR:
+                return keep_for_user(rel, args.get("content", ""))
+            saved = home.write(rel, args.get("content", ""))
+            data_trail.mark_written(home.root / rel, str(args.get("content", "")))
+            return f"saved {saved}"
         except HomeError as e:
             return f"error: {e}"
+
+    def keep_for_user(rel: str, content: Any) -> str:
+        """A text file written to files/ is a result for the user (their library), kept like one the work room made: never over an
+        earlier file, and it is named as it was kept. Other formats are made in the work room."""
+        suffix = Path(rel).suffix.lower()
+        if library is None or suffix not in TEXT_SUFFIXES:
+            raise HomeError(f"write_file saves only text files ({', '.join(sorted(TEXT_SUFFIXES))}) in files/; make {Path(rel).name or 'a file in another format'} "
+                            "(Excel, Word, PowerPoint, PDF, ...) with workroom_run after reading the documents skill")
+        if not isinstance(content, str):
+            raise HomeError("content must be text")
+        saved = library.save(Path(rel).name, content.encode("utf-8"))
+        data_trail.mark_written(library.dir / saved, content)
+        return f"saved {LIBRARY_DIR}/{saved} (in the user's files)"
 
     async def list_files(args: dict[str, Any]) -> str:
         try:
@@ -133,9 +164,11 @@ def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog
     tools = [
         Tool("read_file", "Read one of your files.",
              obj({"path": {"type": "string"}, "offset": {"type": "integer", "description": "line to go on from, for a long file"}}, ["path"]),
-             read_file, read_only=True, untrusted=True, source="file"),
-        Tool("write_file", "Replace one of your files with new full content; read it first and keep what is still true. Writable: the "
-             "core .md files, CHECKLIST.md, NOTIFY_PREFS.md, memory/ and notes/.",
+             read_file, read_only=True, untrusted=True, source="file", trail="file"),
+        Tool("write_file", "Replace one of your own files with new full content; read it first and keep what is still true. Writable: the "
+             "core .md files, CHECKLIST.md, NOTIFY_PREFS.md, memory/ and notes/ (your notes, not something the user asked for). A text file the "
+             "user asked for (.csv .txt .json ...): path files/<name>, kept in their files. Excel, Word, PowerPoint and PDF files: workroom_run "
+             "(documents skill).",
              obj({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]), write_file),
         Tool("list_files", "List your files (empty path: the top level).",
              obj({"path": {"type": "string"}, "recursive": {"type": "boolean"},
@@ -147,6 +180,7 @@ def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog
             path = home.upload_path(str(args.get("name") or args.get("path") or ""))
         except HomeError as e:
             return f"error: {e}"
+        note_item(f"uploads/{path.name}", title=path.name)
         if not is_image(path.name):
             if path.suffix.lower() not in DOCUMENT_SUFFIXES:
                 return f"error: {path.name} is a video or sound file, not a photo: it cannot be looked at"
@@ -159,7 +193,7 @@ def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog
                           [url], no_vision=NO_VISION)
 
     tools.append(Tool("view_image", "Look at a photo the user uploaded (you get the picture when your model can see images).",
-                      obj({"name": {"type": "string", "description": "its file name in uploads/"}}, ["name"]), view_image, read_only=True))
+                      obj({"name": {"type": "string", "description": "its file name in uploads/"}}, ["name"]), view_image, read_only=True, trail="photos"))
 
     async def search_skills(args: dict[str, Any]) -> str:
         if not skills:
@@ -196,6 +230,7 @@ def memory_tools(home: Home) -> list[Tool]:
         if rel is None:
             return f"error: only {', '.join(MEMORY_FILES)} and files in memory/ can be read here"
         try:
+            note_item(rel, title=rel.rsplit("/", 1)[-1])
             return page(home.read(rel), args.get("offset"))
         except HomeError as e:
             return f"error: {e}"
@@ -205,14 +240,16 @@ def memory_tools(home: Home) -> list[Tool]:
         if rel is None:
             return f"error: only {', '.join(MEMORY_FILES)} and files in memory/ can be written here"
         try:
-            return f"saved {home.write(rel, str(args.get('content', '')))}"
+            saved = home.write(rel, str(args.get("content", "")))
+            data_trail.mark_written(home.root / rel, str(args.get("content", "")))
+            return f"saved {saved}"
         except HomeError as e:
             return f"error: {e}"
 
     obj = lambda props, req: {"type": "object", "properties": props, "required": req}
     return [
         Tool("read_file", "Read MEMORY.md, user.md or a file in memory/.", obj({"path": {"type": "string"}, "offset": {"type": "integer"}}, ["path"]),
-             read_file, read_only=True),
+             read_file, read_only=True, trail="memory"),
         Tool("write_file", "Replace MEMORY.md, user.md or a file in memory/ with new full content (read it first and keep what is still true).",
              obj({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]), write_file),
     ]

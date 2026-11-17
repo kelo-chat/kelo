@@ -84,7 +84,7 @@ gh attestation verify kelo-0.1.N-play-release-unsigned.aab -R kelo-chat/kelo
 |---|---|
 | 빌드 시각으로 정한 버전 | 버전은 `apps/android/kelo/version.properties`(`build=N`이면 versionCode N, versionName `0.1.N`)에서 읽고 릴리스마다 함께 커밋해요. `tools/build/android.sh version`이 써 줘요. "2026 후반부터의 분" 규칙은 운영자가 릴리스를 시작할 때 번호를 고르는 데만 써요 |
 | JDK, Gradle, Android SDK, 빌드 도구 | `apps/android/reproducible/Dockerfile`: JDK 이미지는 digest로, Android 플랫폼 36(r02)과 빌드 도구 36.0.0은 SHA-256으로, Gradle 8.11.1은 wrapper의 `distributionSha256Sum`으로 고정 |
-| 마이에 보이는 커밋 | 마이의 버전 줄 끝에는 앱이 빌드된 커밋의 짧은 해시가 있고, 누르면 GitHub의 그 커밋으로 가요(`BuildConfig.SOURCE_COMMIT`, `ReleaseInfo.SOURCE_COMMIT`, Info.plist `KeloSourceCommit`). `tools/build/android-reproducible.sh`가 빌드하는 커밋의 sha를 컨테이너 안으로 넘겨서(`-PkeloCommit`) 같은 커밋이면 결과도 같아요. `--worktree` 빌드는 "수정됨"으로 표시되고 링크가 없어요. sha는 파일의 일부라서, `tools/build/android.sh`가 다른 커밋에서 만든 APK는 태그의 빌드와 바로 이 값만 달라요 |
+| 마이에 보이는 릴리스 | 마이의 버전 줄 끝에는 앱의 릴리스 태그(`android-0.10.2`, `ios-<버전>`, `windows-<패키지 번호>`, `macos-<패키지 번호>`)가 있고, 누르면 GitHub `kelo-chat/kelo`의 그 태그로 가요(서버 줄은 `kelo-chat/kelo-server`의 `release-<버전>`으로 가요). 공개 저장소에는 릴리스마다 커밋이 하나뿐이라서 태그로 연결해요. 개발용 비공개 커밋으로 연결하면 404가 나와요. 앱에는 커밋이 들어가지 않아서(`BuildConfig.SOURCE_COMMIT`, `ReleaseInfo.SOURCE_COMMIT`은 `-PkeloCommit=<sha>`를 줄 때만 채워져요), 공개 태그를 빌드하면 어느 커밋에 있든 릴리스와 같은 결과가 나와요. `--worktree` 빌드(또는 바뀐 파일로 만든 빌드)는 "수정됨"으로 표시되고 링크가 없어요. iPhone에서는 Info.plist의 `KeloSourceCommit`이 기본적으로 비어 있고, `KELO_EMBED_COMMIT=1`을 주면 커밋이 들어가요. |
 | 라이브러리와 플러그인 | `gradle/libs.versions.toml`에 정확한 버전, 내려받는 파일은 모두 `gradle/verification-metadata.xml`과 대조(재현 빌드에서는 엄격하게) |
 | 번들 안의 R8 시간 기록 | R8이 실행 시간과 스레드 수를 `BUNDLE-METADATA/com.android.tools/r8.json`에 적어요. 이 두 숫자를 비워요(`app/build.gradle.kts`). 번들을 두 번 빌드했을 때 다른 곳은 여기뿐이었어요 |
 | APK 안의 암호화된 의존성 목록 | `dependenciesInfo { includeInApk = false }`: 파일 APK에는 빌드마다 바뀌는 난수가 없어요(번들은 평문 목록을 그대로 둬요) |
@@ -124,7 +124,7 @@ powershell -ExecutionPolicy Bypass -File tools\verify\windows-verify.ps1 <Kelo-1
 스크립트가 하는 일:
 
 1. MSI를 임시 폴더에 관리자 권한 없이 풀거나(`msiexec /a`), MSIX(zip)를 풀거나, 이미 설치된 폴더를 직접 읽어요.
-2. 앱의 jar 안에서(`chat.kelo.desktop.core.ReleaseInfo`) 어떤 소스 커밋에서 빌드됐는지와 패키지 번호를 읽어요(직접 지정하려면 `-Commit <40자리 해시>`).
+2. 앱의 jar 안에서(`chat.kelo.desktop.core.ReleaseInfo`) 패키지 번호를 읽어요. 앱은 커밋을 담고 있지 않아서 `-Commit <40자리 해시>`(공개 저장소의 `windows-<패키지 번호>` 태그의 커밋)나 `-Source <폴더>`를 직접 줘요.
 3. GitHub에서 해당 커밋의 소스를 내려받거나(zip이라 PC에 `git`이 없어도 돼요), `-Source <폴더>`로 지정한 소스를 써요.
 4. `apps/desktop/packaging/windows/JDK`에 고정된 Java 런타임(Eclipse Temurin, `%LOCALAPPDATA%\kelo\jdk`에 한 번 내려받고 SHA-256 확인)과 고정 zip 시각 도구(`tools/build/zipclock`)를 써서 `gradlew createDistributable`로 서명 없이 빌드해요.
 5. 두 앱 폴더를 파일 단위로, jar 안은 항목 단위로 비교해요(`tools/verify/appdiff.py --windows`). Python 3는 PC에 설치된 것을 쓰거나 고정된 작은 임베디드 Python(`apps/desktop/packaging/windows/PYTHON`)을 자동으로 내려받아요.

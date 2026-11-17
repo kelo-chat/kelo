@@ -18,7 +18,7 @@ from test_agent_profile import app_settings, approval_tool
 from test_server import AUTH, Running, follow
 from test_workers import Brain, call, delegating, one_worker, say, until
 
-MARK = "ZQXJ-secret-words-7731"   # stands for what the user said; must not survive anywhere in the database file
+MARK = "ZQXJ-secret-words-seven"   # stands for what the user said; must not survive anywhere in the database file
 
 
 def count(store, table, where="1"):

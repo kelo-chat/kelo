@@ -17,4 +17,6 @@
     <string name="perm_reset_q">¿Volver a poner todos los ajustes de este conector en sus valores predeterminados?</string>
     <string name="perm_read_off_q">Con la lectura apagada, Kelo casi no puede usar este conector. ¿Apagarla?</string>
     <string name="perm_limited">Limitado</string>
+    <string name="perm_unattended">Usar cuando no estoy chateando</string>
+    <string name="perm_unattended_about">Las tareas programadas, los trabajos en segundo plano y los mensajes que Kelo envía por iniciativa propia no usarán %1$s. Tus propios chats sí pueden.</string>
 </resources>

@@ -89,6 +89,12 @@ async def test_save_found_secret_matches_keychain_card_regex(tmp_path):
     assert m is not None
     assert m.group(1) == "acme"
     assert m.group(2) == "api.acme.com, other.acme.com"
+    # the apps read the facts, not the sentence (agent/facts.py): the same values, sent in the tool_result event
+    assert result.facts == {"saved_key": {"service": "acme", "hosts": ["api.acme.com", "other.acme.com"]}}
+    from assistant.server import serialize
+    assert serialize(result)["facts"] == result.facts
+    refused = ToolResult("1", "x", "error", True)
+    assert "facts" not in serialize(refused)
 
 
 async def test_the_key_may_go_only_to_the_site_it_was_found_on_unless_the_user_allows_it(tmp_path):

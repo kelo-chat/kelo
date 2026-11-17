@@ -1,0 +1,322 @@
+{
+ "release": "ios-0.10.1",
+ "recorded_from": "iPhone API client (KeloCore KeloApi.swift) at commit c19dfe32 (iOS 1.0.1, build 26111411, version.json 0.10.1; the paths of the Android fixture the iPhone client also calls, plus iPhone-only reads); the app sends X-Kelo-App ios/<version.json version>+<CFBundleVersion>, not the store's 1.0.1; 1.0.1 sends no X-Kelo-App-Channel yet",
+ "headers": {
+  "X-Kelo-App": "ios/0.10.1+26111411"
+ },
+ "requests": [
+  {
+   "method": "GET",
+   "path": "/api/about",
+   "fields": [
+    "version",
+    "build"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/e2e/info"
+  },
+  {
+   "method": "GET",
+   "path": "/api/profile",
+   "fields": [
+    "user_name",
+    "agent_name",
+    "provider",
+    "model",
+    "fallback_provider",
+    "fallback_model",
+    "effort",
+    "tone",
+    "avatar_version",
+    "model_ready",
+    "min_app_version"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/messages?limit=30",
+   "item_fields": [
+    "id",
+    "role",
+    "content",
+    "created_at"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/agent/status",
+   "fields": [
+    "busy",
+    "pending_approvals",
+    "open_followups",
+    "unseen_tasks"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/approvals/pending"
+  },
+  {
+   "method": "GET",
+   "path": "/api/approvals/rules",
+   "fields": [
+    "items"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/approvals/history?limit=20"
+  },
+  {
+   "method": "GET",
+   "path": "/api/devices",
+   "fields": [
+    "devices",
+    "current"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/tasks?limit=20",
+   "fields": [
+    "items",
+    "unseen"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/tasks?limit=1",
+   "fields": [
+    "items"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/workers?limit=20"
+  },
+  {
+   "method": "GET",
+   "path": "/api/workers?status=needs_input&limit=5"
+  },
+  {
+   "method": "GET",
+   "path": "/api/goals",
+   "item_fields": [
+    "id",
+    "title",
+    "status"
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/goals/suggestions"
+  },
+  {
+   "method": "GET",
+   "path": "/api/schedules"
+  },
+  {
+   "method": "GET",
+   "path": "/api/schedules/archive"
+  },
+  {
+   "method": "GET",
+   "path": "/api/watchers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/briefing"
+  },
+  {
+   "method": "GET",
+   "path": "/api/briefing/sources"
+  },
+  {
+   "method": "GET",
+   "path": "/api/proactive"
+  },
+  {
+   "method": "GET",
+   "path": "/api/checklist"
+  },
+  {
+   "method": "GET",
+   "path": "/api/followups/settings"
+  },
+  {
+   "method": "GET",
+   "path": "/api/connectors"
+  },
+  {
+   "method": "GET",
+   "path": "/api/oauth/providers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/mail/providers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/vault"
+  },
+  {
+   "method": "GET",
+   "path": "/api/wallet"
+  },
+  {
+   "method": "GET",
+   "path": "/api/wallet/limits"
+  },
+  {
+   "method": "GET",
+   "path": "/api/wallet/cards"
+  },
+  {
+   "method": "GET",
+   "path": "/api/wallet/notifications?limit=1"
+  },
+  {
+   "method": "GET",
+   "path": "/api/wallet/shipping"
+  },
+  {
+   "method": "GET",
+   "path": "/api/payment-pins"
+  },
+  {
+   "method": "GET",
+   "path": "/api/usage"
+  },
+  {
+   "method": "GET",
+   "path": "/api/usage/summary?days=1"
+  },
+  {
+   "method": "GET",
+   "path": "/api/resources"
+  },
+  {
+   "method": "GET",
+   "path": "/api/browser/sessions?thumbnails=false"
+  },
+  {
+   "method": "GET",
+   "path": "/api/uploads"
+  },
+  {
+   "method": "GET",
+   "path": "/api/journal?month=2026-11"
+  },
+  {
+   "method": "GET",
+   "path": "/api/reflection"
+  },
+  {
+   "method": "GET",
+   "path": "/api/reflection/memory"
+  },
+  {
+   "method": "GET",
+   "path": "/api/offers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/nest/extensions"
+  },
+  {
+   "method": "GET",
+   "path": "/api/skills/proposals"
+  },
+  {
+   "method": "GET",
+   "path": "/api/task-permissions"
+  },
+  {
+   "method": "GET",
+   "path": "/api/secret-requests"
+  },
+  {
+   "method": "GET",
+   "path": "/api/keyguard"
+  },
+  {
+   "method": "GET",
+   "path": "/api/operator/status"
+  },
+  {
+   "method": "GET",
+   "path": "/api/server-update",
+   "expect": [
+    200,
+    404,
+    409
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/address/countries"
+  },
+  {
+   "method": "GET",
+   "path": "/api/caldav"
+  },
+  {
+   "method": "GET",
+   "path": "/api/storage/cleanup"
+  },
+  {
+   "method": "POST",
+   "path": "/api/tasks/seen",
+   "body": {
+    "up_to": 0
+   },
+   "expect": [
+    200
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/wallet/notifications/seen",
+   "body": {
+    "up_to": 0
+   },
+   "expect": [
+    200,
+    422
+   ]
+  },
+  {
+   "method": "POST",
+   "path": "/api/goals",
+   "body": {
+    "title": "Walk"
+   },
+   "expect": [
+    200,
+    201
+   ]
+  },
+  {
+   "method": "GET",
+   "path": "/api/followups"
+  },
+  {
+   "method": "GET",
+   "path": "/api/providers"
+  },
+  {
+   "method": "GET",
+   "path": "/api/uploads/limits"
+  },
+  {
+   "method": "GET",
+   "path": "/api/language"
+  },
+  {
+   "method": "GET",
+   "path": "/api/home-trash"
+  }
+ ]
+}

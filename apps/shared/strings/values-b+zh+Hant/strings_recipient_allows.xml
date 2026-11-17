@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">郵件</string>
+    <string name="trail_kind_file">檔案</string>
+    <string name="trail_kind_memory">記憶</string>
+    <string name="trail_kind_contacts">聯絡人</string>
+    <string name="trail_kind_calendar">行程</string>
+    <string name="trail_kind_photos">照片</string>
+    <string name="trail_kind_messages">訊息</string>
+    <string name="trail_kind_notes">筆記</string>
+    <string name="trail_kind_vault">已儲存的登入資訊</string>
+    <string name="trail_kind_profile">個人資料</string>
+    <string name="trail_kind_web">網頁</string>
+    <string name="trail_kind_channel">聊天</string>
+    <string name="trail_kind_device">裝置資料</string>
+    <string name="trail_kind_connector">已連結的服務</string>
+    <string name="trail_kind_other">資料</string>
+    <string name="trail_recipient_link">公開連結</string>
+    <string name="trail_goes_to">傳送給 %2$s：%1$s</string>
+    <string name="trail_allow_once">僅允許一次</string>
+    <string name="trail_allow_always">一律允許此接收方</string>
+    <string name="recipient_approval_always">已允許。不會再就此接收方詢問。</string>
+    <string name="recipient_allows_title">一律允許的接收方</string>
+    <string name="recipient_allows_empty">目前沒有。在卡片上選擇「一律允許此接收方」後，會顯示在這裡。</string>
+    <string name="recipient_allow_since">允許於 %1$s</string>
+    <string name="recipient_allow_remove">移除 %1$s</string>
+    <string name="recipient_allow_remove_confirm">向 %2$s 傳送%1$s前再次詢問嗎？</string>
+    <string name="recipient_allow_removed">之後向該接收方傳送前會再次詢問。</string>
+</resources>

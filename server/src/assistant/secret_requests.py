@@ -134,6 +134,8 @@ class SecretRequests:
         self._waiters: dict[str, list[asyncio.Future[str]]] = {}
         with store._lock:
             store._db.executescript(SCHEMA)
+            if "username_hint" not in {c[1] for c in store._db.execute("PRAGMA table_info(secret_requests)")}:
+                store._db.execute("ALTER TABLE secret_requests ADD COLUMN username_hint TEXT NOT NULL DEFAULT ''")
             store._db.commit()
 
     # ------------------------------------------------------------------ reading
@@ -147,7 +149,8 @@ class SecretRequests:
         out = {"id": r["id"], "kind": r["kind"], "name": r["name"], "label": r["label"], "hosts": json.loads(r["hosts"] or "[]"),
                "reason": r["reason"], "check": bool(r["check_url"]), "source": r["source"], "turn_id": r["turn_id"] or None,
                "task_id": r["task_id"], "after_id": int(r["after_id"] or 0), "state": r["state"], "created_at": r["created_at"],
-               "answered_at": r["answered_at"], "expires_at": r["created_at"] + KEEP_OPEN_SECONDS}
+               "answered_at": r["answered_at"], "expires_at": r["created_at"] + KEEP_OPEN_SECONDS,
+               "username_hint": r.get("username_hint") or ""}   # a login's account name known beforehand: a NON-secret prefill
         if r["state"] == "saved":
             out["result"] = {k: v for k, v in result.items() if k in ("checked", "mode", "card", "pin")}
             if r["kind"] == "login":
@@ -225,7 +228,7 @@ class SecretRequests:
     # ------------------------------------------------------------------ asking
     def create(self, kind: str, *, name: str = "", label: str = "", hosts: list[str] | None = None, reason: str = "",
                check_url: str = "", source: str = "agent", turn: dict[str, Any] | None = None, worker_id: str = "",
-               owner: str = "") -> dict[str, Any]:
+               owner: str = "", username_hint: str = "") -> dict[str, Any]:
         """A new open request. An older open one for the same item is replaced (its card folds); its waiter gets "replaced"."""
         if kind not in KINDS:
             raise ValueError(f"unknown kind {kind!r}")
@@ -239,10 +242,10 @@ class SecretRequests:
             after = self.store._all("SELECT COALESCE(MAX(id), 0) AS m FROM messages")[0]["m"]
             rid = "sr_" + uuid.uuid4().hex[:16]
             self.store._run("INSERT INTO secret_requests(id, kind, name, label, hosts, reason, check_url, source, turn_id, task_id, worker_id, "
-                            "run_source, owner, after_id, state, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'open', ?)",
+                            "run_source, owner, after_id, state, created_at, username_hint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'open', ?, ?)",
                             (rid, kind, name, label[:80], json.dumps(list(hosts or [])), reason[:300], check_url, source,
                              str(turn.get("turn_id") or ""), turn.get("task_id"), worker_id, str(turn.get("source") or ""), owner,
-                             int(after or 0), self.clock()))
+                             int(after or 0), self.clock(), username_hint))
         if source == "agent" and kind != "login" and self.on_open is not None:   # a login has its own follow-up item (followups.py)
             try:
                 self.on_open(self._row(rid) or {})

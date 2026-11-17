@@ -85,6 +85,18 @@ class RegWorld(World):
             if ref in self.unsigned:
                 return self.ok(rc=1)
             return self.ok(json.dumps([{"critical": {"image": {"docker-manifest-digest": ref.split("@")[1]}}}]))
+        if cmd[:3] == ["docker", "image", "ls"] and "--no-trunc" in cmd:
+            lines = []
+            for tag, iid in self.images.items():
+                repo, _, t = tag.rpartition(":")
+                lines.append(f"{iid}\t{repo}\t{t}\t<none>")
+            return self.ok("\n".join(lines))
+        if cmd[:3] == ["docker", "container", "ls"]:
+            return self.ok("\n".join(f"{p}|{s}" for (p, s) in self.containers))
+        if cmd[:2] == ["docker", "inspect"] and "{{.Image}}" in cmd and cmd[-1] != "updater-host":
+            return self.ok("\n".join(self.containers[tuple(c.split("|"))]["image"] for c in cmd[4:]))
+        if cmd[:2] == ["docker", "image"] and cmd[2] == "rm":
+            self.removed = getattr(self, "removed", []) + cmd[3:]
         if cmd[:2] == ["docker", "inspect"] and cmd[-1] == "updater-host":
             return self.ok(self.updater_image)
         if cmd[:2] == ["docker", "run"]:
@@ -504,3 +516,110 @@ def test_only_the_main_copys_server_is_attached_to_the_updaters_network_and_agai
     assert svc.attach_server() is True
     nets["updater-host"] = {"x_other": {}}
     assert svc.attach_server() is False                                      # no updater-net: nothing to do
+
+
+# ---------------------------------------------------------------------------------------------------------------- 2026-11-16 fixes
+def test_a_release_update_needs_no_build_margin_on_the_disk_but_a_source_that_builds_still_does(tmp_path):
+    svc, w, m, swaps, _ = make(tmp_path)
+    vol = w.volume("main")
+    vol["free"] = 2 * 2**30                                   # 2 GiB: enough to pull finished images, too little to build
+    svc.check()
+    svc.start("update")
+    assert job(svc)["state"] != "failed" and "not enough free disk" not in str(job(svc).get("error"))
+    assert job(svc)["step"] == "self_update"
+    # the same disk stops a run that builds here (no source), and a source that says it builds
+    u = Updater(m, http=w.http)
+    assert u.builds_locally(True) is True and u.builds_locally(False) is False
+
+    class Builder:
+        builds = True
+    u.source = Builder()
+    assert u.builds_locally(False) is True
+    u.source = us.RegistrySource(release(), rel.Verifier(w))
+    assert u.builds_locally(True) is False
+
+
+def test_the_updater_image_runs_its_kelo_name_refresh_with_only_the_files_its_dockerfile_copies(tmp_path):
+    """docker/updater.Dockerfile has no third-party packages: import the service with ONLY those files and httpx/segno blocked, then run
+    the first round of kelo_loop with fakes (found by the 2026-11-16 in-app update test: `from . import connect` raised ImportError)."""
+    import sys
+    import textwrap
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[2]
+    docker = (repo / "docker" / "updater.Dockerfile").read_text()
+    text = docker.replace("\\\n", " ")
+    line = next(ln for ln in text.splitlines() if ln.startswith("COPY server/src/assistant/"))
+    files = [Path(p).name for p in line.split()[1:-1]]
+    assert "updater_service.py" in files and "kelo_address.py" in files
+    pkg = tmp_path / "opt" / "assistant"
+    pkg.mkdir(parents=True)
+    for f in files:
+        (pkg / f).write_text((repo / "server" / "src" / "assistant" / f).read_text())
+    script = tmp_path / "probe.py"
+    script.write_text(textwrap.dedent("""
+        import builtins, sys
+        real = builtins.__import__
+        def guard(name, *a, **k):
+            if name.split(".")[0] in ("httpx", "segno", "fastapi", "pydantic", "starlette", "cryptography"):
+                raise ImportError("third-party package blocked: " + name)
+            return real(name, *a, **k)
+        builtins.__import__ = guard
+        sys.path.insert(0, sys.argv[1])
+        from assistant import updater_service as us
+        asked = []
+        class M:
+            def names(self): return ["alice"]
+            def load(self, n): return n
+        class Svc:
+            def manager(self): return M()
+        us.kelo_loop(Svc(), refresh=lambda m, inst: asked.append(inst) or "ok", sleep=lambda s: None, rounds=1)
+        assert asked == ["main", "alice"], asked
+        # the default refresh is the stdlib one, and it works against a fake broker answer
+        from assistant import kelo_address
+        assert kelo_address.kelo_refresh.__module__ == "assistant.kelo_address"
+        assert not any(m.split(".")[0] in ("httpx", "segno") for m in sys.modules)
+        print("ok")
+    """))
+    r = subprocess.run([sys.executable, "-I", str(script), str(tmp_path / "opt")], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and r.stdout.strip().splitlines()[-1] == "ok", r.stderr[-800:]
+
+
+def test_the_stdlib_kelo_refresh_reads_the_brokers_answer_and_keeps_the_token_on_errors(tmp_path):
+    from assistant import kelo_address as ka
+
+    class R:
+        def __init__(self, code, body):
+            self.status_code, self._b, self.headers = code, body, {}
+
+        def json(self):
+            return self._b
+    svc, w, m, swaps, _ = make(tmp_path)
+    inst = m.load("main")
+    assert ka.kelo_refresh(m, inst, post=lambda *a, **k: R(200, {})) is None           # not on a Kelo address
+    inst.connect_mode = "kelo"
+    write_env(inst.env, {"KELO_NAME": "bob", "KELO_INSTALL_ID": "i" * 40})
+    err = ka.kelo_refresh(m, inst, post=lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
+    assert "not answering" in err
+    assert "no Kelo addresses" in ka.kelo_refresh(m, inst, post=lambda *a, **k: R(503, {"code": "full"}))
+
+
+def test_after_a_good_update_old_release_images_go_but_the_rollback_point_and_other_images_stay(tmp_path):
+    svc, w, m, swaps, _ = make(tmp_path)
+    mine = {rel.RELEASE_LABEL: "0.3.0", rel.VERSION_LABEL: "0.3.0"}
+    w.images["ghcr.io/kelo-chat/server:0.3.0"] = "sha256:ancient-server"          # two releases back, pulled by tag: nothing runs it
+    w.images["ghcr.io/kelo-chat/workroom:0.3.0"] = "sha256:ancient-workroom"
+    w.images["ghcr.io/kelo-chat/server:0.4.0"] = "sha256:old-server"               # the release the copy ran: its rollback point
+    w.images["ghcr.io/kelo-chat/server:mine"] = "sha256:own-build"                 # no release label: not ours to remove
+    w.images["docker.io/library/nginx:1"] = "sha256:nginx"                         # another repository
+    w.labels.update({"sha256:ancient-server": mine, "sha256:ancient-workroom": mine, "sha256:own-build": {}, "sha256:nginx": {}})
+    svc.check()
+    svc.start("update")
+    assert job(svc)["state"] != "failed"
+    gone = set(getattr(w, "removed", []))
+    assert {"ghcr.io/kelo-chat/server:0.3.0", "ghcr.io/kelo-chat/workroom:0.3.0"} <= gone
+    assert "ghcr.io/kelo-chat/server:0.4.0" not in gone and "ghcr.io/kelo-chat/server:mine" not in gone
+    assert "docker.io/library/nginx:1" not in gone
+    assert "ghcr.io/kelo-chat/server:0.4.0" in w.images and "ghcr.io/kelo-chat/server:0.3.0" not in w.images
+    assert w.images["assistant:local"] == NEW_ID["server"]
+    assert not any("-a" in c for c in [e for e in w.runs if e[:3] == ["docker", "image", "prune"]])

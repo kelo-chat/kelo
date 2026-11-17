@@ -79,7 +79,8 @@ def test_the_setup_card_states_the_site_what_and_counts(tmp_path):
     assert card["grant"]["apply"] == {"site": SITE, "what": "선물 체험단", "max_count": 3, "total": 30}
     lines = {line["label"]: line["value"] for line in card["lines"]}
     assert lines["Apply for"] == f"선물 체험단 · {SITE}" and "3 per run" in lines["Up to"] and "30 in total" in lines["Up to"]
-    assert "never covers sign-ups" in tool.validate({**args, "apply": {"site": SITE, "what": "회원가입 이벤트"}})
+    assert "never covers sign-ups" in asyncio.run(tool.hold({**args, "apply": {"site": SITE, "what": "회원가입 이벤트"}}))
+    assert asyncio.run(tool.hold(args)) is None
     assert "apply.site" in tool.validate({**args, "apply": {"what": "x"}})
     out = asyncio.run(tool.handler(args))
     assert out.startswith("ALLOWED") and "at most 3 per run and 30 in all" in out

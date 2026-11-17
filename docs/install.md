@@ -6,13 +6,16 @@
 # macOS and Linux
 curl -fsSL https://kelo.chat/install.sh | bash
 
-# Windows (PowerShell; needs Docker Desktop with WSL 2)
+# Windows (PowerShell; one line, no terminal questions, no Docker needed; the setup page opens in the browser)
+irm https://kelo.chat/install-windows.ps1 | iex
+
+# Windows with Docker Desktop (WSL 2) instead
 irm https://kelo.chat/install.ps1 | iex
 ```
 
-> **Mac (coming): Kelo Server.pkg:** Work is underway on a signed macOS installer package (`Kelo Server.pkg`) for macOS 26+ on Apple silicon. It installs Apple `container` and Kelo's container runtime to run Kelo without Docker or terminal commands. It configures the background LaunchDaemon (`chat.kelo.server`) and opens the guided setup in your browser. Not released yet; see [Direction since 2026-11-16](native-server.md#direction-since-2026-11-16-apple-container-on-macos-26-apple-silicon).
+> **Mac (coming): Kelo Server.pkg:** Work is underway on a signed macOS installer package (`Kelo Server.pkg`) for macOS 26+ on Apple silicon. It installs Apple `container` and Kelo's container runtime to run Kelo without Docker or terminal commands. It sets up a background service (`chat.kelo.server`, started when you sign in) that downloads Kelo's signed images and starts Kelo; a setup page opens in your browser (the same guided steps as on Linux and Windows: size, outside address, QR code for the phone). Not released yet; see [Direction since 2026-11-16](native-server.md#direction-since-2026-11-16-apple-container-on-macos-26-apple-silicon).
 >
-> **Windows without Docker Desktop:** Work is underway on a dedicated Windows installer that runs Docker Engine inside Kelo's own WSL 2 distro (no Docker Desktop needed, free for everyone). For architecture and status, see [Direction since 2026-11-16 (Windows)](native-server.md#direction-since-2026-11-16-windows).
+> **Windows without Docker Desktop:** the Windows line above installs Kelo Server into Kelo's own WSL 2 distro (no Docker Desktop needed, free for everyone). It downloads the Windows installer (MSI) from kelo.chat, checks its size and SHA-256 against the release list, and installs it silently. For architecture, see [Direction since 2026-11-16 (Windows)](native-server.md#direction-since-2026-11-16-windows).
 
 The installer downloads the newest release of [kelo-chat/kelo-server](https://github.com/kelo-chat/kelo-server) (the server part of
 each release) into `~/kelo`. To install from another copy instead, tell it where the Kelo files are:
@@ -38,16 +41,63 @@ What the installer does:
    builds the images here instead. `--build-here` builds them here from the start (slow).
 
 Options: `--yes` (no questions; defaults everywhere, never deletes data), `--add NAME` (add another Kelo server copy),
-`--dir DIR`, `--source SRC`, `--from-release` (the default), `--build-here`, `--no-start`, `--uninstall` (add `--delete-data`
-to also delete chats, keys and files). On Windows: `-Yes`, `-Add NAME`, `-Dir`, `-Source`, `-FromRelease`, `-BuildHere`,
+`--dir DIR`, `--source SRC`, `--version X.Y.Z`, `--allow-downgrade`, `--from-release` (the default), `--build-here`, `--no-start`, `--uninstall` (add `--delete-data`
+to also delete chats, keys and files). On Windows: `-Yes`, `-Add NAME`, `-Dir`, `-Source`, `-Version`, `-AllowDowngrade`, `-FromRelease`, `-BuildHere`,
 `-NoStart`, `-Uninstall`, `-DeleteData`. A custom `--source` is built here, since it is not the release, unless `--from-release`
 is given too. `NO_COLOR=1` turns colours off. Questions are read from the terminal even through `curl | bash`.
+
+### Choosing the version
+
+By default the installer installs the newest release. To install an exact one, add `--version X.Y.Z` (PowerShell `-Version X.Y.Z`,
+or the environment variable `KELO_VERSION`):
+
+```
+curl -fsSL https://kelo.chat/install.sh | bash -s -- --version 0.10.2
+```
+
+- The Kelo files come from the `release-X.Y.Z` tag of `kelo-chat/kelo-server`, and with `--from-release` (the default) the images
+  are the signed ones of that version, checked like an update checks them (digest, signature, version label). A version whose
+  own files do not yet know `--release-version` cannot pull its signed images by version: the installer says so and builds
+  that version's images here from its files instead.
+- A version that does not exist stops the installer with one line before anything is changed. All versions are on the releases
+  page: https://github.com/kelo-chat/kelo-server/releases.
+- An update to an **older** version than the installed one is refused (data written by a newer version may not go back), also
+  with `--yes`, unless you add `--allow-downgrade` (PowerShell `-AllowDowngrade`, or `KELO_ALLOW_DOWNGRADE=1`). The same version
+  again, or a newer one, needs nothing extra.
+- With your own `--source`, `--version` does not pick the files: the files you point at must be that version (their
+  `version.json` is checked before anything is copied), and `--version` picks the images.
+- `KELO_RELEASES_BASE` points the installer at another copy of the public source repository (default
+  `https://github.com/kelo-chat/kelo-server`); it exists for tests.
 
 - **Update:** run the same command again (the installer asks whether to update or add another copy; with `--yes` / `-Yes` it
   updates directly). Your data, keys and signed-in phones stay; the containers are rebuilt and restarted.
 - **Uninstall:** `bash install.sh --uninstall`. It stops every copy, removes the main containers and the `kelo` command, gives
   a Kelo address back, and keeps your data (Docker volumes, `.env` and `instances/`) unless you add `--delete-data` (then
   every copy is deleted with `kelo instance delete`).
+
+## Windows: SmartScreen and Smart App Control
+
+The Windows installers (desktop app `.exe` and `.msi`, and the Kelo Server `.msi`) are **not code-signed** for now. The Windows line above downloads the Kelo Server MSI with PowerShell, which does not mark the file as downloaded from the internet, so SmartScreen does not show on that route; the note below is for the MSI download in a browser. What
+you see depends on one Windows setting. Findings come from a test on a Windows 11 PC (2026-11-16: Smart App Control On, an
+unsigned Kelo Server MSI with a downloaded-file mark).
+
+| Windows setting | What happens | What to tell the user |
+|---|---|---|
+| Smart App Control Off, SmartScreen On (the usual case) | A blue "Windows protected your PC" window | Click **More info**, then **Run anyway**. |
+| Smart App Control **On** (Windows 11, Settings → Privacy & security → Windows Security → App & browser control) | An unsigned `.exe` is blocked and the window has no "Run anyway" button | Use the Microsoft Store version of the app. Direct installers are not supported with Smart App Control On yet. Turning it Off is possible but cannot be switched back On without reinstalling Windows, so Kelo does not suggest it. |
+
+What the test proved and did not prove, so the texts do not promise more:
+
+- The unsigned Kelo Server **MSI** installed and uninstalled without any block under Smart App Control (it is run by Microsoft's
+  signed `msiexec`; the scripts it runs went through Microsoft's signed `powershell.exe` and `wsl.exe`). The server came up and
+  answered `/healthz`.
+- Unsigned PowerShell scripts also ran (with `-ExecutionPolicy Bypass`).
+- Not proven: the Burn setup bundle `.exe` (an unsigned executable launched on its own, the kind Smart App Control blocks) and the
+  desktop app's own `Kelo.exe` inside its MSI. Both are treated as **not supported with Smart App Control On**. A signed
+  certificate would be the real fix; the installers stay unsigned for now, to be revisited before launch.
+
+Texts that say this (keep them in step): the Windows download card on the site's front page (`index.en.html`, `index.ko.html`),
+README.md and README.ko.md ("Windows" under the install list), `apps/desktop/README.md`.
 
 ## The guided setup
 
@@ -78,7 +128,7 @@ A re-run is an update: it keeps every answer as the suggestion (press Enter) and
 - `assistant setup --plain` asks the old plain-text questions.
 - `assistant setup --yes` asks nothing.
 - `--no-start` saves the answers without building or starting.
-- `--from-release` pulls and checks the signed release images instead of building them here (the installer passes it by default).
+- `--from-release` pulls and checks the signed release images instead of building them here (the installer passes it by default); `--release-version X.Y.Z` with it pulls that release instead of the newest (the installer's `--version`). `assistant updater setup --pull-release --release-version X.Y.Z` does the same for a first install without the guided screen.
 - `--browser`, `--cli` and `--profile` still skip their questions.
 
 ### Setup in a browser

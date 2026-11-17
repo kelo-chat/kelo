@@ -40,8 +40,9 @@ class ConnectorData:
 
     def _item_rows(self, connector_id: str) -> int:
         try:
-            return int(self.store._all("SELECT COUNT(*) AS n FROM proactive_log WHERE substr(key, 1, ?) = ?",
-                                       (len(self._prefix(connector_id)), self._prefix(connector_id)))[0]["n"])
+            n = len(self._prefix(connector_id))
+            return sum(int(self.store._all(f"SELECT COUNT(*) AS n FROM {tbl} WHERE substr(key, 1, ?) = ?", (n, self._prefix(connector_id)))[0]["n"])
+                       for tbl in ("proactive_log", "proactive_held"))
         except sqlite3.OperationalError:   # no alert log in this installation yet
             return 0
 
@@ -74,6 +75,8 @@ class ConnectorData:
         try:
             items = self.store._run("DELETE FROM proactive_log WHERE substr(key, 1, ?) = ?",
                                     (len(self._prefix(cid)), self._prefix(cid))).rowcount
+            items += self.store._run("DELETE FROM proactive_held WHERE substr(key, 1, ?) = ?",
+                                     (len(self._prefix(cid)), self._prefix(cid))).rowcount
         except sqlite3.OperationalError:
             items = 0
         return {"files": files, "notes": 0, "items": max(items, 0)}

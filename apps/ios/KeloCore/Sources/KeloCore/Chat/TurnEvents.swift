@@ -93,9 +93,14 @@ public enum TurnEvent: Equatable, Sendable {
 
     public struct ToolResult: Equatable, Sendable {
         public var id: String, name: String, output: String, isError: Bool, approved: Bool?
-        public init(id: String, name: String, output: String, isError: Bool, approved: Bool?) {
-            self.id = id; self.name = name; self.output = output; self.isError = isError; self.approved = approved
+        /// Facts the tool handed over next to its text (server agent/facts.py): connect_service {"already": true},
+        /// save_found_secret {"saved_key": {"service", "hosts"}}. Empty from an older server.
+        public var facts: JSONObject
+        public init(id: String, name: String, output: String, isError: Bool, approved: Bool?, facts: JSONObject = [:]) {
+            self.id = id; self.name = name; self.output = output; self.isError = isError; self.approved = approved; self.facts = facts
         }
+        /// connect_service: the service was connected before this call, so no connect card is shown.
+        public var already: Bool { facts["already"]?.boolValue == true }
     }
 
     public struct ApprovalRequest: Equatable, Sendable {
@@ -129,13 +134,29 @@ public enum TurnEvent: Equatable, Sendable {
         /// The site the step is on and whether "don't ask again on this site" may be offered.
         public var site: String = ""
         public var canRemember: Bool = false
+        /// The moment the card was asked (unix seconds): a signed payment approval signs it.
+        public var issuedAt: Int64 = 0
+        /// The server checks this phone's signature for an Allow (approval_sign.is_payment).
+        public var signable: Bool = false
+        /// The data trail's question: which kind of data would go to which recipient (titles only); empty for other cards.
+        public var offers: [TrailOffer] = []
+        /// `order_preapprove`: the order approved in advance (what, the all-in cap, until when); nil for any other card.
+        public var preapproval: PreapprovalAsk? = nil
+        /// `forget_confirm`: the waiting cleanup plan whose list the card can show (GET /api/forget/plans/{id}); "" for any other card.
+        public var forgetPlan: String = ""
+        /// The message this card sends, which the owner may fix before allowing it (a mail's body, a text); nil for any other card.
+        public var editable: EditableMessage? = nil
 
         public init(approvalId: String, name: String, detail: String? = nil, label: String = "",
                     payment: PaymentInfo? = nil, card: ApprovalCardInfo? = nil, canRememberSchedule: Bool = false,
                     lines: [ApprovalLine] = [],
                     ask: String = "", kind: String = "", tab: String = "",
                     grant: TaskGrantAsk? = nil, urgent: Bool = false, missed: String = "", items: [String] = [], pin: PinAsk? = nil,
-                    check: CheckInfo? = nil, site: String = "", canRemember: Bool = false) {
+                    check: CheckInfo? = nil, site: String = "", canRemember: Bool = false,
+                    issuedAt: Int64 = 0, signable: Bool = false, offers: [TrailOffer] = [], preapproval: PreapprovalAsk? = nil,
+                    forgetPlan: String = "", editable: EditableMessage? = nil) {
+            self.issuedAt = issuedAt; self.signable = signable; self.offers = offers
+            self.preapproval = preapproval; self.forgetPlan = forgetPlan; self.editable = editable
             self.approvalId = approvalId; self.name = name; self.detail = detail; self.label = label
             self.payment = payment; self.card = card; self.canRememberSchedule = canRememberSchedule
             self.lines = lines
@@ -151,6 +172,11 @@ public enum TurnEvent: Equatable, Sendable {
         public static func question(_ ask: String) -> String? {
             let t = ask.trimmingCharacters(in: .whitespacesAndNewlines)
             return t.isEmpty ? nil : t
+        }
+
+        /// `forget_confirm`'s plan id (its `plan_id` argument); "" for any other tool.
+        public static func forgetPlanId(name: String, arguments: JSONObject) -> String {
+            name == "forget_confirm" ? (arguments["plan_id"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
         }
     }
 
@@ -202,6 +228,8 @@ public enum TurnEvent: Equatable, Sendable {
         /// What was bought and where it goes, when the server tells (an older server: empty / nil).
         public var items: [OrderItem] = []
         public var shipping: OrderShipping? = nil
+        /// Covered by an order the user approved in advance, or by the schedule's allow (`preapproval: {kind, via}`).
+        public var cover: PreapprovalCover? = nil
     }
 
     /// shipping_form: `country` the form starts with; `prefill` what Kelo remembers (field keys, "phone", "note"; may be empty or
@@ -244,7 +272,7 @@ public enum TurnEvent: Equatable, Sendable {
                                             hidden: o.optBool("hidden") == true, group: o.str("group"), done: o.str("done")))
         case "tool_result":
             return .toolResult(ToolResult(id: o.str("id"), name: o.str("name"), output: o.str("output"), isError: o.optBool("is_error") == true,
-                                          approved: o.optBool("approved")))
+                                          approved: o.optBool("approved"), facts: obj("facts")))
         case "approval_request":
             let detail = o.str("detail")
             return .approvalRequest(ApprovalRequest(
@@ -257,7 +285,12 @@ public enum TurnEvent: Equatable, Sendable {
                 items: (o["items"]?.arrayValue ?? []).compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty },
                 pin: PinAsk.parse(o["pin"]), check: CheckInfo.parse(o["check"]),
-                site: o.str("site"), canRemember: o.optBool("can_remember") == true))
+                site: o.str("site"), canRemember: o.optBool("can_remember") == true,
+                issuedAt: o.int64("issued_at"), signable: ApprovalSignRules.isPayment(e),
+                offers: TrailOffer.parseList(o["trail"]), preapproval: PreapprovalAsk.parse(o["preapproval"]),
+                forgetPlan: ApprovalRequest.forgetPlanId(name: o.str("name"), arguments: obj("arguments")),
+                // a payment never has a fixable message (the server sends none)
+                editable: o["payment"]?.objectValue == nil ? EditableMessage.parse(o["editable"]) : nil))
         case "payment_step":
             guard let step = PaymentStep.parse(e) else { return .unknown("payment_step") }
             return .paymentStep(step)
@@ -298,7 +331,8 @@ public enum TurnEvent: Equatable, Sendable {
             let site = p.str("site")
             return .paymentAuto(PaymentAuto(card: o["card"]?.objectValue.map { CardBrief.parse(Lenient(.object($0))) },
                                             site: site.isEmpty ? p.str("host") : site, amountText: p.str("amount_text"), summary: p.str("summary"),
-                                            items: OrderItem.parseList(p["items"]), shipping: OrderShipping.parse(p["shipping"])))
+                                            items: OrderItem.parseList(p["items"]), shipping: OrderShipping.parse(p["shipping"]),
+                                            cover: PreapprovalCover.parse(o["preapproval"])))
         case "shipping_form":
             let f = ShippingForm.parse(o)
             return f.formId.isEmpty ? .unknown("shipping_form") : .shippingForm(f)
@@ -430,11 +464,17 @@ public struct ApprovalCardInfo: Equatable, Sendable {
 /// One readable pair of an approval card ("Site" · "github.com").
 public struct ApprovalLine: Equatable, Sendable {
     public static let max = 4
+    /// A value longer than this is drawn as a block, not a cut line.
+    public static let blockChars = 60
     public var label: String, value: String
     /// Shown whole, never cut (a text message the phone will send).
     public var full: Bool
 
     public init(label: String, value: String, full: Bool = false) { self.label = label; self.value = value; self.full = full }
+
+    /// Drawn as a block (label above, the whole text below, scrolling past 8 lines): a `full` value, a long one or one with line
+    /// breaks. A schedule's Task line is the whole task, so it must not be clipped (server schedules.py, audit F6).
+    public var block: Bool { full || value.count > ApprovalLine.blockChars || value.contains("\n") }
 
     /// Only string fields count; a pair without a value is left out; at most `max`.
     public static func parseList(_ e: JSON?) -> [ApprovalLine] {
@@ -478,12 +518,16 @@ public struct PendingApproval: Equatable, Sendable {
     public var workerId: String?
     /// That run's title (a job's own title).
     public var title: String
+    /// What a phone notification for this item may offer ("allow", "deny"): ["allow","deny"], ["deny"] for a payment, [] when the card
+    /// needs input in the app. Set by the server on every item (api/approvals.py notify_actions); [] from an older server.
+    public var notifyActions: [String]
 
     public init(event: TurnEvent.ApprovalRequest, site: String = "", canRemember: Bool = false, askedAt: Double = 0, unattended: Bool = false,
-                canRememberSchedule: Bool = false, source: String = "", workerId: String? = nil, title: String = "") {
+                canRememberSchedule: Bool = false, source: String = "", workerId: String? = nil, title: String = "",
+                notifyActions: [String] = []) {
         self.event = event; self.site = site; self.canRemember = canRemember; self.askedAt = askedAt; self.unattended = unattended
         self.canRememberSchedule = canRememberSchedule
-        self.source = source; self.workerId = workerId; self.title = title
+        self.source = source; self.workerId = workerId; self.title = title; self.notifyActions = notifyActions
     }
 
     public var id: String { event.approvalId }
@@ -492,6 +536,8 @@ public struct PendingApproval: Equatable, Sendable {
     public var isHumanCheck: Bool { event.kind == PendingApproval.humanCheck }
     /// A sign-in's second step (approve the sign-in on the phone, or type the code) handed over, not a person check: its own words.
     public var isVerification: Bool { isHumanCheck && event.check?.isVerification == true }
+    /// A human check that is the Android phone's screen handed to the owner: its own words and a Done button, no skip.
+    public var isDevice: Bool { isHumanCheck && event.check?.isDevice == true }
     /// The browser tab a human check is on.
     public var tab: String { event.tab.isEmpty ? "owner" : event.tab }
 
@@ -503,7 +549,8 @@ public struct PendingApproval: Equatable, Sendable {
                                canRememberSchedule: ev.payment == nil && o.optBool("can_remember_schedule") == true,
                                source: o["source"]?.stringValue ?? "",
                                workerId: (o["worker_id"]?.stringValue).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 },
-                               title: o["title"]?.stringValue ?? "")
+                               title: o["title"]?.stringValue ?? "",
+                               notifyActions: (e["notify_actions"]?.arrayValue ?? []).compactMap { $0.text })
     }
 
     /// {"items": [...]} or a bare list.
@@ -530,6 +577,7 @@ public struct PendingApproval: Equatable, Sendable {
 public struct CheckInfo: Equatable, Sendable {
     public static let kindVerification = "verification"
     public static let stepApprove = "approve"
+    public static let kindDevice = "device"
     public var name: String, kind: String, step: String
 
     public init(name: String = "", kind: String = "", step: String = "") {
@@ -537,6 +585,8 @@ public struct CheckInfo: Equatable, Sendable {
     }
 
     public var isVerification: Bool { kind == Self.kindVerification }
+    /// The phone's screen shown in Kelo's browser view for the owner to use (not a site's check).
+    public var isDevice: Bool { kind == Self.kindDevice }
     /// A sign-in verification the owner approves on the phone (an app's push), not a code typed in the page
     public var isApproveStep: Bool { isVerification && step == Self.stepApprove }
 

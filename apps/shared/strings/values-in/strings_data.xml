@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- in text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">Data Anda</string>
+    <string name="data_intro">Unduh salinan yang disimpan Kelo tentang Anda, bawa kenangan dari asisten lain, atau mulai dari awal.</string>
+    <string name="data_export_title">Unduh data Anda</string>
+    <string name="data_export_body">Satu file ZIP berisi percakapan Anda, yang diingat Kelo, jadwal, yang diikuti Kelo, layanan yang terhubung, dan pengaturan Anda. Kata sandi, kunci, dan token tidak pernah ikut.</string>
+    <string name="data_export_make">Buat file</string>
+    <string name="data_export_making">Membuat file…</string>
+    <string name="data_export_ready">File Anda siap (%1$s).</string>
+    <string name="data_export_save">Simpan file</string>
+    <string name="data_export_saved">Tersimpan.</string>
+    <string name="data_export_again">Buat file baru</string>
+    <string name="data_export_failed">File tidak dapat dibuat. Coba lagi.</string>
+    <string name="data_import_title">Bawa kenangan dari asisten lain</string>
+    <string name="data_import_private">Tidak ada yang dikirim ke tempat lain. Model yang Anda pilih di server Kelo membaca teks dan menyimpan fakta singkat tentang Anda.</string>
+    <string name="data_import_step1">1. Salin permintaan ini dan tempel ke asisten lama Anda (ChatGPT, Claude, Gemini, …).</string>
+    <string name="data_import_copy">Salin permintaan</string>
+    <string name="data_import_copied">Tersalin.</string>
+    <string name="data_import_step2">2. Tempel jawabannya di sini.</string>
+    <string name="data_import_paste_hint">Tempel jawaban</string>
+    <string name="data_import_add">Tambahkan ke memori</string>
+    <string name="data_import_zip_body">Atau pilih ekspor obrolan yang Anda unduh dari ChatGPT, Claude, atau Gemini (file ZIP, maksimal 100 MB).</string>
+    <string name="data_import_zip">Pilih file ZIP</string>
+    <string name="data_import_running">Membaca… %1$d dari %2$d</string>
+    <string name="data_import_reading">Membuka file…</string>
+    <string name="data_import_cancel">Hentikan</string>
+    <string name="data_import_failed">Tidak ada yang ditambahkan: %1$s</string>
+    <string name="data_import_none">Tidak ada hal baru yang bisa ditambahkan.</string>
+    <string name="data_import_added">Ditambahkan ke memori (%1$d):</string>
+    <string name="data_zip_too_big">File ini lebih besar dari 100 MB.</string>
+    <string name="data_reset_title">Mulai dari awal</string>
+    <string name="data_reset_body">Menghapus percakapan Anda, yang diingat Kelo, yang diikuti Kelo, dan jadwal Anda. Konektor, login tersimpan, model, dan ponsel Anda tetap ada. Salinan disimpan sebagai file terlebih dahulu.</string>
+    <string name="data_reset_signout">Keluar juga dari Konektor dan hapus login tersimpan</string>
+    <string name="data_reset_type">Ketik %1$s untuk konfirmasi</string>
+    <string name="data_reset_button">Mulai dari awal</string>
+    <string name="data_reset_wrong">Itu bukan kata yang benar. Tidak ada yang diubah.</string>
+    <string name="data_reset_confirm">Mulai dari awal sekarang? Salinan disimpan dulu, lalu percakapan, memori, yang diikuti, dan jadwal dihapus. Tidak bisa dibatalkan.</string>
+    <string name="data_reset_done">Selesai. Semua di atas telah dihapus. Salinan disimpan sebagai %1$s.</string>
+</resources>

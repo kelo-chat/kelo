@@ -219,9 +219,10 @@ async def test_resume_can_be_turned_off(tmp_path):
 def test_only_provider_trouble_counts_as_an_outage():
     assert is_outage(ProviderError("x", status=503)) and is_outage(ProviderError("x", status=429))
     assert is_outage(httpx.ConnectError("refused")) and is_outage(asyncio.TimeoutError())
-    assert is_outage(ProviderError("p: request timed out"))
+    assert is_outage(ProviderError("stream error", code="overloaded_error"))
+    assert not is_outage(ProviderError("p: request timed out"))     # a message's words decide nothing
     assert not is_outage(ProviderError("bad request", status=400)) and not is_outage(ProviderError("x", status=401))
-    assert not is_outage(ProviderError("p: the prompt is too long for the context window"))
+    assert not is_outage(ProviderError("p: the prompt is too long for the context window", status=400))
     assert not is_outage(RuntimeError("the model returned an empty reply"))
 
 

@@ -11,6 +11,7 @@ import chat.kelo.app.chat.vault.SecretEntryCard
 import chat.kelo.app.chat.vault.SecretRequest
 import chat.kelo.app.res.Res
 import chat.kelo.app.res.secret_enter
+import chat.kelo.app.res.secret_save_in_vault
 import chat.kelo.desktop.core.AppContainer
 import chat.kelo.desktop.core.FileKeyValueStore
 import chat.kelo.desktop.core.StoreKey
@@ -21,8 +22,8 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 /**
- * Screenshots of the secret entry bottom sheet at 320 and 412 dp, light and dark.
- * Saved as build/parity/secret-sheet-*.png or under $KELO_SHOTS.
+ * Screenshots of the login card and its sheet at 320 and 412 dp, light and dark.
+ * Saved as build/parity/login-*.png or under $KELO_SHOTS.
  */
 class SecretEntryShotsTest {
     @get:Rule val compose = createComposeRule()
@@ -43,9 +44,11 @@ class SecretEntryShotsTest {
                     SecretEntryCard(
                         request = SecretRequest(
                             id = "req-shots",
-                            name = "openai",
-                            label = "OpenAI",
-                            hosts = listOf("api.openai.com"),
+                            kind = SecretRequest.KIND_LOGIN,
+                            name = "shop",
+                            label = "Shop",
+                            hosts = listOf("shop.example.com"),
+                            usernameHint = "nahyun.kim@example.com",
                         ),
                         onSaved = { _, _ -> },
                         onCancel = {},
@@ -57,13 +60,19 @@ class SecretEntryShotsTest {
         val enterText = Words.of("ko").get(Res.string.secret_enter)
         ui.waitText(enterText)
         ui.settle(6)
-        compose.onNodeWithText(enterText).performClick()
-        ui.settle(12)
-        ui.waitText("키 또는 토큰")
-        ui.shot("secret-sheet-$widthDp-light")
+        ui.shot("login-card-$widthDp-light")
         app.settings.setTheme("dark")
         ui.settle(12)
-        ui.shot("secret-sheet-$widthDp-dark")
+        ui.shot("login-card-$widthDp-dark")
+        app.settings.setTheme("light")
+        ui.settle(12)
+        compose.onNodeWithText(enterText).performClick()
+        ui.settle(12)
+        ui.waitText(Words.of("ko").get(Res.string.secret_save_in_vault))
+        ui.shot("login-sheet-$widthDp-light")
+        app.settings.setTheme("dark")
+        ui.settle(12)
+        ui.shot("login-sheet-$widthDp-dark")
     }
 
     @Test fun sheet320() = testSheet(320)

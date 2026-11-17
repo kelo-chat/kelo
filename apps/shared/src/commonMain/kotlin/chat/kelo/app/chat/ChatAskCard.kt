@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.animation.animateContentSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,10 +26,10 @@ import chat.kelo.app.ui.theme.Kelo
 /**
  * A question from work the chat is not following (a background job, a scheduled run), live at the bottom of the chat: a line
  * saying what asked, then the same card and answers as on the 작업 page. Once answered here it folds into one line.
- * [onAnswer]: (allow, remember the site, remember for the scheduled job).
+ * [onAnswer]: (allow, remember the site, remember for the scheduled job, always for the recipient).
  */
 @Composable
-fun ChatAskCard(ask: ChatAsk, onSolve: () -> Unit = {}, onAnswer: (Boolean, Boolean, Boolean) -> Unit) {
+fun ChatAskCard(ask: ChatAsk, onSolve: () -> Unit = {}, onAnswer: (Boolean, Boolean, Boolean, Boolean) -> Unit) {
     val a = ask.approval
     Box(Modifier.fillMaxWidth().animateContentSize(FoldSpec)) {
         val end = ask.end
@@ -51,7 +51,7 @@ fun ChatAskCard(ask: ChatAsk, onSolve: () -> Unit = {}, onAnswer: (Boolean, Bool
             CardBox {
                 OriginLine(a)
                 if (a.isHumanCheck) {
-                    chat.kelo.app.agent.HumanCheckBody(a, ask.working, onSolve = onSolve, onDone = { onAnswer(true, false, false) }, onSkip = { onAnswer(false, false, false) })
+                    chat.kelo.app.agent.HumanCheckBody(a, ask.working, onSolve = onSolve, onDone = { onAnswer(true, false, false, false) }, onSkip = { onAnswer(false, false, false, false) })
                 } else {
                     chat.kelo.app.agent.PendingApprovalBody(a, ask.working, ask.cardError, onAnswer)
                 }
@@ -93,6 +93,7 @@ private fun askEndText(e: AskEnd): String = string(
     when (e) {
         AskEnd.ALLOWED -> Res.string.agent_approval_allowed
         AskEnd.ALWAYS -> Res.string.agent_approval_always
+        AskEnd.ALWAYS_RECIPIENT -> Res.string.recipient_approval_always
         AskEnd.KEPT_FOR_SCHEDULE -> Res.string.approval_kept_for_schedule
         AskEnd.DENIED -> Res.string.agent_approval_denied
         AskEnd.GONE -> Res.string.agent_approval_gone

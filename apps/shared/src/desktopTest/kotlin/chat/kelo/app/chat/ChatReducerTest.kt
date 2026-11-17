@@ -20,8 +20,9 @@ class ChatReducerTest {
     private fun started(id: String, name: String, service: String? = null) =
         TurnEvent.ToolStarted(id, name, if (service == null) JsonObject(emptyMap()) else buildJsonObject { put("service", service) })
 
-    private fun result(id: String, name: String, output: String = "", isError: Boolean = false, approved: Boolean? = null) =
-        TurnEvent.ToolResult(id, name, output, isError, approved)
+    private fun result(id: String, name: String, output: String = "", isError: Boolean = false, approved: Boolean? = null,
+                       facts: JsonObject = JsonObject(emptyMap())) =
+        TurnEvent.ToolResult(id, name, output, isError, approved, facts = facts)
 
     @Test fun textJoinsTheLastAssistantMessage() {
         val items = run(TurnEvent.Text("안녕"), TurnEvent.Text("하세요"))
@@ -58,8 +59,12 @@ class ChatReducerTest {
     @Test fun connectServiceAddsACard() {
         val items = run(started("c", "connect_service", service = "github"), result("c", "connect_service", output = "the card is shown"))
         assertEquals("github", (items.last() as ChatItem.Connect).service)
-        val already = run(started("c", "connect_service", "github"), result("c", "connect_service", output = "github is already connected"))
+        // the server's fact decides, never the words of the tool's text (agent/facts.py)
+        val already = run(started("c", "connect_service", "github"),
+            result("c", "connect_service", output = "github is connected", facts = buildJsonObject { put("already", true) }))
         assertTrue(already.none { it is ChatItem.Connect })
+        val sentenceOnly = run(started("c", "connect_service", "github"), result("c", "connect_service", output = "github is already connected"))
+        assertEquals("github", (sentenceOnly.last() as ChatItem.Connect).service)
         val failed = run(started("c", "connect_service", "github"), result("c", "connect_service", isError = true))
         assertTrue(failed.none { it is ChatItem.Connect })
         val noService = run(started("c", "connect_service"), result("c", "connect_service"))

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">Perbarui server</string>
+    <string name="server_old_failed">Pembaruan tidak berhasil. Coba lagi, atau perbarui server di mesin tempat server berjalan.</string>
+    <string name="server_old_manual">Untuk memperbarui server, ikuti langkah pembaruan di mesin tempat server berjalan.</string>
+    <string name="server_old_guide">Buka panduan pembaruan</string>
+    <string name="app_notice_new">Aplikasi Kelo baru (%1$s) paling cocok dengan servermu</string>
+    <string name="app_notice_store">Buka toko aplikasi</string>
+    <string name="update_popup_title">Ada versi baru (%1$s)</string>
+    <string name="update_popup_update">Perbarui</string>
+    <string name="update_popup_later">Nanti</string>
+</resources>

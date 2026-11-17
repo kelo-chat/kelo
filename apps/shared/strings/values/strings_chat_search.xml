@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The chat's search: the icon in the header, the search page, its hint and its states -->
+    <string name="chat_search_open">Search chat</string>
+    <string name="chat_search_title">Search chat</string>
+    <string name="chat_search_field">Search your messages</string>
+    <string name="chat_search_clear">Clear search</string>
+    <string name="chat_search_hint">Type a word or part of one. Tap a result to open the chat at that message.</string>
+    <string name="chat_search_none">No messages match this search.</string>
+    <string name="chat_search_failed">Search could not reach the server. Try again in a moment.</string>
+    <!-- the label on a result that the user wrote -->
+    <string name="chat_search_you">You</string>
+</resources>

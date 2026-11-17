@@ -5,6 +5,8 @@ import chat.kelo.app.ui.text.loadString
 import org.jetbrains.compose.resources.StringResource
 import chat.kelo.app.agent.NotificationPage
 import chat.kelo.app.agent.ServerNotification
+import chat.kelo.app.agent.SettledItems
+import chat.kelo.app.notify.ItemIds
 import chat.kelo.app.core.ApiError
 import chat.kelo.app.core.KeloApi
 import chat.kelo.app.notify.NoteTypes
@@ -25,6 +27,9 @@ import kotlin.coroutines.coroutineContext
 class NotePoller(
     private val settings: Settings,
     private val shown: () -> Boolean,
+    /** The waiting items whose notes are up, and what to do with the ones the server says are settled (AppContainer.shelf / settleItems) */
+    private val shownItems: () -> Collection<String> = { emptyList() },
+    private val settle: (List<String>) -> Unit = {},
     private val post: suspend (ServerNotification) -> Unit,
 ) {
     private val lock = Mutex()
@@ -38,6 +43,14 @@ class NotePoller(
             }
         }
         settings.setLastNote(api.baseUrl, NotifyRules.nextCursor(last ?: 0, page.lastId, page.items))
+        dropSettled(api)
+    }
+
+    /** The notes of waiting items that were answered elsewhere, ran out or were cancelled leave the shelf (same ask as the phones). */
+    suspend fun dropSettled(api: KeloApi) {
+        val path = ItemIds.settledPath(shownItems()) ?: return
+        val gone = try { api.get<SettledItems>(path).ids } catch (e: CancellationException) { throw e } catch (e: Exception) { return }
+        settle(gone)
     }
 
     /** Runs until cancelled; [api] is read each round (signing out stops the checks, signing in starts them again). */

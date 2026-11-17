@@ -72,3 +72,68 @@ class JoinerFreeClipboard(private val inner: ClipboardManager) : ClipboardManage
         inner.setText(AnnotatedString(WordJoin.strip(annotatedString.text)))
     }
 }
+
+/**
+ * The app's Text: Material's Text, with Korean words kept whole where the platform's engine would break them between syllables
+ * ([LocalWordJoiner]; nothing changes on Android). Import this one, not androidx.compose.material3.Text, in every screen.
+ */
+@Composable
+fun Text(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    fontStyle: androidx.compose.ui.text.font.FontStyle? = null,
+    fontWeight: androidx.compose.ui.text.font.FontWeight? = null,
+    fontFamily: androidx.compose.ui.text.font.FontFamily? = null,
+    letterSpacing: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    textDecoration: androidx.compose.ui.text.style.TextDecoration? = null,
+    textAlign: androidx.compose.ui.text.style.TextAlign? = null,
+    lineHeight: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+    softWrap: Boolean = true,
+    maxLines: Int = Int.MAX_VALUE,
+    minLines: Int = 1,
+    onTextLayout: (androidx.compose.ui.text.TextLayoutResult) -> Unit = {},
+    style: TextStyle = androidx.compose.material3.LocalTextStyle.current,
+) {
+    val join = LocalWordJoiner.current
+    val shown = remember(text, join) { join(AnnotatedString(text)) }
+    androidx.compose.material3.Text(
+        shown, modifier.keepText(shown.text != text, text), color, fontSize, fontStyle, fontWeight, fontFamily, letterSpacing, textDecoration,
+        textAlign, lineHeight, overflow, softWrap, maxLines, minLines, emptyMap(), onTextLayout, style,
+    )
+}
+
+@Composable
+fun Text(
+    text: AnnotatedString,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    fontStyle: androidx.compose.ui.text.font.FontStyle? = null,
+    fontWeight: androidx.compose.ui.text.font.FontWeight? = null,
+    fontFamily: androidx.compose.ui.text.font.FontFamily? = null,
+    letterSpacing: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    textDecoration: androidx.compose.ui.text.style.TextDecoration? = null,
+    textAlign: androidx.compose.ui.text.style.TextAlign? = null,
+    lineHeight: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified,
+    overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+    softWrap: Boolean = true,
+    maxLines: Int = Int.MAX_VALUE,
+    minLines: Int = 1,
+    inlineContent: Map<String, androidx.compose.foundation.text.InlineTextContent> = emptyMap(),
+    onTextLayout: (androidx.compose.ui.text.TextLayoutResult) -> Unit = {},
+    style: TextStyle = androidx.compose.material3.LocalTextStyle.current,
+) {
+    val join = LocalWordJoiner.current
+    val shown = remember(text, join) { join(text) }
+    androidx.compose.material3.Text(
+        shown, modifier.keepText(shown !== text, text.text), color, fontSize, fontStyle, fontWeight, fontFamily, letterSpacing,
+        textDecoration, textAlign, lineHeight, overflow, softWrap, maxLines, minLines, inlineContent, onTextLayout, style,
+    )
+}
+
+/** A joined text reads (and is found by tests) as the original. */
+private fun Modifier.keepText(joined: Boolean, original: String): Modifier =
+    if (!joined) this else clearAndSetSemantics { this.text = AnnotatedString(original) }

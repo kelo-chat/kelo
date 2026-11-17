@@ -276,19 +276,33 @@ def text_of(update_text):
 class Rig:
     """An app on a loopback port with a fake Telegram: `fake` (the bot), `seen` (what the model was sent), `mgr` (the manager)."""
 
-    def __init__(self, tmp_path, *steps, tools=None, provider="p", consent=True):
+    def __init__(self, tmp_path, *steps, tools=None, provider="p", consent=True, model=None, split=None):
+        """`model`: a role-aware fake model (split_pay.Split) instead of the steps; `split`: payment_specialist on/off for this app
+        (None = the default, on); with it on a copy gets a browser, so a checkout job can run."""
         self.consent = consent
         self.fake = FakeTG()
         self.seen: list = []
         self.steps = steps or ([TextDelta("Hello from Kelo"), Done("stop")],)
 
-        async def model(prov, request, **kw):
+        async def model_steps(prov, request, **kw):
             self.seen.append(request)
             for ev in self.steps[min(len(self.seen) - 1, len(self.steps) - 1)]:
                 yield ev
+        extra = {}
+        if split is not None:
+            extra["payment_specialist"] = split
+        if split:
+            from assistant.tools.browser import BrowserSession
+            from test_agent_profile import ShotPage
+
+            async def connect():
+                return ShotPage("https://shop.example.com/checkout")
+            extra.update(browser=BrowserSession(connect=connect), with_worker_tools=True)
         app = create_app(Settings(token=TOKEN, provider=provider, model="m", cdp_host=None, db_path=str(tmp_path / "s.db"),
-                                  home_dir=str(tmp_path / "home"), content_dir=str(CONTENT)),
-                         tools=tools if tools is not None else [], stream_fn=model, mcp_fetcher=self.fake.fetch, channel_fetch=self.fake.fetch)
+                                  home_dir=str(tmp_path / "home"), content_dir=str(CONTENT), browser_worker=False, **{k: v for k, v in extra.items()
+                                                                                             if k == "payment_specialist"}),
+                         tools=tools if tools is not None else [], stream_fn=model or model_steps, mcp_fetcher=self.fake.fetch,
+                         channel_fetch=self.fake.fetch, **{k: v for k, v in extra.items() if k != "payment_specialist"})
         self.app, self.run = app, Running(app)
 
     async def __aenter__(self):
@@ -629,20 +643,32 @@ async def test_answered_in_app_edits_message(rig):
         assert ran == [{"to": "bob"}]
 
 
-@pytest.mark.parametrize("tool", ["browser_login", "request_card", "confirm_purchase"])
-async def test_a_card_that_needs_the_app_has_no_buttons(rig, tool):
+@pytest.mark.parametrize("tool,split", [("browser_login", None), ("request_card", False), ("confirm_purchase", False),
+                                        ("request_card", True), ("confirm_purchase", True)],
+                         ids=["browser_login", "request_card-switch-off", "confirm_purchase-switch-off", "request_card-checkout-job",
+                              "confirm_purchase-checkout-job"])
+async def test_a_card_that_needs_the_app_has_no_buttons(rig, tool, split):
     ran = []
-    async with rig(*asks_then_answers(tool), tools=[send_tool(ran, tool)]) as r:
-        await r.pair()
-        r.fake.push(msg("go", update_id=3))
-        card = await until(lambda: next((b for b in r.fake.of("sendMessage") if "Open the Kelo app to answer this one." in b["text"]), None))
-        assert keyboard(card) is None
-        aid = next(iter((await r.c.get("/api/approvals/pending")).json()["items"]))["approval_id"]
-        r.fake.push({"update_id": 4, "callback_query": {"id": "z", "from": {"id": 7}, "data": f"a:{aid}:1", "message": {"message_id": 1, "chat": {"id": 7}}}})
-        await until(lambda: r.mgr.state("telegram")["offset"] >= 5)
-        assert ran == []                       # a forged tap does not answer it either
-        assert (await r.c.post(f"/api/approvals/{aid}", json={"approve": False})).status_code == 200
-        await until(lambda: "It is done." in r.sent())
+    if split:   # the payment is made by a checkout job the chat hands over (payment split, the default)
+        from split_pay import Split, job
+        async with rig(tools=[send_tool(ran, tool)], model=Split(job((tool, {})), closing="It is done."), split=True) as r:
+            await card_needs_app(r, ran)
+        return
+    async with rig(*asks_then_answers(tool), tools=[send_tool(ran, tool)], split=split) as r:
+        await card_needs_app(r, ran)
+
+
+async def card_needs_app(r, ran):
+    await r.pair()
+    r.fake.push(msg("go", update_id=3))
+    card = await until(lambda: next((b for b in r.fake.of("sendMessage") if "Open the Kelo app to answer this one." in b["text"]), None))
+    assert keyboard(card) is None
+    aid = next(iter((await r.c.get("/api/approvals/pending")).json()["items"]))["approval_id"]
+    r.fake.push({"update_id": 4, "callback_query": {"id": "z", "from": {"id": 7}, "data": f"a:{aid}:1", "message": {"message_id": 1, "chat": {"id": 7}}}})
+    await until(lambda: r.mgr.state("telegram")["offset"] >= 5)
+    assert ran == []                       # a forged tap does not answer it either
+    assert (await r.c.post(f"/api/approvals/{aid}", json={"approve": False})).status_code == 200
+    await until(lambda: "It is done." in r.sent())
 
 
 def test_needs_app_table():
@@ -751,7 +777,7 @@ async def test_prepare_talk_arguments_and_answer_approval(rig):
     async with rig() as r:
         ctx = r.app.state.appctx
         from assistant.server import TalkIn
-        _, _, tctx, observe, started = ctx.prepare_talk(TalkIn(text="hello there"), None, owner="owner", via="telegram", note="NOTE-FOR-MODEL")
+        _, _, tctx, observe, started = await ctx.prepare_talk(TalkIn(text="hello there"), None, owner="owner", via="telegram", note="NOTE-FOR-MODEL")
         rows = r.store.messages()
         assert rows[-1]["content"] == "hello there" and rows[-1]["via"] == "telegram"
         assert "NOTE-FOR-MODEL" in tctx.tail[-1]["content"] and "NOTE-FOR-MODEL" not in rows[-1]["content"]
@@ -786,7 +812,7 @@ from assistant.tools.channel_tools import channel_tools   # noqa: E402
 def test_the_messenger_tool_is_found_by_its_words():
     tool = channel_tools(lambda: None)[0]
     assert tool.name == "messenger" and "Telegram" in tool.description and "other people" in tool.description
-    assert tool.parameters["properties"]["action"]["enum"] == ["status", "new_code", "notify_on", "notify_off", "unpair", "groups", "remove_group"]
+    assert tool.parameters["properties"]["action"]["enum"][:7] == ["status", "new_code", "notify_on", "notify_off", "unpair", "groups", "remove_group"]
     assert tool.parameters["properties"]["channel"]["enum"] == ["telegram", "discord", "slack"]
     for q in ("telegram", "messenger"):
         assert search([tool], q) == [tool]
@@ -812,7 +838,7 @@ async def test_messenger_tool_status_code_notify_unpair(rig):
         assert hashlib_ok(re.search(r"start=(\d{6})", posted[0][1]).group(1), code["code_hash"])
         assert await tool.handler({"action": "notify_on"}) == "ok" and r.mgr.status("telegram")["notify"] is True
         assert await tool.handler({"action": "notify_off"}) == "ok" and r.mgr.status("telegram")["notify"] is False
-        assert tool.auto_approve({"action": "status"}) and tool.auto_approve({"action": "new_code"}) and not tool.auto_approve({"action": "unpair"})
+        assert tool.auto_approve({"action": "status"}) and not tool.auto_approve({"action": "new_code"}) and not tool.auto_approve({"action": "unpair"})
         assert await tool.describe({"action": "unpair"}) == "Disconnect Telegram from Ann?"
         # unpairing asks first
         assert (await r.c.post("/api/turns", json={"text": "disconnect telegram"})).status_code == 200

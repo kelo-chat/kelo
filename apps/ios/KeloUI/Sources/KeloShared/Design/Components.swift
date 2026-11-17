@@ -159,13 +159,17 @@ public struct KeloTextField: View {
     let axis: Axis
     let maxLength: Int
     let onSubmit: () -> Void
+    /// Room kept at the trailing edge inside the box for a button the caller overlays (a secret field's Show eye).
+    let trailingInset: CGFloat
+    /// Becomes true when the field should take focus (and so raise the keyboard), e.g. the page being controlled put its cursor in a field.
+    let focusRequest: Bool
     @FocusState private var focused: Bool
     @Environment(\.kelo) private var c
 
     public init(_ placeholder: String, text: Binding<String>, secure: Bool = false, keyboard: KeloKeyboard = .text,
-                axis: Axis = .horizontal, maxLength: Int = .max, onSubmit: @escaping () -> Void = {}) {
+                axis: Axis = .horizontal, maxLength: Int = .max, trailingInset: CGFloat = 0, focusRequest: Bool = false, onSubmit: @escaping () -> Void = {}) {
         self.placeholder = placeholder; _text = text; self.secure = secure; self.keyboard = keyboard; self.axis = axis
-        self.maxLength = maxLength; self.onSubmit = onSubmit
+        self.maxLength = maxLength; self.onSubmit = onSubmit; self.trailingInset = trailingInset; self.focusRequest = focusRequest
     }
 
     public var body: some View {
@@ -183,8 +187,9 @@ public struct KeloTextField: View {
         .keloKeyboard(keyboard)
         .focused($focused)
         .onSubmit(onSubmit)
+        .onChange(of: focusRequest) { _, on in if on { focused = true } }
         .onChange(of: text) { _, v in if v.count > maxLength { text = String(v.prefix(maxLength)) } }
-        .padding(.horizontal, 14).padding(.vertical, 13)
+        .padding(.leading, 14).padding(.trailing, 14 + trailingInset).padding(.vertical, 13)
         .background(RoundedRectangle(cornerRadius: 12).fill(c.card))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(focused ? c.accent : c.line, lineWidth: focused ? 2 : 1))
     }
@@ -371,7 +376,7 @@ public struct SubPage<Content: View, Actions: View>: View {
         // the content scrolls under the back bar; the bar is the page colour at rest and the system bar material once it does
         ScrollView {
             VStack(alignment: .leading, spacing: 12) { content }
-                .frame(maxWidth: 640, alignment: .leading)
+                .frame(maxWidth: WindowShape.pageColumn, alignment: .leading)
                 .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
         }
@@ -683,6 +688,6 @@ public extension View {
 
     /// Page padding for a main tab's content (16 pt sides, max reading width).
     func keloPageWidth() -> some View {
-        frame(maxWidth: 640, alignment: .leading).frame(maxWidth: .infinity)
+        frame(maxWidth: WindowShape.pageColumn, alignment: .leading).frame(maxWidth: .infinity)
     }
 }

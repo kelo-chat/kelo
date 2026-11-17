@@ -239,20 +239,20 @@ async def test_the_requests_pass_netguard_with_their_methods_and_bodies(tmp_path
 # ------------------------------------------------------------------------------------------------------ an account of your own
 async def test_an_own_caldav_account_is_checked_then_saved_in_the_vault_and_read(tmp_path):
     store = Store(tmp_path / "s.db")
-    with FakeCalDav(host="dav.fastmail.test", prefix="/dav/") as fake:
+    with FakeCalDav(host="dav.fastmail.com", prefix="/dav/") as fake:
         cal = hub(store, fake)
         with pytest.raises(CalDavError) as e:
-            await cal.connect("https://dav.fastmail.test/dav/", "me@fastmail.test", "wrong-password")
+            await cal.connect("https://dav.fastmail.com/dav/", "me@fastmail.test", "wrong-password")
         assert "refused" in str(e.value) and not [c for c in store.credentials() if c["name"].startswith("caldav-")]   # nothing saved
-        got = await cal.connect("https://dav.fastmail.test/dav/", "me@example.com", "app-pass-123")
+        got = await cal.connect("https://dav.fastmail.com/dav/", "me@example.com", "app-pass-123")
         item = store.credential(got["name"])
-        assert item["kind"] == "email" and item["hosts"] == ["dav.fastmail.test"] and item["placement"]["type"] == "caldav"
+        assert item["kind"] == "email" and item["hosts"] == ["dav.fastmail.com"] and item["placement"]["type"] == "caldav"
         assert json.loads(item["secret"]) == {"u": "me@example.com", "p": "app-pass-123"} and "app-pass" not in item["label"]
         accts = cal.accounts()
         assert [(a.provider, a.address) for a in accts] == [("caldav", "me@example.com")]
         evs = await cal.upcoming_of(accts[0], 30)
         assert any(e["title"] == "Standup" for e in evs)
-        assert fake.hosts_used and set(fake.hosts_used) == {"dav.fastmail.test"}
+        assert fake.hosts_used and set(fake.hosts_used) == {"dav.fastmail.com"}
         assert any(r["action"] == "used" for r in store.vault_log() if r["item"] == got["name"])
 
 

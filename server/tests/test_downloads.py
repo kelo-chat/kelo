@@ -84,13 +84,15 @@ async def test_only_files_the_manifest_names_are_served_and_nothing_is_listed(tm
     os.symlink(tmp_path / "secret.txt", tmp_path / "link.apk")
     async with Running(app_with(tmp_path)) as srv, httpx.AsyncClient(base_url=srv.url) as c:
         for path in ("/download/android/kelo-1.0.0.apk", "/download/android/secret.txt", "/download/android/manifest.json",
-                     "/download/windows/kelo-2.0.0.apk", "/download/android/link.apk", "/download/", "/download",
+                     "/download/windows/kelo-2.0.0.apk", "/download/android/link.apk",
                      "/download/manifest.json", "/download/secret.txt", "/download/nope", "/download/windows", "/download/mac",
                      "/download/android/..%2Fsecret.txt", "/download/android/%2e%2e/secret.txt", "/download/..%2Fsecret.txt",
                      "/download/android/../secret.txt"):
             r = await c.get(path)
             assert r.status_code in (404, 405), (path, r.status_code)
             assert b"no" != r.content and b"kelo-1.0.0" not in r.content
+        page = await c.get("/download")   # the download page, not a listing of the folder
+        assert page.status_code == 200 and "text/html" in page.headers["content-type"] and "kelo-1.0.0.apk" not in page.text
         assert (await c.get("/download/android/kelo-2.0.0.apk")).status_code == 200
 
 
@@ -380,3 +382,112 @@ def test_publish_takes_version_and_build_and_latest_json_carries_the_build(tmp_p
     (volume / "manifest.json").write_text(json.dumps({"platforms": {"android": {**json.loads((volume / "manifest.json").read_text())
                                                                               ["platforms"]["android"], "version_code": "402600"}}}))
     assert "version_code" not in Downloads(volume).manifest()["android"]
+
+
+# ------------------------------------------------------------------------------------- a separate operator copy (KELO_OPERATOR_INSTANCE)
+def test_the_publisher_finds_the_server_container_of_the_configured_operator_copy(tmp_path, monkeypatch):
+    docker = FakeDocker(tmp_path / "vol")
+    monkeypatch.delenv("KELO_OPERATOR_INSTANCE", raising=False)
+    assert Publisher(tmp_path, run=docker, out=lambda s: None).container() == "abc123"
+    assert "-p" not in docker.calls[-1] and "--env-file" not in docker.calls[-1]     # default: main, exactly as before
+    monkeypatch.setenv("KELO_OPERATOR_INSTANCE", "main")
+    Publisher(tmp_path, run=docker, out=lambda s: None).container()
+    assert "-p" not in docker.calls[-1]
+    monkeypatch.setenv("KELO_OPERATOR_INSTANCE", "operator")
+    assert Publisher(tmp_path, run=docker, out=lambda s: None).container() == "abc123"
+    cmd = docker.calls[-1]
+    assert cmd[cmd.index("-p") + 1] == "assistant-u-operator"
+    assert cmd[cmd.index("--env-file") + 1] == str(tmp_path / "instances" / "operator" / "env")
+    monkeypatch.setenv("KELO_OPERATOR_INSTANCE", "../x")
+    calls = len(docker.calls)
+    with pytest.raises(PublishError, match="not a copy name"):
+        Publisher(tmp_path, run=docker, out=lambda s: None).container()
+    assert len(docker.calls) == calls
+    monkeypatch.setenv("KELO_OPERATOR_INSTANCE", "operator")
+    with pytest.raises(PublishError, match="operator copy's server container was not found"):
+        Publisher(tmp_path, run=FakeDocker(tmp_path / "vol", cid=""), out=lambda s: None).container()
+
+
+def test_the_operator_check_reads_the_configured_copys_settings(tmp_path, monkeypatch):
+    root = _operator_root(tmp_path, "ASSISTANT_PUBLIC_URL=https://main.example.com\n")       # main is NOT the operator
+    (root / "instances" / "operator").mkdir(parents=True)
+    (root / "instances" / "operator" / "env").write_text("ASSISTANT_OPERATOR=1\nASSISTANT_PUBLIC_URL=https://operator.kelo.chat\n")
+    lines: list[str] = []
+    monkeypatch.delenv("KELO_OPERATOR_INSTANCE", raising=False)
+    assert downloads._operator_public(root, lines.append) is None and "operator's server" in lines[-1]
+    monkeypatch.setenv("KELO_OPERATOR_INSTANCE", "operator")
+    assert downloads._operator_public(root, lines.append) == "https://operator.kelo.chat"
+    monkeypatch.setenv("KELO_OPERATOR_INSTANCE", "nosuch")                                   # its settings file is missing
+    assert downloads._operator_public(root, lines.append) is None and "error" in lines[-1]
+    monkeypatch.setenv("KELO_OPERATOR_INSTANCE", "Bad Name")
+    assert downloads._operator_public(root, lines.append) is None and "not a copy name" in lines[-1]
+
+
+# ---------------------------------------------------------------------------------------------------------- Kelo server MSI
+MSI = b"\xd0\xcf\x11\xe0" * 40
+
+
+async def test_the_server_msi_is_served_and_in_latest_json_but_not_on_the_download_page(tmp_path):
+    row = publish_here(tmp_path, "windows-server-msi", "kelo-server-0.10.2.msi", MSI, "0.10.2")
+    publish_here(tmp_path, "windows-msi", "kelo-1.0.0.msi", b"\xd0\xcf" * 50, "1.0.0")
+    async with Running(app_with(tmp_path)) as srv, httpx.AsyncClient(base_url=srv.url) as c:
+        r = await c.get("/download/windows-server-msi")
+        assert r.status_code == 302 and r.headers["location"] == "/download/windows-server-msi/kelo-server-0.10.2.msi"
+        f = await c.get("/download/windows-server-msi/kelo-server-0.10.2.msi")
+        assert f.status_code == 200 and f.content == MSI and f.headers["content-type"] == "application/x-msi"
+        assert (await c.get("/download/windows-server-msi/kelo-1.0.0.msi")).status_code == 404   # the app's MSI is not this file
+        latest = (await c.get("/download/latest.json")).json()
+        assert latest["windows-server-msi"] == {"version": "0.10.2", "size": len(MSI), "sha256": row["sha256"],
+                                                "date": "2026-11-08T09:00:00Z", "file": "kelo-server-0.10.2.msi",
+                                                "url": "/download/windows-server-msi"}
+        assert latest["windows-msi"]["file"] == "kelo-1.0.0.msi"                 # the desktop app row is untouched
+        for lang in ("en", "ko"):
+            page = (await c.get(f"/?lang={lang}")).text
+            assert "windows-server-msi" not in page and "kelo-server-" not in page
+            assert "/download/windows-server-msi" not in page
+        assert "windows-server-msi" not in (await c.get("/download?lang=en")).text
+        assert "/download/windows-server-msi" not in (await c.get("/download?lang=ko")).text
+
+
+def test_the_server_msi_keeps_its_own_platform_and_file_name(tmp_path):
+    msi = tmp_path / "KeloServer-0.10.2-x64.msi"
+    msi.write_bytes(MSI)
+    assert downloads.platform_for("windows-server-msi", msi) == "windows-server-msi"
+    assert downloads.platform_for("windows", msi) == "windows-msi"            # the old shortcut for the app's MSI stays as it was
+    assert downloads.platform_for("windows-msi", msi) == "windows-msi"
+    exe = tmp_path / "KeloServer-0.10.2-x64.exe"
+    exe.write_bytes(b"MZ")
+    with pytest.raises(PublishError, match="must be a .msi file"):
+        downloads.platform_for("windows-server-msi", exe)
+    volume = tmp_path / "vol"
+    docker = FakeDocker(volume)
+    pub = Publisher(tmp_path, run=docker, out=lambda s: None)
+    got = pub.publish("windows-server-msi", msi, "0.10.2", unsigned=True)
+    assert got["file"] == "kelo-server-0.10.2.msi" and (volume / "kelo-server-0.10.2.msi").read_bytes() == MSI
+    pub.publish("windows", msi, "0.10.2", unsigned=True)                     # the app's MSI with the same version: a different file
+    rows = json.loads((volume / "manifest.json").read_text())["platforms"]
+    assert rows["windows-server-msi"]["file"] == "kelo-server-0.10.2.msi"
+    assert rows["windows-msi"]["file"] == "kelo-0.10.2.msi"
+
+
+def test_publish_app_does_not_record_the_server_msi_as_an_app_release(tmp_path, monkeypatch):
+    msi = tmp_path / "KeloServer-0.10.2-x64.msi"
+    msi.write_bytes(MSI)
+    recorded: list[str] = []
+    monkeypatch.setattr(downloads, "record_published", lambda root, row, out: recorded.append(row["file"]))
+    root = _operator_root(tmp_path, "ASSISTANT_PUBLIC_URL=https://kelo.chat\nASSISTANT_KELO_BROKER=https://kelo.chat\n")
+    lines: list[str] = []
+    args = SimpleNamespace(platform="windows-server-msi", file=str(msi), version="0.10.2", unsigned=True, commit=None)
+    assert run_publish(args, root, run=FakeDocker(tmp_path / "vol"), out=lines.append) == 0
+    assert recorded == []
+    assert any(line == "Published Kelo server for Windows (MSI) 0.10.2: https://kelo.chat/download/windows-server-msi" for line in lines)
+    args.platform = "windows"
+    assert run_publish(args, root, run=FakeDocker(tmp_path / "vol2"), out=lines.append) == 0
+    assert recorded == ["kelo-0.10.2.msi"]                                     # the app's MSI is still recorded as before
+
+
+def test_the_cli_accepts_the_server_msi_platform(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(downloads, "run_publish", lambda a: seen.setdefault("args", a) and 0)
+    assert cli.main(["publish-app", "windows-server-msi", "/x/KeloServer.msi", "--version", "0.10.2"]) == 0
+    assert seen["args"].platform == "windows-server-msi"

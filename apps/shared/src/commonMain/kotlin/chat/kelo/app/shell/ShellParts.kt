@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -41,6 +41,7 @@ import chat.kelo.app.ui.character.centerShift
 import chat.kelo.app.ui.platform.formFactor
 import chat.kelo.app.ui.text.plural
 import chat.kelo.app.ui.text.string
+import chat.kelo.app.ui.icons.KeloIcons
 import chat.kelo.app.ui.theme.Kelo
 import chat.kelo.app.ui.theme.LocalReduceMotion
 import chat.kelo.app.ui.theme.Motion
@@ -59,7 +60,7 @@ private val BADGE_CREAM = Color(0xFFFFF3D6)
  * something waits for the owner. Tapping it opens the agent's page. On the desktop the line also shows under the name.
  */
 @Composable
-fun FloatingHeader(profile: Profile, ui: ShellUiState, onAgent: () -> Unit, modifier: Modifier = Modifier) {
+fun FloatingHeader(profile: Profile, ui: ShellUiState, onAgent: () -> Unit, modifier: Modifier = Modifier, onSearch: (() -> Unit)? = null) {
     val c = Kelo.colors
     val reduce = LocalReduceMotion.current
     val photo by LocalAppServices.current.agentAvatar.image.collectAsStateWithLifecycle()
@@ -113,6 +114,15 @@ fun FloatingHeader(profile: Profile, ui: ShellUiState, onAgent: () -> Unit, modi
                         if (ui.news) NewsDot(Modifier.align(Alignment.TopEnd).offset(x = (-2).dp, y = 2.dp))
                     }
                 }
+            }
+        }
+        // the chat's search (on the chat tab only): a magnifier at the end of the header, under the status bar
+        if (onSearch != null) {
+            androidx.compose.material3.IconButton(
+                onClick = onSearch,
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 6.dp, end = 6.dp),
+            ) {
+                androidx.compose.material3.Icon(KeloIcons.Search, contentDescription = string(Res.string.chat_search_open), tint = c.ink)
             }
         }
     }

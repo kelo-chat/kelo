@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">ما يتابعه Kelo</string>
+    <string name="follow_stop">إيقاف المتابعة</string>
+    <string name="follow_stop_confirm">هل تريد التوقف عن متابعة هذا الأمر؟</string>
+    <string name="follow_stop_confirm_detail">لن يقوم Kelo بفحص التغييرات أو التحضير المسبق بعد الآن.</string>
+    <string name="follow_stop_yes">إيقاف المتابعة</string>
+    <string name="follow_keep_watching">مواصلة المتابعة</string>
+    <string name="follow_replan">إعادة التخطيط</string>
+    <string name="follow_sheet_title">خطة المتابعة</string>
+    <string name="follow_plan_checks">نقاط المتابعة</string>
+    <string name="follow_plan_prep">التحضيرات</string>
+    <string name="follow_plan_tell">الإشعارات</string>
+    <string name="follow_plan_tell_change">تنبيه عند حدوث تغيير</string>
+    <string name="follow_next_check">الفحص القادم: %1$s</string>
+    <string name="follow_last_check">آخر فحص: %1$s</string>
+    <string name="follow_prep_later">مجدول</string>
+    <string name="follow_prep_running">قيد التنفيذ</string>
+    <string name="follow_prep_done">تم التحضير</string>
+    <string name="follow_prep_failed">فشل</string>
+    <string name="follow_state_watching">قيد المتابعة</string>
+    <string name="follow_state_stopped">متوقف</string>
+    <string name="follow_state_done">مكتمل</string>
+    <string name="follow_summary_lead_flight">إشعار قبل يوم من المغادرة</string>
+    <string name="follow_summary_lead_general">إشعار قبل يوم</string>
+    <string name="follow_summary_lead_hours">إشعار قبل %1$d ساعات</string>
+    <string name="follow_summary_prep_checkin">تجهيز تسجيل الوصول عند الفتح</string>
+    <string name="follow_summary_prep_general">تحضير %1$s</string>
+    <string name="follow_summary_watch_changes">التحقق من التغييرات</string>
+    <string name="follow_summary_default">متابعة الموعد</string>
+</resources>

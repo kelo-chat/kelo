@@ -17,4 +17,6 @@
     <string name="perm_reset_q">คืนการตั้งค่าทั้งหมดของตัวเชื่อมต่อนี้เป็นค่าเริ่มต้นหรือไม่</string>
     <string name="perm_read_off_q">เมื่อปิดการอ่าน Kelo แทบใช้ตัวเชื่อมต่อนี้ไม่ได้ ปิดเลยไหม</string>
     <string name="perm_limited">จำกัด</string>
+    <string name="perm_unattended">ใช้เมื่อฉันไม่ได้แชท</string>
+    <string name="perm_unattended_about">งานตามกำหนดเวลา งานเบื้องหลัง และข้อความที่ Kelo ส่งมาก่อนจะไม่ใช้ %1$s แต่แชทของคุณเองยังใช้ได้ตามเดิม</string>
 </resources>

@@ -45,10 +45,15 @@ def test_the_language_flags_come_only_when_a_language_is_set():
     assert not any(argument.startswith(("--lang=", "--accept-lang=")) for argument in browser_arguments(options()))
 
 
-def test_the_cache_flag_is_the_size_in_bytes_and_zero_or_none_means_the_browser_default():
+def test_the_cache_flag_is_the_size_in_bytes_and_zero_or_none_means_the_default_cap_never_no_cap():
     assert "--disk-cache-size=67108864" in browser_arguments(options(cache_mb=64))
-    assert not any(argument.startswith("--disk-cache-size") for argument in browser_arguments(options(cache_mb=0)))
-    assert not any(argument.startswith("--disk-cache-size") for argument in browser_arguments(options(cache_mb=None)))
+    assert "--disk-cache-size=1073741824" in browser_arguments(options(cache_mb=0))
+    assert "--disk-cache-size=1073741824" in browser_arguments(options(cache_mb=None))
+
+
+def test_docker_caps_the_cache_by_default_too():
+    text = ENTRYPOINT.read_text(encoding="utf-8")
+    assert "CACHE_MB=1024" in text and "--disk-cache-size=" in text
 
 
 def test_the_user_agent_flag_comes_only_when_a_user_agent_is_set():

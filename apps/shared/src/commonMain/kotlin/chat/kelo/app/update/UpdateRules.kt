@@ -126,4 +126,6 @@ data class Release(
     val sig: String = "",
     val key: String = "",
     val commit: String = "",
+    /** One plain line about the release (optional; shown in the update popup, not part of the signature). */
+    val notes: String = "",
 )

@@ -841,6 +841,22 @@
     <string name="agent_perm_rules_empty">Ancora niente. Scegli “Consenti sempre su questo sito” in una richiesta di approvazione e apparirà qui.</string>
     <string name="agent_perm_history">Approvazioni passate</string>
     <string name="agent_perm_history_empty">Ancora nessuna richiesta.</string>
+    <string name="approval_edit_button">Modifica</string>
+    <string name="approval_edit_title">Messaggio da inviare</string>
+    <string name="approval_edit_save">Salva</string>
+    <string name="approval_edited_note">Hai modificato il messaggio</string>
+    <string name="approval_edit_empty">Scrivi un messaggio.</string>
+    <string name="approval_edit_too_long">Troppo lungo. Accorcialo.</string>
+    <string name="approval_edit_count">%1$d / %2$d</string>
+    <string name="approval_history_title">Approvazioni passate</string>
+    <string name="approval_history_empty">Ancora nessuna approvazione.</string>
+    <string name="approval_history_error">Impossibile caricare le approvazioni passate.</string>
+    <string name="approval_history_where">Dove</string>
+    <string name="approval_history_when">Quando</string>
+    <string name="approval_history_answered">Risposta</string>
+    <string name="approval_via_app">Nell\'app</string>
+    <string name="approval_via_notification">Da una notifica</string>
+    <string name="approval_via_messenger">In un messenger</string>
     <string name="agent_perm_asked">Chiesto %1$s</string>
     <string name="approval_remember_site">Non chiedere più su questo sito</string>
     <string name="approval_remember_scope">Si applica a %1$s e a tutti i relativi sottoindirizzi</string>
@@ -954,6 +970,7 @@
     <string name="live_forward">Avanti</string>
     <string name="live_reload">Ricarica</string>
     <string name="live_page_not_responding">La pagina non risponde</string>
+    <string name="live_touch_missed">Il tocco non è arrivato alla pagina</string>
     <string name="live_type_hint">Testo da scrivere nella pagina</string>
     <string name="live_type_send">Scrivi</string>
     <string name="live_type_hide">Nascondi testo</string>
@@ -1144,6 +1161,8 @@
     <string name="offer_reason_later">Più tardi</string>
     <string name="offer_busy">È in corso un\'altra risposta. Tocca di nuovo al termine</string>
     <string name="offer_failed">Impossibile avviare</string>
+    <string name="offer_steps_show_all">Mostra tutti i %1$d passaggi</string>
+    <string name="offer_steps_fewer">Mostra meno passaggi</string>
     <string name="work_upcoming">In arrivo</string>
     <string name="work_upcoming_unscheduled">Senza orario</string>
     <string name="work_past">Prima</string>
@@ -1176,6 +1195,7 @@
     <string name="work_kind_browser">Attività nel browser</string>
     <string name="work_kind_research">Ricerca</string>
     <string name="work_kind_general">Attività generica</string>
+    <string name="work_kind_phone">Attività sul telefono</string>
     <string name="work_job_title">Attività in background</string>
     <string name="work_job_line">%1$s · In background</string>
     <string name="work_task_in_background">In background</string>
@@ -1490,6 +1510,7 @@
     <string name="handover_verify_title">%1$s chiede di confermare l\'accesso</string>
     <string name="handover_verify_body">Approva l\'accesso sul telefono, oppure apri la vista dal vivo e inserisci lì il codice. Poi Kelo continua.</string>
     <string name="handover_verify_open">Apri la vista dal vivo</string>
+    <string name="handover_device_open">Apri lo schermo del telefono</string>
     <string name="handover_verify_done">Accesso effettuato — Kelo continua</string>
     <string name="handover_verify_approve_body">Approva l\'accesso nella notifica sul telefono. Una volta approvato, Kelo continua.</string>
     <string name="handover_verify_approved">Ho approvato</string>

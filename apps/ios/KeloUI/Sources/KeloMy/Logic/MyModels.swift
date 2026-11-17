@@ -75,6 +75,11 @@ public struct ProactiveSettings: Decodable, Equatable, Sendable {
     public var hoursSource = "default"
     /// The same answer's message hours: weekday and weekend rows, suggestions, learned windows (`ContactHours`).
     public var hours = ContactHours()
+    /// Messages Kelo starts a day (0...10; 0 = only what cannot wait), how many went out today, and how many items it is holding:
+    /// nil from an older server (the rows are then hidden).
+    public var dailyDeliveries: Int?
+    public var todayDeliveries: Int?
+    public var held: Int?
 
     public init() {}
 
@@ -88,6 +93,7 @@ public struct ProactiveSettings: Decodable, Equatable, Sendable {
         today = (j["today"]?.objectValue ?? [:]).compactMapValues { $0.intValue }
         awake = j.bool("awake")
         autoHours = j.bool("auto_hours"); hoursSource = j.str("hours_source", "default")
+        dailyDeliveries = j.optInt("daily_deliveries"); todayDeliveries = j.optInt("today_deliveries"); held = j.optInt("held")
     }
 }
 

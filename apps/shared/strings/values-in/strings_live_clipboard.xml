@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_paste">Tempel dari ponsel</string>
+    <string name="live_pasted">Sudah ditempel. Periksa kolomnya.</string>
+    <string name="live_copy_from_browser">Salin dari browser</string>
+    <string name="live_copied_to_phone">Disalin ke ponsel Anda</string>
+</resources>

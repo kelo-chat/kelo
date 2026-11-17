@@ -271,11 +271,17 @@ object NotifyRules {
     fun idFor(kind: String, key: String): Int = (kind + ":" + key).hashCode() and 0x7fffffff
 }
 
-/** An FCM data message: {type, id, title?, body?, message_id?}. The server sends only these; the app fetches the rest itself. */
-data class PushMessage(val type: String, val id: Long?, val title: String?, val body: String?, val messageId: Long? = null)
+/** An FCM data message: {type, id, title?, body?, message_id?, ids?}. The server sends only these; the app fetches the rest itself. */
+data class PushMessage(
+    val type: String, val id: Long?, val title: String?, val body: String?, val messageId: Long? = null,
+    /** A "settled" push: the item ids (the waiting items' ids) that do not wait any more; empty for every other kind */
+    val ids: List<String> = emptyList(),
+)
 
 object PushData {
     private val ID_WORD = Regex("^[a-z_]{2,40}$")
+    private val ITEM_ID = Regex("^[A-Za-z0-9_-]{1,64}$")
+    private const val MAX_IDS = 10
 
     /** Null when it is not a Kelo message (no type, or a type that does not look like an id word). Types this app does not know pass. */
     fun parse(data: Map<String, String>): PushMessage? {
@@ -287,11 +293,34 @@ object PushData {
             title = data["title"]?.trim()?.takeIf { it.isNotEmpty() },
             body = data["body"]?.trim()?.takeIf { it.isNotEmpty() },
             messageId = data["message_id"]?.trim()?.toLongOrNull(),
+            ids = if (type == SETTLED) settledIds(data["ids"] ?: data["id"]) else emptyList(),
         )
     }
+
+    /** The item ids of a "settled" push: comma-separated, each a plain id word, at most [MAX_IDS]; anything else is dropped. */
+    fun settledIds(raw: String?): List<String> =
+        raw.orEmpty().split(',').map { it.trim() }.filter { ITEM_ID.matches(it) }.distinct().take(MAX_IDS)
 
     /** "something is new, check": no content of its own */
     const val WAKE = "check"
     /** Work this phone may have to do after an approval (a text, the dialer, a calendar change): only the task's id */
     const val DEVICE_TASK = "device_task"
+    /** Waiting items stopped waiting (answered on any device, ran out, cancelled): their notifications are taken down. Nothing is shown. */
+    const val SETTLED = "settled"
+}
+
+/**
+ * Notifications that wait for an answer are identified by the waiting item's id (the server's approval id), the same on Android, iPhone
+ * and desktop: Android posts them with that id as the tag, iPhone uses it as the notification identifier, desktop keys its notes by it.
+ * One list of settled ids (a "settled" push, or GET /api/notifications/settled) therefore works everywhere.
+ */
+object ItemIds {
+    /** The id of the item a notification waits for, or null when it only tells something (a finished reply, a payment result...). */
+    fun of(n: ServerNotification): String? = n.approvalId?.trim()?.takeIf { it.isNotEmpty() }
+
+    /** The path asking which of the shown items do not wait any more (null: nothing shown, nothing to ask). */
+    fun settledPath(shown: Collection<String>): String? {
+        val ids = shown.map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(200)
+        return if (ids.isEmpty()) null else "/api/notifications/settled?ids=" + ids.joinToString(",")
+    }
 }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">ที่อยู่เซิร์ฟเวอร์</string>
+    <string name="server_address_title">เปลี่ยนที่อยู่เซิร์ฟเวอร์</string>
+    <string name="server_address_body">ที่อยู่ที่เชื่อมต่ออยู่: %1$s\nหากต้องการย้ายไปยังที่อยู่ใหม่ของเซิร์ฟเวอร์ Kelo เครื่องเดิม ให้พิมพ์ที่อยู่ https ใหม่ แชตและคีย์ของคุณจะอยู่เหมือนเดิม และไม่ต้องเชื่อมต่อใหม่</string>
+    <string name="server_address_switch">เปลี่ยน</string>
+    <string name="server_address_checking">กำลังตรวจสอบ…</string>
+    <string name="server_address_invalid">ดูไม่เหมือนที่อยู่ https พิมพ์แบบนี้: https://kelo.example.com</string>
+    <string name="server_address_unreachable">เข้าถึงที่อยู่นั้นไม่ได้ ตรวจสอบที่อยู่และการเชื่อมต่อของคุณ แล้วลองอีกครั้ง</string>
+    <string name="server_address_other">ที่อยู่นั้นเป็นของเซิร์ฟเวอร์อื่น จึงไม่มีอะไรเปลี่ยนแปลง หากต้องการเชื่อมต่อเซิร์ฟเวอร์อื่น ให้ออกจากระบบแล้วเชื่อมต่อใหม่ตั้งแต่ต้น</string>
+    <string name="server_address_same">โทรศัพท์เครื่องนี้ใช้ที่อยู่นั้นอยู่แล้ว</string>
+    <string name="server_address_done">เปลี่ยนที่อยู่เซิร์ฟเวอร์แล้ว</string>
+</resources>

@@ -122,6 +122,10 @@ none is built in.
     - Korea Meteorological Administration short-term forecast (기상청 단기예보 조회서비스, data.go.kr), only with the owner's own
       service key: Korea Open Government License type 1 (credit the source, 기상청).
     - WeatherAPI.com, only with the owner's own key, under its terms (https://www.weatherapi.com/terms.aspx).
+    - US National Weather Service (https://www.weather.gov/, api.weather.gov): the forecast for places in the United States, no key;
+      a work of the US government, credited "Forecast by the US National Weather Service".
+    - MET Norway (https://api.met.no/): a fallback when Open-Meteo cannot be reached, no key; data licensed under CC BY 4.0, credited
+      "Weather data from MET Norway" with a link to https://api.met.no/.
 server/src/assistant/calendars.py reads CalDAV calendars (iCloud, Yahoo, Naver, your own server) with these Python packages, installed from
 PyPI (not copied into this repository):
     - icalendar (https://github.com/collective/icalendar): BSD 2-Clause License, Copyright (c) Plone Foundation and contributors.

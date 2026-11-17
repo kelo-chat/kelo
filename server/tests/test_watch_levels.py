@@ -12,7 +12,8 @@ from assistant.netguard import VPN_DOWN, NetGuardError
 from assistant.store import Store
 from assistant.tools.browser import SITE_TAB_IDLE_SECONDS, SITE_TABS_MAX, BrowserPolicyError, BrowserSession, is_site_tab, one_run_tab
 from assistant.tools.challenge import Challenge
-from assistant.watchers import MAX_ERRORS, Page, WatchError, Watchers, action_word, clean_headers, public_get, watch_tools
+import assistant.watchers as watchers_mod
+from assistant.watchers import MAX_ERRORS, Page, WatchError, Watchers, clean_headers, public_get, watch_tools
 
 from test_browser_tools import PUBLIC, FakePage as BrowserFakePage
 
@@ -272,23 +273,15 @@ async def test_the_dry_run_does_not_confirm_and_a_failed_second_look_is_an_error
 
 
 # ---------------------------------------------------------------------------------------------------- a watcher only reads
-def test_a_post_that_names_an_action_is_refused_and_a_read_is_not():
+def test_a_post_is_decided_by_its_method_not_by_the_words_of_its_address():
     _, _, w, *_ = setup()
     body = '{"day": "2026-12-01"}'
-    for path in ("/api/reserve", "/api/v1/booking/create", "/ticket/placeOrder", "/api/orders", "/api/cancel-ticket", "/pay/", "/checkout"):
-        with pytest.raises(WatchError, match="only reads"):
-            make(w, url=f"https://shop.example.com{path}", method="POST", body=body)
-    for bad in ('{"action": "submit"}', "op=confirm&id=1", '{"cmd":"deleteItem"}'):
-        with pytest.raises(WatchError, match="only reads"):
-            make(w, method="POST", body=bad)
-    for path in ("/예약/조회", "/api/결제", "/주문"):
-        with pytest.raises(WatchError, match="only reads"):
-            make(w, url="https://shop.example.com" + path, method="POST", body=body)
-    for path in ("/api/search", "/api/seats/list", "/query", "/status", "/seat/inquiry", "/조회", "/api/검색", "/boarding", "/예약조회", "/좌석조회"):
+    # no path or body word refuses anything any more: the method decides (a POST asks the owner in the tool, see the next test)
+    for path in ("/api/reserve", "/ticket/placeOrder", "/pay/", "/api/search", "/예약조회", "/주문"):
         got = make(w, name=path, url=f"https://shop.example.com{path}", method="POST", body=body)
         assert got["method"] == "POST" and got["body"] == body
-    assert make(w, name="get", url="https://shop.example.com/order/cancel", method="GET")["method"] == "GET"   # GET stays allowed
-    assert action_word("/api/order-status") == "order" and action_word("/reservations/") == "reservation" and action_word("/ordering") is None
+    assert make(w, name="get", url="https://shop.example.com/order/cancel", method="GET")["method"] == "GET"
+    assert not hasattr(watchers_mod, "action_word") and not hasattr(watchers_mod, "ACTION_WORDS")
     with pytest.raises(WatchError, match="at most 4096"):
         make(w, method="POST", body="x" * 5000)
     with pytest.raises(WatchError, match="GET or POST"):
@@ -397,11 +390,24 @@ async def test_the_approval_card_shows_the_method_the_address_and_the_body():
     assert "looked via tab" in dry and "inside the browser" in dry
     card = await tools["watch_enable"].describe({"id": wid})
     assert "POST https://shop.example.com/api/seats/search" in card and '{"day": "2026-12-01"}' in card
-    bad = await tools["watch_add"].handler({"name": "x", "url": "https://shop.example.com/api/reserve", "method": "POST", "mode": "changed"})
-    assert bad.startswith("error: a watcher only reads")
     props = tools["watch_add"].parameters["properties"]
     assert {"signed_in", "method", "body", "headers"} <= set(props)
     assert "signed_in" in props["url"]["description"]
+
+
+async def test_a_post_watcher_is_checked_only_after_the_owner_approved_the_request_a_get_one_is_not():
+    store, clock, w, *_ = setup(Looker(ok()), Looker(ok()))
+    tools = {t.name: t for t in watch_tools(w)}
+    for args in ({"name": "g", "url": "https://shop.example.com/api/order"},
+                 {"name": "p", "url": "https://shop.example.com/api/reserve", "method": "POST", "body": '{"x": 1}', "mode": "changed"}):
+        await tools["watch_add"].handler({**{"mode": "changed"}, **args})
+    by = {x["name"]: x["id"] for x in w.list()}
+    get_id, post_id = by["g"], by["p"]
+    dry = tools["watch_dry_run"]
+    assert dry.requires_approval and dry.auto_approve({"id": get_id}) is True      # a read: no card
+    assert dry.auto_approve({"id": post_id}) is False                              # a POST: a card first, whatever its path says
+    card = await dry.describe({"id": post_id})
+    assert "POST https://shop.example.com/api/reserve" in card and '{"x": 1}' in card
 
 
 def test_an_older_database_gets_the_new_columns():

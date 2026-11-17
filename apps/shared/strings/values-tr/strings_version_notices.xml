@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_version_notices.xml (generated from values/strings_version_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="server_old_update">Sunucuyu güncelle</string>
+    <string name="server_old_failed">Güncelleme tamamlanmadı. Yeniden dene ya da sunucuyu çalıştığı makinede güncelle.</string>
+    <string name="server_old_manual">Sunucuyu güncellemek için çalıştığı makinede güncelleme adımlarını izle.</string>
+    <string name="server_old_guide">Güncelleme kılavuzunu aç</string>
+    <string name="app_notice_new">Yeni bir Kelo uygulaması (%1$s) sunucunla en iyi şekilde çalışır</string>
+    <string name="app_notice_store">Mağazayı aç</string>
+    <string name="update_popup_title">Yeni bir sürüm var (%1$s)</string>
+    <string name="update_popup_update">Güncelle</string>
+    <string name="update_popup_later">Sonra</string>
+</resources>

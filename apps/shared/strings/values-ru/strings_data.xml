@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ru text for strings_data.xml (edit freely, keep the names) -->
+<resources>
+    <string name="data_title">Ваши данные</string>
+    <string name="data_intro">Скачайте копию того, что Kelo хранит о вас, перенесите воспоминания из другого ассистента или начните заново.</string>
+    <string name="data_export_title">Скачать ваши данные</string>
+    <string name="data_export_body">Один ZIP-файл с вашим диалогом, тем, что помнит Kelo, расписаниями, тем, что Kelo отслеживает, подключёнными сервисами и настройками. Паролей, ключей и токенов в нём никогда нет.</string>
+    <string name="data_export_make">Создать файл</string>
+    <string name="data_export_making">Создаём файл…</string>
+    <string name="data_export_ready">Файл готов (%1$s).</string>
+    <string name="data_export_save">Сохранить файл</string>
+    <string name="data_export_saved">Сохранено.</string>
+    <string name="data_export_again">Создать новый файл</string>
+    <string name="data_export_failed">Не удалось создать файл. Попробуйте ещё раз.</string>
+    <string name="data_import_title">Перенести воспоминания из другого ассистента</string>
+    <string name="data_import_private">Ничего не отправляется в другие места. Модель, выбранная на вашем сервере Kelo, читает текст и сохраняет короткие факты о вас.</string>
+    <string name="data_import_step1">1. Скопируйте этот запрос и вставьте его в прежний ассистент (ChatGPT, Claude, Gemini и т. д.).</string>
+    <string name="data_import_copy">Скопировать запрос</string>
+    <string name="data_import_copied">Скопировано.</string>
+    <string name="data_import_step2">2. Вставьте сюда его ответ.</string>
+    <string name="data_import_paste_hint">Вставить ответ</string>
+    <string name="data_import_add">Добавить в память</string>
+    <string name="data_import_zip_body">Или выберите экспорт чатов, скачанный из ChatGPT, Claude или Gemini (ZIP-файл до 100 МБ).</string>
+    <string name="data_import_zip">Выбрать ZIP-файл</string>
+    <string name="data_import_running">Чтение… %1$d из %2$d</string>
+    <string name="data_import_reading">Открываем файл…</string>
+    <string name="data_import_cancel">Остановить</string>
+    <string name="data_import_failed">Ничего не добавлено: %1$s</string>
+    <string name="data_import_none">Нового для добавления не найдено.</string>
+    <string name="data_import_added">Добавлено в память (%1$d):</string>
+    <string name="data_zip_too_big">Этот файл больше 100 МБ.</string>
+    <string name="data_reset_title">Начать заново</string>
+    <string name="data_reset_body">Удаляет ваш диалог, то, что помнит Kelo, то, что Kelo отслеживает, и расписания. Коннекторы, сохранённые входы, модели и ваши телефоны остаются. Сначала копия сохраняется в файл.</string>
+    <string name="data_reset_signout">Также выйти из Коннекторы и удалить сохранённые входы</string>
+    <string name="data_reset_type">Введите %1$s для подтверждения</string>
+    <string name="data_reset_button">Начать заново</string>
+    <string name="data_reset_wrong">Это не то слово. Ничего не изменено.</string>
+    <string name="data_reset_confirm">Начать заново сейчас? Сначала сохраняется копия, затем удаляются диалог, память, отслеживаемое и расписания. Это нельзя отменить.</string>
+    <string name="data_reset_done">Готово. Всё перечисленное удалено. Копия сохранена как %1$s.</string>
+</resources>

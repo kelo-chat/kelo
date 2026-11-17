@@ -80,10 +80,20 @@ def telegram_fetcher(calls: list[str], good: str = BOT_TOKEN):
     return fetch
 
 
-def make_app(tmp_path, model, *, fetcher=None):
-    """The whole app as it builds its own tools (add_service_key, request_login, request_card...), with no browser."""
-    s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "s.db"), home_dir=str(tmp_path / "home"))
-    return create_app(s, stream_fn=model, **({"mcp_fetcher": fetcher} if fetcher else {}))
+def make_app(tmp_path, model, *, fetcher=None, split=None):
+    """The whole app as it builds its own tools (add_service_key, request_login, request_card...), with no browser. `split`: the payment
+    split on (a checkout job pays and may ask for a card; a copy then has a browser for the job) or off (the chat asks for it)."""
+    s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / "s.db"), home_dir=str(tmp_path / "home"),
+                 **({"payment_specialist": split} if split is not None else {}))
+    extra = {}
+    if split:
+        from assistant.tools.browser import BrowserSession
+        from test_agent_profile import ShotPage
+
+        async def connect():
+            return ShotPage("https://shop.example.com/checkout")
+        extra = {"browser": BrowserSession(connect=connect), "with_worker_tools": True}
+    return create_app(s, stream_fn=model, **({"mcp_fetcher": fetcher} if fetcher else {}), **extra)
 
 
 def db_rows(tmp_path, sql, args=()):
@@ -294,7 +304,7 @@ async def test_request_card_waits_for_the_wallet_and_names_only_the_nickname(tmp
     model = Model([TextDelta("결제할 카드가 없어요. 아래에서 추가해 주세요."),
                    ToolCall("c1", "request_card", json.dumps({"reason": "Order of 2 notebooks", "site": "https://shop.example.com"})),
                    Done("tool_calls")], [TextDelta("카드로 결제를 이어갈게요."), Done("stop")])
-    app = make_app(tmp_path, model)
+    app = make_app(tmp_path, model, split=False)
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH, timeout=30) as c:
         async def on_event(ev):
             if ev["type"] == "secret_request" and ev["request"]["state"] == "open":
@@ -421,3 +431,35 @@ async def test_a_card_the_user_closes_while_the_reply_goes_on_is_told_to_the_mod
         events = await follow(c, tid, on_event)
         assert events[-1]["type"] == "done" and len(model.seen) == 2
         assert "closed the fill-in card without entering the login" in model.seen[1][-1]["content"]
+
+
+async def test_a_checkout_job_asks_for_the_card_and_goes_on_with_it_when_the_wallet_has_one(tmp_path):
+    """The payment split (the default): the chat cannot ask for a card itself, so the checkout job that pays does. The card request waits
+    for the wallet the same way, and the job's own step gets the card's nickname and last four digits, never the number."""
+    from split_pay import Split, job, settle
+    model = Split(job(("request_card", {"reason": "Order of 2 notebooks", "site": "https://shop.example.com"})),
+                  closing="카드로 결제를 이어갈게요.")
+    app = make_app(tmp_path, model, split=True)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH, timeout=30) as c:
+        tid = (await c.post("/api/turns", json={"text": "노트 2권 주문해줘"})).json()["id"]
+        await follow(c, tid)
+        req = None
+        for _ in range(300):
+            items = (await c.get("/api/secret-requests")).json()["items"]
+            if items:
+                req = items[0]
+                break
+            await asyncio.sleep(0.02)
+        assert req is not None and (req["kind"], req["name"], req["label"], req["hosts"]) == ("card", "", "Order of 2 notebooks", ["shop.example.com"])
+        assert (await c.post(f"/api/secret-requests/{req['id']}/card", json={"card_id": "card_nope"})).status_code == 404
+        card = (await c.post("/api/wallet/cards", json={"label": "My Visa", "exp_month": 12, "exp_year": 2031, "auto_pay": False,
+                                                         "last4": "4242", "brand": "visa",
+                                                         "e2e": {"blob": "QUJDREVG", "alg": "AES-256-GCM", "key_id": "k1"}})).json()
+        r = (await c.post(f"/api/secret-requests/{req['id']}/card", json={"card_id": card["id"]})).json()
+        assert r["ok"] and r["request"]["result"]["card"]["last4"] == "4242"
+        items = await settle(c)
+    # the job's request ran without waiting for the wallet: its step said the card is shown in the chat (connect_tools' wording for a
+    # fill-in card that is still open), and the job ended on its own once the card was saved
+    out = [m["content"] for m in model.worker_seen[-1].messages if m.get("role") == "tool"]
+    assert "secure card entry is now shown in the chat" in out[-1]
+    assert [i["status"] for i in items] == ["done"]

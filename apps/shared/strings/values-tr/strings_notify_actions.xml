@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_notify_actions.xml (generated from values/strings_notify_actions.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="notify_action_reply">Yanıtla</string>
+    <string name="notify_unlock_retry">Telefonunuzun kilidini açın, sonra tekrar deneyin.</string>
+    <string name="notify_send_failed_open">Gönderilemedi. Yanıtlamak için Kelo\'yu açın.</string>
+    <string name="notify_send_failed_tap">Gönderilemedi. Kelo\'yu açmak için dokunun.</string>
+</resources>

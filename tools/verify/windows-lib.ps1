@@ -166,7 +166,7 @@ function Invoke-KeloBuild([string]$Source, [string]$JavaHome, [string]$Version, 
     $desktop = Join-Path $Source 'apps\desktop'
     $jvm = Get-KeloGradleJvmArgs $desktop $ZipClockJar
     $a = '--no-daemon --console=plain -Pkotlin.compiler.execution.strategy=in-process createDistributable ' + (Quote "-PkeloVersion=$Version")
-    if ($Commit) { $a += ' ' + (Quote "-PkeloCommit=$Commit") + ' -PkeloDirty=false' }
+    $a += ' -PkeloDirty=false'   # no -PkeloCommit: the app links by release tag, so no commit is inside it
     $a += ' ' + (Quote "-Dorg.gradle.jvmargs=$jvm")
     $saved = @{ JAVA_HOME = $env:JAVA_HOME; PATH = $env:PATH; GRADLE_USER_HOME = $env:GRADLE_USER_HOME }
     try {

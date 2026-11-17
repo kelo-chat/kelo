@@ -12,7 +12,7 @@ import KeloCore
 public enum AskOrigin: Sendable { case job, schedule, auto, chat }
 
 /// How a question answered from the chat ended. solved / skipped: a human check (solved in the live view, or the site skipped). progressed: a sign-in's step done, the sign-in goes on.
-public enum AskEnd: Sendable { case allowed, always, keptForSchedule, denied, gone, solved, skipped, progressed }
+public enum AskEnd: Sendable { case allowed, always, alwaysRecipient, keptForSchedule, denied, gone, solved, skipped, progressed }
 
 /// One waiting question in the chat. `working`: the answer (or the card for a payment) is on its way. `end`: answered here; its short
 /// line stays while `endedAfter` (the chat's newest row then) is still the newest row, so it goes once the conversation moves on.
@@ -103,7 +103,7 @@ public enum ChatAsks {
     }
 
     /// How an answer given here ended: a human check's "skip" is skipped (its "done" from an older card, solved).
-    public static func answerEnd(_ a: PendingApproval, approve: Bool, rememberSite: Bool, rememberSchedule: Bool) -> AskEnd {
+    public static func answerEnd(_ a: PendingApproval, approve: Bool, rememberSite: Bool, rememberSchedule: Bool, rememberRecipient: Bool = false) -> AskEnd {
         if a.isHumanCheck {
             if approve {
                 return a.isVerification ? .progressed : .solved
@@ -111,11 +111,12 @@ public enum ChatAsks {
             return .skipped
         }
         if !approve { return .denied }
-        return allowEnd(a, rememberSite: rememberSite, rememberSchedule: rememberSchedule)
+        return allowEnd(a, rememberSite: rememberSite, rememberSchedule: rememberSchedule, rememberRecipient: rememberRecipient)
     }
 
     /// How an allow ended: remembered for the site or the scheduled job only when the card offered it.
-    public static func allowEnd(_ a: PendingApproval, rememberSite: Bool, rememberSchedule: Bool) -> AskEnd {
+    public static func allowEnd(_ a: PendingApproval, rememberSite: Bool, rememberSchedule: Bool, rememberRecipient: Bool = false) -> AskEnd {
+        if rememberRecipient && RecipientRules.canAlways(a.event.offers) { return .alwaysRecipient }
         if rememberSite && a.canRemember { return .always }
         if rememberSchedule && a.canRememberSchedule { return .keptForSchedule }
         return .allowed

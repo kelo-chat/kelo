@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_forget_cover.xml (generated from values/strings_forget_cover.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="forget_title">Забуті теми</string>
+    <string name="forget_intro">Теми, які ви попросили Kelo забути. Kelo видалив знайдене і більше не записуватиме це.</string>
+    <string name="forget_empty">Поки що нічого не забуто. Коли ви попросите Kelo забути тему, вона з’явиться тут.</string>
+    <string name="forget_date">Забуто %1$s</string>
+    <string name="forget_removed">Видалено: %1$s</string>
+    <string name="forget_count">%1$s: %2$s</string>
+    <string name="forget_nothing_removed">Нічого для видалення не знайдено.</string>
+    <string name="forget_cat_memory">Пам’ять</string>
+    <string name="forget_cat_notes">Нотатки</string>
+    <string name="forget_cat_reminders">Нагадування</string>
+    <string name="forget_cat_skills">Навички</string>
+    <string name="forget_cat_history">Журнали</string>
+    <string name="forget_cat_other">Інше</string>
+    <string name="forget_allow_again">Дозволити знову</string>
+    <string name="forget_allow_confirm">Дозволити Kelo знову писати про «%1$s»? Видалене не повернеться.</string>
+    <string name="forget_allowed">Kelo знову може писати про це.</string>
+    <string name="paycover_title">Платежі, схвалені заздалегідь</string>
+    <string name="paycover_switch">Дозволити платежі, схвалені заздалегідь</string>
+    <string name="paycover_switch_note">Вимкнено: кожен платіж спершу запитує вас.</string>
+    <string name="paycover_empty">Нічого не схвалено заздалегідь. Замовлення або платіж за розкладом, який ви схвалите заздалегідь, з’явиться тут.</string>
+    <string name="paycover_off_note">Вимкнено: записи лишаються в списку, але кожен платіж запитує.</string>
+    <string name="paycover_orders">Замовлення</string>
+    <string name="paycover_allows">Платежі за розкладом</string>
+    <string name="paycover_cap">Не більше %1$s загалом</string>
+    <string name="paycover_until">До %1$s</string>
+    <string name="paycover_for_task">Для одного завдання</string>
+    <string name="paycover_for_schedule">Для розкладу «%1$s»</string>
+    <string name="paycover_for_a_schedule">Для завдання за розкладом</string>
+    <string name="paycover_one_order">одне замовлення</string>
+    <string name="paycover_allow_scope">Той самий магазин, той самий спосіб оплати</string>
+    <string name="paycover_remove">Видалити: %1$s</string>
+    <string name="paycover_remove_order_confirm">Видалити це схвалення? Замовлення запитає перед оплатою.</string>
+    <string name="paycover_remove_allow_confirm">Видалити дозвіл для «%1$s»? Його платежі знову запитуватимуть щоразу.</string>
+    <string name="paycover_removed">Видалено. Платежі знову запитуватимуть.</string>
+    <string name="preapprove_what">Замовлення</string>
+    <string name="preapprove_cap">Максимум до сплати</string>
+    <string name="preapprove_cap_value">%1$s загалом (з податками та доставкою)</string>
+    <string name="preapprove_until">До</string>
+    <string name="preapprove_covers">Охоплює</string>
+    <string name="preapprove_covers_value">Лише це одне замовлення</string>
+    <string name="preapprove_requirements">Обов’язково</string>
+    <string name="preapprove_shipping">Доставка</string>
+    <string name="preapprove_shops">Магазини</string>
+    <string name="preapprove_delegated">Вирішує Kelo</string>
+    <string name="chat_payment_cover_order">Сплачено за замовленням, схваленим заздалегідь</string>
+    <string name="chat_payment_cover_schedule">Сплачено за вашим дозволом для платежів цього розкладу</string>
+</resources>

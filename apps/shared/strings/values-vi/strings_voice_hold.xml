@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Nhấn giữ để nói</string>
+    <string name="voice_hold_hint">Thả ra để xong, trượt ra ngoài để hủy</string>
+    <string name="voice_dictation_offline">Đọc chính tả đã dừng vì mất kết nối.</string>
+    <string name="voice_dictation_failed">Không thể hoàn tất việc đọc chính tả.</string>
+    <string name="msg_action_read_aloud">Đọc to</string>
+    <string name="msg_action_read_stop">Dừng đọc</string>
+</resources>

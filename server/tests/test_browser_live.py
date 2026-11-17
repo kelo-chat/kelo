@@ -227,10 +227,12 @@ def test_frame_pixels_map_to_css_pixels_of_the_viewport():
     assert map_point(360, 225, 1080, 675, META) == (480.0, 300.0)             # 1080 px wide frame of the same screen
     assert map_point(100, 60, 720, 450, {**META, "offsetTop": 40}) == (200.0, 80.0)   # page area starts lower
     assert map_point(-5, 9999, 720, 450, META) == (0.0, 899.0)                 # kept inside the viewport
-    # zoom and scroll do not change where the input lands (viewport coordinates), only the document position reported
+    # scroll does not change where the input lands (viewport coordinates); the page's zoom does (CSS px per screen unit)
     zoomed = {**META, "pageScaleFactor": 2, "scrollOffsetX": 10, "scrollOffsetY": 500}
-    assert map_point(100, 50, 720, 450, zoomed) == (200.0, 100.0)
-    assert page_point(200.0, 100.0, zoomed) == (110.0, 550.0)
+    assert map_point(100, 50, 720, 450, zoomed) == (100.0, 50.0)       # zoomed in 2x: half as many CSS px per screen unit
+    assert page_point(100.0, 50.0, zoomed) == (110.0, 550.0)
+    assert map_point(100, 50, 720, 450, {**META, "pageScaleFactor": 0.5}) == (400.0, 200.0)   # zoomed out: more CSS px per screen unit
+    assert map_delta(0, -100, 720, 450, {**META, "pageScaleFactor": 0.5}) == (0.0, -400.0)
     assert map_delta(0, -100, 720, 450, META) == (0.0, -200.0)
 
 

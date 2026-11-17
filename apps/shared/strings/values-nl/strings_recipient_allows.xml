@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">e-mail</string>
+    <string name="trail_kind_file">bestand</string>
+    <string name="trail_kind_memory">geheugen</string>
+    <string name="trail_kind_contacts">contacten</string>
+    <string name="trail_kind_calendar">agenda</string>
+    <string name="trail_kind_photos">foto\'s</string>
+    <string name="trail_kind_messages">berichten</string>
+    <string name="trail_kind_notes">notities</string>
+    <string name="trail_kind_vault">opgeslagen logins</string>
+    <string name="trail_kind_profile">profiel</string>
+    <string name="trail_kind_web">webpagina</string>
+    <string name="trail_kind_channel">chat</string>
+    <string name="trail_kind_device">apparaatgegevens</string>
+    <string name="trail_kind_connector">gekoppelde dienst</string>
+    <string name="trail_kind_other">gegevens</string>
+    <string name="trail_recipient_link">een openbare link</string>
+    <string name="trail_goes_to">Naar %2$s: %1$s</string>
+    <string name="trail_allow_once">Eén keer toestaan</string>
+    <string name="trail_allow_always">Altijd voor deze ontvanger</string>
+    <string name="recipient_approval_always">Toegestaan. Ik vraag niet meer voor deze ontvanger.</string>
+    <string name="recipient_allows_title">Altijd toegestane ontvangers</string>
+    <string name="recipient_allows_empty">Nog geen. Als je op een kaart \"Altijd voor deze ontvanger\" kiest, verschijnt die hier.</string>
+    <string name="recipient_allow_since">Toegestaan %1$s</string>
+    <string name="recipient_allow_remove">%1$s verwijderen</string>
+    <string name="recipient_allow_remove_confirm">Opnieuw vragen voordat %1$s naar %2$s gaat?</string>
+    <string name="recipient_allow_removed">Ik vraag opnieuw voordat er iets naartoe gaat.</string>
+</resources>

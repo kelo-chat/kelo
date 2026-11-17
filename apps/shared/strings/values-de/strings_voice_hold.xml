@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_voice_hold.xml (edit freely, keep the names) -->
+<resources>
+    <string name="voice_hold_label">Zum Sprechen halten</string>
+    <string name="voice_hold_hint">Loslassen zum Beenden, wegwischen zum Abbrechen</string>
+    <string name="voice_dictation_offline">Das Diktieren wurde gestoppt, weil die Verbindung abgebrochen ist.</string>
+    <string name="voice_dictation_failed">Das Diktieren konnte nicht abgeschlossen werden.</string>
+    <string name="msg_action_read_aloud">Vorlesen</string>
+    <string name="msg_action_read_stop">Vorlesen beenden</string>
+</resources>

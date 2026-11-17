@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="server_address_row">伺服器位址</string>
+    <string name="server_address_title">變更伺服器位址</string>
+    <string name="server_address_body">目前連線的位址：%1$s\n要換到同一台 Kelo 伺服器的新位址，請輸入新的 https 位址。聊天和金鑰都會保留，不需要重新連線。</string>
+    <string name="server_address_switch">變更</string>
+    <string name="server_address_checking">檢查中…</string>
+    <string name="server_address_invalid">這看起來不是 https 位址。請這樣輸入：https://kelo.example.com。</string>
+    <string name="server_address_unreachable">無法連線到該位址。請檢查位址和網路後再試一次。</string>
+    <string name="server_address_other">該位址屬於另一台伺服器，所以沒有做任何變更。要連線其他伺服器，請先登出，再從頭連線。</string>
+    <string name="server_address_same">這支手機已在使用該位址。</string>
+    <string name="server_address_done">伺服器位址已變更。</string>
+</resources>

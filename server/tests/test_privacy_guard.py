@@ -9,7 +9,8 @@ import pytest
 
 from assistant import effects
 from assistant.permissions import Gate, Info, Permissions
-from assistant.privacy_guard import PrivacyGuard, luhn
+from assistant.privacy_guard import FACTS_SYSTEM, PrivacyGuard, iban_ok, luhn
+from assistant.secret_judge import SYSTEM as JUDGE_SYSTEM
 
 from test_permissions import counting, fake_tools, run_calls
 
@@ -41,13 +42,36 @@ class FakeStore:
         return [{"name": "Naver login", "kind": "login", "has_value": True}]
 
 
-def guard():
+CODES = {"4821", "*1234#"}   # the digit runs the fake model calls door codes
+
+
+async def fake_ask(system, user):
+    """The owner's main model, for the two requests the guard makes (privacy_guard.FACTS_SYSTEM, secret_judge.SYSTEM)."""
+    items = json.loads(user)
+    if system == FACTS_SYSTEM:
+        return {"lines": {str(i["n"]): ("address" if "address" in i["line"].lower() else "health" if "건강" in i["line"] else
+                                        "phone" if "Phone" in i["line"] else "none") for i in items}}
+    assert system == JUDGE_SYSTEM
+    return {"secrets": [i["n"] for i in items if any(f"[[{c}]]" in i["context"] for c in CODES)]}
+
+
+def run(coro):
+    """Runs a coroutine from sync test code, also inside a running loop."""
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
+def guard(ask=fake_ask):
     return PrivacyGuard(home=FakeHome(), store=FakeStore(), wallet=FakeWallet(), shipping=FakeShipping(),
-                        own_addresses=lambda: ["me@gmail.com"])
+                        own_addresses=lambda: ["me@gmail.com"], ask=ask)
 
 
 def send(g, tool="email_send", **args):
-    return g.check(tool, args, effects.effect_of(tool, args))
+    effect = effects.effect_of(tool, args)
+    run(g.prepare(tool, args, effect))                      # the model's part, ahead of the sync check (the Gate does it)
+    return g.check(tool, args, effect)
 
 
 def test_luhn_tells_a_card_number_from_any_long_number():
@@ -108,7 +132,7 @@ def test_the_vault_is_read_by_name_only_and_nothing_found_is_logged(caplog):
             self.opened.append(name)
 
     spy = Spy()
-    g = PrivacyGuard(home=FakeHome(), store=spy, wallet=FakeWallet(), shipping=FakeShipping())
+    g = PrivacyGuard(home=FakeHome(), store=spy, wallet=FakeWallet(), shipping=FakeShipping(), ask=fake_ask)
     with caplog.at_level(logging.DEBUG):
         hit = send(g, to=["bob@x.org"], body=f"{VISA} 900101-1234567 서울시 마포구 월드컵북로 12길 34, 502호 naver login")
     assert hit is not None and spy.opened == []
@@ -120,11 +144,15 @@ def test_the_vault_is_read_by_name_only_and_nothing_found_is_logged(caplog):
 
 def test_browser_typing_a_number_into_a_form_is_checked_and_a_search_is_not():
     g = guard()
-    assert g.check("browser_type", {"selector": "#rrn", "text": "900101-1234567"}, None, commit="personal", site="shop.example.com")
-    assert g.check("browser_type", {"selector": "#q", "text": "900101-1234567"}, None, commit="", site="shop.example.com")   # any typing
-    assert g.check("browser_type", {"selector": "#q", "text": "umbrella"}, None, commit="", site="shop.example.com") is None
-    assert g.check("browser_click", {"selector": "#go"}, None, commit="send", site="shop.example.com") is None                # a click has no text
-    assert g.check("browser_type", {"text": VISA}, None, commit="security", site="bank.example.com") is not None             # security steps too
+
+    def check(tool, args, commit, site):
+        run(g.prepare(tool, args, None, commit=commit, site=site))
+        return g.check(tool, args, None, commit=commit, site=site)
+    assert check("browser_type", {"selector": "#rrn", "text": "900101-1234567"}, "personal", "shop.example.com")
+    assert check("browser_type", {"selector": "#q", "text": "900101-1234567"}, "", "shop.example.com")   # any typing
+    assert check("browser_type", {"selector": "#q", "text": "umbrella"}, "", "shop.example.com") is None
+    assert check("browser_click", {"selector": "#go"}, "send", "shop.example.com") is None                # a click has no text
+    assert check("browser_type", {"text": VISA}, "security", "bank.example.com") is not None             # security steps too
 
 
 def _cards(*pairs):
@@ -210,3 +238,114 @@ def test_a_date_in_the_notes_or_in_an_address_is_not_the_owners_phone():
     url = "https://my.coupang.com/productreview/register?productId=1234567890&deliveryDate=2026-11-12&vendorItemId=87654321098"
     assert g.check_url("web_fetch", {"url": url}) is None
     assert "phone" in g.scan("call +82 10 5555 0101")   # the saved profile's phone still counts
+
+
+# ---- hc-privacy: no word of a language decides; the model's answers are asked ahead, the sync check only reads them
+def test_a_door_code_is_what_the_model_says_and_without_an_answer_it_is_a_code():
+    g = guard()
+    assert [*send(g, to=["bob@x.org"], body="the entrance: 4821, nobody is home").categories] == ["code"]        # any language, no code word
+    assert [*send(g, to=["bob@x.org"], body="入口は *1234# です").categories] == ["code"]
+    assert send(g, to=["bob@x.org"], body="see you in room 7788 at noon") is None                                  # the model said: no secret
+    # not judged yet (the sync check alone) and no model at all: the safe side
+    for g2 in (guard(), guard(ask=None)):
+        hit = g2.check("email_send", {"to": ["bob@x.org"], "body": "room 7788"}, effects.effect_of("email_send", {"to": ["bob@x.org"], "body": "room 7788"}))
+        assert hit is not None and list(hit.categories) == ["code"]
+    for bad in (lambda *_: None, lambda *_: {"secrets": "all"}, lambda *_: {"secrets": [9]}):
+        async def ask(system, user, bad=bad):
+            return bad()
+        assert list(send(guard(ask=ask), to=["bob@x.org"], body="room 7788").categories) == ["code"]
+
+
+def test_numbers_that_are_other_things_are_no_code_candidates():
+    asked = []
+
+    async def ask(system, user):
+        if system == JUDGE_SYSTEM:
+            asked.append(user)
+            return {"secrets": []}
+        return await fake_ask(system, user)
+    g = guard(ask=ask)
+    body = "call +82 10 5555 0101, card " + VISA + ", on 2026-11-12 at 10:30, total 12,500, ref 20261112-77"
+    assert list(send(g, to=["bob@x.org"], body=body).categories) == ["phone", "card"]
+    assert asked == []                                                       # phone, card, date, time, amount and ref pieces are not asked about
+    assert send(g, to=["bob@x.org"], body="in 2026 only") is None and len(asked) == 1
+
+
+def test_the_judge_is_asked_once_for_one_text():
+    asked = []
+
+    async def ask(system, user):
+        asked.append(system)
+        return await fake_ask(system, user)
+    g = guard(ask=ask)
+    for _ in range(3):
+        assert send(g, to=["bob@x.org"], body="door 4821") is not None
+    assert asked.count(JUDGE_SYSTEM) == 1 and asked.count(FACTS_SYSTEM) == 1                                     # lines are kept too
+
+
+def test_labelled_facts_are_classified_by_the_model_in_any_language_and_without_an_answer_every_value_counts():
+    class JaHome(FakeHome):
+        def read(self, rel):
+            return {"user.md": "- 住所: 東京都千代田区丸の内1-1-1\n- 言語: 日本語を優先すること\n", "MEMORY.md": "", "memory/people/dana.md": PERSON}[rel]
+
+    async def ask(system, user):
+        return {"lines": {str(i["n"]): ("address" if "住所" in i["line"] else "none") for i in json.loads(user)}}
+
+    def build(**kw):
+        return PrivacyGuard(home=JaHome(), store=FakeStore(), wallet=FakeWallet(), shipping=FakeShipping(), **kw)
+    where, lang = "東京都千代田区丸の内1-1-1", "日本語を優先すること"
+    g = build(ask=ask)
+    assert list(send(g, to=["bob@x.org"], body=f"I live at {where}").categories) == ["address"]
+    assert send(g, to=["bob@x.org"], body=f"{lang}") is None                                                        # the model said: not sensitive
+    async def none(system, user):
+        return None
+
+    async def partial(system, user):
+        return {"lines": {"0": "address"}}                                                                          # not every line answered
+    for g2 in (build(), build(ask=none), build(ask=partial)):                                                       # no model, a broken one, a wrong answer
+        assert "personal" in send(g2, to=["bob@x.org"], body=f"{where} / {lang}").categories
+
+
+def test_new_lines_cost_one_request_and_old_lines_keep_their_answer(tmp_path):
+    asked = []
+
+    async def ask(system, user):
+        asked.append(json.loads(user))
+        return await fake_ask(system, user)
+    box = {"text": USER_MD}
+
+    class Home(FakeHome):
+        def read(self, rel):
+            return box["text"] if rel == "user.md" else super().read(rel)
+    g = PrivacyGuard(home=Home(), store=FakeStore(), wallet=FakeWallet(), shipping=FakeShipping(), ask=ask)
+    run(g.refresh())
+    run(g.refresh())
+    assert len(asked) == 1
+    box["text"] += "- Allergy: shellfish and walnuts\n"
+    run(g.refresh())
+    assert len(asked) == 2 and [i["line"] for i in asked[1]] == ["- Allergy: shellfish and walnuts"]
+
+
+def test_an_iban_by_its_checksum_a_passport_by_its_shape_and_a_card_tail_standing_alone():
+    assert iban_ok("GB82 WEST 1234 5698 7654 32") and not iban_ok("GB82 WEST 1234 5698 7654 33")
+    g = guard()
+    assert list(send(g, to=["bob@x.org"], body="pay GB82 WEST 1234 5698 7654 32 please").categories) == ["account"]
+    assert send(g, to=["bob@x.org"], body="pay GB82 WEST 1234 5698 7654 33 please") is None
+    assert list(send(g, to=["bob@x.org"], body="パスポート M12345678").categories) == ["id"]                      # no passport word needed
+    assert list(send(g, to=["bob@x.org"], body="カード 7777").categories) == ["card"]                              # a wallet card's last four, alone
+    assert send(g, to=["bob@x.org"], body="item 17777 and 77778") is None
+
+
+def test_a_phone_in_the_notes_is_found_by_its_digits_not_by_a_word():
+    class Home(FakeHome):
+        def read(self, rel):
+            return {"user.md": "- 연락: +82 10-2222-3333\n", "MEMORY.md": "", "memory/people/dana.md": PERSON}[rel]
+    g = PrivacyGuard(home=Home(), store=FakeStore(), wallet=FakeWallet(), shipping=FakeShipping(), ask=fake_ask)
+    assert list(send(g, to=["bob@x.org"], body="call 010 2222 3333").categories) == ["phone"]
+
+
+async def test_the_gate_asks_the_model_ahead_and_a_model_that_is_down_makes_a_card():
+    ran, asked = await _gate_run(None, "email_send", ("email_send", {"account": "mail-gmail", "to": ["bob@x.org"], "body": "entrance 4821"}), "allow")
+    assert len(asked) == 1 and asked[0].detail.endswith("door or access code") and asked[0].force
+    ran, asked = await _gate_run(None, "email_send", ("email_send", {"account": "mail-gmail", "to": ["bob@x.org"], "body": "table 7788"}), "allow")
+    assert asked == [] and len(ran) == 1

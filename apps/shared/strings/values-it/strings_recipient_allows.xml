@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trail_kind_mail">posta</string>
+    <string name="trail_kind_file">file</string>
+    <string name="trail_kind_memory">memoria</string>
+    <string name="trail_kind_contacts">contatti</string>
+    <string name="trail_kind_calendar">calendario</string>
+    <string name="trail_kind_photos">foto</string>
+    <string name="trail_kind_messages">messaggi</string>
+    <string name="trail_kind_notes">note</string>
+    <string name="trail_kind_vault">accessi salvati</string>
+    <string name="trail_kind_profile">profilo</string>
+    <string name="trail_kind_web">pagina web</string>
+    <string name="trail_kind_channel">chat</string>
+    <string name="trail_kind_device">dati del dispositivo</string>
+    <string name="trail_kind_connector">servizio collegato</string>
+    <string name="trail_kind_other">dati</string>
+    <string name="trail_recipient_link">un link pubblico</string>
+    <string name="trail_goes_to">A %2$s: %1$s</string>
+    <string name="trail_allow_once">Consenti una volta</string>
+    <string name="trail_allow_always">Sempre per questo destinatario</string>
+    <string name="recipient_approval_always">Consentito. Non chiederò più per questo destinatario.</string>
+    <string name="recipient_allows_title">Destinatari sempre consentiti</string>
+    <string name="recipient_allows_empty">Nessuno per ora. Quando scegli \"Sempre per questo destinatario\" su una scheda, comparirà qui.</string>
+    <string name="recipient_allow_since">Consentito %1$s</string>
+    <string name="recipient_allow_remove">Rimuovi %1$s</string>
+    <string name="recipient_allow_remove_confirm">Chiedere di nuovo prima di inviare %1$s a %2$s?</string>
+    <string name="recipient_allow_removed">Chiederò di nuovo prima di inviare lì.</string>
+</resources>

@@ -65,33 +65,10 @@ A service that posts to people (a messenger: `sends` in `presets.py`) has its ch
 | Action id | Label | Kind | Tool |
 |---|---|---|---|
 | `mcp_list_tools` | List the service's tools | read | `mcp_list_tools` |
-| *each tool the server lists* | the tool's name | read, change, send or delete | `mcp_call_tool` |
+| *each tool the server lists* | its annotations or the model's reading | read, change, send or delete | `mcp_call_tool` |
 
-The kind of an MCP tool: the server's own annotations when it gave them (`readOnlyHint` → read, `destructiveHint` → delete), else the first verb in the tool's name: send, post, reply, share, invite, publish, message → send; delete, remove, trash, destroy, purge → delete; get, list, search, read, find, query, fetch → read; anything else → change.
+The kind of an MCP tool: the server's own annotations when it gave them (`destructiveHint` → delete, `readOnlyHint` → read), else the connector's manifest (`connector_rules.json`, which can only tighten), else one cached call of the main model that reads the tool's description (read, change, send or delete; also whether it pays or touches an account). Never the words in the tool's name. A tool nothing can tell about is a change that asks.
 
-| Tool name | Kind by name |
-|---|---|
-| `send_message` | send |
-| `postComment` | send |
-| `reply_to_thread` | send |
-| `share_file` | send |
-| `invite_user` | send |
-| `publish_page` | send |
-| `delete_issue` | delete |
-| `remove_member` | delete |
-| `trash_file` | delete |
-| `destroy_session` | delete |
-| `purge_cache` | delete |
-| `get_page` | read |
-| `list_issues` | read |
-| `search_docs` | read |
-| `read_file` | read |
-| `find_user` | read |
-| `query_database` | read |
-| `fetch_url` | read |
-| `create_page` | change |
-| `update_task` | change |
-| `set_status` | change |
 
 ## Nest packages that keep entries on this server
 
@@ -400,4 +377,4 @@ Whatever the connector's setting, a standing rule or a task's permission says (`
 | `wallabag` | never | * | `(?:^\|/)(?:api\|developer)/clients?(?![a-z0-9_-])` |  | takeover | https://doc.wallabag.org/developer/api/methods/ (conservative prefix) |
 | `wallabag` | ask | POST, PUT, PATCH, DELETE | `(?:^\|/)api/user(?![a-z0-9_-])` |  | takeover | https://doc.wallabag.org/developer/api/methods/ (conservative prefix) |
 
-153 connectors with settings, 305 actions in them (30 distinct actions in 7 families). Every tool of every family is classified by hand above; only the tools an MCP server lists are classified at run time (annotations first, then the verbs in the name). Installed Nest packages are added when installed.
+153 connectors with settings, 305 actions in them (30 distinct actions in 7 families). Every tool of every family is classified by hand above; only the tools an MCP server lists are classified at run time (annotations, the manifest, then the model's reading of the description). Installed Nest packages are added when installed.

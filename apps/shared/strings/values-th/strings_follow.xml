@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="follow_section_title">สิ่งที่ Kelo ดูแลอยู่</string>
+    <string name="follow_stop">หยุดติดตาม</string>
+    <string name="follow_stop_confirm">หยุดดูแลรายการนี้หรือไม่?</string>
+    <string name="follow_stop_confirm_detail">Kelo จะไม่ตรวจสอบการเปลี่ยนแปลงหรือเตรียมการล่วงหน้าอีกต่อไป</string>
+    <string name="follow_stop_yes">หยุดติดตาม</string>
+    <string name="follow_keep_watching">ดูแลต่อไป</string>
+    <string name="follow_replan">วางแผนใหม่</string>
+    <string name="follow_sheet_title">แผนการดูแล</string>
+    <string name="follow_plan_checks">สิ่งที่ต้องตรวจสอบ</string>
+    <string name="follow_plan_prep">การเตรียมการ</string>
+    <string name="follow_plan_tell">การแจ้งเตือน</string>
+    <string name="follow_plan_tell_change">แจ้งเตือนเมื่อมีการเปลี่ยนแปลง</string>
+    <string name="follow_next_check">ตรวจสอบถัดไป: %1$s</string>
+    <string name="follow_last_check">ตรวจสอบล่าสุด: %1$s</string>
+    <string name="follow_prep_later">กำหนดไว้</string>
+    <string name="follow_prep_running">กำลังดำเนินการ</string>
+    <string name="follow_prep_done">เตรียมไว้แล้ว</string>
+    <string name="follow_prep_failed">ไม่สำเร็จ</string>
+    <string name="follow_state_watching">กำลังดูแล</string>
+    <string name="follow_state_stopped">หยุดแล้ว</string>
+    <string name="follow_state_done">เสร็จสิ้น</string>
+    <string name="follow_summary_lead_flight">แจ้งเตือนก่อนออกเดินทาง 1 วัน</string>
+    <string name="follow_summary_lead_general">แจ้งเตือนล่วงหน้า 1 วัน</string>
+    <string name="follow_summary_lead_hours">แจ้งเตือนล่วงหน้า %1$d ชั่วโมง</string>
+    <string name="follow_summary_prep_checkin">เตรียมเช็คอินเมื่อเปิดให้ทำ</string>
+    <string name="follow_summary_prep_general">เตรียม %1$s</string>
+    <string name="follow_summary_watch_changes">ตรวจสอบการเปลี่ยนแปลง</string>
+    <string name="follow_summary_default">ดูแลกำหนดการ</string>
+</resources>

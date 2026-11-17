@@ -8,4 +8,8 @@
     <string name="actions_state_failed">Gerçekleşmedi</string>
     <string name="actions_empty">Kelo henüz dışarıda bir işlem yapmadı.</string>
     <string name="actions_outside_text_note">Kelo\'nun web sayfalarından, e-postalardan ve dosyalardan okuduğu metinler veri olarak kabul edilir, asla talimat olarak değerlendirilmez; Kelo\'nun ödeme yapmasını, göndermesini veya silmesini sağlayamaz.</string>
+    <string name="did_filter_all">Tümü</string>
+    <string name="did_filter_actions">Gönder ve değiştir</string>
+    <string name="did_filter_browser">Tarayıcı</string>
+    <string name="did_filter_tasks">Görevler</string>
 </resources>

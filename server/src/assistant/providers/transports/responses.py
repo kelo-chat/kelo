@@ -108,7 +108,7 @@ async def stream(
             elif kind in ("response.failed", "error"):
                 err = (ev.get("response") or {}).get("error") or ev.get("error") or {}
                 code = err.get("code")
-                raise ProviderError(f"provider stream error{f' [{code}]' if code else ''}: {err.get('message', 'unknown')}")
+                raise ProviderError(f"provider stream error{f' [{code}]' if code else ''}: {err.get('message', 'unknown')}", code=str(code or ""))
     if not completed:
         raise ProviderError("provider stream ended without response.completed")
 

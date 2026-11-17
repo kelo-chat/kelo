@@ -24,8 +24,8 @@ Every open tunnel is remembered with the route it was made under; as soon as the
 every new connection) all tunnels of older routes are closed on both sides, so the browser reconnects through the new route (Chrome
 keeps tunnels open and reuses them, which would otherwise let traffic keep going the old way).
 
-Also relays the human viewer (noVNC) port to the browser (EGRESS_RELAY="6080=browser:6080"): a container on an internal network cannot
-publish ports, so the viewer is published from this one.
+Can also relay a plain TCP port to the browser (EGRESS_RELAY="port=host:port"; compose sets none: the live view's RFB reaches the server on
+the private network, never published).
 
 Run: ROLE=egress (docker/entrypoint.sh) -> `python -m assistant.egress`. Env: EGRESS_PORT (3128), EGRESS_RELAY, EGRESS_MAX_CONNECTIONS (512), EGRESS_ROUTE_FILE (/run/kelo-route/route.json).
 """
@@ -49,16 +49,20 @@ from urllib.parse import urlsplit
 from . import socks5
 from .hosting import paths
 from .netguard import VPN_DOWN, is_public
+from .tools.sites import in_public_dns
 
 log = logging.getLogger("egress")
 
-# Google background services the browser calls on its own (also off by policy). Matched as the host or a subdomain of it.
-DENY_HOSTS = (
-    "update.googleapis.com", "clients2.google.com", "clients2.googleusercontent.com", "edgedl.me.gvt1.com", "redirector.gvt1.com",
-    "dl.google.com", "clientservices.googleapis.com", "content-autofill.googleapis.com", "optimizationguide-pa.googleapis.com",
-    "safebrowsingohttpgateway.googleapis.com", "chromewebstore.googleapis.com", "chromekanonymity-pa.googleapis.com",
-)
-LOCAL_SUFFIXES = (".local", ".internal", ".localhost", ".lan", ".home", ".corp", ".intranet", ".home.arpa", ".localdomain")
+def _deny_hosts() -> tuple[str, ...]:
+    """The browser's own background hosts to refuse, from content/egress_deny_hosts.json (ASSISTANT_CONTENT_DIR in the container)."""
+    root = Path(os.environ.get("ASSISTANT_CONTENT_DIR") or Path(__file__).resolve().parents[2] / "content")
+    try:
+        return tuple(str(h).lower() for h in json.loads((root / "egress_deny_hosts.json").read_text(encoding="utf-8")).get("deny_hosts", []))
+    except (OSError, ValueError, AttributeError):
+        return ()
+
+
+DENY_HOSTS = _deny_hosts()
 ROUTE_EVERY = 2.0
 HEAD_LIMIT = 64 * 1024
 HEAD_TIMEOUT = 30.0
@@ -148,8 +152,8 @@ class RouteFile:
 
 
 def local_name(host: str) -> bool:
-    """A name that cannot be a public one: no dot, or a suffix used on home and office networks."""
-    return "." not in host or host.endswith(LOCAL_SUFFIXES)
+    """A name that cannot be a public one: no dot, or a last label that is not a delegated top-level domain (Public Suffix List)."""
+    return not in_public_dns(host)
 
 
 def is_ip(host: str) -> bool:

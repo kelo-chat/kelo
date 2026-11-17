@@ -251,7 +251,10 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("setup", help="first-run configuration")
     p.add_argument("--browser", choices=BROWSERS, help="skip the question")
-    p.add_argument("--env-file", type=Path, default=Path(".env"))
+    p.add_argument("--env-file", type=Path, default=None, help="the settings file (default: .env here; the Kelo Server folder on a Mac with the package)")
+    p.add_argument("--runtime", choices=("auto", "docker", "apple-container"), default="auto",
+                   help="what runs Kelo's parts: Docker, or Apple container (the Kelo Server package on a Mac); auto picks Apple container "
+                        "when this Mac has the package's background service")
     p.add_argument("--cli", action="append", choices=CLIS, dest="clis",
                    help="subscription CLI to run in a container (repeatable); skips the question")
     p.add_argument("--profile", choices=("recommended", "minimum", "unlimited"),
@@ -263,6 +266,8 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     p.add_argument("--from-release", action="store_true",
                    help="guided screen only: pull the signed release images instead of building them here; the Claude/agy "
                         "containers are still built here")
+    p.add_argument("--release-version", metavar="X.Y.Z",
+                   help="with --from-release: pull the images of exactly this release instead of the newest (the installer's --version)")
     p.add_argument("--web", action="store_true",
                    help="ask the same questions in a page in the browser (127.0.0.1 only) instead of the terminal")
     p.add_argument("--no-open", action="store_true", help="with --web: print the page's link only, do not open the browser")
@@ -400,13 +405,14 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     us.add_argument("--no-start", action="store_true", help="save the settings only")
     us.add_argument("--pull-release", action="store_true",
                     help="first install: pull and check the newest signed release images instead of building them here")
+    us.add_argument("--release-version", metavar="X.Y.Z", help="with --pull-release: the release to pull instead of the newest")
     us.add_argument("--env-file", type=Path, default=Path(".env"))
     for verb, text in (("status", "what it runs, the newest release, and the last update"), ("off", "stop and remove the updater container")):
         uv = usub.add_parser(verb, help=text)
         uv.add_argument("--env-file", type=Path, default=Path(".env"))
     pub = sub.add_parser("publish-app", help="operator's server only: offer an app build for download at <address>/download/<platform>")
-    pub.add_argument("platform", choices=("android", "windows", "windows-msi", "mac"),
-                     help="android (.apk), windows (.exe, or .msi), mac (.dmg)")
+    pub.add_argument("platform", choices=("android", "windows", "windows-msi", "windows-server-msi", "mac"),
+                     help="android (.apk), windows (.exe, or .msi), windows-msi (the desktop app's .msi), windows-server-msi (the Kelo server's .msi, not on the download page), mac (.dmg)")
     pub.add_argument("file", help="the build to publish")
     pub.add_argument("--version", help="the version shown on the site, optionally with the build number: 0.9.0+402500 (default: from "
                      "the APK, or from the file name)")
@@ -414,7 +420,7 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     pub.add_argument("--sign-key", metavar="PATH", help="the signing key (default ~/.kelo-release/signing.key; make it with `assistant release-key new`)")
     pub.add_argument("--unsigned", action="store_true", help="publish without a signature (apps that check signatures will not offer the build)")
     sgn = sub.add_parser("sign-app", help="operator's server only: sign the build that is already published for a platform")
-    sgn.add_argument("platform", choices=("android", "windows", "windows-msi", "mac"))
+    sgn.add_argument("platform", choices=("android", "windows", "windows-msi", "windows-server-msi", "mac"))
     sgn.add_argument("--commit", metavar="HEX", help="the full hash of the public source commit the build was made from")
     sgn.add_argument("--sign-key", metavar="PATH", help="the signing key (default ~/.kelo-release/signing.key)")
     rk = sub.add_parser("release-key", help="the key that signs app releases")
@@ -431,6 +437,8 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     rec.add_argument("build", help="the platform's own build number (Android versionCode, iOS CFBundleVersion, desktop major*100000000+minor*100000+patch)")
     rec.add_argument("channel", help="download (kelo.chat/download), play (Google Play), appstore (App Store) or msstore (Microsoft Store)")
     rec.add_argument("--date", help="the day it went live, YYYY-MM-DD (default: today)")
+    rec.add_argument("--min-server", help="the oldest server release this app works with (its compiled-in min_server); apps are only offered "
+                                          "to servers at or above it")
     rec.add_argument("--file", help="the record to change (default: releases/apps.json of this checkout)")
     ver = sub.add_parser("version", help="this Kelo's release version and build (version.json)")
     ver.add_argument("--json", action="store_true", help="print it as JSON")
@@ -501,6 +509,21 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
 
     interactive = not args.yes and sys.stdin.isatty()
     if args.cmd == "setup":
+        if args.release_version:
+            import os
+
+            from .updater_setup import VERSION_ENV
+            os.environ[VERSION_ENV] = args.release_version.strip()    # read by updater_setup.pull_release
+        host = None
+        if args.runtime != "docker" and args.env_file is None:
+            from .hosting.apple_container.copies import detect
+            from .hosting.macos.paths import MacPaths
+            host = detect(MacPaths.for_home(Path.home()).data_root() / ".env", args.runtime)
+        elif args.runtime != "docker":
+            from .hosting.apple_container.copies import detect
+            host = detect(args.env_file.resolve(), args.runtime)
+        args.env_file = args.env_file or (host.env_file if host else Path(".env"))
+        extra = {"host": host} if host else {}      # Docker is the wizard's own default: nothing is passed for it
         if args.browser == "chrome" and not args.yes:
             print(CHROME_NOTICE)
             if input("Use Google Chrome anyway? [y/N]: ").strip().lower() not in ("y", "yes"):
@@ -509,11 +532,11 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
         if args.web:
             from .setup_web import run_web
             return run_web(args.env_file, start=not args.no_start, browser=args.browser, clis=args.clis, profile=args.profile,
-                           release=args.from_release, open_browser=not args.no_open, page_file=args.page_file)
+                           release=args.from_release, open_browser=not args.no_open, page_file=args.page_file, **extra)
         if interactive and not args.plain:
             from . import wizard
             return wizard.run(args.env_file, start=not args.no_start, browser=args.browser, clis=args.clis, profile=args.profile,
-                              release=args.from_release)
+                              release=args.from_release, **extra)
         setup(args.env_file, args.browser, interactive=interactive, clis=args.clis, resources=args.profile)
     return 0
 

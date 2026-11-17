@@ -16,6 +16,7 @@ import chat.kelo.app.chat.ChatItem
 import chat.kelo.app.chat.ToolState
 import chat.kelo.app.core.Session
 import chat.kelo.desktop.core.AppContainer
+import chat.kelo.desktop.core.DesktopNote
 import chat.kelo.desktop.core.FileKeyValueStore
 import chat.kelo.desktop.core.NotePoller
 import chat.kelo.desktop.core.StoreKey
@@ -27,6 +28,7 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -76,6 +78,7 @@ class ChatModelTest {
                     request.method == "PUT" && path.startsWith("/api/uploads/") -> json("""{"path":"uploads/${path.substringAfterLast('/')}"}""")
                     path.startsWith("/api/approvals/pending") -> json(pending)
                     path.startsWith("/api/messages") -> json("[]")
+                    path.startsWith("/api/notifications/settled") -> json("""{"ids":["ap9"]}""")
                     path.startsWith("/api/notifications") -> json(
                         """{"items":[{"id":5,"type":"proactive","title":"News","body":"A parcel arrived","seen":false}],"last_id":5}""",
                     )
@@ -171,6 +174,38 @@ class ChatModelTest {
         app.settings.setLastNote(app.sessions.requireApi().baseUrl, 4)
         poller.check(app.sessions.requireApi())
         assertEquals(listOf("A parcel arrived"), posted)
+    }
+
+    /** The tray balloon (AWT) carries no buttons, so a waiting approval's note must at least open the chat, where its card is, and name its item. */
+    @Test fun anApprovalNoteOpensTheChatWithItsCardAndIsTiedToItsItem() {
+        val n = chat.kelo.app.agent.ServerNotification(id = 9, type = chat.kelo.app.notify.NoteTypes.APPROVAL_WAITING, approvalId = " ap7 ")
+        assertEquals(chat.kelo.app.notify.OpenTarget.Chat, chat.kelo.app.notify.NotifyRules.target(n))
+        assertEquals("ap7", chat.kelo.app.notify.ItemIds.of(n))
+        app.notify(DesktopNote("Please confirm", "x", DesktopNote.Kind.WARNING, target = chat.kelo.app.notify.NotifyRules.target(n), item = chat.kelo.app.notify.ItemIds.of(n)))
+        app.openLastNote()
+        assertEquals(chat.kelo.app.notify.OpenTarget.Chat, app.openRequests.value)
+    }
+
+    @Test fun aNoteWhoseItemWasAnsweredElsewhereLeavesTheShelfAndNoLongerOpensAnything() = runBlocking {
+        app.settings.setLastNote(app.sessions.requireApi().baseUrl, 5)
+        app.notify(DesktopNote("Please confirm", "x", DesktopNote.Kind.WARNING, target = chat.kelo.app.notify.OpenTarget.Approvals, item = "ap9"))
+        app.notify(DesktopNote("Please confirm", "y", DesktopNote.Kind.WARNING, target = chat.kelo.app.notify.OpenTarget.Approvals, item = "ap8"))
+        assertEquals(setOf("ap9", "ap8"), app.shelf.shownItems())
+        val poller = NotePoller(app.settings, shown = { false }, shownItems = { app.shelf.shownItems() }, settle = { app.settleItems(it) }) {}
+        poller.check(app.sessions.requireApi())
+        assertEquals("the server called ap9 settled; ap8 still waits", setOf("ap8"), app.shelf.shownItems())
+        assertTrue(requests.any { it.endsWith("/api/notifications/settled?ids=ap9,ap8") })
+        app.openLastNote()   // the newest note was ap8's: it still opens
+        assertEquals(chat.kelo.app.notify.OpenTarget.Approvals, app.openRequests.value)
+        app.openRequests.value = null
+        app.notify(DesktopNote("Please confirm", "z", DesktopNote.Kind.WARNING, target = chat.kelo.app.notify.OpenTarget.Approvals, item = "ap9"))
+        app.settleItems(listOf("ap9"))
+        app.openLastNote()   // the newest note's item was settled: a click opens nothing stale
+        assertNull(app.openRequests.value)
+        app.notify(DesktopNote("Done", "d"))
+        assertEquals(1, app.shelf.newsCount())
+        app.clearNews()
+        assertEquals(0, app.shelf.newsCount())
     }
 
     @Test fun theBubbleShowsFilesAndHidesTheAppsOwnLines() {

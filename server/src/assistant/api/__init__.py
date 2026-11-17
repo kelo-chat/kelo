@@ -34,7 +34,8 @@ Included in this order:
     agent_screen    live status and the task log
     schedules       schedules
     browser         browser tabs, the tab sweeper, run pictures, the live view (LIVE VIEW API)
-    journal, skills, reflection, reviews, notifications, notices, site
+    journal, skills, reflection, reviews, notifications, notices, site, forget (what Kelo was asked to forget)
+    data            your data: export, import from another assistant, start over (data_controls.py)
 
 Routes the modules register themselves (`x_routes(router, ...)`), included through module_router: workers, watchers, proactive, server updates, storage cleanup,
 followups, briefing, briefing sources, checklist, chat images (inside conversation), goal workspace (inside goals).
@@ -60,7 +61,7 @@ def module_router(register: Callable[..., None], *args: Any, **kw: Any) -> APIRo
 # The routers, in the order their routes are registered (order matters for overlapping paths; server/tests/test_route_table.py pins it).
 ROUTERS = ("chat", "nest", "turns", "profile", "conversation", "goals", "files", "about", "connectors", "mail_calendar", "providers",
            "connections", "operator", "vault", "devices", "e2e_keys", "keyguard", "push", "resources", "models_usage", "wallet",
-           "approvals", "agent_screen", "schedules", "browser", "journal", "skills", "reflection", "reviews", "notifications", "notices", "site")
+           "approvals", "agent_screen", "schedules", "browser", "journal", "skills", "reflection", "reviews", "notifications", "notices", "site", "forget", "data")
 
 
 def include_api(app: Any, ctx: Any) -> None:

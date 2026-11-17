@@ -31,9 +31,11 @@ from urllib.parse import urlsplit
 
 from ..agent import Ours, Tool, ToolOutput, current_call, emit_ui, handover
 from ..agent.fence import data
+from ..code_shelf import SHELF
 from ..browser_history import FRAME_BYTES, FRAME_WIDTH, ActionArchive
 from ..deliverables import LibraryFileError
 from ..home import HomeError
+from ..data_trail import USES_PARAM
 from ..i18n import t
 from .browser import BrowserPolicyError, BrowserSession, browser_owner, code_mask, one_run_tab, site_of
 from .challenge import CHECK_TRIES, Challenge
@@ -51,7 +53,7 @@ CODE_HOLD_SECONDS = 600    # a found code waits this long for the user's answer,
 AUTO_CODE_WAIT_SECONDS = 40.0   # after a sign-in asks for a code, the site's own mail is waited for this long before asking the user
 AUTO_CODE_FIND_WAIT_SECONDS = 15.0   # ...and this long when the agent calls find_login_code later in that sign-in
 AUTO_CODE_POLL_SECONDS = 8.0    # the mailbox is looked at this often meanwhile
-ARCHIVED_TOOLS = ("browser_", "confirm_purchase", "purchase_result", "find_login_code")
+ARCHIVED_TOOLS = ("browser_", "confirm_purchase", "checkout_review", "checkout_submit", "purchase_result", "find_login_code")
 
 
 class BrowserExtras:
@@ -66,6 +68,7 @@ class BrowserExtras:
         self.wall: Callable[[], float] = time.time           # mail times are wall-clock times
         self.auto_codes = auto_codes or (lambda: True)
         self.vault_log = vault_log
+        self.code_judge: Any = None   # code_judge.CodeJudge; None = the shared shelf's judge (no judge: no code is typed unasked)
         self.code_wait, self.find_wait, self.code_poll = AUTO_CODE_WAIT_SECONDS, AUTO_CODE_FIND_WAIT_SECONDS, AUTO_CODE_POLL_SECONDS
         session.timezone = timezone or (lambda: "")
         session.locale = locale
@@ -82,7 +85,27 @@ class BrowserExtras:
         except Exception:  # noqa: BLE001
             return False
 
-    # ------------------------------------------------------------------ a sign-in code from the site's own mail, typed without asking
+    # ------------------------------------------------------------------ a code the model read as "[verification code #N]" (code_shelf.py)
+    def hold_ref(self, args: dict[str, Any], ref: Any, site: str) -> str | None:
+        """Put the held code `ref` up for the owner's approval, or say why not (the answer is the model's). The code may only go to the page
+        of the site that sent it (a phone number has no site: the owner's approval names the sender), on https, once, within its ttl."""
+        from ..wallet import site_key
+
+        try:
+            held = SHELF.get(int(ref))
+        except (TypeError, ValueError):
+            held = None
+        if held is None:
+            return ("error: there is no held verification code with that number (it was used, or it expired after 10 minutes). Read the "
+                    "message again for a new handle, or ask the user to type the code in the live browser. Never ask for the code in chat.")
+        if urlsplit(self.session.current_url()).scheme != "https":
+            return "error: a code is typed only into an https page"
+        if held.site and site_key(site) != held.site:
+            return (f"error: verification code #{held.ref} came from {held.site} and can be typed only into a page of that site; this page is "
+                    f"{site_key(site) or site}.")
+        self._codes[current_call.get()] = (FoundCode(held.code, held.sender or "your phone", "", held.at, ref=held.ref), self.clock())
+        return None
+
     def sign_in_for(self, host: str) -> dict[str, Any] | None:
         """The sign-in the agent itself started on this tab, in this task, on the site of `host` (same registrable domain), while it is
         fresh enough for a code to be typed without asking."""
@@ -114,7 +137,8 @@ class BrowserExtras:
                 msgs = await self.mail.recent(AUTO_WINDOW_SECONDS / 60 + 2)
             except Exception:  # noqa: BLE001 - a mailbox problem: the normal flow
                 return None
-            found, why = pick_auto_code(msgs, rec["site"], float(rec["at"]), self.wall())
+            from .. import code_shelf
+            found, why = await pick_auto_code(msgs, rec["site"], float(rec["at"]), self.wall(), self.code_judge or code_shelf.SHELF.judge)
             if found is not None or why in ("ambiguous", "late") or self.wall() >= deadline:
                 break
             await asyncio.sleep(max(0.0, min(self.code_poll, deadline - self.wall())))
@@ -301,9 +325,9 @@ class BrowserExtras:
             return "error: action must be save, load, forget or list"
 
         async def forget_site(args: dict[str, Any]) -> str:
-            site, user_said = str(args.get("site") or ""), str(args.get("user_said") or "")
+            site = str(args.get("site") or "")
             try:
-                res = await s.forget_site(site, user_said=user_said)
+                res = await s.forget_site(site)
             except BrowserPolicyError as e:
                 return f"Error: {e}"
             return await shown(res, t("Clearing site data"))
@@ -325,6 +349,9 @@ class BrowserExtras:
                 return f"error: {e}"
             if (why := getattr(s, "approve_pending", lambda _s: None)(site)) is not None:   # an approval on the phone has no code to find (2026-11-10)
                 return why
+            ref = args.get("code_ref")
+            if ref not in (None, ""):
+                return self.hold_ref(args, ref, site)
             if not self.has_mailbox():
                 return ("No mailbox is connected, so there is no mail to look in. Ask the user to type the code into the page themselves in the "
                         "live browser (Browser, then Take control), or to connect their mailbox. Never ask for the code in chat.")
@@ -366,6 +393,8 @@ class BrowserExtras:
                 text = await s.fill_code(f.code, selector=str(args.get("selector") or ""), submit=bool(args.get("submit", True)))
             except BrowserPolicyError as e:
                 return f"error: {e}"
+            if f.ref:
+                SHELF.forget(f.ref)      # single use
             return await shown(f"Found the code ({len(f.code)} digits) and typed it into the page after the user allowed it. The code is not kept.\n\n{text}",
                                t("Entering the verification code"))
 
@@ -419,7 +448,8 @@ class BrowserExtras:
             Tool("browser_upload", "Put the user's files into a file input of the page; the user approves every upload.",
                  obj({"selector": {"type": "string", "description": "the file input, or the button that adds a photo or video (the hidden input "
                                                                          "behind it is found)"},
-                      "files": {"type": "array", "items": {"type": "string"}, "description": "paths under uploads/ or files/"}},
+                      "files": {"type": "array", "items": {"type": "string"}, "description": "paths under uploads/ or files/"},
+                      "uses": USES_PARAM},
                      ["selector", "files"]),
                  upload, requires_approval=True, untrusted=True, source="page", validate=check_upload, describe=describe_upload,
                  declined="The user did not allow uploading those files. Do not retry; ask what they want instead."),
@@ -434,14 +464,17 @@ class BrowserExtras:
                  "this tab; forget; list). Normal tabs already share sign-ins: this is for private tabs or a lost sign-in.",
                  obj({"action": {"type": "string", "enum": ["save", "load", "forget", "list"]}, "site": {"type": "string"}}, ["action"]),
                  site_state),
-            Tool("browser_forget_site", "Remove cookies and site data of that site's domain from the browser's default context, and drop its saved sign-in state. Use it only right after the user agreed to clear that site's data in this conversation. user_said must be the user's words agreeing to clear cookies and retry (required to ensure the user explicitly consented before data is removed).",
-                 obj({"site": {"type": "string", "description": "the site to forget (e.g. example.com)"},
-                      "user_said": {"type": "string", "description": "the user's words agreeing to clear that site's cookies and site data"}},
-                     ["site", "user_said"]),
-                 forget_site),
+            Tool("browser_forget_site", "Remove cookies and site data of that site's domain from the browser's default context, and drop its saved "
+                 "sign-in state. The user sees a card with the site and answers with a button; nothing is removed before they allow it.",
+                 obj({"site": {"type": "string", "description": "the site to forget (e.g. example.com)"}}, ["site"]),
+                 forget_site, requires_approval=True,
+                 declined="The user did not allow clearing that site's data. Nothing was removed. Do not retry; ask them how to go on."),
             Tool("find_login_code", "A sign-in page wants a one-time code the site sent by email: finds it in the user's mailbox (last "
                  f"{CODE_MINUTES} minutes) and types it in once the user allows. You never see the code.",
                  obj({"site": {"type": "string", "description": "default: the page's"},
+                      "code_ref": {"type": "integer", "description": "the number N of a '[verification code #N]' you read in a message or text: "
+                                   "that held code is typed (once, only into its sender's site, after the user allows). Without it the "
+                                   "mailbox is searched."},
                       "selector": {"type": "string", "description": "the code box, if not found by itself"},
                       "submit": {"type": "boolean", "description": "press Enter after (default true)"}}, []),
                  code_enter, requires_approval=True, untrusted=True, source="page", hold=code_hold, describe=code_describe, approval_extra=code_extra,

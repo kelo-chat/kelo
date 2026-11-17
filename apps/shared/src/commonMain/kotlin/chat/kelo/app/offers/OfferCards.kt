@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +37,10 @@ fun OfferCard(
     val c = Kelo.colors
     EntryBox {
         Text(o.sentence, style = MaterialTheme.typography.bodyLarge, color = c.ink)
+        if (o.request.isNotBlank()) {
+            Text("\u201C${o.request}\u201D", style = MaterialTheme.typography.bodyMedium, color = c.ink)
+        }
+        OfferStepsList(o.steps)
         if (o.needs.isNotEmpty()) {
             Text(string(Res.string.offer_needs, o.needs.joinToString(", ")), style = MaterialTheme.typography.bodySmall, color = c.muted)
         }
@@ -71,6 +75,28 @@ fun OfferCard(
                     )
                 }
             }
+        }
+    }
+}
+
+/** The prepared steps as a numbered list, collapsed after [OfferSteps.COLLAPSED] with a "show all" link. */
+@Composable
+fun OfferStepsList(steps: List<String>) {
+    if (steps.isEmpty()) return
+    val c = Kelo.colors
+    var expanded by remember(steps) { mutableStateOf(false) }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        OfferSteps.visible(steps, expanded).forEachIndexed { i, step ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("${i + 1}.", style = MaterialTheme.typography.bodySmall, color = c.muted)
+                Text(step, style = MaterialTheme.typography.bodySmall, color = c.muted, modifier = Modifier.weight(1f))
+            }
+        }
+        if (OfferSteps.collapsible(steps)) {
+            LinkButton(
+                if (expanded) string(Res.string.offer_steps_fewer) else string(Res.string.offer_steps_show_all, steps.size),
+                onClick = { expanded = !expanded },
+            )
         }
     }
 }
