@@ -1,7 +1,7 @@
 <p align="center"><img src="docs/media/banner-en.png" alt="Kelo — Your server. Your model. Your assistant." width="860"></p>
 
 <p align="center">
-  <b>A personal AI assistant that runs on a server you choose, with the AI model you choose — local models included.</b><br>
+  <b>A local Muse alternative: a personal AI assistant that runs on a server you choose, with the AI model you choose — local models included.</b><br>
   You talk to it from your phone. It does the work in its own browser and the services you connect, and it asks before anything hard to undo.
 </p>
 
