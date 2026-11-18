@@ -11,7 +11,7 @@
 # Updates from the app (optional, main copy only): `assistant updater setup` turns on the `updater` profile below; the owner then presses
 #   Update in the app (My → Server update), or lets it update at night. It pulls the signed release images, backs up, restarts and
 #   checks each copy, and rolls back by itself on failure (the same steps as `assistant update`).
-x-kelo-compose-level: 2   # raised when a release needs a newer compose.yml (the updater then asks to run the installer again)
+x-kelo-compose-level: 3   # raised when a release needs a newer compose.yml (the updater then asks to run the installer again)
 
 x-build: &build
   context: .
@@ -32,15 +32,19 @@ services:
     image: ${KELO_IMAGE:-assistant:local}
     <<: *hardening
     restart: unless-stopped
+    stop_grace_period: 40s             # a stop drains a send / pay step for up to 25 s before the rest of the shutdown (job_cuts.py)
     mem_limit: ${SERVER_MEMORY:-0}       # RAM and compute this container may use; 0 = no limit (`assistant limits` sets them)
     memswap_limit: ${SERVER_MEMORY:-0}   # no swap, so the RAM limit means RAM
     cpus: ${SERVER_CPUS:-0}
     user: "1001:1001"
-    group_add: ["1050"]                # the work room's socket folder only (workroom-io)
+    group_add: ["1050", "1051"]        # the work room's socket folder (workroom-io) and the voice socket folder (voice-io) only
     environment:
       ROLE: server
       WORKROOM_SOCKET_DIR: /run/workroom   # the work room's agent.sock; the server's install proxy listens there too
+      VOICE_SOCKET: /run/voice/voice.sock                # the speech-to-text container (voice service below)
+      VOICE_MODELS_DIR: /voice-models                    # the speech models the server downloads on request (My → 음성 입력)
       BROWSER_CDP_HOST: ${BROWSER_CDP_HOST-browser}   # an extra user's instance without a browser sets it empty
+      WORK_BROWSER_CDP_HOST: ${WORK_BROWSER_CDP_HOST-work-browser}   # the work browser (scheduled and background tabs); empty = off
       ASSISTANT_CLI_CLAUDE_URL: http://claude-cli:9300   # used only when the `claude` profile is up
       ASSISTANT_CLI_AGY_URL: http://agy-cli:9300         # used only when the `agy` profile is up
       KELO_ROUTE_DIR: /run/kelo-route                    # the VPN connector: route file for egress, files for the vpn container (vpn.py)
@@ -57,7 +61,7 @@ services:
     read_only: true
     tmpfs: ["/tmp"]
     volumes: ["server-state:/state", "workroom-io:/run/workroom", "browser-downloads:/browser-downloads:ro",
-              "kelo-route:/run/kelo-route", "kelo-vpn:/run/kelo-vpn"]   # the VPN connector: the route file (public) and the VPN's files (keys)
+              "kelo-route:/run/kelo-route", "kelo-vpn:/run/kelo-vpn", "voice-io:/run/voice", "voice-models:/voice-models"]   # the VPN connector: the route file (public) and the VPN's files (keys)
     ports: ["${SERVER_BIND:-127.0.0.1}:${SERVER_PORT:-8080}:8080"]   # this machine only by default; SERVER_BIND=0.0.0.0 lets a proxy elsewhere in the house reach it
     depends_on: [browser]
     # host.docker.internal = this computer, for an app the owner runs next to Kelo (Connectors → Self-hosted); Docker Desktop has it already,
@@ -97,6 +101,39 @@ services:
     networks: [browser-net]
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://127.0.0.1:9223/json/version"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Kelo's work browser: the scheduled and background tabs (tools/work_browser.py). Same image and limit rules as `browser`; a separate
+  # Chrome so a job's tab never shows on the owner's screen, shares the owner's renderers or crashes with them. It starts empty every time
+  # (BROWSER_EPHEMERAL) and keeps no profile. Its limits yield first: half the CPU weight, and the kernel ends it before the owner's browser.
+  work-browser:
+    build: *build
+    image: ${KELO_IMAGE:-assistant:local}
+    <<: *hardening
+    restart: unless-stopped
+    mem_limit: ${WORK_BROWSER_MEMORY:-0}
+    memswap_limit: ${WORK_BROWSER_MEMORY:-0}
+    cpus: ${WORK_BROWSER_CPUS:-0}
+    cpu_shares: 512                     # half the main browser's weight when both are busy (not a cap)
+    oom_score_adj: 500                  # under memory pressure this browser is ended before the owner's (not a cap)
+    user: "1000:1000"
+    environment:
+      ROLE: browser                     # no env_file: this container never sees keys or the token
+      BROWSER_EPHEMERAL: "1"            # the profile folder is emptied at every start: nothing of the owner's stays on this disk
+      DEVTOOLS_PORT: "9225"             # DevTools for the server on the browser network (the main browser keeps 9223)
+      RFB_PORT: "5903"                  # the live view's X screen for the server (the main browser keeps 5901)
+      BROWSER_CACHE_MB: ${BROWSER_CACHE_MB:-0}
+      BROWSER_PROXY: http://egress:3128
+      BROWSER_LANG: ${BROWSER_LANG:-ko-KR}
+      TZ: ${BROWSER_TZ:-Asia/Seoul}
+    shm_size: 1gb
+    volumes: ["work-browser-data:/data", "browser-downloads:/downloads"]   # profile folder (emptied at start) + downloads
+    depends_on: [egress]
+    networks: [browser-net]             # the same private network and egress rules as `browser`; never published
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://127.0.0.1:9225/json/version"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -222,6 +259,26 @@ services:
     read_only: true
     tmpfs: ["/tmp:size=64m"]
     volumes: ["workroom-io:/run/workroom", "workroom-scratch:/work", "workroom-tools:/tools"]
+
+  # ---- speech to text (assistant/voice_service.py, docs/voice.md): turns a recording into text with a speech model the server downloaded
+  # on request (My → 음성 입력). No network at all, no env_file, no keys; the server reaches it through voice.sock in voice-io. It reads
+  # the models read-only; the server is the only writer of voice-models.
+  voice:
+    build: *build
+    image: ${KELO_IMAGE:-assistant:local}
+    <<: *hardening
+    restart: unless-stopped
+    mem_limit: ${VOICE_MEMORY:-2g}
+    memswap_limit: ${VOICE_MEMORY:-2g}
+    cpus: ${VOICE_CPUS:-0}
+    pids_limit: 64
+    user: "1006:1051"
+    environment:
+      ROLE: voice
+    network_mode: none
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    volumes: ["voice-io:/run/voice", "voice-models:/voice-models:ro"]
 
   # ---- subscription CLI sidecars (opt-in via profiles). Not on the `agent` network the browser shares:
   # a compromised web page must not be able to reach a logged-in CLI. No env_file: no keys, no ASSISTANT_TOKEN.
@@ -370,6 +427,7 @@ volumes:
   android-adb: {}       # the Android bridge's adb key (a paired phone stays paired)
   keyring-state: {}     # keyring.db: the AI providers' keys, sealed under the ring key (only the key container mounts it)
   browser-data: {}
+  work-browser-data: {}   # the work browser's profile folder: emptied at every start (BROWSER_EPHEMERAL)
   browser-downloads: {}   # files pages downloaded (written by the browser, read-only for the server); kept for a day
   claude-home: {}
   agy-home: {}
@@ -378,5 +436,7 @@ volumes:
   workroom-io: {}       # the two sockets between the server and the work room, nothing else
   workroom-scratch: {}  # /work: emptied before and after every job
   workroom-tools: {}    # /tools: packages the user approved (pip / npm), kept across updates
+  voice-io: {}          # the voice socket between the server and the speech-to-text container, nothing else
+  voice-models: {}      # the speech models the server downloaded (about 240 MB and 670 MB); each copy has its own
   caddy-data: {}     # the https certificate and its key
   caddy-config: {}

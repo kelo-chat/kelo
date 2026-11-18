@@ -27,6 +27,7 @@ import chat.kelo.app.ui.text.*
 import chat.kelo.desktop.core.AppContainer
 import chat.kelo.desktop.core.Autostart
 import chat.kelo.desktop.core.ReleaseInfo
+import chat.kelo.desktop.core.DesktopPlatform
 import chat.kelo.desktop.core.ServerInstallRules
 import chat.kelo.desktop.ui.SwitchRow
 import chat.kelo.desktop.ui.UpdateCard
@@ -73,7 +74,7 @@ private fun desktopMyHooks(app: AppContainer, hiddenTabs: List<chat.kelo.app.she
                 value = string(Res.string.desktop_theme) + " · " + string(themeLabel(theme)))
         }
         if (ServerInstallRules.available()) row {
-            MenuRow(KeloIcons.Chip, string(Res.string.desktop_server_row), { go(MY_SERVER_PAGE) })
+            MenuRow(KeloIcons.Chip, string(ServerInstallTexts.forOs(DesktopPlatform.os).row), { go(MY_SERVER_PAGE) })
         }
         if (app.updates.enabled) row {
             val scope = rememberCoroutineScope()

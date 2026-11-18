@@ -37,6 +37,7 @@ struct ApprovalCard: View {
                     ApprovalFacts(lines: ApprovalEditRules.withoutMessage(approval.lines, e), detail: nil)
                     EditableMessageBlock(approvalId: approval.id, editable: e, enabled: approval.open)
                 } else { ApprovalFacts(lines: approval.lines, detail: approval.detail) }
+                if let mail = approval.mail { MailPreviewBlock(approvalId: approval.id, design: mail) }
                 if !approval.forgetPlan.isEmpty { ForgetPlanList(planId: approval.forgetPlan) }
                 if !approval.items.isEmpty { ApprovalItems(items: approval.items) }
                 if approval.open {

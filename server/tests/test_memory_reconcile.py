@@ -114,7 +114,7 @@ def test_grounding_line_numbers_exist(tmp_path):
         Edit(handle="edit:2", op="replace", start=1, end=5, guard="-", reason="deduplicate", replacement="- Fixed"),
         Edit(handle="edit:3", op="replace", start=2, end=1, guard="-", reason="deduplicate", replacement="- Fixed"),
     ]
-    accepted, salvage = ground(pinned, edits, lambda _h: True)
+    accepted, salvage = ground(pinned, edits, lambda _h: True, lambda _h: True)
     assert len(accepted) == 0
     assert len(salvage) == 3
 
@@ -125,7 +125,7 @@ def test_grounding_guards(tmp_path):
         Edit(handle="edit:1", op="replace", start=1, end=1, guard="WrongGuard", reason="deduplicate", replacement="- New 1"),
         Edit(handle="edit:2", op="replace", start=2, end=2, guard="- Line 2", reason="deduplicate", replacement="- New 2"),
     ]
-    accepted, salvage = ground(pinned, edits, lambda _h: True)
+    accepted, salvage = ground(pinned, edits, lambda _h: True, lambda _h: True)
     assert len(accepted) == 1
     assert accepted[0].handle == "edit:2"
     assert any("guard mismatch" in s for s in salvage)
@@ -137,7 +137,7 @@ def test_grounding_overlap(tmp_path):
         Edit(handle="edit:1", op="replace", start=1, end=2, guard="- Line 1", reason="deduplicate", replacement="- Combined"),
         Edit(handle="edit:2", op="replace", start=2, end=3, guard="- Line 2", reason="deduplicate", replacement="- Overlapping"),
     ]
-    accepted, salvage = ground(pinned, edits, lambda _h: True)
+    accepted, salvage = ground(pinned, edits, lambda _h: True, lambda _h: True)
     assert len(accepted) == 1
     assert accepted[0].handle == "edit:1"
     assert any("overlaps with edit:1" in s for s in salvage)
@@ -157,7 +157,7 @@ def test_grounding_handle_resolution_and_free_reasons(tmp_path):
         Edit(handle="edit:2", op="replace", start=2, end=2, guard="- Line 2", reason="promote", replacement="- Fact", evidence=["claim:good"]),
         Edit(handle="edit:3", op="replace", start=3, end=3, guard="- Line 3", reason="correct", replacement="- Fixed", evidence=["claim:bad"]),
     ]
-    accepted, salvage = ground(pinned, edits, resolve)
+    accepted, salvage = ground(pinned, edits, resolve, lambda h: h == "claim:good")
     assert [e.handle for e in accepted] == ["edit:1", "edit:2"]
     assert any("unresolvable evidence handle" in s for s in salvage)
 
@@ -167,7 +167,7 @@ def test_grounding_promote_targets(tmp_path):
     edits = [
         Edit(handle="edit:1", op="replace", start=4, end=4, guard="- Timezone", reason="promote", replacement="- Timezone: Asia/Seoul", evidence=["claim:1"]),
     ]
-    accepted, salvage = ground(pinned_user, edits, lambda _h: True)
+    accepted, salvage = ground(pinned_user, edits, lambda _h: True, lambda _h: True)
     assert len(accepted) == 0
     assert any("promote not allowed into user.md" in s for s in salvage)
 
@@ -186,7 +186,7 @@ def test_grounding_user_md_no_new_entries_and_labels_headings(tmp_path):
     # 5. Good label update
     e_good = Edit(handle="edit:5", op="replace", start=4, end=4, guard="- Timezone", reason="condense", replacement="- Timezone: Asia/Seoul")
 
-    accepted, salvage = ground(pinned_user, [e_head, e_bad_label, e_del_label, e_insert, e_good], lambda _h: True)
+    accepted, salvage = ground(pinned_user, [e_head, e_bad_label, e_del_label, e_insert, e_good], lambda _h: True, lambda _h: True)
     assert [e.handle for e in accepted] == ["edit:5"]
     assert len(salvage) == 4
 
@@ -196,7 +196,7 @@ def test_grounding_scrub_finds_secret(tmp_path):
     edits = [
         Edit(handle="edit:1", op="replace", start=1, end=1, guard="- Safe", reason="deduplicate", replacement="- Router: Tr0ub4dor&3"),
     ]
-    accepted, salvage = ground(pinned, edits, lambda _h: True)
+    accepted, salvage = ground(pinned, edits, lambda _h: True, lambda _h: True)
     assert len(accepted) == 0
     assert any("secret detected" in s for s in salvage)
 
@@ -215,7 +215,7 @@ def test_retire_expired_vs_reframe_completed_on_passed_date(tmp_path):
         reason="retire_expired",
         replacement="- Meeting with team.",
     )
-    accepted, _ = ground(pinned, [e_retire_ok], lambda _h: True)
+    accepted, _ = ground(pinned, [e_retire_ok], lambda _h: True, lambda _h: True)
     assert len(accepted) == 1
 
     # retire_expired rewriting to completed -> refused (only whole sentence deletion allowed)
@@ -228,7 +228,7 @@ def test_retire_expired_vs_reframe_completed_on_passed_date(tmp_path):
         reason="retire_expired",
         replacement="- Event completed on 2026-10-01.",
     )
-    accepted2, salvage2 = ground(pinned, [e_retire_rewrite], lambda _h: True)
+    accepted2, salvage2 = ground(pinned, [e_retire_rewrite], lambda _h: True, lambda _h: True)
     assert len(accepted2) == 0
     assert any("retire_expired replace may only delete whole sentences" in s for s in salvage2)
 
@@ -243,7 +243,7 @@ def test_retire_expired_vs_reframe_completed_on_passed_date(tmp_path):
         replacement="- Meeting completed successfully.",
         evidence=[],
     )
-    accepted3, salvage3 = ground(pinned, [e_reframe_no_ev], lambda _h: True)
+    accepted3, salvage3 = ground(pinned, [e_reframe_no_ev], lambda _h: True, lambda _h: True)
     assert len(accepted3) == 0
     assert any("requires evidence handle" in s for s in salvage3)
 
@@ -258,7 +258,7 @@ def test_retire_expired_vs_reframe_completed_on_passed_date(tmp_path):
         replacement="- Meeting completed successfully.",
         evidence=["claim:done1"],
     )
-    accepted4, _ = ground(pinned, [e_reframe_ok], lambda h: h == "claim:done1")
+    accepted4, _ = ground(pinned, [e_reframe_ok], lambda h: h == "claim:done1", lambda h: h == "claim:done1")
     assert len(accepted4) == 1
 
 
@@ -286,7 +286,7 @@ def test_markers_once(tmp_path):
         reason="mark_undated",
         replacement=f"- Alice is 30 years old (as of an unknown date). {MARK_UNDATED}",
     )
-    accepted, salvage = ground(pinned, [e1, e2], lambda _h: True)
+    accepted, salvage = ground(pinned, [e1, e2], lambda _h: True, lambda _h: True)
     assert [e.handle for e in accepted] == ["edit:1"]
     assert any("already present" in s for s in salvage)
 
@@ -523,7 +523,7 @@ def test_demoted_lines_verbatim_in_log(tmp_path):
         logged.append(block)
 
     edits = [Edit(handle="edit:1", op="remove", start=1, end=1, guard="- Old", reason="demote_to_log", replacement="")]
-    accepted, _ = ground(pinned, edits, lambda _h: True)
+    accepted, _ = ground(pinned, edits, lambda _h: True, lambda _h: True)
     receipt = stage(home, "run-demote", pinned, accepted)
 
     res = apply(home, receipt, pinned, log_append=log_append)
@@ -538,7 +538,7 @@ def test_demoted_lines_verbatim_in_log(tmp_path):
 def test_undo_restores(tmp_path):
     home, pinned = _make_pinned(tmp_path, "MEMORY.md", "- Original version\n")
     edits = [Edit(handle="edit:1", op="replace", start=1, end=1, guard="- Original", reason="deduplicate", replacement="- Modified version")]
-    accepted, _ = ground(pinned, edits, lambda _h: True)
+    accepted, _ = ground(pinned, edits, lambda _h: True, lambda _h: True)
     receipt = stage(home, "run-undo", pinned, accepted)
 
     res = apply(home, receipt, pinned)

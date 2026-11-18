@@ -2641,7 +2641,7 @@ public struct DryRunAnswer: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// One browser tab the agent keeps. kind: owner | device | schedule | task; status: working | idle | failed | ended.
+/// One browser tab the agent keeps. kind: owner | device | schedule | task; status: working | idle | failed | ended; source: browser | device ("" from an older server).
 public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
     public var id: String
     public var label: String
@@ -2649,6 +2649,7 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
     public var title: String
     public var url: String
     public var host: String
+    public var source: String
     public var status: String
     public var statusText: String
     public var lastActivity: Double?
@@ -2660,14 +2661,17 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
     public var thumbnailWidth: Int
     public var thumbnailHeight: Int
     public var endedAt: Double?
+    /// "work" for a tab of Kelo's work browser (scheduled and background jobs), "main" or "" (an older server) for the owner's own browser.
+    public var browser: String
 
-    public init(id: String, label: String = "", kind: String = "", title: String = "", url: String = "", host: String = "", status: String = "idle", statusText: String = "", lastActivity: Double? = nil, taskId: Int64? = nil, controller: String = "agent", controlledBy: String? = nil, viewers: Int = 0, thumbnail: String? = nil, thumbnailWidth: Int = 0, thumbnailHeight: Int = 0, endedAt: Double? = nil) {
+    public init(id: String, label: String = "", kind: String = "", title: String = "", url: String = "", host: String = "", source: String = "", status: String = "idle", statusText: String = "", lastActivity: Double? = nil, taskId: Int64? = nil, controller: String = "agent", controlledBy: String? = nil, viewers: Int = 0, thumbnail: String? = nil, thumbnailWidth: Int = 0, thumbnailHeight: Int = 0, endedAt: Double? = nil, browser: String = "") {
         self.id = id
         self.label = label
         self.kind = kind
         self.title = title
         self.url = url
         self.host = host
+        self.source = source
         self.status = status
         self.statusText = statusText
         self.lastActivity = lastActivity
@@ -2679,6 +2683,7 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
         self.thumbnailWidth = thumbnailWidth
         self.thumbnailHeight = thumbnailHeight
         self.endedAt = endedAt
+        self.browser = browser
     }
 
     public init(from decoder: Decoder) throws {
@@ -2689,6 +2694,7 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
         title = j.str("title", "")
         url = j.str("url", "")
         host = j.str("host", "")
+        source = j.str("source", "")
         status = j.str("status", "idle")
         statusText = j.str("status_text", "")
         lastActivity = j.optDouble("last_activity")
@@ -2700,6 +2706,7 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
         thumbnailWidth = j.int("thumbnail_width", 0)
         thumbnailHeight = j.int("thumbnail_height", 0)
         endedAt = j.optDouble("ended_at")
+        browser = j.str("browser", "")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2710,6 +2717,7 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
         try c.encode(title, forKey: AnyKey("title"))
         try c.encode(url, forKey: AnyKey("url"))
         try c.encode(host, forKey: AnyKey("host"))
+        try c.encode(source, forKey: AnyKey("source"))
         try c.encode(status, forKey: AnyKey("status"))
         try c.encode(statusText, forKey: AnyKey("status_text"))
         try c.encodeIfPresent(lastActivity, forKey: AnyKey("last_activity"))
@@ -2721,6 +2729,7 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
         try c.encode(thumbnailWidth, forKey: AnyKey("thumbnail_width"))
         try c.encode(thumbnailHeight, forKey: AnyKey("thumbnail_height"))
         try c.encodeIfPresent(endedAt, forKey: AnyKey("ended_at"))
+        try c.encode(browser, forKey: AnyKey("browser"))
     }
 }
 
@@ -2766,6 +2775,9 @@ public struct ControlAnswer: Codable, Equatable, Hashable, Sendable {
     public var controller: String
     public var controlledBy: String?
     public var youControl: Bool
+    /// "button" | "handover" | "" (an older server); holderAway: the holder has no live connection
+    public var hold: String = ""
+    public var holderAway: Bool = false
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2773,6 +2785,8 @@ public struct ControlAnswer: Codable, Equatable, Hashable, Sendable {
         controller = j.str("controller", "")
         controlledBy = j.optStr("controlled_by")
         youControl = j.bool("you_control", false)
+        hold = j.str("hold")
+        holderAway = j.bool("holder_away", false)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2785,6 +2799,29 @@ public struct ControlAnswer: Codable, Equatable, Hashable, Sendable {
 }
 
 /// A background job the agent handed off (GET /api/workers). kind: browser | research | general; status: running | needs_input | blocked | waiting | done | failed | stopped | interrupted; waiting = scheduled to retry at wake_at (epoch seconds, null otherwise); waiting_for: login | control | user | retry.
+/// A job the server picked up by itself after it was cut (`picked_up`): when, and why ("restart" | "browser").
+public struct PickedUp: Codable, Equatable, Hashable, Sendable {
+    public var at: Double
+    public var why: String
+
+    public init(at: Double = 0, why: String = "") {
+        self.at = at
+        self.why = why
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        at = j.double("at", 0)
+        why = j.str("why", "")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(at, forKey: AnyKey("at"))
+        try c.encode(why, forKey: AnyKey("why"))
+    }
+}
+
 public struct Worker: Codable, Equatable, Hashable, Sendable {
     public var id: String
     public var kind: String
@@ -2807,8 +2844,9 @@ public struct Worker: Codable, Equatable, Hashable, Sendable {
     public var statusText: String?
     public var lastUrl: String?
     public var thumbnail: String?
+    public var pickedUp: PickedUp?
 
-    public init(id: String, kind: String = "", title: String = "", status: String = "", parentTaskId: Int64? = nil, taskId: Int64? = nil, turnId: String? = nil, tab: String? = nil, startedAt: Double = 0, updatedAt: Double = 0, finishedAt: Double? = nil, steps: Int = 0, maxSteps: Int = 0, deadlineAt: Double? = nil, wakeAt: Double? = nil, waitingFor: String? = nil, login: String? = nil, reason: String? = nil, statusText: String? = nil, lastUrl: String? = nil, thumbnail: String? = nil) {
+    public init(id: String, kind: String = "", title: String = "", status: String = "", parentTaskId: Int64? = nil, taskId: Int64? = nil, turnId: String? = nil, tab: String? = nil, startedAt: Double = 0, updatedAt: Double = 0, finishedAt: Double? = nil, steps: Int = 0, maxSteps: Int = 0, deadlineAt: Double? = nil, wakeAt: Double? = nil, waitingFor: String? = nil, login: String? = nil, reason: String? = nil, statusText: String? = nil, lastUrl: String? = nil, thumbnail: String? = nil, pickedUp: PickedUp? = nil) {
         self.id = id
         self.kind = kind
         self.title = title
@@ -2830,6 +2868,7 @@ public struct Worker: Codable, Equatable, Hashable, Sendable {
         self.statusText = statusText
         self.lastUrl = lastUrl
         self.thumbnail = thumbnail
+        self.pickedUp = pickedUp
     }
 
     public init(from decoder: Decoder) throws {
@@ -2855,6 +2894,7 @@ public struct Worker: Codable, Equatable, Hashable, Sendable {
         statusText = j.optStr("status_text")
         lastUrl = j.optStr("last_url")
         thumbnail = j.optStr("thumbnail")
+        pickedUp = j.decode("picked_up", as: PickedUp.self)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2863,6 +2903,7 @@ public struct Worker: Codable, Equatable, Hashable, Sendable {
         try c.encode(kind, forKey: AnyKey("kind"))
         try c.encode(title, forKey: AnyKey("title"))
         try c.encode(status, forKey: AnyKey("status"))
+        try c.encodeIfPresent(pickedUp, forKey: AnyKey("picked_up"))
         try c.encodeIfPresent(parentTaskId, forKey: AnyKey("parent_task_id"))
         try c.encodeIfPresent(taskId, forKey: AnyKey("task_id"))
         try c.encodeIfPresent(turnId, forKey: AnyKey("turn_id"))

@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">Yakınlaştır</string>
     <string name="desktop_chat_zoom_reset">Pencereye sığdır</string>
     <string name="desktop_chat_zoom_hint">Yakınlaştırmak için %1$s tuşunu basılı tutup tekerleği çevirin; etrafa bakmak için sürükleyin.</string>
+    <string name="desktop_chat_search_hint">Bir kelime ya da kelimenin bir parçasını yaz. Bir sonuca tıklayarak sohbeti o mesajda aç.</string>
 </resources>

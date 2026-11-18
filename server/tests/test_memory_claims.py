@@ -69,17 +69,15 @@ def answering(*answers):
     return fn
 
 
-def make_window(messages=None, tasks=None, approvals=None, inbox=None, as_of="2026-11-16T14:00:00", run_id="r1a2b3c4"):
+def make_window(messages=None, inbox=None, as_of="2026-11-16T14:00:00", run_id="r1a2b3c4"):
     return Window(
         run_id=run_id,
         as_of=as_of,
         since=ts(2026, 11, 15, 0, 0),
         messages=messages or [],
-        tasks=tasks or [],
-        approvals=approvals or [],
         inbox=inbox or [],
         log_path="memory/log/2026-11-16.md",
-        has_new=bool(messages or tasks or approvals or inbox),
+        has_new=bool(messages or inbox),
     )
 
 
@@ -121,7 +119,7 @@ def test_step4_drop_handle_not_in_window():
     window = make_window(messages=[{"id": 1, "role": "user", "text": "I like Earl Grey tea"}])
     c = Claim("c1", "preference", "high", "User likes tea", "Earl Grey tea", "user", "m999")
     ok, reason = check_shape(c, window)
-    assert not ok and "not in window" in reason
+    assert not ok and "not the owner's own words" in reason
 
 
 def test_step4_drop_quote_not_verbatim():
@@ -137,11 +135,14 @@ def test_step4_drop_quote_not_verbatim():
     assert ok
 
 
-def test_step4_drop_speaker_differs():
-    window = make_window(messages=[{"id": 1, "role": "assistant", "text": "It might rain today"}])
-    c = Claim("c1", "observation", "low", "Rain possible", "rain today", "user", "m1")
-    ok, reason = check_shape(c, window)
-    assert not ok and "does not match" in reason
+def test_step4_drop_assistant_and_tool_text():
+    """Only the owner's own words are admitted: an assistant or tool speaker, or a task handle, never is (memory-owner-only)."""
+    window = make_window(messages=[{"id": 1, "role": "user", "text": "It might rain today"}])
+    for c in (Claim("c1", "fact", "low", "Rain possible", "rain today", "assistant", "m1"),
+              Claim("c2", "fact", "low", "Rain possible", "rain today", "tool", "task:5"),
+              Claim("c3", "lesson", "low", "Rain possible", "rain today", "user", "task:5")):
+        ok, reason = check_shape(c, window)
+        assert not ok and "not the owner's own words" in reason
 
 
 def test_step4_drop_valid_until_on_non_event():
@@ -472,7 +473,7 @@ def test_agent_cannot_write_or_delete_memory_log(tmp_path):
     with pytest.raises(HomeError):
         home.write("memory/log/2026-11-16.md", "hacked log", by="agent")
     with pytest.raises(HomeError):
-        home.write("memory/log/2026-11-16.md", "default writer")
+        home.write("memory/log/2026-11-16.md", "default writer", by="user")
 
     # System write permitted
     saved = home.write("memory/log/2026-11-16.md", "official system log", by="system")
@@ -559,27 +560,27 @@ def test_reconcile_due_conditions(tmp_path):
     assert reconcile_due(store, home, "2026-11-16T14:00:00", admitted_claims=[c], clock=NOW)
 
     # 2. Over cap MEMORY.md -> True
-    home.write("MEMORY.md", "# MEMORY.md\n" + "x" * 3100)
+    home.write("MEMORY.md", "# MEMORY.md\n" + "x" * 3100, by="user")
     assert reconcile_due(store, home, "2026-11-16T14:00:00", clock=NOW)
-    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n- likes tea\n\n## Ongoing\n\n## Decided & done\n")
+    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n- likes tea\n\n## Ongoing\n\n## Decided & done\n", by="user")
 
     # Over cap user.md -> True
-    home.write("user.md", "u" * 1600)
+    home.write("user.md", "u" * 1600, by="user")
     assert reconcile_due(store, home, "2026-11-16T14:00:00", clock=NOW)
-    home.write("user.md", "short")
+    home.write("user.md", "short", by="user")
 
     # 3. Dates before as_of -> True
-    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n- Trip to Tokyo [2026-11-10]\n\n## Ongoing\n\n## Decided & done\n")
+    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n- Trip to Tokyo [2026-11-10]\n\n## Ongoing\n\n## Decided & done\n", by="user")
     assert reconcile_due(store, home, "2026-11-16T14:00:00", clock=NOW)
 
     # Date on or after as_of -> False
-    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n- Future plan [2026-11-20]\n\n## Ongoing\n\n## Decided & done\n")
+    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n- Future plan [2026-11-20]\n\n## Ongoing\n\n## Decided & done\n", by="user")
     assert not reconcile_due(store, home, "2026-11-16T14:00:00", clock=NOW)
 
     # 4. Layout migration -> True
-    home.write("MEMORY.md", "# My Memory\n- Random bullet 1\n- Random bullet 2\n")
+    home.write("MEMORY.md", "# My Memory\n- Random bullet 1\n- Random bullet 2\n", by="user")
     assert reconcile_due(store, home, "2026-11-16T14:00:00", clock=NOW)
-    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n\n## Ongoing\n\n## Decided & done\n")
+    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n\n## Ongoing\n\n## Decided & done\n", by="user")
 
     # 5. 7 days since last sweep -> True
     now = ts(2026, 11, 25, 0, 0)
@@ -594,7 +595,7 @@ def test_build_window_gathers_sources_and_scrubs(tmp_path):
     clock = Clock(ts(2026, 11, 16, 14, 0))
 
     # Add messages (first line is a secret dropped whole, second line is preserved)
-    store._run("INSERT INTO messages(id, role, content, created_at) VALUES(1, 'user', 'token: sk-1234567890abcdef1234567890abcdef\nI like jazz', ?)", (clock.t - 100,))
+    store._run("INSERT INTO messages(id, role, content, created_at, author) VALUES(1, 'user', 'token: sk-1234567890abcdef1234567890abcdef\nI like jazz', ?, 'owner')", (clock.t - 100,))
     store._run("INSERT INTO messages(id, role, content, created_at) VALUES(2, 'assistant', 'Got it!', ?)", (clock.t - 50,))
 
     inbox = MemoryInbox(home, tz=lambda: "Asia/Seoul", clock=clock)
@@ -602,7 +603,7 @@ def test_build_window_gathers_sources_and_scrubs(tmp_path):
 
     window = build_window(store, home, inbox=inbox, tz="Asia/Seoul", clock=clock)
     assert window.has_new is True
-    assert len(window.messages) == 2
+    assert len(window.messages) == 1 and window.source("m2") is None      # the assistant's reply is not the owner's words
     # Message scrubbed
     assert "sk-1234567890abcdef1234567890abcdef" not in window.messages[0]["text"]
     assert "I like jazz" in window.messages[0]["text"]
@@ -612,11 +613,9 @@ def test_build_window_gathers_sources_and_scrubs(tmp_path):
     assert role == "user"
     assert "I like jazz" in text
 
-    # Inbox source lookup
+    # an inbox line is not a source of its own: the owner message it names is (memory-owner-only)
     inbox_key = hashlib.sha256(inbox.lines()[0].encode()).hexdigest()[:8]
-    i_role, i_text = window.source(f"inbox:{inbox_key}")
-    assert i_role == "user"
-    assert "window seat" in i_text
+    assert window.source(f"inbox:{inbox_key}") is None
 
     # Outside handle
     assert window.source("m999") is None
@@ -729,16 +728,15 @@ async def test_extract_request_fences_outside_text_and_names_handles(tmp_path):
 async def test_inbox_lines_with_admitted_or_dropped_claims_are_filed_others_stay(tmp_path):
     store, home = Store(), Home(tmp_path / "home")
     inbox = MemoryInbox(home, tz=lambda: "Asia/Seoul", clock=Clock(ts(2026, 11, 16, 9, 0)))
-    inbox.add("Prefers window seat", "preference")
-    inbox.add("Allergic to shellfish", "fact")
-    inbox.add("Birthday is in May", "fact")
-    w = make_window(inbox=inbox.lines())
-    key = {ln: hashlib.sha256(ln.encode()).hexdigest()[:8] for ln in w.inbox}
-    seat = next(l for l in w.inbox if "window seat" in l)
-    shell = next(l for l in w.inbox if "shellfish" in l)
+    inbox.add("Prefers window seat", "preference", 1)
+    inbox.add("Allergic to shellfish", "fact", 2)
+    inbox.add("Birthday is in May", "fact", 3)
+    owner_msgs = [{"id": 1, "role": "user", "text": "Prefers window seat"}, {"id": 2, "role": "user", "text": "Allergic to shellfish"},
+                  {"id": 3, "role": "user", "text": "Birthday is in May"}]
+    w = make_window(messages=owner_msgs, inbox=inbox.lines())
 
-    def claim(line, text):
-        return {"kind": "fact", "salience": "high", "text": text, "quote": line, "speaker": "user", "handle": f"inbox:{key[line]}", "secret": False}
+    def claim(mid, text, quote):   # the line is filed by its message id, so the claim cites m<id>
+        return {"kind": "fact", "salience": "high", "text": text, "quote": quote, "speaker": "user", "handle": f"m{mid}", "secret": False}
 
     # verifier: pass the seat claim only (decided by the claim text in the request)
     async def judge(provider, req, **kw):
@@ -754,7 +752,8 @@ async def test_inbox_lines_with_admitted_or_dropped_claims_are_filed_others_stay
         elif "failed verification" in req.messages[-1]["content"]:
             yield TextDelta(json.dumps({"claims": []}))
         else:
-            yield TextDelta(json.dumps({"claims": [claim(seat, "Likes window seats"), claim(shell, "Allergic to shellfish")]}))
+            yield TextDelta(json.dumps({"claims": [claim(1, "Likes window seats", "Prefers window seat"),
+                                                   claim(2, "Allergic to shellfish", "Allergic to shellfish")]}))
         yield Done("stop")
 
     adm, st = await run_claims(w, store, home, judge, model=("p", "m"), inbox=inbox)

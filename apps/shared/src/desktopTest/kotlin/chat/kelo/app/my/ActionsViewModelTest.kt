@@ -26,7 +26,7 @@ class ActionsViewModelTest {
     private val utcZone = ZoneOffset.UTC
 
     @Before fun setUp() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
-    @After fun tearDown() { server?.shutdown(); vms.clear(); Dispatchers.resetMain() }
+    @After fun tearDown() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
     private fun sampleDidJson(): String {
         return """

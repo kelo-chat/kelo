@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">Download the %1$s speech model to your Kelo server? If you don\'t, your phone\'s own speech recognition is used.</string>
+    <string name="voice_server_downloading">Downloading the speech model · %1$d%%</string>
+    <string name="voice_server_ready">Your Kelo server now understands your voice.</string>
+    <string name="voice_server_download_failed">The speech model didn\'t finish downloading.</string>
+    <string name="voice_server_no_room">Not enough space on your Kelo server (%1$s needed).</string>
+    <string name="voice_retry">Try again</string>
+    <string name="voice_transcribing">Turning it into text…</string>
+    <string name="voice_cancel_recording">Cancel recording</string>
+    <string name="voice_stop_recording">Stop recording</string>
+    <string name="voice_ends_in">Ends in %1$d s</string>
+    <string name="voice_server_offline">Couldn\'t reach your Kelo server to turn it into text.</string>
+    <string name="voice_server_busy">Your Kelo server is busy with another recording. Try again in a moment.</string>
+    <string name="voice_server_too_long">That recording is too long. Keep it under 2 minutes.</string>
+    <string name="voice_page_title">Voice input</string>
+    <string name="voice_page_intro">Your voice is turned into text on your Kelo server and the text goes into the field. Nothing is sent by itself.</string>
+    <string name="voice_model_in_use">Speech model in use</string>
+    <string name="voice_state_off">Phone\'s own speech recognition</string>
+    <string name="voice_change_model">Change model</string>
+    <string name="voice_download_model">Download model</string>
+    <string name="voice_remove_model">Remove model</string>
+    <string name="voice_remove_confirm">Remove the speech model? Your phone\'s own speech recognition is used after that.</string>
+    <string name="voice_phone_note">Kelo\'s server speech models don\'t know this language yet, so your phone\'s own speech recognition is used.</string>
+    <string name="voice_model_size">Size %1$s · memory while in use %2$s</string>
+    <string name="voice_runtime_missing">Run the Kelo server installer once more to use this.</string>
+</resources>

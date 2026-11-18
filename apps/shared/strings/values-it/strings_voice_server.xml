@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">Scaricare il modello di riconoscimento vocale %1$s sul tuo server Kelo? Se no, si usa il riconoscimento vocale del telefono.</string>
+    <string name="voice_server_downloading">Download del modello vocale · %1$d%%</string>
+    <string name="voice_server_ready">Il tuo server Kelo ora capisce la tua voce.</string>
+    <string name="voice_server_download_failed">Il download del modello vocale non è stato completato.</string>
+    <string name="voice_server_no_room">Spazio insufficiente sul tuo server Kelo (servono %1$s).</string>
+    <string name="voice_retry">Riprova</string>
+    <string name="voice_transcribing">Trascrizione in corso…</string>
+    <string name="voice_cancel_recording">Annulla registrazione</string>
+    <string name="voice_stop_recording">Ferma registrazione</string>
+    <string name="voice_ends_in">Termina tra %1$d s</string>
+    <string name="voice_server_offline">Impossibile raggiungere il tuo server Kelo per trascrivere.</string>
+    <string name="voice_server_busy">Il tuo server Kelo sta elaborando un\'altra registrazione. Riprova tra poco.</string>
+    <string name="voice_server_too_long">La registrazione è troppo lunga. Resta sotto i 2 minuti.</string>
+    <string name="voice_page_title">Input vocale</string>
+    <string name="voice_page_intro">La tua voce viene trascritta sul tuo server Kelo e il testo va nel campo. Niente viene inviato da solo.</string>
+    <string name="voice_model_in_use">Modello vocale in uso</string>
+    <string name="voice_state_off">Riconoscimento vocale del telefono</string>
+    <string name="voice_change_model">Cambia modello</string>
+    <string name="voice_download_model">Scarica modello</string>
+    <string name="voice_remove_model">Rimuovi modello</string>
+    <string name="voice_remove_confirm">Rimuovere il modello vocale? Dopo, si userà il riconoscimento vocale del telefono.</string>
+    <string name="voice_phone_note">I modelli vocali del tuo server Kelo non conoscono ancora questa lingua, quindi si usa il riconoscimento vocale del telefono.</string>
+    <string name="voice_model_size">Dimensione %1$s · memoria in uso %2$s</string>
+    <string name="voice_runtime_missing">Esegui ancora una volta il programma di installazione del server Kelo per usarlo.</string>
+</resources>

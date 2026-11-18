@@ -81,6 +81,8 @@ sealed interface TurnEvent {
         val preapproval: chat.kelo.app.agent.PreapprovalAsk? = null,
         /** The message this card will send, which the owner may fix before allowing it (a mail's body, a text); null for any other card */
         val editable: chat.kelo.app.agent.EditableMessage? = null,
+        /** A designed mail (server "mail"): where its sanitized preview is (GET …/mail-preview); null for any other card */
+        val mail: MailDesign? = null,
     ) : TurnEvent {
         /** `forget_confirm`: the waiting cleanup plan whose list the card can show (GET /api/forget/plans/{id}); "" for any other card */
         val forgetPlan: String get() = if (name == "forget_confirm") (arguments["plan_id"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim().orEmpty() else ""
@@ -100,6 +102,8 @@ sealed interface TurnEvent {
     data class Device(
         val id: String, val key: String, val status: String, val image: String?, val width: Int = 0, val height: Int = 0, val at: Double = 0.0,
     ) : TurnEvent
+    /** The chat shows a browser tab or the phone ([state] "open" or "closed", [reason] when closed) — see chat_views.py on the server. */
+    data class View(val key: String, val state: String, val ownerAsked: Boolean = false, val reason: String = "") : TurnEvent
     /** An allowed payment waits for this phone to send an end-to-end card before [expiresAt] (unix seconds). */
     data class CardNeeded(
         val id: String, val approvalId: String, val card: CardBrief, val site: String, val amount: Double, val currency: String,
@@ -185,6 +189,7 @@ sealed interface TurnEvent {
                     chat.kelo.app.agent.TrailOffer.parseList(o["trail"]),
                     chat.kelo.app.agent.PreapprovalAsk.parse(o["preapproval"]),
                     chat.kelo.app.agent.EditableMessage.parse(o["editable"]).takeIf { (o["payment"] as? JsonObject) == null },
+                    MailDesign.parse(o["mail"]),
                 )
                 "payment_step" -> PaymentStep.parse(o)?.let { PaymentStepChanged(it) } ?: Unknown(type)
                 "pin_needed" -> PinNeed.parse(o)?.let { PinNeeded(it) } ?: Unknown(type)
@@ -201,6 +206,7 @@ sealed interface TurnEvent {
                     s("id"), s("key").ifEmpty { "android" }, s("status"), s("image").takeIf { it.startsWith("data:image/") },
                     int("width"), int("height"), (o["at"] as? JsonPrimitive)?.doubleOrNull ?: 0.0,
                 )
+                "view" -> View(s("key"), s("state"), bool("owner_asked") == true, s("reason"))
                 "card_needed" -> CardNeeded(
                     s("id"), s("approval_id"), CardBrief.parse(obj("card")), s("site"), (o["amount"] as? JsonPrimitive)?.doubleOrNull ?: 0.0,
                     s("currency"), s("amount_text"), long("expires_at"),

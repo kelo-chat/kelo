@@ -40,7 +40,7 @@ import javax.crypto.KeyGenerator
 class ApprovalSignChatTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<RecordedRequest>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<RecordedRequest>()
     private val bodies = Collections.synchronizedMap(mutableMapOf<RecordedRequest, String>())
     @Volatile private var answer: MockResponse = MockResponse().setBody("""{"ok":true}""")
 

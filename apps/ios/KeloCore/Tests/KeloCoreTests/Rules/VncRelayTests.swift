@@ -246,6 +246,31 @@ final class VncHarness {
         await h.connect { $0.hello(#"{"type":"vnc","width":500,"height":900}"#) }
         #expect(seen == [.opening, .showing(width: 500, height: 900)])
     }
+
+    @Test func textTheBrowserCopiedComesFromThePageCappedAndNeverEmpty() {
+        #expect(VncBridge.fromPage(#"{"t":"clipboard","text":"한국어 텍스트"}"#) == .clipboard("한국어 텍스트"))
+        #expect(VncBridge.fromPage(#"{"t":"clipboard","text":""}"#) == .unknown)
+        #expect(VncBridge.fromPage(#"{"t":"clipboard","text":"   "}"#) == .unknown)
+        #expect(VncBridge.fromPage(#"{"t":"clipboard"}"#) == .unknown)
+        let long = String(repeating: "b", count: ClipboardRules.maxOffer + 5)
+        #expect(VncBridge.fromPage(#"{"t":"clipboard","text":"\#(long)"}"#) == .clipboard(String(repeating: "b", count: ClipboardRules.maxOffer)))
+    }
+
+    @Test func offeredClipboardTextWaitsForATapAndIsGoneWhenTakenOrWhenTheScreenCloses() async {
+        let h = VncHarness()
+        await h.connect { $0.hello(#"{"type":"vnc","width":500,"height":900}"#) }
+        var told: [String?] = []
+        h.relay.onClipboard = { told.append($0) }
+        #expect(h.relay.clipboard == nil)
+        h.relay.offerClipboard("x")                 // the page reports a copy: waits, nothing is taken by itself
+        #expect(h.relay.clipboard == "x")
+        h.relay.clearClipboard()                    // the owner took it
+        #expect(h.relay.clipboard == nil)
+        h.relay.offerClipboard("y")
+        h.relay.close()                             // the screen closes: nothing is kept
+        #expect(h.relay.clipboard == nil)
+        #expect(told == ["x", nil, "y", nil])
+    }
 }
 
 @Suite struct VncRulesTests {
@@ -370,6 +395,20 @@ final class VncHarness {
         bridge.hold(false)
         bridge.pageMessage(#"{"t":"ready"}"#)
         #expect(try page.scripts.map(decodeScript) == [VncBridge.open(), VncBridge.hold(false)])
+    }
+
+    @Test func thePageBridgeHandsTheBrowsersClipboardToTheRelayButNotAfterRelease() async throws {
+        let h = VncHarness()
+        await showing(h)
+        let page = Page()
+        let bridge = VncPageBridge(relay: h.relay) { page.scripts.append($0) }
+        bridge.start()
+        bridge.pageMessage(#"{"t":"clipboard","text":"copied"}"#)
+        #expect(h.relay.clipboard == "copied")
+        bridge.release()
+        bridge.pageMessage(#"{"t":"clipboard","text":"later"}"#)
+        #expect(h.relay.clipboard == "copied")
+        #expect(page.scripts.isEmpty)
     }
 
     @Test func aReleasedBridgeDeliversNothing() async throws {

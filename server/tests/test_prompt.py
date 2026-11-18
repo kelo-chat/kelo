@@ -99,7 +99,7 @@ def test_the_short_rules_are_kelos_own_and_cover_the_same_ground():
 
 def test_builder_fills_in_name_time_model_goals_files_skills_and_learned_rules(tmp_path):
     home = Home(tmp_path / "h")
-    home.write("MEMORY.md", "# MEMORY.md\n- 민지 likes green tea\n")
+    home.write("MEMORY.md", "# MEMORY.md\n- 민지 likes green tea\n", by="user")
     (tmp_path / "s" / "docs").mkdir(parents=True)
     (tmp_path / "s" / "docs" / "SKILL.md").write_text("---\nname: Documents\ndescription: Write docs.\n---\n# Documents")
     b = PromptBuilder("You are {agent_name}.\n## Style\n", home, Skills(tmp_path / "s"))
@@ -244,7 +244,7 @@ def test_calendar_and_file_listing_are_in_the_context_so_nothing_needs_computing
     cal = calendar("Asia/Seoul", NOW, days=3)
     assert cal == "Fri 11-06 (today), Sat 11-07, Sun 11-08"
     home = Home(tmp_path / "h")
-    home.write("memory/people/kim.md", "---\nname: Kim Minsu\naliases: [Minsu, 민수]\nrelation: friend\ngroups: [climbing]\n---\n# Kim")
+    home.write("memory/people/kim.md", "---\nname: Kim Minsu\naliases: [Minsu, 민수]\nrelation: friend\ngroups: [climbing]\n---\n# Kim", by="user")
     out = PromptBuilder("x", home, None).build(tz_name="Asia/Seoul", now=NOW)
     assert "Calendar (the user's local dates" in out and "Fri 11-06 (today)" in out
     assert "All your files:" in out and "memory/people/kim.md" in out and "MEMORY.md" in out
@@ -270,7 +270,7 @@ def test_shipped_skills_are_kelos_own_with_front_matter():
 def test_what_changes_every_turn_comes_last_so_the_start_of_the_prompt_can_be_cached(tmp_path):
     from datetime import timedelta
     home = Home(tmp_path / "h")
-    home.write("MEMORY.md", "# MEMORY.md\n- a fact\n")
+    home.write("MEMORY.md", "# MEMORY.md\n- a fact\n", by="user")
     pb = PromptBuilder.load(CONTENT, home, Skills(CONTENT / "skills"))
     a_stable, a_turn = pb.build_parts(agent_name="Sage", goals=[{"title": "goal-alpha-xyz", "status": "tracking"}], tz_name="Asia/Seoul",
                                       now=NOW)
@@ -281,7 +281,7 @@ def test_what_changes_every_turn_comes_last_so_the_start_of_the_prompt_can_be_ca
     assert a_turn.startswith("## This Turn") and "Now:" in a_turn and "goal-alpha-xyz" in a_turn
     whole = pb.build(agent_name="Sage", tz_name="Asia/Seoul", now=NOW)
     assert whole.index("## Skills") < whole.index("## Your Files") < whole.index("## This Turn")   # one text: the turn's lines last
-    home.write("memory/x.md", "new fact")                                                # a file change changes the stable part
+    home.write("memory/x.md", "new fact", by="user")                                  # a file change changes the stable part
     assert pb.build_parts(agent_name="Sage", tz_name="Asia/Seoul", now=NOW)[0] != a_stable
 
 

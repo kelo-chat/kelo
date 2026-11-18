@@ -454,3 +454,34 @@ def test_watch_stops_the_server_once_the_grace_has_passed(running):
     assert srv.closed.wait(5)
     with pytest.raises(OSError):
         Page(srv).request("GET", "/", token="")
+
+
+def test_a_fixed_port_is_bound_and_the_default_stays_random(running):
+    """`setup --web --web-port N` (the Mac server's setup page, whose Lima forward is static) binds N on 127.0.0.1 only."""
+    import socket
+
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    url, srv = running(port=port)
+    assert srv.server_address[0] == "127.0.0.1" and srv.server_port == port
+    assert url == f"http://127.0.0.1:{port}/#t={url.rsplit('#t=', 1)[1]}"
+    _, other = running()
+    assert other.server_port != 0 and other.server_port != port
+
+
+def test_cli_passes_the_web_port_and_refuses_it_without_web(monkeypatch, tmp_path):
+    from assistant import cli
+
+    calls = []
+    monkeypatch.setattr(setup_web, "run_web", lambda env_file, **kw: calls.append(kw) or 7)
+    env = ["--env-file", str(tmp_path / ".env"), "--no-start", "--no-open"]
+    assert cli.main(["setup", "--web", "--web-port", "18081", *env]) == 7
+    assert calls[-1]["port"] == 18081
+    assert cli.main(["setup", "--web", *env]) == 7
+    assert calls[-1]["port"] == 0, "the default is a random port, as before"
+    with pytest.raises(SystemExit):
+        cli.main(["setup", "--web", "--web-port", "70000", *env])
+    with pytest.raises(SystemExit):
+        cli.main(["setup", "--web-port", "18081", *env])

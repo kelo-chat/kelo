@@ -263,10 +263,17 @@ data class BrowserTab(
     @SerialName("status_text") val statusText: String = "",
     @SerialName("last_activity") val lastActivity: Double? = null,
     @SerialName("task_id") val taskId: Long? = null,
+    /** "user" while the owner holds the tab (their own 직접 조작 or a hand-over), else "agent" */
+    val controller: String = "agent",
     val thumbnail: String? = null,
     /** "browser" for a tab, "device" for the Android device the server lists next to the tabs ("" from an older server: a tab) */
     val source: String = "",
+    /** "work" for a tab of Kelo's work browser (scheduled and background jobs), "main" or "" for the owner's own browser (an older server: "") */
+    val browser: String = "",
 ) {
+    /** A tab of Kelo's work browser, apart from the owner's own tabs. */
+    val inWorkBrowser: Boolean get() = browser == "work"
+
     /**
      * A tab of the browser container. Not the Android device: the server gives it kind "device" too, and a phone's own chat tab (key
      * = the device number) also has kind "device", so the kind cannot tell them apart; the source and the id ("android") do.
@@ -307,6 +314,8 @@ data class Worker(
     val thumbnail: String? = null,
     /** WAITING only: when it tries again (epoch seconds), else null */
     @SerialName("wake_at") val wakeAt: Double? = null,
+    /** Running again after a restart or a lost browser cut it: when, and why ("restart" | "browser"); null when not picked up */
+    @SerialName("picked_up") val pickedUp: PickedUp? = null,
 ) {
     val running: Boolean get() = status == RUNNING
     /** Stopped and waiting for the user (a login, the tab handed back, an answer) */
@@ -327,6 +336,10 @@ data class Worker(
         val RESUMABLE = setOf(NEEDS_INPUT, BLOCKED, FAILED, STOPPED, INTERRUPTED)
     }
 }
+
+/** A job picked up by itself after it was cut (GET /api/workers, picked_up): epoch seconds and the cause. */
+@Serializable
+data class PickedUp(val at: Double = 0.0, val why: String = "")
 
 @Serializable
 data class WorkerList(val items: List<Worker> = emptyList(), val running: Int = 0, val limit: Int = 0)

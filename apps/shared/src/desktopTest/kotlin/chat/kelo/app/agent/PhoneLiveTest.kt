@@ -25,7 +25,7 @@ class PhoneLiveTest {
         override fun start() {}
         override fun stop(giveBack: Boolean) {}
         override fun close() {}
-        override suspend fun control(take: Boolean): LiveClient.ControlResult { takes += take; return LiveClient.ControlResult.Ok }
+        override suspend fun control(take: Boolean, handover: Boolean): LiveClient.ControlResult { takes += take; return LiveClient.ControlResult.Ok }
         override fun send(event: JsonObject) { sent += event }
         override fun type(text: String) {}
     }

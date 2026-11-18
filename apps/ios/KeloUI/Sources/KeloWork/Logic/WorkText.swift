@@ -252,6 +252,7 @@ enum WorkText {
     }
 
     static func waiting(_ w: Worker) -> String {
+        if w.waitingFor == "cut" { return L(R.string.work_wait_pickup) }   // a cut job goes on by itself in a moment
         if w.status == Worker.statusInterrupted { return L(R.string.work_wait_restart) }
         if w.waitingFor == "login" { return L(R.string.work_wait_login) }
         if w.waitingFor == "control" { return L(R.string.work_wait_control) }

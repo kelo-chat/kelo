@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">Оформленное письмо</string>
+    <string name="mail_preview_open">Открыть крупнее</string>
+    <string name="mail_preview_loading">Загрузка предпросмотра…</string>
+    <string name="mail_preview_failed">Не удалось загрузить предпросмотр.</string>
+    <string name="mail_preview_gone">Предпросмотр больше недоступен.</string>
+    <string name="mail_preview_too_big">Предпросмотр слишком большой, чтобы его показать.</string>
+    <string name="mail_preview_pictures_note">Картинки отправляются ссылками, а не как изображения.</string>
+    <string name="mail_preview_link_title">Открыть этот адрес?</string>
+    <string name="mail_preview_link_open">Открыть в браузере</string>
+    <string name="mail_preview_simple_note">В этом приложении оформление показано упрощённо.</string>
+    <string name="mail_preview_desc">Предпросмотр оформленного письма</string>
+</resources>

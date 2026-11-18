@@ -5,7 +5,6 @@ import chat.kelo.app.my.MyFakeServer
 import chat.kelo.app.my.MyFakeServer.Companion.fail
 import chat.kelo.app.my.MyFakeServer.Companion.ok
 import chat.kelo.app.my.MyFakeServer.Companion.until
-import java.util.Collections
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -29,7 +28,7 @@ import org.junit.Test
 class ApprovalEditTest {
     private val vms = chat.kelo.app.TestViewModels()
     private var server: MyFakeServer? = null
-    private val posts = Collections.synchronizedList(mutableListOf<String>())
+    private val posts = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     @Before fun setUp() { Dispatchers.setMain(UnconfinedTestDispatcher()); ApprovalDrafts.clear("a1") }
     @After fun tearDown() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }

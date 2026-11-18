@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">Збільшити</string>
     <string name="desktop_chat_zoom_reset">За розміром вікна</string>
     <string name="desktop_chat_zoom_hint">Утримуйте %1$s і крутіть коліщатко для масштабу; перетягуйте, щоб роздивитися.</string>
+    <string name="desktop_chat_search_hint">Введіть слово або його частину. Натисніть на результат, щоб відкрити чат на цьому повідомленні.</string>
 </resources>

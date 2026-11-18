@@ -49,7 +49,7 @@ class ProactiveDeliveriesTest {
 
     @Before fun main() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
 
-    @After fun stop() { server?.shutdown(); vms.clear(); Dispatchers.resetMain(); Locale.setDefault(savedLocale) }
+    @After fun stop() { vms.clear(); server?.shutdown(); Dispatchers.resetMain(); Locale.setDefault(savedLocale) }
 
     // ---- the mapping
 

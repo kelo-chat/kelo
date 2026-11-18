@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">Ampliar</string>
     <string name="desktop_chat_zoom_reset">Ajustar à janela</string>
     <string name="desktop_chat_zoom_hint">Segure %1$s e gire a roda para ampliar; arraste para olhar em volta.</string>
+    <string name="desktop_chat_search_hint">Digite uma palavra ou parte dela. Clique em um resultado para abrir o chat nessa mensagem.</string>
 </resources>

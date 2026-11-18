@@ -46,6 +46,11 @@ import chat.kelo.app.chat.AddEntry
 import chat.kelo.app.chat.ChatScreenContent
 import chat.kelo.app.chat.ChatScreenHooks
 import chat.kelo.app.chat.ChatViewModel
+import chat.kelo.app.LocalAppServices
+import chat.kelo.app.my.NoticesRules
+import chat.kelo.app.voice.ServerMicHost
+import chat.kelo.app.voice.VoiceModel
+import chat.kelo.desktop.core.DesktopRecorder
 import chat.kelo.app.core.Profile
 import chat.kelo.app.core.Sessions
 import chat.kelo.app.notify.OpenTarget
@@ -95,8 +100,17 @@ fun ChatPane(
     val side = LocalChatSide.current
     val fileLabel = string(Res.string.desktop_attach_files)
     val fileHint = string(Res.string.attach_file_hint)
-    val hooks = remember(model, side, fileLabel, fileHint, onOpenConnector) {
+    // server voice input: the mic is drawn only when the server's speech model can be used (see ServerMicHost)
+    val services = LocalAppServices.current
+    val voiceScope = rememberCoroutineScope()
+    val voice = remember(sessions) {
+        VoiceModel({ sessions.api.value }, voiceScope) { NoticesRules.language(services.language.current, services.language.systemShownCode) }
+    }
+    val recorder = remember { DesktopRecorder() }
+    LaunchedEffect(sessions) { voice.refresh() }
+    val hooks = remember(model, side, fileLabel, fileHint, onOpenConnector, sessions, voice, recorder) {
         ChatScreenHooks(
+            mic = { field, setField -> ServerMicHost(recorder, voice, { sessions.api.value }, field, setField) },
             addEntries = listOf(AddEntry("file", KeloIcons.File, fileLabel, fileHint) { pickFiles().forEach(model::attachFile) }),
             // Ctrl+V / Cmd+V with a picture on the clipboard: it is attached; text still pastes as text
             fieldModifier = Modifier.onPreviewKeyEvent { e ->

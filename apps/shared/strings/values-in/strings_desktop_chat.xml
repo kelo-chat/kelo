@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">Perbesar</string>
     <string name="desktop_chat_zoom_reset">Sesuaikan dengan jendela</string>
     <string name="desktop_chat_zoom_hint">Tahan %1$s dan putar roda untuk zoom; seret untuk melihat sekeliling.</string>
+    <string name="desktop_chat_search_hint">Ketik sebuah kata atau sebagian kata. Klik hasil untuk membuka chat di pesan itu.</string>
 </resources>

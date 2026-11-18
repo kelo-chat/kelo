@@ -306,7 +306,9 @@ class Slack(Channel):
         if self.me_id:
             text = text.replace(f"<@{self.me_id}>", f"@{self.me_name or 'bot'}")
         private = e.get("channel_type") == "im"
-        inc = Incoming(chat_id=channel, user_id=user, message_id=ts, text=text, private=private, name=str(e.get("username") or "") if from_bot else "")
+        forwarded = any(isinstance(a, dict) and a.get("is_share") for a in (e.get("attachments") or []))   # a shared message (Slack's share)
+        inc = Incoming(chat_id=channel, user_id=user, message_id=ts, text=text, private=private, name=str(e.get("username") or "") if from_bot else "",
+                       forwarded=forwarded)
         if not private:
             root = str(e.get("thread_ts") or ts)
             self._threads.put(ts, root)

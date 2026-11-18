@@ -114,7 +114,8 @@ server.
 
 **`testflight`** runs these steps in order:
 
-1. It checks the key (`asc.py check`).
+1. It checks that the generated iPhone files match `version.json` and `apps/shared/strings` (`gen_version.py --check`,
+   `gen_strings.py --check`; a stale tree stops here, before any App Store Connect call), then the key (`asc.py check`).
 2. It picks the build number: `YYMMDDHH`, but always above both `project.yml`'s `CURRENT_PROJECT_VERSION` and App Store
    Connect's newest build (`--build N` overrides). It writes the number into `apps/ios/Kelo/project.yml`. Commit that change.
 3. Strings and xcodegen.
@@ -154,6 +155,17 @@ tools/build/desktop.sh windows --run-id 123   # only wait for / download an exis
   The runner builds what is pushed to GitHub, not this folder: the script warns about uncommitted changes and unpushed
   commits. A push that changes `apps/desktop/**` also starts the workflow by itself.
 - `dist/` is in `.gitignore` and `.dockerignore`.
+
+## Mac server bundle: `tools/build/mac-server-bundle.sh`
+
+Builds the Kelo server bundle for Apple silicon Macs (`kelo-server-<v>-mac-arm64.zip`): Lima's `limactl` (re-signed with the Developer ID Application certificate, hardened runtime, `packaging/mac/limactl.entitlements`), the Debian 12 arm64 VM image, `scripts/install.sh`, the sources of `HEAD` and the rendered VM template. Runs on a Mac (the signing needs it); `--dry-run` runs anywhere.
+
+- `--dry-run`: prints the commands (nothing is downloaded or signed). Refuses an unpinned lock unless `--update-lock`.
+- `--update-lock [--write]`: downloads the pinned files and prints their checksums; `--write` puts them in `packaging/mac/*.lock`.
+- `--no-sign`: a dev bundle for the live test only. The root stage refuses it.
+- `--notarize`: submits the zip to Apple with the App Store Connect key (`KELO_ASC_ENV`). Only with the owner's OK.
+- Downloads are cached in `~/Library/Caches/Kelo/mac-server-bundle` and checked against the locks every time.
+- Publishing is the owner's step: `uv run assistant publish-app mac-server-bundle <zip> --commit <public commit>`.
 
 ## Server: `tools/build/server.sh`
 

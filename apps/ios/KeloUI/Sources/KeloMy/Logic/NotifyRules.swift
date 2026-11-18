@@ -24,11 +24,13 @@ public enum NoteTypes {
     public static let storage = "storage"
     /// The morning briefing (title "아침 브리핑", body its one-line summary); its card waits in the chat
     public static let briefing = "briefing"
+    /// Kelo asks whether the owner keeps controlling a screen they hold (untouched for 10 minutes): keep or hand back (the chat's buttons)
+    public static let holdIdle = "hold_idle"
     /// Keyguard: the server restarted and holds no key until an owner phone unlocks it (urgent)
     public static let keyguardLocked = "keyguard_locked"
     public static let all: Set<String> = [taskDone, taskFailed, approvalWaiting, paymentAuto, scheduleDisabled, schedulePaused,
                                           watchFired, watchDisabled, proactive, followup, betaRequest, cliUpdate, serverUpdate, storage,
-                                          briefing, keyguardLocked]
+                                          briefing, keyguardLocked, holdIdle]
 }
 
 /// Which group a notification belongs to (Android channels; on iOS the thread identifier that bundles them).
@@ -62,7 +64,7 @@ public enum NotifyRules {
     public static func channel(_ type: String, scheduleId: Int64?) -> NoteChannel {
         switch type {
         // asked again about something that waits for the owner: grouped with the approvals (Android: the channel that may badge)
-        case NoteTypes.approvalWaiting, NoteTypes.followup: .approvals
+        case NoteTypes.approvalWaiting, NoteTypes.followup, NoteTypes.holdIdle: .approvals
         case NoteTypes.paymentAuto: .payments
         case NoteTypes.scheduleDisabled, NoteTypes.schedulePaused, NoteTypes.watchFired, NoteTypes.watchDisabled: .schedules
         case NoteTypes.proactive, NoteTypes.briefing: .replies
@@ -79,7 +81,7 @@ public enum NotifyRules {
     public static func target(_ n: ServerNotification) -> OpenTarget {
         switch n.type {
         // an approval waits in the chat as a live card at the bottom (a background job's or a scheduled run's too)
-        case NoteTypes.approvalWaiting: return .chat
+        case NoteTypes.approvalWaiting, NoteTypes.holdIdle: return .chat
         case NoteTypes.paymentAuto: return .wallet
         case NoteTypes.scheduleDisabled, NoteTypes.schedulePaused: return n.scheduleId.map { .work(.schedule($0)) } ?? .work(.schedules)
         case NoteTypes.watchFired, NoteTypes.watchDisabled: return .work(.watchers)

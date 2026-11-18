@@ -9,6 +9,24 @@ build's version and date, and copy the app lines into the Play release notes (en
 
 ## Unreleased
 
+## 0.10.5 (build 21, 2026-11-18)
+
+### Added
+- Voice input through your Kelo server: tap the mic, a sound graph shows while you speak, and the words appear when you stop. The first tap asks to download the speech model to your server (SenseVoice for Korean, Chinese and Japanese, Parakeet for 25 European languages); otherwise the phone's own recognizer stays.
+- When you take over the live screen, Kelo waits until you hand it back, and after 10 minutes without a touch it asks whether to keep control.
+- Jobs cut off by a server restart pick up where they were, without repeating a send or a payment that may already have happened.
+- Scheduled and background jobs run in their own work browser, so they never change the screen you are looking at.
+- The hourly look covers every connected service that offers a status read, and My shows what Kelo looked at and why it told you or stayed quiet.
+- Desktop: live screen (VNC) with keyboard and clipboard, chat search (Cmd/Ctrl+F), designed mail previews on approval cards.
+- macOS: "Use this Mac as the Kelo server" installs the server in its own small Linux VM with Docker.
+
+### Changed
+- Kelo remembers only what you say yourself; text in mail, pages or other people's messages never becomes a memory. Lessons from work become skill suggestions you approve.
+- Opening a browser from the chat keeps it open while you use it.
+
+### Fixed
+- Desktop tests that failed now and then on Windows; small fixes in the apps and the server.
+
 ## 0.10.4 (build 20, 2026-11-17)
 
 ### Added

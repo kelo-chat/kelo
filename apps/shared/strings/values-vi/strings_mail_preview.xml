@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">Thư có bố cục</string>
+    <string name="mail_preview_open">Xem lớn hơn</string>
+    <string name="mail_preview_loading">Đang tải bản xem trước…</string>
+    <string name="mail_preview_failed">Không tải được bản xem trước.</string>
+    <string name="mail_preview_gone">Bản xem trước không còn khả dụng.</string>
+    <string name="mail_preview_too_big">Bản xem trước quá lớn nên không thể hiển thị.</string>
+    <string name="mail_preview_pictures_note">Hình ảnh được gửi dưới dạng liên kết, không phải hình ảnh.</string>
+    <string name="mail_preview_link_title">Mở địa chỉ này?</string>
+    <string name="mail_preview_link_open">Mở trong trình duyệt</string>
+    <string name="mail_preview_simple_note">Ứng dụng này hiển thị bố cục ở dạng đơn giản.</string>
+    <string name="mail_preview_desc">Bản xem trước thư có bố cục</string>
+</resources>

@@ -236,6 +236,10 @@ public final class Router {
     }
 
     public func openWork(_ start: WorkStart? = nil) {
+        // the work page opens over the chat, whose composer keeps focus: put the keyboard away
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
         workStart = start
         workOpen = true
     }
@@ -264,6 +268,10 @@ public final class Router {
 
     /// A browser tab's live view over everything; `takeControl`: take the tab over once the first picture is there.
     public func openLive(_ id: String, takeControl: Bool = false) {
+        // a live tab opens over the chat too: put the keyboard away
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
         liveTakeControl = takeControl
         liveTab = id
     }

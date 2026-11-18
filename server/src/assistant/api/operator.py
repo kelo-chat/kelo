@@ -19,6 +19,8 @@ from ..reports import ReportError
 from ..beta import BetaError
 from ..downloads import names_itself
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from ..operator_site import OperatorSiteDown
 from .context import AppContext
 
 log = logging.getLogger("uvicorn.error")
@@ -107,24 +109,46 @@ def router(ctx: AppContext) -> APIRouter:
     auth = ctx.auth
     require_auth = ctx.require_auth
     require_owner = ctx.require_owner
+    require_operator = ctx.auth.require_operator   # the operator's lists: also the operator link key of a main copy (api/auth.py)
+    operator_site = ctx.operator_site
+    operator_events = ctx.operator_events
     settings = ctx.settings
     store = ctx.store
 
+    async def from_site(method: str, path: str, *, query: dict[str, str] | None = None, body: Any = None) -> JSONResponse:
+        """A linked main copy answers the operator's lists from the site copy: its status and JSON as they are. A refusal of the key or
+        an unreachable site is a 502 with a code the apps show as their message."""
+        try:
+            status, data = await operator_site.call(method, path, query=query, body=body)
+        except OperatorSiteDown as e:
+            if e.code == "operator_site_key":
+                return JSONResponse({"code": "operator_site_key", "message": i18n.t(
+                    "The site server refused this server's operator key. Run `assistant operator link` again.")}, status_code=502)
+            return JSONResponse({"code": "operator_site_down", "message": i18n.t(
+                "Could not reach the site server. Try again in a moment.")}, status_code=502)
+        return JSONResponse(status_code=status, content=data)
+
     # ---- Kelo addresses. The operator's Cloudflare token goes in (any signed-in device), never out.
-    @router.get("/api/operator/cloudflare", dependencies=[Depends(require_owner)])
-    async def get_operator_cloudflare() -> dict[str, Any]:
+    @router.get("/api/operator/cloudflare", dependencies=[Depends(require_operator)])
+    async def get_operator_cloudflare() -> Any:
+        if operator_site.linked():
+            return await from_site("GET", "/api/operator/cloudflare")
         return kelo_names.config()
 
-    @router.put("/api/operator/cloudflare", dependencies=[Depends(require_owner)])
-    async def put_operator_cloudflare(body: OperatorCloudflareIn) -> dict[str, Any]:
+    @router.put("/api/operator/cloudflare", dependencies=[Depends(require_operator)])
+    async def put_operator_cloudflare(body: OperatorCloudflareIn) -> Any:
+        if operator_site.linked():
+            return await from_site("PUT", "/api/operator/cloudflare", body=body.model_dump(exclude_none=True))
         try:
             return await kelo_names.configure(api_token=body.api_token, account_id=body.account_id, zone_id=body.zone_id,
                                               zone_name=body.zone_name, max_names=body.max_names)
         except KeloNameError as e:
             raise HTTPException(422, str(e)) from None
 
-    @router.post("/api/operator/cloudflare/reclaim", dependencies=[Depends(require_owner)])
-    async def reclaim_kelo_names() -> dict[str, Any]:
+    @router.post("/api/operator/cloudflare/reclaim", dependencies=[Depends(require_operator)])
+    async def reclaim_kelo_names() -> Any:
+        if operator_site.linked():
+            return await from_site("POST", "/api/operator/cloudflare/reclaim")
         try:
             return {"released": await kelo_names.reclaim_idle()}
         except KeloNameError as e:
@@ -220,13 +244,15 @@ def router(ctx: AppContext) -> APIRouter:
         already running the address or push service. Every self-hosted copy (its phones included) is not."""
         if settings.review_mode:   # a review copy never shows the operator's settings
             return False
+        if operator_site.linked():   # a main copy that reads a site copy's lists is that copy's operator
+            return True
         if settings.operator is not None:
             return settings.operator
         if kelo_names.enabled() or fcm.enabled() or apns.enabled():
             return True
         return names_itself(settings.public_url, settings.oauth_broker, settings.push_broker, settings.report_broker)
 
-    @router.get("/api/operator/status", dependencies=[Depends(require_owner)])
+    @router.get("/api/operator/status", dependencies=[Depends(require_operator)])
     async def operator_status(request: Request) -> dict[str, bool]:
         # "owner" is kept for older apps: true for the access key and every device (a review copy's devices never get here: 403)
         return {"owner": request.state.device_id is None or auth.owner_flag(settings.review_mode), "operator": is_operator()}
@@ -301,19 +327,28 @@ def router(ctx: AppContext) -> APIRouter:
         except ReportError as e:
             raise report_refusal(e) from None
 
-    @router.get("/api/operator/reports", dependencies=[Depends(require_owner)])
-    async def get_operator_reports(handled: bool | None = None, limit: int = 100) -> dict[str, Any]:
+    @router.get("/api/operator/reports", dependencies=[Depends(require_operator)])
+    async def get_operator_reports(handled: bool | None = None, limit: int = 100) -> Any:
+        if operator_site.linked():
+            if not 1 <= limit <= 500:
+                raise HTTPException(422, "limit must be between 1 and 500")
+            query = {"limit": str(limit), **({} if handled is None else {"handled": "true" if handled else "false"})}
+            return await from_site("GET", "/api/operator/reports", query=query)
         return {**report_box.list(limit=limit, handled=handled), "receiving": reports.is_operator()}
 
-    @router.post("/api/operator/reports/{report_id}", dependencies=[Depends(require_owner)])
-    async def mark_operator_report(report_id: int, body: ReportMarkIn) -> dict[str, Any]:
+    @router.post("/api/operator/reports/{report_id}", dependencies=[Depends(require_operator)])
+    async def mark_operator_report(report_id: int, body: ReportMarkIn) -> Any:
+        if operator_site.linked():
+            return await from_site("POST", f"/api/operator/reports/{report_id}", body={"handled": body.handled})
         got = report_box.mark(report_id, body.handled)
         if got is None:
             raise HTTPException(404, "no such report")
         return got
 
-    @router.delete("/api/operator/reports/{report_id}", dependencies=[Depends(require_owner)])
-    async def delete_operator_report(report_id: int) -> dict[str, bool]:
+    @router.delete("/api/operator/reports/{report_id}", dependencies=[Depends(require_operator)])
+    async def delete_operator_report(report_id: int) -> Any:
+        if operator_site.linked():
+            return await from_site("DELETE", f"/api/operator/reports/{report_id}")
         if not report_box.delete(report_id):
             raise HTTPException(404, "no such report")
         return {"deleted": True}
@@ -375,17 +410,21 @@ def router(ctx: AppContext) -> APIRouter:
         except BetaError as e:
             raise beta_refusal(e) from None
 
-    @router.get("/api/operator/beta", dependencies=[Depends(require_owner)])
-    async def get_operator_beta() -> dict[str, Any]:
+    @router.get("/api/operator/beta", dependencies=[Depends(require_operator)])
+    async def get_operator_beta() -> Any:
+        if operator_site.linked():
+            return await from_site("GET", "/api/operator/beta")
         got = beta_desk.list()
         reqs = [{**r, "kind": "google"} for r in got["requests"]] + [tester_view(r) for r in tester_desk.rows()]
         reqs.sort(key=lambda r: (r["status"] != "requested", -r["created_at"]))
         open_n = int(got["open"]) + sum(1 for r in reqs if r["kind"] == "play_tester" and r["status"] == "requested")
         return {**got, "requests": reqs, "open": open_n, "receiving": google_web.is_broker(), "open_to_all": google_web.open_to_all()}
 
-    @router.post("/api/operator/beta/{request_id}", dependencies=[Depends(require_owner)])
-    async def answer_operator_beta(request_id: int, body: BetaAnswerIn) -> dict[str, Any]:
+    @router.post("/api/operator/beta/{request_id}", dependencies=[Depends(require_operator)])
+    async def answer_operator_beta(request_id: int, body: BetaAnswerIn) -> Any:
         """Approved (the operator added the address as a test user in Google Cloud Console) or Decline. Mails the requester once."""
+        if operator_site.linked():
+            return await from_site("POST", f"/api/operator/beta/{request_id}", body=body.model_dump(exclude_none=True))
         if request_id < 0:
             r = tester_desk.row(-request_id)
             if r is None:
@@ -402,10 +441,19 @@ def router(ctx: AppContext) -> APIRouter:
         except BetaError as e:
             raise beta_refusal(e) from None
 
-    @router.delete("/api/operator/beta/{request_id}", dependencies=[Depends(require_owner)])
-    async def delete_operator_beta(request_id: int) -> dict[str, bool]:
+    @router.delete("/api/operator/beta/{request_id}", dependencies=[Depends(require_operator)])
+    async def delete_operator_beta(request_id: int) -> Any:
+        if operator_site.linked():
+            return await from_site("DELETE", f"/api/operator/beta/{request_id}")
         if not (tester_desk.delete(-request_id) if request_id < 0 else beta_desk.delete(request_id)):
             raise HTTPException(404, "no such request")
         return {"deleted": True}
+
+    @router.get("/api/operator/events", dependencies=[Depends(require_operator)])
+    async def get_operator_events(after: int = 0, limit: int = 100) -> dict[str, Any]:
+        """The events a site copy keeps for its operator's main copy (operator_events.py): those with an id above `after`."""
+        if after < 0 or not 1 <= limit <= 500:
+            raise HTTPException(422, "after must be 0 or more and limit between 1 and 500")
+        return operator_events.since(after, limit=limit)
 
     return router

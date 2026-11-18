@@ -927,10 +927,14 @@
     <string name="live_held_elsewhere">正由其他裝置操作中</string>
     <string name="live_give_back">交還</string>
     <string name="live_paused_banner">現在由你操作。在你交還之前，代理會在這個分頁上等待。</string>
+    <string name="live_still_yours">您還在直接操作。您交還之前，智能體會一直等待。</string>
+    <string name="live_screen_changed">畫面已變化，請再點一次。</string>
     <string name="live_tab_closed">分頁已關閉，沒有其他內容可看。如果有儲存最後的畫面，會顯示在下方。</string>
     <string name="live_not_controller">你目前無法操作。請再點一次「接手操作」。</string>
     <string name="live_input_failed">瀏覽器無法執行這個操作。</string>
     <string name="live_state_you">由你操作中</string>
+    <string name="live_work_browser">工作瀏覽器</string>
+    <string name="live_work_browser_note">此分頁位於 Kelo 的工作瀏覽器中，與你自己的分頁分開。你在這裡登入的帳號會在工作結束時儲存到 Kelo 的主瀏覽器。</string>
     <string name="live_state_other">由其他裝置操作中</string>
     <string name="live_state_waiting">等待核准</string>
     <string name="live_connecting">連線中…</string>
@@ -1176,6 +1180,9 @@
     <string name="work_wait_answer">你說明要怎麼進行後就會繼續。</string>
     <string name="work_wait_blocked">無法自己繼續下去，所以停止了。</string>
     <string name="work_wait_restart">伺服器重新啟動時停止了。</string>
+    <string name="work_picked_up">Kelo 伺服器已重新啟動，因此從停下的地方繼續了。</string>
+    <string name="work_picked_up_browser">瀏覽器已重新啟動，因此在新分頁中繼續。</string>
+    <string name="work_wait_pickup">稍後會從停下的地方繼續。</string>
     <string name="work_schedule_on">排程開啟</string>
     <string name="work_schedule_off">排程關閉</string>
     <string name="work_schedule_by_agent">由代理建立</string>

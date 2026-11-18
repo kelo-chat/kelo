@@ -25,7 +25,7 @@ class AndroidDeviceViewModelTest {
     private var server: MyFakeServer? = null
 
     @Before fun setUp() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
-    @After fun tearDown() { server?.shutdown(); vms.clear(); Dispatchers.resetMain() }
+    @After fun tearDown() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
     private fun body(configured: Boolean = true, connected: Boolean = true, model: String = "Pixel 7", version: String = "15",
                      screen: String = """{"width":720,"height":1280}""", play: Boolean = true, korean: Boolean = false) =

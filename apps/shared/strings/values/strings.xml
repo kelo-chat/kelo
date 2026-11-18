@@ -1100,10 +1100,14 @@
     <string name="live_held_elsewhere">Being controlled from another device</string>
     <string name="live_give_back">Hand back</string>
     <string name="live_paused_banner">You\'re in control. Your agent will wait on this tab until you hand it back.</string>
+    <string name="live_still_yours">You\'re still in control. Your agent waits until you hand it back.</string>
+    <string name="live_screen_changed">The screen changed. Tap again.</string>
     <string name="live_tab_closed">The tab was closed, so there\'s nothing more to see. If the last screen was saved, it\'s shown below.</string>
     <string name="live_not_controller">You can\'t control it right now. Tap Take control again.</string>
     <string name="live_input_failed">The browser couldn\'t do that.</string>
     <string name="live_state_you">You\'re in control</string>
+    <string name="live_work_browser">Work browser</string>
+    <string name="live_work_browser_note">This tab is in Kelo\'s work browser, apart from your own tabs. A sign-in you make here is saved to Kelo\'s main browser when the job ends.</string>
     <string name="live_state_other">Another device is in control</string>
     <string name="live_state_waiting">Waiting for approval</string>
     <string name="live_connecting">Connecting…</string>
@@ -1379,6 +1383,9 @@
     <string name="work_wait_answer">Will continue once you say how to proceed.</string>
     <string name="work_wait_blocked">Stopped because it can\'t go further on its own.</string>
     <string name="work_wait_restart">Stopped when the server restarted.</string>
+    <string name="work_picked_up">The Kelo server restarted, so it picked up where it stopped.</string>
+    <string name="work_picked_up_browser">The browser restarted, so it went on in a new tab.</string>
+    <string name="work_wait_pickup">It will pick up where it stopped in a moment.</string>
     <string name="work_schedule_on">Schedule on</string>
     <string name="work_schedule_off">Schedule off</string>
     <string name="work_schedule_by_agent">Made by your agent</string>

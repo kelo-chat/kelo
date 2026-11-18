@@ -44,7 +44,7 @@ class SettingsViewModelsTest {
 
     @Before fun main() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
 
-    @After fun stop() { server?.shutdown(); vms.clear(); Dispatchers.resetMain() }
+    @After fun stop() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
     private fun serve(answer: (String, String, String) -> okhttp3.mockwebserver.MockResponse?): MyFakeServer = MyFakeServer(answer).also { server = it }
 

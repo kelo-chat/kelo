@@ -21,14 +21,13 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OffersViewModelTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<String>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
     @Volatile private var offersBody = """{"items":[{"id":"o1","sentence":"Task 1"},{"id":"o2","sentence":"Task 2"}]}"""
     @Volatile private var startAnswer: MockResponse = MockResponse().setBody("""{"turn_id":"t9"}""")
 
@@ -59,8 +58,7 @@ class OffersViewModelTest {
     }
 
     @After fun stop() {
-        server.shutdown()
-        vms.clear(); Dispatchers.resetMain()
+        vms.clear(); server.shutdown(); Dispatchers.resetMain()
     }
 
     private fun sessions(): Sessions {
@@ -75,7 +73,7 @@ class OffersViewModelTest {
     }
 
     @Test fun loadHasTwoItems() {
-        val vm = OffersViewModel(sessions())
+        val vm = vms.make { OffersViewModel(sessions()) }
         until { vm.state.value.items.size == 2 }
         assertEquals(2, vm.state.value.items.size)
         assertEquals("o1", vm.state.value.items[0].id)
@@ -83,7 +81,7 @@ class OffersViewModelTest {
     }
 
     @Test fun startSuccessCallbackGetsTurnAndItemLeaves() {
-        val vm = OffersViewModel(sessions())
+        val vm = vms.make { OffersViewModel(sessions()) }
         until { vm.state.value.items.size == 2 }
         val o1 = vm.state.value.items.first { it.id == "o1" }
 
@@ -99,7 +97,7 @@ class OffersViewModelTest {
 
     @Test fun startBusySetsProblemAndItemStays() {
         startAnswer = MockResponse().setResponseCode(409).setBody("""{"detail":"a reply is running"}""")
-        val vm = OffersViewModel(sessions())
+        val vm = vms.make { OffersViewModel(sessions()) }
         until { vm.state.value.items.size == 2 }
         val o1 = vm.state.value.items.first { it.id == "o1" }
 
@@ -113,7 +111,7 @@ class OffersViewModelTest {
 
     @Test fun startWithCodeSetsProblemFailed() {
         startAnswer = MockResponse().setResponseCode(409).setBody("""{"detail":{"code":"secret_in_message","message":"x"}}""")
-        val vm = OffersViewModel(sessions())
+        val vm = vms.make { OffersViewModel(sessions()) }
         until { vm.state.value.items.size == 2 }
         val o1 = vm.state.value.items.first { it.id == "o1" }
 
@@ -125,7 +123,7 @@ class OffersViewModelTest {
     }
 
     @Test fun dismissRemovesItemAtOnceAndCallsServer() {
-        val vm = OffersViewModel(sessions())
+        val vm = vms.make { OffersViewModel(sessions()) }
         until { vm.state.value.items.size == 2 }
         val o2 = vm.state.value.items.first { it.id == "o2" }
 

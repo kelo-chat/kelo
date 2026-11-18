@@ -166,7 +166,7 @@ class Activity:
             for col, ddl in (("resume", "TEXT NOT NULL DEFAULT ''"), ("restarts", "INTEGER NOT NULL DEFAULT 0"),
                              ("resumed_from", "INTEGER"), ("resumed_as", "INTEGER"), ("resume_state", "TEXT NOT NULL DEFAULT ''"),
                              ("wait_since", "REAL"), ("retry_at", "REAL"), ("waits", "INTEGER NOT NULL DEFAULT 0"),
-                             ("wait_noted", "INTEGER NOT NULL DEFAULT 0")):
+                             ("wait_noted", "INTEGER NOT NULL DEFAULT 0"), ("steps", "TEXT NOT NULL DEFAULT ''")):
                 if col not in have:   # going on after a restart or a model outage (resume.py)
                     store._db.execute(f"ALTER TABLE tasks ADD COLUMN {col} {ddl}")
             store._db.execute("CREATE TABLE IF NOT EXISTS resume_offers (message_id INTEGER PRIMARY KEY, task_id INTEGER NOT NULL, "
@@ -326,6 +326,11 @@ class Activity:
         else:
             self.store._run("UPDATE tasks SET result = ?, seen = 1 WHERE id = ?", (t("There was nothing to tell"), task_id))
         return self.task(task_id)
+
+    def set_steps(self, task_id: int, steps: str) -> None:
+        """The tool steps of a finished run as a short JSON summary (skill_lessons.run_steps): read by the nightly look-back for lessons.
+        Never the tool arguments or results."""
+        self.store._run("UPDATE tasks SET steps = ? WHERE id = ?", (steps[:4000], task_id))
 
     def _task(self, r: dict[str, Any], full: bool = False) -> dict[str, Any]:
         src = r["source"]

@@ -140,6 +140,15 @@ PyPI (not copied into this repository):
 server/src/assistant/day_types.py uses the `holidays` Python package (https://github.com/vacanza/holidays, MIT License) to tell public
 holidays from working days.
 
+Speech recognition for voice input (server/src/assistant/voice*.py, docs/voice.md)
+-----------------------------------------------------------------------------------
+Not part of this repository or the images. The Kelo server downloads these speech models from Hugging Face on the owner's request
+(My → 음성 입력), checks each file by its SHA-256, and keeps them in the server's own volume:
+    - SenseVoice Small, https://github.com/FunAudioLLM/SenseVoice, FunASR Model License (ONNX int8 conversion: k2-fsa, unchanged).
+    - Parakeet TDT 0.6B v3, https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3, CC BY 4.0 (int8 ONNX conversion: k2-fsa, unchanged).
+Included in the server image (the `voice` container): sherpa-onnx (k2-fsa), Apache-2.0; onnxruntime (Microsoft), MIT; Silero VAD
+(snakers4/silero-vad), MIT; opencc-python-reimplemented, Apache-2.0 (Simplified to Traditional Chinese for zh-Hant owners).
+
 Service icons (third-party trademarks)
 --------------------------------------
 

@@ -13,8 +13,6 @@ irm https://kelo.chat/install-windows.ps1 | iex
 irm https://kelo.chat/install.ps1 | iex
 ```
 
-> **Mac (coming): Kelo Server.pkg:** Work is underway on a signed macOS installer package (`Kelo Server.pkg`) for macOS 26+ on Apple silicon. It installs Apple `container` and Kelo's container runtime to run Kelo without Docker or terminal commands. It sets up a background service (`chat.kelo.server`, started when you sign in) that downloads Kelo's signed images and starts Kelo; a setup page opens in your browser (the same guided steps as on Linux and Windows: size, outside address, QR code for the phone). Not released yet; see [Direction since 2026-11-16](native-server.md#direction-since-2026-11-16-apple-container-on-macos-26-apple-silicon).
->
 > **Windows without Docker Desktop:** the Windows line above installs Kelo Server into Kelo's own WSL 2 distro (no Docker Desktop needed, free for everyone). It downloads the Windows installer (MSI) from kelo.chat, checks its size and SHA-256 against the release list, and installs it silently. For architecture, see [Direction since 2026-11-16 (Windows)](native-server.md#direction-since-2026-11-16-windows).
 
 The installer downloads the newest release of [kelo-chat/kelo-server](https://github.com/kelo-chat/kelo-server) (the server part of
@@ -74,6 +72,7 @@ curl -fsSL https://kelo.chat/install.sh | bash -s -- --version 0.10.2
 - **Uninstall:** `bash install.sh --uninstall`. It stops every copy, removes the main containers and the `kelo` command, gives
   a Kelo address back, and keeps your data (Docker volumes, `.env` and `instances/`) unless you add `--delete-data` (then
   every copy is deleted with `kelo instance delete`).
+- **Windows uninstall:** remove Kelo Server in Settings > Apps. It keeps your data in `C:\ProgramData\Kelo\wsl`. To delete the data too, open a terminal as administrator and run `msiexec /x "KeloServer-<version>-x64.msi" KELO_DELETE_DATA=1` with the MSI you installed. Backups you made by hand (`backup-*.tar` in `C:\ProgramData\Kelo`) are kept.
 
 ## Windows: SmartScreen and Smart App Control
 

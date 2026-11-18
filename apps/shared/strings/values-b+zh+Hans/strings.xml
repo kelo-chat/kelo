@@ -927,10 +927,14 @@
     <string name="live_held_elsewhere">正在由另一台设备操控</string>
     <string name="live_give_back">交还</string>
     <string name="live_paused_banner">现在由你操控。在你交还之前，智能体会在这个标签页上等待。</string>
+    <string name="live_still_yours">您还在直接操作。您交还之前，智能体会一直等待。</string>
+    <string name="live_screen_changed">画面已变化，请再点一次。</string>
     <string name="live_tab_closed">标签页已关闭，没有更多可看的内容。如果保存了最后的画面，会显示在下方。</string>
     <string name="live_not_controller">你现在无法操控。请再次点按“接管”。</string>
     <string name="live_input_failed">浏览器无法执行该操作。</string>
     <string name="live_state_you">由你操控中</string>
+    <string name="live_work_browser">工作浏览器</string>
+    <string name="live_work_browser_note">此标签页位于 Kelo 的工作浏览器中，与你自己的标签页分开。你在这里登录的账号会在任务结束时保存到 Kelo 的主浏览器。</string>
     <string name="live_state_other">另一台设备操控中</string>
     <string name="live_state_waiting">正在等待批准</string>
     <string name="live_connecting">正在连接…</string>
@@ -1176,6 +1180,9 @@
     <string name="work_wait_answer">你告诉它如何进行后会继续。</string>
     <string name="work_wait_blocked">它无法独自继续，已停止。</string>
     <string name="work_wait_restart">服务器重启时已停止。</string>
+    <string name="work_picked_up">Kelo 服务器已重启，因此从停下的地方继续了。</string>
+    <string name="work_picked_up_browser">浏览器已重启，因此在新标签页中继续。</string>
+    <string name="work_wait_pickup">稍后会从停下的地方继续。</string>
     <string name="work_schedule_on">自动任务已开启</string>
     <string name="work_schedule_off">自动任务已关闭</string>
     <string name="work_schedule_by_agent">由智能体创建</string>

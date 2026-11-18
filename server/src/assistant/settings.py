@@ -23,6 +23,8 @@ class Settings:
     provider: str = ""
     model: str = ""
     cdp_host: str | None = "browser"
+    work_cdp_host: str | None = "work-browser"   # the work browser (scheduled and background tabs; empty = off: WORK_BROWSER_CDP_HOST)
+    work_cdp_port: int = 9225
     cdp_port: int = 9223
     approve_browser_actions: bool = False   # True = every browser click / typing step asks; default: only steps that commit something
     allow_private_browsing: bool = False
@@ -78,6 +80,11 @@ class Settings:
                                          # (app_releases.py; set at server start, never from the environment)
     operator: bool | None = None         # ASSISTANT_OPERATOR: this is (True) / is not (False) the operator's server; None = decide by
                                          # the rest (it names itself as broker, or runs the address or push service)
+    site_only: bool = False              # ASSISTANT_SITE_ONLY: this copy serves kelo.chat, the downloads, the sign-in / push / report brokers
+                                         # and the operator's lists, and runs no assistant (site_only.py, docs/site-only.md)
+    operator_link_sha256: str = ""       # KELO_OPERATOR_LINK_SHA256 (site copy): the SHA-256 of the operator link key; the key itself is on the main copy
+    operator_site_url: str = ""          # KELO_OPERATOR_SITE_URL (main copy): the site copy's https address, when it is linked
+    operator_site_key: str = ""          # KELO_OPERATOR_SITE_KEY (main copy): the operator link key the site copy accepts (main .env only)
     updater_url: str = ""               # the updater container (updater_service.py), main copy only: ASSISTANT_UPDATER_URL
     updater_token: str = ""             # UPDATER_TOKEN, shared with the updater only (`assistant setup` makes it); "" = no updates from the app
     auto_update: bool = False            # KELO_AUTO_UPDATE: nightly server auto-update until the owner changes it in the app
@@ -113,11 +120,17 @@ class Settings:
         if len(token) < 16:
             raise RuntimeError("ASSISTANT_TOKEN must be set (16+ characters). Run `assistant setup` to create one.")
         flag = lambda k, d: env.get(k, d).lower() not in ("0", "false", "no", "")  # noqa: E731
-        return cls(
+        site_only = operator_flag(env.get("ASSISTANT_SITE_ONLY")) is True
+        operator = operator_flag(env.get("ASSISTANT_OPERATOR"))
+        if site_only and operator is None:   # a site copy is the operator's server unless ASSISTANT_OPERATOR says otherwise
+            operator = True
+        settings = cls(
             token=token,
             provider=env.get("ASSISTANT_PROVIDER", ""),
             model=env.get("ASSISTANT_MODEL", ""),
             cdp_host=env.get("BROWSER_CDP_HOST", "browser") or None,
+            work_cdp_host=env.get("WORK_BROWSER_CDP_HOST", "work-browser") or None,
+            work_cdp_port=int(env.get("WORK_BROWSER_CDP_PORT", "9225") or 9225),
             cdp_port=int(env.get("BROWSER_CDP_PORT", "9223")),
             approve_browser_actions=flag("ASSISTANT_APPROVE_BROWSER_ACTIONS", "0"),
             allow_private_browsing=flag("ASSISTANT_BROWSER_ALLOW_PRIVATE", "0"),
@@ -165,12 +178,60 @@ class Settings:
             package_drafts_dir=env.get("ASSISTANT_PACKAGE_DRAFTS_DIR", "").strip(),
             custom_skills_dir=env.get("ASSISTANT_CUSTOM_SKILLS_DIR", "").strip(),
             min_app_version=_min_app_versions(env),
-            operator=operator_flag(env.get("ASSISTANT_OPERATOR")),
+            operator=operator,
+            site_only=site_only,
+            operator_link_sha256=_link_hash(env.get("KELO_OPERATOR_LINK_SHA256", "")),
+            operator_site_url=_site_url(env.get("KELO_OPERATOR_SITE_URL", "")),
+            operator_site_key=_site_key(env.get("KELO_OPERATOR_SITE_KEY", "")),
             updater_url=env.get("ASSISTANT_UPDATER_URL", "").strip(),
             updater_token=env.get("UPDATER_TOKEN", "").strip(),
             auto_update=flag("KELO_AUTO_UPDATE", "0"),
             notices_url=env.get("KELO_NOTICES_URL", "https://kelo.chat/download/notices.json").strip(),
         )
+        if site_only:
+            _site_only_settings(settings)
+        return settings
+
+
+def _site_only_settings(s: Settings) -> None:
+    """A site copy runs none of the assistant's own parts, whatever the env or compose.yml says (compose.yml sets the keyring, bridge,
+    updater and route variables for every copy, so they are cleared here, not only left out of the env file). Nothing is deleted."""
+    s.scheduler = False
+    s.cdp_host = None
+    s.workroom_dir = s.route_dir = s.vpn_dir = s.browser_download_dir = ""
+    s.keyring_url = s.keyring_token = s.android_url = s.android_device = ""
+    s.updater_url = s.updater_token = ""
+    s.auto_update = False
+    s.notices_url = ""               # the site serves notices.json itself; it does not read the feed
+    s.unofficial_providers = False
+    s.workers_max = 0
+
+
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _link_hash(text: str) -> str:
+    v = (text or "").strip().lower()
+    if v and not _HEX64.match(v):
+        raise RuntimeError("KELO_OPERATOR_LINK_SHA256 must be 64 hexadecimal characters (the hash `assistant operator link` writes)")
+    return v
+
+
+def _site_url(text: str) -> str:
+    v = (text or "").strip().rstrip("/")
+    if v and not re.match(r"^https://[a-z0-9.-]+(:\d{1,5})?$", v, re.IGNORECASE):
+        raise RuntimeError("KELO_OPERATOR_SITE_URL must be an https address with no path (for example https://kelo.chat)")
+    return v
+
+
+_SITE_KEY = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
+
+
+def _site_key(text: str) -> str:
+    v = (text or "").strip()
+    if v and not _SITE_KEY.match(v):
+        raise RuntimeError("KELO_OPERATOR_SITE_KEY is not a valid operator link key (set by `assistant operator link`)")
+    return v
 
 
 def _count(env: dict[str, str], key: str, default: int, low: int, high: int) -> int:

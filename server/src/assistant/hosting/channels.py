@@ -17,7 +17,7 @@ from . import operating_system
 WORKROOM_LINK_ENV = "WORKROOM_LINK"      # "tcp": the work room is reached over a private network link instead of a socket in a shared folder
 WORKROOM_AGENT_PORT = 9710               # the work room's agent, on the work room's side of the link
 WORKROOM_PROXY_PORT = 9711               # the server's install proxy, on the server's side of the link
-WORKROOM_HOST = "workroom"               # the names the two containers have for each other on the link (Apple container hosts files)
+WORKROOM_HOST = "workroom"               # the names the two containers have for each other on the link
 SERVER_HOST = "server"
 PIPE_PREFIX = "\\\\.\\pipe\\"
 PIPE_NAME_PREFIX = "kelo-"
@@ -127,8 +127,8 @@ class LocalChannel:
 
 
 class TcpChannel(LocalChannel):
-    """The same meeting point over TCP, for a host whose containers cannot share a socket file (Apple container: a socket on a
-    folder shared with the host cannot be chmodded, and another container cannot connect to it).
+    """The same meeting point over TCP, for a host whose containers cannot share a socket file
+    (a socket on a folder shared with the host cannot be chmodded, and another container cannot connect to it).
 
     Safe only on a network that holds nothing but the two containers and has no way out (`workroom-link`, internal). The side that
     listens binds every address of its container; the other side connects to `host`. Same calls as LocalChannel."""

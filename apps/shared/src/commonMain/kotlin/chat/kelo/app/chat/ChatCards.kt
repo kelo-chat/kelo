@@ -76,6 +76,8 @@ fun ApprovalCard(a: ChatItem.Approval, onAnswer: (String, Boolean, Boolean, Bool
         val editable = a.editable
         a.preapproval?.let { chat.kelo.app.agent.PreapprovalFacts(it) }
             ?: ApprovalFacts(if (editable != null) chat.kelo.app.agent.ApprovalEditRules.withoutMessage(a.lines, editable) else a.lines, a.detail.takeIf { editable == null })
+        // a designed mail: the words above, then how it will look (the owner reads the text first)
+        a.mail?.let { MailPreviewBlock(a.id, it) }
         if (editable != null) chat.kelo.app.agent.EditableMessageBlock(a.id, editable, enabled = a.open)
         if (a.items.isNotEmpty()) ApprovalItems(a.items)
         if (a.forgetPlan.isNotEmpty()) chat.kelo.app.agent.ForgetPlanList(a.forgetPlan)

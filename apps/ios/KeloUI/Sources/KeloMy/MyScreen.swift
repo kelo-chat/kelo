@@ -71,6 +71,8 @@ struct MyDestination: View {
             case .records: RecordsPage(api: api)
             case .notify: NotifyPage(api: api)
             case .proactiveHeld: ProactiveHeldPage(api: api)
+            case .situation: SituationPage(api: api)
+            case .situationPass(let id): SituationDetailPage(api: api, passId: id)
             case .model: ModelPage(api: api, cache: app.cache, prefs: app.prefs, host: app)
             case .modelCli(let p): ModelPage(api: api, cache: app.cache, prefs: app.prefs, host: app, cliProvider: p)
             case .usage: UsagePage(api: api)
@@ -81,6 +83,7 @@ struct MyDestination: View {
             case .vaultAddLogin: AddLoginPage(vault: vault)
             case .vaultLog: VaultLogPage(vault: vault)
             case .resources: ResourcesPage(api: api)
+            case .voice: VoicePage(api: api)
             case .cleanup: CleanupPage(api: api)
             case .documents: DocumentsPage(api: api)
             case .files: KeloFilesPage(api: api)
@@ -169,6 +172,7 @@ struct MyHome: View {
                     MenuRow(.chip, L(R.string.resources_title), value: warning ?? o.sizes.map { profileText($0, long: false) ?? $0 },
                             valueColor: warning == nil ? nil : (StorageRules.urgent(storage) ? c.danger : c.warn)) { nav.push(.resources) }
                         .accessibilityIdentifier("kelo.resources.row")
+                    MenuRow(.mic, L(R.string.voice_page_title)) { nav.push(.voice) }
                     if let su = o.serverUpdate, ServerUpdateRules.visible(su) {
                         MenuRow(.update, L(R.string.server_update_title), value: ServerUpdateRules.rowValue(su)) { nav.push(.serverUpdate) }
                             .accessibilityIdentifier("kelo.serverUpdate.row")

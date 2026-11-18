@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Kelo가 살펴본 것</string>
+    <string name="situation_title">Kelo가 살펴본 것</string>
+    <string name="situation_hourly_head">Kelo가 매시간 살펴보는 것</string>
+    <string name="situation_read_when_needed_head">직접 물어볼 때만 읽는 것</string>
+    <string name="situation_read_when_needed_about">질문에 필요할 때만 읽어요. 상태를 읽는 방법을 알려 준 연결은 매시간 살펴볼 수 있어요.</string>
+    <string name="situation_section_conversation">대화</string>
+    <string name="situation_section_mail">메일</string>
+    <string name="situation_section_calendar">일정</string>
+    <string name="situation_section_goals">목표</string>
+    <string name="situation_section_schedules">일정표</string>
+    <string name="situation_section_memory">메모리</string>
+    <string name="situation_section_other">기타</string>
+    <string name="situation_empty">아직 없어요. 첫 확인은 다음 시간의 9분에, 깨어 있는 시간 동안 해요.</string>
+    <string name="situation_keep_days">%d일 동안 보관해요</string>
+    <string name="situation_outcome_no_change">새로운 것 없음</string>
+    <string name="situation_outcome_nothing">살펴봤고, 전할 것 없음</string>
+    <string name="situation_outcome_proposed">%d개 준비함</string>
+    <string name="situation_outcome_selected">%d개 골랐음</string>
+    <string name="situation_outcome_delivered">알려 드림</string>
+    <string name="situation_outcome_failed">살펴보지 못함</string>
+    <string name="situation_outcome_running">지금 살펴보는 중</string>
+    <string name="situation_outcome_other">살펴봄</string>
+    <string name="situation_load_more">더 보기</string>
+    <string name="situation_detail_changed">바뀐 것</string>
+    <string name="situation_detail_same">전과 같음 (%d)</string>
+    <string name="situation_detail_failed">읽지 못함</string>
+    <string name="situation_detail_off">꺼짐</string>
+    <string name="situation_detail_done">Kelo가 한 일</string>
+    <string name="situation_detail_none">이번에는 준비한 것이 없어요.</string>
+    <string name="situation_state_new">새로움</string>
+    <string name="situation_state_same">전과 같음</string>
+    <string name="situation_state_changed">바뀜</string>
+    <string name="situation_state_failed">읽지 못함</string>
+    <string name="situation_state_timeout">너무 오래 걸림</string>
+    <string name="situation_state_skipped">제외됨: 이번 확인이 가득 찼어요</string>
+    <string name="situation_state_off">꺼짐</string>
+    <string name="situation_state_other">기타</string>
+    <string name="situation_event_proposed">준비함</string>
+    <string name="situation_event_updated">업데이트함</string>
+    <string name="situation_event_selected_today">오늘 할 것으로 골랐음</string>
+    <string name="situation_event_selected_regular">보통 메시지로 골랐음</string>
+    <string name="situation_event_told">알려 드림</string>
+    <string name="situation_event_dropped">제외함: %s</string>
+    <string name="situation_event_dropped_none">제외함: 알려 줄 만큼 중요하지 않음</string>
+    <string name="situation_event_expired">시간이 지나서 끝남</string>
+    <string name="situation_event_waiting">더 좋은 때를 기다리는 중</string>
+</resources>

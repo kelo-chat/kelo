@@ -83,6 +83,10 @@ public final class ChatModel {
     @ObservationIgnored var seq = 0
     @ObservationIgnored var fresh: Set<String> = []
     @ObservationIgnored var lastId: Int64 = 0
+    /// The server's views (the browser tabs and the phone shown in the chat): their version, the list, and the server's clock
+    @ObservationIgnored var viewsVersion = -1
+    @ObservationIgnored var views: [ChatViewItem]? = nil   // nil: nothing fetched yet, or an older server without the route
+    @ObservationIgnored var viewsAt: Double = 0
     @ObservationIgnored var turn: Task<Void, Never>?
     @ObservationIgnored var turnId = ""          // the followed reply's id (Live Activity, backlog 64b)
     @ObservationIgnored var liveStarted = false

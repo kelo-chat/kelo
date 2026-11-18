@@ -155,7 +155,7 @@ def test_the_report_shows_what_each_container_uses_and_warns_about_overcommit_an
     assert "main" in text and "alice" in text
     assert "RAM 46MB now, limit 6.0GB" in text and "CPU 0.30% now, limit 2" in text and "RAM 264MB now, limit 1.0GB" in text
     assert "3.0MB used, limit 2.0GB" in text and "3.0MB used, limit whole disk (20.0GB free)" in text
-    assert "This computer: RAM 8 GB · CPU 4 · 20 GB free disk" in text and "RAM limits added up: 15.0GB of 8.0GB" in text   # 11 GB set + the two work rooms' 2 GB default and "more than this computer has" in text
+    assert "This computer: RAM 8 GB · CPU 4 · 20 GB free disk" in text and "RAM limits added up: 19.0GB of 8.0GB" in text   # 11 GB set + the two work rooms and the two speech-to-text containers, 2 GB default each and "more than this computer has" in text
     assert "limit no limit" not in text and "browser cache browser default (1 GB)" in text            # nothing is reported as a bare "no limit"
     assert "main/claude-cli" not in text                                                            # only containers that exist are listed
     assert "workroom    RAM limit 2.0GB (default)  |  CPU limit all 4 CPUs" in text and "work room scratch 2.0GB (default)" in text
@@ -195,3 +195,16 @@ def test_the_work_room_is_capped_by_default_and_none_lifts_the_cap_instead_of_br
     cur = limits.current(m.load())
     assert (cur["workroom_memory"], cur["workroom_disk"], cur["workroom_cpus"]) == ("no limit", "4.0GB", "1")
     assert limits.prepare(m, {"workroom_memory": "256m"})[2][0].startswith("work room RAM 256MB is below the minimum (384MB): work room idle 20 MB")
+
+
+def test_the_work_browser_has_its_own_row_with_no_cap_by_default_and_only_where_a_browser_is(tmp_path):
+    """Scheduled and background tabs run in the work browser (owner decision D4): no cap by default, the owner may set one, and a copy
+    without a browser has no work browser row."""
+    m, run, msgs = make(tmp_path, ps=[], stats="")
+    m.create("alice", browser=False)
+    line = next(x for x in limits.report(m, only="main") if x.startswith("  work-browser"))
+    assert "limit" in line and "no limit" not in line          # shows what the computer has, never "no limit"
+    limits.save(m.load(), {"WORK_BROWSER_MEMORY": str(512 * MB)}, [])
+    line = next(x for x in limits.report(m, only="main") if x.startswith("  work-browser"))
+    assert "RAM" in line and "limit 512" in line
+    assert not any(x.startswith("  work-browser") for x in limits.report(m, only="alice"))

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">ดาวน์โหลดโมเดลการรู้จำเสียงพูด %1$s ลงในเซิร์ฟเวอร์ Kelo ของคุณหรือไม่ ถ้าไม่ จะใช้การรู้จำเสียงพูดของโทรศัพท์</string>
+    <string name="voice_server_downloading">กำลังดาวน์โหลดโมเดลเสียง · %1$d%%</string>
+    <string name="voice_server_ready">เซิร์ฟเวอร์ Kelo ของคุณเข้าใจเสียงของคุณแล้ว</string>
+    <string name="voice_server_download_failed">ดาวน์โหลดโมเดลเสียงไม่สำเร็จ</string>
+    <string name="voice_server_no_room">พื้นที่ว่างบนเซิร์ฟเวอร์ Kelo ไม่พอ (ต้องใช้ %1$s)</string>
+    <string name="voice_retry">ลองอีกครั้ง</string>
+    <string name="voice_transcribing">กำลังแปลงเป็นข้อความ…</string>
+    <string name="voice_cancel_recording">ยกเลิกการบันทึก</string>
+    <string name="voice_stop_recording">หยุดบันทึก</string>
+    <string name="voice_ends_in">จะหยุดใน %1$d วินาที</string>
+    <string name="voice_server_offline">เชื่อมต่อเซิร์ฟเวอร์ Kelo ไม่ได้ จึงแปลงเป็นข้อความไม่ได้</string>
+    <string name="voice_server_busy">เซิร์ฟเวอร์ Kelo กำลังประมวลผลการบันทึกอื่นอยู่ ลองใหม่อีกครั้งในอีกสักครู่</string>
+    <string name="voice_server_too_long">การบันทึกยาวเกินไป กรุณาพูดไม่เกิน 2 นาที</string>
+    <string name="voice_page_title">การป้อนข้อความด้วยเสียง</string>
+    <string name="voice_page_intro">เสียงของคุณจะถูกแปลงเป็นข้อความบนเซิร์ฟเวอร์ Kelo แล้วข้อความจะไปอยู่ในช่องพิมพ์ ไม่มีการส่งเองอัตโนมัติ</string>
+    <string name="voice_model_in_use">โมเดลเสียงที่ใช้อยู่</string>
+    <string name="voice_state_off">การรู้จำเสียงพูดของโทรศัพท์</string>
+    <string name="voice_change_model">เปลี่ยนโมเดล</string>
+    <string name="voice_download_model">ดาวน์โหลดโมเดล</string>
+    <string name="voice_remove_model">ลบโมเดล</string>
+    <string name="voice_remove_confirm">ลบโมเดลเสียงหรือไม่ หลังจากนั้นจะใช้การรู้จำเสียงพูดของโทรศัพท์</string>
+    <string name="voice_phone_note">โมเดลเสียงของเซิร์ฟเวอร์ Kelo ยังไม่รองรับภาษานี้ จึงใช้การรู้จำเสียงพูดของโทรศัพท์</string>
+    <string name="voice_model_size">ขนาด %1$s · หน่วยความจำขณะใช้ %2$s</string>
+    <string name="voice_runtime_missing">รันตัวติดตั้งเซิร์ฟเวอร์ Kelo อีกครั้งเพื่อใช้งานฟีเจอร์นี้</string>
+</resources>

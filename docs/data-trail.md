@@ -121,3 +121,5 @@ Tests: bcc and display-name forms are all read, a bcc outside the permission ask
 changed body or recipient after approval asks again, an unchanged call runs once; outside text earlier in the turn does not make an
 owner-named send ask, a target only in outside text asks, content copied from outside text to an unnamed target asks, files written
 from outside content are labelled and fenced when read, an unsupported attribute store fails closed.
+
+Memory the owner did not say (a mail, a page, a job report) is never kept: see memory-pipeline.md, "Owner's words only".

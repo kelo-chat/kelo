@@ -44,9 +44,10 @@ class PhoneCardTest {
         assertEquals("k1", cards[0].key)
         assertEquals("휴대폰에서 누르는 중", cards[0].status)
         assertEquals(shot, cards[0].image); assertEquals(780, cards[0].height)
-        // the next reply starts its own card
+        // one phone card in the whole list: the next reply moves it to where the phone is now (chat_views: one card per tab)
         val again = run(TurnEvent.Device("c3", "android", "s", null), start = items + ChatItem.Msg(key(), mine = true, text = "또"))
-        assertEquals(2, again.filterIsInstance<ChatItem.Browser>().size)
+        assertEquals(1, again.filterIsInstance<ChatItem.Browser>().size)
+        assertTrue(again.last() is ChatItem.Browser)
     }
 
     @Test fun aPhoneCardAndABrowserCardDoNotMerge() {

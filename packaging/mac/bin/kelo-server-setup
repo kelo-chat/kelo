@@ -1,0 +1,178 @@
+#!/bin/bash
+# Kelo server, user side: run as the user by the app (and by hand for the tests). No administrator rights are used here.
+#   kelo-server-setup prepare --memory GiB --cpus N [--no-service]   create the VM if needed, wait for it, provision it, install Kelo
+#   kelo-server-setup setup-page                                     the guided setup page (its one link line on stdout)
+#   kelo-server-setup remove-data                                    test folders only (--no-service tests): deletes the VM
+#   kelo-server-setup status                                         one line: none | stopped | running | ready
+# Environment, set by the app: LIMA_HOME (~/.kelo-server/vm), KELO_SERVER_PORT (8080), KELO_SETUP_PORT (8081).
+# KELO_TEST_BUNDLE and KELO_TEST_IMAGE exist for the live test only (a bundle folder other than the installed one, a local image).
+# Exit codes: 0 ok; 64 bad input; 70 the VM did not start; 71 provisioning failed; 72 install.sh failed; 73 timeout.
+set -euo pipefail
+
+BUNDLE="${KELO_TEST_BUNDLE:-/Library/Application Support/Kelo Server/current}"
+LIMACTL="$BUNDLE/bin/limactl"
+VM="kelo"
+LIMA_HOME="${LIMA_HOME:?LIMA_HOME is set by the app}"
+export LIMA_HOME
+PORT_SERVER="${KELO_SERVER_PORT:-8080}"
+PORT_SETUP="${KELO_SETUP_PORT:-8081}"
+VERSION="$(cat "$BUNDLE/version.txt" 2>/dev/null || echo unknown)"
+LOG_DIR="$HOME/Library/Logs/Kelo Server"
+LOG="$LOG_DIR/setup-$VERSION.log"
+
+log() {
+    mkdir -p "$LOG_DIR"
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" | tee -a "$LOG" >&2
+}
+
+die() {
+    code="$1"; shift
+    log "error: $*"
+    exit "$code"
+}
+
+is_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]; }
+is_number() { [[ "$1" =~ ^[0-9]+$ ]]; }
+
+vm_status() { "$LIMACTL" list --format '{{.Status}}' "$VM" 2>/dev/null || echo none; }
+vm_cat() { "$LIMACTL" shell "$VM" -- cat "$1" 2>/dev/null; }
+provision_version() { sed -n 's/^PROVISION_VERSION=\([0-9][0-9]*\)$/\1/p' "$BUNDLE/share/kelo/provision.sh"; }
+
+create_instance() {
+    local sets=()
+    if [ "$PORT_SERVER" != 8080 ]; then sets+=(".portForwards[0].hostPort = $PORT_SERVER"); fi
+    if [ "$PORT_SETUP" != 8081 ]; then
+        # the setup page's address is printed inside the VM, so the guest port follows the host port
+        sets+=(".portForwards[1].guestPort = $PORT_SETUP" ".portForwards[1].hostPort = $PORT_SETUP")
+    fi
+    if [ -n "${KELO_TEST_IMAGE:-}" ]; then sets+=(".images[0].location = \"$KELO_TEST_IMAGE\""); fi
+    local args=(create --tty=false --name "$VM" --memory "$MEMORY" --cpus "$CPUS")
+    if [ "${#sets[@]}" -gt 0 ]; then
+        local joined="${sets[0]}" s
+        for s in "${sets[@]:1}"; do joined="$joined | $s"; done
+        args+=(--set "$joined")
+    fi
+    log "creating the VM ($MEMORY GiB, $CPUS CPUs)"
+    "$LIMACTL" "${args[@]}" "$BUNDLE/share/kelo/kelo-vm.yaml" >>"$LOG" 2>&1 || die 70 "could not create the VM"
+    # Time Machine would back up a 10 to 100 GB disk that changes all the time; Kelo's own backup covers the data
+    tmutil addexclusion "$LIMA_HOME" >>"$LOG" 2>&1 || log "warning: the VM folder is not excluded from Time Machine"
+}
+
+start_in_background() {
+    "$LIMACTL" start --tty=false "$VM" >>"$LOG" 2>&1 &
+    echo $! > "$LIMA_HOME/setup-start.pid"
+}
+
+wait_running() {
+    local deadline=$((SECONDS + 600))
+    while [ "$(vm_status)" != Running ]; do
+        [ "$SECONDS" -lt "$deadline" ] || return 1
+        sleep 5
+    done
+    # Running is not enough: the shell (ssh) comes a moment later. Found 2026-11-18: the first copy failed in that gap.
+    local ready_by=$((SECONDS + 300))
+    until "$LIMACTL" shell "$VM" -- true >/dev/null 2>&1; do
+        [ "$SECONDS" -lt "$ready_by" ] || return 1
+        sleep 3
+    done
+}
+
+# copy_retry SRC DST: limactl copy runs over ssh (rsync); a transfer can drop, so it is tried three times.
+copy_retry() {
+    local attempt
+    for attempt in 1 2 3; do
+        "$LIMACTL" copy "$1" "$2" >>"$LOG" 2>&1 && return 0
+        sleep 5
+    done
+    return 1
+}
+
+upgrade_vm() {
+    log "updating the VM's provisioning"
+    copy_retry "$BUNDLE/share/kelo/provision.sh" "$VM:/tmp/kelo-provision.sh" || return 1
+    "$LIMACTL" shell "$VM" -- sudo bash /tmp/kelo-provision.sh >>"$LOG" 2>&1 || return 1
+}
+
+wait_provisioned() {
+    local want have upgraded=0 deadline=$((SECONDS + 1200))
+    want="$(provision_version)"
+    is_number "$want" || die 71 "the bundle has no PROVISION_VERSION"
+    while :; do
+        have="$(vm_cat /var/lib/kelo/provisioned || true)"
+        if [ "$have" = "$want" ]; then return 0; fi
+        if is_number "$have" && [ "$have" -lt "$want" ] && [ "$upgraded" = 0 ]; then
+            upgraded=1
+            upgrade_vm || die 71 "provisioning the VM failed"
+        fi
+        [ "$SECONDS" -lt "$deadline" ] || die 73 "the VM was not provisioned in time"
+        sleep 10
+    done
+}
+
+install_kelo() {
+    if vm_cat /home/kelo/kelo/compose.yml >/dev/null 2>&1; then
+        log "Kelo is already installed in the VM: its data is kept"
+        return 0
+    fi
+    log "installing Kelo in the VM (this downloads the images; it can take a while)"
+    copy_retry "$BUNDLE/share/kelo/install.sh" "$VM:/opt/kelo-installer/install.sh" || die 72 "could not copy the installer"
+    copy_retry "$BUNDLE/share/kelo/kelo-src.tar.gz" "$VM:/opt/kelo-installer/kelo-src.tar.gz" || die 72 "could not copy the sources"
+    "$LIMACTL" shell "$VM" -- bash /opt/kelo-installer/install.sh --yes --from-release --source /opt/kelo-installer/kelo-src.tar.gz >>"$LOG" 2>&1 \
+        || die 72 "the Kelo installer failed (see the log)"
+}
+
+prepare() {
+    local memory="" cpus="" no_service=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --memory) memory="${2:-}"; shift ;;
+            --cpus) cpus="${2:-}"; shift ;;
+            --no-service) no_service=1 ;;
+            *) die 64 "unknown argument" ;;
+        esac
+        shift
+    done
+    MEMORY="$memory"; CPUS="$cpus"
+    is_number "$MEMORY" && is_number "$CPUS" || die 64 "--memory and --cpus must be numbers"
+    is_port "$PORT_SERVER" && is_port "$PORT_SETUP" || die 64 "the ports must be 1 to 65535"
+    mkdir -p "$LIMA_HOME"
+    chmod 700 "$LIMA_HOME"
+    log "preparing the Kelo server (server port $PORT_SERVER, setup port $PORT_SETUP)"
+    if [ ! -d "$LIMA_HOME/$VM" ]; then create_instance; fi
+    if [ "$no_service" = 1 ] && [ "$(vm_status)" = Stopped ]; then start_in_background; fi
+    wait_running || die 70 "the VM did not start"
+    wait_provisioned
+    install_kelo
+    log "ready"
+    echo ready
+}
+
+setup_page() {
+    # the page's link is the only thing on stdout; the app opens it, nothing here logs it
+    exec "$LIMACTL" shell "$VM" -- env PYTHONUNBUFFERED=1 /home/kelo/.local/bin/kelo setup --web --no-open --web-port "$PORT_SETUP"
+}
+
+remove_data() {
+    case "$LIMA_HOME" in
+        /private/tmp/kmt-*|/tmp/kmt-*) ;;
+        *) die 64 "remove-data is for the test folders only" ;;
+    esac
+    "$LIMACTL" stop -f "$VM" >>"$LOG" 2>&1 || true
+    "$LIMACTL" delete -f "$VM" >>"$LOG" 2>&1 || true
+    rm -rf -- "$LIMA_HOME"
+    log "test VM removed"
+}
+
+status() {
+    if [ ! -d "$LIMA_HOME/$VM" ]; then echo none; return 0; fi
+    if [ "$(vm_status)" != Running ]; then echo stopped; return 0; fi
+    if curl -fsS -o /dev/null --max-time 5 "http://127.0.0.1:$PORT_SERVER/healthz" 2>/dev/null; then echo ready; else echo running; fi
+}
+
+case "${1:-}" in
+    prepare) shift; prepare "$@" ;;
+    setup-page) setup_page ;;
+    remove-data) remove_data ;;
+    status) status ;;
+    *) die 64 "usage: prepare --memory GiB --cpus N [--no-service] | setup-page | remove-data | status" ;;
+esac

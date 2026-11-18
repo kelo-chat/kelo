@@ -59,6 +59,7 @@ class DeviceProvider:
     connectors: tuple[str, ...] = ()   # the catalog entries this connection serves (default: just `id`)
     at: str = "@"           # how the account name is shown after the service name
     default_client_id: str = ""   # Kelo's own public app, used when neither this copy's settings nor its environment name one
+    situation: Any = None         # the one read-only call that shows the service's state (situation_reads.py); None = none
 
     @property
     def serves(self) -> tuple[str, ...]:
@@ -80,12 +81,16 @@ PROVIDERS: dict[str, DeviceProvider] = {
         env_client_id="ASSISTANT_GITHUB_CLIENT_ID",
         whoami_url="https://api.github.com/user", whoami_field="login",
         settings_url="https://github.com/settings/applications",
+        situation={"tool": "connector_get", "arguments": {"name": "{{connection}}", "url": "https://api.github.com/notifications?per_page=20"},
+                   "mode": "changes", "id": ["id"], "max_rows": 20, "fields": {"reason": "reason", "title": "subject.title",
+                   "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"}},
         blurb=N_("Reads your repositories, issues and PRs, and creates them when you allow it. Connect by typing a code once."),
         help=(N_("On GitHub, open Settings → Developer settings → OAuth Apps → New OAuth App."),
               N_("Any name works. For Homepage URL and Authorization callback URL, enter https://github.com (they are not used)."),
               N_("After creating it, turn on 'Enable Device Flow' and save."),
               N_("Copy the Client ID and paste it here. The client secret is not needed.")),
     ),
+    # situation: none — mail and calendar are their own sections of the pack (mailboxes.COVERAGE); contacts have no state
     "microsoft": DeviceProvider(
         id="microsoft", item="microsoft-api", name="Microsoft",
         device_url="https://login.microsoftonline.com/common/oauth2/v2.0/devicecode",

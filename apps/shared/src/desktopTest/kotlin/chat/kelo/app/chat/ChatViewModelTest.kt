@@ -37,7 +37,7 @@ import javax.crypto.KeyGenerator
 class ChatViewModelTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<RecordedRequest>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<RecordedRequest>()
     private val bodies = Collections.synchronizedMap(mutableMapOf<RecordedRequest, String>())
     /** answers for PUT /api/uploads/{name}, by name */
     private val uploadAnswers = Collections.synchronizedMap(mutableMapOf<String, MockResponse>())
@@ -158,7 +158,7 @@ class ChatViewModelTest {
     }
 
     @Test fun theFollowedReplyIsReportedForNotifications() {
-        val calls = Collections.synchronizedList(mutableListOf<String>())
+        val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
         val watch = object : chat.kelo.app.chat.TurnWatch {
             override fun started() { calls += "started" }
             override fun event(ev: TurnEvent) { if (ev is TurnEvent.Text) calls += "text:" + ev.text }

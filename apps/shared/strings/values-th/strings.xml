@@ -926,10 +926,14 @@
     <string name="live_held_elsewhere">กำลังถูกควบคุมจากอุปกรณ์อื่น</string>
     <string name="live_give_back">คืนการควบคุม</string>
     <string name="live_paused_banner">คุณกำลังควบคุมอยู่ เอเจนต์จะรอในแท็บนี้จนกว่าคุณจะคืนการควบคุม</string>
+    <string name="live_still_yours">คุณยังควบคุมอยู่ ผู้ช่วยจะรอจนกว่าคุณจะคืนให้</string>
+    <string name="live_screen_changed">หน้าจอเปลี่ยนแล้ว แตะอีกครั้ง</string>
     <string name="live_tab_closed">แท็บถูกปิดแล้ว จึงไม่มีอะไรให้ดูอีก ถ้าหน้าจอสุดท้ายถูกบันทึกไว้ จะแสดงด้านล่าง</string>
     <string name="live_not_controller">ตอนนี้ควบคุมไม่ได้ แตะ ควบคุมเอง อีกครั้ง</string>
     <string name="live_input_failed">เบราว์เซอร์ทำสิ่งนั้นไม่ได้</string>
     <string name="live_state_you">คุณกำลังควบคุม</string>
+    <string name="live_work_browser">เบราว์เซอร์งาน</string>
+    <string name="live_work_browser_note">แท็บนี้อยู่ในเบราว์เซอร์งานของ Kelo แยกจากแท็บของคุณ การลงชื่อเข้าใช้ที่ทำตรงนี้จะถูกบันทึกไปยังเบราว์เซอร์หลักของ Kelo เมื่องานจบ</string>
     <string name="live_state_other">อุปกรณ์อื่นกำลังควบคุม</string>
     <string name="live_state_waiting">กำลังรอการอนุมัติ</string>
     <string name="live_connecting">กำลังเชื่อมต่อ…</string>
@@ -1175,6 +1179,9 @@
     <string name="work_wait_answer">จะทำต่อเมื่อคุณบอกว่าจะให้ทำอย่างไร</string>
     <string name="work_wait_blocked">หยุดไว้เพราะไปต่อเองไม่ได้</string>
     <string name="work_wait_restart">หยุดไปตอนที่เซิร์ฟเวอร์รีสตาร์ต</string>
+    <string name="work_picked_up">เซิร์ฟเวอร์ Kelo เริ่มต้นใหม่ งานจึงไปต่อจากจุดที่หยุดค้างไว้</string>
+    <string name="work_picked_up_browser">เบราว์เซอร์เริ่มต้นใหม่ งานจึงไปต่อในแท็บใหม่</string>
+    <string name="work_wait_pickup">อีกสักครู่จะไปต่อจากจุดที่หยุดค้างไว้</string>
     <string name="work_schedule_on">เปิดงานอัตโนมัติ</string>
     <string name="work_schedule_off">ปิดงานอัตโนมัติ</string>
     <string name="work_schedule_by_agent">เอเจนต์สร้างไว้</string>

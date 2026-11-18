@@ -286,6 +286,7 @@ class PinPad:
         self.has_clear = False
         self.open = True
         self.held_by: str | None = None
+        self.took = False             # the keypad took the tab itself (nobody held it): it gives it back when it closes, and no other hold
         self._lock = asyncio.Lock()
 
     def _page(self) -> Any:
@@ -374,7 +375,9 @@ class PinPad:
             page = self._page()
             _frame, r = await self._region(page)
             if self.held_by is None:
-                self.session.take_control(self.owner, device)   # the user's hands are on this tab: the agent waits
+                if self.session.controlled_by(self.owner) is None:   # a hold that was on before (the owner's own press) is left as it is
+                    self.session.take_control(self.owner, device)   # the user's hands are on this tab: the agent waits
+                    self.took = True
                 self.held_by = device
             await page.mouse.click(r["x"] + fx * r["width"], r["y"] + fy * r["height"])
             self.taps += 1
@@ -391,7 +394,9 @@ class PinPad:
                 try:
                     if await loc.count():
                         if self.held_by is None:
-                            self.session.take_control(self.owner, device)
+                            if self.session.controlled_by(self.owner) is None:
+                                self.session.take_control(self.owner, device)
+                                self.took = True
                             self.held_by = device
                         await loc.first.click(timeout=4000)
                         self.taps = 0
@@ -404,7 +409,9 @@ class PinPad:
         self.open = False
         if self.held_by is not None:
             self.held_by = None
-            await self.session.release_control(self.owner)
+            if self.took:
+                self.took = False
+                await self.session.release_control(self.owner)
 
 
 MARK_CLEAR_JS = ("(i) => { const e = document.querySelector(`[data-kelo-near=\"${i}\"]`); if (!e) return false; e.setAttribute('data-kelo-clear', '1'); "

@@ -19,7 +19,7 @@ from assistant.agent import ToolResult, run_agent, ui_sink
 from assistant.android import live as live_mod
 from assistant.android.card import DeviceCard
 from assistant.android.device import DeviceClient
-from assistant.android.live import OWNER_USING, DeviceLive
+from assistant.android.live import PHONE_HELD_NOTE, DeviceLive
 from assistant.android.screen import ScreenReader
 from assistant.android.tools import AndroidSession, android_tools
 from assistant.providers import Done, TextDelta
@@ -183,9 +183,11 @@ async def test_taps_swipes_and_keys_are_mapped_to_the_device_and_need_the_contro
         await live.input("android", "d1", {"type": "tap", "x": 1, "y": 1})
     assert e.value.status == 409 and e.value.code == "not_controller"
     live.take("android", "d1")
+    live.connected("android", "d1", +1)          # the holder is connected: another device may not take the phone
     with pytest.raises(LiveError) as e:
         live.take("android", "d2")
     assert e.value.status == 409
+    live.connected("android", "d1", -1)
     out = await live.input("android", "d1", {"type": "tap", "x": 180, "y": 390})
     assert bridge.sent("/tap") == [{"x": 540, "y": 1170}] and out["x"] == 540 and out["y"] == 1170
     await live.input("android", "d1", {"type": "swipe", "x1": 180, "y1": 600, "x2": 180, "y2": 100, "ms": 250})
@@ -242,8 +244,8 @@ async def test_the_owner_taking_the_phone_stops_the_agents_steps_and_giving_back
 
     await agent(("android_swipe", '{"direction": "down"}'))
     result = next(e for e in events if isinstance(e, ToolResult))
-    assert result.output == OWNER_USING and bridge.sent("/swipe") == []     # it waited, then said so, and did not act
-    assert await live.hold_for_user() == OWNER_USING
+    assert result.output == PHONE_HELD_NOTE.format(minutes=1) and bridge.sent("/swipe") == []   # it waited, then said so, and did not act
+    assert await live.hold_for_user() == PHONE_HELD_NOTE.format(minutes=1)
     waiting = asyncio.ensure_future(live.hold_for_user())                   # a step waiting meanwhile goes on at once when given back
     live.control_wait = 5.0
     await asyncio.sleep(0.01)
@@ -257,7 +259,7 @@ async def test_the_owner_taking_the_phone_stops_the_agents_steps_and_giving_back
 async def test_the_phone_goes_back_to_the_agent_after_the_grace_time_without_a_connection():
     _, live = make()
     live.clock = clock = Clock()
-    live.take("android", "d1")
+    live.take("android", "d1", by="handover")       # a hand-over hold: the app took the phone because Kelo asked
     live.connected("android", "d1", +1)
     clock.now = 100.0
     await live.step()
@@ -333,7 +335,7 @@ async def test_watching_the_device_over_http_and_websocket_and_taking_it_over(tm
         r = await c.post("/api/browser/sessions/android/control", json={"take": False})
         assert r.json()["controller"] == "agent"
         r = await c.post("/api/browser/sessions/android/control", json={"take": True})
-        assert r.json() == {"id": "android", "controller": "user", "controlled_by": "owner", "you_control": True}
+        assert r.json() == {"id": "android", "controller": "user", "controlled_by": "owner", "you_control": True, "hold": "button", "holder_away": True}
         assert (await c.post("/api/browser/sessions/android/input", json={"type": "key", "key": "back"})).json()["ok"] is True
         assert (await c.post("/api/browser/sessions/android/control", json={"take": False})).json()["controller"] == "agent"
         assert (await c.post("/api/browser/sessions/android/input", json={"type": "key", "key": "back"})).status_code == 409

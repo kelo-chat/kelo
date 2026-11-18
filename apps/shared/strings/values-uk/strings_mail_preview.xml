@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">Оформлений лист</string>
+    <string name="mail_preview_open">Відкрити більше</string>
+    <string name="mail_preview_loading">Завантаження попереднього перегляду…</string>
+    <string name="mail_preview_failed">Не вдалося завантажити попередній перегляд.</string>
+    <string name="mail_preview_gone">Попередній перегляд більше недоступний.</string>
+    <string name="mail_preview_too_big">Попередній перегляд занадто великий, щоб його показати.</string>
+    <string name="mail_preview_pictures_note">Зображення надсилаються посиланнями, а не як картинки.</string>
+    <string name="mail_preview_link_title">Відкрити цю адресу?</string>
+    <string name="mail_preview_link_open">Відкрити в браузері</string>
+    <string name="mail_preview_simple_note">У цьому застосунку оформлення показано спрощено.</string>
+    <string name="mail_preview_desc">Попередній перегляд оформленого листа</string>
+</resources>

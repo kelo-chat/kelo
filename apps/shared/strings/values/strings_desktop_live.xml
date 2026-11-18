@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">Paste from this computer</string>
+    <string name="desktop_live_copied">Copied to this computer</string>
+    <string name="desktop_live_type_hint">Click the page to type into it. Text from an input method (Korean, Japanese, Chinese) goes in the line below.</string>
+</resources>

@@ -19,6 +19,12 @@ Every step of a job is a turn of the server (start_turn): approvals reach the us
 still only through checkout_review), browser cards and the live view work, and each run of a job is a task in the task log, linked to the
 task that started the job (tasks.parent_id / worker_id).
 
+A cut job (a restart or a lost browser, job_cuts.py): the checkpoint is the finished tool call. The one call that was running at the
+cut gets a cut result chosen by what it could have done: a read is done again; a step that sends, changes or deletes is checked first
+(its ledger record is unknown until action_result); a pay press is never pressed again for the same order (the shop's page decides).
+It goes on by itself at once, then after 60 s and 300 s; a fourth cut in a row at the same step stops it as blocked, and the owner
+decides (a manual resume starts the count again). A finished tool call after a pick-up resets the count.
+
 State lives in SQLite (tables workers, worker_messages). The transcript is rebuilt from the turn's events as they happen, so a restart loses
 at most the step in flight. On start-up a job that was running is marked interrupted and resumed (in a new tab when its tab is gone, told
 to go on from the history above).
@@ -35,19 +41,21 @@ import secrets
 import time
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from . import tool_labels, tool_roles
+from .chat_views import PHONE_KEY
 from .activity import host_of, title_from
 from .agent import Tool, emit_ui, inbox
 from .agent.found_secrets import scrub
 from .agent.loop import digest_tool_results
 from .compaction import request_tokens
 from .i18n import N_, t
+from .job_cuts import Cut, cut_result, next_pickup, open_calls, pickup_note
 
 log = logging.getLogger("uvicorn.error")
 
@@ -60,7 +68,8 @@ MAIN_ONLY = ("delegate", "workers_list", "worker_status", "worker_message", "wor
              "await_reply", "followup_snooze", "followup_cancel",   # these three: follow-ups (followups.py) are the main chat's
              "set_owner_settings", "finish_first_chat",   # the first conversation is the main chat's (first_chat.py)
              "set_tone",   # how Kelo talks to the user: changed only when the user asks in the chat
-             "browser_forget_site")
+             "browser_forget_site",
+             "chat_view")   # the browser or phone shown in the chat is hidden only by the main agent (chat_views.py)
 HANDOFF_MARK = "[Handoff from a background job, not from the user]"   # leads the hidden message; GET /api/messages leaves these out
 STATUS_HEAD = {"done": N_("Finished"), "needs_input": N_("Needs your help"), "blocked": N_("Got stuck"), "failed": N_("It did not work out")}
 RESTART_REASON = N_("Stopped because the server restarted")   # translate with t() where it is saved or shown
@@ -71,6 +80,10 @@ PAUSED_TAB_SECONDS = 86400.0   # a paused job keeps its tab this long (the user 
 KEPT_TAB_SECONDS = 3600.0      # a finished job that asked to keep its tab keeps it this long
 MAX_DEADLINE_MIN = 240
 CUT_NOTE = "[This step was cut off (a restart or a stop) before it gave a result. Check the page before you go on.]"
+PICKED_UP_LINE = N_("Picked up where it stopped after the Kelo server restarted")
+BROWSER_PICKED_UP_LINE = N_("The browser restarted; it went on in a new tab")
+CUT_LOOP_LINE = N_("Stopped: the Kelo server restarted {n} times while this job was at the same step. Resume it to try again.")
+DRAIN_SECONDS = 25.0   # a stop waits this long for a step that sends, changes or pays to finish before it cuts it (job_cuts.py)
 # A job that is getting somewhere never stops at its budget: it goes on in chunks, each with a fresh step / time / token budget, as long
 # as the chunk before made progress (new distinct tool calls that succeeded: a new item handled, a new result read). A chunk without any
 # is a loop (the same steps again) and stops the job; MAX_CHUNKS bounds it all.
@@ -127,7 +140,8 @@ CREATE TABLE IF NOT EXISTS workers (
     report TEXT NOT NULL DEFAULT '', wait_on TEXT NOT NULL DEFAULT '', login TEXT NOT NULL DEFAULT '', last_url TEXT NOT NULL DEFAULT '',
     status_text TEXT NOT NULL DEFAULT '', lines TEXT NOT NULL DEFAULT '[]', error TEXT NOT NULL DEFAULT '', keep_tab INTEGER NOT NULL DEFAULT 0,
     segments INTEGER NOT NULL DEFAULT 0, auto_resume INTEGER NOT NULL DEFAULT 0, wake_at REAL NOT NULL DEFAULT 0, retries INTEGER NOT NULL DEFAULT 0,
-    question_id TEXT NOT NULL DEFAULT '');
+    question_id TEXT NOT NULL DEFAULT '', cut TEXT NOT NULL DEFAULT '', cuts INTEGER NOT NULL DEFAULT 0,
+    pickups INTEGER NOT NULL DEFAULT 0, picked_up_at REAL NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS worker_messages (
     worker_id TEXT NOT NULL, seq INTEGER NOT NULL, message TEXT NOT NULL, PRIMARY KEY (worker_id, seq));
 """
@@ -189,6 +203,13 @@ class WorkerHost:
     progress: Callable[[str], tuple[int, int] | None] = lambda _wid: None
     # is a running turn working with this browser tab / the phone right now? (a hand-back then needs no hidden message: the turn gets the note)
     turn_on: Callable[[str], bool] = lambda _k: False
+    # a cut job (job_cuts.py): the unknown records of a task as (id, tool, what it was); the open pay attempt of a tab; the tab book's
+    # state of a tab ("kept" | "new" | "held" | "none"); moving records to a picked-up run; is a step that sends or pays in flight?
+    cut_records: Callable[[int | None], list[tuple[int, str, str]]] = lambda _task: []
+    cut_pay: Callable[[str], str | None] = lambda _tab: None
+    tab_state: Callable[[str], str] = lambda _tab: "none"
+    adopt_records: Callable[[list[int], int | None], None] = lambda _ids, _task: None
+    step_busy: Callable[[], bool] = lambda: False
 
 
 @dataclass
@@ -220,6 +241,7 @@ class _Recorder:
         self.error = ""
         self.login = ""
         self.device = False   # the job showed the phone to the owner (a "device" card): it waits on the phone, not on a tab
+        self.cleared = False  # the first finished call of this stretch resets the job's cut count (a pick-up that made progress)
 
     def add(self, msg: dict[str, Any]) -> None:
         self.w._append(self.wid, self.next, msg)
@@ -264,6 +286,9 @@ class _Recorder:
             if item.get("id") in self.open:
                 self.open.pop(item["id"])
                 self.add({"role": "tool", "tool_call_id": item["id"], "content": str(item.get("output", ""))})
+            if not item.get("is_error") and not self.cleared:
+                self.cleared = True
+                self.w._clear_cuts(self.wid)
             out = str(item.get("output", ""))
             if item.get("name") == "request_login" and not item.get("is_error") and (m := re.search(r"browser_login\(name='([^']+)'\)", out)):
                 self.login = m.group(1)
@@ -299,9 +324,11 @@ class Workers:
     def __init__(self, store: Any, host: WorkerHost, limits: Limits | None = None, *, resume_on_start: bool = True,
                  clock: Callable[[], float] = time.time):
         self.store, self.host, self.limits, self.resume_on_start, self._clock = store, host, limits or Limits(), resume_on_start, clock
+        self.chat_views: Any = None   # the chat's views (chat_views.py), set by server.py
         self._live: dict[str, _Live] = {}
         self._queue: list[tuple[str, str]] = []     # automatic resumes waiting for a free slot: (id, why)
         self._closing = False
+        self._cut_seen: set[str] = set()            # jobs this process already cut at its start (startup may run again after a Keyguard unlock)
         with store._lock:
             store._db.executescript(SCHEMA)
             have = {r[1] for r in store._db.execute("PRAGMA table_info(workers)")}
@@ -313,6 +340,10 @@ class Workers:
                 store._db.execute("ALTER TABLE workers ADD COLUMN question_id TEXT NOT NULL DEFAULT ''")
             if "parent_cond" not in have:   # the conditional task (watcher:N / schedule:N) that handed the job over, "" for a chat
                 store._db.execute("ALTER TABLE workers ADD COLUMN parent_cond TEXT NOT NULL DEFAULT ''")
+            for col, ddl in (("cut", "TEXT NOT NULL DEFAULT ''"), ("cuts", "INTEGER NOT NULL DEFAULT 0"),
+                             ("pickups", "INTEGER NOT NULL DEFAULT 0"), ("picked_up_at", "REAL NOT NULL DEFAULT 0")):
+                if col not in have:   # job_cuts.py: the last cut, the cuts in a row, the pick-ups, when the last one started
+                    store._db.execute(f"ALTER TABLE workers ADD COLUMN {col} {ddl}")
             store._db.commit()
 
     # ------------------------------------------------------------------ storage
@@ -340,6 +371,18 @@ class Workers:
     def transcript(self, wid: str) -> list[dict[str, Any]]:
         return [json.loads(r["message"]) for r in self.store._all(
             "SELECT message FROM worker_messages WHERE worker_id = ? ORDER BY seq", (wid,))]
+
+    def _clear_cuts(self, wid: str) -> None:
+        self.store._run("UPDATE workers SET cuts = 0 WHERE id = ? AND cuts > 0", (wid,))
+
+    def _note_line(self, wid: str, text: str) -> None:
+        """One line on the job card's steps list (not a step: nothing ran)."""
+        r = self._row(wid)
+        if r is None:
+            return
+        lines = json.loads(r["lines"] or "[]")[-(LINES_KEPT - 1):]
+        lines.append({"at": round(self._clock(), 3), "text": text})
+        self._update(wid, lines=json.dumps(lines, ensure_ascii=False))
 
     def _line(self, wid: str, item: dict[str, Any]) -> None:
         name = str(item.get("name", ""))
@@ -399,7 +442,13 @@ class Workers:
         elif r["status"] == "interrupted":
             reason = r["error"] or t(RESTART_REASON)
         wake_at = float(r["wake_at"]) if float(r.get("wake_at") or 0) > 0 else None
+        if wait.get("kind") == "cut" and r["status"] == "interrupted":   # a cut job goes on at this time (job_cuts.next_pickup)
+            wake_at = float(wait.get("until") or 0) or None
         status = "waiting" if r["status"] == "blocked" and wake_at is not None else r["status"]
+        picked = None
+        if r.get("picked_up_at") and r["status"] == "running":
+            cut = Cut.of(r.get("cut") or "")
+            picked = {"at": float(r["picked_up_at"]), "why": cut.why if cut is not None else "restart"}
         out = {"id": r["id"], "kind": r["kind"], "title": r["title"], "status": status, "parent_task_id": r["parent_task_id"],
                "task_id": r["task_id"], "turn_id": r["turn_id"] or None, "tab": r["tab"], "started_at": r["created_at"],
                "updated_at": r["updated_at"], "finished_at": r["finished_at"], "steps": r["steps"], "max_steps": r["max_steps"],
@@ -407,7 +456,7 @@ class Workers:
                "waiting_for": wait.get("kind"),
                "login": wait.get("login"), "reason": reason, "status_text": r["status_text"] or None, "last_url": r["last_url"] or None,
                "thumbnail": f"/api/browser/sessions/{r['tab']}/screenshot" if self.host.has_picture(r["tab"]) else None,
-               "progress": ({"done": p[0], "total": p[1]} if (p := self.progress_of(r["id"])) else None)}
+               "progress": ({"done": p[0], "total": p[1]} if (p := self.progress_of(r["id"])) else None), "picked_up": picked}
         if r["status"] == "needs_input" and r.get("question_id"):
             out["question_id"] = r["question_id"]
         if full:
@@ -577,6 +626,12 @@ class Workers:
         self._prune()
         self._launch(wid, "")
         await emit_ui({"type": "worker", "id": wid, "status": "running", "title": title})
+        if self.chat_views is not None and str(parent.get("source") or "chat") in ("chat", "api"):
+            # a job a chat asked for shows its tab (or the phone) in the chat from its start (chat_views.py); its first card follows
+            if kind == tool_roles.PHONE_KIND:
+                self.chat_views.open(PHONE_KEY, "phone", worker_id=wid)
+            elif kind in ("browser", tool_roles.CHECKOUT_KIND):
+                self.chat_views.open(f"task:{wid}", "browser", worker_id=wid)
         where = "on the Android device" if kind == tool_roles.PHONE_KIND else "in a browser tab of its own"
         return (f"Handed off; you will hear back when it is done. (job {wid}: {kind}, up to {steps} steps / {minutes} min, {where}.) "
                 "It runs on its own; its report comes back to you by itself as a handoff message. Do not check on it with workers_list "
@@ -614,9 +669,10 @@ class Workers:
         except RuntimeError:
             live.task = None
 
-    def resume(self, wid: str, note: str = "", *, why: str = "", auto: bool = False) -> tuple[bool, str]:
+    def resume(self, wid: str, note: str = "", *, why: str = "", auto: bool = False, cut: Cut | None = None) -> tuple[bool, str]:
         """Go on with a job that is not running: same transcript, same tab (a new one when it is gone), a fresh budget from here.
-        (ok, "resumed" | "queued" | "running" | "limit" | "missing")."""
+        `cut`: an automatic pick-up of a cut job (its pick-up note in `why` says the tab; the cut count stays). Any other resume starts
+        the count again. (ok, "resumed" | "queued" | "running" | "limit" | "missing")."""
         r = self._row(wid)
         if r is None:
             return False, "missing"
@@ -633,12 +689,13 @@ class Workers:
         parts = [why or "You are resumed."]
         if note.strip():
             parts.append(f"Message for you: {note.strip()}")
-        if r["last_url"] and not self.host.tab_open(r["tab"]):
+        if cut is None and r["last_url"] and not self.host.tab_open(r["tab"]):
             parts.append(f"Your browser tab was closed meanwhile; a new blank tab will open. Continue from the history above: open "
                          f"{r['last_url']} again if you need it.")
-        parts.append("Go on from where you stopped and finish with report.")
+        if cut is None:   # a pick-up's note ends with its own tail (job_cuts.PICKUP_TAIL)
+            parts.append("Go on from where you stopped and finish with report.")
         self._update(wid, status="running", wait_on="", report="", error="", finished_at=None, auto_resume=0, keep_tab=0, question_id="",
-                     wake_at=0.0, max_steps=r["steps"] + steps, deadline_at=now + minutes * 60, minutes=minutes,
+                     wake_at=0.0, cuts=r["cuts"] if cut is not None else 0, max_steps=r["steps"] + steps, deadline_at=now + minutes * 60, minutes=minutes,
                      token_cap=r["input_tokens"] + r["output_tokens"] + self.limits.tokens)
         self._queue = [q for q in self._queue if q[0] != wid]
         self._launch(wid, "[Not from the user: " + " ".join(parts) + "]")
@@ -742,7 +799,10 @@ class Workers:
             wid, why = self._queue.pop(0)
             r = self._row(wid)
             if r is not None and r["status"] in PAUSED:
-                self.resume(wid, why=why, auto=True)
+                if (json.loads(r["wait_on"] or "{}")).get("kind") == "cut":
+                    self._pickup(wid)
+                else:
+                    self.resume(wid, why=why, auto=True)
 
     # ------------------------------------------------------------------ running
     def _worker_tools(self, kind: str = "general") -> list[Tool]:
@@ -816,6 +876,7 @@ class Workers:
                     inbox.reset(token)
                 live.turn = turn
                 self._update(wid, turn_id=turn.id, task_id=turn.task_id, segments=r["segments"] + 1)
+                self._adopt_cut(wid, turn)
                 self._emit(wid)
                 try:
                     await asyncio.wait_for(asyncio.shield(turn.ended.wait()), max(1.0, time_left))
@@ -877,6 +938,18 @@ class Workers:
         if busy and outcome is None:
             outcome = ("failed", t("Stopped by an error: {error}", error=t("the AI model stayed unavailable for too long")), "", False)
         await self._settle(wid, outcome, rec)
+
+    def _adopt_cut(self, wid: str, turn: Any) -> None:
+        """A picked-up run owns the unknown records of the run it was cut from (once: the cut then names none)."""
+        r = self._row(wid)
+        cut = Cut.of(r["cut"]) if r is not None else None
+        if cut is None or not cut.records:
+            return
+        try:
+            self.host.adopt_records(list(cut.records), turn.task_id)
+        except Exception:  # noqa: BLE001 - the records stay with the old run; the job goes on
+            log.exception("worker %s: could not move the unknown records of the cut run", wid)
+        self._update(wid, cut=replace(cut, records=(), texts=()).to_json())
 
     def _next_chunk(self, wid: str, r: dict[str, Any], live: _Live) -> None:
         """The job made progress in the stretch that just used its budget: a fresh step / time / token budget, and a note to go on."""
@@ -969,6 +1042,13 @@ class Workers:
                                     auto=True)
                 if ok:
                     out.append(r["id"])
+        for r in self.store._all("SELECT * FROM workers WHERE status = 'interrupted' AND wait_on LIKE '%cut%'"):
+            try:
+                wait = json.loads(r["wait_on"] or "{}")
+            except ValueError:
+                continue
+            if wait.get("kind") == "cut" and float(wait.get("until") or 0) <= now and self._pickup(r["id"]):
+                out.append(r["id"])
         for r in self.store._all("SELECT * FROM workers WHERE status = 'interrupted' AND wait_on LIKE '%model_limit%'"):
             try:
                 wait = json.loads(r["wait_on"] or "{}")
@@ -1062,6 +1142,13 @@ class Workers:
             pass
         return time.strftime("%H:%M", time.localtime(ts))
 
+    def _view_of(self, wid: str) -> Any:
+        """The chat view this job works in (its tab, or the phone), or None (chat_views.py)."""
+        views = getattr(self, "chat_views", None)
+        if views is None:
+            return None
+        return next((v for v in views.items() if v.worker_id == wid), None)
+
     def _handoff_text(self, r: dict[str, Any], rep: dict[str, Any], wait: dict[str, Any]) -> str:
         lines = [HANDOFF_MARK, f"The background job {r['id']} (\"{r['title']}\", {r['kind']}) that you started with delegate reported: "
                  f"{rep['status']}.", f"Summary: {rep['summary'] or '-'}"]
@@ -1069,7 +1156,16 @@ class Workers:
             lines.append(f"Details: {rep['details']}")
         if progress := self._progress_line(r):
             lines.append(progress)
+        if (picks := int(r.get("pickups") or 0)) > 0:
+            lines.append(f"It was cut off {picks} time(s) by a restart and picked up where it stopped by itself; say so in a few words "
+                         "only if it matters to the owner.")
         st = rep["status"]
+        if (view := self._view_of(r["id"])) is not None:   # its tab or the phone shown in the chat: only the main agent hides it
+            target = "phone" if view.key == "android" else r["id"]
+            if st in ("done", "failed", "stopped") and not view.owner_asked:
+                lines.append(f"Its tab or the phone is still shown in the chat. When the owner no longer needs to see it, call chat_view(action='close', target='{target}', reason='done'); keep it if the owner asked to see it.")
+            elif st in ("needs_input", "blocked"):
+                lines.append("Its tab or the phone stays shown in the chat for the owner to act in; do not close it now.")
         if st == "done":
             lines.append("Pass the result on to the user.")
         elif st == "needs_input":
@@ -1160,20 +1256,104 @@ class Workers:
 
     # ------------------------------------------------------------------ start-up and shut-down
     def startup(self) -> list[str]:
-        """After a restart: a job that was running is interrupted (said plainly), and goes on by itself when it may."""
+        """After a restart: a job that was running (or that a graceful stop marked) is cut (job_cuts.py): its open call gets a cut result,
+        and it goes on by itself at once or after the wait (limit_tick); the cuts in a row past the limit stop it (blocked, the owner
+        decides). Once per job and process: a second call (after a Keyguard unlock) only picks up what is due."""
         now = self._clock()
-        self.store._run("UPDATE workers SET status = 'interrupted', error = ?, auto_resume = 1, updated_at = ? WHERE status = 'running'",
-                        (t(RESTART_REASON), now))
+        for r in self.store._all("SELECT * FROM workers WHERE status = 'running' OR (status = 'interrupted' AND auto_resume = 1) "
+                                 "ORDER BY created_at"):
+            if r["id"] not in self._cut_seen:
+                self._cut(r, now)
         resumed = []
         if self.resume_on_start:
-            for r in self.store._all("SELECT id FROM workers WHERE status = 'interrupted' AND auto_resume = 1 ORDER BY created_at"):
+            for r in self.store._all("SELECT * FROM workers WHERE status = 'interrupted' AND auto_resume = 1 ORDER BY created_at"):
+                wait = json.loads(r["wait_on"] or "{}")
+                if wait.get("kind") == "cut":
+                    if float(wait.get("until") or 0) > now or not self._pickup(r["id"]):
+                        continue   # the wait is not over (limit_tick picks it up), or no slot: _drain does
+                    resumed.append(r["id"])
+                    continue
                 ok, _ = self.resume(r["id"], why="The server restarted while you were working.", auto=True)
                 if ok:
                     resumed.append(r["id"])
         return resumed
 
+    def _cut(self, r: dict[str, Any], now: float) -> None:
+        wid = r["id"]
+        calls = open_calls(self.transcript(wid))
+        recs = self._safe(lambda: self.host.cut_records(r["task_id"]), [])
+        pay = self._safe(lambda: self.host.cut_pay(r["tab"]), None)
+        tab = self._safe(lambda: self.host.tab_state(r["tab"]), "none")
+        if tab == "none" and r["last_url"] and not self._safe(lambda: self.host.tab_open(r["tab"]), False):
+            tab = "new"   # no browser record of the tab, and its page is not open: a new tab, the last url is known
+        by_tool = {tool: rid for rid, tool, _ in recs}
+        seq = self._next_seq(wid)
+        for call in calls:   # the open call (at most one after a hard kill) gets its cut result, so the transcript stays valid
+            self._append(wid, seq, {"role": "tool", "tool_call_id": call.call_id, "content": cut_result(call, by_tool, pay)})
+            seq += 1
+        cut = Cut(now, "restart", calls[-1] if calls else None, tuple(rid for rid, _, _ in recs), pay, tab, r["last_url"] or "",
+                  tuple(what for _, _, what in recs))
+        cuts = int(r["cuts"] or 0) + 1
+        self._cut_seen.add(wid)
+        self._update(wid, status="interrupted", error=t(RESTART_REASON), auto_resume=1, cut=cut.to_json(), cuts=cuts)
+        wait = next_pickup(cuts)
+        if wait is None:
+            self._cut_stop(wid, cuts)
+            return
+        self._update(wid, wait_on=json.dumps({"kind": "cut", "until": now + wait}))
+
+    def _cut_stop(self, wid: str, cuts: int) -> None:
+        """The job was cut too many times at the same step: it stops as blocked and the report goes to the conversation."""
+        text = t(CUT_LOOP_LINE, n=cuts)
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:   # no loop (a start outside the server): the row says it, the report goes on at the next settle
+            report = {"status": "blocked", "summary": text, "details": "", "keep_tab": False, "at": self._clock()}
+            self._update(wid, status="blocked", report=json.dumps(report, ensure_ascii=False), wait_on=json.dumps({"kind": "user"}),
+                         wake_at=0.0)
+            return
+        asyncio.ensure_future(self._settle(wid, ("blocked", text, "", False), None))
+
+    def _pickup(self, wid: str) -> bool:
+        """Go on with a cut job: the pick-up note says what happened and what to check first (job_cuts.pickup_note)."""
+        r = self._row(wid)
+        if r is None:
+            return False
+        cut = Cut.of(r["cut"] or "")
+        why = pickup_note(cut) if cut is not None else "The server restarted while you were working."
+        ok, how = self.resume(wid, why=why, auto=True, cut=cut)
+        if ok and how == "resumed":
+            self._update(wid, pickups=int(r["pickups"] or 0) + 1, picked_up_at=self._clock())
+            self._note_line(wid, t(BROWSER_PICKED_UP_LINE if cut is not None and cut.why == "browser" else PICKED_UP_LINE))
+        return ok
+
+    def _safe(self, fn: Callable[[], Any], default: Any) -> Any:
+        try:
+            return fn()
+        except Exception:  # noqa: BLE001 - a host hook that fails never stops the start
+            log.exception("worker host hook failed at a start")
+            return default
+
+    def browser_lost(self, key: str) -> None:
+        """A browser that restarted or crashed under a running tab: a job's card says it went on in a new tab (job_cuts.py)."""
+        if key.startswith("task:w"):
+            self._note_line(key[5:], t(BROWSER_PICKED_UP_LINE))
+
+    def step_busy(self) -> bool:
+        """A step that sends, changes or pays is in flight, or a payment job runs: the nightly update waits for it (D3)."""
+        if self._safe(lambda: self.host.step_busy(), False):
+            return True
+        return bool(self.store._all("SELECT id FROM workers WHERE kind = ? AND status = 'running' LIMIT 1", (tool_roles.CHECKOUT_KIND,)))
+
+    async def drain_steps(self, seconds: float = DRAIN_SECONDS) -> None:
+        """A stop waits up to `seconds` for a step that sends, changes or pays to finish (its result is then in the transcript)."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline and self._safe(lambda: self.host.step_busy(), False):
+            await asyncio.sleep(0.2)
+
     async def shutdown(self) -> None:
         self._closing = True
+        await self.drain_steps()
         tasks = []
         for wid, live in self._live.items():
             if live.task is not None and not live.task.done():

@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">تكبير</string>
     <string name="desktop_chat_zoom_reset">ملاءمة النافذة</string>
     <string name="desktop_chat_zoom_hint">اضغط مع الاستمرار على %1$s وأدر العجلة للتكبير؛ واسحب للتنقل في الصورة.</string>
+    <string name="desktop_chat_search_hint">اكتب كلمة أو جزءًا منها. انقر على نتيجة لفتح المحادثة عند تلك الرسالة.</string>
 </resources>

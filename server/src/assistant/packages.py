@@ -99,7 +99,7 @@ SKILL_DESC_LEN = 1024                         # SKILL.md descriptions run long i
 TOP_FIELDS = {"format", "id", "kind", "version", "name", "description", "author", "homepage", "license", "icon", "strings",
               "skill", "connector", "permissions", "ui", "store", "provides", "rules"}
 STRING_FIELDS = {"name", "description", "blurb", "reason", "help", "key_label"}
-CONNECTOR_FIELDS = {"regions", "featured", "connect"}
+CONNECTOR_FIELDS = {"regions", "featured", "connect", "situation"}
 SKILL_FIELDS = {"requires"}
 CONNECT_FIELDS = {
     "mcp": {"type", "url", "blurb"},
@@ -149,6 +149,7 @@ class Package:
     declared: bool = False                    # the manifest has a permissions section (else they are what it uses)
     provides: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))   # connector: the mail / calendar it holds and how
     rules: tuple[Any, ...] = ()               # connector: which of its methods send / post / delete, their policy and recipient (connector_rules.py)
+    situation: Any = None                     # connector: the one read-only call that shows its state (situation_reads.SituationRead), or None
 
     @property
     def kinds(self) -> tuple[str, ...]:
@@ -658,9 +659,11 @@ def load_package(folder: Path, *, source: str = "installed", warnings: list[str]
         raise PackageError("connector.featured must be true or false")
     if "skill" in manifest:
         raise PackageError("a connector has no skill section")
+    from . import nest_manifest as nm
+    connect = _connect(sec.get("connect"))
     pkg = Package(**common, name=_line(manifest.get("name"), "name", NAME_LEN, required=True),
                   description=_line(manifest.get("description"), "description", DESC_LEN, required=True),
-                  regions=tuple(regions), featured=featured, connect=_connect(sec.get("connect")))
+                  regions=tuple(regions), featured=featured, connect=connect, situation=nm.parse_situation(sec.get("situation"), connect=connect))
     return _with_nest(pkg, manifest)
 
 
@@ -673,7 +676,7 @@ def _with_nest(pkg: Package, manifest: Mapping[str, Any]) -> Package:
     # without a permissions section a fixed picture's host is taken from the ui itself (implied below)
     ui = nm.parse_ui(manifest.get("ui"), connect=pkg.connect, store=store, image_hosts=None if declared is None else declared["image_hosts"])
     provides = nm.parse_provides(manifest.get("provides"), kind=pkg.kind, connect=pkg.connect)
-    perms = nm.effective_permissions(declared, nm.implied_permissions(pkg.connect, ui, store, provides))
+    perms = nm.effective_permissions(declared, nm.implied_permissions(pkg.connect, ui, store, provides, situation=pkg.situation))
     rules: tuple[Any, ...] = ()
     if manifest.get("rules") is not None:
         from . import connector_rules as cr

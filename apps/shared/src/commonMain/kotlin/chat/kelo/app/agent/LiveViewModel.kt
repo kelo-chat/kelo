@@ -68,7 +68,7 @@ class LiveViewModel(source: (CoroutineScope) -> LiveSource) : ViewModel() {
     /** Off screen (another app, the screen off): the connection closes; the tab stays held for a short while. */
     fun stop() = live.stop(giveBack = false)
 
-    suspend fun control(take: Boolean): LiveClient.ControlResult = live.control(take)
+    suspend fun control(take: Boolean, handover: Boolean = false): LiveClient.ControlResult = live.control(take, handover)
     /** JPEG frames on or off (off while the VNC screen shows). */
     fun setFrames(on: Boolean) = live.setFrames(on)
     /** Keys, back / forward / reload: with the seq of the frame on screen when the server takes it. */

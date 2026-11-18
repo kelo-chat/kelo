@@ -217,6 +217,11 @@ What you can check instead:
   can run next to the store one and compare.
 - **The server side.** What matters most for your data is the server you run: its images are signed and built in public.
 
+The iPhone's generated files (`KeloVersion.swift` from `version.json`, the `.lproj` strings and `R.swift` from
+`apps/shared/strings`) are committed, so `apps/ios/` is exactly what the build compiles. `server/tests/test_ios_generated_files.py`
+fails when they differ from what `apps/ios/tools/gen_version.py` and `gen_strings.py` produce, and `tools/build/ios.sh testflight`
+refuses to build from such a tree.
+
 An idea we have not built: a CI-built iPhone archive with an attestation, for people who want a binary to inspect. It would still
 not be the App Store file.
 

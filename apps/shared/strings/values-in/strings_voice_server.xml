@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">Unduh model pengenalan suara %1$s ke server Kelo Anda? Jika tidak, pengenalan suara bawaan ponsel yang dipakai.</string>
+    <string name="voice_server_downloading">Mengunduh model suara · %1$d%%</string>
+    <string name="voice_server_ready">Server Kelo Anda sekarang sudah memahami suara Anda.</string>
+    <string name="voice_server_download_failed">Model suara belum selesai diunduh.</string>
+    <string name="voice_server_no_room">Ruang di server Kelo tidak cukup (perlu %1$s).</string>
+    <string name="voice_retry">Coba lagi</string>
+    <string name="voice_transcribing">Mengubah menjadi teks…</string>
+    <string name="voice_cancel_recording">Batalkan rekaman</string>
+    <string name="voice_stop_recording">Hentikan rekaman</string>
+    <string name="voice_ends_in">Berakhir dalam %1$d dtk</string>
+    <string name="voice_server_offline">Server Kelo Anda tidak bisa dihubungi untuk mengubah suara menjadi teks.</string>
+    <string name="voice_server_busy">Server Kelo Anda sedang memproses rekaman lain. Coba lagi sebentar lagi.</string>
+    <string name="voice_server_too_long">Rekaman terlalu panjang. Bicaralah di bawah 2 menit.</string>
+    <string name="voice_page_title">Input suara</string>
+    <string name="voice_page_intro">Suara Anda diubah menjadi teks di server Kelo, lalu teksnya masuk ke kolom. Tidak ada yang terkirim otomatis.</string>
+    <string name="voice_model_in_use">Model suara yang dipakai</string>
+    <string name="voice_state_off">Pengenalan suara bawaan ponsel</string>
+    <string name="voice_change_model">Ganti model</string>
+    <string name="voice_download_model">Unduh model</string>
+    <string name="voice_remove_model">Hapus model</string>
+    <string name="voice_remove_confirm">Hapus model suara? Setelah itu, pengenalan suara bawaan ponsel yang dipakai.</string>
+    <string name="voice_phone_note">Model suara di server Kelo belum mengenali bahasa ini, jadi pengenalan suara bawaan ponsel yang dipakai.</string>
+    <string name="voice_model_size">Ukuran %1$s · memori saat dipakai %2$s</string>
+    <string name="voice_runtime_missing">Jalankan lagi penginstal server Kelo untuk memakai ini.</string>
+</resources>

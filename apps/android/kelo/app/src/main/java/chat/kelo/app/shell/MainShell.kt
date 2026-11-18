@@ -59,6 +59,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -189,6 +191,12 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
     // the agent's work (what it does, asks, has planned), opened from the header over whatever tab is showing
     var workOpen by rememberSaveable { mutableStateOf(false) }
     HideShellChrome(WORK_CHROME_KEY, workOpen && !sideShown)
+    // a page over the chat keeps the composer focused underneath it: put the keyboard away while it shows
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(workOpen, liveTab != null) {
+        if (OverlayKeyboard.shouldDismiss(workOpen, liveTab != null)) { keyboard?.hide(); focusManager.clearFocus(force = true) }
+    }
     // the chat's search page, opened from the chat header over everything; a result opens the chat at that message
     var searchOpen by rememberSaveable { mutableStateOf(false) }
     HideShellChrome(SEARCH_CHROME_KEY, searchOpen && !sideShown)

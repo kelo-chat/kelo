@@ -34,6 +34,7 @@ class World:
         self.ports = {}                         # port -> project
         self.log = []
         self.bad, self.migrates = set(), set()
+        self.site_only = set()                   # projects that answer 404 on the assistant's routes (site_only.py)
         self.fail_build = None                  # "server" | "workroom" | "claude-cli"
         self.fail_backup = self.fail_up = False
         self.builds = 0
@@ -183,6 +184,8 @@ class World:
         if url.endswith("/api/about"):
             assert headers and headers["Authorization"].startswith("Bearer ") and len(headers["Authorization"]) > 20
             return 200, {"version": "0.1.0", "db": {"ok": True, "schema": self.volume(project)["schema"], "migrations": "done"}}
+        if url.endswith("/api/profile") and project in self.site_only:
+            return 404, {"error": "site_only"}   # a site copy refuses the assistant's routes (site_only.py)
         return 200, {}
 
 
@@ -550,3 +553,26 @@ def test_every_kelo_image_carries_the_cleanup_label_on_a_line_of_its_own():
         labels = [ln for ln in lines if ln.startswith("LABEL chat.kelo.image")]
         assert labels, name
         assert all(ln == 'LABEL chat.kelo.image="1"' for ln in labels), (name, labels)
+
+
+def test_a_site_only_copy_is_healthy_with_only_the_server(tmp_path):
+    """A site-only copy has no browser, work room or CLI containers to wait for: its health needs the server only, and the image
+    it is held to is the server's (the browser and the rest are not started, so an update does not wait for them)."""
+    m, u, w, _ = make(tmp_path)
+    inst = w.add_copy(m, "operator", browser=False)
+    write_env(inst.env, {"ASSISTANT_SITE_ONLY": "1"})
+    inst = m.load("operator")
+    assert u.services(inst) == ["server"]
+    assert u.used_vars(inst) == ["KELO_IMAGE"]
+
+
+def test_a_site_only_copy_passes_the_health_check_although_it_refuses_the_profile(tmp_path):
+    """The update's health check asked GET /api/profile, which a site copy answers 404 by design: the real update of the kelo.chat
+    copy rolled back on 2026-11-18 for that alone. A site copy is healthy without it; any other copy still needs it."""
+    m, u, w, msgs = make(tmp_path)
+    w.add_copy(m, "operator", browser=False)
+    w.site_only.add("assistant-u-operator")
+    plain = m.load("operator")
+    assert u.healthy(plain, need_db=False) is not None and "/api/profile" in u.healthy(plain, need_db=False)
+    write_env(plain.env, {"ASSISTANT_SITE_ONLY": "1"})
+    assert u.healthy(m.load("operator"), need_db=False) is None

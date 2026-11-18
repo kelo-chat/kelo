@@ -32,8 +32,11 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from urllib.parse import urlsplit
+
 from . import humanize as human
 from .browser import BrowserSession, cdp_send
+from .holds import BUTTON, HANDOVER, Holds
 
 log = logging.getLogger("uvicorn.error")
 
@@ -43,7 +46,8 @@ MIN_QUALITY, MAX_QUALITY = 40, 80
 MAX_FPS = 15               # the most a viewer who only watches may ask for
 HELD_FPS = 30              # the frame rate while a device holds the tab (LiveHub.rate): the owner's own screen
 VIEWER_TIMEOUT = 60.0      # a viewer silent this long is dropped (and the screencast stops when it was the last one)
-CONTROL_GRACE = 30.0       # a controlling device with no live connection and no request for this long hands the tab back
+CONTROL_GRACE = 30.0       # a hand-over hold (the app took the tab because Kelo asked) with no live connection for this long hands it back;
+                           # a button hold ("직접 조작") never times out: only the owner hands it back (tools/holds.py)
 TICKET_SECONDS = 30
 SEED_AFTER = 0.5           # no frame this long after a start: take one picture instead
 LONG_PRESS_MS = 700
@@ -332,6 +336,10 @@ class LiveHub:
         self._seen: dict[tuple[str, str], float] = {}         # (tab, device) -> last request
         self._screens: dict[tuple[str, str], tuple[Any, Any, Any]] = {}   # (tab, device) -> (width, height, density) the device last said (`view`)
         self._fit_tasks: set[asyncio.Task[Any]] = set()
+        self.holds = Holds(clock)                             # who holds each tab, of what kind (tools/holds.py)
+        self.book: Any = None                                 # hold_asks.HoldBook: the button holds, saved over a restart (set by server.py)
+        self.asker: Any = None                                # hold_asks.HoldAsker: the idle question (set by server.py)
+        self._hosts: dict[str, str] = {}                      # tab -> the host it was on when taken (named in the question when the page is gone)
         self._fitted: dict[str, tuple[Any, bool]] = {}        # tab -> (the DevTools session holding the size override, phone view?)
         self._reaper: asyncio.Task[None] | None = None
         self._use_reaper = reaper
@@ -766,14 +774,28 @@ class LiveHub:
     def controller(self, key: str) -> str:
         return "user" if self.session.controlled_by(key) is not None else "agent"
 
-    def take(self, key: str, device: str) -> None:
+    def take(self, key: str, device: str, by: str = "button") -> None:
+        """The device takes the tab. `by` "handover": the app took it because Kelo asked (a hand-over hold); anything else is the owner's
+        own press (a button hold). A tab held by a device with no live connection moves to this one (the kind and inputs stay)."""
         if self.session.raw_page(key) is None:
             raise LiveError(404, "no_tab", "no such tab")
+        kind = HANDOVER if by == "handover" else BUTTON
         holder = self.session.controlled_by(key)
-        if holder is not None and holder != device:
-            raise LiveError(409, "held", "another device is controlling this tab")
         self.seen(key, device)
-        self.session.take_control(key, device)
+        if holder is not None and holder != device:
+            if self._conns.get((key, holder)):
+                raise LiveError(409, "held", "another device is controlling this tab")
+            self.session.move_control(key, device)   # Kelo never gets the tab in between
+            self.holds.take(key, device, kind)
+        elif holder is None:
+            cancelled = self.session.take_control(key, device)
+            self.holds.take(key, device, kind)
+            if cancelled:
+                self._fence_after_settle(key, device)
+        else:
+            self.holds.take(key, device, kind)   # the holder again (an app's take, or the owner's press)
+        self._hosts[key] = self.where(key, refresh=True)
+        self._save(key)
         self._ensure_reaper()
         if (key, device) in self._screens:   # the screen size was told before the tab was taken
             t = asyncio.ensure_future(self._fit_quietly(key, device))
@@ -786,15 +808,92 @@ class LiveHub:
         except Exception:  # noqa: BLE001 - the tab keeps its own size; the next `view` tries again
             pass
 
+    def _fence_after_settle(self, key: str, device: str) -> None:
+        """A running agent step was stopped by this take: the owner's taps on pictures taken before the step's last move are dropped (the
+        fence is the newest frame once the clean-up is done; input() reads it)."""
+        async def go() -> None:
+            await self.session.settled(key)
+            hold, cast = self.holds.get(key), self.casts.get(key)
+            if hold is not None and hold.device == device and cast is not None:
+                hold.fence = cast.frame.seq if cast.frame is not None else None
+
+        try:
+            t = asyncio.ensure_future(go())
+        except RuntimeError:   # no running loop (a plain test)
+            return
+        self._fit_tasks.add(t)
+        t.add_done_callback(self._fit_tasks.discard)
+
+    def _save(self, key: str) -> None:
+        hold = self.holds.get(key)
+        if self.book is not None and hold is not None and hold.kind == BUTTON:
+            self.book.save(key, hold)
+
+    def _ended(self, key: str) -> None:
+        """The hold of the tab is over: the book forgets it, and its open question goes."""
+        self.holds.drop(key)
+        if self.book is not None:
+            self.book.forget(key)
+        if self.asker is not None:
+            self.asker.close(key)
+
+    def where(self, key: str, refresh: bool = False) -> str:
+        """The host of the tab's page (what the owner's question names), or the words for a tab with no address."""
+        page = self.session.raw_page(key)
+        if page is not None:
+            try:
+                host = urlsplit(str(page.url or "")).hostname or ""
+            except ValueError:
+                host = ""
+            if host:
+                self._hosts[key] = host
+                return host
+        return self._hosts.get(key) or "a browser tab"
+
+    def restore(self, key: str, device: str) -> None:
+        """After a restart: a button hold saved before it stays (the browser's pages are not kept over a restart, so the screen is gone:
+        the question is asked at once)."""
+        self.session.restore_control(key, device)
+        self.holds.take(key, device, BUTTON).gone = True
+
     async def give_back(self, key: str, device: str, *, reason: str = "owner") -> None:
         holder = self.session.controlled_by(key)
         if holder is None:
             return
         if holder != device:
             raise LiveError(409, "held", "another device is controlling this tab")
+        await self._hand_back(key, reason)
+
+    async def release(self, key: str, reason: str = "owner") -> bool:
+        """The same as giving the tab back, whichever device holds it (the owner's answer to the idle question)."""
+        if self.session.controlled_by(key) is None:
+            return False
+        await self._hand_back(key, reason)
+        return True
+
+    async def _hand_back(self, key: str, reason: str) -> None:
+        hold = self.holds.get(key)
+        moved = bool(hold is not None and hold.inputs)
         await self.unfit(key)
-        await self.session.release_control(key, reason=reason)
+        self._ended(key)
+        await self.session.release_control(key, reason=reason, moved=moved)
         await self._drop_cdp(key)
+
+    def touched(self, key: str, device: str) -> None:
+        """The holder's input (also one the VNC relay passed): the idle clock starts again and an open question goes."""
+        if self.session.controlled_by(key) != device:
+            return
+        self.holds.touched(key, device)
+        if self.asker is not None:
+            self.asker.close(key)
+
+    def hold_view(self, key: str, device: str) -> dict[str, Any]:
+        """`hold` ("button" | "handover" | "") and `holder_away` (the holder has no live connection, so another device may take it)."""
+        holder = self.session.controlled_by(key)
+        if holder is None:
+            return {"hold": "", "holder_away": False}
+        hold = self.holds.get(key)
+        return {"hold": hold.kind if hold is not None else BUTTON, "holder_away": not self._conns.get((key, holder))}
 
     # ------------------------------------------------------------------ the page takes the shape of the owner's screen
     async def view(self, key: str, device: str, ev: dict[str, Any]) -> dict[str, Any]:
@@ -822,7 +921,7 @@ class LiveHub:
         if got is None or page is None:
             return {}
         if self.vnc is not None and self.vnc.holds(key):   # the X screen is the size: an override at another pixel ratio would break it
-            cw, ch = self.vnc.size
+            cw, ch = self.vnc.size_of(key)
             return {"css_w": cw, "css_h": ch}
         if self.session.view(key) != "mobile":   # a desktop-view tab keeps its desktop viewport: the phone only zooms in on the picture
             return {}
@@ -873,6 +972,15 @@ class LiveHub:
         cdp = cast.cdp if cast is not None and cast.page is page else await self._cdp_for(key, page)
         out: dict[str, Any] = {"ok": True, "type": kind}
         await self.session.settled(key)   # what the agent's stopped step left half done is cleaned up first
+        self.touched(key, device)         # every accepted input is the owner's hands, a stale one too
+        hold = self.holds.get(key)
+        seq = ev.get("frame_seq")
+        if hold is not None and hold.fence is not None and cast is not None and cast.frame is not None and isinstance(seq, int) \
+                and not isinstance(seq, bool):
+            if seq <= hold.fence and cast.frame.seq > seq:   # a picture from before the stopped step's last move: not a tap on what is there now
+                return {"ok": False, "stale": True, "type": kind}
+            if seq > hold.fence:
+                hold.fence = None
         if cast is not None and cast.stale:   # the page's main thread is blocked: an event now would land on another screen later
             return {"ok": False, "busy": True, "type": kind, "note": BUSY_NOTE}
         try:
@@ -1026,13 +1134,22 @@ class LiveHub:
                 await self._follow(cast, page)
         for key, device in self.session.controls().items():
             k = (key, device)
+            hold = self.holds.get(key)
+            kind = hold.kind if hold is not None else BUTTON
             if self.session.raw_page(key) is None:
+                if kind == BUTTON and hold is not None:
+                    hold.gone = True          # a button hold stays; the owner is asked at once (hold_asks)
+                    continue
                 self._fitted.pop(key, None)
+                self._ended(key)
                 await self.session.release_control(key)
-            elif not self._conns.get(k) and now - self._seen.get(k, now) > CONTROL_GRACE:
-                await self.unfit(key)
-                await self.session.release_control(key, reason="timeout")
-                await self._drop_cdp(key)
+            elif hold is not None:
+                hold.gone = False
+                if kind == HANDOVER and not self._conns.get(k) and now - self._seen.get(k, now) > CONTROL_GRACE:
+                    await self.unfit(key)
+                    self._ended(key)
+                    await self.session.release_control(key, reason="timeout")
+                    await self._drop_cdp(key)
         return dropped
 
     async def close(self) -> None:

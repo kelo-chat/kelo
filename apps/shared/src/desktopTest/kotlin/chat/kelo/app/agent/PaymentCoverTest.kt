@@ -7,7 +7,6 @@ import chat.kelo.app.my.MyFakeServer
 import chat.kelo.app.my.MyFakeServer.Companion.fail
 import chat.kelo.app.my.MyFakeServer.Companion.ok
 import chat.kelo.app.my.MyFakeServer.Companion.until
-import java.util.Collections
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -51,7 +50,7 @@ class PaymentCoverTest {
     @Volatile private var deleteStatus = 200
     @Volatile private var putStatus = 200
     @Volatile private var old = false
-    private val bodies = Collections.synchronizedList(mutableListOf<String>())
+    private val bodies = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     private fun fake() = MyFakeServer { m, p, body ->
         when {

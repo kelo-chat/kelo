@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">Загрузить речевую модель %1$s на ваш сервер Kelo? Если нет, будет использоваться распознавание речи вашего телефона.</string>
+    <string name="voice_server_downloading">Загрузка речевой модели · %1$d%%</string>
+    <string name="voice_server_ready">Ваш сервер Kelo теперь понимает голос.</string>
+    <string name="voice_server_download_failed">Речевая модель не загрузилась полностью.</string>
+    <string name="voice_server_no_room">На сервере Kelo мало места (нужно %1$s).</string>
+    <string name="voice_retry">Повторить</string>
+    <string name="voice_transcribing">Преобразуем в текст…</string>
+    <string name="voice_cancel_recording">Отменить запись</string>
+    <string name="voice_stop_recording">Остановить запись</string>
+    <string name="voice_ends_in">Закончится через %1$d с</string>
+    <string name="voice_server_offline">Не удалось связаться с сервером Kelo, чтобы преобразовать речь в текст.</string>
+    <string name="voice_server_busy">Сервер Kelo сейчас обрабатывает другую запись. Попробуйте чуть позже.</string>
+    <string name="voice_server_too_long">Запись слишком длинная. Говорите меньше 2 минут.</string>
+    <string name="voice_page_title">Голосовой ввод</string>
+    <string name="voice_page_intro">Ваш голос превращается в текст на сервере Kelo, и текст попадает в поле. Ничего не отправляется само.</string>
+    <string name="voice_model_in_use">Используемая речевая модель</string>
+    <string name="voice_state_off">Распознавание речи телефона</string>
+    <string name="voice_change_model">Сменить модель</string>
+    <string name="voice_download_model">Загрузить модель</string>
+    <string name="voice_remove_model">Удалить модель</string>
+    <string name="voice_remove_confirm">Удалить речевую модель? После этого будет использоваться распознавание речи телефона.</string>
+    <string name="voice_phone_note">Речевые модели сервера Kelo пока не знают этот язык, поэтому используется распознавание речи телефона.</string>
+    <string name="voice_model_size">Размер %1$s · память при работе %2$s</string>
+    <string name="voice_runtime_missing">Запустите установщик сервера Kelo ещё раз, чтобы это работало.</string>
+</resources>

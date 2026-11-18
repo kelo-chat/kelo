@@ -5,8 +5,9 @@ from __future__ import annotations
 import time
 from typing import Any
 from fastapi import Depends, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
-from .. import approval_edit, approval_sign, i18n
+from .. import approval_edit, approval_sign, i18n, mail_html
 from ..channels import needs_app
 from ..server import HANDOVER_RESOLVED_KEEP
 from ..weather import WeatherError
@@ -119,8 +120,34 @@ def router(ctx: AppContext) -> APIRouter:
         items = sorted(pending_approvals.values(), key=lambda e: e["asked_at"], reverse=True)
         now = time.time()
         done = sorted((v for v in resolved_checks.values() if now - v["at"] <= HANDOVER_RESOLVED_KEEP), key=lambda v: v["at"], reverse=True)
-        return {"items": [{**{k: v for k, v in e.items() if k not in ("arguments", "answer")}, "notify_actions": notify_actions(e)}
-                          for e in items], "resolved": done}
+        return {"items": [{**{k: v for k, v in e.items() if k not in ("arguments", "answer") and not k.startswith("_")},
+                           "notify_actions": notify_actions(e)} for e in items], "resolved": done}
+
+    # MAIL PREVIEW (the card of a designed email_send; mail_html.preview): the sanitized HTML that will be sent, in a document that
+    # can load and run nothing, plus its blocks (the desktop app draws them). Only while the card waits: after the answer the apps keep
+    # what they fetched. 404 {"detail": "no such pending mail"} for an unknown or answered card, a card that is not a mail, a plain mail.
+    # 413 {"code": "too_big"} when the document is over mail_html.PREVIEW_MAX_BYTES. 200: {"html", "blocks", "cut", "pictures", "links",
+    # "bytes"}, Cache-Control: no-store, the preview's Content-Security-Policy, nosniff.
+    @router.get("/api/approvals/{approval_id}/mail-preview", dependencies=[Depends(require_auth)])
+    async def get_mail_preview(approval_id: str) -> Response:
+        meta = pending_approvals.get(approval_id) or {}
+        fut = broker.pending.get(approval_id)
+        if meta.get("name") != "email_send" or fut is None or fut.done():
+            raise HTTPException(404, "no such pending mail")
+        preview = meta.get("_mail_preview")
+        if preview is None:
+            html = str((meta.get("arguments") or {}).get("html") or "")
+            preview = mail_html.preview(html) if html else None
+            if preview is None:
+                raise HTTPException(404, "no such pending mail")
+            meta["_mail_preview"] = preview   # computed once per card; never listed (get_pending_approvals drops "_" keys)
+        size = len(preview.html.encode("utf-8"))
+        if size > mail_html.PREVIEW_MAX_BYTES:
+            raise HTTPException(413, {"code": "too_big", "message": i18n.t("The preview is too large to show.")})
+        return JSONResponse({"html": preview.html, "blocks": preview.blocks, "cut": preview.cut, "pictures": preview.pictures,
+                             "links": preview.links, "bytes": size},
+                            headers={"Cache-Control": "no-store", "Content-Security-Policy": mail_html.PREVIEW_CSP,
+                                     "X-Content-Type-Options": "nosniff"})
 
     @router.get("/api/approvals/history", dependencies=[Depends(require_auth)])
     async def get_approval_history(limit: int = 50, before: float | None = None, task_id: int | None = None) -> dict[str, Any]:

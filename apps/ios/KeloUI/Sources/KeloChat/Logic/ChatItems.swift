@@ -137,6 +137,8 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         public var forgetPlan = ""
         /// The message this card sends, which the owner may fix first (a mail's body, a text); nil for any other card.
         public var editable: EditableMessage? = nil
+        /// A designed mail: where its preview is (MailPreviewBlock); nil for any other card.
+        public var mail: MailDesign? = nil
 
         public var open: Bool { answer == nil && !expired }
         public var shown: String { label.isEmpty ? name : label }
@@ -157,6 +159,8 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         public var hosts: [String] = []
         /// The phone card: the Android device (tab "android") instead of a browser tab; `host` stays empty.
         public var device = false
+        /// The server's time of the card (unix seconds); 0 = unknown. A card the server no longer shows is dropped once it is older.
+        public var at: Double = 0
     }
 
     /// An allowed payment waits for this phone's card until `expiresAt` (unix seconds); `ended`: the reply is over.
@@ -379,9 +383,10 @@ public enum ChatReducer {
                 grant: a.grant, urgent: a.urgent, missed: a.missed, items: a.items, pin: a.pin,
                 signable: a.signable, issuedAt: a.issuedAt,
                 offers: a.payment == nil && a.grant == nil ? a.offers : [],
-                preapproval: a.preapproval, forgetPlan: a.forgetPlan, editable: a.editable)))
+                preapproval: a.preapproval, forgetPlan: a.forgetPlan, editable: a.editable, mail: a.mail)))
         case .browser(let b):
-            // one live card per reply and tab: a new step, or another site in the same tab, updates it; only a new tab adds one
+            // one live card per reply and tab: a new step, or another site in the same tab, updates it; only a new tab adds one.
+            // A card of an earlier reply for the same tab moves here (one card per tab in the whole list)
             let start = (next.lastIndex(where: \.isMine) ?? -1) + 1
             var i: Int?
             if start < next.count {
@@ -390,18 +395,25 @@ public enum ChatReducer {
                     return x.id == b.id || x.tab == b.tab || (b.tab.isEmpty && !x.tab.isEmpty) || (x.tab.isEmpty && !b.tab.isEmpty)
                 }
             }
+            var earlier: Int?
+            if i == nil {
+                earlier = next.indices.reversed().first { j in
+                    guard case .browser(let x) = next[j], !x.device else { return false }
+                    return x.id == b.id || (!b.tab.isEmpty && x.tab == b.tab)
+                }
+            }
             var old: ChatItem.Browser?
-            if let i, case .browser(let x) = next[i] { old = x }
+            if let j = i ?? earlier, case .browser(let x) = next[j] { old = x }
             var hosts = old?.hosts ?? []
             if !b.host.isEmpty && !hosts.contains(b.host) { hosts.append(b.host) }
             let card = ChatItem.Browser(
                 key: old?.key ?? newKey(), id: b.id, title: b.title, host: b.host, status: b.status,
                 image: b.image ?? old?.image,
                 width: b.image != nil ? b.width : (old?.width ?? 0), height: b.image != nil ? b.height : (old?.height ?? 0),
-                recent: filmstrip(old?.recent ?? [], b.image), tab: b.tab.isEmpty ? (old?.tab ?? "") : b.tab, hosts: hosts)
-            if let i { next[i] = .browser(card) } else { next.append(.browser(card)) }
+                recent: filmstrip(old?.recent ?? [], b.image), tab: b.tab.isEmpty ? (old?.tab ?? "") : b.tab, hosts: hosts, at: b.at)
+            place(card, at: i, moving: earlier, in: &next)
         case .device(let d):
-            // one phone card per reply: every step of the device updates it in place
+            // one phone card in the whole list: every step of the device updates it in place (a card of an earlier reply moves here)
             let start = (next.lastIndex(where: \.isMine) ?? -1) + 1
             var i: Int?
             if start < next.count {
@@ -410,14 +422,29 @@ public enum ChatReducer {
                     return false
                 }
             }
+            var earlier: Int?
+            if i == nil {
+                earlier = next.indices.reversed().first { j in
+                    if case .browser(let x) = next[j] { return x.device }
+                    return false
+                }
+            }
             var old: ChatItem.Browser?
-            if let i, case .browser(let x) = next[i] { old = x }
+            if let j = i ?? earlier, case .browser(let x) = next[j] { old = x }
             let card = ChatItem.Browser(
                 key: old?.key ?? newKey(), id: d.id, title: "", host: "", status: d.status,
                 image: d.image ?? old?.image,
                 width: d.image != nil ? d.width : (old?.width ?? 0), height: d.image != nil ? d.height : (old?.height ?? 0),
-                recent: filmstrip(old?.recent ?? [], d.image), tab: d.key, hosts: [], device: true)
-            if let i { next[i] = .browser(card) } else { next.append(.browser(card)) }
+                recent: filmstrip(old?.recent ?? [], d.image), tab: d.key, hosts: [], device: true, at: d.at)
+            place(card, at: i, moving: earlier, in: &next)
+        case .view(let v):
+            // the server closed a tab or the phone's view in the chat: its card goes (an open view brings its card with the next step)
+            if v.state == "closed" {
+                next.removeAll { item in
+                    guard case .browser(let x) = item else { return false }
+                    return v.key == phoneViewKey ? x.device : (!x.device && x.tab == v.key)
+                }
+            }
         case .cardNeeded(let c):
             // this phone already sent the card on Allow: nothing more to ask
             if next.contains(where: { if case .approval(let a) = $0 { return a.id == c.approvalId && a.send == .sent }; return false }) {
@@ -727,6 +754,21 @@ public enum ChatReducer {
         return rows + appended
     }
 
+    /// The rows after the newest page was loaded again while it was on screen (the news check; Android `refreshNewest`): the rows that
+    /// are not messages (browser and phone cards, chips, approvals) stay where they are, a message stored after the reply is appended
+    /// (`mergeStored`), and a shown message the page no longer has inside its id range goes. Nil when no shown message is on the page:
+    /// then the page replaces the list.
+    public static func refreshNewest(_ shown: [ChatItem], _ stored: [ChatItem]) -> [ChatItem]? {
+        let storedIds = Set(stored.compactMap(\.asMsg?.id))
+        guard shown.contains(where: { item in item.asMsg?.id.map { storedIds.contains($0) } ?? false }) else { return nil }
+        let merged = mergeStored(shown, stored)
+        guard let oldest = storedIds.min() else { return merged }
+        return merged.filter { item in
+            guard let id = item.asMsg?.id else { return true }
+            return storedIds.contains(id) || id < oldest
+        }
+    }
+
     /// The briefing cards on screen after GET /api/messages again (`fresh`: message id -> that message's card now): a card already
     /// shown takes its new state (its hours line goes once answered on another device); every other row, and the order, stay as they
     /// are (Android ChatReducer.withBriefings).
@@ -912,5 +954,14 @@ extension CardSendError {
         case .network: self = .network
         case .other: self = .other
         }
+    }
+}
+
+extension ChatReducer {
+    /// The card goes where the reply's card was (`at`), or moves from an earlier reply (`moving`) to the end; a new one goes to the end.
+    fileprivate static func place(_ card: ChatItem.Browser, at i: Int?, moving earlier: Int?, in next: inout [ChatItem]) {
+        if let i { next[i] = .browser(card) }
+        else if let earlier { next.remove(at: earlier); next.append(.browser(card)) }
+        else { next.append(.browser(card)) }
     }
 }

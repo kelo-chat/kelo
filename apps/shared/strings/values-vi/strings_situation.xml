@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Điều Kelo đã xem</string>
+    <string name="situation_title">Điều Kelo đã xem</string>
+    <string name="situation_hourly_head">Điều Kelo xem mỗi giờ</string>
+    <string name="situation_read_when_needed_head">Chỉ đọc khi cần</string>
+    <string name="situation_read_when_needed_about">Các mục này được đọc khi một câu hỏi cần đến. Một dịch vụ có thể được xem mỗi giờ nếu nó cho biết cách đọc trạng thái của nó.</string>
+    <string name="situation_section_conversation">Trò chuyện</string>
+    <string name="situation_section_mail">Thư</string>
+    <string name="situation_section_calendar">Lịch</string>
+    <string name="situation_section_goals">Mục tiêu</string>
+    <string name="situation_section_schedules">Lịch trình</string>
+    <string name="situation_section_memory">Bộ nhớ</string>
+    <string name="situation_section_other">Khác</string>
+    <string name="situation_empty">Chưa có gì. Lần xem đầu tiên là phút thứ 9 của giờ tới, trong khoảng thời gian bạn thức.</string>
+    <string name="situation_keep_days">Giữ %d ngày</string>
+    <string name="situation_outcome_no_change">Không có gì mới</string>
+    <string name="situation_outcome_nothing">Đã xem, không có gì để báo</string>
+    <string name="situation_outcome_proposed">Đã chuẩn bị %d</string>
+    <string name="situation_outcome_selected">Đã chọn %d</string>
+    <string name="situation_outcome_delivered">Đã báo cho bạn</string>
+    <string name="situation_outcome_failed">Không xem được</string>
+    <string name="situation_outcome_running">Đang xem</string>
+    <string name="situation_outcome_other">Đã xem</string>
+    <string name="situation_load_more">Tải thêm</string>
+    <string name="situation_detail_changed">Điều đã thay đổi</string>
+    <string name="situation_detail_same">Giống như trước (%d)</string>
+    <string name="situation_detail_failed">Không đọc được</string>
+    <string name="situation_detail_off">Đã tắt</string>
+    <string name="situation_detail_done">Kelo đã làm gì</string>
+    <string name="situation_detail_none">Lần xem này không chuẩn bị gì.</string>
+    <string name="situation_state_new">Mới</string>
+    <string name="situation_state_same">Giống như trước</string>
+    <string name="situation_state_changed">Đã đổi</string>
+    <string name="situation_state_failed">Không đọc được</string>
+    <string name="situation_state_timeout">Mất quá nhiều thời gian</string>
+    <string name="situation_state_skipped">Không đưa vào: lần xem đã đầy</string>
+    <string name="situation_state_off">Đã tắt</string>
+    <string name="situation_state_other">Khác</string>
+    <string name="situation_event_proposed">Đã chuẩn bị</string>
+    <string name="situation_event_updated">Đã cập nhật</string>
+    <string name="situation_event_selected_today">Đã chọn cho hôm nay</string>
+    <string name="situation_event_selected_regular">Đã chọn như tin nhắn thường</string>
+    <string name="situation_event_told">Đã báo cho bạn</string>
+    <string name="situation_event_dropped">Đã gác lại: %s</string>
+    <string name="situation_event_dropped_none">Đã gác lại: không đáng để báo</string>
+    <string name="situation_event_expired">Đã hết hạn</string>
+    <string name="situation_event_waiting">Đang chờ lúc thích hợp hơn</string>
+</resources>

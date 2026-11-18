@@ -51,6 +51,7 @@ class TesterDesk:
         """`notify(title, body)`: an app notification to the operator for each new sign-up, next to the mail (Gmail hides a mail its
         own account sent to an address that forwards back to it)."""
         self.store, self.mailer, self.wall, self.notify = store, mailer, wall, notify
+        self.on_event: Callable[[str, dict[str, Any]], Any] | None = None   # the site copy's feed of events (operator_events.py)
         self._hits: dict[str, deque[float]] = {}
         store._db.executescript(SCHEMA)
         if "added" not in {r["name"] for r in store._all("PRAGMA table_info(tester_signups)", ())}:
@@ -115,6 +116,8 @@ class TesterDesk:
             raise SignupError("full")
         rid = int(self.store._run("INSERT INTO tester_signups(email, model, lang, created_at) VALUES(?,?,?,?)",
                                   (email, model, (lang or "")[:8], self.wall())).lastrowid)
+        if self.on_event is not None:
+            self.on_event("tester_signup", {"email": email, "model": model, "count": self.count()})
         if self.notify is not None:
             try:
                 lang = owner_lang()   # the operator reads it, in their app's language (not the visitor's page language)

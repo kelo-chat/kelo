@@ -14,6 +14,10 @@ case "${ROLE:-}" in
     # as SOCKS5 on :1080 of the private network vpn-net. Idle until the server writes the configuration into /run/kelo-vpn.
     exec python -m assistant.vpn_sidecar
     ;;
+  voice)
+    # Speech to text (assistant/voice_service.py, docs/voice.md): no network, reads the models the server downloaded, on voice.sock.
+    exec python -m assistant.voice_service
+    ;;
   keyring)
     # The AI providers' keys (assistant/keyring_service.py, docs/keyring.md): locked until the server sends the ring key.
     exec python -m assistant.keyring_service
@@ -31,13 +35,15 @@ case "${ROLE:-}" in
     sleep 1
     openbox >/dev/null 2>&1 &
     # RFB for the server container, republished like DevTools below; never published by compose.
-    socat TCP-LISTEN:5901,fork,reuseaddr TCP:127.0.0.1:5900 &
+    socat TCP-LISTEN:"${RFB_PORT:-5901}",fork,reuseaddr TCP:127.0.0.1:5900 &
     # DevTools stays on loopback; socat republishes it on :9223 for other containers on the
     # private network. Compose never publishes this port.
-    socat TCP-LISTEN:9223,fork,reuseaddr TCP:127.0.0.1:9222 &
+    socat TCP-LISTEN:"${DEVTOOLS_PORT:-9223}",fork,reuseaddr TCP:127.0.0.1:9222 &
     # A recreated container gets a new hostname; Chromium then treats the old SingletonLock in the profile
     # volume as "in use on another computer" and never opens the DevTools port. This container is the only
     # user of the profile, so the leftover lock is always stale.
+    # BROWSER_EPHEMERAL=1 (the work browser): the profile is emptied before Chrome starts, so nothing of the owner's is kept on this disk.
+    if [ "${BROWSER_EPHEMERAL:-0}" = 1 ]; then rm -rf /data/profile; fi
     rm -f /data/profile/SingletonLock /data/profile/SingletonCookie /data/profile/SingletonSocket
     # Cap on the page cache kept on disk: BROWSER_CACHE_MB, and when that is 0 or unset the default of 1024 MB (Chrome alone would
     # grow it to a share of the free disk). docs/disk-growth.md.
@@ -109,7 +115,7 @@ case "${ROLE:-}" in
       about:blank
     ;;
   *)
-    echo "ROLE must be 'server', 'browser', 'egress', 'vpn' or 'keyring' (got '${ROLE:-}')" >&2
+    echo "ROLE must be 'server', 'browser', 'egress', 'vpn', 'keyring' or 'voice' (got '${ROLE:-}')" >&2
     exit 64
     ;;
 esac

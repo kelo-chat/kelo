@@ -947,10 +947,14 @@
     <string name="live_held_elsewhere">Se controla desde otro dispositivo</string>
     <string name="live_give_back">Devolver</string>
     <string name="live_paused_banner">Tienes el control. Tu agente esperará en esta pestaña hasta que se lo devuelvas.</string>
+    <string name="live_still_yours">Sigues controlándolo tú. Tu agente espera hasta que se lo devuelvas.</string>
+    <string name="live_screen_changed">La pantalla cambió. Toca de nuevo.</string>
     <string name="live_tab_closed">Se cerró la pestaña, así que no hay nada más que ver. Si se guardó la última pantalla, aparece abajo.</string>
     <string name="live_not_controller">Ahora no puedes controlarlo. Toca Tomar el control otra vez.</string>
     <string name="live_input_failed">El navegador no pudo hacerlo.</string>
     <string name="live_state_you">Tienes el control</string>
+    <string name="live_work_browser">Navegador de trabajo</string>
+    <string name="live_work_browser_note">Esta pestaña está en el navegador de trabajo de Kelo, separado de tus pestañas. Un inicio de sesión que hagas aquí se guarda en el navegador principal de Kelo cuando termina la tarea.</string>
     <string name="live_state_other">Otro dispositivo tiene el control</string>
     <string name="live_state_waiting">Esperando aprobación</string>
     <string name="live_connecting">Conectando…</string>
@@ -1224,6 +1228,9 @@
     <string name="work_wait_answer">Seguirá cuando digas cómo continuar.</string>
     <string name="work_wait_blocked">Se detuvo porque no puede avanzar más por su cuenta.</string>
     <string name="work_wait_restart">Se detuvo cuando se reinició el servidor.</string>
+    <string name="work_picked_up">El servidor de Kelo se reinició, así que retomó donde se había detenido.</string>
+    <string name="work_picked_up_browser">El navegador se reinició, así que sigue en una pestaña nueva.</string>
+    <string name="work_wait_pickup">Retomará donde se detuvo en un momento.</string>
     <string name="work_schedule_on">Automatización activada</string>
     <string name="work_schedule_off">Automatización desactivada</string>
     <string name="work_schedule_by_agent">Creada por tu agente</string>

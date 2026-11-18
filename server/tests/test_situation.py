@@ -443,7 +443,7 @@ def test_the_research_route_shows_the_config_the_passes_and_the_open_items(tmp_p
     body = asyncio.run(scenario())
     assert body["research"] is True and body["every_minutes"] == 60 and body["checkpoint"]
     assert body["passes"][0]["status"] in ("selected", "proposed") and body["passes"][0]["proposed"] == 1
-    assert [i["key"] for i in body["open"]] == ["k1"] and body["open"][0]["evidence"] == ["source:1"]
+    assert [i["key"] for i in body["open"]] == ["k1"] and "evidence" not in body["open"][0] and "prepared" not in body["open"][0]
 
 
 def test_the_prompts_come_from_the_content_dir_the_server_image_sets(tmp_path, monkeypatch):

@@ -8,6 +8,15 @@ import KeloTestSupport
 /// The work page's words: schedules are always said in words (never their cron expression), and the server's lists are read
 /// with the extra fields KeloCore's models leave out.
 @Suite struct WorkTextTests {
+    @MainActor @Test func aCutJobSaysItWillPickUpAndAnInterruptedOneSaysItStopped() throws {
+        let cut = try JSONDecoder().decode(Worker.self, from: Data(#"{"id":"w9","status":"interrupted","waiting_for":"cut"}"#.utf8))
+        let plain = try JSONDecoder().decode(Worker.self, from: Data(#"{"id":"w8","status":"interrupted"}"#.utf8))
+        withLanguage("en") {
+            #expect(WorkText.waiting(cut) == L(R.string.work_wait_pickup))
+            #expect(WorkText.waiting(plain) == L(R.string.work_wait_restart))
+        }
+    }
+
     @MainActor @Test func aPhoneJobHasItsOwnKindWord() {
         withLanguage("en") {
             #expect(WorkText.jobKind("phone") == "Phone task")

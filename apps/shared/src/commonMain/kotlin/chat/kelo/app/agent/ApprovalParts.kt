@@ -129,6 +129,7 @@ fun PendingApprovalBody(
         val editable = a.event.editable
         a.event.preapproval?.let { PreapprovalFacts(it) }
             ?: chat.kelo.app.chat.ApprovalFacts(if (editable != null) ApprovalEditRules.withoutMessage(a.event.lines, editable) else a.event.lines, a.event.detail.takeIf { editable == null })
+        a.event.mail?.let { chat.kelo.app.chat.MailPreviewBlock(a.id, it) }
         if (editable != null) EditableMessageBlock(a.id, editable, enabled = !working)
         if (a.event.items.isNotEmpty()) chat.kelo.app.chat.ApprovalItems(a.event.items)
         if (a.event.forgetPlan.isNotEmpty()) ForgetPlanList(a.event.forgetPlan)

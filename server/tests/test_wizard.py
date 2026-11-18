@@ -196,7 +196,7 @@ def test_first_run_end_to_end(tmp_path):
     env = tmp_path / ".env"
     assert read_env(env, "ASSISTANT_PROVIDER") == "" and read_env(env, "ASSISTANT_MODEL") == ""   # chosen in the app
     assert len(read_env(env, "ASSISTANT_TOKEN")) >= 32 and read_env(env, "ASSISTANT_SECRET_KEY")
-    assert read_env(env, "SERVER_MEMORY") == str(1 * GB)                 # recommended sizes were saved
+    assert read_env(env, "SERVER_MEMORY") == str(746 * 1024**2)         # recommended sizes were saved (the work browser takes a share too)
     assert read_env(env, "CONNECT_MODE") == "kelo" and read_env(env, "CONNECT_URL") == "https://alice.kelo.chat"
     assert "kelo" in read_env(env, "COMPOSE_PROFILES").split(",")
     assert docker.streamed and docker.streamed[0][-4:] == ["up", "-d", "--build", "--remove-orphans"]

@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">放大</string>
     <string name="desktop_chat_zoom_reset">符合視窗</string>
     <string name="desktop_chat_zoom_hint">按住 %1$s 並捲動滾輪可縮放；拖曳可查看其他部分。</string>
+    <string name="desktop_chat_search_hint">輸入一個詞或詞的一部分。點按結果即可開啟該則訊息所在的位置。</string>
 </resources>

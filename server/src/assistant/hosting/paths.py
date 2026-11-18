@@ -1,6 +1,5 @@
 """Where a part's folders are by default. Each function reads the environment variable that already named the folder in Docker and
-falls back to the value Docker has always used, so nothing changes in a container; a native install sets the variables (or, in
-phase 1, the host's own Paths object does)."""
+falls back to the value Docker has always used, so nothing changes in a container."""
 
 from __future__ import annotations
 

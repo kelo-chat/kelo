@@ -102,6 +102,43 @@ def _journal(s, month: str) -> dict:
             "pending": [{"date": d, "status": "pending", "reason": ""} for d in days[1:2] if d.startswith(month)]}
 
 
+def _research_list() -> dict:
+    """GET /api/proactive/research as the app shows it: the sections and two connectors, three passes, no content."""
+    sections = [{"id": c, "name": "", "kind": "section", "hourly": True}
+                for c in ("conversation", "mail", "calendar", "goals", "schedules", "memory")]
+    looked = sections + [{"id": "home_assistant", "name": "Home Assistant", "kind": "connector", "hourly": True},
+                         {"id": "notes", "name": "Notes", "kind": "connector", "hourly": False}]
+    passes = [
+        {"id": 3, "at": NOW - 600, "status": "delivered", "proposed": 1, "selected": 1, "delivered": 1, "dropped": 0,
+         "counts": {"proposed": 1, "selected": 1, "told": 1, "dropped": 0}, "sources": [
+             {"id": "mail", "name": "", "kind": "section", "state": "changed", "entries": 2},
+             {"id": "home_assistant", "name": "Home Assistant", "kind": "connector", "state": "changed", "entries": 4},
+             {"id": "conversation", "name": "", "kind": "section", "state": "same", "entries": 0}]},
+        {"id": 2, "at": NOW - 3600, "status": "nothing", "proposed": 0, "selected": 0, "delivered": 0, "dropped": 0,
+         "counts": {"proposed": 0, "selected": 0, "told": 0, "dropped": 0}, "sources": [
+             {"id": "home_assistant", "name": "Home Assistant", "kind": "connector", "state": "timeout", "entries": 0},
+             {"id": "memory", "name": "", "kind": "section", "state": "same", "entries": 0}]},
+        {"id": 1, "at": NOW - 7200, "status": "no_change", "proposed": 0, "selected": 0, "delivered": 0, "dropped": 0,
+         "counts": {"proposed": 0, "selected": 0, "told": 0, "dropped": 0}, "sources": []},
+    ]
+    return {"research": True, "every_minutes": 60, "checkpoint": NOW - 600, "keep_days": 90, "looked_at": looked,
+            "passes": passes, "open": [], "next_before": None}
+
+
+def _research_detail(pass_id: int):
+    rows = {p["id"]: p for p in _research_list()["passes"]}
+    if pass_id not in rows:
+        return None
+    p = rows[pass_id]
+    events = []
+    if pass_id == 3:
+        events = [{"item_id": 11, "title": "Garage door left open", "status": "proposed", "why": "", "priority": "", "at": NOW - 900},
+                  {"item_id": 11, "title": "Garage door left open", "status": "selected", "why": "", "priority": "today", "at": NOW - 780},
+                  {"item_id": 11, "title": "Garage door left open", "status": "told", "why": "told:today", "priority": "today", "at": NOW - 600},
+                  {"item_id": 12, "title": "", "status": "dropped", "why": "Only a routine sensor change", "priority": "", "at": NOW - 600}]
+    return {"pass": {k: v for k, v in p.items() if k != "sources"}, "sources": p["sources"], "events": events}
+
+
 def route(h, method: str, path: str, q: dict, s) -> bool:
     st = _st(s)
     if path == "/api/devices" and method == "GET":
@@ -132,6 +169,14 @@ def route(h, method: str, path: str, q: dict, s) -> bool:
                      "host": {"memory": 16 * GB, "cpus": 8.0, "disk_free": 180 * GB, "disk_total": 500 * GB},
                      "profile": "recommended", "minimum": {"memory": 4 * GB, "cpus": 2.0, "disk": 10 * GB},
                      "recommended": {"memory": 8 * GB, "cpus": 4.0, "disk": 20 * GB}})
+        return True
+    if path == "/api/proactive/research" and method == "GET":
+        h.send_json(_research_list())
+        return True
+    m = re.fullmatch(r"/api/proactive/research/passes/(\d+)", path)
+    if m and method == "GET":
+        found = _research_detail(int(m.group(1)))
+        h.send_json(found if found else {"detail": "no such pass"}, 200 if found else 404)
         return True
     if path == "/api/proactive":
         if method == "PUT":

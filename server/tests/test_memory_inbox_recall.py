@@ -29,19 +29,27 @@ async def test_remember_writes_a_dated_line_with_its_source_newest_first(tmp_pat
     home = Home(tmp_path / "home")
     clock = Clock(ts(2026, 11, 9, 14, 3))
     inbox = MemoryInbox(home, tz=lambda: "Asia/Seoul", clock=clock)
-    [tool] = inbox_tools(inbox, lambda: 1234)
+    from assistant.owner_messages import OwnerMessages
+    store = Store()
+    seat = store.add_message("user", "Prefers  window seats", author="owner")
+    fridays = store.add_message("user", "Works from home on Fridays", author="owner")
+    secret = store.add_message("user", "password: hunter22", author="owner")
+    turn = {"source": "chat", "unattended": False, "owner_message": seat}
+    [tool] = inbox_tools(inbox, OwnerMessages(store), lambda: turn)
     assert tool.name == "remember"
-    out = await tool.handler({"text": "Prefers  window seats", "kind": "preference"})
-    assert out == "noted: 2026-11-09 14:03 · m1234 · preference · Prefers window seats"
+    out = await tool.handler({"quote": "Prefers  window seats", "kind": "preference"})
+    assert out == f'noted: 2026-11-09 14:03 · m{seat} · preference · "Prefers window seats"'
     clock.t += 60
-    await tool.handler({"text": "Works from home on Fridays"})
-    assert [ln.split(" · ")[-1] for ln in inbox.lines()] == ["Works from home on Fridays", "Prefers window seats"]
-    await tool.handler({"text": "prefers window seats"})                       # already waiting: not twice
+    turn["owner_message"] = fridays
+    await tool.handler({"quote": "Works from home on Fridays"})
+    assert [ln.split(" · ")[-1] for ln in inbox.lines()] == ['"Works from home on Fridays"', '"Prefers window seats"']
+    await tool.handler({"quote": "prefers window seats"})                      # already waiting: not twice
     assert len(inbox.lines()) == 2
-    assert (await tool.handler({"text": "password: hunter22"})).startswith("error:")   # a secret is never kept
+    turn["owner_message"] = secret
+    assert (await tool.handler({"quote": "password: hunter22"})).startswith("error:")   # a secret is never kept
     assert "hunter22" not in (home.root / INBOX).read_text()
     for i in range(INBOX_MAX + 5):
-        inbox.add(f"fact number {i}")
+        inbox.add(f"fact number {i}", "fact", seat)
     assert len(inbox.lines()) == INBOX_MAX and "fact number 204" in inbox.lines()[0]
     block = inbox.prompt_block()
     assert block.count("\n- ") == INBOX_SHOWN and "fact number 204" in block.splitlines()[1] and f"older in {INBOX}" in block
@@ -60,7 +68,7 @@ def test_new_lines_get_a_date_and_the_oldest_go_first():
 
 # ---------------------------------------------------------------------------------------------------------- the section index
 def people(home, slug, name, aliases, body):
-    home.write(f"memory/people/{slug}.md", f"---\nname: {name}\naliases: [{', '.join(aliases)}]\nrelation: friend\ngroups: []\n---\n\n{body}")
+    home.write(f"memory/people/{slug}.md", f"---\nname: {name}\naliases: [{', '.join(aliases)}]\nrelation: friend\ngroups: []\n---\n\n{body}", by="user")
 
 
 def test_sections_and_terms():
@@ -71,8 +79,8 @@ def test_sections_and_terms():
 def test_common_words_count_for_nothing_by_frequency_not_by_a_list(tmp_path):
     home = Home(tmp_path)
     for i in range(6):
-        home.write(f"memory/n{i}.md", f"# N{i}\n\n## Plan\nThe plan is that what we do is the thing number {i}.\n")
-    home.write("memory/trip.md", "# Trip\n\n## Visa\nThe visa for Lisbon needs a photo.\n")
+        home.write(f"memory/n{i}.md", f"# N{i}\n\n## Plan\nThe plan is that what we do is the thing number {i}.\n", by="user")
+    home.write("memory/trip.md", "# Trip\n\n## Visa\nThe visa for Lisbon needs a photo.\n", by="user")
     r = Recall(home)
     assert r.search("what is the plan") == []                                   # every word is in most sections: nothing to go on
     hits = r.search("what is the visa for Lisbon")
@@ -85,7 +93,7 @@ def test_the_index_finds_the_right_section_and_keeps_up_with_changes(tmp_path):
     store = Store()
     people(home, "jiwoo", "지우", ["Jiwoo"], "# 지우\n\n## Work\nSame team, meets on Mondays.\n\n## Food\nVegetarian; no mushrooms.\n")
     people(home, "minho", "민호", [], "# 민호\n\n## Family\nOlder brother, lives in Busan.\n")
-    home.write("memory/trips.md", "# Trips\n\n## Spring\nPassport renewal before the spring trip.\n")
+    home.write("memory/trips.md", "# Trips\n\n## Spring\nPassport renewal before the spring trip.\n", by="user")
     store._run("CREATE TABLE IF NOT EXISTS journal (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, title TEXT NOT NULL, "
                "summary TEXT NOT NULL, created_at REAL NOT NULL)")
     store._run("INSERT INTO journal(date, title, summary, created_at) VALUES('2026-11-07', 'Dentist', 'Booked a cleaning for Thursday', 1)")
@@ -95,11 +103,11 @@ def test_the_index_finds_the_right_section_and_keeps_up_with_changes(tmp_path):
     assert r.search("when is the dentist")[0]["path"] == "journal/2026-11-07"
     assert r.search("passport")[0]["key"] == "memory/trips.md#Spring"
     assert r.search("hello yonder") == []   # (was "hello there": no stopword list any more; a frequent word is dropped by frequency, see the test below)
-    home.write("memory/trips.md", "# Trips\n\n## Autumn\nVisa for the autumn trip.\n")
+    home.write("memory/trips.md", "# Trips\n\n## Autumn\nVisa for the autumn trip.\n", by="user")
     assert r.search("passport") == [] and r.search("visa")[0]["key"] == "memory/trips.md#Autumn"
     (home.root / "memory/trips.md").unlink()
     assert r.search("visa") == []
-    home.write("memory/inbox.md", "# inbox.md\n- 2026-11-09 10:00 · m1 · fact · visa\n")
+    home.write("memory/inbox.md", "# inbox.md\n- 2026-11-09 10:00 · m1 · fact · visa\n", by="user")
     assert r.search("visa") == []                                   # the inbox is shown on its own, not indexed
 
 
@@ -108,7 +116,7 @@ def test_a_section_is_sent_once_then_named_by_path(tmp_path):
     store = Store()
     people(home, "jiwoo", "지우", [], "# 지우\n\n## Food\nVegetarian; no mushrooms.\n")
     inbox = MemoryInbox(home)
-    inbox.add("Started a new job")
+    inbox.add("Started a new job", "fact", 1)
     tr = TurnRecall(Recall(home, store), store, inbox)
     ids = [store.add_message("user", f"msg {i}") for i in range(SHOWN_WINDOW + 2)]
     first = tr.block("지우 food", ids[0])
@@ -119,7 +127,7 @@ def test_a_section_is_sent_once_then_named_by_path(tmp_path):
     assert "Vegetarian" not in later and "Shown earlier" in later and "memory/people/jiwoo.md" in later
     much_later = tr.block("지우 food", ids[SHOWN_WINDOW + 1])
     assert "Vegetarian" in much_later
-    home.write("memory/people/jiwoo.md", (home.root / "memory/people/jiwoo.md").read_text().replace("Vegetarian", "Vegan"))
+    home.write("memory/people/jiwoo.md", (home.root / "memory/people/jiwoo.md").read_text().replace("Vegetarian", "Vegan"), by="user")
     assert "Vegan" in tr.block("지우 food", ids[SHOWN_WINDOW + 1])     # changed text is sent again
 
 
@@ -164,7 +172,7 @@ async def test_a_note_taken_mid_chat_leaves_the_cached_system_prompt_as_it_was(t
     async def fn(provider, request, **kw):
         seen.append(request.messages)
         if len(seen) == 1:
-            yield ToolCall(id="c1", name="remember", arguments=json.dumps({"text": "Allergic to peanuts", "kind": "fact"}))
+            yield ToolCall(id="c1", name="remember", arguments=json.dumps({"quote": "allergic to peanuts", "kind": "fact"}))
             yield Done("tool_calls")
             return
         yield TextDelta("ok")
@@ -179,9 +187,9 @@ async def test_a_note_taken_mid_chat_leaves_the_cached_system_prompt_as_it_was(t
             async with c.stream("POST", "/api/talk", json={"text": text}) as r:
                 await read_events(r)
     home = Home(tmp_path / "home")
-    assert "Allergic to peanuts" in (home.root / INBOX).read_text()
+    assert "allergic to peanuts" in (home.root / INBOX).read_text()
     assert "## Your Files" in seen[2][0]["content"]
     assert len(seen) == 3 and seen[0][0]["content"] == seen[2][0]["content"]   # turn 2's system text is turn 1's
-    assert INBOX not in seen[2][0]["content"] and "Allergic to peanuts" not in seen[2][0]["content"]
+    assert INBOX not in seen[2][0]["content"] and "allergic to peanuts" not in seen[2][0]["content"]
     note = next(m["content"] for m in seen[2] if isinstance(m.get("content"), str) and m["content"].startswith(TURN_NOTE))
-    assert "Allergic to peanuts" in note                                         # the fresh note works before it is filed
+    assert "allergic to peanuts" in note                                         # the fresh note works before it is filed

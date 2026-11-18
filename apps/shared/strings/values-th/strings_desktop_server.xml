@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">ใช้เครื่องนี้เป็นเซิร์ฟเวอร์ Kelo</string>
     <string name="desktop_server_row_hint">ติดตั้งเซิร์ฟเวอร์ Kelo ลงในคอมพิวเตอร์เครื่องนี้ Windows จะขอสิทธิ์ผู้ดูแลระบบหนึ่งครั้ง</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">อัปเดต</string>
     <string name="desktop_server_install">ติดตั้ง</string>
     <string name="desktop_server_unavailable">เซิร์ฟเวอร์ Kelo สำหรับ Windows ยังไม่พร้อมใช้งาน</string>
+
+    <string name="desktop_server_row_mac">ใช้ Mac เครื่องนี้เป็นเซิร์ฟเวอร์ Kelo</string>
+    <string name="desktop_server_row_hint_mac">ติดตั้งเซิร์ฟเวอร์ Kelo บน Mac เครื่องนี้ macOS จะขอรหัสผ่านผู้ดูแลระบบหนึ่งครั้ง</string>
+    <string name="desktop_server_installed_mac">มีเซิร์ฟเวอร์ Kelo อยู่บน Mac เครื่องนี้</string>
+    <string name="desktop_server_unavailable_mac">เซิร์ฟเวอร์ Kelo สำหรับ Mac ยังไม่พร้อมใช้งาน</string>
+    <string name="desktop_server_port_busy">โปรแกรมอื่นบน Mac เครื่องนี้กำลังใช้พอร์ต %1$d ปิดโปรแกรมนั้นแล้วลองอีกครั้ง</string>
+    <string name="desktop_server_downgrade">มีเซิร์ฟเวอร์ Kelo ที่ใหม่กว่าติดตั้งอยู่แล้ว</string>
+    <string name="desktop_server_remove">ลบ</string>
+    <string name="desktop_server_remove_title">ลบเซิร์ฟเวอร์ Kelo ออกจาก Mac เครื่องนี้ไหม</string>
+    <string name="desktop_server_remove_body">แชต กุญแจ และไฟล์จะยังคงอยู่ เว้นแต่คุณจะเลือกลบ</string>
+    <string name="desktop_server_remove_data">ลบแชต กุญแจ และไฟล์ด้วย</string>
+    <string name="desktop_server_removing">กำลังลบ</string>
+    <string name="desktop_server_removed">ลบแล้ว</string>
 </resources>

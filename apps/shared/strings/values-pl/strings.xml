@@ -958,10 +958,14 @@
     <string name="live_held_elsewhere">Sterowane z innego urządzenia</string>
     <string name="live_give_back">Oddaj</string>
     <string name="live_paused_banner">Masz kontrolę. Agent poczeka na tej karcie, aż ją oddasz.</string>
+    <string name="live_still_yours">Nadal sterujesz sam. Agent czeka, aż oddasz sterowanie.</string>
+    <string name="live_screen_changed">Ekran się zmienił. Dotknij ponownie.</string>
     <string name="live_tab_closed">Karta została zamknięta, więc nie ma już nic do oglądania. Jeśli ostatni ekran został zapisany, widać go poniżej.</string>
     <string name="live_not_controller">Nie możesz teraz sterować. Stuknij ponownie Przejmij kontrolę.</string>
     <string name="live_input_failed">Przeglądarka nie mogła tego zrobić.</string>
     <string name="live_state_you">Masz kontrolę</string>
+    <string name="live_work_browser">Przeglądarka do zadań</string>
+    <string name="live_work_browser_note">Ta karta jest w przeglądarce do zadań Kelo, oddzielnie od Twoich kart. Logowanie wykonane tutaj zostaje zapisane w głównej przeglądarce Kelo po zakończeniu zadania.</string>
     <string name="live_state_other">Steruje inne urządzenie</string>
     <string name="live_state_waiting">Czeka na zgodę</string>
     <string name="live_connecting">Łączę…</string>
@@ -1249,6 +1253,9 @@
     <string name="work_wait_answer">Będzie kontynuować, gdy powiesz, jak działać dalej.</string>
     <string name="work_wait_blocked">Zatrzymane, bo samo nie może iść dalej.</string>
     <string name="work_wait_restart">Zatrzymane przy ponownym uruchomieniu serwera.</string>
+    <string name="work_picked_up">Serwer Kelo uruchomił się ponownie, więc zadanie wznowiono tam, gdzie się zatrzymało.</string>
+    <string name="work_picked_up_browser">Przeglądarka została uruchomiona ponownie, więc praca toczy się w nowej karcie.</string>
+    <string name="work_wait_pickup">Zaraz wznowi pracę tam, gdzie się zatrzymało.</string>
     <string name="work_schedule_on">Harmonogram włączony</string>
     <string name="work_schedule_off">Harmonogram wyłączony</string>
     <string name="work_schedule_by_agent">Utworzony przez agenta</string>

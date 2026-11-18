@@ -958,10 +958,14 @@
     <string name="live_held_elsewhere">Керують з іншого пристрою</string>
     <string name="live_give_back">Повернути</string>
     <string name="live_paused_banner">Керуєте ви. Агент чекатиме на цій вкладці, доки ви не повернете керування.</string>
+    <string name="live_still_yours">Ви досі керуєте самі. Агент чекає, поки ви повернете керування.</string>
+    <string name="live_screen_changed">Екран змінився. Торкніться ще раз.</string>
     <string name="live_tab_closed">Вкладку закрито, тож більше нічого показати. Якщо останній екран збережено, він нижче.</string>
     <string name="live_not_controller">Зараз ви не можете керувати. Знову натисніть «Взяти керування».</string>
     <string name="live_input_failed">Браузер не зміг цього зробити.</string>
     <string name="live_state_you">Керуєте ви</string>
+    <string name="live_work_browser">Робочий браузер</string>
+    <string name="live_work_browser_note">Ця вкладка в робочому браузері Kelo, окремо від ваших власних вкладок. Вхід, який ви зробите тут, буде збережено в основному браузері Kelo, коли завдання завершиться.</string>
     <string name="live_state_other">Керує інший пристрій</string>
     <string name="live_state_waiting">Чекає на підтвердження</string>
     <string name="live_connecting">Підключаюся…</string>
@@ -1249,6 +1253,9 @@
     <string name="work_wait_answer">Продовжить, щойно ви скажете, як діяти.</string>
     <string name="work_wait_blocked">Зупинилося, бо далі само не може.</string>
     <string name="work_wait_restart">Зупинилося через перезапуск сервера.</string>
+    <string name="work_picked_up">Сервер Kelo перезапустився, тож робота продовжилася з місця, де зупинилася.</string>
+    <string name="work_picked_up_browser">Браузер перезапустився, тож робота продовжилася в новій вкладці.</string>
+    <string name="work_wait_pickup">Незабаром продовжиться з місця, де зупинилося.</string>
     <string name="work_schedule_on">Розклад увімкнено</string>
     <string name="work_schedule_off">Розклад вимкнено</string>
     <string name="work_schedule_by_agent">Створено агентом</string>

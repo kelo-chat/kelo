@@ -30,6 +30,14 @@ class NotifyRulesTest {
         assertEquals(Channel.SCHEDULES, NotifyRules.channel(NoteTypes.SCHEDULE_DISABLED, 3))
     }
 
+    @Test fun theOwnersIdleQuestionIsAnApprovalTypeThatOpensTheChat() {
+        // owner decision 2026-11-18: "still controlling it yourself?" waits at the bottom of the chat, with the approvals
+        assertEquals(NoteTypes.HOLD_IDLE, "hold_idle")
+        assertTrue(NoteTypes.HOLD_IDLE in NoteTypes.ALL)
+        assertEquals(Channel.APPROVALS, NotifyRules.channel(NoteTypes.HOLD_IDLE, null))
+        assertEquals(OpenTarget.Chat, NotifyRules.target(ServerNotification(id = 9, type = NoteTypes.HOLD_IDLE)))
+    }
+
     @Test fun whereATapGoes() {
         assertEquals(OpenTarget.Task(9), NotifyRules.target(note(1, task = 9)))
         assertEquals(OpenTarget.Chat, NotifyRules.target(note(1)))

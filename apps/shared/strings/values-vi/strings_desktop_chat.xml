@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">Phóng to</string>
     <string name="desktop_chat_zoom_reset">Vừa cửa sổ</string>
     <string name="desktop_chat_zoom_hint">Giữ %1$s và lăn chuột để thu phóng; kéo để xem xung quanh.</string>
+    <string name="desktop_chat_search_hint">Nhập một từ hoặc một phần của từ. Nhấp vào kết quả để mở trò chuyện tại tin nhắn đó.</string>
 </resources>

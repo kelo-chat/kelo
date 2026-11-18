@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import asyncio
-import hashlib
 import json
 import logging
 import re
@@ -23,7 +22,8 @@ from zoneinfo import ZoneInfo
 
 from .agent import Tool
 from .home import Home, HomeError, PEOPLE_DIR
-from .memory_inbox import MemoryInbox
+from .memory_inbox import OWNER_LINE, MemoryInbox
+from .owner_messages import OwnerMessages
 from .memory_types import (
     CLAIM_KINDS,
     SALIENCE,
@@ -32,7 +32,6 @@ from .memory_types import (
     Window,
 )
 from .memory_upkeep import (
-    AUTO_PREFIXES,
     CAPS,
     LOOKBACK_SECONDS,
     MAX_LOOKBACK_SECONDS,
@@ -250,7 +249,7 @@ def build_window(
     since: float | None = None,
     run_id: str | None = None,
 ) -> Window:
-    """Step 1: gather messages, tasks, approvals, and inbox lines into a Window."""
+    """Step 1: gather the owner's own messages and the owner's inbox lines into a Window (docs/memory-pipeline.md, step 1)."""
     now = clock()
     tz_str = tz() if callable(tz) else tz
     try:
@@ -272,74 +271,23 @@ def build_window(
             seen = 0.0
         since = max(seen or now - LOOKBACK_SECONDS, now - MAX_LOOKBACK_SECONDS)
 
-    # Messages
-    raw_msgs = store._all("SELECT id, role, content, created_at FROM messages WHERE created_at > ? ORDER BY id", (since,))
-    messages = []
-    has_user_msg = False
-    for r in raw_msgs:
-        content = str(r["content"] or "")
-        clean_content = scrub(content)[0]
-        role = str(r["role"] or "")
-        if role == "user" and not clean_content.strip().startswith(AUTO_PREFIXES):
-            has_user_msg = True
-        messages.append({
-            "id": r["id"],
-            "role": role,
-            "text": clean_content,
-            "created_at": r["created_at"],
-        })
-
-    # Tasks
-    tasks = []
-    try:
-        raw_tasks = store._all(
-            "SELECT id, title, status, result, error, source FROM tasks "
-            "WHERE finished_at >= ? AND status IN ('done', 'failed', 'stopped') ORDER BY finished_at DESC LIMIT 15",
-            (since,),
-        )
-        for t in raw_tasks:
-            summary = t.get("result") or t.get("error") or t.get("title") or ""
-            tasks.append({
-                "id": t["id"],
-                "title": t.get("title", ""),
-                "status": t.get("status", ""),
-                "text": summary,
-                "summary": summary,
-            })
-    except Exception:
-        pass
-
-    # Approvals
-    approvals = []
-    try:
-        raw_apps = store._all(
-            "SELECT id, label, site, decision, detail FROM approval_log "
-            "WHERE asked_at >= ? AND decision IN ('approved', 'denied') ORDER BY asked_at DESC LIMIT 15",
-            (since,),
-        )
-        for a in raw_apps:
-            summary = f"{a.get('label', '')} on {a.get('site', '')}: {a.get('decision', '')} ({a.get('detail', '')})"
-            approvals.append({
-                "id": a["id"],
-                "label": a.get("label", ""),
-                "site": a.get("site", ""),
-                "decision": a.get("decision", ""),
-                "text": summary,
-                "summary": summary,
-            })
-    except Exception:
-        pass
-
-    inbox_lines = inbox.lines() if inbox is not None else []
-    has_new = bool(has_user_msg or tasks or approvals or inbox_lines)
+    # The owner's own messages only (owner_messages.py), and the messages the owner's inbox lines name, older ones included. Tasks,
+    # approvals, the assistant's replies and every hidden row are not read by the pass at all.
+    owners = OwnerMessages(store)
+    messages = [{"id": r["id"], "role": "user", "text": scrub(r["text"])[0], "created_at": r["created_at"]} for r in owners.since(since)]
+    inbox_lines = [ln for ln in (inbox.lines() if inbox is not None else []) if OWNER_LINE.match(ln)]
+    have = {m["id"] for m in messages}
+    named = [int(OWNER_LINE.match(ln).group(2)) for ln in inbox_lines]
+    messages += [{"id": r["id"], "role": "user", "text": scrub(r["text"])[0], "created_at": r["created_at"]}
+                 for r in owners.by_ids([i for i in named if i not in have])]
+    messages.sort(key=lambda m: m["id"])
+    has_new = bool(messages or inbox_lines)
 
     return Window(
         run_id=run_id,
         as_of=as_of,
         since=since,
         messages=messages,
-        tasks=tasks,
-        approvals=approvals,
         inbox=inbox_lines,
         log_path=log_path,
         has_new=has_new,
@@ -448,6 +396,10 @@ def check_shape(claim: Claim, window: Window) -> tuple[bool, str]:
     if not claim.handle or not isinstance(claim.handle, str) or not claim.handle.strip():
         return False, "empty handle"
 
+    # Only the owner's own words are admitted: speaker user, and a handle that is one of this window's owner messages
+    if claim.speaker != "user" or window.source(claim.handle) is None:
+        return False, "not the owner's own words"
+
     # Handle must exist in window
     src = window.source(claim.handle)
     if src is None:
@@ -545,10 +497,11 @@ def _write_claims(store: Any, home: Home, window: Window, fenced: list[Claim], n
 
 
 def _file_inbox(window: Window, inbox: MemoryInbox | None, claims: list[Claim]) -> None:
+    """Takes out the inbox lines whose owner message an admitted or dropped claim cites (keyed by message id)."""
     if inbox is None:
         return
-    keys = {c.handle[6:] for c in claims if c.handle.startswith("inbox:")}
-    filed = [ln for ln in window.inbox if hashlib.sha256(ln.encode()).hexdigest()[:8] in keys]
+    cited = {int(c.handle[1:]) for c in claims if c.handle.startswith("m") and c.handle[1:].isdigit()}
+    filed = [ln for ln in window.inbox if int(OWNER_LINE.match(ln).group(2)) in cited]
     if filed:
         inbox.remove(filed)
 
@@ -598,23 +551,21 @@ def _source_time(window: Window, handle: str) -> str:
 
 
 def _format_window_data(window: Window, home: Home, store: Any) -> str:
-    """The extract request's data. Everything that can carry outside text is fenced as data (agent/fence.py)."""
+    """The extract request's data: the owner's own messages and the notes the owner gave (fenced as data, agent/fence.py), the files
+    the pass keeps, and the active claims the owner's words made."""
     def read(rel: str) -> str:
         try:
             return home.read(rel)
         except HomeError:
             return ""
 
-    # Top active claims related to the window (FTS over the words of the window; bounded)
+    # Top active claims related to the window (FTS over the words of the window; bounded), only those the owner's words made
     words = list(dict.fromkeys(w.lower() for m in window.messages for w in re.findall(r"\w{3,}", str(m.get("text") or ""))))[:40]
-    active = search_claims(store, " ".join(words), limit=10, active_only=True) if words else []
+    active = [r for r in search_claims(store, " ".join(words), limit=10, active_only=True) if r["speaker"] == "user"] if words else []
     active_lines = [f"claim:{r['claim_id']} · {r['kind']} · {r['text']} (quote: \"{r['quote']}\")" for r in active]
 
     zone = _zone_of(window)
-    convo = [f"[m{m['id']}] {_stamp(float(m.get('created_at') or 0), zone)} {m['role']}: {m['text']}" for m in window.messages]
-    tasks = [f"[task:{t['id']}] {t.get('status', '')}: {t.get('summary', '')}" for t in window.tasks]
-    approvals = [f"[approval:{a['id']}] {a.get('decision', '')}: {a.get('summary', '')}" for a in window.approvals]
-    inbox = [f"[inbox:{hashlib.sha256(ln.encode()).hexdigest()[:8]}] {ln}" for ln in window.inbox]
+    convo = [f"[m{m['id']}] {_stamp(float(m.get('created_at') or 0), zone)} user: {m['text']}" for m in window.messages]
 
     def block(tag: str, lines: list[str] | str) -> str:
         body = lines if isinstance(lines, str) else "\n".join(lines)
@@ -626,9 +577,7 @@ def _format_window_data(window: Window, home: Home, store: Any) -> str:
         block("today_log", read(window.log_path)),
         block("active_claims", active_lines),
         block("conversation", convo),
-        block("tasks", tasks),
-        block("approvals", approvals),
-        block("inbox", inbox),
+        block("inbox", window.inbox),
     ])
 
 

@@ -7,6 +7,8 @@ plugs in here: a device marked e2e-only is refused when its token arrives on pla
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import secrets
 import time
 from collections import deque
@@ -20,9 +22,10 @@ AUTH_FAIL_WINDOW = 60.0  # ...per this many seconds
 
 
 class AuthGuard:
-    def __init__(self, token: str, store: Any, note_use: Callable[[Request], None], review_mode: bool = False):
+    def __init__(self, token: str, store: Any, note_use: Callable[[Request], None], review_mode: bool = False, link_sha256: str = ""):
         self.token = token
         self.review_mode = review_mode   # a review copy: its devices never get the "owner" side (operator settings, Keyguard, auto-pay)
+        self.link_sha256 = link_sha256   # a site copy: the SHA-256 of the operator link key (operator_link.py); "" = no link
         self.store = store
         self.note_use = note_use   # a signed-in request counts as the app being used (server.py note_use)
         self.failures: dict[str, deque[float]] = {}
@@ -85,6 +88,22 @@ class AuthGuard:
         self.require_auth(request)
         if request.state.device_id is not None and self.review_mode:
             raise HTTPException(403, "this demo server cannot be reconfigured from a device")
+
+    def require_operator(self, request: Request) -> None:
+        """The operator's lists (/api/operator/*) on a site copy: the access key, a signed-in device, or the operator link key of the
+        main copy that the site trusts (its SHA-256 is kept here; the key itself is only in that copy's .env). The link key is
+        accepted on these routes only, and it never counts as an owner or a device (request.state.operator_link)."""
+        supplied = request.headers.get("authorization", "")
+        scheme, _, value = supplied.partition(" ")
+        if self.link_sha256 and scheme.lower() == "bearer" and value:
+            if hmac.compare_digest(hashlib.sha256(value.encode()).hexdigest(), self.link_sha256):
+                self.throttle(request)                    # still refused while this client is blocked for failures
+                request.state.device_id = None
+                request.state.device_owner = False
+                request.state.operator_link = True
+                return
+        request.state.operator_link = False
+        self.require_owner(request)
 
     @staticmethod
     def owner_flag(review_mode: bool) -> bool:

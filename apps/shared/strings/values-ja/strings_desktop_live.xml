@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">このコンピューターから貼り付け</string>
+    <string name="desktop_live_copied">このコンピューターにコピーしました</string>
+    <string name="desktop_live_type_hint">ページをクリックすると直接入力できます。日本語や中国語などの変換入力は下の欄に入力してください。</string>
+</resources>

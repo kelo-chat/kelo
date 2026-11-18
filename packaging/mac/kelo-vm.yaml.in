@@ -1,0 +1,54 @@
+# Kelo server VM (Lima instance template, rendered at build time by tools/build/mac-server-bundle.sh).
+# Lima 2.2.1, vz driver (Apple's Virtualization.framework), Debian 12 arm64 (the same guest as the Windows WSL distro).
+# Changing this file does NOT change an existing instance: the user stage copies it at `limactl create` only. Later changes go
+# through `limactl edit` with stop and start (see docs/native-server.md, section "Direction since 2026-11-17 (macOS)").
+# Every value that the test or the user stage relies on is marked; keep the key names exactly as Lima 2.2.1 spells them.
+vmType: vz
+arch: aarch64
+images:
+  - location: "/Library/Application Support/Kelo Server/current/images/debian-12-genericcloud-arm64.qcow2"
+    arch: aarch64
+    digest: "sha512:@DEBIAN_IMAGE_SHA512@"
+# Overridden at create by --cpus and --memory (host half, see MacServerRules.vmSize).
+cpus: 2
+memory: 4GiB
+disk: 100GiB
+# The VM sees none of the Mac's files (Lima's default would mount the home folder read-only).
+mounts: []
+# No nerdctl or containerd download: Docker Engine comes from provision.sh.
+containerd:
+  system: false
+  user: false
+ssh:
+  localPort: 0               # random, on 127.0.0.1 only
+  loadDotSSHPubKeys: false   # the Mac's ~/.ssh/*.pub never go into the VM
+  forwardAgent: false
+  forwardX11: false
+# The same user and uid as the WSL distro.
+user:
+  name: kelo
+  home: /home/kelo
+  uid: 1000
+# Rosetta is never used (Lima 2 spells it under vmOpts.vz; the top-level key is deprecated).
+vmOpts:
+  vz:
+    rosetta:
+      enabled: false
+      binfmt: false
+audio:
+  device: none
+video:
+  display: none
+# First match wins. Only 8080 (the server) and 8081 (the guided setup page) are forwarded, and only on the Mac's loopback.
+# The ignore rules below them stop every other port of the VM (in particular 80 and 443, caddy's direct profile) from reaching
+# the Mac, on any guest address.
+portForwards:
+  - {guestIP: 127.0.0.1, guestPort: 8080, hostIP: 127.0.0.1, hostPort: 8080}
+  - {guestIP: 127.0.0.1, guestPort: 8081, hostIP: 127.0.0.1, hostPort: 8081}
+  - {guestIP: 0.0.0.0, guestIPMustBeZero: false, guestPortRange: [1, 65535], proto: any, ignore: true}
+  - {guestIP: "::", guestIPMustBeZero: false, guestPortRange: [1, 65535], proto: any, ignore: true}
+  - {guestIP: 127.0.0.1, guestPortRange: [1, 65535], proto: any, ignore: true}
+provision:
+  - mode: system
+    script: |
+      @PROVISION_SH@

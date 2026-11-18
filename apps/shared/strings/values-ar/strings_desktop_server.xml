@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">استخدام هذا الكمبيوتر كخادم Kelo</string>
     <string name="desktop_server_row_hint">يثبّت خادم Kelo على هذا الكمبيوتر. سيطلب Windows إذن المسؤول مرة واحدة.</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">تحديث</string>
     <string name="desktop_server_install">تثبيت</string>
     <string name="desktop_server_unavailable">خادم Kelo لنظام Windows غير متاح بعد.</string>
+
+    <string name="desktop_server_row_mac">استخدام هذا Mac كخادم Kelo</string>
+    <string name="desktop_server_row_hint_mac">يثبّت خادم Kelo على هذا Mac. يطلب macOS كلمة مرور المسؤول مرة واحدة.</string>
+    <string name="desktop_server_installed_mac">خادم Kelo موجود على هذا Mac</string>
+    <string name="desktop_server_unavailable_mac">خادم Kelo لنظام Mac غير متاح بعد</string>
+    <string name="desktop_server_port_busy">يستخدم برنامج آخر على هذا Mac المنفذ %1$d. أغلقه وحاول مرة أخرى.</string>
+    <string name="desktop_server_downgrade">يوجد خادم Kelo أحدث مثبّت بالفعل.</string>
+    <string name="desktop_server_remove">إزالة</string>
+    <string name="desktop_server_remove_title">هل تريد إزالة خادم Kelo من هذا Mac؟</string>
+    <string name="desktop_server_remove_body">تبقى المحادثات والمفاتيح والملفات ما لم تختر حذفها.</string>
+    <string name="desktop_server_remove_data">احذف المحادثات والمفاتيح والملفات أيضًا</string>
+    <string name="desktop_server_removing">جارٍ الإزالة</string>
+    <string name="desktop_server_removed">تمت الإزالة</string>
 </resources>

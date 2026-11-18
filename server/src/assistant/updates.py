@@ -312,12 +312,16 @@ class Updater:
         os.replace(tmp, p)
 
     def used_vars(self, inst: Instance) -> list[str]:
+        if inst.site_only:   # only the server runs here (instances.py SITE_ONLY_OFF): no CLI or work room image is used
+            return ["KELO_IMAGE"]
         clis = [c for c in read_env(inst.env, "COMPOSE_PROFILES").split(",") if c in CLIS]
         return ["KELO_IMAGE", "KELO_WORKROOM_IMAGE", *(CLI_VAR[c] for c in CLIS if c in clis)]
 
     def services(self, inst: Instance) -> list[str]:
         """The containers of ours this copy runs, which must all be up after a restart."""
-        out = ["server", "workroom", "vpn", *(["browser", "egress"] if inst.browser else [])]
+        if inst.site_only:
+            return ["server"]
+        out = ["server", "workroom", "vpn", "voice", *(["browser", "egress"] if inst.browser else [])]
         if inst.browser:                       # Instances.start leaves the sidecars out for a copy without a browser
             out += [svc for var in self.used_vars(inst) if var.startswith("KELO_CLI_") for svc in IMAGE_VARS[var][1]]
         return out
@@ -443,7 +447,7 @@ class Updater:
                         problem = f"/api/about failed (HTTP {code or 'no answer'})"
                     elif need_db and not (isinstance(db, dict) and db.get("ok") and db.get("migrations") == "done"):
                         problem = "the database did not open or its migrations did not finish"
-                    elif (code := self.http(f"{inst.local_url}/api/profile", auth)[0]) != 200:
+                    elif not getattr(inst, "site_only", False) and (code := self.http(f"{inst.local_url}/api/profile", auth)[0]) != 200:   # a site copy answers 404 there by design (site_only.py)
                         problem = f"a request without a model (GET /api/profile) failed (HTTP {code or 'no answer'})"
                     elif missing:
                         problem = f"not running: {', '.join(missing)}"

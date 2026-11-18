@@ -9,7 +9,7 @@ The user wants meals planned or groceries sorted out.
 
 ## Ask once, then remember
 - First time: diets, allergies, foods they dislike, household size, cooking time on weekdays, and a rough budget. Ask in one message.
-- Keep the answers in MEMORY.md (or `notes/meals/profile.md`) and read them before every plan. Update them when the user changes anything. Never plan around an allergy you have not confirmed.
+- Note the user's answers with `remember` (their own words) and keep the longer profile in `notes/meals/profile.md`; read it before every plan. Note it again when the user changes anything. Never plan around an allergy you have not confirmed.
 
 ## Weekly plan
 1. Plan the meals asked for (default: dinners for the week), sized to the household.

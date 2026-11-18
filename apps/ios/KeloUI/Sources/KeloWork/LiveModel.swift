@@ -47,8 +47,11 @@ final class LiveModel {
     var notice: String?
     /// The newest answer to a touch, for its mark (landed / did not reach the page).
     private(set) var touchReply: TouchReply?
-    /// A text field has focus on the page and the server says so (live protocol 2): the soft keyboard comes up.
-    var editing: Bool { frame?.editing ?? false }
+    /// A text field has focus on the page and the server says so (live protocol 2): the soft keyboard comes up. While the VNC screen
+    /// shows the frames are off, so the meta line carries it (LiveHeader.editing).
+    var editing: Bool { LiveHeader.editing(meta: meta, frame: frame?.editing) }
+    /// Text the browser copied, waiting for the owner's tap on the copy chip; nil when there is none. Kept in memory only.
+    private(set) var offeredClip: String?
     /// The tab's X screen over VNC (noVNC in a web view): tried first once the page is live and knows its size; the JPEG picture is the
     /// fallback (busy, unavailable, no answer in 4 s, socket lost). Android shared agent/VncRelay.kt + LivePage.kt.
     private(set) var vnc: VncState = .idle
@@ -81,6 +84,8 @@ final class LiveModel {
     @ObservationIgnored private var reopenTask: Task<Void, Never>?
     /// How the tab's VNC screen is made (replaced in tests)
     @ObservationIgnored var makeRelay: (KeloApi, String) -> VncRelay = { VncRelay(api: $0, tabId: $1) }
+    /// Puts text on the phone's clipboard (replaced in tests)
+    @ObservationIgnored var copyText: (String) -> Void = { Clipboard.copy($0) }
 
     init(api: KeloApi, tabId: String, cost: NetworkCost = .shared) { self.api = api; self.tabId = tabId; self.cost = cost }
 
@@ -98,7 +103,7 @@ final class LiveModel {
         guard !running else { return }
         running = true
         // a screen that closed or failed is replaced when the page comes back on screen, so it is tried again
-        if vnc != .idle { vncRelay?.close(); vncRelay = nil; vnc = .idle }
+        if vnc != .idle { vncRelay?.close(); vncRelay = nil; vnc = .idle; offeredClip = nil }
         run(machine.mode == .polling ? .poll() : machine.start())
         connectVncIfWanted()
     }
@@ -116,9 +121,11 @@ final class LiveModel {
         awaiting = []
         viewReporter.reset()
         vncRelay?.close()
+        offeredClip = nil
         reopenTask?.cancel(); reopenTask = nil
         framesOn = true
-        if giveBack && status.youControl {
+        // only a hand-over hold goes back when the page is left; the owner's own button hold stays until they hand it back
+        if giveBack && LiveRules.giveBackOnLeave(status) {
             status.youControl = false; status.controller = "agent"
             let api = api, id = tabId
             Task { _ = try? await api.browserControl(id, take: false) }
@@ -146,6 +153,7 @@ final class LiveModel {
         case .end(let reason):
             mode = .ended; end = reason
             vncRelay?.close()
+            offeredClip = nil
             socket?.close(); socket = nil; socketOpen = false
             statusTask?.cancel(); statusTask = nil
         }
@@ -315,7 +323,17 @@ final class LiveModel {
         vncRelay = relay
         relay.onState = { [weak self] s in self?.vncChanged(s) }
         relay.onOpened = { [weak self] _ in self?.scheduleVncReopen() }   // the area may have changed while the screen was being opened
+        relay.onClipboard = { [weak self] text in self?.offeredClip = text }
         Task { await relay.connect(area) }
+    }
+
+    /// The owner tapped the copy chip: the offered text goes to the phone's clipboard, once, and nothing is kept.
+    func takeClip() {
+        guard let text = offeredClip else { return }
+        copyText(text)
+        offeredClip = nil
+        vncRelay?.clearClipboard()
+        notice = L(R.string.live_copied_to_phone)
     }
 
     private func vncChanged(_ s: VncState) {
@@ -338,12 +356,13 @@ final class LiveModel {
 
     enum ControlResult: Equatable { case ok, held, gone, failed(String) }
 
-    func control(_ take: Bool) async -> ControlResult {
+    func control(_ take: Bool, handover: Bool = false) async -> ControlResult {
         controlBusy = true
         defer { controlBusy = false }
         do {
-            let a = try await api.browserControl(tabId, take: take)
+            let a = try await api.browserControl(tabId, take: take, handover: handover)
             status.youControl = a.youControl
+            status.hold = a.hold; status.holderAway = a.holderAway
             status.controller = a.controller.isEmpty ? status.controller : a.controller
             flushView()
             return .ok
@@ -413,6 +432,7 @@ final class LiveModel {
                 let reply = InputReply(json: resp)
                 if let touchId { self?.touchReply = TouchReply(id: touchId, reply: reply) }
                 if reply.busy { self?.notifyTapBusy() }
+                if reply.stale { self?.notice = L(R.string.live_screen_changed) }
             } catch let e as ApiError {
                 switch e.status {
                 case 409: self?.serverError("not_controller")

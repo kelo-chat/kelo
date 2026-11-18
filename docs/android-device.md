@@ -202,8 +202,25 @@ typing and Back / Home / Recents. No browser tab is involved.
 - Input (frame pixels -> device pixels by the frame/device ratio): `{"type":"tap","x","y"}`, `{"type":"swipe","x1","y1","x2","y2","ms"}`,
   `{"type":"text","text"}` and `{"type":"key","key":"back|home|enter|recents"}`. **Typed text is never logged, kept or echoed**
   (an error from the bridge has it replaced). What the owner does by hand needs no approval card.
-- Control: the device taking the phone holds it while a live connection is open or for 30 s after its last request; meanwhile the
-  `android_*` steps wait up to 30 s and then answer "the owner is using the phone; try again in a moment".
+- Control (owner decision 2026-11-18): the owner's own press on the take-control button is a **button hold**. It ends only when the owner hands it back
+  (the give-back button), when the owner answers "hand back" to Kelo's idle question, or when the owner's phone itself is given back; it never
+  times out (a leaving app, a lost network or a phone asleep changes nothing). The app sends `"by": "handover"` (`POST .../control` or
+  the WebSocket `control` message) only when it took the phone because Kelo asked (`android_show`, a check, a payment step): that is a
+  **hand-over hold**, which keeps the 30 s grace after the holder's last connection closed. `GET .../live` status and the control
+  answers carry `hold` ("button" | "handover" | "") and `holder_away` (the holder has no live connection, so another device may take
+  it; the take moves the hold). Input answers can say `"stale": true` (the picture was from before the agent's stopped step's last
+  move: the tap is dropped and the app asks the owner to tap again).
+- The `android_*` steps wait up to 5 minutes (`HANDS_WAIT_SECONDS`, tools/holds.py) for the phone and then answer with the note
+  `PHONE_HELD_NOTE` (the job pauses; it goes on when the owner hands the phone back). After the owner used the phone by hand, the next
+  acting step gets `PHONE_MOVED_NOTE` once, and the agent reads the screen first.
+- Idle question (`server/src/assistant/hold_asks.py`): a button hold untouched by its holder for 10 minutes gets one assistant message
+  with two quick-reply buttons ("Hand back to …" / "Keep controlling") and one push notification (type `hold_idle`), in the owner's
+  language. Any touch by the holder (taps, text, keys, back/forward/reload, VNC presses and keys) starts a new idle period and removes the
+  buttons; "keep" starts the next 10 minutes; no answer changes nothing and no second question comes in that period. Other chat text is
+  ordinary chat, never an answer.
+- Restart: the button holds are saved in the store (meta `live_holds`) and come back after a restart. A phone hold comes back as it was;
+  a browser tab's page is gone after a restart, so its hold stays and the question is asked at once. Paused jobs wait on the hold and
+  never resume silently.
 - Chat card: after each `android_*` step the server sends a turn event `{"type":"device","key":"android","status","image"}` (JPEG
   <= 120 KB, <= 720 px wide, at most one per 2 s; `android/card.py`); the apps fold the steps of the reply into one phone card.
 

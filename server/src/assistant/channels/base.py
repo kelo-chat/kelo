@@ -58,6 +58,7 @@ class Incoming:
     private: bool = True
     name: str = ""         # the sender's first name or user name (shown once, when pairing)
     update_id: int = 0
+    forwarded: bool = False       # a message the sender forwarded from someone else (the platform says so): not the owner's own words
     # ---- groups (a chat with more than the owner: the manager answers only when called, manager.py _on_group)
     chat_title: str = ""   # the group's name
     mentioned: bool = False       # the message @mentions the bot

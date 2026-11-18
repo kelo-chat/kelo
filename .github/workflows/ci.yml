@@ -121,6 +121,10 @@ jobs:
         working-directory: .
         run: python3 apps/ios/tools/gen_version.py --check
 
+      - name: iPhone strings match apps/shared/strings
+        working-directory: .
+        run: python3 apps/ios/tools/gen_strings.py --check
+
       # also runs apps/shared's Ke2eVectorsFileTest (the shared desktopTest, see apps/android/kelo/app/build.gradle.kts)
       - name: Unit tests (full debug)
         env:

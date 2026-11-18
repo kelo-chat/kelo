@@ -74,7 +74,7 @@ def night(tmp_path, reply, clock_t=NOW):
 
     r = Reflection(store, Home(tmp_path / "home"), Activity(store, clock), fn, lambda: ("p", "m"), clock=clock)
     r.upcoming = UpcomingExtractor(follow, tz=lambda: SEOUL, clock=clock)
-    store._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)", ("user", "2월 11일에 버스 예약 열리면 알려줘", ts(2026, 11, 15, 20, 0)))
+    store._run("INSERT INTO messages(role, content, created_at, author) VALUES(?,?,?,'owner')", ("user", "2월 11일에 버스 예약 열리면 알려줘", ts(2026, 11, 15, 20, 0)))
     store._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)", ("assistant", ASSISTANT_SAID, ts(2026, 11, 15, 20, 1)))
     return store, follow, r, calls, clock
 
@@ -118,7 +118,7 @@ async def test_at_most_five_a_night_and_a_repeat_is_not_added_twice(tmp_path):
     assert len(follow.list_items()) == PER_NIGHT
     # a second night names the same ones again (and one new): only the new one is added
     store._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)", ("assistant", ASSISTANT_SAID, ts(2026, 11, 16, 20, 0)))
-    store._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)", ("user", "예약 창 얘기 계속", ts(2026, 11, 16, 20, 1)))
+    store._run("INSERT INTO messages(role, content, created_at, author) VALUES(?,?,?,'owner')", ("user", "예약 창 얘기 계속", ts(2026, 11, 16, 20, 1)))
     clock.t = ts(2026, 11, 17, 3, 50)
     r.stream_fn = _answer(reply(items[0], bus(title="예약 창 9", date="2027-03-05")))   # the same window named again, plus one new
     await r.run()

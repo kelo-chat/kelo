@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">디자인된 메일</string>
+    <string name="mail_preview_open">크게 보기</string>
+    <string name="mail_preview_loading">미리 보기를 불러오는 중…</string>
+    <string name="mail_preview_failed">미리 보기를 불러오지 못했어요.</string>
+    <string name="mail_preview_gone">이제 미리 볼 수 없어요.</string>
+    <string name="mail_preview_too_big">미리 보기가 너무 커서 보여줄 수 없어요.</string>
+    <string name="mail_preview_pictures_note">사진은 사진 대신 링크로 보내져요.</string>
+    <string name="mail_preview_link_title">이 주소를 열까요?</string>
+    <string name="mail_preview_link_open">브라우저에서 열기</string>
+    <string name="mail_preview_simple_note">이 앱에서는 디자인을 간단히 보여줘요.</string>
+    <string name="mail_preview_desc">디자인된 메일 미리 보기</string>
+</resources>

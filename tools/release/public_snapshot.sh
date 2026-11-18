@@ -16,7 +16,7 @@ for base in . apps; do   # before and after the apps/ move (2026-11-14)
 done
 rm -rf docs/open-source-drafts tools/release/desktop_mirror.py
 rm -f ./*-todo.md ./PROGRESS.md   # worker notes that slipped into a commit never go public
-# the native (no Docker) macOS / Windows server is not published yet (owner 2026-11-15)
+# the native (no Docker) macOS / Windows server was never published and was removed from main on 2026-11-18 (tag archive/native-server-2026-11-17); these lines keep older commits clean
 for base in src server/src; do
   rm -rf $base/assistant/hosting/macos $base/assistant/hosting/windows
   rm -f $base/assistant/hosting/host.py $base/assistant/hosting/supervisor.py $base/assistant/hosting/cli.py $base/assistant/hosting/doctor.py

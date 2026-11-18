@@ -32,6 +32,7 @@ def router(ctx: AppContext) -> APIRouter:
     compactor = ctx.compactor
     deliveries = ctx.deliveries
     ended_tabs = ctx.ended_tabs
+    chat_views = ctx.chat_views   # the browser tabs and the phone the chat shows (chat_views.py)
     goal_book = ctx.goal_book
     handover_seen = ctx.handover_seen
     journal_model = ctx.journal_model
@@ -125,6 +126,8 @@ def router(ctx: AppContext) -> APIRouter:
                     thumbs.pop(key, None)
                     tab_failed.pop(key, None)
         ended_tabs.clear()
+        for view in chat_views.items():   # the chat shows nothing afterwards: its views close with the history
+            chat_views.close(view.key, "cleared")
         archive = browser_more.archive if browser_more is not None else None
         if archive is None and state_root is not None:   # pictures kept while this server had a browser are deleted all the same
             archive = ActionArchive(state_root / "browser-history")

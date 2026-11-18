@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
@@ -34,6 +35,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
@@ -44,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat.kelo.app.LocalAppServices
@@ -51,7 +61,11 @@ import chat.kelo.app.res.*
 import chat.kelo.app.ui.components.BackTitleBar
 import chat.kelo.app.ui.components.KeloTextField
 import chat.kelo.app.ui.icons.KeloIcons
+import chat.kelo.app.ui.platform.FormFactor
 import chat.kelo.app.ui.platform.LocalBackHandler
+import chat.kelo.app.ui.platform.LocalFormFactor
+import chat.kelo.app.ui.platform.LocalPageFrame
+import chat.kelo.app.ui.platform.formFactor
 import chat.kelo.app.ui.platform.rememberViewModel
 import chat.kelo.app.ui.text.Text
 import chat.kelo.app.ui.text.string
@@ -96,8 +110,20 @@ fun ChatSearchScreen(agentName: String, onOpen: (Long) -> Unit, onBack: () -> Un
             .collect { nearEnd -> if (nearEnd) vm.loadMore() }
     }
 
-    Box(modifier.fillMaxSize().background(c.bg)) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
+    // the desktop page: Escape closes it (the window has no system back), the page sits below the floating header, centred and at
+    // most the sub pages' width; the phone's page is unchanged
+    val desktop = LocalFormFactor.current == FormFactor.Desktop
+    val frame = LocalPageFrame.current
+    val escape = if (desktop) Modifier.onPreviewKeyEvent { e ->
+        if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) { onBack(); true } else false
+    } else Modifier
+    Box(modifier.fillMaxSize().background(c.bg).then(escape)) {
+        val column = if (desktop) {
+            Modifier.align(Alignment.TopCenter).fillMaxSize()
+                .then(if (frame.maxWidth.isSpecified) Modifier.widthIn(max = frame.maxWidth) else Modifier)
+                .padding(top = frame.topInset)
+        } else Modifier.fillMaxSize().statusBarsPadding().imePadding()
+        Column(column) {
             BackTitleBar(title, onBack)
             KeloTextField(
                 value = field,
@@ -117,7 +143,7 @@ fun ChatSearchScreen(agentName: String, onOpen: (Long) -> Unit, onBack: () -> Un
             Spacer(Modifier.height(12.dp))
             val hits = state.hits
             when {
-                !ChatSearchRules.hasQuery(state.query) -> HintLine(string(Res.string.chat_search_hint))
+                !ChatSearchRules.hasQuery(state.query) -> HintLine(string(formFactor(Res.string.chat_search_hint, Res.string.desktop_chat_search_hint)))
                 hits.isEmpty() && state.failed -> HintLine(string(Res.string.chat_search_failed))
                 hits.isEmpty() && state.searched && !state.loading -> HintLine(string(Res.string.chat_search_none))
                 hits.isEmpty() -> Unit   // the first page is on its way
@@ -142,6 +168,9 @@ fun ChatSearchScreen(agentName: String, onOpen: (Long) -> Unit, onBack: () -> Un
     }
 }
 
+/** The tag of a result row (the desktop UI tests count and open the rows). */
+const val HIT_TAG = "chat-search-hit"
+
 /** A result: who said it and when (muted), then the snippet with the match in bold accent. */
 @Composable
 private fun HitRow(who: String, date: String, snippet: AnnotatedString, onClick: () -> Unit) {
@@ -149,6 +178,8 @@ private fun HitRow(who: String, date: String, snippet: AnnotatedString, onClick:
     Column(
         Modifier.fillMaxWidth()
             .background(c.card, RoundedCornerShape(12.dp))
+            .testTag(HIT_TAG)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),

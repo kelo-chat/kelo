@@ -56,10 +56,12 @@ from .challenge import (CHECK_TRIES, PROBE_JS, Challenge, blocked, blocked_again
                         note_for, try_note)
 from . import humanize as human
 from .checkout import REFUSAL, guarded
+from .holds import HANDS_WAIT_SECONDS
 from .commits import TARGET_JS, click_route, judge_type, kind_of_verdict, label_of, pressable
 from .downloads import DownloadArea
 from .pacing import SitePacer
 from .sites import registrable, same_site
+from .work_browser import DOWN_NOTE, WorkBrowser, WorkBrowserDown, work_tab
 from .verification import SIGN_IN_SECONDS, Verification, options_note, unconfirmed, verification_note, verification_step, waiting_note
 from .page_notes import (OVERLAY_JS, OVERLAY_ROUNDS, click_js, closed_note, masked_note, masked_values, not_found_note, open_note,
                          overlays, signature)
@@ -96,7 +98,7 @@ CANCEL_WINDOW_ACTIONS = 4         # a free cancel of a wrong charge (purchase_re
 CARD_MIN_INTERVAL = 2.0           # seconds between two browser cards of one tab
 CARD_MAX_BYTES = 120_000          # the JPEG in a browser card is never bigger than this (else the card goes without a picture)
 CARD_MAX_WIDTH = 720              # pixels; screenshots are scaled down to this width
-CONTROL_WAIT_SECONDS = 300.0      # an agent step waits this long for the user to hand a tab back, then reports that it could not act
+CONTROL_WAIT_SECONDS = HANDS_WAIT_SECONDS   # an agent step waits this long for the user to hand a tab back, then reports that it could not act (tools/holds.py)
 UPLOAD_MAX_BYTES = 50 * 1024**2   # files set into one file input, all together (what the driver can carry into the page)
 PDF_MAX_BYTES = 50 * 1024**2      # a page printed to PDF
 SITE_STATE_SECONDS = 12 * 3600.0  # a saved site sign-in state (cookies + storage) is kept this long, in memory only
@@ -171,6 +173,11 @@ POPUP_NOTE = "[The click opened a new window ({url}); you are in it now (same si
 TIMEOUT_NOTE = ("[The owner's control of this tab timed out (their screen went away), so it came back to you; they may not have finished "
                 "what they were doing.]")
 POPUP_BACK_NOTE = "[The window you were in closed; you are back on the page that opened it.]"
+# a browser that restarted (or crashed) under a job: its tab is a new blank page; the first acting step waits until the page is read (job_cuts.py)
+BROWSER_LOST_NOTE = ("[The browser restarted and this tab's page was lost; this is a new blank tab. Your last page was {url}. Sign-ins are "
+                     "kept. Open it again and read it before you act; a form you were filling may be empty again.]")
+LOST_ACT_NOTE = ("[Not done: the browser restarted and this tab is a new blank page. Open the page you need again (browser_open) and read "
+                 "it before you click or type.]")
 NO_CHANGE_NOTE = ("[The click went through, but nothing changed: same address, same page content and form values, no new window, no "
                   "pop-up. Do not click the same element again. Look at the page below for what holds it (a message, an unticked box, "
                   "a choice still to make, a frame or window it belongs to), try another way (another element; the other desktop / phone view: load browser_view with find_tools), or tell "
@@ -359,7 +366,10 @@ CONTROLLED_NOTE = ("[Not done: the user is controlling the browser right now (th
                    "hand the browser back (or ask what they did), and stop here.]")
 
 
-TOOK_OVER_NOTE = "[The user took over the browser; this step was stopped. Wait for them to hand it back.]"
+TOOK_OVER_NOTE = ("[The owner took over this tab, so this step was stopped before it finished. Your browser steps on this tab wait until "
+                  "the owner presses hand back; that can take long. Then read the page again before you act: they may have changed it.]")
+MOVED_NOTE = ("[Not done: the owner changed this tab by hand before handing it back. Read it again (browser_read or browser_look) and "
+              "decide the next step from what it shows now.]")
 STEP_TIMEOUT_NOTE = ("[The browser step did not finish in {seconds} s: the page at {host} did not answer (a navigation that never "
                      "completed, or a page that stopped responding). I stopped it and left the page as it is. If this step pressed a button "
                      "that pays, orders, books or sends, it may have gone through: never press it again; browser_read and check the "
@@ -952,6 +962,9 @@ class BrowserSession:
         self.handback_listeners: list[Callable[[str, str, str, str], Any]] = []   # (tab, what the owner did, reason, "browser") on every hand-back
         self.close_listeners: list[Callable[[str], Awaitable[Any]]] = []   # (tab) after close_tab closed it (the live view's X screen lets go)
         self.control_wait = CONTROL_WAIT_SECONDS
+        self.work: WorkBrowser | None = None                     # the work browser (work_browser.py), set by server.py when it is configured
+        self._work_gen: dict[str, int] = {}                      # work tab -> the WorkBrowser.generation its page was made in
+        self._work_dl: Any = None                                # the work browser's browser-wide DevTools session (downloads)
         # ---- S6: what the pages are, and what the browser is set up with (see the notes at each method)
         self._doc: dict[str, tuple[int, dict[str, str]]] = {}   # tab -> (status, headers) of its main document's last response
         self._notes: dict[str, list[str]] = {}                   # tab -> lines for its next page reading (e.g. what the user did by hand)
@@ -1032,6 +1045,12 @@ class BrowserSession:
         self._paused: dict[str, int] = {}                        # tab -> hand-overs open now (the step clock stands still)
         self._rescues: dict[str, asyncio.Future] = {}            # tab -> the clean-up after the user took the tab over
         self._background: set[asyncio.Future] = set()            # clean-ups no step waits for (a route that does not come off)
+        self._owner_moved: set[str] = set()                      # tabs the owner changed by hand before handing them back (MOVED_NOTE)
+        self.book: Any = None                                    # tab_book.TabBook: the page of each tab key, kept across a server restart (server.py)
+        self._restart_tabs: dict[str, str] = {}                  # what adopt_after_restart found: key -> "kept" | "gone"
+        self._lost: dict[str, str] = {}                          # tab -> the last url of a page the browser lost (restart or crash)
+        self._lost_act: set[str] = set()                         # tabs whose next acting step waits until the page is read (LOST_ACT_NOTE)
+        self.on_lost: Callable[[str], Any] | None = None         # told of a tab the browser lost (workers: a job's card line)
 
     # ------------------------------------------------------------------ the user taking a tab over
     def controlled_by(self, key: str) -> str | None:
@@ -1042,17 +1061,33 @@ class BrowserSession:
         """Every tab a device holds now: {tab: device}."""
         return dict(self._control)
 
-    def take_control(self, key: str, device: str) -> None:
+    def take_control(self, key: str, device: str) -> bool:
+        """The device takes the tab. True when a running agent step on it was stopped by this (see interrupt)."""
         if self._control.get(key) == device:
-            return
+            return False
         self._control[key] = device
         self._handed_back.setdefault(key, asyncio.Event()).clear()
-        self.interrupt(key)
+        cancelled = self.interrupt(key)
         if self.journal is not None and (page := self.raw_page(key)) is not None:
             try:
                 self.journal.start(key, page)      # what the user does by hand is written down for the agent (takeover.py)
             except Exception:  # noqa: BLE001 - the journal never stops the user from taking over
                 pass
+        self._tell(key, device)
+        return cancelled
+
+    def move_control(self, key: str, device: str) -> None:
+        """The tab moves from one of the owner's devices to another (the first one has no live connection): the hold goes on, no step is
+        stopped and nothing is handed back."""
+        if self._control.get(key) is None or self._control.get(key) == device:
+            return
+        self._control[key] = device
+        self._tell(key, device)
+
+    def restore_control(self, key: str, device: str) -> None:
+        """A button hold saved before a restart: the tab is the owner's again (no step, no journal, not handed back)."""
+        self._control[key] = device
+        self._handed_back.setdefault(key, asyncio.Event()).clear()
         self._tell(key, device)
 
     def phone_cdp(self, key: str) -> Any:
@@ -1067,7 +1102,7 @@ class BrowserSession:
         """The DevTools target id of the tab's page ("" when it was not read)."""
         return self._targets.get(key, ("", ""))[0]
 
-    async def release_control(self, key: str, reason: str = "owner") -> bool:
+    async def release_control(self, key: str, reason: str = "owner", *, moved: bool = False) -> bool:
         """Hand the tab back to the agent. The purchase window of that tab is closed (the user's own clicks never count towards it),
         and a page the agent would not be allowed to open is left for about:blank. `reason` "timeout": the owner's connection went away
         and the tab came back on its own, which the agent is told (they may not have finished). False when nobody held it."""
@@ -1092,6 +1127,8 @@ class BrowserSession:
                 summary = ""
         if reason == "timeout":
             summary = (TIMEOUT_NOTE + "\n" + summary) if summary else TIMEOUT_NOTE
+        if summary or moved:
+            self._owner_moved.add(key)         # the agent's next acting step on this tab reads the page first (hold_to_act)
         if summary:
             self.note(key, summary)            # the agent reads it with its next look at the page
         self._tell(key, None)   # first, so whoever listens hears it before a waiting agent step moves on
@@ -1172,17 +1209,20 @@ class BrowserSession:
     def step_running(self, key: str) -> bool:
         return key in self._steps and not self._steps[key].done()
 
-    def interrupt(self, key: str) -> None:
+    def interrupt(self, key: str) -> bool:
         """The user took this tab over: the agent's step on it is cancelled (ToolStopped, TOOK_OVER_NOTE), and what it left half
-        done in the page (a loading navigation, a finger still down) is cleaned up before the user's first input (`settled`)."""
+        done in the page (a loading navigation, a finger still down) is cleaned up before the user's first input (`settled`).
+        True when a running step was cancelled; the clean-up runs only then."""
         task = self._steps.get(key)
-        if task is not None and not task.done():
-            self._stopped.add(task)
-            task.cancel()
+        if task is None or task.done():
+            return False
+        self._stopped.add(task)
+        task.cancel()
         try:
             self._rescues[key] = asyncio.ensure_future(self.rescue(key))
         except RuntimeError:   # no running loop (a plain test): nothing to clean up
             pass
+        return True
 
     async def settled(self, key: str, timeout: float = RESCUE_SECONDS) -> None:
         """Wait (bounded) until the clean-up after taking the tab over is done: the user's first tap must not meet a half-finished touch."""
@@ -1243,6 +1283,16 @@ class BrowserSession:
         if held:
             return held
         return self.nav_block() if self.nav_block is not None else None
+
+    async def hold_to_act(self, args: dict[str, Any] | None = None) -> str | None:
+        """The `hold` of the acting steps: hold_for_user, then MOVED_NOTE when the owner changed this tab by hand before handing it back
+        and the page has not been read since (snapshot and look clear it)."""
+        held = await self.hold_for_user(args)
+        if held:
+            return held
+        if browser_owner.get() in self._lost_act:   # the browser was lost: the page is read first (snapshot and look clear it)
+            return LOST_ACT_NOTE
+        return MOVED_NOTE if browser_owner.get() in self._owner_moved else None
 
     async def hold_for_user(self, _args: dict[str, Any] | None = None) -> str | None:
         """A tool's `hold`: before an agent step on this device's tab, wait while the user controls it. None = go on; otherwise the
@@ -1669,12 +1719,20 @@ class BrowserSession:
         async with self._lock:
             self._used[key] = self.clock()   # idle tabs are closed by the server's sweeper (TAB_SWEEP_SECONDS), never here
             self._seen_at[key] = time.time()
+            if self.work is not None and work_tab(key) and key not in self._private:
+                if not self.work.connected():
+                    await self.work.ensure()   # a work browser that went away: the new connection forgets its old pages below
+                if key in self._work_gen and self._work_gen[key] != self.work.generation:
+                    self._forget_tab(key)
+                    self._work_dl = None
             page = self._pages.get(key)
             if page is not None and not page.is_closed():
                 return page
             if (back := self._back_to_opener(key)) is not None:
                 return back
-            if self._connect:
+            if self.work is not None and work_tab(key) and key not in self._private:
+                page = await self._work_page(key)
+            elif self._connect:
                 page = await self._private[key].new_page() if key in self._private else await self._connect()
             else:
                 await self._ensure_browser()
@@ -1682,14 +1740,119 @@ class BrowserSession:
                     page = await self._private[key].new_page()
                 else:
                     taken = {id(p) for p in self._pages.values()} | {id(o[0]) for st in self._openers.values() for o in st}
-                    free = next((p for p in self._ctx.pages if id(p) not in taken and not p.is_closed()), None)
+                    # a free page is a blank one only: a page of another job or a leftover is never taken for this tab
+                    free = next((p for p in self._ctx.pages if id(p) not in taken and not p.is_closed()
+                                 and str(p.url or "") in ("", "about:blank")), None)
                     page = free or await self._ctx.new_page()
             self._pages[key] = page
+            if key in self._lost:
+                lost_url = self._lost.pop(key)
+                self._notes.setdefault(key, []).insert(0, BROWSER_LOST_NOTE.format(url=lost_url[:300] or "the page"))
+                self._lost_act.add(key)
+                self._told_lost(key)
             self._view_cdp.pop(key, None)   # a new page starts in the desktop view (open() applies a site's remembered one)
             self._watch(page, key)
             if self.prepare_pages:
                 await self._prepare(page, key)
             return page
+
+    async def _work_page(self, key: str) -> Any:
+        """A page of a scheduled or background tab: in its own context of the work browser, filled with a copy of the owner's cookies.
+        The main browser is never used for it; a work browser that does not answer fails the step with DOWN_NOTE."""
+        try:
+            ctx = await self.work.open_context(key, await self._main_cookies())
+        except WorkBrowserDown:
+            raise BrowserPolicyError(DOWN_NOTE) from None
+        self._work_gen[key] = self.work.generation
+        page = await ctx.new_page()
+        if self.work.on_new_page is not None:
+            await self._quietly(lambda: self.work.on_new_page(key))
+        return page
+
+    def _main_context(self) -> Any:
+        """The owner's browser context (the persistent profile); the context of an open main page in the test path."""
+        if self._connect is None:
+            return self._ctx
+        return next((p.context for k, p in list(self._pages.items())
+                     if not work_tab(k) and not p.is_closed() and getattr(p, "context", None) is not None), None)
+
+    async def _main_cookies(self) -> list[dict[str, Any]]:
+        """Every cookie of the owner's browser (the sign-in copy). [] when there is none; never opens a page in the main browser."""
+        try:
+            if self._connect is None:
+                await self._ensure_browser()
+            ctx = self._main_context()
+            return list(await ctx.cookies()) if ctx is not None else []
+        except Exception:  # noqa: BLE001 - the job then signs in with the vault
+            return []
+
+    def _main_shows(self, site: str) -> bool:
+        """A main-browser tab shows this registrable domain now (the owner may be using that sign-in)."""
+        for k, p in list(self._pages.items()):
+            if work_tab(k):
+                continue
+            try:
+                if p.is_closed():
+                    continue
+                host = (urlsplit(str(p.url or "")).hostname or "").lower()
+            except Exception:  # noqa: BLE001
+                continue
+            if host and registrable(host) == site:
+                return True
+        return False
+
+    async def _carry_back(self, key: str, cookies: list[dict[str, Any]], sites: set[str]) -> None:
+        """The sign-ins a work tab made go back to the owner's browser, except for a site a main tab shows now. Counts only in the log."""
+        carried = 0
+        try:
+            ctx = self._main_context()
+            shown = {site for site in sites if self._main_shows(site)}
+            keep = [c for c in cookies if registrable(str(c.get("domain") or "").lstrip(".").lower()) not in shown]
+            if ctx is not None and keep:
+                await ctx.add_cookies(keep)
+                carried = len(keep)
+        except Exception:  # noqa: BLE001 - carrying back never stops a tab from closing
+            carried = 0
+        log.info("work browser: tab %s closed, %d sign-in cookies carried back", key, carried)
+
+    def owner_handed_back(self, key: str, summary: str, reason: str, kind: str) -> None:
+        """A hand-back listener (server.py): the owner did something on a work tab, so that site counts as signed in by the job and its
+        cookies go back to the owner's browser when the tab closes."""
+        if self.work is None or not work_tab(key) or not summary:
+            return
+        page = self._pages.get(key)
+        host = (urlsplit(str(getattr(page, "url", "") or "")).hostname or "").lower() if page is not None else ""
+        if host:
+            self.work.note_signed(key, host)
+
+    async def _copy_work_storage(self, site: str) -> None:
+        """Before a work tab opens a site: that site's local storage from an open main page, copied once into the tab's context. With no
+        main page open, nothing is read and no page is opened."""
+        key = browser_owner.get()
+        tab = self.work.tab(key) if self.work is not None else None
+        if tab is None or site in tab.stored:
+            return
+        page = next((p for k, p in list(self._pages.items()) if not work_tab(k) and not p.is_closed()), None)
+        state: dict[str, Any] = {"host": site, "cookies": [], "origins": []}
+        if page is not None:
+            try:
+                state = await self.export_site_state(site, page=page)
+            except Exception:  # noqa: BLE001 - the cookies alone still carry most sign-ins
+                pass
+        await self.work.copy_storage(key, state)
+
+    def _forget_tab(self, key: str) -> None:
+        """Drop everything kept for a tab's page without closing anything (the page belongs to a connection that is gone)."""
+        for d in (self._pages, self._private, self._tab_cdp, self._type_cdp, self._targets, self._doc, self._ref_words, self._look_url,
+                  self._shot_scale):
+            d.pop(key, None)
+
+    def _forget_main_tabs(self) -> None:
+        """The main browser reconnected: its tabs are forgotten; the work tabs are the work browser's and stay."""
+        keys = {k for d in (self._pages, self._private, self._tab_cdp, self._type_cdp, self._targets, self._doc, self._ref_words,
+                            self._look_url, self._shot_scale) for k in d if not work_tab(k)}
+        for k in keys:
+            self._forget_tab(k)
 
     def _back_to_opener(self, key: str) -> Any:
         """The window this tab moved into closed: the tab shows the page that opened it again (with its own view), or None."""
@@ -1774,15 +1937,17 @@ class BrowserSession:
         if self._pw is None:
             self._pw = await async_playwright().start()
         if self._ctx is None or not self._browser.is_connected():
+            # a connection that dropped (the browser restarted or crashed): its tabs' pages are gone; each tab's next step says so
+            if self._browser is not None:
+                self._lost.update({key: str(getattr(p, "url", "") or "") for key, p in self._pages.items()
+                                   if key not in self._private and not p.is_closed()})
             # Chrome's DevTools HTTP endpoint rejects Host headers that are not an IP or localhost.
             ip = (await asyncio.to_thread(socket.gethostbyname, self.cdp_host))
             self._browser = await self._pw.chromium.connect_over_cdp(f"http://{ip}:{self.cdp_port}")
             self._ctx = self._browser.contexts[0] if self._browser.contexts else await self._browser.new_context()
             self._gpu_ctx.clear()
             await self._install_gpu(self._ctx)
-            self._pages.clear()
-            for d in (self._private, self._tab_cdp, self._type_cdp, self._targets, self._doc, self._ref_words, self._look_url, self._shot_scale):
-                d.clear()
+            self._forget_main_tabs()
             self._dl_cdp, self._dl_contexts = None, set()
 
     async def _prepare(self, page: Any, key: str) -> None:
@@ -1815,6 +1980,8 @@ class BrowserSession:
             self._targets[key] = (str(info.get("targetId") or ""), str(info.get("browserContextId") or ""))
         except Exception:  # noqa: BLE001
             pass
+        if self.book is not None and key not in self._private and self._targets.get(key, ("", ""))[0]:
+            self.book.save(key, self._targets[key][0], str(getattr(page, "url", "") or ""))
         await self._route_downloads(key)
 
     # ------------------------------------------------------------------ downloads (downloads.py)
@@ -1822,6 +1989,9 @@ class BrowserSession:
         if self.downloads is None:
             return
         _, context = self._targets.get(key, ("", ""))
+        if self.work is not None and work_tab(key):
+            await self._route_work_downloads(key, context)
+            return
         if context and context in self._dl_contexts:
             return
         try:
@@ -1838,6 +2008,21 @@ class BrowserSession:
             await self._dl_cdp.send("Browser.setDownloadBehavior", params)
             self._dl_contexts.add(context)
         except Exception:  # noqa: BLE001 - downloads then stay with the browser's default handling
+            pass
+
+    async def _route_work_downloads(self, key: str, context: str) -> None:
+        """Downloads of a work tab: the work browser's own session, always for the tab's own context (never the default one)."""
+        try:
+            if self._work_dl is None:
+                bs = await self.work.browser_cdp()
+                bs.on("Browser.downloadWillBegin", self._download_began)
+                bs.on("Browser.downloadProgress", self._download_moved)
+                self._work_dl = bs
+            params: dict[str, Any] = {"behavior": "allowAndName", "downloadPath": self.downloads.browser_dir, "eventsEnabled": True}
+            if context:
+                params["browserContextId"] = context
+            await self._work_dl.send("Browser.setDownloadBehavior", params)
+        except Exception:  # noqa: BLE001 - downloads then stay with the work browser's default handling
             pass
 
     def _tab_of_frame(self, frame_id: str) -> str:
@@ -1861,11 +2046,12 @@ class BrowserSession:
             asyncio.ensure_future(self._cancel_download(d))
 
     async def _cancel_download(self, d: Any) -> None:
+        work = self.work is not None and work_tab(d.key)
         params: dict[str, Any] = {"guid": d.guid}
-        if d.context and d.key in self._private:
+        if d.context and (work or d.key in self._private):
             params["browserContextId"] = d.context
         try:
-            await self._dl_cdp.send("Browser.cancelDownload", params)
+            await (self._work_dl if work else self._dl_cdp).send("Browser.cancelDownload", params)
         except Exception:  # noqa: BLE001 - it finished or went away meanwhile
             pass
 
@@ -1874,6 +2060,17 @@ class BrowserSession:
         dismissed otherwise (what the browser would do with nobody there). Its words go into the next page reading."""
         if not hasattr(page, "on"):
             return
+
+        def on_crash(*_args: Any) -> None:   # the page's renderer crashed: the tab's next step reads a new blank page (BROWSER_LOST_NOTE)
+            if self._pages.get(key) is page:
+                self._pages.pop(key, None)
+                self._lost[key] = str(getattr(page, "url", "") or "")
+                self._told_lost(key)
+
+        try:
+            page.on("crash", on_crash)
+        except Exception:  # noqa: BLE001 - a page object without the event works as before
+            pass
 
         async def on_dialog(dialog: Any) -> None:
             host = (urlsplit(str(getattr(page, "url", "") or "")).hostname or "").lower()
@@ -1995,6 +2192,8 @@ class BrowserSession:
         # ours (address, notes, hand-over) outside (agent/fence.py)
         said = "".join(f"[the page showed a pop-up: {data(m)}]\n" for m in popups)
         said += "".join(f"{n}\n" for n in self._notes.pop(key, []))
+        self._owner_moved.discard(key)
+        self._lost_act.discard(key)
         said += "".join(f"{n}\n" for n in layers)
         if spots := masked_values(text):
             said += masked_note(spots, data) + "\n"
@@ -2337,6 +2536,8 @@ class BrowserSession:
         """(JPEG, width, height, how many controls carry a label). The boxes come from the accessibility tree with boxes (viewport
         CSS px; an element in a frame is moved by where that frame sits). The labels are drawn into the page only for the picture and
         always taken out again. Remembers the picture's scale and the page address for browser_click_at / browser_drag."""
+        self._owner_moved.discard(browser_owner.get())   # the page is read now: what the owner changed by hand is seen (hold_to_act)
+        self._lost_act.discard(browser_owner.get())
         page = await self.page()
         key = browser_owner.get()
         await self._guard(page.url)
@@ -2746,6 +2947,7 @@ class BrowserSession:
         # opening an address starts a new flow: the clicks that finish an allowed purchase are those that follow from its page
         self.end_purchase()
         site = _site_of(url)
+        await self._copy_work_storage(site)
         want = view if view in VIEWS else self._site_views.get(site, "")
         switched = ""
         if want and want != self.view():
@@ -3732,7 +3934,8 @@ class BrowserSession:
                 continue
             status, at = self._status.get(key, ("", 0.0))
             out.append({"key": key, "title": title, "url": url, "host": urlsplit(url).hostname or "", "status": status,
-                        "last_activity": max(at, self._seen_at.get(key, 0.0)) or None, "controlled_by": self._control.get(key)})
+                        "last_activity": max(at, self._seen_at.get(key, 0.0)) or None, "controlled_by": self._control.get(key),
+                        "browser": "work" if work_tab(key) and self.work is not None else "main"})
         return out
 
     # ------------------------------------------------------------------ closing idle tabs (driven by the server's sweeper)
@@ -3763,6 +3966,76 @@ class BrowserSession:
         page = self._pages.get(key)
         return page is not None and not page.is_closed()
 
+    def tab_state(self, key: str) -> str:
+        """What a restart or a lost browser left of a job's tab (job_cuts.py): "held" (the owner holds it), "kept" (the same page is open
+        again), "new" (the tab was booked and its page is gone), else "none"."""
+        if key in self._control:
+            return "held"
+        if self._restart_tabs.get(key) == "kept" and self.has_tab(key):
+            return "kept"
+        if self._restart_tabs.get(key) == "gone" or key in self._lost or (self.book is not None and key in self.book.all()):
+            return "new"
+        return "none"
+
+    def _told_lost(self, key: str) -> None:
+        if self.on_lost is None:
+            return
+        try:
+            self.on_lost(key)
+        except Exception:  # noqa: BLE001 - the job's card line is a courtesy; the tab goes on
+            log.exception("could not tell that the browser lost tab %s", key)
+
+    async def _target_of(self, page: Any) -> str:
+        try:
+            cdp = await self.cdp_session(page)
+            info = (await cdp.send("Target.getTargetInfo", {})).get("targetInfo") or {}
+            return str(info.get("targetId") or "")
+        except Exception:  # noqa: BLE001 - a page without DevTools access is no page of a booked tab
+            return ""
+
+    async def adopt_after_restart(self) -> dict[str, str]:
+        """After a server restart (the browser may have kept running): a booked tab whose page is still open gets that page back ("kept",
+        read again before any step); a booked tab with no page is forgotten ("gone"); http(s) pages no tab has are leftovers and are closed.
+        Never raises: a failure leaves every booked tab "gone"."""
+        out: dict[str, str] = {}
+        if self.book is None or self._connect:
+            self._restart_tabs = out
+            return out
+        booked = self.book.all()
+        if not booked:   # nothing to find again: no connection is made just to look
+            self._restart_tabs = out
+            return out
+        try:
+            await self._ensure_browser()
+            if self._ctx is None:
+                raise RuntimeError("no browser context")
+            by_target: dict[str, Any] = {}
+            for page in list(self._ctx.pages):
+                if not page.is_closed() and (target := await self._target_of(page)):
+                    by_target[target] = page
+            for key, entry in booked.items():
+                page = by_target.get(str(entry.get("target") or ""))
+                if page is None:
+                    self.book.forget(key)
+                    out[key] = "gone"
+                    continue
+                self._pages[key] = page
+                self._watch(page, key)
+                await self._prepare(page, key)
+                self._used[key] = self.clock()
+                out[key] = "kept"
+            wanted = {str(e.get("target") or "") for e in booked.values()}
+            for target, page in by_target.items():
+                if target not in wanted and str(page.url or "").startswith(("http://", "https://")):
+                    await self._quietly(page.close)   # a leftover of no tab: closed, never taken by a job
+        except Exception:  # noqa: BLE001 - the tabs start new; the job is told so by its pick-up note
+            log.exception("the browser tabs could not be found again after the restart")
+            out = {key: "gone" for key in booked}
+            for key in booked:
+                self.book.forget(key)
+        self._restart_tabs = out
+        return out
+
     async def screenshot(self, key: str, max_width: int = CARD_MAX_WIDTH, cap: int = CARD_MAX_BYTES) -> tuple[bytes | None, int, int]:
         """A JPEG of that tab, scaled to `max_width` and at most `cap` bytes; (None, 0, 0) when there is no tab or no picture fits."""
         page = self._pages.get(key)
@@ -3776,7 +4049,8 @@ class BrowserSession:
 
     async def close_tab(self, key: str) -> bool:
         """Close one tab. The browser context (cookies, sign-ins) stays: only the page goes. A private tab's own context goes with it,
-        and with that everything it kept (cookies, storage, cache)."""
+        and with that everything it kept (cookies, storage, cache). A work tab's sign-ins go back to the owner's browser (work_browser)."""
+        signed_here = (self.sign_ins.get(key) or {}).get("site", "")   # read before the sign-in is forgotten below
         async with self._lock:
             page = self._pages.pop(key, None)
             for d in (self._used, self._seen_at, self._status, self._last_card, self._purchase, self._dialogs, self._doc, self._notes,
@@ -3784,6 +4058,10 @@ class BrowserSession:
                       self._cancel, self._verified, self._last_text, self._ref_words, self._look_url):
                 d.pop(key, None)
             held = self._control.pop(key, None)
+            if self.book is not None:
+                self.book.forget(key)
+            self._lost.pop(key, None)
+            self._lost_act.discard(key)
             private = self._private.pop(key, None)
             cdp = self._tab_cdp.pop(key, None)
             self._view_cdp.pop(key, None)   # its overrides end with the page
@@ -3806,6 +4084,11 @@ class BrowserSession:
             await self._quietly(lambda: page.close())
         if private is not None:
             await self._quietly(lambda: private.close())
+        if self.work is not None and self.work.tab(key) is not None:
+            if signed_here:
+                self.work.note_signed(key, signed_here)
+            cookies, sites = await self.work.close(key)
+            await self._carry_back(key, cookies, sites)
         for fn in list(self.close_listeners):
             await self._quietly(lambda fn=fn: fn(key))
         return page is not None
@@ -3839,6 +4122,11 @@ class BrowserSession:
         if on:
             if self._new_context is not None:
                 ctx = await self._new_context()
+            elif self.work is not None and work_tab(key):
+                try:
+                    ctx = await self.work.new_private_context()
+                except WorkBrowserDown:
+                    raise BrowserPolicyError(DOWN_NOTE) from None
             else:
                 await self._ensure_browser()
                 ctx = await self._browser.new_context(no_viewport=True, accept_downloads=True)
@@ -4000,6 +4288,8 @@ class BrowserSession:
         for h in to_drop:
             self._site_states.pop(h, None)
 
+        if self.work is not None:
+            await self.work.forget(site)   # the open work tabs' contexts too
         return (f"Removed {count} cookies for {reg_domain} and cleared its site data. "
                 "The site needs a new sign-in (the vault's saved login, if any, still works: browser_login).")
 
@@ -4132,6 +4422,8 @@ class BrowserSession:
         return (await self.snapshot()).replace(code, "[code hidden]")
 
     async def close(self) -> None:
+        if self.work is not None:
+            await self.work.shutdown()
         if self._pw is not None:
             await self._pw.stop()
             self._pw = self._ctx = self._browser = None
@@ -4356,7 +4648,7 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
              "opens becomes the page you are on). A click that commits something in "
              "the user's name shows them a card first.",
              obj({"selector": {"type": "string", "description": SELECTOR_ARG}}, ["selector"]), click, requires_approval=True, untrusted=True, source="page",
-             auto_approve=no_card("browser_click"), describe=describe_click, declined=declined_click, hold=guarded(session, session.hold_for_user)),
+             auto_approve=no_card("browser_click"), describe=describe_click, declined=declined_click, hold=guarded(session, session.hold_to_act)),
         Tool("browser_type", "Type text into an input. On a list (a select or a dropdown) it chooses the option with that text instead: "
              "the one way to set a list (quantity, size, date). Personal details or "
              "a message show the user a card first.",
@@ -4365,7 +4657,7 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
                   "uses": USES_PARAM},
                  ["selector", "text"]),
              type_, requires_approval=True, untrusted=True, source="page", auto_approve=no_card("browser_type"), describe=describe_type,
-             hold=guarded(session, session.hold_for_user, only_submit=True)),
+             hold=guarded(session, session.hold_to_act, only_submit=True)),
     ])
 
 
@@ -4423,7 +4715,7 @@ def point_tools(session: BrowserSession, *, approve_actions: bool = False, grant
               "required": ["x", "y"]},
              click_at, requires_approval=True, untrusted=True, source="page", validate=ok("browser_click_at"),
              auto_approve=step_decider(session, "browser_click_at", approve_actions=approve_actions, grants=grants, orders=orders),
-             describe=describe("browser_click_at"), hold=guarded(session, session.hold_for_user, tool="browser_click_at")),
+             describe=describe("browser_click_at"), hold=guarded(session, session.hold_to_act, tool="browser_click_at")),
         Tool("browser_drag", "Drag along a path of points (x, y) of your last browser_look picture: press at the first, move through "
              "the others, let go at the last. Same rules as browser_click_at: canvas, map, slider or drag handle with no ref; look first, act, look again.",
              {"type": "object", "properties": {"path": {"type": "array", "items": point, "minItems": DRAG_POINTS[0],
@@ -4431,5 +4723,5 @@ def point_tools(session: BrowserSession, *, approve_actions: bool = False, grant
               "required": ["path"]},
              drag, requires_approval=True, untrusted=True, source="page", validate=ok("browser_drag"),
              auto_approve=step_decider(session, "browser_drag", approve_actions=approve_actions, grants=grants, orders=orders),
-             describe=describe("browser_drag"), hold=guarded(session, session.hold_for_user, tool="browser_drag")),
+             describe=describe("browser_drag"), hold=guarded(session, session.hold_to_act, tool="browser_drag")),
     ])

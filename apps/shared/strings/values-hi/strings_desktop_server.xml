@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">इस PC को Kelo सर्वर की तरह इस्तेमाल करें</string>
     <string name="desktop_server_row_hint">इस कंप्यूटर पर Kelo सर्वर इंस्टॉल करता है। Windows एक बार एडमिन अनुमति माँगेगा।</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">अपडेट करें</string>
     <string name="desktop_server_install">इंस्टॉल करें</string>
     <string name="desktop_server_unavailable">Windows के लिए Kelo सर्वर अभी उपलब्ध नहीं है।</string>
+
+    <string name="desktop_server_row_mac">इस Mac को Kelo सर्वर की तरह इस्तेमाल करें</string>
+    <string name="desktop_server_row_hint_mac">इस Mac पर Kelo सर्वर इंस्टॉल करता है। macOS एक बार एडमिनिस्ट्रेटर पासवर्ड माँगेगा।</string>
+    <string name="desktop_server_installed_mac">इस Mac पर Kelo सर्वर है</string>
+    <string name="desktop_server_unavailable_mac">Mac के लिए Kelo सर्वर अभी उपलब्ध नहीं है</string>
+    <string name="desktop_server_port_busy">इस Mac पर कोई दूसरा प्रोग्राम पोर्ट %1$d इस्तेमाल कर रहा है। उसे बंद करके फिर से कोशिश करें।</string>
+    <string name="desktop_server_downgrade">एक नया Kelo सर्वर पहले से इंस्टॉल है।</string>
+    <string name="desktop_server_remove">हटाएँ</string>
+    <string name="desktop_server_remove_title">इस Mac से Kelo सर्वर हटाएँ?</string>
+    <string name="desktop_server_remove_body">चैट, कुंजियाँ और फ़ाइलें तब तक रहेंगी जब तक आप उन्हें हटाना न चुनें।</string>
+    <string name="desktop_server_remove_data">चैट, कुंजियाँ और फ़ाइलें भी हटाएँ</string>
+    <string name="desktop_server_removing">हटाया जा रहा है</string>
+    <string name="desktop_server_removed">हटा दिया गया</string>
 </resources>

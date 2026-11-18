@@ -107,7 +107,8 @@ class Telegram(Channel):
         mid = str(m.get("message_id", ""))
         inc = Incoming(chat_id=str((m.get("chat") or {}).get("id", "")), user_id=str(sender.get("id", "")), message_id=mid,
                        text=str(m.get("text") or m.get("caption") or ""), private=(m.get("chat") or {}).get("type") == "private",
-                       name=str(sender.get("first_name") or sender.get("username") or ""), update_id=uid)
+                       name=str(sender.get("first_name") or sender.get("username") or ""), update_id=uid,
+                       forwarded=any(m.get(k) for k in ("forward_origin", "forward_from", "forward_sender_name", "forward_from_chat")))
         if not inc.private:
             inc.chat_title = str((m.get("chat") or {}).get("title") or "")
             inc.mentioned = self._mentions_bot(m)

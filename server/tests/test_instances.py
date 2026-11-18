@@ -3,7 +3,7 @@ import subprocess
 
 import pytest
 
-from assistant.cli import read_env
+from assistant.cli import read_env, write_env
 from assistant.instances import InstanceError, Instances
 
 
@@ -110,7 +110,7 @@ def test_start_uses_the_copys_own_project_env_and_the_shared_image(tmp_path):
     a, b = [c for c in run.calls if "up" in c]
     assert a[:5] == ["docker", "compose", "-f", str(tmp_path / "compose.yml"), "-p"] and a[5] == "assistant-u-alice"
     assert a[a.index("--env-file") + 1] == str(tmp_path / "instances/alice/env") and a[-3:] == ["up", "-d", "--no-build"]
-    assert b[5] == "assistant-u-bob" and b[-7:] == ["up", "-d", "--no-build", "--no-deps", "server", "workroom", "vpn"]   # no browser container for bob (the work room and the VPN sidecar are his too)
+    assert b[5] == "assistant-u-bob" and b[-8:] == ["up", "-d", "--no-build", "--no-deps", "server", "workroom", "vpn", "voice"]   # no browser container for bob (the work room and the VPN sidecar are his too)
     assert not any("build" in c and "--no-build" not in c for c in run.calls)
 
 
@@ -153,3 +153,41 @@ def test_front_door_configs_list_every_copy(tmp_path):
     for bad in (lambda: m.routes("nope"), lambda: m.routes("example.com", "nginx")):
         with pytest.raises(InstanceError):
             bad()
+
+
+def test_site_only_copy_starts_only_the_server_and_its_tunnel(tmp_path):
+    """Site-only (ASSISTANT_SITE_ONLY=1): the containers of the assistant's own work are removed (never their volumes), then only the
+    server and the copy's tunnel are brought up; no command anywhere uses -v or --volumes."""
+    m, run, _ = make(tmp_path)
+    m.create("operator", browser=False)
+    write_env(m.env_path("operator"), {"ASSISTANT_SITE_ONLY": "1", "CONNECT_MODE": "cloudflare", "BROWSER_CDP_HOST": ""})
+    m.start("operator")
+    cmds = [" ".join(c) for c in run.calls]
+    up = [c for c in cmds if " up " in c]
+    assert up and up[-1].endswith("--no-deps server cloudflared")
+    rm = [c for c in cmds if " rm " in c]
+    assert rm and "--stop --force" in rm[0]
+    for svc in ("browser", "egress", "vpn", "keyring", "workroom", "claude-cli", "agy-cli", "android", "updater"):
+        assert svc in rm[0].split(), svc
+    assert cmds.index(rm[0]) < cmds.index(up[-1])
+    assert not any(" -v" in c or "--volumes" in c for c in cmds if " down " not in c)
+
+
+def test_site_only_on_off_writes_and_removes_the_two_lines(tmp_path):
+    m, _, msgs = make(tmp_path)
+    m.create("operator", browser=True)
+    env = m.env_path("operator")
+    assert m.set_site_only("operator", True)
+    assert read_env(env, "ASSISTANT_SITE_ONLY") == "1" and read_env(env, "BROWSER_CDP_HOST") == ""
+    assert m.load("operator").site_only is True and m.load("operator").browser is False
+    assert any("No data is deleted" in x for x in msgs)
+    m.set_site_only("operator", False)
+    text = env.read_text()
+    assert "ASSISTANT_SITE_ONLY" not in text and "BROWSER_CDP_HOST" not in text
+    assert m.load("operator").site_only is False and m.load("operator").browser is True
+
+
+def test_main_copy_cannot_be_site_only(tmp_path):
+    m, _, _ = make(tmp_path)
+    with pytest.raises(InstanceError, match="main copy"):
+        m.set_site_only("main", True)

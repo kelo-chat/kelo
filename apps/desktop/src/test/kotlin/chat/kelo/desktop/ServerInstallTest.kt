@@ -117,11 +117,11 @@ class ServerInstallTest {
         assertFalse("nothing runs from a file that does not check out", ran)
     }
 
-    @Test fun nothingRunsOffWindows() = runBlocking {
+    @Test fun nothingRunsOnLinux() = runBlocking {
         var ran = false
-        val mac = ServerInstaller(os = DesktopPlatform.Os.MAC, dir = tmp.root, base = serve(list(sha(msi))), keys = TestReleaseKey.KEYS, run = { ran = true; 0 })
-        mac.install()
-        assertEquals(ServerInstallState.Phase.IDLE, mac.state.value.phase)
+        val linux = ServerInstaller(os = DesktopPlatform.Os.LINUX, dir = tmp.root, base = serve(list(sha(msi))), keys = TestReleaseKey.KEYS, run = { ran = true; 0 })
+        linux.install()
+        assertEquals(ServerInstallState.Phase.IDLE, linux.state.value.phase)
         assertFalse("the installer never starts on another system", ran)
         assertFalse(File(tmp.root, "kelo-server-1.0.3.msi").exists())
     }
@@ -190,10 +190,10 @@ class ServerInstallTest {
         assertNull(ServerInstallRules.msiName("..\\..\\x"))
     }
 
-    @Test fun onlyWindowsOffersTheFeature() {
-        assertTrue(ServerInstallRules.available(DesktopPlatform.Os.WINDOWS))
-        assertFalse(ServerInstallRules.available(DesktopPlatform.Os.MAC))
-        assertFalse(ServerInstallRules.available(DesktopPlatform.Os.LINUX))
+    @Test fun theFeatureIsNotOfferedOnLinuxAndOnAnOldMac() {
+        assertTrue(ServerInstallRules.available(DesktopPlatform.Os.WINDOWS, 0, false))
+        assertFalse(ServerInstallRules.available(DesktopPlatform.Os.MAC, 13, true))
+        assertFalse(ServerInstallRules.available(DesktopPlatform.Os.LINUX, 26, true))
     }
 
     @Test fun installedMeansTheServerFolderIsThere() {

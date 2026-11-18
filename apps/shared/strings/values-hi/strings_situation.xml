@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Kelo ने जो देखा</string>
+    <string name="situation_title">Kelo ने जो देखा</string>
+    <string name="situation_hourly_head">Kelo हर घंटे जो देखता है</string>
+    <string name="situation_read_when_needed_head">सिर्फ़ ज़रूरत पड़ने पर पढ़ा गया</string>
+    <string name="situation_read_when_needed_about">किसी सवाल को ज़रूरत पड़ने पर ये पढ़े जाते हैं। जो सेवा बताती है कि उसकी स्थिति कैसे पढ़ी जाए, उसे हर घंटे देखा जा सकता है।</string>
+    <string name="situation_section_conversation">बातचीत</string>
+    <string name="situation_section_mail">मेल</string>
+    <string name="situation_section_calendar">कैलेंडर</string>
+    <string name="situation_section_goals">लक्ष्य</string>
+    <string name="situation_section_schedules">कार्यक्रम</string>
+    <string name="situation_section_memory">मेमोरी</string>
+    <string name="situation_section_other">अन्य</string>
+    <string name="situation_empty">अभी कुछ नहीं। पहली झलक अगले घंटे के 9वें मिनट पर, आपके जागने के समय में होती है।</string>
+    <string name="situation_keep_days">%d दिन रखा जाता है</string>
+    <string name="situation_outcome_no_change">कुछ नया नहीं</string>
+    <string name="situation_outcome_nothing">देखा, बताने लायक कुछ नहीं</string>
+    <string name="situation_outcome_proposed">%d तैयार</string>
+    <string name="situation_outcome_selected">%d चुने गए</string>
+    <string name="situation_outcome_delivered">आपको बताया गया</string>
+    <string name="situation_outcome_failed">देखा नहीं जा सका</string>
+    <string name="situation_outcome_running">अभी देख रहा है</string>
+    <string name="situation_outcome_other">देखा</string>
+    <string name="situation_load_more">और लोड करें</string>
+    <string name="situation_detail_changed">क्या बदला</string>
+    <string name="situation_detail_same">पहले जैसा ही (%d)</string>
+    <string name="situation_detail_failed">पढ़ा नहीं जा सका</string>
+    <string name="situation_detail_off">बंद</string>
+    <string name="situation_detail_done">Kelo ने क्या किया</string>
+    <string name="situation_detail_none">इस झलक में कुछ तैयार नहीं हुआ।</string>
+    <string name="situation_state_new">नया</string>
+    <string name="situation_state_same">पहले जैसा ही</string>
+    <string name="situation_state_changed">बदला</string>
+    <string name="situation_state_failed">पढ़ा नहीं जा सका</string>
+    <string name="situation_state_timeout">बहुत समय लगा</string>
+    <string name="situation_state_skipped">शामिल नहीं: झलक भर गई थी</string>
+    <string name="situation_state_off">बंद</string>
+    <string name="situation_state_other">अन्य</string>
+    <string name="situation_event_proposed">तैयार</string>
+    <string name="situation_event_updated">अपडेट हुआ</string>
+    <string name="situation_event_selected_today">आज के लिए चुना गया</string>
+    <string name="situation_event_selected_regular">सामान्य संदेश के रूप में चुना गया</string>
+    <string name="situation_event_told">आपको बताया गया</string>
+    <string name="situation_event_dropped">एक तरफ़ रखा: %s</string>
+    <string name="situation_event_dropped_none">एक तरफ़ रखा: बताने लायक नहीं</string>
+    <string name="situation_event_expired">समय निकल गया</string>
+    <string name="situation_event_waiting">किसी बेहतर समय का इंतज़ार</string>
+</resources>

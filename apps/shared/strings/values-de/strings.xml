@@ -937,10 +937,14 @@
     <string name="live_held_elsewhere">Wird von einem anderen Gerät gesteuert</string>
     <string name="live_give_back">Zurückgeben</string>
     <string name="live_paused_banner">Du steuerst. Dein Agent wartet auf diesem Tab, bis du zurückgibst.</string>
+    <string name="live_still_yours">Sie steuern noch selbst. Ihr Agent wartet, bis Sie es zurückgeben.</string>
+    <string name="live_screen_changed">Der Bildschirm hat sich geändert. Tippen Sie noch einmal.</string>
     <string name="live_tab_closed">Der Tab wurde geschlossen, es gibt nichts mehr zu sehen. Falls der letzte Bildschirm gespeichert wurde, siehst du ihn unten.</string>
     <string name="live_not_controller">Du kannst gerade nicht steuern. Tippe noch mal auf „Übernehmen“.</string>
     <string name="live_input_failed">Das konnte der Browser nicht ausführen.</string>
     <string name="live_state_you">Du steuerst</string>
+    <string name="live_work_browser">Arbeitsbrowser</string>
+    <string name="live_work_browser_note">Dieser Tab läuft im Arbeitsbrowser von Kelo, getrennt von Ihren eigenen Tabs. Eine Anmeldung, die Sie hier machen, wird am Ende der Aufgabe im Hauptbrowser von Kelo gespeichert.</string>
     <string name="live_state_other">Ein anderes Gerät steuert</string>
     <string name="live_state_waiting">Wartet auf Freigabe</string>
     <string name="live_connecting">Verbindung wird hergestellt…</string>
@@ -1200,6 +1204,9 @@
     <string name="work_wait_answer">Geht weiter, sobald du sagst, wie es weitergehen soll.</string>
     <string name="work_wait_blocked">Gestoppt, weil es allein nicht weiterkommt.</string>
     <string name="work_wait_restart">Gestoppt, als der Server neu gestartet wurde.</string>
+    <string name="work_picked_up">Der Kelo-Server wurde neu gestartet, deshalb geht es dort weiter, wo es stehen geblieben war.</string>
+    <string name="work_picked_up_browser">Der Browser wurde neu gestartet, deshalb geht es in einem neuen Tab weiter.</string>
+    <string name="work_wait_pickup">Es geht gleich dort weiter, wo es stehen geblieben ist.</string>
     <string name="work_schedule_on">Zeitplan an</string>
     <string name="work_schedule_off">Zeitplan aus</string>
     <string name="work_schedule_by_agent">Von deinem Agent erstellt</string>

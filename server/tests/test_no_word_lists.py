@@ -37,6 +37,10 @@ GUARDED += ["tools/payment_step.py", "tools/verification.py", "tools/keypad.py",
 GUARDED += ["mcp_oauth.py", "scope_pick.py", "recall.py", "notify_block.py", "forbidden.py"]
 # hc-final-a: the cookie advice by typed need (workers), the secure-field and countdown and window probes by structure (chat_images, payment_step, page_notes)
 GUARDED += ["workers.py", "chat_images.py"]
+# situation sources (2026-11-18): the connectors are read through their declarations; no connector, id, kind or path is named in the code
+GUARDED += ["situation_reads.py"]
+# situation.py is not guarded: its urgency values are the stored Korean words of proactive_log (as proactive.py keeps them). The owner's
+# rule for it is tested in test_situation_sources.py (no connector named, comparisons on connector names are refused).
 REGEX_CALLS = {"compile", "search", "match", "fullmatch", "sub", "findall", "finditer", "split"}
 WORD = re.compile(r"[A-Za-z]{3,}")
 # Not human language: the names of a standard or of code. HTML tags, input types and ARIA roles, the WHATWG autocomplete tokens, JavaScript

@@ -370,7 +370,7 @@ def test_the_marker_line_goes_into_the_private_files_block_of_the_prompt(tmp_pat
     from assistant.home import Home
     from assistant.prompt import PromptBuilder
     home = Home(tmp_path / "h")
-    home.write("MEMORY.md", "# MEMORY.md\n- likes tea\n")
+    home.write("MEMORY.md", "# MEMORY.md\n- likes tea\n", by="user")
     b = PromptBuilder("You are {agent_name}.\n", home, None)
     store = Store()
     marker = LeakMarker(store)

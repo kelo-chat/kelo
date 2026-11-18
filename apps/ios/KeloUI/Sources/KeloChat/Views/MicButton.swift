@@ -13,12 +13,77 @@ struct MicButton: View {
 
     var body: some View {
         #if os(iOS)
-        IOSMicButton(text: $text)
+        VoiceMicSwitch(text: $text)
         #else
         EmptyView()
         #endif
     }
 }
+
+#if os(iOS)
+/// Picks the way from the server's voice view (DictationWay, the same table as Android): the Kelo server's speech model, or the
+/// phone's own recognizer. The first tap while the model is only offered asks 확인 / 취소 once (the tap goes on with the phone's
+/// recognizer; 취소 keeps it and the offer stays in My → 음성 입력).
+private struct VoiceMicSwitch: View {
+    @Binding var text: String
+    @Environment(AppModel.self) private var app
+    @State private var view: VoiceView?
+    @State private var dictation: ServerDictationModel?
+    @State private var asking = false
+
+    var body: some View {
+        let way = DictationWay.pick(view, phoneRecognizer: true)
+        Group {
+            if way == .server, let dictation {
+                ServerMicButton(model: dictation)
+            } else {
+                IOSMicButton(text: $text)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        if way == .offerThenPhone { asking = true }
+                    })
+            }
+        }
+        .task { await refresh() }
+        .alert(L(R.string.voice_denied_title), isPresented: Binding(get: { dictation?.denied ?? false }, set: { dictation?.denied = $0 })) {
+            Button(L(R.string.open_settings)) { DeviceInfo.openAppSettings() }
+            Button(L(R.string.close), role: .cancel) {}
+        } message: { Text(L(R.string.voice_denied_body)) }
+        .alert(offerTitle, isPresented: $asking) {
+            Button(L(R.string.ok)) { answer(choose: true) }
+            Button(L(R.string.cancel), role: .cancel) { answer(choose: false) }
+        }
+    }
+
+    private var offerTitle: String {
+        L(R.string.voice_server_offer_body, view?.recommended?.name ?? "")
+    }
+
+    private func refresh() async {
+        if dictation == nil {
+            let model = ServerDictationModel(api: { app.api })
+            model.onText = { words in text = SpeechMerge.merge(SpeechMerge.anchor(text), spoken: words) }
+            dictation = model
+        }
+        while !Task.isCancelled {
+            guard let api = app.api else { view = nil; return }
+            if let fresh = try? await VoiceAPI.view(api, lang: appLanguageCode()) { view = fresh }
+            guard view?.state == "downloading" else { return }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+    }
+
+    private func answer(choose: Bool) {
+        guard let api = app.api, let recommended = view?.recommended else { return }
+        Task {
+            if choose {
+                view = try? await VoiceAPI.choose(api, id: recommended.id)
+            } else {
+                view = try? await VoiceAPI.decline(api)
+            }
+        }
+    }
+}
+#endif
 
 #if os(iOS)
 private struct IOSMicButton: View {

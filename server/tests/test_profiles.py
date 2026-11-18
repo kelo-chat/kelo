@@ -61,16 +61,28 @@ def test_the_container_caps_add_up_to_the_sizes_on_the_site(name, ram, cpus, dis
     c = profiles.caps(name, **layout)
     if layout["browser"]:
         assert c["browser_memory"] == max(v for o, v in c.items() if o.endswith("memory"))     # the browser needs the most RAM
-    assert all(c[o] >= profiles.FLOOR[o] for o in c)                     # a size never warns about itself
+    below = {o for o in c if c[o] < profiles.FLOOR[o]}
+    # owner decision 2026-11-18 (the work browser's 1.5 share): at Minimum the browser, the work room and the agy containers sit under
+    # their floors; every other size and layout meets all floors
+    assert below <= ({"browser_memory", "workroom_memory", "cli_memory", "work_browser_memory"} if name == "minimum" else set())
+
+
+def test_the_work_browser_has_its_own_share_of_weight_one_and_a_half():
+    c = profiles.caps("recommended")
+    assert c["work_browser_memory"] / c["browser_memory"] == pytest.approx(1.5 / 2.0, abs=0.01)     # owner decision 2026-11-18
+    assert c["work_browser_cpus"] / c["browser_cpus"] == pytest.approx(1.5 / 2.0, abs=0.02)
+    assert "work_browser_memory" not in profiles.caps("recommended", browser=False)              # a copy without a browser has none
 
 
 def test_the_caps_people_will_see():
-    assert profiles.caps("minimum") == {"memory": 512 * MB, "cpus": 0.5, "disk": 5376 * MB, "browser_memory": 1 * GB, "browser_cpus": 1.0,
-                                        "browser_cache": 384 * MB, "workroom_memory": 512 * MB, "workroom_cpus": 0.5, "workroom_disk": 1920 * MB}
-    assert profiles.caps("recommended") == {"memory": 1 * GB, "cpus": 1.0, "disk": 12928 * MB, "browser_memory": 2 * GB, "browser_cpus": 2.0,
-                                            "browser_cache": 512 * MB, "workroom_memory": 1 * GB, "workroom_cpus": 1.0, "workroom_disk": 4480 * MB}
+    assert profiles.caps("minimum") == {"memory": 374 * MB, "cpus": 0.38, "disk": 5376 * MB, "browser_memory": 744 * MB, "browser_cpus": 0.72,
+                                        "browser_cache": 384 * MB, "work_browser_memory": 558 * MB, "work_browser_cpus": 0.54,
+                                        "workroom_memory": 372 * MB, "workroom_cpus": 0.36, "workroom_disk": 1920 * MB}
+    assert profiles.caps("recommended") == {"memory": 746 * MB, "cpus": 0.74, "disk": 12928 * MB, "browser_memory": 1489 * MB, "browser_cpus": 1.45,
+                                            "browser_cache": 512 * MB, "work_browser_memory": 1117 * MB, "work_browser_cpus": 1.09,
+                                            "workroom_memory": 744 * MB, "workroom_cpus": 0.72, "workroom_disk": 4480 * MB}
     two = profiles.caps("minimum", clis=2)
-    assert two["cli_memory"] == 204 * MB and two["cli_cpus"] == 0.2 and two["disk"] < profiles.caps("minimum")["disk"]   # their images take disk
+    assert two["cli_memory"] == 157 * MB and two["cli_cpus"] == 0.15 and two["disk"] < profiles.caps("minimum")["disk"]   # their images take disk
     assert profiles.caps("unlimited") == dict.fromkeys(profiles.applicable())
     assert profiles.totals("unlimited") == {"ram": 0.0, "cpus": 0.0, "disk": 0.0}
     assert profiles.spec("minimum") == "RAM 2 GB · CPU 2 · disk 10 GB" and profiles.spec("recommended") == "RAM 4 GB · CPU 4 · disk 20 GB"
@@ -89,7 +101,7 @@ def test_sizes_are_written_back_the_way_the_command_line_reads_them():
 
 
 def test_the_server_can_tell_which_profile_its_own_limits_match():
-    assert profiles.guess(1 * GB, 1.0, 12928 * MB) == "recommended" and profiles.guess(512 * MB, 0.5, 5376 * MB) == "minimum"
+    assert profiles.guess(746 * MB, 0.74, 12928 * MB) == "recommended" and profiles.guess(374 * MB, 0.38, 5376 * MB) == "minimum"
     c = profiles.caps("minimum", clis=2)
     assert profiles.guess(c["memory"], c["cpus"], c["disk"]) == "minimum"                          # whatever else the copy runs
     assert profiles.guess(1 * GB, 1.0, 5 * GB) == "recommended" and profiles.guess(256 * MB, 0.5, 512 * MB) == "minimum"   # sized by an older version
@@ -100,7 +112,7 @@ def test_the_server_can_tell_which_profile_its_own_limits_match():
 def test_a_profile_sets_only_what_the_copy_has(tmp_path):
     m, _ = make(tmp_path, env="BROWSER=chromium\nASSISTANT_TOKEN=x\nCOMPOSE_PROFILES=claude,agy\n")
     wanted = limits.wanted_for("recommended", m.load())
-    assert wanted["browser_memory"] == "1638m" and wanted["cli_memory"] == "409m" and wanted["workroom_memory"] == "819m"
+    assert wanted["browser_memory"] == "1260m" and wanted["cli_memory"] == "315m" and wanted["workroom_memory"] == "630m"
     m.create("alice", browser=False)
     lone = limits.wanted_for("minimum", m.load("alice"))
     assert lone["memory"] == "1024m" and lone["cpus"] == "1" and lone["browser_memory"] is None and lone["cli_memory"] is None
@@ -190,7 +202,7 @@ def test_a_copy_sized_by_an_older_version_keeps_its_size_name_and_moves_to_today
     assert limits.current_profile(m.load("alice")) == "minimum"                                       # the old name, already
     assert run_command(ns(cmd="limits", instance=None, no_apply=True), m) == 0
     assert "alice: sizes moved to today's numbers for Minimum (applies the next time it starts)." in msgs
-    assert read_env(m.env_path("alice"), "BROWSER_MEMORY") == str(1 * GB) and read_env(m.env_path("alice"), "WORKROOM_MEMORY") == str(512 * MB)
+    assert read_env(m.env_path("alice"), "BROWSER_MEMORY") == str(744 * MB) and read_env(m.env_path("alice"), "WORKROOM_MEMORY") == str(372 * MB)
     assert limits.current_profile(m.load("alice")) == "minimum" and limits.migrate(m, m.load("alice")) is None    # once only
     assert limits.current_profile(m.load()) == "custom" and read_env(m.env_path("main"), "SERVER_MEMORY") == str(3 * GB)   # custom stays
     assert "main  size: Custom (set one by one)" in msgs and "alice  size: Minimum (RAM 2 GB · CPU 2 · disk 10 GB)" in msgs
@@ -201,7 +213,7 @@ def test_creating_a_copy_asks_when_nothing_was_said_and_a_flag_skips_the_questio
     m, msgs = make(tmp_path)
     base = dict(cmd="instance", icmd="create", no_browser=False, domain=None, no_start=True)
     assert run_command(ns(name="alice", **base), m, ask=answers("2")) == 0
-    assert read_env(m.env_path("alice"), "SERVER_MEMORY") == str(512 * MB) and limits.current_profile(m.load("alice")) == "minimum"
+    assert read_env(m.env_path("alice"), "SERVER_MEMORY") == str(374 * MB) and limits.current_profile(m.load("alice")) == "minimum"
 
     assert run_command(ns(name="bob", profile="recommended", **base), m, ask=answers()) == 0          # no question was asked
     assert limits.current_profile(m.load("bob")) == "recommended"
@@ -245,16 +257,16 @@ def test_first_run_asks_for_the_size_after_the_other_questions_and_a_rerun_keeps
     ask = answers("", "n", "y", "2")                        # browser default; claude no; agy yes; size: minimum
     setup(f, ask=ask, out=logs.append, run=Docker())
     assert limits.current_profile(Instances(tmp_path, main_env=f, run=Docker()).load()) == "minimum"
-    assert read_env(f, "CLI_MEMORY") == str(227 * MB) and read_env(f, "SERVER_MEMORY") == str(456 * MB)       # agy container counted
+    assert read_env(f, "CLI_MEMORY") == str(170 * MB) and read_env(f, "SERVER_MEMORY") == str(343 * MB)       # agy container counted
     assert any("Saved the sizes to" in l and "Minimum (RAM 2 GB · CPU 2 · disk 10 GB)" in l and "`assistant limits --choose`" in l for l in logs)
     setup(f, "chromium", out=lambda _: None, run=Docker())                                                    # plain rerun: not asked again
-    assert read_env(f, "SERVER_MEMORY") == str(456 * MB)
+    assert read_env(f, "SERVER_MEMORY") == str(343 * MB)
 
 
 def test_the_profile_flag_skips_the_question_and_works_on_a_rerun_too(tmp_path):
     f = tmp_path / ".env"
     setup(f, "chromium", out=lambda _: None, resources="recommended", run=Docker())
-    assert read_env(f, "SERVER_MEMORY") == str(1 * GB)
+    assert read_env(f, "SERVER_MEMORY") == str(746 * MB)
     setup(f, "chromium", out=lambda _: None, resources="unlimited", run=Docker())
     assert not read_env(f, "SERVER_MEMORY") and read_env(f, "ASSISTANT_TOKEN")                                 # limits removed, secrets kept
 
@@ -271,7 +283,7 @@ def test_the_real_command_line_takes_the_profile_flag(tmp_path, monkeypatch, cap
     (tmp_path / ".env").write_text("ASSISTANT_TOKEN=x" * 5 + "\n")
     monkeypatch.setattr(subprocess, "run", Docker())
     assert main(["limits", "--no-apply", "--profile", "recommended", "--cpus", "2"]) == 0
-    assert read_env(tmp_path / ".env", "SERVER_MEMORY") == str(1 * GB) and read_env(tmp_path / ".env", "SERVER_CPUS") == "2"
+    assert read_env(tmp_path / ".env", "SERVER_MEMORY") == str(746 * MB) and read_env(tmp_path / ".env", "SERVER_CPUS") == "2"
     assert "[Custom]" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         main(["limits", "--profile", "huge"])

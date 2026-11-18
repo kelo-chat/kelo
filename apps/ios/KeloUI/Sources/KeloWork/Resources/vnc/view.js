@@ -5,14 +5,43 @@
 // From the app:  {"t":"open"}  create the connection now;  {"t":"hold","on":bool}  the owner holds the tab (input allowed);
 //                {"t":"reset"}  a new socket for a new screen size: start a new session, keep the old picture until it connects;
 //                {"t":"d","b":"<base64>"}  bytes from the server.
-// To the app:    {"t":"ready"}  the port works;  {"t":"d","b":"<base64>"}  bytes for the server.
+// To the app:    {"t":"ready"}  the port works;  {"t":"d","b":"<base64>"}  bytes for the server;
+//                {"t":"clipboard","text":"..."}  the browser put text on its clipboard (the app offers it; nothing is copied on its own).
 import RFB from './core/rfb.js';
+import GestureHandler from './core/input/gesturehandler.js';
+import { FIT, ZoomGesture, clampView } from './zoom.js';
 
 const screen = document.getElementById('screen');
 let port = null;
 // the iPhone's script message handler (undefined in Android's WebView)
 const native = window.webkit && window.webkit.messageHandlers ? window.webkit.messageHandlers.keloVnc : undefined;
 let holding = false;
+
+// Zoom (zoom.js): the box noVNC draws into is `zoom` times the screen, moved by (x, y); noVNC fits the picture into it and maps touches
+// with the canvas's real position, so taps stay right. The picture is the whole X screen at zoom 1.
+let view = FIT;
+
+function place(holder) {
+    const w = screen.clientWidth, h = screen.clientHeight;
+    holder.style.left = view.x + 'px';
+    holder.style.top = view.y + 'px';
+    holder.style.width = w * view.zoom + 'px';
+    holder.style.height = h * view.zoom + 'px';
+}
+
+let placing = 0;
+function layout() {
+    placing = 0;
+    view = clampView(view, screen.clientWidth, screen.clientHeight);
+    for (const holder of screen.children) place(holder);
+}
+
+function setView(v) {
+    view = v;
+    if (!placing) placing = requestAnimationFrame(layout);
+}
+
+new ResizeObserver(layout).observe(screen);   // rotation, the keyboard, the window
 
 function post(obj) {
     if (port) port.postMessage(JSON.stringify(obj));
@@ -66,7 +95,8 @@ function start(replacing) {
         old.rfb.viewOnly = true;
     }
     const holder = document.createElement('div');
-    holder.style.cssText = 'position:absolute;inset:0' + (old ? ';visibility:hidden' : '');
+    holder.style.cssText = 'position:absolute' + (old ? ';visibility:hidden' : '');
+    place(holder);
     screen.appendChild(holder);
     const ch = makeChannel();
     const rfb = new RFB(holder, ch, { shared: true });
@@ -78,6 +108,12 @@ function start(replacing) {
     rfb.compressionLevel = 2;
     rfb.focusOnClick = false;
     rfb.background = 'transparent';
+    // text the browser copied (X clipboard -> ServerCutText): told to the app only, which offers it to the owner. Only the newest session.
+    rfb.addEventListener('clipboard', (e) => {
+        if (current && current.rfb === rfb && e.detail && typeof e.detail.text === 'string' && e.detail.text) {
+            post({ t: 'clipboard', text: e.detail.text.slice(0, 10000) });
+        }
+    });
     channel = ch;
     current = { rfb, channel: ch, holder };
     ch.readyState = 1;
@@ -95,6 +131,33 @@ function start(replacing) {
         rfb.addEventListener('connect', () => setTimeout(swap, 200));
         setTimeout(swap, 4000);
     }
+}
+
+// Two fingers: pinch zooms the picture and, zoomed, moves it. When a gesture becomes ours, noVNC's gesture handler is replaced by a new one
+// (it would otherwise go on with the fingers it saw: a page scroll, a ctrl+wheel zoom or a right click when they lift).
+function forgetFingers() {
+    if (!current) return;
+    try {
+        const rfb = current.rfb;
+        rfb._gestures.detach();
+        rfb._gestures = new GestureHandler();
+        rfb._gestures.attach(rfb._canvas);
+    } catch (e) { /* the page keeps noVNC's own gestures */ }
+}
+
+const zoom = new ZoomGesture(() => ({ w: screen.clientWidth, h: screen.clientHeight }), { get: () => view, set: setView });
+
+function onTouch(e) {
+    const touches = Array.from(e.touches, (t) => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
+    const verdict = zoom.touch(e.type.replace('touch', '').replace('cancel', 'end'), touches, e.timeStamp);
+    if (verdict === 'pass') return;
+    if (verdict === 'claim') forgetFingers();
+    e.stopPropagation();
+    e.preventDefault();
+}
+
+for (const type of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+    screen.addEventListener(type, onTouch, { capture: true, passive: false });
 }
 
 function open() {

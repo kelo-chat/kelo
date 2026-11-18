@@ -115,8 +115,8 @@ extension KeloApi {
     public func browserTabs(thumbnails: Bool = true) async throws -> BrowserTabs { try await get("/api/browser/sessions?thumbnails=\(thumbnails)") }
     public func closeBrowserTab(_ id: String) async throws { try await request("DELETE", "/api/browser/sessions/\(KeloApi.seg(id))") }
     /// 409: another device holds the tab.
-    public func browserControl(_ id: String, take: Bool) async throws -> ControlAnswer {
-        try await post("/api/browser/sessions/\(KeloApi.seg(id))/control", body: LiveMessages.control(take: take))
+    public func browserControl(_ id: String, take: Bool, handover: Bool = false) async throws -> ControlAnswer {
+        try await post("/api/browser/sessions/\(KeloApi.seg(id))/control", body: LiveMessages.control(take: take, handover: handover))
     }
     @discardableResult
     public func browserInput(_ id: String, _ event: JSON) async throws -> JSON {

@@ -4,7 +4,8 @@
 #   tools/build/ios.sh sim          KeloCore + KeloUI package tests, then the app built and its UI walk (KeloScreensTests/testWalk)
 #                                   run on the simulator "kelo-ios-check" against apps/desktop/tools/mock_server.py behind
 #                                   apps/ios/tools/mock_e2e_gateway.py (KE2E; needs uv and the server's environment)
-#   tools/build/ios.sh testflight   new build number (YYMMDDHH) in project.yml -> xcodegen -> unsigned archive -> export signed
+#   tools/build/ios.sh testflight   refuses to start when the generated iPhone files differ from version.json / apps/shared/strings;
+#                                   then new build number (YYMMDDHH) in project.yml -> xcodegen -> unsigned archive -> export signed
 #                                   by Apple (cloud signing, App Store Connect API key) -> upload -> wait until the build is
 #                                   processed (VALID)
 #
@@ -72,6 +73,13 @@ generate_project() {
   step "version (apps/ios/tools/gen_version.py, from version.json)" 60 "$LOGS/ios-version.log" python3 "$IOS/tools/gen_version.py"
   step "strings (apps/ios/tools/gen_strings.py)" 300 "$LOGS/ios-strings.log" python3 "$IOS/tools/gen_strings.py"
   step "xcodegen" 300 "$LOGS/ios-xcodegen.log" xcodegen generate --spec "$SPEC" --project "$PROJ_DIR"
+}
+
+# A store build must be the committed source (docs/verify-builds.md): the generated files must already match version.json and
+# apps/shared/strings, or the build would contain files main does not have (2026-11-17).
+check_generated() {
+  step "iPhone version file up to date (gen_version.py --check)" 60 "$LOGS/ios-version-check.log" python3 "$IOS/tools/gen_version.py" --check
+  step "iPhone strings up to date (gen_strings.py --check)" 300 "$LOGS/ios-strings-check.log" python3 "$IOS/tools/gen_strings.py" --check
 }
 
 # ------------------------------------------------------------------------------------------------------------------------- sim
@@ -183,6 +191,8 @@ KEY_PATH="$(sed -n 's/^KEY_PATH=//p' "$ASC_ENV" | tr -d "\"'")"; KEY_PATH="${KEY
 REDACT_VALUES="$ISSUER_ID $KEY_ID"
 TEAM="$(sed -n 's/^ *DEVELOPMENT_TEAM: *\([A-Z0-9]*\).*/\1/p' "$SPEC" | head -1)"
 [ -n "$TEAM" ] || die "no DEVELOPMENT_TEAM in $SPEC"
+
+check_generated   # before any App Store Connect call and before project.yml is edited: a stale tree stops here, changing nothing
 
 log "App Store Connect key"
 "${ASC[@]}" check >&2 || die "the App Store Connect key does not work (see above)"

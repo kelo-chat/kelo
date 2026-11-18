@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">%1$s の音声認識モデルを Kelo サーバーにダウンロードしますか？しない場合は、スマホの音声認識を使います。</string>
+    <string name="voice_server_downloading">音声モデルをダウンロード中 · %1$d%%</string>
+    <string name="voice_server_ready">Kelo サーバーが声を認識できるようになりました。</string>
+    <string name="voice_server_download_failed">音声モデルのダウンロードが完了しませんでした。</string>
+    <string name="voice_server_no_room">Kelo サーバーの空き容量が足りません（%1$s 必要）。</string>
+    <string name="voice_retry">やり直す</string>
+    <string name="voice_transcribing">文字に変換中…</string>
+    <string name="voice_cancel_recording">録音をキャンセル</string>
+    <string name="voice_stop_recording">録音を終える</string>
+    <string name="voice_ends_in">あと %1$d 秒で終わります</string>
+    <string name="voice_server_offline">Kelo サーバーに接続できず、文字に変換できませんでした。</string>
+    <string name="voice_server_busy">Kelo サーバーが別の録音を処理中です。少し経ってからもう一度お試しください。</string>
+    <string name="voice_server_too_long">録音が長すぎます。2 分以内にお話しください。</string>
+    <string name="voice_page_title">音声入力</string>
+    <string name="voice_page_intro">話した声は Kelo サーバーで文字になり、入力欄に入ります。自動で送信されることはありません。</string>
+    <string name="voice_model_in_use">使用中の音声モデル</string>
+    <string name="voice_state_off">スマホの音声認識</string>
+    <string name="voice_change_model">モデルを変更</string>
+    <string name="voice_download_model">モデルをダウンロード</string>
+    <string name="voice_remove_model">モデルを削除</string>
+    <string name="voice_remove_confirm">音声モデルを削除しますか？その後はスマホの音声認識を使います。</string>
+    <string name="voice_phone_note">この言語は Kelo サーバーの音声モデルがまだ対応していないため、スマホの音声認識を使います。</string>
+    <string name="voice_model_size">サイズ %1$s · 使用時のメモリ %2$s</string>
+    <string name="voice_runtime_missing">Kelo サーバーのインストーラーをもう一度実行すると使えます。</string>
+</resources>

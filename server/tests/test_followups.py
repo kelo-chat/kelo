@@ -356,7 +356,7 @@ async def test_rules_nobody_can_read_hold_the_item_back_without_marking_it(tmp_p
 
 async def test_a_rule_the_agent_writes_into_notify_prefs_is_not_applied(tmp_path):
     f, store, clock, sent, _ = make(tmp_path, prefs="# NOTIFY_PREFS.md\n\n## Tell me\n\n## Do not tell me\n\n## When\n\n## How\n")
-    f.home.write(NOTIFY_PREFS, "# NOTIFY_PREFS.md\n\n## Do not tell me\n- tickets.example\n", by="agent")   # a note of the agent's, not a rule
+    f.home.write(NOTIFY_PREFS, "# NOTIFY_PREFS.md\n\n## Do not tell me\n- tickets.example\n", by="system")   # a note the agent cannot write: not a rule
     login_slot(store)
     fid = f.login_requested("login-tickets", "Tickets", "tickets.example.com")
     clock.t += 30 * MIN

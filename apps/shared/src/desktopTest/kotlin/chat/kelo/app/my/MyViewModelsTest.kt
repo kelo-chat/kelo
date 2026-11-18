@@ -31,7 +31,7 @@ import javax.crypto.KeyGenerator
 class MyViewModelsTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<String>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
     /** the answer to a request, by "METHOD path"; null = 404 */
     private val answers = Collections.synchronizedMap(mutableMapOf<String, MockResponse>())
 

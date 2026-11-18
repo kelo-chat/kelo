@@ -110,8 +110,8 @@ import KeloCore
                          browser("b3", "a.example", "s2", tab: "owner")], keys: k)
         #expect(cards(items).count == 2)
         items = run([browser("b4", "a.example", "s3", tab: "owner")], start: items + [.msg(.init(key: "u", mine: true, text: "또 해줘"))], keys: k)
-        #expect(cards(items).count == 3)
-        #expect(cards(items)[0].status == "s2")
+        #expect(cards(items).count == 2)                                  // one card per tab in the whole list: the owner's card moves here
+        #expect(cards(items).last?.status == "s3")
     }
 
     @Test func aPermissionCardForManyCarriesItsListAndAStepLimitFromANewServerShowsNoErrorBubble() throws {

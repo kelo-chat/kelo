@@ -247,6 +247,12 @@ compose.desktop {
                 iconFile.set(project.file("packaging/icons/kelo.icns"))
                 bundleID = "chat.kelo.desktop"
                 dockName = "Kelo"
+                // the first microphone use shows the macOS prompt with this text (English once: jpackage has no localized Info.plist)
+                infoPlist {
+                    extraKeysRawXml = "<key>NSMicrophoneUsageDescription</key><string>Kelo records your voice only while you use the microphone, and sends it to your own Kelo server to turn it into text.</string>"
+                }
+                // the hardened runtime blocks the microphone without audio-input; the other entries are the ones a JVM app needs
+                entitlementsFile.set(project.file("packaging/macos/entitlements.plist"))
             }
             linux {
                 iconFile.set(project.file("packaging/icons/kelo-512.png"))

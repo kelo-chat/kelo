@@ -135,6 +135,8 @@ class AppContainer(
     val notes = MutableSharedFlow<DesktopNote>(extraBufferCapacity = 16)
     /** A request from the tray or a notification to bring the window up on a page */
     val openPage = MutableStateFlow<String?>(null)
+    /** The chat's search page is open over the chat (desktop only; the phone keeps it in MainShell) */
+    val chatSearchOpen = MutableStateFlow(false)
     /** The browser tab whose live view is open over the page, or null */
     val liveTab = MutableStateFlow<LiveRequest?>(null)
     /**
@@ -157,6 +159,7 @@ class AppContainer(
     override val browser: chat.kelo.app.platform.ExternalBrowser = chat.kelo.app.platform.ExternalBrowser { url -> Browser.open(url) }
     override val phoneData: chat.kelo.app.platform.PhoneDataSection? = null
     override val connectorIcons = chat.kelo.app.connectors.ConnectorIcons(File(dataDir, "connector-icons"))
+    override val mailPreviews = chat.kelo.app.chat.MailPreviewStore { sessions.api.value }
     override val notifications: chat.kelo.app.platform.PhoneNotifications? = null
     override val phoneLocation: chat.kelo.app.platform.PhoneLocation? = null
     override val appUpdates: chat.kelo.app.platform.AppUpdateSource? = null

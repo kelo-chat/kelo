@@ -1,0 +1,8 @@
+# Pinned inputs of the Kelo server VM (the same guest as the Windows WSL distro: Debian 12, bookworm).
+# DEBIAN_IMAGE_*: the arm64 generic cloud image from a dated Debian folder (never "latest"); the sha512 is the one in that folder's
+# SHA512SUMS. Source: tools/build/mac-server-bundle.sh --update-lock --write (the sha is computed from a real download).
+DEBIAN_IMAGE_URL=https://cloud.debian.org/images/cloud/bookworm/20261026-2643/debian-12-genericcloud-arm64-20261026-2643.qcow2
+DEBIAN_IMAGE_SHA512=f42866fe22b4baf9f0ed4f81d620064f2a4b86b18b92bfe3aaaa40babf6819d39cbf0caaaad13f4ae3e7c9f82cbd78b0c8cabadd8bc737ce13578e61fa86970c
+# uv: the same version as packaging/wsl/Dockerfile.distro; the aarch64 build is checked against UV_AARCH64_SHA256.
+UV_VERSION=0.5.11
+UV_AARCH64_SHA256=055c329c38a93c01d378349d51cb4d521d1998c8a79355ddc00f863ce451942f

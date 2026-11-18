@@ -372,7 +372,8 @@ def write_page(url: str) -> Path:
 
 def run_web(env_file: Path, *, start: bool = True, browser: str | None = None, clis: list[str] | None = None,
             profile: str | None = None, release: bool = False, open_browser: bool = True, page_file: bool = False,
-            out: Callable[[str], None] = print, opener: Callable[[str], Any] = webbrowser.open, host: Any = None) -> int:
+            out: Callable[[str], None] = print, opener: Callable[[str], Any] = webbrowser.open, host: Any = None,
+            port: int = 0) -> int:
     """`assistant setup --web`: the guided setup in the browser. Exit code = the wizard's.
     The browser is always started with the page file's address. `page_file` prints that file's path instead of the link
     (the macOS installer opens it; the link never reaches its log or its command line). Otherwise the link is printed."""
@@ -381,7 +382,7 @@ def run_web(env_file: Path, *, start: bool = True, browser: str | None = None, c
     def run_wizard(ui: WebUI) -> int:
         return Wizard(env_file, ui, start=start, browser=browser, clis=clis, profile=profile, release=release, host=host)()
 
-    url, srv = serve(run_wizard, lang=detect_lang())
+    url, srv = serve(run_wizard, lang=detect_lang(), port=port)
     page = write_page(url)
     try:
         out(str(page) if page_file else url)

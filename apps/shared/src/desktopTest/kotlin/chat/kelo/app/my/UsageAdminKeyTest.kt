@@ -30,8 +30,9 @@ import javax.crypto.KeyGenerator
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UsageAdminKeyTest {
+    private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<RecordedRequest>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<RecordedRequest>()
     private val answers = Collections.synchronizedMap(mutableMapOf<String, MockResponse>())
 
     private class MapStore : KeyValueStore {
@@ -55,8 +56,9 @@ class UsageAdminKeyTest {
     }
 
     @After fun stop() {
-        Dispatchers.resetMain()
+        vms.clear()
         runCatching { server.shutdown() }
+        Dispatchers.resetMain()
     }
 
     private fun sessions(): Sessions {
@@ -104,7 +106,7 @@ class UsageAdminKeyTest {
         answers["GET /api/providers"] = MockResponse().setBody("""[{"name":"openai","admin_key":{"supported":true,"set":false}}]""")
         answers["PUT /api/providers/openai/admin-key"] = MockResponse().setBody("""{"ok":true,"checked":true}""")
 
-        val vm = UsageViewModel(sessions())
+        val vm = vms.make { UsageViewModel(sessions()) }
         var done = false
         vm.saveAdminKey("openai", "sk-admin-secret") { done = true }
 
@@ -124,7 +126,7 @@ class UsageAdminKeyTest {
             .setResponseCode(422)
             .setBody("""{"code":"key_refused","detail":"The key was rejected"}""")
 
-        val vm = UsageViewModel(sessions())
+        val vm = vms.make { UsageViewModel(sessions()) }
         var done = false
         vm.saveAdminKey("openai", "bad-key") { done = true }
 
@@ -138,7 +140,7 @@ class UsageAdminKeyTest {
         answers["GET /api/providers"] = MockResponse().setBody("""[]""")
         answers["DELETE /api/providers/openai/admin-key"] = MockResponse().setBody("""{"ok":true}""")
 
-        val vm = UsageViewModel(sessions())
+        val vm = vms.make { UsageViewModel(sessions()) }
         var done = false
         vm.removeAdminKey("openai") { done = true }
 

@@ -23,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -73,9 +75,11 @@ fun FloatingHeader(profile: Profile, ui: ShellUiState, onAgent: () -> Unit, modi
     val secondLine = formFactor(phone = false, desktop = true)
     val second = if (secondLine) offlineWords ?: line else null
     // nothing behind the picture and the name: the page shows through everywhere else
-    Box(modifier.then(formFactor(Modifier.fillMaxWidth(), Modifier))) {
+    // with the search button the header spans the page (the button sits at its end, the pill stays centred); without it the desktop
+    // header wraps the pill, as before
+    Box(modifier.then(if (onSearch != null) Modifier.fillMaxWidth() else formFactor(Modifier.fillMaxWidth(), Modifier))) {
         Column(
-            Modifier.then(formFactor(Modifier.fillMaxWidth(), Modifier)).statusBarsPadding().padding(top = 6.dp, bottom = formFactor(6.dp, 0.dp)),
+            Modifier.align(Alignment.TopCenter).then(formFactor(Modifier.fillMaxWidth(), Modifier)).statusBarsPadding().padding(top = 6.dp, bottom = formFactor(6.dp, 0.dp)),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(
@@ -120,7 +124,7 @@ fun FloatingHeader(profile: Profile, ui: ShellUiState, onAgent: () -> Unit, modi
         if (onSearch != null) {
             androidx.compose.material3.IconButton(
                 onClick = onSearch,
-                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 6.dp, end = 6.dp),
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 6.dp, end = 6.dp).pointerHoverIcon(PointerIcon.Hand),
             ) {
                 androidx.compose.material3.Icon(KeloIcons.Search, contentDescription = string(Res.string.chat_search_open), tint = c.ink)
             }

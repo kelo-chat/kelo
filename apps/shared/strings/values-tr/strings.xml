@@ -935,10 +935,14 @@
     <string name="live_held_elsewhere">Başka bir cihazdan kontrol ediliyor</string>
     <string name="live_give_back">Geri ver</string>
     <string name="live_paused_banner">Kontrol sende. Ajanın sen geri verene kadar bu sekmede bekleyecek.</string>
+    <string name="live_still_yours">Hâlâ siz kontrol ediyorsunuz. Siz geri verene kadar ajan bekler.</string>
+    <string name="live_screen_changed">Ekran değişti. Yeniden dokunun.</string>
     <string name="live_tab_closed">Sekme kapatıldı, görülecek başka bir şey yok. Son ekran kaydedildiyse aşağıda gösteriliyor.</string>
     <string name="live_not_controller">Şu anda kontrol edemezsin. Kontrolü al\'a tekrar dokun.</string>
     <string name="live_input_failed">Tarayıcı bunu yapamadı.</string>
     <string name="live_state_you">Kontrol sende</string>
+    <string name="live_work_browser">İş tarayıcısı</string>
+    <string name="live_work_browser_note">Bu sekme, kendi sekmelerinizden ayrı olarak Kelo\'nun iş tarayıcısında. Burada yaptığınız oturum açma, iş bittiğinde Kelo\'nun ana tarayıcısına kaydedilir.</string>
     <string name="live_state_other">Kontrol başka bir cihazda</string>
     <string name="live_state_waiting">Onay bekleniyor</string>
     <string name="live_connecting">Bağlanıyor…</string>
@@ -1198,6 +1202,9 @@
     <string name="work_wait_answer">Nasıl ilerleneceğini söyleyince devam edecek.</string>
     <string name="work_wait_blocked">Kendi başına daha ileri gidemediği için durdu.</string>
     <string name="work_wait_restart">Sunucu yeniden başladığında durdu.</string>
+    <string name="work_picked_up">Kelo sunucusu yeniden başladı, bu yüzden kaldığı yerden devam etti.</string>
+    <string name="work_picked_up_browser">Tarayıcı yeniden başladı, bu yüzden iş yeni bir sekmede devam etti.</string>
+    <string name="work_wait_pickup">Birazdan kaldığı yerden devam edecek.</string>
     <string name="work_schedule_on">Zamanlama açık</string>
     <string name="work_schedule_off">Zamanlama kapalı</string>
     <string name="work_schedule_by_agent">Ajanın oluşturdu</string>

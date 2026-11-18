@@ -192,3 +192,70 @@ import Testing
         #expect(Watching.order(list).map(\.id) == [3, 4, 2, 1])
     }
 }
+
+/// Port of android work/WorkRulesTest.kt "열린 브라우저": the open browsers the timeline lists, and which ones it leaves to a running task.
+@Suite struct OpenBrowsersTests {
+    private func at(_ day: Int, _ hour: Int) -> Double {
+        var c = DateComponents(); c.year = 2026; c.month = 11; c.day = day; c.hour = hour
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal.date(from: c)!.timeIntervalSince1970
+    }
+
+    private let chatTab = BrowserTab(id: "16", label: "Phone", kind: "device", title: "쿠팡", url: "https://www.coupang.com/", host: "www.coupang.com",
+                                     source: "browser", status: "idle", lastActivity: 100, taskId: 509)
+    private let androidDevice = BrowserTab(id: "android", label: "Pixel", kind: "device", source: "device", status: "idle")
+    private let noRunning = Timeline.Now(tasks: [], jobs: [])
+
+    @Test func anIdleOpenTabWhoseTaskIsDoneIsListed() {
+        let done = AgentTask(id: 509, title: "쿠팡", status: AgentTask.statusDone, startedAt: at(7, 9))
+        let now = Timeline.now(Timeline.nest([done], []))
+        #expect(Timeline.openTabs([chatTab], now: now).map(\.id) == ["16"])
+    }
+
+    @Test func anEndedTabIsNotListed() {
+        var ended = chatTab
+        ended.status = "ended"
+        #expect(Timeline.openTabs([ended], now: noRunning).isEmpty)
+    }
+
+    @Test func theAndroidDeviceIsNotAnOpenBrowserEvenThoughItsKindIsTheSameAsAPhonesChatTab() {
+        #expect(chatTab.kind == androidDevice.kind)            // the kind cannot tell them apart
+        #expect(chatTab.isBrowserTab)
+        #expect(!androidDevice.isBrowserTab)
+        var olderServer = androidDevice
+        olderServer.source = ""                                 // an older server sends no source: the id still says it
+        #expect(!olderServer.isBrowserTab)
+        #expect(Timeline.openTabs([androidDevice, chatTab], now: noRunning).map(\.id) == ["16"])
+    }
+
+    @Test func aTabARunningTaskOrJobAlreadyShowsIsNotListedAgain() {
+        let running = AgentTask(id: 509, title: "쿠팡", status: AgentTask.statusRunning, startedAt: at(7, 9))
+        var working = chatTab
+        working.status = "working"
+        #expect(Timeline.openTabs([working], now: Timeline.now(Timeline.nest([running], []))).isEmpty)
+
+        let job = Worker(id: "w1", kind: "browser", title: "숙소 찾기", status: Worker.statusRunning, parentTaskId: 10, tab: "task:w1", steps: 30, maxSteps: 200)
+        let run = AgentTask(id: 12, title: "숙소 찾기 2", status: AgentTask.statusRunning, startedAt: at(7, 11), parentId: 10, workerId: "w1")
+        let nowJob = Timeline.now(Timeline.nest([run], [job]))
+        let jobTab = BrowserTab(id: "task:w1", kind: "task", source: "browser", status: "working", taskId: 12)
+        #expect(Timeline.openTabs([jobTab, chatTab], now: nowJob, workers: [job]).map(\.id) == ["16"])
+    }
+
+    @Test func workingTabsComeFirstThenTheNewest() {
+        var a = chatTab, b = chatTab, c = chatTab
+        a.id = "a"; a.lastActivity = 5
+        b.id = "b"; b.lastActivity = 9
+        c.id = "c"; c.lastActivity = 1; c.status = "working"
+        #expect(Timeline.openTabs([a, b, c], now: noRunning).map(\.id) == ["c", "b", "a"])
+    }
+
+    @Test func theServersListingDecodesWithItsSource() throws {
+        let json = """
+        {"available":true,"items":[
+          {"id":"android","kind":"device","source":"device","label":"Pixel","title":"Pixel","status":"idle"},
+          {"id":"16","kind":"device","source":"browser","label":"Phone","title":"쿠팡","url":"https://www.coupang.com/","host":"www.coupang.com","status":"idle","task_id":509}]}
+        """
+        let listing = try JSONDecoder().decode(BrowserTabs.self, from: Data(json.utf8))
+        #expect(Timeline.openTabs(listing.items, now: noRunning).map(\.id) == ["16"])
+    }
+}

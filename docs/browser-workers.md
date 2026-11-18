@@ -68,6 +68,9 @@ says briefly that it started.
   update as before (a waiting job goes on with it; a running one reads it before its next step). `resume` keeps working and clears the id.
 - Kept: the step-limit hand-off of a long chat reply to a job (`turn_engine.py`).
 
+Scheduled and background tabs (`schedule:*`, `task:*`) run in the work browser, not in the owner's browser, so a job's tab never
+takes the owner's screen or shares their sign-ins in the live session; see the work browser section of `browser.md`.
+
 ## Unchanged on purpose
 Approval cards (checkout_review ready), signed approvals, standing grants (task / schedule grants pass to the job through
 `delegated()` as for any job), pre-approvals, the order check, the attempt journal and unknown-outcome blocks, the payment PIN and card

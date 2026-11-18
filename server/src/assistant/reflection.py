@@ -3,6 +3,8 @@ the user seemed to correct the assistant (spotted here in code), the rules learn
 proposes short preference rules (and, in the same answer, up to GOALS_PER_NIGHT goals the user could take on, grounded in what they
 said; goals.py keeps them as suggestions) and up to 5 "rechecks": things the assistant told the user that may change and that they may act
 on, each backed by a quote of the assistant's own words (recheck.py keeps them). They ride on this one request: no call of its own.
+And up to 3 lessons from the day's finished runs that used tools (skill_lessons.py keeps them as skill proposals for the owner to approve;
+never memory).
 
 A rule is one short line describing what the user prefers ("Don't add events to my calendar on its own", "캘린더에 일정을 직접 넣지
 않기"), written in the owner's app language, stored in the database (table learned_rules) with its evidence (the owner's own words,
@@ -196,6 +198,7 @@ class Reflection:
         self.rechecks: Any = None   # recheck.RecheckExtractor, set by the server: the same request also asks for rechecks (no call of its own)
         self.offers: Any = None   # offers.OfferExtractor, set by the server: and for offers, grounded in the owner's own words
         self.upcoming: Any = None   # follow/upcoming.UpcomingExtractor, set by the server: and for dated things said in chat (follow items)
+        self.lessons: Any = None   # skill_lessons.LessonExtractor, set by the server: and lessons from the day's finished runs that used tools
         self.migrated = self.migrate_guide()
         self.drop_inferred()
 
@@ -315,11 +318,12 @@ class Reflection:
 
     def messages_since(self, since: float) -> list[dict[str, Any]]:
         from .secret_guard import scrub_rows   # a message sent with a secret in it (after the warning) is read without it
-        return scrub_rows(self.store, self.store._all("SELECT id, role, content, created_at FROM messages WHERE created_at > ? ORDER BY id", (since,)))
+        return scrub_rows(self.store, self.store._all("SELECT id, role, content, created_at, author FROM messages WHERE created_at > ? ORDER BY id", (since,)))
 
     @staticmethod
     def from_user(m: dict[str, Any]) -> bool:
-        return m["role"] == "user" and not _clean(m["content"]).startswith(AUTO_PREFIXES)
+        """The owner's own message (author owner, owner_messages.py): never a hidden handoff, job report, schedule or nest row."""
+        return m.get("author") == "owner"
 
     def owner_words(self, msgs: list[dict[str, Any]]) -> list[str]:
         """The owner's own messages of a run (not the assistant's, not automatic runs): where a rule's quote must be found."""
@@ -345,7 +349,8 @@ class Reflection:
         left = len(msgs) - len(lines)
         return ((f"[{left} earlier messages left out]\n" if left else "") + "\n".join(reversed(lines))).strip()
 
-    def build_request(self, msgs: list[dict[str, Any]], since: float) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    def build_request(self, msgs: list[dict[str, Any]], since: float,
+                      runs: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         def head(name: str, tokens: int) -> str:
             p = self.home.root / name
             return clip_tokens(p.read_text(encoding="utf-8", errors="replace").strip(), tokens) if p.is_file() else ""
@@ -361,13 +366,18 @@ class Reflection:
             parts.append(f"Goals and earlier suggestions (tracked, accepted or declined):\n{clip_tokens(taken, 500)}")
         system = (PROMPT + (self.rechecks.prompt_part() if self.rechecks is not None else "")
                   + (self.offers.prompt_part() if self.offers is not None else "")
-                  + (self.upcoming.prompt_part() if self.upcoming is not None else ""))
+                  + (self.upcoming.prompt_part() if self.upcoming is not None else "")
+                  + (self.lessons.prompt_part() if self.lessons is not None else ""))
         if self.rechecks is not None:
             parts.append(clip_tokens(self.rechecks.known_block(), 500))
         if self.offers is not None and (block := self.offers.known_block()):
             parts.append(clip_tokens(block, 400))
         if self.upcoming is not None:
             parts.append(clip_tokens(self.upcoming.known_block(), 400))
+        if self.lessons is not None:
+            parts.append(clip_tokens(self.lessons.known_block(), 500))
+            if runs and (block := self.lessons.runs_block(runs)):
+                parts.append(clip_tokens(block, 1_500))
         fixed = est_tokens(system) + sum(est_tokens(p) for p in parts) + 200
         convo = self.conversation_text(msgs, max(1_000, INPUT_TOKENS - fixed))
         user = "\n\n".join([*parts, f"Conversation:\n{convo}"])
@@ -452,7 +462,8 @@ class Reflection:
         if not chosen:
             return self._record("pending", "no_model", "no model is set")
         provider, model = chosen
-        messages, _info = self.build_request(msgs, since)
+        runs = self.lessons.runs_since(since, self.clock()) if self.lessons is not None else []
+        messages, _info = self.build_request(msgs, since, runs)
         req = ChatRequest(model=model, messages=messages, tools=[], extra={})
         parts: list[str] = []
         try:
@@ -462,20 +473,21 @@ class Reflection:
         except Exception as e:  # noqa: BLE001
             return self._record("failed", "model_error", f"{type(e).__name__}: {str(e)[:160]}")
         out = parse_output("".join(parts))
-        if out is None or not any(isinstance(out.get(k), list) for k in ("new", "update", "drop", "goals", "rechecks", "offers", "upcoming")):
+        if out is None or not any(isinstance(out.get(k), list) for k in ("new", "update", "drop", "goals", "rechecks", "offers", "upcoming", "lessons")):
             return self._record("failed", "bad_output", "the model did not answer in the expected form; nothing was changed")
         added, updated, dropped = self.apply(out, self.owner_words(msgs))
         suggested = self.apply_goals(out)
         rechecked = self.rechecks.apply(out, self.assistant_words(msgs)) if self.rechecks is not None else 0
         offered = self.offers.apply(out, self.owner_words(msgs)) if self.offers is not None else 0
         upcoming = self.upcoming.apply(out, self.owner_words(msgs) + self.assistant_words(msgs)) if self.upcoming is not None else 0
+        lessons = self.lessons.apply(out, runs) if self.lessons is not None else 0
         self.store.set_meta("reflection:seen_until", repr(msgs[-1]["created_at"]))
         raw = out.get("reasons")
         reasons = [str(r).strip()[:200] for r in (raw if isinstance(raw, list) else [raw]) if r is not None and str(r).strip()]
         summary = (f"{added} new, {updated} updated, {dropped} dropped" + (f", {suggested} goal(s) suggested" if suggested else "")
                    + (f", {rechecked} recheck(s) kept" if rechecked else "") + (f", {offered} offer(s) made" if offered else "")
-                   + (f", {upcoming} upcoming kept" if upcoming else ""))
-        return self._record("done", "", "; ".join([summary, *reasons])[:600], bool(added or updated or dropped or suggested or rechecked or offered or upcoming),
+                   + (f", {upcoming} upcoming kept" if upcoming else "") + (f", {lessons} lesson(s) kept" if lessons else ""))
+        return self._record("done", "", "; ".join([summary, *reasons])[:600], bool(added or updated or dropped or suggested or rechecked or offered or upcoming or lessons),
                             added=added, updated=updated, dropped=dropped, goals=suggested)
 
     async def wait_idle(self) -> bool:

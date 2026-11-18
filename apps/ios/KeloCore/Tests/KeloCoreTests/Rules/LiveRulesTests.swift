@@ -299,4 +299,95 @@ import Testing
         #expect(LiveHeader.title(meta: LiveMeta(url: "https://a.b/", title: ""), frame: nil) == nil)     // a page without a title: the caller falls back to the host
         #expect(LiveHeader.title(meta: nil, frame: nil) == nil)
     }
+
+    @Test func theKeyboardRisesOnTheMetaLineWhileFramesAreOffNotOnTheOldPicturesHeader() {
+        // frames are off while the VNC screen shows: the meta line says whether a field has focus, the last picture's header is old
+        #expect(LiveMessages.parse(#"{"type":"meta","url":"https://a.b/","title":"T","editing":true}"#)
+                == .meta(LiveMeta(url: "https://a.b/", title: "T", editing: true)))
+        #expect(LiveHeader.editing(meta: LiveMeta(editing: true), frame: false) == true)
+        #expect(LiveHeader.editing(meta: LiveMeta(editing: false), frame: true) == false)
+        #expect(LiveHeader.editing(meta: nil, frame: true) == true)                  // no meta yet: the picture's own flag
+        #expect(LiveHeader.editing(meta: nil, frame: nil) == false)
+        // a server from before `editing` leaves it out: the meta says false, the picture's flag does not count
+        #expect(LiveMessages.parse(#"{"type":"meta","url":"https://a.b/","title":"T"}"#)
+                == .meta(LiveMeta(url: "https://a.b/", title: "T", editing: false)))
+        #expect(LiveHeader.editing(meta: LiveMeta(url: "https://a.b/", title: "T"), frame: true) == false)
+    }
+
+    @Test func textForThePageComesFromThePhoneClipboardOnlyWhenThereIsSomeAndIsCutAtOneEntry() {
+        #expect(ClipboardRules.pasteText(nil) == nil)
+        #expect(ClipboardRules.pasteText("") == nil)
+        #expect(ClipboardRules.pasteText("  hi \n") == "  hi \n")         // spaces and newlines are kept
+        let long = String(repeating: "a", count: LiveMessages.maxText + 500)
+        #expect(ClipboardRules.pasteText(long) == String(repeating: "a", count: LiveMessages.maxText))
+    }
+}
+
+/// Owner decision 2026-11-18: a button hold ends only by hand back; a hand-over hold (Kelo asked for it) gives back when the page is left.
+/// Port of android OwnerHoldRulesTest (shared/desktopTest agent/LiveRulesTest.kt).
+@Suite struct OwnerHoldRulesTests {
+    private func status(_ json: String) -> LiveStatus? {
+        if case .status(let s) = LiveMessages.parse(json) { return s }
+        return nil
+    }
+
+    @Test func aHandoverTakeSaysSoOnlyWhenTakingForAHandover() {
+        #expect(LiveMessages.control(take: true, handover: true)["by"] == .string("handover"))
+        #expect(LiveMessages.control(take: true)["by"] == nil)
+        #expect(LiveMessages.control(take: false, handover: true)["by"] == nil)
+    }
+
+    @Test func leavingGivesBackOnlyAHandoverHold() throws {
+        let button = try #require(status(#"{"type":"status","controller":"user","controlled_by":"owner","you_control":true,"hold":"button"}"#))
+        let handover = try #require(status(#"{"type":"status","controller":"user","controlled_by":"owner","you_control":true,"hold":"handover"}"#))
+        let older = try #require(status(#"{"type":"status","controller":"user","controlled_by":"owner","you_control":true}"#))
+        #expect(!LiveRules.giveBackOnLeave(button))
+        #expect(LiveRules.giveBackOnLeave(handover))
+        #expect(!LiveRules.giveBackOnLeave(older))          // an older server: nothing is given back on leaving
+        #expect(LiveRules.leaveNotice(button))
+        #expect(!LiveRules.leaveNotice(handover))
+    }
+
+    @Test func aStaleInputAnswerIsDroppedAndSaysSo() {
+        let stale = LiveMessages.parse(#"{"type":"input_ok","input":"tap","ok":false,"busy":false,"stale":true}"#)
+        #expect(stale == .inputReply(InputReply(ok: false, stale: true)))
+    }
+}
+
+private enum LiveTestError: Error { case notStatus }
+
+/// Kelo's work browser (scheduled and background jobs) apart from the owner's own browser. An older server says no browser: main.
+@Suite struct WorkBrowserTests {
+    private func status(_ json: String) throws -> LiveStatus {
+        guard case .status(let s) = LiveMessages.parse(json) else { throw LiveTestError.notStatus }
+        return s
+    }
+
+    private func tab(_ json: String) throws -> BrowserTab {
+        try JSONDecoder().decode(BrowserTab.self, from: Data(json.utf8))
+    }
+
+    @Test func aTabSaysWhichBrowserItRunsIn() throws {
+        #expect(try tab(#"{"id":"task:4","browser":"work"}"#).inWorkBrowser)
+        #expect(try !tab(#"{"id":"chat:1","browser":"main"}"#).inWorkBrowser)
+        #expect(try !tab(#"{"id":"chat:1"}"#).inWorkBrowser)   // an older server
+    }
+
+    @Test func aStatusSaysWhichBrowserItsTabIsIn() throws {
+        let work = try status(#"{"type":"status","browser":"work"}"#)
+        #expect(work.inWorkBrowser)
+        let main = try status(#"{"type":"status","browser":"main"}"#)
+        #expect(!main.inWorkBrowser)
+        let old = try status(#"{"type":"status"}"#)
+        #expect(!old.inWorkBrowser)
+    }
+
+    @Test func theWorkNoteShowsOnlyWhileTheOwnerHoldsAWorkTab() throws {
+        let mine = try status(#"{"type":"status","controller":"user","controlled_by":"owner","you_control":true,"browser":"work"}"#)
+        #expect(LiveRules.showWorkNote(mine))
+        let main = try status(#"{"type":"status","controller":"user","controlled_by":"owner","you_control":true,"browser":"main"}"#)
+        #expect(!LiveRules.showWorkNote(main))
+        let agent = try status(#"{"type":"status","controller":"agent","you_control":false,"browser":"work"}"#)
+        #expect(!LiveRules.showWorkNote(agent))
+    }
 }

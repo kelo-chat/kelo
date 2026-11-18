@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">Tasarımlı ileti</string>
+    <string name="mail_preview_open">Büyük göster</string>
+    <string name="mail_preview_loading">Önizleme yükleniyor…</string>
+    <string name="mail_preview_failed">Önizleme yüklenemedi.</string>
+    <string name="mail_preview_gone">Önizleme artık kullanılamıyor.</string>
+    <string name="mail_preview_too_big">Önizleme gösterilemeyecek kadar büyük.</string>
+    <string name="mail_preview_pictures_note">Resimler, resim olarak değil bağlantı olarak gönderilir.</string>
+    <string name="mail_preview_link_title">Bu adres açılsın mı?</string>
+    <string name="mail_preview_link_open">Tarayıcıda aç</string>
+    <string name="mail_preview_simple_note">Bu uygulama tasarımı sade bir biçimde gösterir.</string>
+    <string name="mail_preview_desc">Tasarımlı iletinin önizlemesi</string>
+</resources>

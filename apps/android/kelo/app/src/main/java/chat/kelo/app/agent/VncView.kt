@@ -27,7 +27,7 @@ import java.io.IOException
  */
 object AndroidVncScreenHost : VncScreenHost {
     @Composable
-    override fun Screen(relay: VncRelay, holding: Boolean, modifier: Modifier) {
+    override fun Screen(relay: VncRelay, holding: Boolean, onPaste: () -> Unit, modifier: Modifier) {
         val bridge = remember(relay) { VncWebBridge(relay) }
         DisposableEffect(bridge) {
             relay.attach(bridge)

@@ -208,7 +208,7 @@ class Store:
             if "approval_key" not in {r[1] for r in self._db.execute("PRAGMA table_info(devices)")}:   # before signed payment approvals
                 self._db.execute("ALTER TABLE devices ADD COLUMN approval_key TEXT NOT NULL DEFAULT ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(messages)")}
-            for col in ("reaction", "reaction_hold", "reaction_next", "via"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from
+            for col in ("reaction", "reaction_hold", "reaction_next", "via", "author"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from; author = owner/forwarded/tapped (owner_messages.py)
                 if col not in have:
                     self._db.execute(f"ALTER TABLE messages ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(usage)")}
@@ -218,6 +218,9 @@ class Store:
             self._db.executescript(SEARCH_INDEX)   # the triggers keep the index in step from now on
             if not index_was_there:               # a database made before the search existed: index what is already there, once
                 self._backfill_search_index()
+            from .owner_messages import backfill_authors, retract_unowned_claims   # local: the markers' modules import the store
+            backfill_authors(self._db)            # a database made before messages.author: the owner's own rows, once (owner_messages.py)
+            retract_unowned_claims(self._db)      # claims that are not the owner's own words stop being active, once (rows kept)
             self._db.commit()
         self._usage_writes = 0
         self.credential_watchers: list[Callable[[str, bool], None]] = []
@@ -288,10 +291,11 @@ class Store:
         return self.profile()
 
     # ---- conversation (one continuous chat)
-    def add_message(self, role: str, content: str, via: str = "") -> int:
-        """`via`: the messenger the message came through ("telegram"); "" for the app."""
-        return self._run("INSERT INTO messages(role, content, created_at, via) VALUES(?,?,?,?)",
-                         (role, content, time.time(), via)).lastrowid or 0
+    def add_message(self, role: str, content: str, via: str = "", author: str = "") -> int:
+        """`via`: the messenger the message came through ("telegram"); "" for the app. `author`: owner, forwarded or tapped for the
+        owner's own user messages (owner_messages.py); "" for everything else, hidden handoff rows included."""
+        return self._run("INSERT INTO messages(role, content, created_at, via, author) VALUES(?,?,?,?,?)",
+                         (role, content, time.time(), via, author)).lastrowid or 0
 
     def message_count(self) -> int:
         """How many messages the conversation holds (the owner's and the assistant's)."""
@@ -300,7 +304,7 @@ class Store:
     def messages(self, *, limit: int = 100, before_id: int | None = None) -> list[dict[str, Any]]:
         """Newest `limit` messages (before `before_id` if given), oldest first."""
         rows = self._all(
-            "SELECT id, role, content, created_at, reaction, via FROM messages WHERE (? IS NULL OR id < ?) "
+            "SELECT id, role, content, created_at, reaction, via, author FROM messages WHERE (? IS NULL OR id < ?) "
             "ORDER BY id DESC LIMIT ?", (before_id, before_id, limit))
         return rows[::-1]
 

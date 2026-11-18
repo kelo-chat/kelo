@@ -5,6 +5,7 @@ of kind "device") opens that view and carries a "Done" button; the live view has
 The hand-over also ends by itself when the owner is done, judged from the live source alone (never while they are still touching):
   - they held the phone and gave it back, or
   - they did something (an input, or the picture changed while they had the phone view open) and then for `IDLE_DONE` seconds there was no input and the picture stayed the same.
+    Not while the owner's own button hold is on: that hold ends only when they hand the phone back (or answer the idle question).
 While it waits it is a viewer of the phone's live view (so pictures flow), but its own viewer never counts as the owner: a screen that settles by itself
 (a spinner, a slow app start) does not end the hand-over. On a physical phone with no app view open the owner presses Done."""
 
@@ -73,8 +74,8 @@ class PhoneHandover:
                     had_control = True
                 elif had_control:
                     return self._finish("done")   # they held the phone and gave it back
-                if active_at is not None and now - active_at >= self.idle_done:
-                    return self._finish("done")
+                if active_at is not None and now - active_at >= self.idle_done and not live.button_hold():
+                    return self._finish("done")   # a button hold (the owner's own 직접 조작) ends only when it is handed back
                 if now - started >= self.limit:
                     return self._finish("timeout")
                 await self._sleep(self.poll)

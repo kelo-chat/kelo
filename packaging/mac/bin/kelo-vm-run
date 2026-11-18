@@ -1,0 +1,9 @@
+#!/bin/sh
+# The launchd job's program (chat.kelo.server): starts the Kelo server VM in the foreground, so launchd sees its life.
+# Runs as the user (LaunchDaemon with UserName, or LaunchAgent). KeepAlive restarts it; the VM's own services keep Kelo up inside.
+set -eu
+L="/Library/Application Support/Kelo Server/current/bin/limactl"
+: "${LIMA_HOME:?LIMA_HOME is set by the launchd job}"
+# The user stage creates the instance after the root stage: wait for it instead of failing (no busy loop: 10 s)
+while [ ! -f "$LIMA_HOME/kelo/lima.yaml" ]; do sleep 10; done
+exec "$L" start --foreground --tty=false kelo

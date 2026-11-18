@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -53,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import chat.kelo.app.agent.AgentTask
 import chat.kelo.app.agent.AgentViewModel
 import chat.kelo.app.agent.BrowserTab
+import chat.kelo.app.agent.WorkBrowserPill
 import chat.kelo.app.agent.PendingCard
 import chat.kelo.app.agent.Schedule
 import chat.kelo.app.agent.Worker
@@ -265,7 +267,9 @@ fun NowTaskCard(
         node.jobs.forEach { j -> NestedJob(vm, j, onOpen = { onOpenJob(j.worker.id) }, onOpenLive = onOpenLive) }
         node.children.forEach { ch -> NestedTask(ch, onOpen = { onOpenTask(ch.id) }) }
         if (t.running) {
+            val inWorkBrowser = Timeline.tabFor(t, tabs, workers)?.let { id -> tabs.firstOrNull { it.id == id }?.inWorkBrowser } == true
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (inWorkBrowser) { WorkBrowserPill(); Spacer(Modifier.width(4.dp)) }   // the task runs in Kelo's work browser
                 Timeline.tabFor(t, tabs, workers)?.let { tab -> CardAction(string(Res.string.work_live_view), KeloIcons.Eye) { onOpenLive(tab) } }
                 CardAction(string(Res.string.agent_task_stop), KeloIcons.Stop, danger = true) { confirmStop = true }
             }
@@ -319,6 +323,13 @@ private fun JobBody(vm: AgentViewModel, w: Worker, onOpenLive: (String) -> Unit)
             Text(string(Res.string.work_job_line, kindWord(w.kind)), style = MaterialTheme.typography.labelSmall, color = c.muted)
         }
         StatusChip(jobLabel(w), jobTone(w.status))
+    }
+    w.pickedUp?.takeIf { w.running }?.let { p ->   // it went on by itself after a restart or a lost browser: one muted line
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(KeloIcons.Info, contentDescription = null, tint = c.muted, modifier = Modifier.padding(top = 2.dp).size(14.dp))
+            Text(string(if (p.why == "browser") Res.string.work_picked_up_browser else Res.string.work_picked_up),
+                style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 3, modifier = Modifier.weight(1f))
+        }
     }
     w.statusText?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
     Timeline.progress(w)?.let { p ->
@@ -459,12 +470,16 @@ fun followupKindText(kind: String): StringResource = when (kind) {
 }
 
 @Composable
-fun waitingText(w: Worker): String = when {
-    w.status == Worker.INTERRUPTED -> string(Res.string.work_wait_restart)
-    w.waitingFor == "login" -> string(Res.string.work_wait_login)
-    w.waitingFor == "control" -> string(Res.string.work_wait_control)
-    w.status == Worker.BLOCKED -> string(Res.string.work_wait_blocked)
-    else -> string(Res.string.work_wait_answer)
+fun waitingText(w: Worker): String = string(waitingRes(w))
+
+/** The waiting line's string: a cut job waiting to be picked up says so first (a pure choice, so the rule is tested without the strings). */
+fun waitingRes(w: Worker): StringResource = when {
+    w.waitingFor == "cut" -> Res.string.work_wait_pickup
+    w.status == Worker.INTERRUPTED -> Res.string.work_wait_restart
+    w.waitingFor == "login" -> Res.string.work_wait_login
+    w.waitingFor == "control" -> Res.string.work_wait_control
+    w.status == Worker.BLOCKED -> Res.string.work_wait_blocked
+    else -> Res.string.work_wait_answer
 }
 
 /** A few words to a job: read before its next step, or it goes on with them. */

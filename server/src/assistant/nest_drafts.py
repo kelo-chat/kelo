@@ -277,6 +277,10 @@ class DraftManager:
         warnings: list[str] = []
         try:
             pkg = load_package(folder, source="draft", warnings=warnings, check_name=False)
+            if pkg.kind == "connector" and pkg.situation is None:
+                warnings.append("This connector has no situation read: Kelo will not look at it in the hourly check. If the service has state "
+                                "that changes (new items, alerts, something on or off), add connector.situation with one read-only call "
+                                "(docs/nest.md, 'Situation read').")
             hashes = file_hashes(folder)
             digest = content_hash(hashes)
             ctype = pkg.connect.get("type", "") if pkg.kind == "connector" else ""
@@ -937,7 +941,9 @@ def draft_tools(
         ),
         Tool(
             "nest_draft_write",
-            "Write or update a file in a package draft folder. Each write bumps the version (0.0.N) and sends a live reload event.",
+            "Write or update a file in a package draft folder. Each write bumps the version (0.0.N) and sends a live reload event. "
+            "A connector's kelo-package.json should also have connector.situation: the one read-only call that shows the service's current "
+            "state (see nest_draft_check's warning).",
             {
                 "type": "object",
                 "properties": {

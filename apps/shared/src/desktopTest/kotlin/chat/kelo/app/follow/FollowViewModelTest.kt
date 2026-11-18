@@ -37,14 +37,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.time.LocalDate
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FollowViewModelTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<String>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
 
     private val sampleJson = """
     {
@@ -116,8 +115,8 @@ class FollowViewModelTest {
     }
 
     @After fun stop() {
-        server.shutdown()
         vms.clear()
+        server.shutdown()
         Dispatchers.resetMain()
     }
 
@@ -227,7 +226,7 @@ class FollowViewModelTest {
 
     @Test
     fun stopCallsTheApi() {
-        val vm = FollowViewModel(sessions())
+        val vm = vms.make { FollowViewModel(sessions()) }
         until { vm.state.value.items.isNotEmpty() }
 
         assertEquals(1, vm.state.value.items.size)
@@ -247,7 +246,7 @@ class FollowViewModelTest {
 
     @Test
     fun replanCallsTheApi() {
-        val vm = FollowViewModel(sessions())
+        val vm = vms.make { FollowViewModel(sessions()) }
         until { vm.state.value.items.isNotEmpty() }
 
         var replanned = false

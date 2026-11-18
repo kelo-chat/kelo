@@ -58,7 +58,7 @@ class StartViewModelsTest {
     }
 
     @Test fun aLinkHandedOverAtStartIsUsedAtOnce() {
-        val vm = ConnectViewModel(serve { _, _, _ -> null }.sessions(), PairingClient(OkHttpClient()), { "x" }, false, "https://kelo.example.com/#pair=ABCDEFGHJKMNPQRS")
+        val vm = vms.make { ConnectViewModel(serve { _, _, _ -> null }.sessions(), PairingClient(OkHttpClient()), { "x" }, false, "https://kelo.example.com/#pair=ABCDEFGHJKMNPQRS") }
         assertNotNull(vm.state.value.confirm)
     }
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable  # noqa: F401
 from typing import TYPE_CHECKING, Any
 
+from .owner_messages import OwnerMessages
 from .reply_text import ReplyText
 from .turn_engine import Turn, _server  # noqa: F401
 
@@ -113,6 +114,7 @@ def continue_chat(ctx: Any, row: dict[str, Any], restarts: int) -> str:
     turn = start_turn(provider, model, ctx.tail, observe, source="chat", title=row["title"], context=ctx)
     keep_resume(turn, dict(row["spec"]), restarts, row["id"])
     turn.reaction_msg = int(row["spec"].get("message_id") or 0)   # the same message, still 👀
+    turn.owner_message = turn.reaction_msg if OwnerMessages(store).is_owner(turn.reaction_msg) else 0   # re-checked: still the owner's own
     return "resumed"
 
 

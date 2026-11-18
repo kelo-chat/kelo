@@ -165,10 +165,10 @@ def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog
         Tool("read_file", "Read one of your files.",
              obj({"path": {"type": "string"}, "offset": {"type": "integer", "description": "line to go on from, for a long file"}}, ["path"]),
              read_file, read_only=True, untrusted=True, source="file", trail="file"),
-        Tool("write_file", "Replace one of your own files with new full content; read it first and keep what is still true. Writable: the "
-             "core .md files, CHECKLIST.md, NOTIFY_PREFS.md, memory/ and notes/ (your notes, not something the user asked for). A text file the "
-             "user asked for (.csv .txt .json ...): path files/<name>, kept in their files. Excel, Word, PowerPoint and PDF files: workroom_run "
-             "(documents skill).",
+        Tool("write_file", "Replace one of your own files with new full content; read it first and keep what is still true. Writable: "
+             "CHECKLIST.md, notes/ (your notes, not something the user asked for). MEMORY.md, user.md, AGENTS.md, NOTIFY_PREFS.md and memory/ "
+             "are kept by the memory pass from the user's own words: use `remember` for those. A text file the user asked for (.csv .txt "
+             ".json ...): path files/<name>, kept in their files. Excel, Word, PowerPoint and PDF files: workroom_run (documents skill).",
              obj({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]), write_file),
         Tool("list_files", "List your files (empty path: the top level).",
              obj({"path": {"type": "string"}, "recursive": {"type": "boolean"},
@@ -213,43 +213,3 @@ def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog
                           obj({"name": {"type": "string"}, "file": {"type": "string", "description": "one of the extra files it names"},
                                "offset": {"type": "integer"}}, ["name"]), read_skill, read_only=True, untrusted=True, source="package"))
     return tools
-
-
-MEMORY_FILES = ("MEMORY.md", "user.md")
-
-
-def memory_tools(home: Home) -> list[Tool]:
-    """Only reading and writing the memory files (MEMORY.md, user.md, memory/...): what the silent memory step before a compaction
-    may use, and nothing else."""
-    def allowed(raw: str) -> str | None:
-        rel = home.relativize(str(raw or "")).lstrip("./")
-        return rel if rel in MEMORY_FILES or (rel.startswith("memory/") and ".." not in rel) else None
-
-    async def read_file(args: dict[str, Any]) -> str:
-        rel = allowed(args.get("path", ""))
-        if rel is None:
-            return f"error: only {', '.join(MEMORY_FILES)} and files in memory/ can be read here"
-        try:
-            note_item(rel, title=rel.rsplit("/", 1)[-1])
-            return page(home.read(rel), args.get("offset"))
-        except HomeError as e:
-            return f"error: {e}"
-
-    async def write_file(args: dict[str, Any]) -> str:
-        rel = allowed(args.get("path", ""))
-        if rel is None:
-            return f"error: only {', '.join(MEMORY_FILES)} and files in memory/ can be written here"
-        try:
-            saved = home.write(rel, str(args.get("content", "")))
-            data_trail.mark_written(home.root / rel, str(args.get("content", "")))
-            return f"saved {saved}"
-        except HomeError as e:
-            return f"error: {e}"
-
-    obj = lambda props, req: {"type": "object", "properties": props, "required": req}
-    return [
-        Tool("read_file", "Read MEMORY.md, user.md or a file in memory/.", obj({"path": {"type": "string"}, "offset": {"type": "integer"}}, ["path"]),
-             read_file, read_only=True, trail="memory"),
-        Tool("write_file", "Replace MEMORY.md, user.md or a file in memory/ with new full content (read it first and keep what is still true).",
-             obj({"path": {"type": "string"}, "content": {"type": "string"}}, ["path", "content"]), write_file),
-    ]

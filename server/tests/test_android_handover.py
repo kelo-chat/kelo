@@ -87,7 +87,7 @@ async def test_input_then_twenty_quiet_seconds_is_done():
     task = asyncio.ensure_future(h.watch())
     for _ in range(5):
         await asyncio.sleep(0)
-    live.take("android", "d1")
+    live.take("android", "d1", by="handover")   # the app took the phone for this hand-over (the card): a hand-over hold
     for _ in range(5):
         await asyncio.sleep(0)
     await live.input("android", "d1", {"type": "key", "key": "back"})
@@ -113,7 +113,7 @@ async def test_the_owner_has_the_view_open_the_screen_changes_then_standing_stil
 
 async def test_it_does_not_end_while_the_owner_keeps_touching():
     h, live, _, clock = make()
-    live.take("android", "d1")
+    live.take("android", "d1", by="handover")
     live._seen["d1"] = 1e12   # the controller stays connected
     live.cast = None
     ticks = {"n": 0}
@@ -125,6 +125,19 @@ async def test_it_does_not_end_while_the_owner_keeps_touching():
     clock.on_tick = touch
     assert await asyncio.wait_for(h.watch(), 10) == "done"
     assert clock.now > 120   # it ended 20 s after the last touch, not before
+
+
+async def test_android_show_does_not_end_by_idle_while_a_button_hold_is_on():
+    h, live, _, clock = make(limit=100.0)
+    task = asyncio.ensure_future(h.watch())
+    for _ in range(5):
+        await asyncio.sleep(0)
+    live.take("android", "d1")                  # the owner's own 직접 조작: a button hold, not the hand-over's
+    for _ in range(5):
+        await asyncio.sleep(0)
+    await live.input("android", "d1", {"type": "key", "key": "back"})
+    assert await asyncio.wait_for(task, 10) == "timeout"   # 20 quiet seconds do not end it; only the limit does
+    assert live.holder("android") == "d1" and live.button_hold()
 
 
 async def test_an_untouched_phone_waits_for_the_limit():

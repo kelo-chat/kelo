@@ -74,10 +74,32 @@ fun TabRow(t: BrowserTab, onClick: () -> Unit) {
             if (t.host.isNotBlank()) Text(t.host, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 TabStatus(t)
+                if (t.inWorkBrowser) WorkBrowserPill()
+                if (t.controller == "user") YouControlPill()   // a hold left behind is visible here (owner decision 2026-11-18)
                 Text(tabLabel(t), style = MaterialTheme.typography.labelSmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
+}
+
+@Composable
+private fun YouControlPill() {
+    val c = Kelo.colors
+    Text(
+        string(Res.string.live_state_you), style = MaterialTheme.typography.labelSmall, color = c.accent, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.clip(RoundedCornerShape(99.dp)).background(c.accent.copy(alpha = 0.12f)).padding(horizontal = 7.dp, vertical = 2.dp),
+    )
+}
+
+/** The tab runs in Kelo's work browser (scheduled and background jobs), not in the owner's own browser. Same pill style as [YouControlPill]. */
+@Composable
+fun WorkBrowserPill() {
+    val c = Kelo.colors
+    Text(
+        string(Res.string.live_work_browser), style = MaterialTheme.typography.labelSmall, color = c.accent, fontWeight = FontWeight.SemiBold,
+        maxLines = 1, overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.clip(RoundedCornerShape(99.dp)).background(c.accent.copy(alpha = 0.12f)).padding(horizontal = 7.dp, vertical = 2.dp),
+    )
 }
 
 /** Whose tab it is, in the app's words (a phone's tab carries the phone's own name). */

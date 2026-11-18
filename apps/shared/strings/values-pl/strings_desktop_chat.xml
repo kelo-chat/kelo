@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">Powiększ</string>
     <string name="desktop_chat_zoom_reset">Dopasuj do okna</string>
     <string name="desktop_chat_zoom_hint">Przytrzymaj %1$s i obracaj kółkiem, aby powiększyć; przeciągnij, aby się rozejrzeć.</string>
+    <string name="desktop_chat_search_hint">Wpisz słowo albo jego fragment. Kliknij wynik, aby otworzyć czat na tej wiadomości.</string>
 </resources>

@@ -12,6 +12,7 @@ from typing import Any
 from ..agent import Ours, Tool, current_call
 from ..agent.fence import data
 from ..code_shelf import SHELF
+from .. import mail_html
 from ..data_trail import USES_PARAM, note_item
 from ..i18n import N_, t
 from ..mail import ACTIONS, Mail, MailError, Selection
@@ -66,6 +67,47 @@ def update_report(action: str, got: dict[str, Any]) -> str:
     if got["stopped"]:
         line += f" The mail server stopped after {got['done']:,} of {got['total']:,} ({got['stopped']}); the rest were not changed."
     return line
+
+
+def _addresses(value: Any) -> list[str]:
+    return [str(x) for x in ([value] if isinstance(value, str) else (value or []))]
+
+
+def describe_text(args: dict[str, Any]) -> str:
+    """The one-line summary of a mail: who, the subject, and that a designed version comes along (the card, the history, the messenger)."""
+    return t("To: {to}", to=", ".join(_addresses(args.get("to")))) + \
+        (" · " + t("Cc: {cc}", cc=", ".join(_addresses(args.get("cc")))) if args.get("cc") else "") + \
+        (" · " + t("Bcc: {bcc}", bcc=", ".join(_addresses(args.get("bcc")))) if args.get("bcc") else "") + \
+        " · " + t("Subject: {subject}", subject=str(args.get("subject", ""))[:80]) + \
+        (" · " + t("Includes a designed (HTML) version") if args.get("html") else "")
+
+
+def card_extra(approval_id: str, args: dict[str, Any]) -> dict[str, Any]:
+    """The card of a mail: who gets it, the subject and the whole plain text (for a designed mail, the words of the designed version
+    when the plain text is empty). A designed mail also gets where its preview is; the HTML itself never goes into the event, the
+    apps fetch the sanitized preview from that route (api/approvals.py)."""
+    to, cc, bcc = _addresses(args.get("to")), _addresses(args.get("cc")), _addresses(args.get("bcc"))
+    html = str(args.get("html") or "")
+    lines = [{"label": t("To"), "value": ", ".join(to)}]
+    also = [t("Cc: {cc}", cc=", ".join(cc))] if cc else []
+    if bcc:
+        also.append(t("Bcc: {bcc}", bcc=", ".join(bcc)))
+    if also:
+        lines.append({"label": t("Also to"), "value": " · ".join(also)})
+    lines.append({"label": t("Subject"), "value": str(args.get("subject", ""))})
+    text = str(args.get("body") or "").strip() or (mail_html.to_text(mail_html.clean(html)) if html else "")
+    if html and text:
+        lines.append({"label": t("Message"), "value": text, "full": True})
+    extra: dict[str, Any] = {"lines": lines}
+    preview = mail_html.preview(html) if html else None
+    if preview is not None:
+        extra["mail"] = {"designed": True, "preview": f"/api/approvals/{approval_id}/mail-preview",
+                         "pictures": preview.pictures, "links": preview.links}
+        flat = " ".join(text.split())   # the notification: the mail's words, cut, and where the design is
+        snippet = flat[:200] + ("…" if len(flat) > 200 else "")
+        extra["notice_body"] = "\n".join(part for part in (describe_text(args), snippet, t("You can see the design in the Kelo app."))
+                                         if part)[:400]
+    return extra
 
 
 def mail_tools(mail: Mail) -> list[Tool]:
@@ -183,13 +225,7 @@ def mail_tools(mail: Mail) -> list[Tool]:
         return update_report(action, got)
 
     async def describe(args: dict[str, Any]) -> str:
-        to = args.get("to") or []
-        to = [to] if isinstance(to, str) else to
-        return t("To: {to}", to=", ".join(map(str, to))) + \
-            (" · " + t("Cc: {cc}", cc=", ".join(map(str, args.get("cc") or []))) if args.get("cc") else "") + \
-            (" · " + t("Bcc: {bcc}", bcc=", ".join(map(str, [args["bcc"]] if isinstance(args["bcc"], str) else args["bcc"]))) if args.get("bcc") else "") + \
-            " · " + t("Subject: {subject}", subject=str(args.get("subject", ""))[:80]) + \
-            (" · " + t("Includes a designed (HTML) version") if args.get("html") else "")
+        return describe_text(args)
 
     account = {"type": "string", "description": "which connected mailbox when there are several: " + ("gmail, naver, outlook ... "
                                                  "(the names an error lists)")}
@@ -218,7 +254,7 @@ def mail_tools(mail: Mail) -> list[Tool]:
                                                "reply_to_uid": {"type": "string", "description": "answer this message in its thread"},
                                                "uses": USES_PARAM},
               "required": ["to", "subject", "body"]},
-             email_send, requires_approval=True, describe=describe),
+             email_send, requires_approval=True, describe=describe, approval_extra=card_extra),
         Tool("email_update", "Change messages in the user's connected mailbox: mark read or unread, flag (star) or unflag, archive, "
              "move to a folder or label, or move to the trash (restorable; the user approves that once per batch). Pick them by uids "
              "from email_list, or by a search like email_list's (folder, query, unread): a search covers every match, thousands too.",

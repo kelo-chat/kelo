@@ -27,7 +27,7 @@ class NestLinksTest {
     private val bodies = ConcurrentHashMap<String, String>()
 
     @BeforeTest fun main() { Dispatchers.setMain(Dispatchers.Default) }
-    @AfterTest fun reset() { server?.shutdown(); vms.clear(); Dispatchers.resetMain() }
+    @AfterTest fun reset() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
     private val card = """{"token":"tok-1","id":"reader","name":"Reader","description":"Reads things","kind":"skill","version":"1.0.0",
         "author":"me","repo":"me/reader","installed":null,

@@ -27,7 +27,7 @@ API (server.py):
   POST /api/workers/{worker_id}/skill-draft           the same for a finished background job
 An entry: {"id", "skill", "name" (to show, in the owner's language), "kind": new|change|edited, "description", "text" (the proposed SKILL.md body), "diff": [{"op": add|del|same
 |gap|file, "text"}], "reason", "origin": {"type": chat|job|draft|disk, "task_id"?, "worker_id"?}, "outside_text", "created_at",
-"content_hash" (edited only)}.
+"content_hash" (edited only), "target": "notes" (a note on a built-in skill: kind "change", approved into notes/skills/<id>.md)}.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ from typing import Any
 
 from . import secret_guard
 from .agent.fence import is_fenced, plain
-from .home import front_matter
+from .home import SKILL_NOTES_MAX, HomeError, front_matter
 from .packages import SKILL_FILE, SKILL_ID, PackageError, Registry
 
 log = logging.getLogger(__name__)
@@ -122,13 +122,15 @@ class SkillProposals:
     """The proposals waiting for the owner, kept in a small JSON file, and what approving or discarding one does."""
 
     def __init__(self, registry: Registry, path: str | Path | None = None, *, clock: Callable[[], float] = time.time,
-                 key_patterns: Callable[[], Iterable[tuple[str, str]]] | None = None):
+                 key_patterns: Callable[[], Iterable[tuple[str, str]]] | None = None,
+                 write_note: Callable[[str, str], None] | None = None):
         if registry.custom_dir is None:
             raise ValueError("the registry has no custom skills folder")
         self.registry = registry
         self.path = Path(path) if path else registry.custom_dir.parent / PROPOSALS_FILE
         self.clock = clock
         self.key_patterns = key_patterns or registry.key_patterns
+        self.write_note = write_note   # (built-in skill id, text) -> None: adds the approved note to notes/skills/<id>.md
         self.drafting: dict[str, dict[str, Any]] = {}   # "task:<id>" / "worker:<id>" -> what the app shows while a draft is written
         self.failed: list[dict[str, Any]] = []          # drafts that could not be written (the last hour), with the reason
 
@@ -184,9 +186,37 @@ class SkillProposals:
         log.info("skill proposal %s for %s (%s)", entry["id"], sid, entry["kind"])
         return self._public(entry)
 
+    def propose_note(self, skill: str, note: str, *, reason: str = "", origin: Mapping[str, Any] | None = None,
+                     outside_text: bool = False) -> dict[str, Any]:
+        """A note on a BUILT-IN skill (kind "note"): once the owner approves it, it is added to notes/skills/<id>.md (read_skill
+        shows it after the skill). Raises ProposalError for an id that is not a built-in skill, no text, code, or too long."""
+        sid = str(skill or "").strip().lower()
+        if sid not in {p.id for p in self.registry.skills() if p.source == "builtin"}:
+            raise ProposalError(f"{sid!r} is not a built-in skill, so the note cannot go on it")
+        patterns = list(self.key_patterns() or ())
+        text, n = scrub(drop_code(plain(str(note or "")).replace("\r\n", "\n").strip()), patterns)
+        why, n2 = scrub(one_line(plain(str(reason or "")), REASON_MAX), patterns)
+        if not text:
+            raise ProposalError("a note needs its text")
+        if len(text) > SKILL_NOTES_MAX:
+            raise ProposalError(f"a note is longer than {SKILL_NOTES_MAX} characters; keep only what helps next time")
+        entry = {"id": uuid.uuid4().hex[:12], "skill": sid, "kind": "note", "description": "", "name": skill_title(sid), "body": text,
+                 "reason": why, "origin": dict(origin or {"type": "chat"}), "outside_text": bool(outside_text),
+                 "created_at": self.clock(), "secrets_removed": n + n2}
+        items = [x for x in self._read() if x.get("skill") != sid] + [entry]
+        self._write(items[-MAX_PENDING:])
+        log.info("skill note proposal %s for built-in %s", entry["id"], sid)
+        return self._public(entry)
+
     # ---- what the owner sees
     def _public(self, e: Mapping[str, Any]) -> dict[str, Any]:
         sid = str(e.get("skill"))
+        if e.get("kind") == "note":
+            # shown as a change to a skill (the apps have no label for notes yet); "target" says where it goes
+            return {"id": e["id"], "skill": sid, "name": e.get("name") or skill_title(sid), "kind": "change", "target": "notes",
+                    "description": "", "text": str(e.get("body") or ""), "reason": e.get("reason", ""),
+                    "origin": e.get("origin") or {"type": "chat"}, "outside_text": bool(e.get("outside_text")),
+                    "created_at": e.get("created_at"), "diff": [], "secrets_removed": int(e.get("secrets_removed") or 0)}
         new_text = skill_md(sid, str(e.get("description") or ""), str(e.get("body") or ""), str(e.get("name") or ""))
         out = {"id": e["id"], "skill": sid, "name": e.get("name") or skill_title(sid), "kind": e.get("kind", "new"),
                "description": e.get("description", ""),
@@ -258,6 +288,15 @@ class SkillProposals:
         if e is None:
             raise KeyError(entry_id)
         sid = str(e["skill"])
+        if e.get("kind") == "note":
+            if self.write_note is None:
+                raise ProposalError("notes on a built-in skill cannot be kept here")
+            try:
+                self.write_note(sid, str(e.get("body") or ""))
+            except HomeError as err:
+                raise ProposalError(str(err)) from None
+            self._write([x for x in self._read() if x.get("id") != entry_id])
+            return {"ok": True, "skill": sid}
         try:
             pkg = self.registry.write_custom(sid, {SKILL_FILE: skill_md(sid, str(e.get("description") or ""), str(e.get("body") or ""),
                                                                          str(e.get("name") or ""))},

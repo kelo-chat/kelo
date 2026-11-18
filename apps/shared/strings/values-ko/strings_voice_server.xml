@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">%1$s 음성 인식 모델을 Kelo 서버에 받을까요? 받지 않으면 휴대폰에 들어 있는 음성 인식을 씁니다.</string>
+    <string name="voice_server_downloading">음성 모델 내려받는 중 · %1$d%%</string>
+    <string name="voice_server_ready">이제 Kelo 서버가 말을 알아들어요.</string>
+    <string name="voice_server_download_failed">음성 모델을 다 받지 못했어요.</string>
+    <string name="voice_server_no_room">Kelo 서버에 저장 공간이 모자라요(%1$s 필요).</string>
+    <string name="voice_retry">다시 하기</string>
+    <string name="voice_transcribing">글자로 바꾸는 중…</string>
+    <string name="voice_cancel_recording">녹음 취소</string>
+    <string name="voice_stop_recording">녹음 끝내기</string>
+    <string name="voice_ends_in">%1$d초 뒤 끝나요</string>
+    <string name="voice_server_offline">Kelo 서버에 닿지 않아 글자로 바꾸지 못했어요.</string>
+    <string name="voice_server_busy">Kelo 서버가 다른 녹음을 바꾸는 중이에요. 잠시 뒤 다시 해 주세요.</string>
+    <string name="voice_server_too_long">녹음이 너무 길어요. 2분 안으로 말해 주세요.</string>
+    <string name="voice_page_title">음성 입력</string>
+    <string name="voice_page_intro">말한 소리는 Kelo 서버에서 글자로 바뀌어 입력란에 들어가요. 글자가 저절로 보내지지는 않아요.</string>
+    <string name="voice_model_in_use">쓰는 음성 모델</string>
+    <string name="voice_state_off">휴대폰의 음성 인식</string>
+    <string name="voice_change_model">모델 바꾸기</string>
+    <string name="voice_download_model">모델 내려받기</string>
+    <string name="voice_remove_model">모델 지우기</string>
+    <string name="voice_remove_confirm">음성 모델을 지울까요? 그다음부터는 휴대폰의 음성 인식을 써요.</string>
+    <string name="voice_phone_note">이 언어는 Kelo 서버 음성 모델이 아직 몰라서 휴대폰의 음성 인식을 써요.</string>
+    <string name="voice_model_size">크기 %1$s · 쓸 때 메모리 %2$s</string>
+    <string name="voice_runtime_missing">Kelo 서버를 한 번 더 설치하면 쓸 수 있어요.</string>
+</resources>

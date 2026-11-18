@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Що Kelo переглянув</string>
+    <string name="situation_title">Що Kelo переглянув</string>
+    <string name="situation_hourly_head">Що Kelo переглядає щогодини</string>
+    <string name="situation_read_when_needed_head">Читається лише за потреби</string>
+    <string name="situation_read_when_needed_about">Це читається, коли питання цього потребує. Сервіс можна переглядати щогодини, якщо він пояснює, як читати його стан.</string>
+    <string name="situation_section_conversation">Розмова</string>
+    <string name="situation_section_mail">Пошта</string>
+    <string name="situation_section_calendar">Календар</string>
+    <string name="situation_section_goals">Цілі</string>
+    <string name="situation_section_schedules">Розклади</string>
+    <string name="situation_section_memory">Пам\'ять</string>
+    <string name="situation_section_other">Інше</string>
+    <string name="situation_empty">Поки порожньо. Перший перегляд — на 9-й хвилині наступної години, у години, коли ви не спите.</string>
+    <string name="situation_keep_days">Зберігається %d дн.</string>
+    <string name="situation_outcome_no_change">Нічого нового</string>
+    <string name="situation_outcome_nothing">Переглянув, нема чого повідомити</string>
+    <string name="situation_outcome_proposed">Підготовлено: %d</string>
+    <string name="situation_outcome_selected">Вибрано: %d</string>
+    <string name="situation_outcome_delivered">Я вам повідомив</string>
+    <string name="situation_outcome_failed">Не вдалося переглянути</string>
+    <string name="situation_outcome_running">Переглядаю зараз</string>
+    <string name="situation_outcome_other">Переглянув</string>
+    <string name="situation_load_more">Завантажити ще</string>
+    <string name="situation_detail_changed">Що змінилося</string>
+    <string name="situation_detail_same">Як і раніше (%d)</string>
+    <string name="situation_detail_failed">Не вдалося прочитати</string>
+    <string name="situation_detail_off">Вимкнено</string>
+    <string name="situation_detail_done">Що зробив Kelo</string>
+    <string name="situation_detail_none">Під час цього перегляду нічого не підготовлено.</string>
+    <string name="situation_state_new">Нове</string>
+    <string name="situation_state_same">Як і раніше</string>
+    <string name="situation_state_changed">Змінилося</string>
+    <string name="situation_state_failed">Не вдалося прочитати</string>
+    <string name="situation_state_timeout">Тривало занадто довго</string>
+    <string name="situation_state_skipped">Не враховано: перегляд був заповнений</string>
+    <string name="situation_state_off">Вимкнено</string>
+    <string name="situation_state_other">Інше</string>
+    <string name="situation_event_proposed">Підготовлено</string>
+    <string name="situation_event_updated">Оновлено</string>
+    <string name="situation_event_selected_today">Вибрано на сьогодні</string>
+    <string name="situation_event_selected_regular">Вибрано як звичайне повідомлення</string>
+    <string name="situation_event_told">Я вам повідомив</string>
+    <string name="situation_event_dropped">Відкладено: %s</string>
+    <string name="situation_event_dropped_none">Відкладено: не варто вам повідомляти</string>
+    <string name="situation_event_expired">Час минув</string>
+    <string name="situation_event_waiting">Чекає на кращий момент</string>
+</resources>

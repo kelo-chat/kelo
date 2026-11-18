@@ -491,3 +491,66 @@ def test_the_cli_accepts_the_server_msi_platform(monkeypatch):
     monkeypatch.setattr(downloads, "run_publish", lambda a: seen.setdefault("args", a) and 0)
     assert cli.main(["publish-app", "windows-server-msi", "/x/KeloServer.msi", "--version", "0.10.2"]) == 0
     assert seen["args"].platform == "windows-server-msi"
+
+
+# ------------------------------------------------------------------------------------------------------- Kelo server for Mac
+BUNDLE = b"PK\x03\x04" + b"\x00" * 200
+
+
+async def test_the_mac_server_bundle_is_served_and_in_latest_json_but_not_on_the_download_page(tmp_path):
+    row = publish_here(tmp_path, "mac-server-bundle", "kelo-server-0.10.2.zip", BUNDLE, "0.10.2")
+    publish_here(tmp_path, "mac", "Kelo-1.0.0.dmg", b"\x00" * 300, "1.0.0")
+    async with Running(app_with(tmp_path)) as srv, httpx.AsyncClient(base_url=srv.url) as c:
+        r = await c.get("/download/mac-server-bundle")
+        assert r.status_code == 302 and r.headers["location"] == "/download/mac-server-bundle/kelo-server-0.10.2.zip"
+        f = await c.get("/download/mac-server-bundle/kelo-server-0.10.2.zip")
+        assert f.status_code == 200 and f.content == BUNDLE and f.headers["content-type"] == "application/zip"
+        latest = (await c.get("/download/latest.json")).json()
+        assert latest["mac-server-bundle"] == {"version": "0.10.2", "size": len(BUNDLE), "sha256": row["sha256"],
+                                               "date": "2026-11-08T09:00:00Z", "file": "kelo-server-0.10.2.zip",
+                                               "url": "/download/mac-server-bundle"}
+        assert latest["mac"]["file"] == "Kelo-1.0.0.dmg"                         # the desktop app's Mac row is untouched
+        for lang in ("en", "ko"):
+            page = (await c.get(f"/?lang={lang}")).text
+            assert "mac-server-bundle" not in page and "kelo-server-" not in page
+            assert "/download/mac-server-bundle" not in page
+        assert "mac-server-bundle" not in (await c.get("/download?lang=en")).text
+        assert "/download/mac-server-bundle" not in (await c.get("/download?lang=ko")).text
+
+
+def test_the_mac_server_bundle_is_a_zip_and_keeps_its_own_platform(tmp_path):
+    zip_file = tmp_path / "kelo-server-0.10.2-mac-arm64.zip"
+    zip_file.write_bytes(BUNDLE)
+    assert downloads.platform_for("mac-server-bundle", zip_file) == "mac-server-bundle"
+    dmg = tmp_path / "Kelo-0.10.2.dmg"
+    dmg.write_bytes(b"\x00")
+    with pytest.raises(PublishError, match="must be a .zip file"):
+        downloads.platform_for("mac-server-bundle", dmg)
+    with pytest.raises(PublishError, match="must be a .dmg file"):
+        downloads.platform_for("mac", zip_file)
+    volume = tmp_path / "vol"
+    pub = Publisher(tmp_path, run=FakeDocker(volume), out=lambda s: None)
+    got = pub.publish("mac-server-bundle", zip_file, "0.10.2", unsigned=True)
+    assert got["file"] == "kelo-server-0.10.2.zip" and (volume / "kelo-server-0.10.2.zip").read_bytes() == BUNDLE
+    rows = json.loads((volume / "manifest.json").read_text())["platforms"]
+    assert rows["mac-server-bundle"]["file"] == "kelo-server-0.10.2.zip"
+
+
+def test_publish_app_does_not_record_the_mac_server_bundle_as_an_app_release(tmp_path, monkeypatch):
+    zip_file = tmp_path / "kelo-server-0.10.2-mac-arm64.zip"
+    zip_file.write_bytes(BUNDLE)
+    recorded: list[str] = []
+    monkeypatch.setattr(downloads, "record_published", lambda root, row, out: recorded.append(row["file"]))
+    root = _operator_root(tmp_path, "ASSISTANT_PUBLIC_URL=https://kelo.chat\nASSISTANT_KELO_BROKER=https://kelo.chat\n")
+    lines: list[str] = []
+    args = SimpleNamespace(platform="mac-server-bundle", file=str(zip_file), version="0.10.2", unsigned=True, commit=None)
+    assert run_publish(args, root, run=FakeDocker(tmp_path / "vol"), out=lines.append) == 0
+    assert recorded == []
+    assert any(line == "Published Kelo server for Mac (bundle) 0.10.2: https://kelo.chat/download/mac-server-bundle" for line in lines)
+
+
+def test_the_cli_accepts_the_mac_server_bundle_platform(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(downloads, "run_publish", lambda a: seen.setdefault("args", a) and 0)
+    assert cli.main(["publish-app", "mac-server-bundle", "/x/kelo-server.zip", "--version", "0.10.2"]) == 0
+    assert seen["args"].platform == "mac-server-bundle"

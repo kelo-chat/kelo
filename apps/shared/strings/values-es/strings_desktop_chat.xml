@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">Acercar</string>
     <string name="desktop_chat_zoom_reset">Ajustar a la ventana</string>
     <string name="desktop_chat_zoom_hint">Mantén %1$s y gira la rueda para hacer zoom; arrastra para moverte.</string>
+    <string name="desktop_chat_search_hint">Escribe una palabra o parte de una. Haz clic en un resultado para abrir el chat en ese mensaje.</string>
 </resources>

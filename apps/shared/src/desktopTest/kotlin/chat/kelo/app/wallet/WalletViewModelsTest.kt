@@ -27,7 +27,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 /**
@@ -38,7 +37,7 @@ import javax.crypto.KeyGenerator
 class WalletViewModelsTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<String>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
     @Volatile private var walletAnswer = MockResponse().setBody("""{"paused":false,"auto_cards":0,"cards":[{"id":"c1","label":"Home card","last4":"4242"}]}""")
     @Volatile private var deleteAnswer = MockResponse().setBody("{}")
     @Volatile private var cancelAnswer = MockResponse().setBody("{}")

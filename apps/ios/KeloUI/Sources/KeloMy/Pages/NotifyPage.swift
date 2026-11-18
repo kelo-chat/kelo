@@ -124,12 +124,24 @@ struct NotifyPage: View {
                 model.putProactive(["daily_regular": .number(Double(caps.regular)), "daily_total": .number(Double(caps.total)), "daily_now": .number(Double(caps.now))])
             }
             deliveries(p)
+            if model.situationReady && p.research { situationRow }
             toggleLine(L(R.string.heads_mail), L(R.string.heads_mail_about), on: p.mailCheck) {
                 model.putProactive(["mail_check": .bool($0)])
             }
             let sent = p.today.values.reduce(0, +)
             if sent > 0 { MutedText(P(R.plurals.heads_sent_today, sent, sent), small: true) }
         }
+    }
+
+    /// "What Kelo looked at" (only when the server has the look: an older server hides the row).
+    private var situationRow: some View {
+        Button { MyNav(app: app).push(.situation) } label: {
+            HStack(spacing: 2) {
+                Text(L(R.string.situation_row)).font(KeloFont.small).foregroundStyle(c.accent)
+                KeloIconView(.chevronRight, size: 14, tint: c.accent)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     /// How many messages a day Kelo starts (0...10, 0 = only what cannot wait) and "오늘 n번 보냄 · 보관 중 m개" (the held part opens the

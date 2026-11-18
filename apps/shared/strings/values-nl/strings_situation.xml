@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Wat Kelo heeft bekeken</string>
+    <string name="situation_title">Wat Kelo heeft bekeken</string>
+    <string name="situation_hourly_head">Wat Kelo elk uur bekijkt</string>
+    <string name="situation_read_when_needed_head">Alleen gelezen als het nodig is</string>
+    <string name="situation_read_when_needed_about">Deze worden gelezen als een vraag ze nodig heeft. Een koppeling kan elk uur worden bekeken als ze zegt hoe de status te lezen is.</string>
+    <string name="situation_section_conversation">Gesprek</string>
+    <string name="situation_section_mail">Mail</string>
+    <string name="situation_section_calendar">Agenda</string>
+    <string name="situation_section_goals">Doelen</string>
+    <string name="situation_section_schedules">Schema\'s</string>
+    <string name="situation_section_memory">Geheugen</string>
+    <string name="situation_section_other">Overig</string>
+    <string name="situation_empty">Nog niets. De eerste blik is op minuut 9 van het volgende uur, in uw wakkere uren.</string>
+    <string name="situation_keep_days">Wordt %d dagen bewaard</string>
+    <string name="situation_outcome_no_change">Niets nieuws</string>
+    <string name="situation_outcome_nothing">Bekeken, niets te melden</string>
+    <string name="situation_outcome_proposed">%d voorbereid</string>
+    <string name="situation_outcome_selected">%d gekozen</string>
+    <string name="situation_outcome_delivered">Ik heb het u verteld</string>
+    <string name="situation_outcome_failed">Kon niet bekeken worden</string>
+    <string name="situation_outcome_running">Wordt nu bekeken</string>
+    <string name="situation_outcome_other">Bekeken</string>
+    <string name="situation_load_more">Meer laden</string>
+    <string name="situation_detail_changed">Wat er veranderd is</string>
+    <string name="situation_detail_same">Hetzelfde als eerder (%d)</string>
+    <string name="situation_detail_failed">Kon niet gelezen worden</string>
+    <string name="situation_detail_off">Uit</string>
+    <string name="situation_detail_done">Wat Kelo heeft gedaan</string>
+    <string name="situation_detail_none">In deze blik is niets voorbereid.</string>
+    <string name="situation_state_new">Nieuw</string>
+    <string name="situation_state_same">Hetzelfde als eerder</string>
+    <string name="situation_state_changed">Gewijzigd</string>
+    <string name="situation_state_failed">Kon niet gelezen worden</string>
+    <string name="situation_state_timeout">Duurde te lang</string>
+    <string name="situation_state_skipped">Niet meegenomen: de blik was vol</string>
+    <string name="situation_state_off">Uit</string>
+    <string name="situation_state_other">Overig</string>
+    <string name="situation_event_proposed">Voorbereid</string>
+    <string name="situation_event_updated">Bijgewerkt</string>
+    <string name="situation_event_selected_today">Gekozen voor vandaag</string>
+    <string name="situation_event_selected_regular">Gekozen als gewoon bericht</string>
+    <string name="situation_event_told">Ik heb het u verteld</string>
+    <string name="situation_event_dropped">Opzij gezet: %s</string>
+    <string name="situation_event_dropped_none">Opzij gezet: niet belangrijk genoeg om te melden</string>
+    <string name="situation_event_expired">Verlopen</string>
+    <string name="situation_event_waiting">Wacht op een beter moment</string>
+</resources>

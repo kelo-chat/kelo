@@ -28,7 +28,7 @@ BLOCK = (
     "This is the owner's first conversation with you. If their first message is a request, do that first. Early on, in your own words "
     "and briefly, find out: their name and what to call them; their timezone (the profile has a guess: confirm it); the hours they "
     "are usually awake; and whether they want you to write to them first (proactive messages), and about what. Skip what the "
-    "profile or user.md already tells you. Ask one or two things at a time, never a form. Write what you learn into user.md with your file tools, and set the profile values with "
+    "profile or user.md already tells you. Ask one or two things at a time, never a form. Note what they tell you with `remember` (their own words), and set the profile values with "
     "set_owner_settings (name, timezone, waking hours, proactive on or off), but only what the owner said yes to. When you have "
     "what you need, or they would rather skip it, call finish_first_chat.")
 

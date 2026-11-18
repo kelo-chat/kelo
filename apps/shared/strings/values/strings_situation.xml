@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "What Kelo looked at" (마이 → 알림 → What Kelo looked at): what the hourly look read, what it prepared and what it did with each item (server: GET /api/proactive/research, situation.py) -->
+<resources>
+    <string name="situation_row">What Kelo looked at</string>
+    <string name="situation_title">What Kelo looked at</string>
+    <string name="situation_hourly_head">Every hour Kelo looks at</string>
+    <string name="situation_read_when_needed_head">Read only when needed</string>
+    <string name="situation_read_when_needed_about">These are read when a question needs them. A connector can be looked at every hour when it says how to read its state.</string>
+    <string name="situation_section_conversation">Conversation</string>
+    <string name="situation_section_mail">Mail</string>
+    <string name="situation_section_calendar">Calendar</string>
+    <string name="situation_section_goals">Goals</string>
+    <string name="situation_section_schedules">Schedules</string>
+    <string name="situation_section_memory">Memory</string>
+    <string name="situation_section_other">Other</string>
+    <string name="situation_empty">Nothing yet. The first look is at minute 9 of the next hour in your waking hours.</string>
+    <string name="situation_keep_days">Kept for %d days</string>
+    <string name="situation_outcome_no_change">Nothing new</string>
+    <string name="situation_outcome_nothing">Looked, nothing to tell</string>
+    <string name="situation_outcome_proposed">Prepared %d</string>
+    <string name="situation_outcome_selected">Chose %d</string>
+    <string name="situation_outcome_delivered">Told you</string>
+    <string name="situation_outcome_failed">Could not look</string>
+    <string name="situation_outcome_running">Looking now</string>
+    <string name="situation_outcome_other">Looked</string>
+    <string name="situation_load_more">Load more</string>
+    <string name="situation_detail_changed">What changed</string>
+    <string name="situation_detail_same">Same as before (%d)</string>
+    <string name="situation_detail_failed">Could not be read</string>
+    <string name="situation_detail_off">Turned off</string>
+    <string name="situation_detail_done">What Kelo did</string>
+    <string name="situation_detail_none">Nothing was prepared in this look.</string>
+    <string name="situation_state_new">New</string>
+    <string name="situation_state_same">Same as before</string>
+    <string name="situation_state_changed">Changed</string>
+    <string name="situation_state_failed">Could not be read</string>
+    <string name="situation_state_timeout">Took too long</string>
+    <string name="situation_state_skipped">Left out: the look was full</string>
+    <string name="situation_state_off">Turned off</string>
+    <string name="situation_state_other">Other</string>
+    <string name="situation_event_proposed">Prepared</string>
+    <string name="situation_event_updated">Updated</string>
+    <string name="situation_event_selected_today">Chosen for today</string>
+    <string name="situation_event_selected_regular">Chosen as a regular message</string>
+    <string name="situation_event_told">Told you</string>
+    <string name="situation_event_dropped">Set aside: %s</string>
+    <string name="situation_event_dropped_none">Set aside: not worth telling you</string>
+    <string name="situation_event_expired">Ran out of time</string>
+    <string name="situation_event_waiting">Waiting for a better time</string>
+</resources>

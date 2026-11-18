@@ -21,7 +21,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 /**
@@ -32,7 +31,7 @@ import javax.crypto.KeyGenerator
 class ChatSearchViewModelTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val paths = Collections.synchronizedList(mutableListOf<String>())
+    private val paths = java.util.concurrent.CopyOnWriteArrayList<String>()
     @Volatile private var failing = false
 
     private class MapStore : KeyValueStore {

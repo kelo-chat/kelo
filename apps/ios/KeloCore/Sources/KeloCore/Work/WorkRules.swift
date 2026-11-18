@@ -171,6 +171,32 @@ public enum Timeline {
         return tab
     }
 
+    /// The tabs the timeline already shows under a running task or a going job, so the open-browsers section does not list them again.
+    public static func shownTabs(now: Now, tabs: [BrowserTab], workers: [Worker] = []) -> Set<String> {
+        var ids = Set<String>()
+        for node in now.tasks {
+            if node.task.running, let id = tabFor(node.task, tabs: tabs, workers: workers) { ids.insert(id) }
+            for job in node.jobs { if let id = tabFor(job.worker) { ids.insert(id) } }
+        }
+        for job in now.jobs { if let id = tabFor(job.worker) { ids.insert(id) } }
+        return ids
+    }
+
+    /// Open browsers: every browser tab that is open (not ended) and that no running task or job already shows, so a tab the agent
+    /// left open after its task was done is still listed (owner report 2026-11-17). Not the Android device; working tabs first, then
+    /// the most recently used.
+    public static func openTabs(_ tabs: [BrowserTab], now: Now, workers: [Worker] = []) -> [BrowserTab] {
+        let shown = shownTabs(now: now, tabs: tabs, workers: workers)
+        let open = tabs.filter { $0.isBrowserTab && $0.status != "ended" && !shown.contains($0.id) }
+        return open.enumerated().sorted { a, b in
+            let wa = a.element.status == "working" ? 0 : 1, wb = b.element.status == "working" ? 0 : 1
+            if wa != wb { return wa < wb }
+            let la = a.element.lastActivity ?? 0, lb = b.element.lastActivity ?? 0
+            if la != lb { return la > lb }
+            return a.offset < b.offset
+        }.map(\.element)
+    }
+
     /// How far a job is through its step budget (0...1), or nil when the server gave no budget.
     public static func progress(_ worker: Worker) -> Double? {
         worker.maxSteps <= 0 ? nil : min(max(Double(worker.steps) / Double(worker.maxSteps), 0), 1)

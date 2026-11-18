@@ -273,12 +273,25 @@ class AttemptJournal:
 
     def __init__(self, store: Any, clock: Any = time.time):
         self.store, self.clock = store, clock
+        self.inflight: set[str] = set()   # attempts reserved and not yet pressed or settled: busy() is true while one is
+
+    def busy(self) -> bool:
+        return bool(self.inflight)
+
+    def cut_open(self, before: float) -> int:
+        """At a start: a press reserved before the server's start (`before`) was cut before the press went through or not: nobody saw
+        whether it did, so it is unknown now (with the first later check). Returns how many."""
+        rows = self.store._all("SELECT id FROM pay_attempts WHERE state = 'reserved' AND created_at < ?", (before,))
+        for r in rows:
+            self.settle(r["id"], "unknown", "the Kelo server stopped during the press: nobody saw whether it went through")
+        return len(rows)
 
     def reserve(self, approval: dict[str, Any], owner: str, task: str) -> str:
         aid, now = "pt_" + secrets.token_hex(6), self.clock()
         self.store._run("INSERT INTO pay_attempts(id, approval_id, terms_id, owner, task, merchant_origin, state, created_at, updated_at) "
                         "VALUES(?,?,?,?,?,?,?,?,?)", (aid, approval["id"], approval["terms_id"], owner, task, approval["merchant_origin"],
                                                       "reserved", now, now))
+        self.inflight.add(aid)
         return aid
 
     def _set(self, aid: str, **fields: Any) -> None:
@@ -286,22 +299,33 @@ class AttemptJournal:
         self.store._run(f"UPDATE pay_attempts SET {', '.join(f'{k} = ?' for k in fields)} WHERE id = ?", (*fields.values(), aid))
 
     def pressed(self, aid: str) -> None:
+        self.inflight.discard(aid)
         self._set(aid, state="pressed", pressed_at=self.clock())
 
     def get(self, aid: str) -> dict[str, Any] | None:
         rows = self.store._all("SELECT * FROM pay_attempts WHERE id = ?", (aid,))
         return _attempt(rows[0]) if rows else None
 
-    def open(self, owner: str, task: str) -> dict[str, Any] | None:
-        """The newest attempt of this owner/task that is pressed or unknown (None: a press, a review or a reload is allowed)."""
-        rows = self.store._all("SELECT * FROM pay_attempts WHERE owner = ? AND task = ? AND state IN ('pressed', 'unknown') "
-                               "ORDER BY created_at DESC, rowid DESC LIMIT 1", (owner, task))
+    def open(self, owner: str, task: str, *, any_task: bool = False) -> dict[str, Any] | None:
+        """The newest attempt of this owner/task that is pressed or unknown (None: a press, a review or a reload is allowed).
+        `any_task`: every attempt of this owner counts (a job's tab is one checkout across its runs)."""
+        if any_task:
+            rows = self.store._all("SELECT * FROM pay_attempts WHERE owner = ? AND state IN ('pressed', 'unknown') "
+                                   "ORDER BY created_at DESC, rowid DESC LIMIT 1", (owner,))
+        else:
+            rows = self.store._all("SELECT * FROM pay_attempts WHERE owner = ? AND task = ? AND state IN ('pressed', 'unknown') "
+                                   "ORDER BY created_at DESC, rowid DESC LIMIT 1", (owner, task))
         return _attempt(rows[0]) if rows else None
+
+    def open_for_tab(self, owner: str) -> dict[str, Any] | None:
+        """The newest pressed or unknown attempt of this tab, whichever run made it."""
+        return self.open(owner, "", any_task=True)
 
     def settle(self, aid: str, state: str, evidence: str, receipt: str = "", digest: str = "") -> bool:
         """placed / not_placed / unknown, with the evidence (the merchant's own words or what was seen). Only a reserved, pressed or
         unknown attempt can be settled; a placed or not_placed one stays as it is. Unknown schedules the first later check."""
         row = self.get(aid)
+        self.inflight.discard(aid)
         if row is None or state not in ("placed", "not_placed", "unknown") or row["state"] in ("placed", "not_placed"):
             return False
         fields: dict[str, Any] = {"state": state, "evidence": " ".join(str(evidence or "").split())[:600]}

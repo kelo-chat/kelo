@@ -254,3 +254,43 @@ The endpoints are listed in `server.py` ("Custom skills") and `custom_skills.py`
 API key; `example_tasks`, OAuth; `example_market`, a browser site) and packages with screens (`habit-tracker`, a skill with a tab;
 `example_parcels`, a key connector with a tab; `daily-countdown`, a screens-only extension). Their addresses are placeholders on
 `example.com` and do not work.
+
+## Situation read
+
+A connector can say how Kelo looks at its state once an hour: one read-only call in `connector.situation` of `kelo-package.json`. Kelo runs it
+at each hourly look, and what it finds goes into the look as a "Connected: <name>" section. A connector without it is left out of the hourly
+look; Kelo can still read it with its own tools when a question needs it. The call is checked the same way as any tool call: only a read runs,
+and the owner's limits for that connector apply (a read the owner turned off while Kelo is not chatting is not made).
+
+Two forms (give exactly one):
+
+- `request`: a GET on the connection's own base address, for a key or OAuth connector with a `base_url`: `{"method": "GET", "path": "/notifications?unread=true"}`
+- `tool`: a read-only tool of an MCP connection (or a key connector with `mcp_url`), with `arguments`: `{"tool": "list_open_tickets", "arguments": {"limit": 20}}`
+
+The rest says what the answer means:
+
+- `mode`: `state` (a snapshot: any change of what is shown counts as a change) or `changes` (rows since the last look; only a row whose `id` was not seen before counts).
+- `select`: the dotted path to the rows in a JSON answer (`""` = the answer itself, an object is one row).
+- `fields`: label to dotted path in a row, for example `{"title": "subject.title"}`. Without it a row is shown as compact JSON.
+- `id`: for `changes`, the dotted path or list of paths whose values make a row's id. A text answer uses `lines` instead: a regular expression; only the matching lines are kept.
+- `max_rows` (1 to 100, default 30), `max_chars` (200 to 6000, default 3000), `every_minutes` (0, or at least 60: read at most this often), `wakes` (default true; false means the section is shown when the look runs, but its change alone never starts a research turn; use it for busy feeds and values that drift).
+
+Bindings, written inside a string: `{{connection}}` (the connection's item), `{{since}}` (the last look, ISO 8601 UTC), `{{since_unix}}`, `{{since_date}}`
+(owner's zone), `{{now}}`, `{{now_unix}}`, `{{today}}`. A string that is exactly one binding keeps its type. Inside a longer string the value is percent-encoded.
+
+Example (a notifications list, changes only):
+
+```json
+"situation": {"request": {"method": "GET", "path": "/notifications?unread=true"}, "mode": "changes", "select": "items",
+              "fields": {"title": "subject", "when": "updated"}, "id": "id", "max_rows": 20}
+```
+
+Example (an MCP tool, the current state):
+
+```json
+"situation": {"tool": "list_open_tickets", "arguments": {"limit": 20}, "mode": "state", "select": "tickets",
+              "fields": {"title": "title", "status": "status"}}
+```
+
+Kelo checks the draft when it is saved: a connector without this section gets a warning from `nest_draft_check`. The MCP tool of a `tool` read is
+listed among the package's MCP tools, so the install card shows it and the owner can take it back.

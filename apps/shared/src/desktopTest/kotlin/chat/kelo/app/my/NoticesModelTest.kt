@@ -22,7 +22,7 @@ class NoticesModelTest {
     private var server: MyFakeServer? = null
 
     @Before fun setUp() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
-    @After fun tearDown() { server?.shutdown(); vms.clear(); Dispatchers.resetMain() }
+    @After fun tearDown() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
     private val two = """{"notices":[
         {"id":"n-2","date":"2026-11-15","level":"important","title":"보안 업데이트","body":"서버를 올려 주세요.","link":"https://kelo.chat/download"},

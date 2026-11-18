@@ -947,10 +947,14 @@
     <string name="live_held_elsewhere">Controllato da un altro dispositivo</string>
     <string name="live_give_back">Restituisci</string>
     <string name="live_paused_banner">Il controllo è tuo. Il tuo agente aspetterà su questa scheda finché non lo restituisci.</string>
+    <string name="live_still_yours">Lo stai ancora controllando tu. L\'agente aspetta finché non lo restituisci.</string>
+    <string name="live_screen_changed">La schermata è cambiata. Tocca di nuovo.</string>
     <string name="live_tab_closed">La scheda è stata chiusa, quindi non c\'è altro da vedere. Se l\'ultima schermata è stata salvata, appare qui sotto.</string>
     <string name="live_not_controller">Al momento non puoi controllarla. Tocca di nuovo Prendi il controllo.</string>
     <string name="live_input_failed">Il browser non è riuscito a farlo.</string>
     <string name="live_state_you">Il controllo è tuo</string>
+    <string name="live_work_browser">Browser di lavoro</string>
+    <string name="live_work_browser_note">Questa scheda è nel browser di lavoro di Kelo, separato dalle tue schede. Un accesso fatto qui viene salvato nel browser principale di Kelo quando il lavoro finisce.</string>
     <string name="live_state_other">Il controllo è di un altro dispositivo</string>
     <string name="live_state_waiting">In attesa di approvazione</string>
     <string name="live_connecting">Collegamento…</string>
@@ -1224,6 +1228,9 @@
     <string name="work_wait_answer">Continuerà quando dirai come procedere.</string>
     <string name="work_wait_blocked">Fermata perché non può andare avanti da sola.</string>
     <string name="work_wait_restart">Fermata al riavvio del server.</string>
+    <string name="work_picked_up">Il server Kelo si è riavviato, quindi ha ripreso da dove si era fermato.</string>
+    <string name="work_picked_up_browser">Il browser si è riavviato, quindi continua in una nuova scheda.</string>
+    <string name="work_wait_pickup">Riprenderà da dove si era fermato tra poco.</string>
     <string name="work_schedule_on">Pianificazione attiva</string>
     <string name="work_schedule_off">Pianificazione disattivata</string>
     <string name="work_schedule_by_agent">Creata dal tuo agente</string>

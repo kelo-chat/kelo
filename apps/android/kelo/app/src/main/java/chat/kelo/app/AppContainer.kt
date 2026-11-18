@@ -98,6 +98,7 @@ class AppContainer(context: Context) : AppServices {
     override val browser: ExternalBrowser = AndroidExternalBrowser(appContext, activityHost)
     override val phoneData: PhoneDataSection = AndroidPhoneData
     override val connectorIcons = chat.kelo.app.connectors.ConnectorIcons(File(appContext.cacheDir, "connector-icons"))
+    override val mailPreviews = chat.kelo.app.chat.MailPreviewStore { sessions.api.value }
     override val notifications: PhoneNotifications = AndroidPhoneNotifications(notifier, notifyPrefs)
     override val phoneLocation: PhoneLocation = AndroidPhoneLocation(appContext, activityHost)
     override val language: AppLanguage = AndroidAppLanguage(this, activityHost)

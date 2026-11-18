@@ -728,6 +728,15 @@ class GoalBook:
         self.store._run("INSERT OR REPLACE INTO message_replies(message_id, questions, goal_id, created_at) VALUES(?,?,?,?)",
                         (message_id, json.dumps(questions, ensure_ascii=False), goal_id, self.clock()))
 
+    def detach_replies(self, message_id: int) -> None:
+        """The quick-reply buttons of a message go (the message stays): an answered or outdated question."""
+        self.store._run("DELETE FROM message_replies WHERE message_id=?", (message_id,))
+
+    def questions_of(self, message_id: int) -> list[dict[str, Any]]:
+        """The quick-reply questions of a message ([] when it has none)."""
+        row = self.store._all("SELECT questions FROM message_replies WHERE message_id=?", (message_id,))
+        return json.loads(row[0]["questions"] or "[]") if row else []
+
     def replies_for(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """GET /api/messages rows with "replies" ({"questions", "goal_id"}) on agent messages no user message came after."""
         if not rows:

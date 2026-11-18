@@ -70,7 +70,7 @@ class AgentRecordsViewModelsTest {
         }
         val sessions = s.sessions()
         val vm = vms.make { AgentPageViewModel(sessions, AgentAvatar(sessions), Picker(null)) }
-        val seen = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val seen = java.util.concurrent.CopyOnWriteArrayList<String>()
         vm.reload { seen += it.tone }
         until("the first request") { calls >= 1 }
         vm.reload { seen += it.tone }
@@ -90,7 +90,7 @@ class AgentRecordsViewModelsTest {
         }
         val sessions = s.sessions()
         val vm = vms.make { AgentPageViewModel(sessions, AgentAvatar(sessions), Picker(null)) }
-        val seen = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val seen = java.util.concurrent.CopyOnWriteArrayList<String>()
         vm.reload { seen += it.tone }
         until("the load") { calls >= 1 }
         vm.pickTone(Profile(), ToneRules.FRIENDLY) { seen += it.tone }

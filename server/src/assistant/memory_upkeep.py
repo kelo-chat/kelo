@@ -46,7 +46,8 @@ from .compaction import TIME_TAG
 from .home import Home, HomeError, front_matter
 from .model_limits import limit_of
 from .providers import ChatRequest
-from .reflection import AUTO_PREFIXES, IDLE_BEFORE_RUN, IDLE_POLL, IDLE_WAIT_MAX
+from .owner_messages import OWNER, OwnerMessages
+from .reflection import IDLE_BEFORE_RUN, IDLE_POLL, IDLE_WAIT_MAX
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +96,18 @@ def _luhn(digits: str) -> bool:
         total += d
         alt = not alt
     return total % 10 == 0
+
+
+MEMORY_FILES = ("user.md", "MEMORY.md", "AGENTS.md")
+
+
+def is_memory_file(rel: str) -> bool:
+    """The files the memory pass keeps (and may cite a line of as evidence): user.md, MEMORY.md, AGENTS.md, memory/people/*.md and the
+    dated memory/log/*.md. Never an upload, a note or any other file of the home."""
+    rel = str(rel or "")
+    if rel in MEMORY_FILES:
+        return True
+    return rel.endswith(".md") and ".." not in rel and rel.startswith(("memory/people/", "memory/log/"))
 
 
 def scrub(text: str) -> tuple[str, int]:
@@ -396,11 +409,11 @@ class MemoryUpkeep:
 
     def _messages(self, since: float) -> list[dict[str, Any]]:
         from .secret_guard import scrub_rows   # a message sent with a secret in it (after the warning) is read without it
-        return scrub_rows(self.store, self.store._all("SELECT id, role, content, created_at FROM messages WHERE created_at > ? ORDER BY id", (since,)))
+        return scrub_rows(self.store, self.store._all("SELECT id, role, content, created_at, author FROM messages WHERE created_at > ? ORDER BY id", (since,)))
 
     @staticmethod
     def _from_user(m: dict[str, Any]) -> bool:
-        return m["role"] == "user" and not _clean(m["content"]).startswith(AUTO_PREFIXES)
+        return m.get("author") == OWNER   # the owner's own message (owner_messages.py), never a hidden row
 
     def _read(self, rel: str) -> str | None:
         p = self.home.root / rel
@@ -419,19 +432,36 @@ class MemoryUpkeep:
         return PERSON_CAP
 
     def _resolver(self) -> Callable[[str], bool]:
-        """Step 8's handle check: claim:<id> active, m<id> exists, <file>#L<n> (incl. memory/log/<date>.md#L<n>) has that line."""
+        """Step 8's handle check (memory-owner-only): claim:<id> must be active; m<id> must be one of the owner's own messages (not the
+        assistant's, a tool's or a hidden row); <file>#L<n> only for a memory file (is_memory_file), never an upload or a note, and only
+        when that line exists."""
+        owners = OwnerMessages(self.store)
+
         def resolve(handle: str) -> bool:
             h = str(handle)
             if h.startswith("claim:"):
                 return bool(self.store._all("SELECT 1 FROM memory_claims WHERE claim_id = ? AND status = 'active'", (h[6:],)))
             if m := re.fullmatch(r"m(\d+)", h):
-                return bool(self.store._all("SELECT 1 FROM messages WHERE id = ?", (int(m.group(1)),)))
+                return owners.is_owner(int(m.group(1)))
             path, sep, n = h.rpartition("#L")
-            if sep and n.isdigit() and path and ".." not in path:
+            if sep and n.isdigit() and is_memory_file(path):
                 text = self._read(path)
                 return text is not None and 1 <= int(n) <= len(text.splitlines())
             return False
         return resolve
+
+    def _owner_evidence(self, handle: str) -> bool:
+        """The owner's own words for new content (reconcile step 8): m<id> of one of the owner's messages, or an active claim the owner's
+        words made. A file line, a task or the assistant's text is never evidence of that kind."""
+        h = str(handle)
+        owners = OwnerMessages(self.store)
+        if m := re.fullmatch(r"m(\d+)", h):
+            return owners.is_owner(int(m.group(1)))
+        if h.startswith("claim:"):
+            rows = self.store._all("SELECT handle FROM memory_claims WHERE claim_id = ? AND status = 'active' AND speaker = 'user'", (h[6:],))
+            m = re.fullmatch(r"m(\d+)", str(rows[0]["handle"])) if rows else None
+            return bool(m) and owners.is_owner(int(m.group(1)))
+        return False
 
     def _claims_by_ids(self, ids: list[str]) -> list[Any]:
         from .memory_types import Claim
@@ -631,7 +661,7 @@ class MemoryUpkeep:
             pinned = pin(self.home, rel, window.as_of, self._cap_of(rel))
             try:
                 res = await reconcile_file(pinned, to_reconcile, related, "", model_call, resolve, log_append, home=self.home,
-                                           run_id=pass_id)
+                                           run_id=pass_id, owner_evidence=self._owner_evidence)
             except Exception as e:  # noqa: BLE001
                 failure = e
                 break

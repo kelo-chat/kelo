@@ -134,7 +134,7 @@ class Rig:
         self.say("user", "안녕", self.clock.t - 3 * 86400)   # the owner has written here once (nothing proactive runs before that)
 
     def say(self, role: str, text: str, at: float) -> int:
-        mid = self.store.add_message(role, text)
+        mid = self.store.add_message(role, text, author="owner" if role == "user" else "")   # the owner's own messages carry author owner
         self.store._run("UPDATE messages SET created_at = ? WHERE id = ?", (at, mid))
         return mid
 

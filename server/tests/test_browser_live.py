@@ -277,6 +277,7 @@ async def test_only_the_device_that_took_control_sends_input_and_handing_back_cl
         await hub.input("owner", "1", {"type": "tap", "x": 1, "y": 1})
     assert e.value.code == "not_controller"
     hub.take("owner", "1")
+    hub.connected("owner", "1", +1)              # a holder with a live connection keeps the tab against another device
     assert sess.controlled_by("owner") == "1" and hub.controller("owner") == "user"
     with pytest.raises(LiveError) as e:
         hub.take("owner", "2")
@@ -342,7 +343,7 @@ async def test_control_goes_back_to_the_agent_30_s_after_the_controller_disconne
     clock = Clock()
     sess, _ = make_session()
     hub = LiveHub(sess, clock, reaper=False)
-    hub.take("owner", "1")
+    hub.take("owner", "1", by="handover")   # a hand-over hold: the 30 s grace (a button hold never times out: test_owner_hold.py)
     hub.connected("owner", "1", +1)
     clock.t += 120
     await hub.reap()
@@ -538,7 +539,7 @@ async def test_long_poll_frames_and_rest_control(tmp_path):
         assert (await c.get("/api/browser/sessions/nope/frame", params={"wait": 0})).status_code == 404
         assert (await c.post("/api/browser/sessions/owner/input", json={"type": "tap", "x": 1, "y": 1})).status_code == 409
         assert (await c.post("/api/browser/sessions/owner/control", json={"take": True})).json() == \
-            {"id": "owner", "controller": "user", "controlled_by": "owner", "you_control": True}
+            {"id": "owner", "controller": "user", "controlled_by": "owner", "you_control": True, "hold": "button", "holder_away": True}
         r = await c.post("/api/browser/sessions/owner/input", json={"type": "tap", "x": 360, "y": 225})
         assert r.json()["x"] == 720.0 and r.json()["y"] == 450.0
         assert (await c.post("/api/browser/sessions/owner/input", json={"type": "tap"})).status_code == 422

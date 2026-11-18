@@ -50,7 +50,10 @@ PLATFORMS: dict[str, tuple[str, str, str]] = {
     "windows-msi": (".msi", "application/x-msi", "Windows (MSI)"),
     "windows-server-msi": (".msi", "application/x-msi", "Kelo server for Windows (MSI)"),   # not on the public download page: latest.json + the direct link only
     "mac": (".dmg", "application/x-apple-diskimage", "macOS"),
+    "mac-server-bundle": (".zip", "application/zip", "Kelo server for Mac (bundle)"),        # the same rules as windows-server-msi
 }
+# the Kelo server's installers: never the desktop app's rows, never on the public page, never in apps.json
+SERVER_PLATFORMS = frozenset({"windows-server-msi", "mac-server-bundle"})
 FILE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
 VERSION = re.compile(r"^[0-9][0-9A-Za-z.-]{0,39}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -254,7 +257,7 @@ def platform_for(platform: str, file: Path) -> str:
     if platform == "windows" and file.suffix.lower() == ".msi":
         platform = "windows-msi"
     if platform not in PLATFORMS:
-        raise PublishError(f"unknown platform {platform!r}: android, windows, windows-msi, windows-server-msi or mac")
+        raise PublishError(f"unknown platform {platform!r}: android, windows, windows-msi, windows-server-msi, mac or mac-server-bundle")
     if file.suffix.lower() != PLATFORMS[platform][0]:
         want = ".exe or .msi" if platform == "windows" else PLATFORMS[platform][0]
         raise PublishError(f"{file.name}: a {PLATFORMS[platform][2]} download must be a {want} file")
@@ -381,7 +384,7 @@ class Publisher:
         commit = (commit or "").strip().lower() or None
         if commit is not None and not COMMIT.fullmatch(commit):
             raise PublishError("--commit must be the full 40-character hex hash of the public source commit")
-        prefix = "kelo-server-" if platform == "windows-server-msi" else "kelo-"   # the server MSI never shares a file name with the desktop app
+        prefix = "kelo-server-" if platform in SERVER_PLATFORMS else "kelo-"   # the server installers never share a file name with the desktop app
         name = f"{prefix}{version}{f'-{code}' if code is not None else ''}{PLATFORMS[platform][0]}"
         size, sha = file.stat().st_size, sha256_of(file)
         cid = self.container()
@@ -422,7 +425,7 @@ class Publisher:
         written again. The row's size and sha256 are kept, and the file's real sha256 is re-checked first (it is copied out of the
         container with `docker cp`, which works whether or not the container runs)."""
         if platform not in PLATFORMS:
-            raise PublishError(f"unknown platform {platform!r}: android, windows, windows-msi, windows-server-msi or mac")
+            raise PublishError(f"unknown platform {platform!r}: android, windows, windows-msi, windows-server-msi, mac or mac-server-bundle")
         commit = (commit or "").strip().lower() or None
         if commit is not None and not COMMIT.fullmatch(commit):
             raise PublishError("--commit must be the full 40-character hex hash of the public source commit")
@@ -536,7 +539,7 @@ def run_publish(args: Any, root: Path | None = None, *, run: Callable[..., Any] 
     except PublishError as e:
         out(f"error: {e}")
         return 1
-    if args.platform != "windows-server-msi":          # the server's installer is not an app release: nothing to record in apps.json
+    if args.platform not in SERVER_PLATFORMS:          # the server's installer is not an app release: nothing to record in apps.json
         record_published(root, row, out)
     return 0
 

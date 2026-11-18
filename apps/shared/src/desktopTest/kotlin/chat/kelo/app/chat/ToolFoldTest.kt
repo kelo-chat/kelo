@@ -142,8 +142,8 @@ class ToolFoldTest {
         assertEquals(2, items.filterIsInstance<ChatItem.Browser>().size)
         items = run(TurnEvent.Browser("b4", "A", "u", "a.example", "s3", null, tab = "owner"), start = items + user("또 해줘"))
         val cards = items.filterIsInstance<ChatItem.Browser>()
-        assertEquals(3, cards.size)                                       // the next reply starts its own card
-        assertEquals("s2", cards[0].status)
+        assertEquals(2, cards.size)                                       // one card per tab in the whole list: the owner's card moves here
+        assertEquals("s3", cards.last().status)
     }
 
     @Test fun aPermissionCardForManyCarriesItsListAndAStepLimitFromANewServerShowsNoErrorBubble() {

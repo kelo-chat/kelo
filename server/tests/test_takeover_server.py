@@ -107,7 +107,7 @@ async def test_the_phone_view_is_given_back_when_the_owners_screen_goes_away():
     sess._view_cdp["owner"] = view_cdp
     hub = LiveHub(sess, clock, reaper=False)
     await watch(hub, cdps)
-    hub.take("owner", "d1")
+    hub.take("owner", "d1", by="handover")   # the grace time is for a hand-over hold (a button hold never times out)
     await hub.view("owner", "d1", {"width": 1080, "height": 2208, "density": 2.625})
     assert view_cdp.methods("Emulation.setDeviceMetricsOverride")[-1]["width"] == 411
     clock.t += live_mod.CONTROL_GRACE + 1
@@ -233,7 +233,7 @@ async def test_a_hand_back_by_timeout_says_so_and_approves_no_payment():
     sess.handback_listeners.append(lambda *a: told.append(a))
     hub = LiveHub(sess, clock, reaper=False)
     await watch(hub, cdps)
-    hub.take("owner", "d1")
+    hub.take("owner", "d1", by="handover")   # a hand-over hold: the grace time still applies to it
     token = browser_owner.set("owner")
     try:
         sess.allow_purchase("shop.example.com")
@@ -356,7 +356,7 @@ async def test_a_phone_hand_back_by_timeout_says_so_and_a_hand_back_with_nothing
     live.take("android", "d1")
     await live.give_back("android", "d1")
     assert live.take_note() == "" and told[-1][1] == ""
-    live.take("android", "d1")
+    live.take("android", "d1", by="handover")
     clock.now = 1.0
     live._seen["d1"] = 0.0
     clock.now = live_mod.CONTROL_GRACE + 5

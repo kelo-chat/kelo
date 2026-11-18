@@ -287,7 +287,7 @@ async def test_a_restart_keeps_the_transcript_marks_the_job_interrupted_and_resu
         req = seen[0]
         assert "first page read: 3 items" in json.dumps(tool_results(req), ensure_ascii=False)   # the history from before the restart
         last = req.messages[-1]["content"]
-        assert "server restarted" in last and "open https://shop.example.com/step2 again" in last
+        assert "server restarted" in last and "Open https://shop.example.com/step2 again" in last   # the pick-up note's tab line
 
 
 # ---------------------------------------------------------------------------------------------------------- limits

@@ -7,13 +7,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-CLAIM_KINDS = ("fact", "preference", "boundary", "event", "commitment", "correction", "person", "lesson", "observation")
+CLAIM_KINDS = ("fact", "preference", "boundary", "event", "commitment", "correction", "person", "lesson")
 SALIENCE = ("high", "medium", "low")
-SPEAKERS = ("user", "assistant", "tool", "background")
+SPEAKERS = ("user", "assistant", "tool", "background")   # parsed as given; only "user" is admitted (memory_claims.check_shape)
 EDIT_OPS = ("replace", "remove", "insert_after")
 EDIT_REASONS = ("promote", "correct", "deduplicate", "condense", "retire_expired", "demote_to_log", "reframe_completed",
                 "mark_undated", "mark_unresolved")
 HANDLE_FREE_REASONS = frozenset({"deduplicate", "condense", "retire_expired", "demote_to_log", "mark_undated"})
+CONTENT_REASONS = frozenset({"promote", "correct", "reframe_completed"})   # new words in a file: need the owner's own words as evidence
 LENSES = ("evidence", "temporal", "completeness", "preservation")
 MARK_UNDATED = "(as of an unknown date)"
 MARK_UNRESOLVED = "(unconfirmed, other sources disagree)"
@@ -22,36 +23,23 @@ LOG_DIR = "memory/log"
 
 @dataclass(slots=True)
 class Window:
+    """What one pass reads: only the owner's own messages (owner_messages.py), and the owner's inbox lines that name one of them.
+    Nothing a background job, a tool, a page, a mail or Kelo itself wrote is in it."""
     run_id: str
     as_of: str                       # ISO local time of the run clock in the owner's timezone
     since: float
-    messages: list[dict[str, Any]]   # {"id", "role", "text", "created_at"}
-    tasks: list[dict[str, Any]] = field(default_factory=list)
-    approvals: list[dict[str, Any]] = field(default_factory=list)
-    inbox: list[str] = field(default_factory=list)
+    messages: list[dict[str, Any]]   # the owner's messages: {"id", "role", "text", "created_at"}
+    inbox: list[str] = field(default_factory=list)   # the owner's inbox lines (`m<id>` quotes), newest first
     log_path: str = ""               # memory/log/YYYY-MM-DD.md
     has_new: bool = False
 
     def source(self, handle: str) -> tuple[str, str] | None:
-        """(role, text) of a handle inside this window: m<id>, task:<id>, approval:<id>, inbox:<sha8>; None when outside it.
-        Steps 4 (quote check) and 5 (fence) use it."""
-        import hashlib
-        kind, _, key = handle.partition(":")
+        """(role, text) of a handle inside this window: only m<id> of one of the owner's messages, role "user". None for anything
+        else (a task, an approval, an inbox line, a message outside the window). Steps 4 (quote check) and 5 (fence) use it."""
         if handle.startswith("m") and handle[1:].isdigit():
             for m in self.messages:
                 if str(m.get("id")) == handle[1:]:
-                    return str(m.get("role") or ""), str(m.get("text") or "")
-            return None
-        rows = {"task": self.tasks, "approval": self.approvals}.get(kind)
-        if rows is not None:
-            for r in rows:
-                if str(r.get("id")) == key:
-                    return "tool", str(r.get("text") or r.get("summary") or r.get("title") or "")
-            return None
-        if kind == "inbox":
-            for line in self.inbox:
-                if hashlib.sha256(line.encode()).hexdigest()[:8] == key:
-                    return "user", line
+                    return "user", str(m.get("text") or "")
         return None
 
 

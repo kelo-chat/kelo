@@ -118,8 +118,12 @@ async def test_a_full_relay_sizes_the_screen_drops_a_watchers_input_passes_a_hol
                 assert relay()[1] == POINTER and relay()[2] == KEY
                 await live.send(json.dumps({"type": "control", "take": False}))
                 await until_status(live, lambda st: st["you_control"] is False)
-                await ws.send(POINTER + UPDATE)                                  # given back: dropped again
-                await until(lambda: [m[0] for m in relay()] == [3, 5, 4, 3, 3])
+                await ws.send(POINTER + UPDATE)                                  # given back: the pointer is dropped again
+                # the press the owner left down is let go when the hold moves away: one button-up pointer and one key-up reach the screen
+                await until(lambda: len(relay()) == 7)
+                tail = relay()[4:]
+                assert sorted(m[0] for m in tail) == [3, 4, 5]
+                assert [m for m in tail if m[0] == 5][0][1] == 0 and [m for m in tail if m[0] == 4][0][1] == 0
             # nothing comes back to the viewer that it did not ask the server for: bytes from the screen arrive untouched
         await freed(s)   # the last viewer left: back to 1440 x 900
         assert s.fake.resizes == [(450, 800, 7, 1), (1440, 900, 7, 1)]

@@ -249,3 +249,10 @@ Shared vectors for the apps: `docs/security/approval-sign-vectors.json` (exact m
 - A payment answered with Allow needs `sig` from the calling device's key; a missing or bad signature is 403 and the card stays open.
 - A device without a key (older app) is allowed as before, unless the owner sets `require_signed_payments` (default off).
 - Denials and non-payment approvals are unchanged.
+
+## Voice input (docs/voice.md)
+
+The recording for speech to text is sent inside KE2E like every other call. The server holds it in memory for one recognition, hands
+the raw frames to the `voice` container over a Unix socket, and drops them; nothing is written to disk, the chat or the logs. The
+`voice` container has no network at all, no env file and a read-only root.
+

@@ -62,7 +62,7 @@ class KeloFilesViewModelTest {
     private var server: MyFakeServer? = null
 
     @Before fun main() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
-    @After fun stop() { server?.shutdown(); vms.clear(); Dispatchers.resetMain() }
+    @After fun stop() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
     @Test fun savePutsTheDraftToTheFilesPath() {
         var put = ""

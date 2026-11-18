@@ -30,7 +30,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..agent.fence import data as fenced
+from ..i18n import t
 from ..live_source import DEVICE_KEY
+from ..hold_asks import PHONE_WHERE
+from ..tools.holds import BUTTON, HANDOVER, Holds
+from ..tools.holds import HANDS_WAIT_SECONDS
 from ..tools.live import (
     CONTROL_GRACE, DEFAULT_FPS, DEFAULT_MAX_WIDTH, DEFAULT_QUALITY, MAX_FPS as BROWSER_MAX_FPS, MAX_TEXT, RECENT_FRAMES, VIEWER_TIMEOUT, Frame,
     LiveEnded,
@@ -47,8 +51,11 @@ EDITING_EVERY = 1.5            # while held, the screen is read for a focused te
 MAX_LINES = 8                  # lines in the summary of what the owner did
 TIMEOUT_NOTE = ("[The owner's control of the phone timed out (their screen went away), so it came back to you; they may not have finished "
                 "what they were doing.]")
-CONTROL_WAIT = 30.0            # an android_* step waits this long for the owner to hand the phone back
-OWNER_USING = "the owner is using the phone; try again in a moment"
+CONTROL_WAIT = HANDS_WAIT_SECONDS   # an android_* step waits this long for the owner to hand the phone back (tools/holds.py)
+PHONE_HELD_NOTE = ("[Not done: the owner took over the phone and has not handed it back for {minutes} minutes. Do not use android tools "
+                   "until they do: tell the user you will carry on when they hand the phone back, and stop here.]")
+PHONE_MOVED_NOTE = ("[Not done: the owner used the phone by hand before handing it back. Look at the screen again with android_look and "
+                    "decide the next step from what it shows now.]")
 MAX_ERRORS = 5                 # pictures that fail one after the other before the live view ends
 INPUT_TYPES = ("tap", "swipe", "text", "key")
 KEYS = {"back": "back", "home": "home", "enter": "enter", "recents": "recent", "recent": "recent"}
@@ -107,6 +114,11 @@ class DeviceLive:
         self.cast: DeviceCast | None = None
         self.listeners: list[Callable[[str], Any]] = []
         self._holder: str | None = None
+        self.holds = Holds(lambda: self.clock())   # the owner's hold on the phone: kind, touches (tools/holds.py); the clock is read per use
+
+        self.book: Any = None                     # hold_asks.HoldBook (set by server.py)
+        self.asker: Any = None                    # hold_asks.HoldAsker (set by server.py)
+        self._owner_moved = False                 # the owner used the phone by hand before handing it back (PHONE_MOVED_NOTE, once)
         self._conns: dict[str, int] = {}          # device -> live connections open
         self._seen: dict[str, float] = {}         # device -> last request
         self._handed_back = asyncio.Event()
@@ -315,7 +327,9 @@ class DeviceLive:
             if not cast.viewers:
                 await self._end(cast, notify=False)
                 cast = None
-        if self._holder is not None and not self._conns.get(self._holder) and now - self._seen.get(self._holder, now) > CONTROL_GRACE:
+        hold = self.holds.get(DEVICE_KEY) if self._holder is not None else None
+        if (self._holder is not None and hold is not None and hold.kind == HANDOVER and not self._conns.get(self._holder)
+                and now - self._seen.get(self._holder, now) > CONTROL_GRACE):   # only a hand-over hold has this grace (tools/holds.py)
             await self.give_back(DEVICE_KEY, self._holder, reason="timeout")
         if cast is None or cast.ended:
             return
@@ -342,15 +356,29 @@ class DeviceLive:
     def holder(self, key: str) -> str | None:
         return self._holder
 
-    def take(self, key: str, device: str) -> None:
+    def take(self, key: str, device: str, by: str = "button") -> None:
+        """The device takes the phone. `by` "handover": the app took it because Kelo asked (a hand-over hold); else the owner's own press.
+        A phone held by a device with no live connection moves to this one (the kind and the inputs stay)."""
         if not self.available(key):
             raise LiveError(404, "no_tab", "no such device")
+        kind = HANDOVER if by == "handover" else BUTTON
         if self._holder is not None and self._holder != device:
-            raise LiveError(409, "held", "another device is controlling the phone")
+            if self._conns.get(self._holder):
+                raise LiveError(409, "held", "another device is controlling the phone")
+            self.seen(key, device)
+            self._holder = device
+            self.holds.take(key, device, kind)
+            self._changed(DEVICE_KEY)
+            self._tell(device)
+            self._save()
+            return
         self.seen(key, device)
         if self._holder == device:
+            self.holds.take(key, device, kind)
+            self._save()
             return
         self._holder = device
+        self.holds.take(key, device, kind)
         self._handed_back.clear()
         self._journal.clear()
         self._took_at = self.clock()
@@ -359,6 +387,41 @@ class DeviceLive:
         self._ensure_runner()
         self._changed(DEVICE_KEY)
         self._tell(device)
+        self._save()
+
+    def _save(self) -> None:
+        hold = self.holds.get(DEVICE_KEY) if self._holder is not None else None
+        if self.book is not None and hold is not None and hold.kind == BUTTON:
+            self.book.save(DEVICE_KEY, hold)
+
+    def restore(self, device: str) -> None:
+        """After a restart: the owner's button hold on the phone is the owner's again (the phone itself is still there)."""
+        self._holder = device
+        self._handed_back.clear()
+        self.holds.take(DEVICE_KEY, device, BUTTON)
+        self._ensure_runner()
+        self._tell(device)
+
+    def button_hold(self) -> bool:
+        """The owner pressed 직접 조작 on the phone and has not handed it back (a hand-over's idle rule must not end it)."""
+        hold = self.holds.get(DEVICE_KEY) if self._holder is not None else None
+        return hold is not None and hold.kind == BUTTON
+
+    def hold_view(self, key: str, device: str) -> dict[str, Any]:
+        if self._holder is None:
+            return {"hold": "", "holder_away": False}
+        hold = self.holds.get(DEVICE_KEY)
+        return {"hold": hold.kind if hold is not None else BUTTON, "holder_away": not self._conns.get(self._holder)}
+
+    def where(self, key: str) -> str:
+        return t(PHONE_WHERE)
+
+    async def release(self, key: str, reason: str = "owner") -> bool:
+        """The owner's hand back whichever device holds the phone (the answer to the idle question)."""
+        if self._holder is None:
+            return False
+        await self.give_back(key, self._holder, reason=reason)
+        return True
 
     async def give_back(self, key: str, device: str, *, reason: str = "owner") -> None:
         """The owner hands the phone back (reason "owner") or its holder went away ("timeout"). What they did is written down for the
@@ -368,6 +431,13 @@ class DeviceLive:
         if self._holder != device:
             raise LiveError(409, "held", "another device is controlling the phone")
         entries, seconds = list(self._journal), self.clock() - self._took_at
+        hold = self.holds.drop(DEVICE_KEY)
+        if hold is not None and hold.inputs:
+            self._owner_moved = True
+        if self.book is not None:
+            self.book.forget(DEVICE_KEY)
+        if self.asker is not None:
+            self.asker.close(DEVICE_KEY)
         self._journal.clear()
         if self.cast is not None:
             self.cast.editing = False
@@ -391,6 +461,7 @@ class DeviceLive:
     def take_note(self) -> str:
         """What the owner did by hand since the agent last looked, once (the android tools put it in front of their next screen reading)."""
         note, self._note = self._note, ""
+        self._owner_moved = False
         return note
 
     async def _app_now(self) -> str:
@@ -447,14 +518,23 @@ class DeviceLive:
 
     async def hold_for_user(self, _args: dict[str, Any] | None = None) -> str | None:
         """An android_* tool's `hold`: wait while the owner has the phone (at most `control_wait`). None = go on, else the words the
-        agent gets instead of a result."""
+        agent gets instead of a result (the job pauses until the owner hands the phone back)."""
         if self._holder is None:
             return None
         try:
             await asyncio.wait_for(self._handed_back.wait(), self.control_wait)
         except asyncio.TimeoutError:
             pass
-        return None if self._holder is None else OWNER_USING
+        if self._holder is None:
+            return None
+        return PHONE_HELD_NOTE.format(minutes=max(1, round(self.control_wait / 60)))
+
+    async def hold_to_act(self, args: dict[str, Any] | None = None) -> str | None:
+        """The `hold` of the acting android steps: hold_for_user, then PHONE_MOVED_NOTE once when the owner changed the phone by hand."""
+        held = await self.hold_for_user(args)
+        if held:
+            return held
+        return PHONE_MOVED_NOTE if self._owner_moved else None
 
     # ------------------------------------------------------------------ input
     async def input(self, key: str, device: str, ev: dict[str, Any]) -> dict[str, Any]:
@@ -468,6 +548,9 @@ class DeviceLive:
         if self._holder != device:
             raise LiveError(409, "not_controller", "take control of the phone first")
         self.seen(key, device)
+        self.holds.touched(DEVICE_KEY, device)   # every accepted input is the owner's hands: the idle clock starts again
+        if self.asker is not None:
+            self.asker.close(DEVICE_KEY)
         self.last_input = self.clock()
         out: dict[str, Any] = {"ok": True, "type": kind}
 

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">Plakken vanaf deze computer</string>
+    <string name="desktop_live_copied">Gekopieerd naar deze computer</string>
+    <string name="desktop_live_type_hint">Klik op de pagina om er direct in te typen. Tekst die je met een invoermethode maakt (Koreaans, Japans, Chinees) gaat in de regel hieronder.</string>
+</resources>

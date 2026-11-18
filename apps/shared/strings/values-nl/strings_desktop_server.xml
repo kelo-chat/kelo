@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">Deze pc gebruiken als Kelo-server</string>
     <string name="desktop_server_row_hint">Installeert de Kelo-server op deze computer. Windows vraagt één keer om beheerdersrechten.</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">Bijwerken</string>
     <string name="desktop_server_install">Installeren</string>
     <string name="desktop_server_unavailable">De Kelo-server voor Windows is nog niet beschikbaar.</string>
+
+    <string name="desktop_server_row_mac">Deze Mac gebruiken als Kelo-server</string>
+    <string name="desktop_server_row_hint_mac">Installeert de Kelo-server op deze Mac. macOS vraagt één keer om het beheerderswachtwoord.</string>
+    <string name="desktop_server_installed_mac">De Kelo-server staat op deze Mac</string>
+    <string name="desktop_server_unavailable_mac">Kelo-server voor Mac is nog niet beschikbaar</string>
+    <string name="desktop_server_port_busy">Een ander programma op deze Mac gebruikt poort %1$d. Sluit het en probeer het opnieuw.</string>
+    <string name="desktop_server_downgrade">Er is al een nieuwere Kelo-server geïnstalleerd.</string>
+    <string name="desktop_server_remove">Verwijderen</string>
+    <string name="desktop_server_remove_title">Kelo-server van deze Mac verwijderen?</string>
+    <string name="desktop_server_remove_body">Chats, sleutels en bestanden blijven bewaard tenzij je ze wilt verwijderen.</string>
+    <string name="desktop_server_remove_data">Chats, sleutels en bestanden ook verwijderen</string>
+    <string name="desktop_server_removing">Verwijderen bezig</string>
+    <string name="desktop_server_removed">Verwijderd</string>
 </resources>

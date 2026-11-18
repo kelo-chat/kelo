@@ -83,7 +83,7 @@ interface LiveSource {
     fun start()
     fun stop(giveBack: Boolean)
     fun close()
-    suspend fun control(take: Boolean): LiveClient.ControlResult
+    suspend fun control(take: Boolean, handover: Boolean = false): LiveClient.ControlResult
     fun send(event: JsonObject)
     fun type(text: String)
     /** The live area's size while controlling (null when not): sent as `view` to a server that takes it. */
@@ -150,14 +150,15 @@ class LiveClient(
     override fun stop(giveBack: Boolean) {
         if (!running) return
         running = false
-        val held = _state.value.status.youControl
+        // only a hand-over hold goes back when the page is left; the owner's own button hold stays until they hand it back
+        val give = giveBack && LiveRules.giveBackOnLeave(_state.value.status)
         closeAll()
         val pollWasOn = machine.mode == LiveMode.POLLING
         scope.launch(kotlinx.coroutines.NonCancellable) {
-            if (giveBack && held) runCatching { api.post<JsonElement>("$path/control", LiveMessages.control(false)) }
+            if (give) runCatching { api.post<JsonElement>("$path/control", LiveMessages.control(false)) }
             if (pollWasOn) runCatching { api.delete<JsonElement>("$path/frame") }
         }
-        if (giveBack && held) _state.update { it.copy(status = it.status.copy(youControl = false, controller = "agent", controlledBy = null)) }
+        if (give) _state.update { it.copy(status = it.status.copy(youControl = false, controller = "agent", controlledBy = null)) }
     }
 
     /** The page went away for good. */
@@ -259,7 +260,11 @@ class LiveClient(
                 }
                 is LiveIn.Pointer -> _pointer.value = m.pointer
                 is LiveIn.Meta -> _meta.value = m.meta
-                is LiveIn.InputOk -> { _replies.tryEmit(m.reply); if (m.reply.busy) notifyTapBusy() }
+                is LiveIn.InputOk -> {
+                    _replies.tryEmit(m.reply)
+                    if (m.reply.busy) notifyTapBusy()
+                    if (m.reply.stale) _notices.tryEmit(Res.string.live_screen_changed)
+                }
                 is LiveIn.Ended -> { closed = true; scope.launch { if (mine()) run(machine.ended(m.reason)) } }
                 is LiveIn.Error -> onServerError(m.code)
                 else -> {}
@@ -418,10 +423,10 @@ class LiveClient(
         data class Failed(val detail: String) : ControlResult
     }
 
-    override suspend fun control(take: Boolean): ControlResult {
+    override suspend fun control(take: Boolean, handover: Boolean): ControlResult {
         _state.update { it.copy(controlBusy = true) }
         return try {
-            val o = api.post<JsonObject>("$path/control", LiveMessages.control(take))
+            val o = api.post<JsonObject>("$path/control", LiveMessages.control(take, handover))
             _state.update { it.copy(status = LiveMessages.controlAnswer(o, it.status)) }
             ControlResult.Ok
         } catch (e: ApiError) {

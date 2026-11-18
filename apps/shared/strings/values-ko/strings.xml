@@ -951,10 +951,14 @@
     <string name="live_held_elsewhere">다른 기기에서 조작하고 있어요</string>
     <string name="live_give_back">돌려주기</string>
     <string name="live_paused_banner">직접 조작하는 중이에요. 돌려줄 때까지 에이전트는 이 탭에서 기다려요.</string>
+    <string name="live_still_yours">아직 직접 조작 중이에요. 돌려주기를 누를 때까지 에이전트는 기다려요.</string>
+    <string name="live_screen_changed">화면이 바뀌었어요. 다시 눌러 주세요.</string>
     <string name="live_tab_closed">탭이 닫혀서 더는 볼 수 없어요. 마지막 화면이 남아 있으면 아래에 보여 드려요.</string>
     <string name="live_not_controller">지금은 조작할 수 없어요. 다시 직접 조작을 눌러 주세요.</string>
     <string name="live_input_failed">브라우저가 그 동작을 하지 못했어요.</string>
     <string name="live_state_you">내가 조작 중</string>
+    <string name="live_work_browser">작업용 브라우저</string>
+    <string name="live_work_browser_note">이 탭은 내 탭과 따로 도는 Kelo 작업용 브라우저에 있어요. 여기서 한 로그인은 작업이 끝나면 Kelo 기본 브라우저에도 저장돼요.</string>
     <string name="live_state_other">다른 기기가 조작 중</string>
     <string name="live_state_waiting">승인 기다리는 중</string>
     <string name="live_connecting">연결하는 중…</string>
@@ -1206,6 +1210,9 @@
     <string name="work_wait_answer">어떻게 할지 알려 주시면 이어서 해요.</string>
     <string name="work_wait_blocked">혼자서는 더 진행할 수 없어 멈췄어요.</string>
     <string name="work_wait_restart">서버가 다시 시작되면서 멈췄어요.</string>
+    <string name="work_picked_up">Kelo 서버가 다시 시작돼서 멈춘 곳부터 이어서 하고 있어요.</string>
+    <string name="work_picked_up_browser">브라우저가 다시 시작돼서 새 탭에서 이어서 하고 있어요.</string>
+    <string name="work_wait_pickup">곧 멈춘 곳부터 이어서 해요.</string>
     <string name="work_schedule_on">예약 켜짐</string>
     <string name="work_schedule_off">예약 꺼짐</string>
     <string name="work_schedule_by_agent">에이전트가 만듦</string>

@@ -927,10 +927,14 @@
     <string name="live_held_elsewhere">別の端末で操作中</string>
     <string name="live_give_back">操作を戻す</string>
     <string name="live_paused_banner">あなたが操作中です。操作を戻すまで、エージェントはこのタブで待機します。</string>
+    <string name="live_still_yours">まだ直接操作中です。返すまでエージェントは待っています。</string>
+    <string name="live_screen_changed">画面が変わりました。もう一度タップしてください。</string>
     <string name="live_tab_closed">タブが閉じられたため、これ以上表示できません。最後の画面が保存されていれば、下に表示されます。</string>
     <string name="live_not_controller">今は操作できません。もう一度「操作を代わる」をタップしてください。</string>
     <string name="live_input_failed">ブラウザでその操作ができませんでした。</string>
     <string name="live_state_you">あなたが操作中</string>
+    <string name="live_work_browser">作業用ブラウザ</string>
+    <string name="live_work_browser_note">このタブは、あなたのタブとは別の、Kelo の作業用ブラウザにあります。ここでサインインすると、作業が終わったときに Kelo の本体ブラウザにも保存されます。</string>
     <string name="live_state_other">別の端末が操作中</string>
     <string name="live_state_waiting">承認待ち</string>
     <string name="live_connecting">接続中…</string>
@@ -1176,6 +1180,9 @@
     <string name="work_wait_answer">どう進めるか教えてもらえたら続けます。</string>
     <string name="work_wait_blocked">自分ではこれ以上進めないため停止しました。</string>
     <string name="work_wait_restart">サーバーの再起動で停止しました。</string>
+    <string name="work_picked_up">Keloサーバーが再起動したため、止まった所から再開しました。</string>
+    <string name="work_picked_up_browser">ブラウザが再起動したため、新しいタブで続けています。</string>
+    <string name="work_wait_pickup">まもなく止まった所から再開します。</string>
     <string name="work_schedule_on">自動実行オン</string>
     <string name="work_schedule_off">自動実行オフ</string>
     <string name="work_schedule_by_agent">エージェントが作成</string>

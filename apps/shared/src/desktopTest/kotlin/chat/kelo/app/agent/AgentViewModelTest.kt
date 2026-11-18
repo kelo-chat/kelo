@@ -28,7 +28,6 @@ import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import java.time.LocalDate
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 /** The agent screen's calls against a local fake server (nothing reaches a real one). */
@@ -36,7 +35,7 @@ import javax.crypto.KeyGenerator
 class AgentViewModelTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<Pair<RecordedRequest, String>>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<Pair<RecordedRequest, String>>()
 
     private class MapStore : KeyValueStore {
         val map = HashMap<String, String>()
@@ -52,7 +51,7 @@ class AgentViewModelTest {
     @Volatile private var deleteGate: java.util.concurrent.CountDownLatch? = null
 
     /** The fake server's 보관한 예약 */
-    private val archived = Collections.synchronizedList(mutableListOf(
+    private val archived = java.util.concurrent.CopyOnWriteArrayList(listOf(
         """{"id":7,"name":"로또","prompt":"p","kind":"cron","cron":"0 12 * * 1","enabled":false}""",
         """{"id":8,"name":"산책","prompt":"p","kind":"cron","cron":"0 7 * * *","enabled":false}""",
     ))
@@ -275,7 +274,7 @@ class AgentViewModelTest {
 
     @Test fun refusalsBecomeMessages() {
         val vm = vm()
-        val got = Collections.synchronizedList(mutableListOf<AgentMessage>())
+        val got = java.util.concurrent.CopyOnWriteArrayList<AgentMessage>()
         @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
         val job = kotlinx.coroutines.GlobalScope.launch(Dispatchers.Unconfined) { vm.messages.collect { got += it } }
         vm.closeTab(BrowserTab("task:ab")) {}

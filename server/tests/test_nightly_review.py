@@ -39,7 +39,7 @@ def review(**kw):
     out = {"review": {"understanding": "그분은 짧은 답을 원해요.", "live": ["세금 서류 정리"], "mine": ["영수증 찾기"],
                       "went_well": "일정을 잘 옮겼어요.", "to_improve": "메일을 먼저 물어볼게요.", "first_move": "영수증부터 찾기"},
            "corrections_new": [], "corrections_seen_again": [], "corrections_resolved": [],
-           "working_together": {"boundaries": ["메일은 묻기 전에 보내지 않기"], "frictions": ["엉뚱한 파일을 열었어요"]}}
+           "working_together": {"boundaries": [{"line": "메일은 묻기 전에 보내지 않기", "quote": "영수증만 모아줘"}], "frictions": ["엉뚱한 파일을 열었어요"]}}
     out.update(kw)
     return json.dumps(out, ensure_ascii=False)
 
@@ -67,8 +67,10 @@ def setup(tmp_path, fn, now=ts(2026, 11, 8, 3, 55)):
     return store, home, NightlyReview(store, home, Activity(store, clock), fn, lambda: ("p", "m"), clock=clock, reflection=refl), clock
 
 
-def say(store, at, role, text):
-    store._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)", (role, text, at))
+def say(store, at, role, text, author=None):
+    """A message row; the owner's own user messages carry author 'owner' (pass author="" for a hidden row)."""
+    author = ("owner" if role == "user" else "") if author is None else author
+    store._run("INSERT INTO messages(role, content, created_at, author) VALUES(?,?,?,?)", (role, text, at, author))
 
 
 def two_turns(store):
@@ -217,7 +219,7 @@ async def test_the_routes_list_resolve_and_404(tmp_path):
         assert (await c.get("/api/corrections")).json() == {"items": []}
         store = Store(str(tmp_path / "a.db"))
         store.set_profile(timezone="Asia/Seoul")
-        store.add_message("user", "아니 그게 아니라 영수증만 모아줘")
+        store.add_message("user", "아니 그게 아니라 영수증만 모아줘", author="owner")
         out = (await c.post("/api/reviews/run")).json()
         assert out["status"] == "done" and out["added"] == 1
         got = (await c.get("/api/reviews?limit=5")).json()

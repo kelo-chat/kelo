@@ -299,3 +299,12 @@ def test_the_server_msi_row_has_its_own_signed_statement():
     assert statement("windows-server-msi", row) != statement("windows-msi", row)
     with pytest.raises(ValueError):
         statement("windows-server", row)
+
+
+def test_the_mac_server_bundle_row_has_its_own_signed_statement():
+    from assistant.release_sign import PLATFORM_KEYS, statement
+    row = {"file": "kelo-server-0.10.2.zip", "version": "0.10.2", "size": 1234, "sha256": "a" * 64}
+    text = statement("mac-server-bundle", row).decode()
+    assert text.splitlines()[1] == "platform=mac-server-bundle"
+    assert statement("mac-server-bundle", row) != statement("mac", row)
+    assert "mac-server-bundle" in PLATFORM_KEYS

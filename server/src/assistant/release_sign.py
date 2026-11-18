@@ -3,7 +3,7 @@
 The signed text (UTF-8, "\\n" line ends, one final "\\n"; identical in apps/shared/.../ReleaseSignature.kt):
 
     kelo-release-v1
-    platform=<android | windows | windows-msi | windows-server-msi | mac>
+    platform=<android | windows | windows-msi | windows-server-msi | mac | mac-server-bundle>
     file=<file>
     version=<version>
     version_code=<integer, or empty>
@@ -34,7 +34,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 from . import release_keys
 from .release_keys import RELEASE_KEYS
 
-PLATFORM_KEYS = ("android", "windows", "windows-msi", "windows-server-msi", "mac")
+PLATFORM_KEYS = ("android", "windows", "windows-msi", "windows-server-msi", "mac", "mac-server-bundle")
 DEFAULT_KEY_PATH = Path("~/.kelo-release/signing.key")
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")

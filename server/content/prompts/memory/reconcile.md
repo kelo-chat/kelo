@@ -32,6 +32,7 @@ Rules:
 - Line numbers must match the numbered snapshot.
 - Guard must match the first words of the line at `start`.
 - Reasons requiring evidence handles: `promote`, `correct`, `reframe_completed`, `mark_unresolved`.
+- New words in a file (a promote, a correct, a reframe, or any insert) must cite as evidence the user's own words: `claim:<id>` of a claim the user's message made, or `m<id>` of the user's own message. Never a line of a file, a task, an approval or the assistant's reply.
 - Reasons that may be handle-free: `deduplicate`, `condense`, `retire_expired`, `demote_to_log`, `mark_undated`.
 - promote: Only allowed into MEMORY.md, people pages (memory/people/*.md), or AGENTS.md. Never into user.md.
 - user.md: No new entries may be added. Existing section headings and field labels must be kept intact.

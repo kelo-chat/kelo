@@ -45,9 +45,42 @@ class KeyPreset:
     endpoint_field: str = ""                   # n8n: the field that holds the full MCP URL (the address is taken from it)
     sends: bool = False                        # posts to people (a messenger): a change through it is a "send" for the owner's limits (effects.py)
     route: str = ""                            # "wireguard" / "proxy": the VPN connectors (vpn.py): they set the route of Kelo's web browsing
+    situation: Any = None                      # the one read-only call that shows the service's state (situation_reads.py); None = none
 
 
 TOKEN = (Field("token", N_("API key / token")),)
+
+# Key presets with no situation read, each with the reason (situation.md). A test checks that every preset has a read or an entry here.
+NO_SITUATION: dict[str, str] = {
+    "actual_budget": "needs a sync id first; the budget is the owner's own entries, nothing that changes by the hour",
+    "asana": "needs a workspace id first (follow-up)",
+    "calendly": "its meetings are on the calendar",
+    "clickup_key": "needs a workspace or team id first (follow-up)",
+    "datadog": "the monitor state needs a check on a real account (follow-up)",
+    "discord": "Kelo's own chat channels, not a state of the owner's",
+    "figma": "files, no state that changes the owner's situation",
+    "grocy": "the date-filtered stock path could not be confirmed (follow-up)",
+    "immich": "saved photos, nothing that changes the situation by the hour",
+    "incident_io": "needs an id or a live check (follow-up)",
+    "karakeep": "saved items, nothing that changes the situation by the hour",
+    "linkwarden": "saved items, nothing that changes the situation by the hour",
+    "mealie": "the date-filtered meal-plan path could not be confirmed (follow-up)",
+    "monday": "needs a board id and a live check (follow-up)",
+    "n8n_mcp": "the MCP endpoint's tools are the server's (follow-up); the n8n executions are read by its own declaration",
+    "places": "a place lookup, no state",
+    "shopify": "the host is the owner's store; a binding for it is a follow-up",
+    "slack": "the right search query needs a check on a real workspace (follow-up)",
+    "stripe_key": "MCP, or needs a live check (follow-up)",
+    "tandoor": "the date-filtered meal-plan path could not be confirmed (follow-up)",
+    "telegram": "Kelo's own chat channels",
+    "ticketmaster": "event search, no state of the owner's",
+    "vpn_proxy": "a VPN connection, not a service the owner's situation depends on",
+    "vpn_wireguard": "a VPN connection, not a service the owner's situation depends on",
+    "wallabag": "saved items, nothing that changes the situation by the hour",
+    "wise": "needs a profile id first (follow-up)",
+    "zapier": "its runs are not reachable by one read-only call yet (follow-up)",
+    "zoom": "their meetings are on the calendar",
+}
 
 KEYS: dict[str, KeyPreset] = {p.id: p for p in [
     KeyPreset("asana", "Asana", "asana-api", ("app.asana.com",), {"type": "bearer_header"},

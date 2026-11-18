@@ -196,11 +196,12 @@ struct OpenBrowsersPage: View {
             if let data = model.browser.data {
                 if !data.available {
                     EmptyNote(L(R.string.agent_browser_none))
-                } else if data.items.isEmpty {
+                } else if data.items.filter(\.isBrowserTab).isEmpty {
                     EmptyNote(L(R.string.agent_browser_empty))
                 } else {
                     VStack(spacing: 0) {
-                        ForEach(Array(data.items.enumerated()), id: \.element.id) { i, t in
+                        // the Android device is not a browser: it has its own row in the work page, not here
+                        ForEach(Array(data.items.filter(\.isBrowserTab).enumerated()), id: \.element.id) { i, t in
                             if i > 0 { Hairline() }
                             TabRow(tab: t) { onOpenLive(t.id) }
                         }

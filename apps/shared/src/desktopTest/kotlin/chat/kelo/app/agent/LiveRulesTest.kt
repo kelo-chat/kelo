@@ -437,3 +437,72 @@ class LiveScreenGuardTest {
         assertFalse(src.contains("LocalSecureWindow"))
     }
 }
+
+/** The owner's hold (owner decision 2026-11-18): a button hold ends only by hand back; a hand-over hold (the app took the tab because
+ *  Kelo asked) gives back when the owner leaves the page. An older server says neither, so nothing is given back on leaving. */
+class OwnerHoldRulesTest {
+    private fun status(json: String): LiveStatus = (LiveMessages.parse(json) as LiveIn.Status).status
+
+    @Test fun aHandoverTakeSaysSoOnlyWhenTakingForAHandover() {
+        assertEquals("handover", LiveMessages.control(true, handover = true)["by"]?.jsonPrimitive?.content)
+        assertNull(LiveMessages.control(true)["by"])
+        assertNull(LiveMessages.control(false, handover = true)["by"])
+    }
+
+    @Test fun theControlAnswerCarriesTheHoldAndWhetherItsHolderIsAway() {
+        val before = LiveStatus()
+        val after = LiveMessages.controlAnswer(
+            kotlinx.serialization.json.Json.parseToJsonElement("""{"controller":"user","controlled_by":"owner","you_control":true,"hold":"button","holder_away":true}""").let { it as kotlinx.serialization.json.JsonObject },
+            before,
+        )
+        assertEquals("button", after.hold)
+        assertTrue(after.holderAway)
+        assertTrue(after.youControl)
+    }
+
+    @Test fun leavingGivesBackOnlyAHandoverHold() {
+        assertFalse(LiveRules.giveBackOnLeave(status("""{"type":"status","controller":"user","controlled_by":"owner","you_control":true,"hold":"button"}""")))
+        assertTrue(LiveRules.giveBackOnLeave(status("""{"type":"status","controller":"user","controlled_by":"owner","you_control":true,"hold":"handover"}""")))
+        assertFalse(LiveRules.giveBackOnLeave(status("""{"type":"status","controller":"user","controlled_by":"owner","you_control":true}""")))   // an older server
+        assertFalse(LiveRules.giveBackOnLeave(status("""{"type":"status","controller":"agent","you_control":false,"hold":"handover"}""")))
+    }
+
+    @Test fun theWsStatusCarriesTheHoldAndTheAway() {
+        val s = status("""{"type":"status","id":"owner","controller":"user","controlled_by":"owner","you_control":true,"hold":"handover","holder_away":false}""")
+        assertEquals("handover", s.hold)
+        assertFalse(s.holderAway)
+        assertTrue(s.handoverHold)
+    }
+
+    @Test fun aStaleInputAnswerIsDroppedAndSaysSo() {
+        val reply = (LiveMessages.parse("""{"type":"input_ok","input":"tap","ok":false,"busy":false,"stale":true}""") as LiveIn.InputOk).reply
+        assertTrue(reply.stale)
+        assertTrue(reply.notReached)
+        assertFalse((LiveMessages.parse("""{"type":"input_ok","input":"tap","ok":true}""") as LiveIn.InputOk).reply.stale)
+    }
+}
+
+/** Kelo's work browser (scheduled and background jobs) apart from the owner's own browser (server 2026-11-18). An older server says no browser: main. */
+class WorkBrowserTest {
+    private fun status(json: String): LiveStatus = (LiveMessages.parse(json) as LiveIn.Status).status
+    private fun tab(json: String): BrowserTab = chat.kelo.app.core.KeloApi.json.decodeFromString(BrowserTab.serializer(), json)
+
+    @Test fun aTabSaysWhichBrowserItRunsIn() {
+        assertTrue(tab("""{"id":"task:4","browser":"work"}""").inWorkBrowser)
+        assertFalse(tab("""{"id":"chat:1","browser":"main"}""").inWorkBrowser)
+        assertFalse(tab("""{"id":"chat:1"}""").inWorkBrowser)   // an older server
+    }
+
+    @Test fun aStatusSaysWhichBrowserItsTabIsIn() {
+        assertTrue(status("""{"type":"status","browser":"work"}""").inWorkBrowser)
+        assertFalse(status("""{"type":"status","browser":"main"}""").inWorkBrowser)
+        assertFalse(status("""{"type":"status"}""").inWorkBrowser)
+    }
+
+    @Test fun theWorkNoteShowsOnlyWhileTheOwnerHoldsAWorkTab() {
+        assertTrue(LiveRules.showWorkNote(status("""{"type":"status","controller":"user","controlled_by":"owner","you_control":true,"browser":"work"}""")))
+        assertFalse(LiveRules.showWorkNote(status("""{"type":"status","controller":"user","controlled_by":"owner","you_control":true,"browser":"main"}""")))
+        assertFalse(LiveRules.showWorkNote(status("""{"type":"status","controller":"agent","you_control":false,"browser":"work"}""")))
+        assertFalse(LiveRules.showWorkNote(status("""{"type":"status","controller":"user","controlled_by":"owner","you_control":true}""")))
+    }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">วางจากคอมพิวเตอร์เครื่องนี้</string>
+    <string name="desktop_live_copied">คัดลอกไปยังคอมพิวเตอร์เครื่องนี้แล้ว</string>
+    <string name="desktop_live_type_hint">แตะหน้าเว็บเพื่อพิมพ์ได้ทันที ข้อความที่ต้องใช้ตัวช่วยป้อนข้อความ (เกาหลี ญี่ปุ่น จีน) ให้พิมพ์ในช่องด้านล่าง</string>
+</resources>

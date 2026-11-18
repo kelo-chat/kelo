@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">डिज़ाइन की गई मेल</string>
+    <string name="mail_preview_open">बड़ा देखें</string>
+    <string name="mail_preview_loading">पूर्वावलोकन लोड हो रहा है…</string>
+    <string name="mail_preview_failed">पूर्वावलोकन लोड नहीं हो सका।</string>
+    <string name="mail_preview_gone">पूर्वावलोकन अब उपलब्ध नहीं है।</string>
+    <string name="mail_preview_too_big">पूर्वावलोकन बहुत बड़ा है, इसलिए दिखाया नहीं जा सकता।</string>
+    <string name="mail_preview_pictures_note">तस्वीरें तस्वीर के रूप में नहीं, लिंक के रूप में भेजी जाती हैं।</string>
+    <string name="mail_preview_link_title">यह पता खोलें?</string>
+    <string name="mail_preview_link_open">ब्राउज़र में खोलें</string>
+    <string name="mail_preview_simple_note">इस ऐप में डिज़ाइन सरल रूप में दिखाया जाता है।</string>
+    <string name="mail_preview_desc">डिज़ाइन की गई मेल का पूर्वावलोकन</string>
+</resources>

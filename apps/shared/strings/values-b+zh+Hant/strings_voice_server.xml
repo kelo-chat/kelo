@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">要把 %1$s 語音辨識模型下載到你的 Kelo 伺服器嗎？不下載的話，使用手機內建的語音辨識。</string>
+    <string name="voice_server_downloading">正在下載語音模型 · %1$d%%</string>
+    <string name="voice_server_ready">你的 Kelo 伺服器現在聽得懂你說話了。</string>
+    <string name="voice_server_download_failed">語音模型沒有下載完成。</string>
+    <string name="voice_server_no_room">Kelo 伺服器空間不足（需要 %1$s）。</string>
+    <string name="voice_retry">重試</string>
+    <string name="voice_transcribing">正在轉換成文字…</string>
+    <string name="voice_cancel_recording">取消錄音</string>
+    <string name="voice_stop_recording">結束錄音</string>
+    <string name="voice_ends_in">%1$d 秒後結束</string>
+    <string name="voice_server_offline">無法連線到 Kelo 伺服器，沒能轉換成文字。</string>
+    <string name="voice_server_busy">Kelo 伺服器正在處理另一段錄音，請稍後再試。</string>
+    <string name="voice_server_too_long">錄音太長了，請控制在 2 分鐘以內。</string>
+    <string name="voice_page_title">語音輸入</string>
+    <string name="voice_page_intro">你的聲音會在 Kelo 伺服器上轉換成文字，文字放進輸入框。不會自動傳送。</string>
+    <string name="voice_model_in_use">正在使用的語音模型</string>
+    <string name="voice_state_off">手機內建的語音辨識</string>
+    <string name="voice_change_model">更換模型</string>
+    <string name="voice_download_model">下載模型</string>
+    <string name="voice_remove_model">刪除模型</string>
+    <string name="voice_remove_confirm">刪除語音模型？之後將使用手機內建的語音辨識。</string>
+    <string name="voice_phone_note">Kelo 伺服器的語音模型暫不支援這種語言，所以使用手機內建的語音辨識。</string>
+    <string name="voice_model_size">大小 %1$s · 使用時記憶體 %2$s</string>
+    <string name="voice_runtime_missing">請再執行一次 Kelo 伺服器安裝程式以啟用此功能。</string>
+</resources>

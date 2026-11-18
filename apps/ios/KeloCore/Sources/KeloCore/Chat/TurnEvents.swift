@@ -16,6 +16,8 @@ public enum TurnEvent: Equatable, Sendable {
     case browser(BrowserShot)
     /// The Android device the reply is using (the phone card).
     case device(DeviceShot)
+    /// The chat shows a browser tab or the phone (`state` "open" or "closed", `reason` when closed): chat_views.py on the server.
+    case view(ViewShot)
     /// The user took over the tab this reply works in (`controller` "user") or handed it back ("agent").
     case browserControl(id: String, controller: String)
     /// A human check appeared in a tab; Kelo never solves it, the app offers the live view.
@@ -146,6 +148,8 @@ public enum TurnEvent: Equatable, Sendable {
         public var forgetPlan: String = ""
         /// The message this card sends, which the owner may fix before allowing it (a mail's body, a text); nil for any other card.
         public var editable: EditableMessage? = nil
+        /// A designed mail (server "mail"): where its sanitized preview is (GET …/mail-preview); nil for any other card.
+        public var mail: MailDesign? = nil
 
         public init(approvalId: String, name: String, detail: String? = nil, label: String = "",
                     payment: PaymentInfo? = nil, card: ApprovalCardInfo? = nil, canRememberSchedule: Bool = false,
@@ -154,9 +158,9 @@ public enum TurnEvent: Equatable, Sendable {
                     grant: TaskGrantAsk? = nil, urgent: Bool = false, missed: String = "", items: [String] = [], pin: PinAsk? = nil,
                     check: CheckInfo? = nil, site: String = "", canRemember: Bool = false,
                     issuedAt: Int64 = 0, signable: Bool = false, offers: [TrailOffer] = [], preapproval: PreapprovalAsk? = nil,
-                    forgetPlan: String = "", editable: EditableMessage? = nil) {
+                    forgetPlan: String = "", editable: EditableMessage? = nil, mail: MailDesign? = nil) {
             self.issuedAt = issuedAt; self.signable = signable; self.offers = offers
-            self.preapproval = preapproval; self.forgetPlan = forgetPlan; self.editable = editable
+            self.preapproval = preapproval; self.forgetPlan = forgetPlan; self.editable = editable; self.mail = mail
             self.approvalId = approvalId; self.name = name; self.detail = detail; self.label = label
             self.payment = payment; self.card = card; self.canRememberSchedule = canRememberSchedule
             self.lines = lines
@@ -194,11 +198,13 @@ public enum TurnEvent: Equatable, Sendable {
         public var width: Int, height: Int
         /// The tab the picture came from ("" = an older server: this phone's own tab).
         public var tab: String = ""
+        /// The server's time of the card (unix seconds); 0 = unknown.
+        public var at: Double = 0
 
         public init(id: String, title: String = "", host: String = "", status: String = "", image: String? = nil,
-                    width: Int = 0, height: Int = 0, tab: String = "") {
+                    width: Int = 0, height: Int = 0, tab: String = "", at: Double = 0) {
             self.id = id; self.title = title; self.host = host; self.status = status; self.image = image
-            self.width = width; self.height = height; self.tab = tab
+            self.width = width; self.height = height; self.tab = tab; self.at = at
         }
     }
 
@@ -206,9 +212,19 @@ public enum TurnEvent: Equatable, Sendable {
     public struct DeviceShot: Equatable, Sendable {
         public var id: String, key: String, status: String, image: String?
         public var width: Int, height: Int
+        public var at: Double = 0
 
-        public init(id: String, key: String = "android", status: String = "", image: String? = nil, width: Int = 0, height: Int = 0) {
-            self.id = id; self.key = key; self.status = status; self.image = image; self.width = width; self.height = height
+        public init(id: String, key: String = "android", status: String = "", image: String? = nil, width: Int = 0, height: Int = 0, at: Double = 0) {
+            self.id = id; self.key = key; self.status = status; self.image = image; self.width = width; self.height = height; self.at = at
+        }
+    }
+
+    /// The chat shows a browser tab or the phone: `key` the tab ("android" for the phone), `state` "open" | "closed", `reason` when closed.
+    public struct ViewShot: Equatable, Sendable {
+        public var key: String, state: String, ownerAsked: Bool, reason: String
+
+        public init(key: String, state: String, ownerAsked: Bool = false, reason: String = "") {
+            self.key = key; self.state = state; self.ownerAsked = ownerAsked; self.reason = reason
         }
     }
 
@@ -290,7 +306,7 @@ public enum TurnEvent: Equatable, Sendable {
                 offers: TrailOffer.parseList(o["trail"]), preapproval: PreapprovalAsk.parse(o["preapproval"]),
                 forgetPlan: ApprovalRequest.forgetPlanId(name: o.str("name"), arguments: obj("arguments")),
                 // a payment never has a fixable message (the server sends none)
-                editable: o["payment"]?.objectValue == nil ? EditableMessage.parse(o["editable"]) : nil))
+                editable: o["payment"]?.objectValue == nil ? EditableMessage.parse(o["editable"]) : nil, mail: MailDesign.parse(o["mail"])))
         case "payment_step":
             guard let step = PaymentStep.parse(e) else { return .unknown("payment_step") }
             return .paymentStep(step)
@@ -311,12 +327,15 @@ public enum TurnEvent: Equatable, Sendable {
             let image = o.str("image")
             return .browser(BrowserShot(id: o.str("id"), title: o.str("title"), host: o.str("host"), status: o.str("status"),
                                         image: image.hasPrefix("data:image/") ? image : nil, width: o.int("width"), height: o.int("height"),
-                                        tab: o.str("tab")))
+                                        tab: o.str("tab"), at: o.double("at")))
         case "device":
             let image = o.str("image")
             let key = o.str("key")
             return .device(DeviceShot(id: o.str("id"), key: key.isEmpty ? "android" : key, status: o.str("status"),
-                                      image: image.hasPrefix("data:image/") ? image : nil, width: o.int("width"), height: o.int("height")))
+                                      image: image.hasPrefix("data:image/") ? image : nil, width: o.int("width"), height: o.int("height"),
+                                      at: o.double("at")))
+        case "view":
+            return .view(ViewShot(key: o.str("key"), state: o.str("state"), ownerAsked: o.bool("owner_asked"), reason: o.str("reason")))
         case "browser_control":
             return .browserControl(id: o.str("id"), controller: o.str("controller"))
         case "browser_check":

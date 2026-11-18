@@ -174,8 +174,8 @@ MODELS = {
     "WatcherEvents": ("GET /api/watchers/{id}/events.", ["items:[WatcherEvent]"]),
     "DryRunAnswer": ("POST /api/watchers/{id}/dry-run.", ["result:DryRun?", "watcher:Watcher?"]),
     # ---- browser tabs ----------------------------------------------------------------------------------------------------------
-    "BrowserTab": ("One browser tab the agent keeps. kind: owner | device | schedule | task; status: working | idle | failed | ended.", [
-        "id:S!", "label:S", "kind:S", "title:S", "url:S", "host:S", "status:S=\"idle\"", "statusText:S", "lastActivity:D?",
+    "BrowserTab": ("One browser tab the agent keeps. kind: owner | device | schedule | task; status: working | idle | failed | ended; source: browser | device (\"\" from an older server).", [
+        "id:S!", "label:S", "kind:S", "title:S", "url:S", "host:S", "source:S=\"\"", "status:S=\"idle\"", "statusText:S", "lastActivity:D?",
         "taskId:L?", "controller:S=\"agent\"", "controlledBy:S?", "viewers:I", "thumbnail:S?", "thumbnailWidth:I",
         "thumbnailHeight:I", "endedAt:D?"]),
     "BrowserTabs": ("GET /api/browser/sessions?thumbnails=true.", ["available:B", "items:[BrowserTab]"]),

@@ -39,6 +39,8 @@ import chat.kelo.app.ui.components.MenuRow
 import chat.kelo.app.ui.components.SectionLabel
 import chat.kelo.app.ui.components.StaleHint
 import chat.kelo.app.ui.icons.KeloIcons
+import chat.kelo.app.voice.VoiceModel
+import chat.kelo.app.voice.voiceDownloadingLine
 import chat.kelo.app.ui.platform.LocalChromeHider
 import chat.kelo.app.ui.platform.LocalPageFrame
 import chat.kelo.app.ui.platform.headerHeight
@@ -82,6 +84,7 @@ private object MyView {
     const val WALLET = "wallet"
     const val OPERATOR = "operator"
     const val SERVER_UPDATE = "server_update"
+    const val VOICE = "voice"
     const val KEYGUARD = "keyguard"
 
     /** Sub pages a request may open by this name (the ones that need nothing but the name). */
@@ -163,8 +166,15 @@ fun MyScreen(profile: Profile, onProfile: (Profile) -> Unit, onSignedOut: () -> 
         NoticesModel(sessions) { NoticesRules.language(services.language.current, services.language.systemShownCode) }
     }
 
+    // 음성 입력: the speech model state on this server (the row on the home page and the page itself read it)
+    val voiceScope = rememberCoroutineScope()
+    val voiceModel = remember(sessions) {
+        VoiceModel({ sessions.api.value }, voiceScope) { NoticesRules.language(services.language.current, services.language.systemShownCode) }
+    }
+    val voiceView by voiceModel.view.collectAsStateWithLifecycle()
+
     // fresh numbers every time the home page is shown (see MyOverviewViewModel.refresh)
-    LaunchedEffect(view) { if (view == MyView.HOME) { vm.refresh(); androidVm.load(); notices.load(); hooks.onHomeShown() } }
+    LaunchedEffect(view) { if (view == MyView.HOME) { vm.refresh(); androidVm.load(); notices.load(); voiceModel.refresh(); hooks.onHomeShown() } }
 
     PushHost(
         state = stack,
@@ -186,6 +196,7 @@ fun MyScreen(profile: Profile, onProfile: (Profile) -> Unit, onSignedOut: () -> 
             MyView.WALLET -> WalletPage(back, onSeen = vm::walletSeen)
             MyView.VAULT -> VaultPage(back, onGoModel = { push(MyView.MODEL) }, noLock = vaultNoLock)
             MyView.RESOURCES -> ResourcesPage(back, onCleanup = { push(MyView.CLEANUP) })
+            MyView.VOICE -> VoicePage(voiceModel, back)
             MyView.CLEANUP -> CleanupPage(back)
             MyView.DOCUMENTS -> DocumentsPage(back)
             MyView.FILES -> KeloFilesPage(back)
@@ -214,7 +225,7 @@ fun MyScreen(profile: Profile, onProfile: (Profile) -> Unit, onSignedOut: () -> 
             else -> {
                 val extra = hooks.extraPages[shown.lastOrNull()]
                 if (extra != null) extra(back) else Box(Modifier.fillMaxSize()) {
-                    Home(profile, o, serverUi.status, androidUi.info, homeScroll, hooks, ::go, onSignedOut, vm, notices)
+                    Home(profile, o, serverUi.status, androidUi.info, homeScroll, hooks, ::go, onSignedOut, vm, notices, voiceView)
                     StaleHint(ui.offline, Modifier.align(Alignment.BottomCenter).padding(bottom = hooks.bottomInset() + 12.dp))
                 }
             }
@@ -235,6 +246,7 @@ internal object MyStack {
 private fun Home(
     profile: Profile, o: MyOverview, server: ServerUpdateStatus?, android: AndroidDeviceInfo?, scroll: ScrollState, hooks: MyScreenHooks,
     go: (String) -> Unit, onSignedOut: () -> Unit, vm: MyOverviewViewModel, notices: NoticesModel,
+    voiceView: chat.kelo.app.voice.VoiceView?,
 ) {
     val services = LocalAppServices.current
     val toaster = LocalToaster.current
@@ -247,7 +259,7 @@ private fun Home(
     val cleared = string(Res.string.my_clear_chat_done)
     val updates = services.appUpdates
     val update = updates?.state?.collectAsStateWithLifecycle()?.value
-    val sections = builtInSections(profile, o, server, android, update, go, hooks, onClearChat = { confirmClear = true }, onChangeAddress = { changeAddress = true }) + hooks.extraSections + nestSections()
+    val sections = builtInSections(profile, o, server, android, update, go, hooks, onClearChat = { confirmClear = true }, onChangeAddress = { changeAddress = true }, voice = voiceView) + hooks.extraSections + nestSections()
 
     val frame = LocalPageFrame.current   // a window: below the app's header, centred, at most this wide (the phone: whole screen)
     Box(Modifier.fillMaxSize().background(c.bg), contentAlignment = Alignment.TopCenter) {
@@ -324,6 +336,7 @@ private fun nestSections(): List<MySection> {
 private fun builtInSections(
     profile: Profile, o: MyOverview, server: ServerUpdateStatus?, android: AndroidDeviceInfo?, update: chat.kelo.app.update.UpdateState?,
     go: (String) -> Unit, hooks: MyScreenHooks, onClearChat: () -> Unit, onChangeAddress: () -> Unit = {},
+    voice: chat.kelo.app.voice.VoiceView? = null,
 ): List<MySection> {
     val services = LocalAppServices.current
     val c = Kelo.colors
@@ -366,6 +379,21 @@ private fun builtInSections(
     list += MySection("model", string(Res.string.my_section_model)) {
         row { MenuRow(KeloIcons.Chat, string(Res.string.model_title), { go(MyView.MODEL) }, value = profile.model.ifEmpty { null }?.let { chat.kelo.app.chat.ModelNames.display(it, null) } ?: string(if (profile.modelReady == false) Res.string.model_not_chosen else Res.string.model_sheet_server_default)) }
         row { MenuRow(KeloIcons.Pulse, string(Res.string.usage_title), { go(MyView.USAGE) }, value = usageSummary(o.usage, profile.model)) }
+    }
+    list += MySection("voice", string(Res.string.voice_page_title)) {
+        // the speech model on the Kelo server, or the phone's own recognizer
+        row {
+            val v = voice
+            val downloading = v?.state == "downloading"
+            val p = v?.progress
+            MenuRow(
+                KeloIcons.Mic, string(Res.string.voice_page_title), { go(MyView.VOICE) },
+                value = when {
+                    downloading -> voiceDownloadingLine(p?.done ?: 0, p?.total ?: 0)
+                    else -> v?.model?.name ?: string(Res.string.voice_state_off)
+                },
+            )
+        }
     }
     // a tab the owner's layout hides stays one tap away: 커넥터 has the row below already, the others get one of their own
     val hiddenTabRows = hooks.hiddenTabs.filter { it.id != chat.kelo.app.shell.Routes.CONNECTORS }.map { it to it.title.text() }

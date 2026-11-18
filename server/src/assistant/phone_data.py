@@ -55,6 +55,19 @@ from .store import Store
 
 SNAPSHOT_KINDS = ("contacts", "messages", "call_log", "health", "dialer")
 KINDS = (*SNAPSHOT_KINDS, "notifications")
+
+# What the hourly look reads of each phone item the owner shares (situation_reads.declared): data, one declaration per kind. An item
+# with no state of its own (contacts, the dialer) has none. "lines": the tool's list lines start with "- "; the freshness line does not,
+# so "last sync" text stays out of the fingerprint. Labels are translated when the pack is built.
+SITUATION: dict[str, dict[str, Any]] = {
+    "messages": {"tool": "phone_messages", "arguments": {"days": 1, "limit": 30}, "mode": "changes", "lines": "^- ", "max_rows": 30,
+                 "label": "Text messages"},
+    "call_log": {"tool": "phone_call_log", "arguments": {"days": 1, "limit": 20}, "mode": "changes", "lines": "^- ", "max_rows": 20,
+                 "label": "Calls"},
+    "notifications": {"tool": "phone_notifications", "arguments": {"hours": 3, "limit": 40}, "mode": "changes", "lines": "^- ",
+                      "max_rows": 40, "label": "Notifications"},
+    "health": {"tool": "phone_health", "arguments": {}, "mode": "state", "lines": "^- ", "max_rows": 20, "wakes": False, "label": "Health"},
+}
 PATHS = {"contacts": "contacts", "messages": "messages", "call-log": "call_log", "health": "health", "dialer": "dialer",
          "notifications": "notifications"}
 LIMITS = {"contacts": 10_000, "messages": 6000, "call_log": 5000, "health": 400}
@@ -359,6 +372,10 @@ class PhoneData:
         rows = {r["kind"]: r for r in self.store._all("SELECT kind, uploaded_at, count FROM phone_data WHERE owner = ?", (owner,))}
         return {"kinds": {k: {"shared": k in rows, "uploaded_at": rows[k]["uploaded_at"] if k in rows else None,
                               "count": rows[k]["count"] if k in rows else 0} for k in KINDS}}
+
+    def shared_kinds(self) -> set[str]:
+        """The kinds any phone shares now (the owner's switches): situation_reads reads only these."""
+        return {r["kind"] for r in self.store._all("SELECT DISTINCT kind FROM phone_data")}
 
     # ---- tasks for the phone (after an approval)
     def sender(self) -> dict[str, Any] | None:
@@ -978,3 +995,17 @@ def phone_calendar_write_tools(data: PhoneData, cals: Any, timezone_name: Callab
              {"type": "object", "properties": {"event_id": {"type": "integer", "description": "from phone_calendar_events"}}, "required": ["event_id"]},
              phone_calendar_delete, requires_approval=True, describe=describe_delete, validate=check_delete, approval_extra=delete_lines),
     ]
+
+
+def declared_items(kinds_on: Any) -> list[Any]:
+    """The phone items the owner shares, as situation_reads.Declared (sid "phone/<kind>"), in kind order."""
+    from .situation_reads import Declared, read_of   # lazy: situation_reads reads the connectors' definitions
+    out = []
+    for kind in sorted(SITUATION):
+        if kind not in set(kinds_on):
+            continue
+        raw = SITUATION[kind]
+        read = read_of(raw, where=f"phone/{kind}")
+        if read is not None:
+            out.append(Declared(sid=f"phone/{kind}", name_key="phone", label=read.label, item="", read=read, kind="phone"))
+    return out

@@ -20,16 +20,21 @@ internal class ChatHistory(private val host: ChatHost, private val sync: ChatSyn
      * Loads the newest page. [afterReply]: a reply just ended; its rows are on screen (text, tool chips, pictures) and each message
      * is swapped for its stored version in place ([mergeStored]): the tidier stored text, the answer buttons and cards, the stored
      * pictures; the rest of the list (chips, cards of the turn, scroll position) stays as it is.
+     * [keepRows]: the news check while the newest page is on screen; the rows that are not messages (browser and phone cards, chips,
+     * approvals) stay where they are ([refreshNewest]). Without a shown message on the page it is a full load.
      */
-    suspend fun reloadNow(afterReply: Boolean = false) {
+    suspend fun reloadNow(afterReply: Boolean = false, keepRows: Boolean = false) {
         val api = host.api()
         val ms = api.get<List<StoredMessage>>("/api/messages?limit=${ChatViewModel.PAGE}")
         host.sessions.keep(api, Caches.MESSAGES, ms)
         if (host.state.value.busy) return   // a reply started meanwhile: its own items are on screen
         lastId = ms.lastOrNull()?.id ?: 0
+        syncViews(api)
         // the same rows (same keys) as the kept ones: the list updates in place, nothing jumps
-        host.state.update { it.copy(items = if (afterReply) mergeStored(it.items, ms.map(::toChatItem)) else ms.map(::toChatItem),
-            loaded = true, hasOlder = if (afterReply) it.hasOlder else ms.size >= ChatViewModel.PAGE, offline = false,
+        host.state.update {
+            val kept = if (keepRows) refreshNewest(it.items, ms.map(::toChatItem)) else null
+            it.copy(items = withViews(kept ?: if (afterReply) mergeStored(it.items, ms.map(::toChatItem)) else ms.map(::toChatItem)),
+            loaded = true, hasOlder = if (afterReply || kept != null) it.hasOlder else ms.size >= ChatViewModel.PAGE, offline = false,
             hasNewer = if (afterReply) it.hasNewer else false,
             secrets = chat.kelo.app.chat.vault.SecretRules.settled(it.secrets)) }
         sync.loadFollowupsNow()
@@ -38,6 +43,31 @@ internal class ChatHistory(private val host: ChatHost, private val sync: ChatSyn
     }
 
     private fun mergeStored(shown: List<ChatItem>, stored: List<ChatItem>): List<ChatItem> = mergeStoredRows(shown, stored)
+
+    /** The server's views (the browser tabs and the phone the chat shows, GET /api/chat/views): fetched when they changed since [viewsVersion]. */
+    private var viewsVersion = -1L
+    private var views: List<ChatViewItem>? = null   // null: nothing fetched yet, or an older server without the route
+    private var viewsAt = 0.0
+
+    /** Fetches the views; true when they changed. An older server (no such route) leaves the cards as they are. */
+    private suspend fun syncViews(api: chat.kelo.app.core.KeloApi): Boolean {
+        return try {
+            val a = api.get<ChatViewsAnswer>("/api/chat/views?since=$viewsVersion")
+            viewsAt = a.at
+            if (a.unchanged) return false
+            views = a.items
+            viewsVersion = a.version
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** The rows with the server's views applied (see [applyViews]); the rows as they are while nothing was fetched. */
+    private fun withViews(items: List<ChatItem>, insert: Boolean = true): List<ChatItem> =
+        views?.let { applyViews(items, it, viewsAt, insert) } ?: items
 
     /** Runs a refresh; a server that cannot be reached leaves what is shown and only marks it as possibly old. */
     private suspend fun refreshing(block: suspend () -> Unit) {
@@ -135,10 +165,14 @@ internal class ChatHistory(private val host: ChatHost, private val sync: ChatSyn
     suspend fun checkForNews() {
         if (host.state.value.busy || host.state.value.hasNewer) return   // a search window stays; its end loads what is newer
         refreshing {
-            val ms = host.api().get<List<StoredMessage>>("/api/messages?limit=1")
+            val api = host.api()
+            val viewsChanged = syncViews(api)
+            val ms = api.get<List<StoredMessage>>("/api/messages?limit=1")
             if ((ms.lastOrNull()?.id ?: 0) != lastId && !host.state.value.busy) {
                 host.stir()   // a new message came in: the character wakes up
-                reloadNow()
+                reloadNow(keepRows = true)   // the cards of the replies on screen stay (a message stored after a reply is no reason to drop them)
+            } else if (viewsChanged && !host.state.value.busy) {
+                host.state.update { it.copy(items = withViews(it.items)) }   // a tab or the phone was shown or closed on the server
             }
         }
     }
@@ -160,6 +194,20 @@ internal class ChatHistory(private val host: ChatHost, private val sync: ChatSyn
 internal fun toChatItem(m: StoredMessage) =
     ChatItem.Msg("m${m.id}", mine = m.role == "user", text = m.content, id = m.id, replies = m.replies, at = (m.createdAt * 1000).toLong(),
         reaction = m.reaction, briefing = m.briefing, comparison = m.comparison, images = m.images, files = m.attachments, autoText = m.autoText)
+
+/**
+ * The rows after the newest page was loaded again while it was on screen (the news check). The shown rows are matched to the stored
+ * messages ([mergeStoredRows]): rows that are not messages (browser and phone cards, chips, approvals) stay where they are, and a
+ * message stored after the reply is appended. A shown message that the page no longer has, inside the page's id range, is dropped
+ * (deleted on the server). Null when no shown message is on the page: then the page replaces the list.
+ */
+internal fun refreshNewest(shown: List<ChatItem>, stored: List<ChatItem>): List<ChatItem>? {
+    val storedIds = stored.filterIsInstance<ChatItem.Msg>().mapNotNullTo(HashSet()) { it.id }
+    if (shown.none { it is ChatItem.Msg && it.id != null && it.id in storedIds }) return null
+    val merged = mergeStoredRows(shown, stored)
+    val oldest = storedIds.minOrNull() ?: return merged
+    return merged.filter { it !is ChatItem.Msg || it.id == null || it.id in storedIds || it.id < oldest }
+}
 
 /**
  * The shown rows after a reply, matched to the stored messages (the shown row's key stays, so the list updates the row in place).

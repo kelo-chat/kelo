@@ -22,7 +22,7 @@ class NestMadeHereTest {
     private var server: MyFakeServer? = null
 
     @BeforeTest fun main() { Dispatchers.setMain(Dispatchers.Default) }
-    @AfterTest fun reset() { server?.shutdown(); vms.clear(); Dispatchers.resetMain() }
+    @AfterTest fun reset() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
     private val drafts = """{"items":[
         {"id":"old-one","kind":"skill","name":"Old one","version":"0.0.2","updated_at":100.0,"shared":null},

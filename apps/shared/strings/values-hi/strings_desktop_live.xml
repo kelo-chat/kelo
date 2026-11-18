@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">इस कंप्यूटर से चिपकाएँ</string>
+    <string name="desktop_live_copied">इस कंप्यूटर पर कॉपी किया गया</string>
+    <string name="desktop_live_type_hint">सीधे लिखने के लिए पेज पर क्लिक करें। इनपुट मेथड से लिखा जाने वाला टेक्स्ट (कोरियाई, जापानी, चीनी) नीचे वाली लाइन में लिखें।</string>
+</resources>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">Message mis en forme</string>
+    <string name="mail_preview_open">Voir en grand</string>
+    <string name="mail_preview_loading">Chargement de l\'aperçu…</string>
+    <string name="mail_preview_failed">Impossible de charger l\'aperçu.</string>
+    <string name="mail_preview_gone">L\'aperçu n\'est plus disponible.</string>
+    <string name="mail_preview_too_big">L\'aperçu est trop volumineux pour être affiché.</string>
+    <string name="mail_preview_pictures_note">Les images sont envoyées sous forme de liens, pas comme images.</string>
+    <string name="mail_preview_link_title">Ouvrir cette adresse ?</string>
+    <string name="mail_preview_link_open">Ouvrir dans le navigateur</string>
+    <string name="mail_preview_simple_note">Cette application affiche la mise en forme de façon simple.</string>
+    <string name="mail_preview_desc">Aperçu du message mis en forme</string>
+</resources>

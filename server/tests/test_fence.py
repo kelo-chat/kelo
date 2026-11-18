@@ -155,7 +155,7 @@ FENCED = {"browser_open", "browser_read", "browser_view", "browser_human_check",
           "phone_notifications", "phone_health", "browser_fill_shipping", "package_entries",
           "checkout_submit", "payment_step_wait", "browser_type_payment_pin", "browser_pin_keypad_card", "places_near"}
 MARKS = {"confirm_purchase": "tools/purchase.py", "purchase_result": "tools/purchase.py"}
-OWN = {"kelo_help", "read_earlier_messages", "checkout_review","order_preapprove", "action_result", "storage_cleanup", "storage_cleanup_list", "add_service_key", "save_found_secret", "await_reply", "browser_fill_card", "browser_private", "browser_save_download", "browser_save_pdf",
+OWN = {"chat_view", "kelo_help", "read_earlier_messages", "checkout_review","order_preapprove", "action_result", "storage_cleanup", "storage_cleanup_list", "add_service_key", "save_found_secret", "await_reply", "browser_fill_card", "browser_private", "browser_save_download", "browser_save_pdf",
        "browser_site_state", "browser_forget_site", "connect_service", "delegate", "email_send", "email_update", "find_tools", "followup_cancel", "followup_snooze",
        "gcal_create_event", "gcal_delete_event", "gcal_update_event", "generate_image", "goal_add_document", "goal_get",
        "goal_link_schedule", "goal_log", "goal_metric_add", "goal_plan", "goal_set_facts", "goal_step_done", "goal_suggest",

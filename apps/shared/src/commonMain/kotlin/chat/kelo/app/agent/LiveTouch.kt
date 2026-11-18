@@ -30,15 +30,18 @@ data class InputReply(
     val busy: Boolean = false,
     /** "frame" = mapped with the frame the owner saw, "latest" = that frame was not known any more; "" = an older server. */
     val mappedWith: String = "",
+    /** Dropped: the tap was aimed at a picture from before the agent's stopped step's last move (tap again on the new picture). */
+    val stale: Boolean = false,
 ) {
-    /** The input did not reach the page / phone: dropped as busy, or refused. */
-    val notReached: Boolean get() = busy || ok == false
+    /** The input did not reach the page / phone: dropped as busy, stale, or refused. */
+    val notReached: Boolean get() = busy || stale || ok == false
 
     companion object {
         fun of(o: JsonObject): InputReply {
             fun s(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull.orEmpty()
             fun f(k: String) = (o[k] as? JsonPrimitive)?.doubleOrNull?.toFloat()
-            return InputReply(s("input"), (o["ok"] as? JsonPrimitive)?.booleanOrNull, f("x"), f("y"), (o["busy"] as? JsonPrimitive)?.booleanOrNull == true, s("mapped_with"))
+            return InputReply(s("input"), (o["ok"] as? JsonPrimitive)?.booleanOrNull, f("x"), f("y"), (o["busy"] as? JsonPrimitive)?.booleanOrNull == true, s("mapped_with"),
+                stale = (o["stale"] as? JsonPrimitive)?.booleanOrNull == true)
         }
     }
 }
@@ -89,6 +92,12 @@ object TouchRules {
 
 object EditingRule {
     fun raise(before: Boolean, now: Boolean): Boolean = now && !before
+
+    /**
+     * Whether a field that took focus on the page moves the focus to the type line. On the desktop with the VNC screen showing, the keys go
+     * to the screen itself (the owner clicks into the page), so the focus stays there: the type line is only for composed text (see the hint).
+     */
+    fun focusTypeLine(before: Boolean, now: Boolean, keysGoToScreen: Boolean): Boolean = raise(before, now) && !keysGoToScreen
 }
 
 /** What the touch machine asks for. Points are in view pixels. */

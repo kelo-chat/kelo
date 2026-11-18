@@ -396,7 +396,7 @@ def test_a_copy_without_a_browser_starts_its_kelo_tunnel(tmp_path):
     m.create("alice", browser=False)
     connect.kelo_connect(m, m.load("alice"), post=Broker())
     m.start("alice", build_if_missing=False)
-    assert [c for c in run.calls if "up" in c][-1][-5:] == ["--no-deps", "server", "kelo-tunnel", "workroom", "vpn"]
+    assert [c for c in run.calls if "up" in c][-1][-6:] == ["--no-deps", "server", "kelo-tunnel", "workroom", "vpn", "voice"]
 
 
 def test_the_real_command_line_knows_the_new_ways(tmp_path, monkeypatch, capsys):

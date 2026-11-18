@@ -368,7 +368,8 @@ def _tap_point(args: dict[str, Any]) -> dict[str, Any] | None:
 def android_tools(client: DeviceClient, reader: ScreenReader | None = None, *, grants: Any = None, orders: Any = None,
                   approve_actions: bool = False, session: AndroidSession | None = None, handover: PhoneHandover | None = None,
                   card: DeviceCard | None = None, hold: Callable[[dict[str, Any]], Awaitable[str | None]] | None = None,
-                  notes: Callable[[], str] | None = None, phone_use: PhoneUse | None = None) -> list[Tool]:
+                  notes: Callable[[], str] | None = None, phone_use: PhoneUse | None = None,
+                  hold_act: Callable[[dict[str, Any]], Awaitable[str | None]] | None = None) -> list[Tool]:
     """`grants`: the permissions the owner gave for one task (tools/task_permission.TaskGrants). `orders` is accepted for the day a
     phone app's order is covered like a site's (the browser's order path); not used yet. `approve_actions`: every tap and typing step
     asks (the owner's ASSISTANT_APPROVE_BROWSER_ACTIONS). `handover`: gives the phone's live view to the owner (android_show); None = no
@@ -378,15 +379,17 @@ def android_tools(client: DeviceClient, reader: ScreenReader | None = None, *, g
     `phone_use`: one approval card per task before the first phone step (PhoneUse); None = no such gate."""
     s = session or AndroidSession(client, reader)
     pending: list[str] = []
-    plain_hold = hold
+    def with_notes(plain: Any) -> Any:
+        async def held_step(args: dict[str, Any]) -> str | None:   # the hold that also takes the owner's note when the phone is free again
+            held = await plain(args) if plain is not None else None
+            if held is None and notes is not None and (note := notes()):
+                pending.append(note)
+                s.forget()
+            return held
+        return held_step
 
-    async def held_step(args: dict[str, Any]) -> str | None:   # the hold that also takes the owner's note when the phone is free again
-        held = await plain_hold(args) if plain_hold is not None else None
-        if held is None and notes is not None and (note := notes()):
-            pending.append(note)
-            s.forget()
-        return held
-    hold = held_step if (plain_hold is not None or notes is not None) else None
+    hold = with_notes(hold) if (hold is not None or notes is not None) else None
+    acting = with_notes(hold_act) if hold_act is not None else hold   # the steps that act on the phone (hold_act: the moved-note too)
 
     async def shown(head: str, image: bool = False) -> ToolOutput | Ours:
         try:
@@ -640,23 +643,23 @@ def android_tools(client: DeviceClient, reader: ScreenReader | None = None, *, g
              "after. A tap that commits something in the user's name (pays, sends, deletes, signs up) shows them a card first.",
              obj({"ref": {"type": "string", "description": "a ref from your last look, e.g. a3"}, **xy}, []),
              tap, requires_approval=True, untrusted=True, source="page", validate=lambda a: refuse(a),
-             auto_approve=decider("android_tap"), describe=describe_tap, hold=hold,
+             auto_approve=decider("android_tap"), describe=describe_tap, hold=acting,
              approval_extra=tap_extra),
         Tool("android_type", "Type text into a field of the phone app (the field at ref, or the one in focus). Returns the screen after. "
              "Personal details show the user a card first; a message or a review does not (its send button does).",
              obj({"ref": {"type": "string", "description": "the field's ref from your last look"}, "text": {"type": "string"},
                   "submit": {"type": "boolean", "description": "press Enter after"}}, ["text"]),
              type_, requires_approval=True, untrusted=True, source="page", validate=lambda a: refuse(a, typing=True),
-             auto_approve=decider("android_type"), describe=describe_type, hold=hold),
+             auto_approve=decider("android_type"), describe=describe_type, hold=acting),
         Tool("android_swipe", "Scroll or swipe the phone app's screen: a direction (down shows what is further down), or the "
              "coordinates of a swipe. Returns the screen after.",
              obj({"direction": {"type": "string", "enum": list(DIRECTIONS)}, "x1": {"type": "integer"}, "y1": {"type": "integer"},
                   "x2": {"type": "integer"}, "y2": {"type": "integer"}}, []),
-             swipe, requires_approval=True, auto_approve=swipe_ok, describe=describe_swipe, untrusted=True, source="page", hold=hold,
+             swipe, requires_approval=True, auto_approve=swipe_ok, describe=describe_swipe, untrusted=True, source="page", hold=acting,
              approval_extra=swipe_extra),
         Tool("android_key", "Press a key on the phone app's device: back, home, enter, recent, delete or tab. Returns the screen after.",
              obj({"key": {"type": "string", "enum": list(KEYS)}}, ["key"]), key, requires_approval=True, auto_approve=key_ok,
-             describe=describe_key, untrusted=True, source="page", hold=hold, approval_extra=key_extra),
+             describe=describe_key, untrusted=True, source="page", hold=acting, approval_extra=key_extra),
         Tool("android_open", "Open an app on the phone app's device by its package name or its name. Returns the screen after.",
              obj({"app": {"type": "string", "description": "package (com.example.app) or the app's name"}}, ["app"]),
              open_, requires_approval=True, auto_approve=open_ok, describe=describe_open, untrusted=True, source="page", hold=hold),

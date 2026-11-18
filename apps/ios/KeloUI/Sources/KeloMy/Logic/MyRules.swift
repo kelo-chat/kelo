@@ -241,6 +241,8 @@ public enum DigestRules {
 /// The My page's sub page stack and how a request from elsewhere maps to it.
 public enum MyRoute: Hashable, Sendable {
     case profile, agent, permissions, records, notify, model, usage, devices, vault(noLock: Bool), resources, documents, privacy, forget, data, files, actions, androidDevice, nest
+    /// 마이 → 음성 입력 (the speech model on the Kelo server)
+    case voice
     /// 마이 → 모델 showing one CLI's box first (a newer-CLI notice; the provider id)
     case modelCli(String)
     case language, wallet, `operator`
@@ -251,6 +253,8 @@ public enum MyRoute: Hashable, Sendable {
     case vaultItem(String), vaultAi(String), vaultAddLogin, vaultLog
     /// 마이 → 알림 → the items Kelo keeps for a later message (read-only)
     case proactiveHeld
+    /// 마이 → 알림 → What Kelo looked at (the passes), and one pass's detail
+    case situation, situationPass(Int)
     case document(String)
     /// 마이 → 보안 → Keyguard (`code`: opened at the recovery code)
     case keyguard(code: Bool)

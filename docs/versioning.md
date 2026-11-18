@@ -37,7 +37,8 @@ git commit -am "Release 0.9.1"                   # version.json, pyproject.toml,
 git tag -a v0.9.1 -m "Kelo 0.9.1 (build 2)"      # bump.py prints this line; it never tags, commits or pushes
 ```
 
-`bump.py` writes `version.json`, the version in `pyproject.toml` and the project's own entry in `uv.lock`, and turns the
+`bump.py` writes `version.json`, the version in `pyproject.toml` and the project's own entry in `uv.lock`, the iPhone's
+`KeloVersion.swift` (rendered by `apps/ios/tools/gen_version.py`, so the release commit carries it too), and turns the
 CHANGELOG's `## Unreleased` into `## 0.9.1 (build 2, <date>)` under a new empty `## Unreleased`. The release image workflow
 (`.github/workflows/release-images.yml`) runs `bump.py --check-tag <tag>` and stops when the tag and `version.json` disagree
 (`v0.9.1-beta.1`, the beta channel, is release 0.9.1).

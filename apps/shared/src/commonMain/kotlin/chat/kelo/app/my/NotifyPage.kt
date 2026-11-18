@@ -109,6 +109,8 @@ data class ProactiveSettings(
     @SerialName("daily_deliveries") val dailyDeliveries: Int? = null,
     @SerialName("today_deliveries") val todayDeliveries: Int? = null,
     val held: Int? = null,
+    /** The hourly situation look is on ("research", GET /api/proactive); the "What Kelo looked at" row needs it. */
+    val research: Boolean = false,
 ) {
     /** The hours part, for [ContactHoursRules]. */
     fun hours(): ContactHours = ContactHours(wakeStart, wakeEnd, autoHours, hoursSource, suggestion, weekendStart, weekendEnd, weekendSource,
@@ -178,6 +180,7 @@ fun NotifyPage(onBack: () -> Unit, onDevices: () -> Unit) {
     val c = Kelo.colors
     var pushHelp by remember { mutableStateOf(false) }
     var heldOpen by rememberSaveable { mutableStateOf(false) }   // the held messages' list (ProactiveDeliveries.kt) replaces the page while open
+    var situationOpen by rememberSaveable { mutableStateOf(false) }   // "What Kelo looked at" (SituationPage.kt) replaces the page while open
     val followups = ui.followups
     val proactive = ui.proactive
     val checklist = ui.checklist
@@ -189,6 +192,7 @@ fun NotifyPage(onBack: () -> Unit, onDevices: () -> Unit) {
     val phone = container.notifications
 
     if (heldOpen) { ProactiveHeldPage(onBack = { heldOpen = false }); return }
+    if (situationOpen) { SituationPage(onBack = { situationOpen = false }); return }
     SubPage(string(Res.string.notify_my_row), onBack) {
         if (phone != null) {   // a device without a notification switch (the desktop) has no phone row
             SectionLabel(string(Res.string.notify_page_phone))
@@ -247,7 +251,8 @@ fun NotifyPage(onBack: () -> Unit, onDevices: () -> Unit) {
         when {
             proactiveMissing -> MutedText(string(Res.string.notify_page_unavailable), small = true)
             p == null -> SkeletonRows(2)
-            else -> HeadsUpBlock(p, onPut = vm::putProactive, onOpenHeld = { heldOpen = true })
+            else -> HeadsUpBlock(p, onPut = vm::putProactive, onOpenHeld = { heldOpen = true },
+                showSituation = ui.situationReady && p.research, onOpenSituation = { situationOpen = true })
         }
         if (p?.enabled == true && !checklistMissing) {
             val k = checklist
@@ -289,7 +294,9 @@ private fun ToggleLine(title: String, body: String, on: Boolean, onToggle: (Bool
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HeadsUpBlock(p: ProactiveSettings, onPut: (JsonObject) -> Unit, onOpenHeld: () -> Unit) {
+private fun HeadsUpBlock(
+    p: ProactiveSettings, onPut: (JsonObject) -> Unit, onOpenHeld: () -> Unit, showSituation: Boolean, onOpenSituation: () -> Unit,
+) {
     val c = Kelo.colors
     val about = string(Res.string.heads_about, everyText(p.everyMinutes), string(Res.string.followup_settings_title))
     ToggleLine(string(Res.string.heads_switch), about, p.enabled) { on -> onPut(buildJsonObject { put("enabled", on) }) }
@@ -300,6 +307,7 @@ private fun HeadsUpBlock(p: ProactiveSettings, onPut: (JsonObject) -> Unit, onOp
             onPut(buildJsonObject { put("daily_regular", r); put("daily_total", t); put("daily_now", n) })
         }
         DeliveriesBlock(p, onChange = { n -> onPut(buildJsonObject { put("daily_deliveries", n) }) }, onOpenHeld = onOpenHeld)
+        if (showSituation) SituationRow(onClick = onOpenSituation)
         MailSwitch(p.mailCheck) { on -> onPut(buildJsonObject { put("mail_check", on) }) }
         val sent = p.today.values.sum()
         if (sent > 0) Text(plural(Res.plurals.heads_sent_today, sent, sent), style = MaterialTheme.typography.bodySmall, color = c.muted)

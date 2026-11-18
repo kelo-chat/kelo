@@ -959,10 +959,14 @@
     <string name="live_held_elsewhere">Управляют с другого устройства</string>
     <string name="live_give_back">Вернуть</string>
     <string name="live_paused_banner">Управляете вы. Агент подождёт на этой вкладке, пока вы не вернёте управление.</string>
+    <string name="live_still_yours">Вы всё ещё управляете сами. Агент ждёт, пока вы вернёте управление.</string>
+    <string name="live_screen_changed">Экран изменился. Нажмите ещё раз.</string>
     <string name="live_tab_closed">Вкладка закрыта, смотреть больше нечего. Если последний экран сохранился, он показан ниже.</string>
     <string name="live_not_controller">Сейчас управлять нельзя. Нажмите «Взять управление» ещё раз.</string>
     <string name="live_input_failed">Браузер не смог это выполнить.</string>
     <string name="live_state_you">Управляете вы</string>
+    <string name="live_work_browser">Рабочий браузер</string>
+    <string name="live_work_browser_note">Эта вкладка находится в рабочем браузере Kelo, отдельно от ваших вкладок. Вход, который вы выполните здесь, сохранится в основном браузере Kelo, когда задача завершится.</string>
     <string name="live_state_other">Управляет другое устройство</string>
     <string name="live_state_waiting">Жду подтверждения</string>
     <string name="live_connecting">Подключаюсь…</string>
@@ -1250,6 +1254,9 @@
     <string name="work_wait_answer">Продолжит, когда вы скажете, как быть дальше.</string>
     <string name="work_wait_blocked">Остановлена: дальше сама не может.</string>
     <string name="work_wait_restart">Остановлена из-за перезапуска сервера.</string>
+    <string name="work_picked_up">Сервер Kelo перезапустился, поэтому работа продолжилась с того места, где остановилась.</string>
+    <string name="work_picked_up_browser">Браузер перезапустился, поэтому работа продолжилась в новой вкладке.</string>
+    <string name="work_wait_pickup">Скоро продолжится с того места, где остановилось.</string>
     <string name="work_schedule_on">Расписание включено</string>
     <string name="work_schedule_off">Расписание выключено</string>
     <string name="work_schedule_by_agent">Создано агентом</string>

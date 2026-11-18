@@ -159,3 +159,10 @@ def test_every_table_the_server_creates_is_named_in_the_disk_growth_doc():
     doc = (Path(dl.__file__).resolve().parents[3] / "docs" / "disk-growth.md").read_text(encoding="utf-8")
     missing = sorted(n for n in names if f"`{n}`" not in doc)
     assert not missing, f"not in docs/disk-growth.md: {missing}"
+
+
+def test_dockers_browser_caps_its_cache_by_default():
+    """docs/disk-growth.md: Chrome's disk cache has a cap even when BROWSER_CACHE_MB is unset (docker/entrypoint.sh)."""
+    from pathlib import Path
+    text = (Path(__file__).resolve().parents[2] / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+    assert "CACHE_MB=1024" in text and "--disk-cache-size=" in text

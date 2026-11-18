@@ -52,7 +52,7 @@ apps/ios/
 ```sh
 cd apps/ios/KeloCore && ./test.sh          # 293 tests
 cd apps/ios/KeloUI   && swift build && ./test.sh   # all screens type-check; 317 tests (Shared, Shell, Chat, My, Work, Connectors)
-python3 apps/ios/tools/gen_strings.py --check      # strings in step with Android
+python3 apps/ios/tools/gen_strings.py --check      # strings in step with Android (the server suite runs this and gen_version.py --check: server/tests/test_ios_generated_files.py)
 ```
 
 `swift build` compiles every SwiftUI view against the **macOS** SDK. Code that only exists on iOS sits behind `#if os(iOS)` and

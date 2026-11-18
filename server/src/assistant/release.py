@@ -296,8 +296,8 @@ class Verifier:
         if r.returncode != 0:
             raise ReleaseError(f"{image.repo}: the signature does not verify as an official Kelo release ({self._why(r)})")
         try:
-            # the answer is the last line that opens a JSON list of objects; a runner that joins cosign's messages (stderr, Apple container's
-            # progress lines "[6/6] Starting container") to it adds lines after it
+            # the answer is the last line that opens a JSON list of objects; a runner that joins cosign's messages (stderr, a container
+            # program's progress lines "[6/6] Starting container") to it adds lines after it
             rows = json.loads([ln for ln in (r.stdout or "").strip().splitlines() if ln.lstrip().startswith("[{")][-1])
         except (ValueError, IndexError):
             rows = None

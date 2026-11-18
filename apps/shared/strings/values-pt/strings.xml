@@ -947,10 +947,14 @@
     <string name="live_held_elsewhere">Sendo controlado por outro aparelho</string>
     <string name="live_give_back">Devolver</string>
     <string name="live_paused_banner">Você está no controle. Seu agente vai esperar nesta aba até você devolver.</string>
+    <string name="live_still_yours">Você ainda está no controle. Seu agente espera até você devolver.</string>
+    <string name="live_screen_changed">A tela mudou. Toque de novo.</string>
     <string name="live_tab_closed">A aba foi fechada, então não há mais nada para ver. Se a última tela foi salva, ela aparece abaixo.</string>
     <string name="live_not_controller">Você não pode controlar agora. Toque em Assumir controle de novo.</string>
     <string name="live_input_failed">O navegador não conseguiu fazer isso.</string>
     <string name="live_state_you">Você está no controle</string>
+    <string name="live_work_browser">Navegador de trabalho</string>
+    <string name="live_work_browser_note">Esta aba está no navegador de trabalho do Kelo, separado das suas abas. Um login feito aqui é salvo no navegador principal do Kelo quando a tarefa termina.</string>
     <string name="live_state_other">Outro aparelho está no controle</string>
     <string name="live_state_waiting">Esperando aprovação</string>
     <string name="live_connecting">Conectando…</string>
@@ -1224,6 +1228,9 @@
     <string name="work_wait_answer">Continua assim que você disser como seguir.</string>
     <string name="work_wait_blocked">Parou porque não consegue avançar sozinho.</string>
     <string name="work_wait_restart">Parou quando o servidor reiniciou.</string>
+    <string name="work_picked_up">O servidor do Kelo reiniciou, então continuou de onde parou.</string>
+    <string name="work_picked_up_browser">O navegador reiniciou, então continuou em uma nova aba.</string>
+    <string name="work_wait_pickup">Vai continuar de onde parou em instantes.</string>
     <string name="work_schedule_on">Agendamento ligado</string>
     <string name="work_schedule_off">Agendamento desligado</string>
     <string name="work_schedule_by_agent">Criado pelo seu agente</string>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">デザインされたメール</string>
+    <string name="mail_preview_open">大きく表示</string>
+    <string name="mail_preview_loading">プレビューを読み込み中…</string>
+    <string name="mail_preview_failed">プレビューを読み込めませんでした。</string>
+    <string name="mail_preview_gone">プレビューはもう利用できません。</string>
+    <string name="mail_preview_too_big">プレビューが大きすぎて表示できません。</string>
+    <string name="mail_preview_pictures_note">画像は画像ではなくリンクとして送られます。</string>
+    <string name="mail_preview_link_title">このアドレスを開きますか？</string>
+    <string name="mail_preview_link_open">ブラウザで開く</string>
+    <string name="mail_preview_simple_note">このアプリではデザインを簡易表示しています。</string>
+    <string name="mail_preview_desc">デザインされたメールのプレビュー</string>
+</resources>

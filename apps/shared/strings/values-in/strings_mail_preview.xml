@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">Email berdesain</string>
+    <string name="mail_preview_open">Lihat lebih besar</string>
+    <string name="mail_preview_loading">Memuat pratinjau…</string>
+    <string name="mail_preview_failed">Pratinjau tidak dapat dimuat.</string>
+    <string name="mail_preview_gone">Pratinjau tidak tersedia lagi.</string>
+    <string name="mail_preview_too_big">Pratinjau terlalu besar untuk ditampilkan.</string>
+    <string name="mail_preview_pictures_note">Gambar dikirim sebagai tautan, bukan sebagai gambar.</string>
+    <string name="mail_preview_link_title">Buka alamat ini?</string>
+    <string name="mail_preview_link_open">Buka di browser</string>
+    <string name="mail_preview_simple_note">Aplikasi ini menampilkan desain dalam bentuk sederhana.</string>
+    <string name="mail_preview_desc">Pratinjau email berdesain</string>
+</resources>

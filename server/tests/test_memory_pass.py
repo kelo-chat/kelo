@@ -92,8 +92,10 @@ def setup(tmp_path, fn, *, now=ts(2026, 11, 16, 4, 0), memory=CLEAN, swept=True)
     return store, home, up, clock, inbox
 
 
-def say(store, at, role, text) -> int:
-    store._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)", (role, text, at))
+def say(store, at, role, text, author=None) -> int:
+    """A message row. The owner's own user messages carry author 'owner' (owner_messages.py); pass author="" for a hidden row."""
+    author = ("owner" if role == "user" else "") if author is None else author
+    store._run("INSERT INTO messages(role, content, created_at, author) VALUES(?,?,?,?)", (role, text, at, author))
     return store._all("SELECT MAX(id) AS n FROM messages")[0]["n"]
 
 
@@ -267,11 +269,11 @@ async def test_a_failing_or_unusable_model_changes_nothing(tmp_path):
 # ---------------------------------------------------------------------------------------------------------- undo and the inbox
 async def test_undo_puts_back_every_file_of_the_pass_and_the_inbox_note(tmp_path):
     inbox_text = "Takes tea without sugar"
-    fn = brain(extract=lambda req: {"claims": [{**claim_of(0, "Takes tea without sugar", inbox_text),
-                                                "handle": "inbox:" + hashlib.sha256(inbox.lines()[0].encode()).hexdigest()[:8], "secret": False}]},
-               reconcile=plan_for)
+    ids = {}
+    fn = brain(extract=lambda req: {"claims": [claim_of(ids["m"], "Takes tea without sugar", inbox_text)]}, reconcile=plan_for)
     store, home, up, clock, inbox = setup(tmp_path, fn, memory=MEM)
-    inbox.add(inbox_text, "preference", 3)
+    ids["m"] = say(store, clock.t - 3600, "user", inbox_text)          # the owner's own message the inbox note names
+    inbox.add(inbox_text, "preference", ids["m"])
     assert len(inbox.lines()) == 1
     out = await up.run()
     assert out["status"] == "done" and out["files"] == ["MEMORY.md"] and out["filed"] == 1 and inbox.lines() == []
@@ -302,7 +304,7 @@ async def test_a_file_written_while_the_model_thinks_is_left_alone(tmp_path):
 
     async def fn(provider, req, **kw):
         if kind_of(req) == "review":
-            home.write("MEMORY.md", CLEAN + "- written meanwhile\n", by="agent")
+            home.write("MEMORY.md", CLEAN + "- written meanwhile\n", by="user")
         async for ev in inner(provider, req, **kw):
             yield ev
     up.stream_fn = fn

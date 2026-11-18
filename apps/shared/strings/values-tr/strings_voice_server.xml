@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">%1$s konuşma tanıma modeli Kelo sunucunuza indirilsin mi? İndirmezseniz telefonunuzun kendi konuşma tanıması kullanılır.</string>
+    <string name="voice_server_downloading">Konuşma modeli indiriliyor · %1$d%%</string>
+    <string name="voice_server_ready">Kelo sunucunuz artık sesinizi anlıyor.</string>
+    <string name="voice_server_download_failed">Konuşma modeli tam olarak indirilemedi.</string>
+    <string name="voice_server_no_room">Kelo sunucunuzda yeterli alan yok (%1$s gerekli).</string>
+    <string name="voice_retry">Yeniden dene</string>
+    <string name="voice_transcribing">Metne dönüştürülüyor…</string>
+    <string name="voice_cancel_recording">Kaydı iptal et</string>
+    <string name="voice_stop_recording">Kaydı durdur</string>
+    <string name="voice_ends_in">%1$d sn sonra bitecek</string>
+    <string name="voice_server_offline">Metne dönüştürmek için Kelo sunucunuza ulaşılamadı.</string>
+    <string name="voice_server_busy">Kelo sunucunuz başka bir kayıtla meşgul. Biraz sonra yeniden deneyin.</string>
+    <string name="voice_server_too_long">Kayıt çok uzun. Lütfen 2 dakikadan kısa konuşun.</string>
+    <string name="voice_page_title">Sesle giriş</string>
+    <string name="voice_page_intro">Sesiniz Kelo sunucunuzda metne dönüştürülür ve metin alana eklenir. Kendiliğinden gönderilen bir şey olmaz.</string>
+    <string name="voice_model_in_use">Kullanılan konuşma modeli</string>
+    <string name="voice_state_off">Telefonun kendi konuşma tanıması</string>
+    <string name="voice_change_model">Modeli değiştir</string>
+    <string name="voice_download_model">Modeli indir</string>
+    <string name="voice_remove_model">Modeli kaldır</string>
+    <string name="voice_remove_confirm">Konuşma modeli kaldırılsın mı? Bundan sonra telefonun kendi konuşma tanıması kullanılır.</string>
+    <string name="voice_phone_note">Kelo sunucusundaki konuşma modelleri bu dili henüz desteklemiyor, bu yüzden telefonun kendi konuşma tanıması kullanılır.</string>
+    <string name="voice_model_size">Boyut %1$s · kullanırken bellek %2$s</string>
+    <string name="voice_runtime_missing">Bunu kullanmak için Kelo sunucu kurulumunu bir kez daha çalıştırın.</string>
+</resources>

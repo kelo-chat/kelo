@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">Het spraakmodel %1$s downloaden naar je Kelo-server? Zo niet, dan wordt de spraakherkenning van je telefoon gebruikt.</string>
+    <string name="voice_server_downloading">Spraakmodel wordt gedownload · %1$d%%</string>
+    <string name="voice_server_ready">Je Kelo-server begrijpt je stem nu.</string>
+    <string name="voice_server_download_failed">Het spraakmodel is niet helemaal gedownload.</string>
+    <string name="voice_server_no_room">Te weinig ruimte op je Kelo-server (%1$s nodig).</string>
+    <string name="voice_retry">Opnieuw proberen</string>
+    <string name="voice_transcribing">Wordt omgezet in tekst…</string>
+    <string name="voice_cancel_recording">Opname annuleren</string>
+    <string name="voice_stop_recording">Opname stoppen</string>
+    <string name="voice_ends_in">Eindigt over %1$d s</string>
+    <string name="voice_server_offline">Je Kelo-server was niet bereikbaar om het in tekst om te zetten.</string>
+    <string name="voice_server_busy">Je Kelo-server verwerkt al een andere opname. Probeer het zo nog eens.</string>
+    <string name="voice_server_too_long">De opname is te lang. Houd hem onder de 2 minuten.</string>
+    <string name="voice_page_title">Spraakinvoer</string>
+    <string name="voice_page_intro">Je stem wordt op je Kelo-server in tekst omgezet en de tekst komt in het veld. Er wordt niets vanzelf verstuurd.</string>
+    <string name="voice_model_in_use">Gebruikt spraakmodel</string>
+    <string name="voice_state_off">Spraakherkenning van de telefoon</string>
+    <string name="voice_change_model">Model wijzigen</string>
+    <string name="voice_download_model">Model downloaden</string>
+    <string name="voice_remove_model">Model verwijderen</string>
+    <string name="voice_remove_confirm">Het spraakmodel verwijderen? Daarna wordt de spraakherkenning van de telefoon gebruikt.</string>
+    <string name="voice_phone_note">De spraakmodellen van je Kelo-server kennen deze taal nog niet, daarom wordt de spraakherkenning van de telefoon gebruikt.</string>
+    <string name="voice_model_size">Grootte %1$s · geheugen bij gebruik %2$s</string>
+    <string name="voice_runtime_missing">Voer het installatieprogramma van de Kelo-server nog een keer uit om dit te gebruiken.</string>
+</resources>

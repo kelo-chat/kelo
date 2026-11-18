@@ -1,0 +1,6 @@
+# Lima (limactl) pinned for the Kelo Mac server bundle (Apache-2.0, CNCF). The bundle carries bin/limactl (re-signed with our
+# Developer ID) and share/lima/lima-guestagent.Linux-aarch64.gz from this tarball, and its LICENSE and NOTICE unchanged.
+# Pinned: v2.2.1, published 2026-10-03 (at least two weeks old). Source: tools/build/mac-server-bundle.sh --update-lock --write.
+LIMA_VERSION=2.2.1
+LIMA_URL=https://github.com/lima-vm/lima/releases/download/v2.2.1/lima-2.2.1-Darwin-arm64.tar.gz
+LIMA_SHA256=9e9eacce88f37e185c346bad73aa6136f738d8cdf8c3bb23cd42b071824bc66e

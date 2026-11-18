@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Yang Kelo lihat</string>
+    <string name="situation_title">Yang Kelo lihat</string>
+    <string name="situation_hourly_head">Yang Kelo lihat setiap jam</string>
+    <string name="situation_read_when_needed_head">Dibaca hanya saat diperlukan</string>
+    <string name="situation_read_when_needed_about">Ini dibaca saat sebuah pertanyaan membutuhkannya. Layanan bisa dilihat setiap jam jika ia menjelaskan cara membaca statusnya.</string>
+    <string name="situation_section_conversation">Percakapan</string>
+    <string name="situation_section_mail">Surel</string>
+    <string name="situation_section_calendar">Kalender</string>
+    <string name="situation_section_goals">Tujuan</string>
+    <string name="situation_section_schedules">Jadwal</string>
+    <string name="situation_section_memory">Memori</string>
+    <string name="situation_section_other">Lainnya</string>
+    <string name="situation_empty">Belum ada. Pemeriksaan pertama pada menit ke-9 jam berikutnya, saat Anda terjaga.</string>
+    <string name="situation_keep_days">Disimpan %d hari</string>
+    <string name="situation_outcome_no_change">Tidak ada yang baru</string>
+    <string name="situation_outcome_nothing">Dilihat, tidak ada yang perlu disampaikan</string>
+    <string name="situation_outcome_proposed">%d disiapkan</string>
+    <string name="situation_outcome_selected">%d dipilih</string>
+    <string name="situation_outcome_delivered">Sudah saya sampaikan</string>
+    <string name="situation_outcome_failed">Tidak bisa dilihat</string>
+    <string name="situation_outcome_running">Sedang dilihat</string>
+    <string name="situation_outcome_other">Dilihat</string>
+    <string name="situation_load_more">Muat lagi</string>
+    <string name="situation_detail_changed">Yang berubah</string>
+    <string name="situation_detail_same">Sama seperti sebelumnya (%d)</string>
+    <string name="situation_detail_failed">Tidak bisa dibaca</string>
+    <string name="situation_detail_off">Mati</string>
+    <string name="situation_detail_done">Yang Kelo lakukan</string>
+    <string name="situation_detail_none">Tidak ada yang disiapkan dalam pemeriksaan ini.</string>
+    <string name="situation_state_new">Baru</string>
+    <string name="situation_state_same">Sama seperti sebelumnya</string>
+    <string name="situation_state_changed">Berubah</string>
+    <string name="situation_state_failed">Tidak bisa dibaca</string>
+    <string name="situation_state_timeout">Terlalu lama</string>
+    <string name="situation_state_skipped">Tidak disertakan: pemeriksaan sudah penuh</string>
+    <string name="situation_state_off">Mati</string>
+    <string name="situation_state_other">Lainnya</string>
+    <string name="situation_event_proposed">Disiapkan</string>
+    <string name="situation_event_updated">Diperbarui</string>
+    <string name="situation_event_selected_today">Dipilih untuk hari ini</string>
+    <string name="situation_event_selected_regular">Dipilih sebagai pesan biasa</string>
+    <string name="situation_event_told">Sudah saya sampaikan</string>
+    <string name="situation_event_dropped">Disisihkan: %s</string>
+    <string name="situation_event_dropped_none">Disisihkan: tidak cukup penting untuk disampaikan</string>
+    <string name="situation_event_expired">Kedaluwarsa</string>
+    <string name="situation_event_waiting">Menunggu waktu yang lebih baik</string>
+</resources>

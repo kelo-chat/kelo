@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">رسالة بتصميم</string>
+    <string name="mail_preview_open">عرض أكبر</string>
+    <string name="mail_preview_loading">جارٍ تحميل المعاينة…</string>
+    <string name="mail_preview_failed">تعذّر تحميل المعاينة.</string>
+    <string name="mail_preview_gone">لم تعد المعاينة متاحة.</string>
+    <string name="mail_preview_too_big">المعاينة كبيرة جدًا ولا يمكن عرضها.</string>
+    <string name="mail_preview_pictures_note">تُرسَل الصور كروابط، لا كصور.</string>
+    <string name="mail_preview_link_title">هل تريد فتح هذا العنوان؟</string>
+    <string name="mail_preview_link_open">فتح في المتصفح</string>
+    <string name="mail_preview_simple_note">يعرض هذا التطبيق التصميم بشكل مبسّط.</string>
+    <string name="mail_preview_desc">معاينة الرسالة المصمّمة</string>
+</resources>

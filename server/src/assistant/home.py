@@ -44,6 +44,11 @@ CHECKLIST = "CHECKLIST.md"
 NOTIFY_PREFS = "NOTIFY_PREFS.md"
 SIDE_FILES = (CHECKLIST, NOTIFY_PREFS)
 WRITABLE_DIRS = ("memory", "notes")
+# What the owner's own words make (memory-owner-only): the memory pass writes these from the owner's messages, the app's editor and the
+# server's own jobs may still change them, the agent's file tools may not (`by="agent"`).
+OWNER_MEMORY = ("user.md", "MEMORY.md", "AGENTS.md", NOTIFY_PREFS)
+OWNER_MEMORY_REFUSAL = ("MEMORY.md, user.md, AGENTS.md, NOTIFY_PREFS.md and memory/ are kept by the memory pass from the user's own "
+                        "words; use `remember` with the user's words instead")
 PEOPLE_DIR = "memory/people"
 # fresh notes waiting for the memory pass (memory_inbox.py); shown in each turn's note, so it is left out of the cached file list
 INBOX_FILE = "memory/inbox.md"
@@ -339,7 +344,14 @@ class Home:
     def _writable(norm: str, by: str = "agent") -> bool:
         if norm == "memory/log" or norm.startswith("memory/log/"):
             return by == "system"
+        if by == "agent" and Home._owner_memory(norm):
+            return False
         return norm in CORE or norm in SIDE_FILES or (norm.split("/")[0] in WRITABLE_DIRS and "/" in norm)
+
+    @staticmethod
+    def _owner_memory(norm: str) -> bool:
+        """The files and folder the owner's words make (OWNER_MEMORY, memory/ as a whole): refused to the agent's own tools."""
+        return norm in OWNER_MEMORY or norm == "memory" or norm.startswith("memory/")
 
     # ------------------------------------------------------------------ operations
     def read(self, rel: str) -> str:
@@ -365,7 +377,7 @@ class Home:
                 continue
             r = f"{norm}/{p.name}" if norm else p.name
             out.append({"path": r, "type": "dir" if p.is_dir() else "file",
-                        "bytes": p.stat().st_size if p.is_file() else None, "writable": self._writable(r)})
+                        "bytes": p.stat().st_size if p.is_file() else None, "writable": self._writable(r, "user")})
         return out
 
     def walk(self, rel: str = "", max_depth: int = 4, kind: str | None = None, name: str | list[str] | None = None,
@@ -393,7 +405,7 @@ class Home:
                 is_dir = p.is_dir()
                 if (kind is None or kind == ("d" if is_dir else "f")) and (not patterns or any(fnmatch(p.name, n) for n in patterns)):
                     out.append({"path": r, "type": "dir" if is_dir else "file", "bytes": None if is_dir else p.stat().st_size,
-                                "writable": self._writable(r)})
+                                "writable": self._writable(r, "user")})
                 if is_dir and depth < max_depth:
                     visit(p, r, depth + 1)
 
@@ -423,6 +435,8 @@ class Home:
         if by not in WRITERS:
             raise ValueError(f"unknown writer {by!r}")
         target, norm = self._resolve(rel)
+        if by == "agent" and self._owner_memory(norm):
+            raise HomeError(OWNER_MEMORY_REFUSAL)
         if not self._writable(norm, by):
             raise HomeError(f"you can write only {', '.join((*CORE, *SIDE_FILES))} and files inside {', '.join(d + '/' for d in WRITABLE_DIRS)}")
         if target.suffix.lower() not in ALLOWED_SUFFIXES:
@@ -508,6 +522,8 @@ class Home:
         if norm == "memory/log" or norm.startswith("memory/log/"):
             if by != "system":
                 raise NotDeletable("memory/log/ is an append-only log and cannot be deleted")
+        if by == "agent" and self._owner_memory(norm):
+            raise (CoreFile if norm in self.core_files() else NotDeletable)(OWNER_MEMORY_REFUSAL)
         if norm in self.core_files():
             raise CoreFile(f"{norm} is a core file: reset it instead")
         top = norm.split("/")[0]

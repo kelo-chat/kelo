@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">Bu bilgisayarı Kelo sunucusu olarak kullan</string>
     <string name="desktop_server_row_hint">Kelo sunucusunu bu bilgisayara kurar. Windows bir kez yönetici izni ister.</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">Güncelle</string>
     <string name="desktop_server_install">Kur</string>
     <string name="desktop_server_unavailable">Windows için Kelo sunucusu henüz hazır değil.</string>
+
+    <string name="desktop_server_row_mac">Bu Mac\'i Kelo sunucusu olarak kullan</string>
+    <string name="desktop_server_row_hint_mac">Bu Mac\'e Kelo sunucusunu kurar. macOS yönetici parolasını bir kez sorar.</string>
+    <string name="desktop_server_installed_mac">Kelo sunucusu bu Mac\'te</string>
+    <string name="desktop_server_unavailable_mac">Mac için Kelo sunucusu henüz kullanılamıyor</string>
+    <string name="desktop_server_port_busy">Bu Mac\'teki başka bir program %1$d numaralı bağlantı noktasını kullanıyor. Onu kapatıp yeniden deneyin.</string>
+    <string name="desktop_server_downgrade">Daha yeni bir Kelo sunucusu zaten kurulu.</string>
+    <string name="desktop_server_remove">Kaldır</string>
+    <string name="desktop_server_remove_title">Kelo sunucusu bu Mac\'ten kaldırılsın mı?</string>
+    <string name="desktop_server_remove_body">Sohbetler, anahtarlar ve dosyalar, silmeyi seçmediğiniz sürece korunur.</string>
+    <string name="desktop_server_remove_data">Sohbetleri, anahtarları ve dosyaları da sil</string>
+    <string name="desktop_server_removing">Kaldırılıyor</string>
+    <string name="desktop_server_removed">Kaldırıldı</string>
 </resources>

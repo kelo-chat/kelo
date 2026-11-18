@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">このPCをKeloサーバーとして使う</string>
     <string name="desktop_server_row_hint">このコンピューターにKeloサーバーをインストールします。Windowsが管理者の許可を一度求めます。</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">更新</string>
     <string name="desktop_server_install">インストール</string>
     <string name="desktop_server_unavailable">Windows用のKeloサーバーはまだ準備中です。</string>
+
+    <string name="desktop_server_row_mac">このMacをKeloサーバーとして使う</string>
+    <string name="desktop_server_row_hint_mac">このMacにKeloサーバーをインストールします。macOSが管理者パスワードを一度だけ尋ねます。</string>
+    <string name="desktop_server_installed_mac">このMacにKeloサーバーがあります</string>
+    <string name="desktop_server_unavailable_mac">Mac用のKeloサーバーはまだ利用できません</string>
+    <string name="desktop_server_port_busy">このMacの別のプログラムがポート%1$dを使っています。閉じてから、もう一度試してください。</string>
+    <string name="desktop_server_downgrade">より新しいKeloサーバーがすでにインストールされています。</string>
+    <string name="desktop_server_remove">削除</string>
+    <string name="desktop_server_remove_title">このMacからKeloサーバーを削除しますか？</string>
+    <string name="desktop_server_remove_body">チャット、鍵、ファイルは、削除を選ばない限り残ります。</string>
+    <string name="desktop_server_remove_data">チャット、鍵、ファイルも削除する</string>
+    <string name="desktop_server_removing">削除中</string>
+    <string name="desktop_server_removed">削除しました</string>
 </resources>

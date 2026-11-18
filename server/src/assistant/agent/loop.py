@@ -993,6 +993,8 @@ async def _execute_inner(call: ToolCall, by_name: dict[str, Tool], approve: Appr
         return (once.settle(e, text) if once is not None else text), True, approved, None
     finally:
         connector_now.reset(cooling)
+        if once is not None:
+            once.release()   # a cancelled step is not in flight any more (done_once.busy)
     text = await _result_async(tool, result, args)
     return (once.settle(result, text) if once is not None else text), False, approved, result
 

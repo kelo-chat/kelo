@@ -40,8 +40,8 @@ def test_symlinks_cannot_be_used_to_escape(home, tmp_path):
 
 
 def test_write_is_limited_to_core_files_and_the_three_folders(home):
-    assert home.write("MEMORY.md", "# MEMORY.md\n- likes tea\n") == "MEMORY.md"
-    assert home.write("memory/people/kim.md", "# Kim") == "memory/people/kim.md"
+    assert home.write("MEMORY.md", "# MEMORY.md\n- likes tea\n", by="user") == "MEMORY.md"
+    assert home.write("memory/people/kim.md", "# Kim", by="user") == "memory/people/kim.md"
     assert home.write("notes/todo.md", "x") == "notes/todo.md"
     for bad in ("evil.md", "memory.md", "memory", "skills/x.md", "MEMORY.exe", "notes/run.sh"):
         with pytest.raises(HomeError):
@@ -52,7 +52,7 @@ def test_write_is_limited_to_core_files_and_the_three_folders(home):
 
 def test_overwrites_keep_history_and_it_is_capped(home):
     for i in range(25):
-        home.write("MEMORY.md", f"# v{i}")
+        home.write("MEMORY.md", f"# v{i}", by="user")
     hist = list((home.root / ".history" / "MEMORY.md").iterdir())
     assert len(hist) == 20
     assert home.read("MEMORY.md") == "# v24"
@@ -62,18 +62,18 @@ def test_overwrites_keep_history_and_it_is_capped(home):
 
 
 def test_context_block_injects_core_files_the_people_roster_and_truncates(home):
-    home.write("MEMORY.md", "# MEMORY.md\n- " + "a" * 20000)
-    home.write("memory/people/kim.md", "---\nname: Kim\nrelation: friend\n---\n# Kim")
-    home.write("memory/people/lee.md", "# Lee, no front matter")
+    home.write("MEMORY.md", "# MEMORY.md\n- " + "a" * 20000, by="user")
+    home.write("memory/people/kim.md", "---\nname: Kim\nrelation: friend\n---\n# Kim", by="user")
+    home.write("memory/people/lee.md", "# Lee, no front matter", by="user")
     block = home.context_block(per_file=500)
     assert "### MEMORY.md" in block and "[truncated; read_file MEMORY.md" in block
     assert "- Kim (friend): memory/people/kim.md" in block and "- lee: memory/people/lee.md" in block
     for name in ("assistant.md", "user.md", "AGENTS.md"):     # still the bare templates: named once, not injected
         assert f"### {name}" not in block
     assert "Still empty (only the template's headings): assistant.md, user.md, AGENTS.md." in block
-    home.write("user.md", "# user.md\n\n## Name and how to address them\nMina\n")
+    home.write("user.md", "# user.md\n\n## Name and how to address them\nMina\n", by="user")
     assert "### user.md" in home.context_block() and "Mina" in home.context_block()
-    home.write("MEMORY.md", "# MEMORY.md\n- " + "b" * 20000)
+    home.write("MEMORY.md", "# MEMORY.md\n- " + "b" * 20000, by="user")
     assert len(home.context_block()) < 6_000 + 3_000     # the per-file cap bounds what one file adds
 
 
@@ -137,7 +137,8 @@ async def test_tools_report_errors_as_text_not_exceptions(home, tmp_path):
     (tmp_path / "s").mkdir()
     tools = {t.name: t for t in home_tools(home, Skills(tmp_path / "s"))}
     assert "read_skill" not in tools                     # no skills -> no tool
-    assert (await tools["write_file"].handler({"path": "MEMORY.md", "content": "# M\n- x"})) == "saved MEMORY.md"
+    assert (await tools["write_file"].handler({"path": "MEMORY.md", "content": "# M\n- x"})).startswith("error:")   # the memory pass keeps it
+    home.write("MEMORY.md", "# M\n- x", by="user")
     assert "- x" in await tools["read_file"].handler({"path": "MEMORY.md"})
     assert (await tools["read_file"].handler({"path": "../x"})).startswith("error:")
     assert (await tools["write_file"].handler({"path": "evil.md", "content": "x"})).startswith("error:")
@@ -148,7 +149,7 @@ async def test_tools_report_errors_as_text_not_exceptions(home, tmp_path):
 
 
 def test_an_absolute_path_from_another_tool_is_re_rooted_but_never_escapes(home, tmp_path):
-    home.write("memory/people/kim.md", "# Kim")
+    home.write("memory/people/kim.md", "# Kim", by="user")
     assert home.relativize("/tmp/hermes_agy_abc/memory/people/kim.md") == "memory/people/kim.md"
     assert home.relativize("/tmp/hermes_agy_abc/user.md") == "user.md"   # the stored name is exact-case: USER.md only matches on a case-insensitive disk
     assert home.relativize("/etc/passwd") == "/etc/passwd"             # nothing of ours matches: left alone, then refused
@@ -165,7 +166,7 @@ def test_an_absolute_path_from_another_tool_is_re_rooted_but_never_escapes(home,
 
 async def test_tools_accept_agys_absolute_paths(home, tmp_path):
     tools = {t.name: t for t in home_tools(home, None)}
-    home.write("MEMORY.md", "# MEMORY.md\n- likes tea")
+    home.write("MEMORY.md", "# MEMORY.md\n- likes tea", by="user")
     assert "likes tea" in await tools["read_file"].handler({"path": "/tmp/hermes_agy_zz/MEMORY.md"})
     assert (await tools["read_file"].handler({"path": "/etc/passwd"})).startswith("error:")
 
@@ -208,10 +209,10 @@ async def test_read_skill_tool_takes_an_optional_file(tmp_path):
 
 
 def test_walk_is_bounded_and_never_leaks_dotfiles_symlinks_or_history(home, tmp_path):
-    home.write("memory/people/kim.md", "# Kim")
-    home.write("memory/club.md", "# Club")
-    home.write("MEMORY.md", "# v1")
-    home.write("MEMORY.md", "# v2")                              # creates .history
+    home.write("memory/people/kim.md", "# Kim", by="user")
+    home.write("memory/club.md", "# Club", by="user")
+    home.write("MEMORY.md", "# v1", by="user")
+    home.write("MEMORY.md", "# v2", by="user")                              # creates .history
     os.symlink(tmp_path, home.root / "notes")                     # a link out of the area
     paths = [r["path"] for r in home.walk()]
     assert "memory/people/kim.md" in paths and "memory/club.md" in paths
@@ -224,7 +225,7 @@ def test_walk_is_bounded_and_never_leaks_dotfiles_symlinks_or_history(home, tmp_
 
 
 async def test_list_files_tool_recurses_when_asked(home):
-    home.write("memory/people/kim.md", "# Kim")
+    home.write("memory/people/kim.md", "# Kim", by="user")
     tool = {t.name: t for t in home_tools(home, None)}["list_files"]
     flat, deep = await tool.handler({}), await tool.handler({"recursive": True, "max_depth": 3})
     assert "kim.md" not in flat and "memory/people/kim.md" in deep
@@ -232,7 +233,7 @@ async def test_list_files_tool_recurses_when_asked(home):
 
 
 def test_walk_accepts_several_name_patterns(home):
-    home.write("memory/people/kim.md", "# Kim")
+    home.write("memory/people/kim.md", "# Kim", by="user")
     home.write("notes/todo.txt", "x")
     assert sorted(r["path"] for r in home.walk(name=["kim*", "todo*"], kind="f")) == ["memory/people/kim.md", "notes/todo.txt"]
 
@@ -325,7 +326,7 @@ def test_memory_log_refuses_agent_writes_and_deletes_allows_system(tmp_path):
     with pytest.raises(HomeError):
         home.write("memory/log/2026-11-16.md", "agent text", by="agent")
     with pytest.raises(HomeError):
-        home.write("memory/log/2026-11-16.md", "default text")
+        home.write("memory/log/2026-11-16.md", "default text", by="user")
 
     # System write is allowed
     saved = home.write("memory/log/2026-11-16.md", "system text", by="system")
@@ -336,7 +337,7 @@ def test_memory_log_refuses_agent_writes_and_deletes_allows_system(tmp_path):
     with pytest.raises(NotDeletable):
         home.trash("memory/log/2026-11-16.md", by="agent")
     with pytest.raises(NotDeletable):
-        home.trash("memory/log/2026-11-16.md")
+        home.trash("memory/log/2026-11-16.md", by="user")
 
     # File is still there
     assert home.read("memory/log/2026-11-16.md") == "system text"

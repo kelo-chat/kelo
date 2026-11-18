@@ -31,7 +31,7 @@ class NestScreenViewModelTest {
     private val bodies = mutableListOf<String>()
 
     @BeforeTest fun main() { Dispatchers.setMain(Dispatchers.Default) }
-    @AfterTest fun reset() { server?.shutdown(); vms.clear(); Dispatchers.resetMain() }
+    @AfterTest fun reset() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
     private fun vm(answer: (String, String, String) -> MockResponse?): NestScreenViewModel {
         val s = MyFakeServer { m, p, b -> if (m != "GET") bodies += b; answer(m, p, b) }.also { server = it }

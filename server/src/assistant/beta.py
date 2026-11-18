@@ -127,6 +127,7 @@ class BetaDesk:
             store._db.executescript(SCHEMA)
             store._db.commit()
         self.store, self.notify, self.mailer, self.mail_account, self.wall = store, notify, mailer, mail_account, wall
+        self.on_event: Callable[[str, dict[str, Any]], Any] | None = None   # the site copy's feed of events (operator_events.py)
         self.tasks: set[asyncio.Task[Any]] = set()
 
     def purge(self) -> None:
@@ -218,6 +219,11 @@ class BetaDesk:
         r = self.row(rid)
         if r is None:
             return
+        if self.on_event is not None:
+            try:
+                self.on_event("beta_request", {"id": rid, "email": r["email"], "products": r["products"].split(",")})
+            except Exception:  # noqa: BLE001 - the request is kept either way
+                log.warning("beta: could not keep the event")
         if self.notify is not None:
             try:
                 self.notify(t("Google sign-in beta request"), f"{r['email']} · {names(r['products'])}")

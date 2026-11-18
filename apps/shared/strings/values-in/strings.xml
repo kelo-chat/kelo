@@ -926,10 +926,14 @@
     <string name="live_held_elsewhere">Sedang dikendalikan dari perangkat lain</string>
     <string name="live_give_back">Kembalikan</string>
     <string name="live_paused_banner">Kamu yang mengendalikan. Agenmu akan menunggu di tab ini sampai kamu mengembalikannya.</string>
+    <string name="live_still_yours">Kamu masih mengendalikan. Agenmu menunggu sampai kamu mengembalikannya.</string>
+    <string name="live_screen_changed">Layar berubah. Ketuk lagi.</string>
     <string name="live_tab_closed">Tab sudah ditutup, jadi tidak ada lagi yang bisa dilihat. Kalau layar terakhir tersimpan, tampil di bawah.</string>
     <string name="live_not_controller">Kamu tidak bisa mengendalikannya sekarang. Ketuk Ambil alih lagi.</string>
     <string name="live_input_failed">Browser tidak bisa melakukan itu.</string>
     <string name="live_state_you">Kamu yang mengendalikan</string>
+    <string name="live_work_browser">Browser kerja</string>
+    <string name="live_work_browser_note">Tab ini ada di browser kerja Kelo, terpisah dari tab Anda sendiri. Login yang Anda lakukan di sini disimpan ke browser utama Kelo saat tugas selesai.</string>
     <string name="live_state_other">Perangkat lain yang mengendalikan</string>
     <string name="live_state_waiting">Menunggu persetujuan</string>
     <string name="live_connecting">Menyambungkan…</string>
@@ -1175,6 +1179,9 @@
     <string name="work_wait_answer">Akan lanjut setelah kamu bilang cara melanjutkannya.</string>
     <string name="work_wait_blocked">Berhenti karena tidak bisa lanjut sendiri.</string>
     <string name="work_wait_restart">Berhenti saat server dimulai ulang.</string>
+    <string name="work_picked_up">Server Kelo dimulai ulang, jadi tugas dilanjutkan dari tempat berhenti.</string>
+    <string name="work_picked_up_browser">Browser dimulai ulang, jadi tugas berlanjut di tab baru.</string>
+    <string name="work_wait_pickup">Sebentar lagi akan dilanjutkan dari tempat berhenti.</string>
     <string name="work_schedule_on">Jadwal nyala</string>
     <string name="work_schedule_off">Jadwal mati</string>
     <string name="work_schedule_by_agent">Dibuat oleh agenmu</string>

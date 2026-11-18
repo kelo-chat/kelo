@@ -29,7 +29,8 @@ import KeloCore
         #expect(all.count == 1 && all[0].key == "k1" && all[0].status == "휴대폰에서 누르는 중")
         #expect(all[0].image == shot && all[0].height == 780)
         let user = ChatItem.msg(.init(key: k.next(), mine: true, text: "또"))
-        #expect(cards(run([device("c3", "s")], start: items + [user], keys: k)).count == 2)   // the next reply starts its own card
+        let again = run([device("c3", "s")], start: items + [user], keys: k)   // one phone card in the whole list: it moves to this reply
+        #expect(cards(again).count == 1 && again.last.map { if case .browser = $0 { true } else { false } } == true)
     }
 
     @Test func aPhoneCardAndABrowserCardDoNotMerge() {

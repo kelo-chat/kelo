@@ -385,6 +385,9 @@ async def test_the_hub_leaves_the_page_size_alone_while_the_x_screen_shows_the_t
     class Vnc:
         size = (500, 889)
 
+        def size_of(self, key):
+            return self.size
+
         def holds(self, key):
             return held["on"] and key == "owner"
 
@@ -422,3 +425,79 @@ async def test_giving_the_tab_back_keeps_a_phone_views_size_while_the_x_screen_s
     hub._fitted["owner"] = (phone, True)
     await hub.unfit("owner")
     assert reapplied == ["owner"]
+
+
+async def test_viewing_is_true_between_the_first_acquire_and_the_last_release_of_that_tab():
+    s, _ = screen()
+    assert s.viewing("owner") is False
+    assert await s.acquire("owner", "dev1", 500, 889) is True
+    assert await s.acquire("owner", "dev2", 500, 889) is True
+    assert s.viewing("owner") is True and s.viewing("other") is False
+    await s.release("owner", "dev1")
+    assert s.viewing("owner") is True
+    await s.release("owner", "dev2")
+    assert s.viewing("owner") is False
+
+
+# ---------------------------------------------------------------------------------------------------------- VncScreens (work browser)
+from assistant.tools.vnc import VncScreens, WORK_VNC_PORT  # noqa: E402
+from assistant.tools.work_browser import work_tab  # noqa: E402
+
+
+def pair(session):
+    main = VncScreen(session, FakeX())
+    work = VncScreen(session, FakeX())
+    work.xscreen.port = WORK_VNC_PORT
+    return VncScreens(main, work, work_tab), main, work
+
+
+async def test_the_owners_tab_and_a_job_tab_each_have_their_own_screen_and_neither_is_busy():
+    session = FakeSession(keys=("owner", "task:w1", "task:w2"))
+    vs, main, work = pair(session)
+    assert await vs.acquire("owner", "phone", 400, 800)
+    assert await vs.acquire("task:w1", "viewer", 400, 800)     # the work screen is free: not "busy"
+    assert main.key == "owner" and work.key == "task:w1"
+    assert vs.holds("owner") and vs.holds("task:w1") and vs.viewing("task:w1")
+    assert vs.upstream_of("owner") == main.upstream and vs.upstream_of("task:w1") == (work.upstream[0], WORK_VNC_PORT)
+
+
+async def test_a_second_work_tab_is_busy_while_the_work_screen_shows_the_first():
+    session = FakeSession(keys=("task:w1", "task:w2"))
+    vs, main, work = pair(session)
+    assert await vs.acquire("task:w1", "viewer", 400, 800)
+    assert not await vs.acquire("task:w2", "viewer", 400, 800)
+    await vs.release("task:w1", "viewer")
+    assert await vs.acquire("task:w2", "viewer", 400, 800)
+
+
+async def test_a_new_work_window_brings_the_held_work_tab_forward_again_and_a_free_screen_is_left_alone():
+    session = FakeSession(keys=("task:w1",))
+    vs, main, work = pair(session)
+    fronted = []
+
+    async def refront():
+        fronted.append(work.key)
+
+    work.refront = refront
+    await vs.work_window_opened("task:w1")       # nothing held: nothing to bring forward
+    assert fronted == []
+    await vs.acquire("task:w1", "viewer", 400, 800)
+    await vs.work_window_opened("task:w1")
+    assert fronted == ["task:w1"]
+
+
+async def test_tab_closed_and_gone_are_routed_to_the_screen_that_shows_the_tab():
+    session = FakeSession(keys=("task:w1",))
+    vs, main, work = pair(session)
+    await vs.acquire("task:w1", "viewer", 400, 800)
+    gone = vs.gone["task:w1"]
+    await vs.tab_closed("task:w1")
+    assert gone.is_set() and work.key is None and vs.size_of("task:w1") is None
+
+
+async def test_without_a_work_screen_every_tab_is_on_the_main_screen():
+    session = FakeSession(keys=("task:w1",))
+    main = VncScreen(session, FakeX())
+    vs = VncScreens(main, None, work_tab)
+    assert await vs.acquire("task:w1", "viewer", 400, 800) and main.key == "task:w1"
+    assert vs.upstream_of("task:w1") == main.upstream

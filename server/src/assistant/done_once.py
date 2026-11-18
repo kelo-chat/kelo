@@ -36,7 +36,7 @@ import logging
 import re
 import smtplib
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, NamedTuple
@@ -481,6 +481,10 @@ class Record:
                 "state": self.state, "outside_id": self.outside_id, "detail": self.detail, "checked_at": self.checked_at}
 
 
+STARTED_DETAIL = "started, no answer yet"          # a record written before the step ran (DoneOnce.begin)
+CUT_DETAIL = "cut off by a restart"               # the same record after the server restarted during the step (ActionLedger.cut_open)
+
+
 class ActionLedger:
     """What Kelo did outside, one row per step that sends, changes or deletes (kept 30 days)."""
 
@@ -513,6 +517,26 @@ class ActionLedger:
     def get(self, record_id: int) -> Record | None:
         rows = self.store._all("SELECT * FROM actions WHERE id = ?", (int(record_id),))
         return Record.of(rows[0]) if rows else None
+
+    def cut_open(self, before: float) -> list[Record]:
+        """At a start: the steps a restart cut off (still unknown, started before `before`, the server's start) are marked as cut.
+        Returns them. They still block their step until it is checked (action_result)."""
+        rows = self.store._all("SELECT * FROM actions WHERE state = 'unknown' AND detail = ? AND ts < ? ORDER BY id", (STARTED_DETAIL, before))
+        if rows:
+            self.store._run("UPDATE actions SET detail = ? WHERE state = 'unknown' AND detail = ? AND ts < ?", (CUT_DETAIL, STARTED_DETAIL, before))
+        return [Record.of({**r, "detail": CUT_DETAIL}) for r in rows]
+
+    def of_task(self, task_id: int | None, state: str = "unknown") -> list[Record]:
+        """The records of one task (a run of a job or a chat turn) in this state, oldest first."""
+        if task_id is None:
+            return []
+        return [Record.of(r) for r in self.store._all("SELECT * FROM actions WHERE task_id = ? AND state = ? ORDER BY id", (int(task_id), state))]
+
+    def move_run(self, ids: Iterable[int], run_id: str, task_id: int | None) -> None:
+        """The picked-up run owns these records now: its run_ended reports them when they are still unknown at its end."""
+        ids = [int(i) for i in ids]
+        if ids:
+            self.store._run(f"UPDATE actions SET run_id = ?, task_id = ? WHERE id IN ({','.join('?' * len(ids))})", (run_id, task_id, *ids))
 
     def recent(self, fingerprint: str, within_s: float) -> list[Record]:
         """The records of this fingerprint in the last `within_s` seconds, newest first."""
@@ -590,6 +614,11 @@ class Attempt:
     def __init__(self, once: DoneOnce, tool: str, record_id: int = 0, block: str = "", note: str = ""):
         self.once, self.tool, self.record_id, self.block, self.note = once, tool, record_id, block, note
 
+    def release(self) -> None:
+        """Called when the handler's call is over, however it ended (a cancel included): the step is no longer in flight."""
+        if self.record_id:
+            self.once.inflight.discard(self.record_id)
+
     def settle(self, result: Any, text: str) -> str:
         """After the handler: `result` is its answer or the exception it raised, `text` what the model is shown. Returns `text`, with
         the note that it ran again at the owner's request, and the line about an unknown result, added."""
@@ -621,9 +650,14 @@ class DoneOnce:
         unattended run, of each step whose result is still unknown (followups.unknown_result)."""
         self.ledger, self.effect, self.turn, self.clock, self.tz = ledger, effect, turn, clock, tz
         self.browser_step, self.browser_page, self.on_unresolved = browser_step, browser_page, on_unresolved
+        self.inflight: set[int] = set()   # records of steps running now: busy() is true while one runs (a stop waits, an update waits)
         self.reader, self.rule = reader or ResultReader(), rule or DuplicateRule()
         self.form = FormWords()
         self.turn_asks = TurnAsks(ask)   # the main model reads the owner's message once, and only when a done record makes it matter
+
+    def busy(self) -> bool:
+        """True while a step that sends, changes or deletes is in flight (its record is written and not yet settled)."""
+        return bool(self.inflight)
 
     # ---- the tool list: action_result is shown only while some step's result is unknown
     @property
@@ -663,7 +697,8 @@ class DoneOnce:
                 return Attempt(self, name, block=found.text)
             rid = self.ledger.record(run_id=self.run_id(turn), task_id=turn.get("task_id"), turn_id=str(turn.get("turn_id") or ""),
                                      source=str(turn.get("source") or ""), tool=name, kind=effect.kind, connector=effect.connector,
-                                     targets=list(effect.targets), fingerprint=fp, state="unknown", detail="started, no answer yet")
+                                     targets=list(effect.targets), fingerprint=fp, state="unknown", detail=STARTED_DETAIL)
+            self.inflight.add(rid)
             return Attempt(self, name, record_id=rid, note=found.text if found is not None else "")
         except Exception:  # noqa: BLE001 - a broken record never stops the owner's step
             log.exception("the action ledger failed before %s", getattr(tool, "name", tool))
@@ -685,6 +720,7 @@ class DoneOnce:
 
     def after(self, record_id: int, outcome: Outcome, detail: str = "") -> str:
         """Write down what happened. Returns the line to add for the model when the result is unknown, else ""."""
+        self.inflight.discard(record_id)
         self.ledger.mark(record_id, outcome.state, outside_id=outcome.outside_id, detail=detail)
         return UNKNOWN_LINE.format(id=record_id) if outcome.state == "unknown" else ""
 

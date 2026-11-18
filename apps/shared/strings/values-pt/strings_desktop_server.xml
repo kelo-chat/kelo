@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">Usar este PC como servidor Kelo</string>
     <string name="desktop_server_row_hint">Instala o servidor Kelo neste computador. O Windows pede permissão de administrador uma vez.</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">Atualizar</string>
     <string name="desktop_server_install">Instalar</string>
     <string name="desktop_server_unavailable">O servidor Kelo para Windows ainda não está disponível.</string>
+
+    <string name="desktop_server_row_mac">Usar este Mac como servidor Kelo</string>
+    <string name="desktop_server_row_hint_mac">Instala o servidor Kelo neste Mac. O macOS pede a senha de administrador uma vez.</string>
+    <string name="desktop_server_installed_mac">O servidor Kelo está neste Mac</string>
+    <string name="desktop_server_unavailable_mac">O servidor Kelo para Mac ainda não está disponível</string>
+    <string name="desktop_server_port_busy">Outro programa neste Mac está usando a porta %1$d. Feche-o e tente de novo.</string>
+    <string name="desktop_server_downgrade">Já está instalado um servidor Kelo mais recente.</string>
+    <string name="desktop_server_remove">Remover</string>
+    <string name="desktop_server_remove_title">Remover o servidor Kelo deste Mac?</string>
+    <string name="desktop_server_remove_body">Conversas, chaves e arquivos são mantidos, a menos que você escolha apagá-los.</string>
+    <string name="desktop_server_remove_data">Apagar também conversas, chaves e arquivos</string>
+    <string name="desktop_server_removing">Removendo</string>
+    <string name="desktop_server_removed">Removido</string>
 </resources>

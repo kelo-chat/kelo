@@ -10,7 +10,8 @@
     python3 tools/release/bump.py 0.9.1 --min-app 0.9.0 --min-server 0.9.0
     python3 tools/release/bump.py --check-tag v0.9.1     # exit 1 unless version.json says 0.9.1 (the release workflow runs this)
 
-It writes version.json, the version in pyproject.toml and uv.lock (the project's own entry), renames the CHANGELOG.md heading
+It writes version.json, the version in pyproject.toml and uv.lock (the project's own entry), the iPhone's KeloVersion.swift
+(apps/ios/tools/gen_version.py, when the checkout has apps/ios), renames the CHANGELOG.md heading
 "## Unreleased" to "## 0.9.1 (build 7, 2026-11-10)" with a new empty "## Unreleased" above it, and prints the tag to create
 (`git tag -a v0.9.1 -m ...`). See docs/versioning.md.
 """
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
 import re
 import sys
@@ -42,6 +44,14 @@ def next_version(cur: str, level: str) -> str:
     """The version after `cur` at `level` (major | minor | patch)."""
     a, b, c = key(cur)
     return {"major": f"{a + 1}.0.0", "minor": f"{a}.{b + 1}.0", "patch": f"{a}.{b}.{c + 1}"}[level]
+
+
+def _gen_version():
+    """apps/ios/tools/gen_version.py of this repository: it renders the iPhone's KeloVersion.swift from version.json."""
+    spec = importlib.util.spec_from_file_location("gen_version", ROOT / "apps" / "ios" / "tools" / "gen_version.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def bump(root: Path, version: str, build: int | None = None, min_app: str | None = None, min_server: str | None = None,
@@ -68,6 +78,11 @@ def bump(root: Path, version: str, build: int | None = None, min_app: str | None
     if key(data["min_server"]) > key(version):
         raise SystemExit("min_server cannot be newer than the release")
     vfile.write_text(json.dumps(data, indent=2) + "\n")
+
+    gv = _gen_version()
+    swift = root / gv.OUT_REL
+    if swift.parent.is_dir():   # a checkout without the iPhone app (the tests' temp roots) has no such folder
+        swift.write_text(gv.render(data))
 
     py = root / "pyproject.toml"
     text = py.read_text()

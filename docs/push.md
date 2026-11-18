@@ -66,6 +66,8 @@ message (409 while Kelo is answering) and gives the model its prepared steps as 
 
 ## For the operator
 
+The operator's server can run as a site-only copy that holds these services for the other copies, with the main copy linked to it: see [site-only.md](site-only.md).
+
 1. **Download the key.** Open Firebase console → your project → Project settings → Service accounts. Click
    **Generate new private key** to download a JSON file.
 2. **Upload it with any signed-in device or the access key.** Use the app's operator settings, or run curl on the operator's computer:

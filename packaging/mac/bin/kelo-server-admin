@@ -1,0 +1,167 @@
+#!/bin/sh
+# Kelo server, root side (run as root by the root stage of the app's one administrator prompt, and by hand from Terminal with sudo).
+#   kelo-server-admin install --user NAME --mode daemon|agent
+#   kelo-server-admin remove [--delete-data] --user NAME
+# Writes the launchd job (daemon: /Library/LaunchDaemons, starts at boot; agent: the user's LaunchAgents, starts at sign-in),
+# starts it, and keeps the program folder's current and previous version. It never touches anything but the Kelo server's own
+# folders: the program folder, the job's files, and (only with --delete-data) the VM folder ~/.kelo-server.
+# Exit codes: 64 bad input, 65 not root, 66 unsafe path, 67 launchd or plist failure.
+set -eu
+
+ROOT="/Library/Application Support/Kelo Server"
+CURRENT="$ROOT/current"
+VERSIONS="$ROOT/versions"
+LABEL="chat.kelo.server"
+DAEMON_PLIST="/Library/LaunchDaemons/$LABEL.plist"
+
+die() {
+    code="$1"; shift
+    printf 'kelo-server-admin: %s\n' "$*" >&2
+    exit "$code"
+}
+
+[ "$(id -u)" = 0 ] || die 65 "must run as root"
+
+validate_user() {
+    printf '%s' "$1" | grep -Eq '^[A-Za-z_][A-Za-z0-9_.-]{0,31}$' || die 64 "bad user name"
+    [ "$1" != root ] || die 64 "the user must not be root"
+    uid="$(id -u "$1" 2>/dev/null)" || die 64 "no such user"
+    [ "$uid" -ge 501 ] || die 64 "the user must have uid 501 or more"
+}
+
+home_of() {
+    home="$(dscl . -read "/Users/$1" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+    case "$home" in
+        /Users/*) ;;
+        *) die 66 "no home folder for $1" ;;
+    esac
+    case "$home" in
+        *[\<\>\&\"]*) die 66 "the home folder path has characters the plist cannot take" ;;
+    esac
+}
+
+# The user's folders are made as the user (install -d as root would own them by root).
+own_dir() {
+    [ -d "$1" ] || install -d -o "$USER_NAME" -g staff "$1"
+}
+
+write_plist() {
+    out="$1"; mode="$2"
+    lima_home="$home/.kelo-server/vm"
+    {
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+        printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+        printf '%s\n' '<plist version="1.0"><dict>'
+        printf '\t<key>Label</key>\n\t<string>%s</string>\n' "$LABEL"
+        if [ "$mode" = daemon ]; then
+            printf '\t<key>UserName</key>\n\t<string>%s</string>\n' "$USER_NAME"
+            printf '\t<key>GroupName</key>\n\t<string>staff</string>\n'
+        fi
+        printf '\t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>%s/bin/kelo-vm-run</string>\n\t</array>\n' "$CURRENT"
+        printf '\t<key>EnvironmentVariables</key>\n\t<dict>\n'
+        printf '\t\t<key>HOME</key>\n\t\t<string>%s</string>\n' "$home"
+        printf '\t\t<key>LIMA_HOME</key>\n\t\t<string>%s</string>\n' "$lima_home"
+        printf '\t\t<key>PATH</key>\n\t\t<string>/usr/bin:/bin:/usr/sbin:/sbin</string>\n\t</dict>\n'
+        printf '\t<key>RunAtLoad</key>\n\t<true/>\n\t<key>KeepAlive</key>\n\t<true/>\n'
+        printf '\t<key>ThrottleInterval</key>\n\t<integer>30</integer>\n\t<key>ExitTimeOut</key>\n\t<integer>120</integer>\n'
+        printf '\t<key>ProcessType</key>\n\t<string>Background</string>\n'
+        printf '\t<key>StandardOutPath</key>\n\t<string>%s/Library/Logs/Kelo Server/vm.log</string>\n' "$home"
+        printf '\t<key>StandardErrorPath</key>\n\t<string>%s/Library/Logs/Kelo Server/vm.log</string>\n' "$home"
+        printf '%s\n' '</dict></plist>'
+    } > "$out"
+    plutil -lint "$out" >/dev/null || die 67 "the plist is not valid"
+}
+
+prune_versions() {
+    current_name="$(basename "$(readlink "$CURRENT")")"
+    keep=0
+    for name in $(ls -1t "$VERSIONS" 2>/dev/null); do
+        case "$name" in
+            .*) continue ;;
+        esac
+        keep=$((keep + 1))
+        if [ "$keep" -gt 2 ] && [ "$name" != "$current_name" ]; then
+            rm -rf -- "$VERSIONS/$name"
+        fi
+    done
+}
+
+install_service() {
+    validate_user "$USER_NAME"
+    home_of "$USER_NAME"
+    [ -f "$CURRENT/version.txt" ] || die 66 "no program version is in place"
+    for d in "$home/Library" "$home/Library/Logs" "$home/Library/Logs/Kelo Server" "$home/.kelo-server"; do
+        own_dir "$d"
+    done
+    if [ "$MODE" = daemon ]; then
+        tmp="$(mktemp "$ROOT/.plist.XXXXXX")"
+        write_plist "$tmp" daemon
+        chown root:wheel "$tmp"
+        chmod 644 "$tmp"
+        mv -f "$tmp" "$DAEMON_PLIST"
+        launchctl bootout system/chat.kelo.server 2>/dev/null || true
+        launchctl bootstrap system "$DAEMON_PLIST" || die 67 "launchd did not start the Kelo server job"
+    else
+        own_dir "$home/Library/LaunchAgents"
+        agent="$home/Library/LaunchAgents/$LABEL.plist"
+        tmp="$(mktemp "$ROOT/.plist.XXXXXX")"
+        write_plist "$tmp" agent
+        chown "$USER_NAME":staff "$tmp"
+        chmod 644 "$tmp"
+        mv -f "$tmp" "$agent"
+        # the user's own session starts the job: the app runs launchctl bootstrap gui/<uid> as the user
+        printf 'agent-ready\n'
+    fi
+    prune_versions
+}
+
+remove_service() {
+    validate_user "$USER_NAME"
+    home_of "$USER_NAME"
+    uid="$(id -u "$USER_NAME")"
+    launchctl bootout system/chat.kelo.server 2>/dev/null || true
+    launchctl bootout "gui/$uid/chat.kelo.server" 2>/dev/null || true
+    rm -f -- "$DAEMON_PLIST" "$home/Library/LaunchAgents/$LABEL.plist"
+    if [ "$DELETE_DATA" = 1 ]; then
+        data="$home/.kelo-server"
+        if [ -L "$data" ]; then
+            die 66 "the data folder is a symbolic link: nothing removed"
+        fi
+        if [ -d "$data" ]; then
+            rm -rf -- "$data"
+        fi
+    fi
+    rm -rf -- "$ROOT"
+}
+
+COMMAND="${1:-}"
+[ -n "$COMMAND" ] || die 64 "usage: install --user NAME --mode daemon|agent | remove [--delete-data] --user NAME"
+shift
+MODE=""; USER_NAME=""; DELETE_DATA=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --user) USER_NAME="${2:-}"; shift ;;
+        --mode) MODE="${2:-}"; shift ;;
+        --delete-data) DELETE_DATA=1 ;;
+        *) die 64 "unknown argument" ;;
+    esac
+    shift
+done
+[ -n "$USER_NAME" ] || die 64 "--user is required"
+
+case "$COMMAND" in
+    install)
+        case "$MODE" in
+            daemon|agent) ;;
+            *) die 64 "--mode must be daemon or agent" ;;
+        esac
+        install_service
+        ;;
+    remove)
+        remove_service
+        ;;
+    *)
+        die 64 "unknown command"
+        ;;
+esac
+exit 0

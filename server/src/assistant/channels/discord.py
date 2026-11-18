@@ -333,7 +333,8 @@ class Discord(Channel):
         if self.me_id:
             text = re.sub(rf"<@!?{re.escape(self.me_id)}>", f"@{self.me_name or 'bot'}", text)
         inc = Incoming(chat_id=channel, user_id=str(author.get("id", "")), message_id=mid, text=text, private=not d.get("guild_id"),
-                       name=str(author.get("global_name") or author.get("username") or ""))
+                       name=str(author.get("global_name") or author.get("username") or ""),
+                       forwarded=bool(d.get("message_snapshots")))   # a forwarded message carries its snapshots (Discord API)
         if d.get("guild_id"):
             gid = str(d["guild_id"])
             guild = self.guilds.get(gid, {}).get("name", "")

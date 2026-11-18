@@ -29,6 +29,7 @@ from typing import Any
 
 from .home import Home, HomeError, PEOPLE_DIR
 from .memory_types import (
+    CONTENT_REASONS,
     Claim,
     Edit,
     EDIT_OPS,
@@ -266,9 +267,12 @@ def _is_sentence_subset(orig_text: str, repl_text: str) -> bool:
 _USER_MD_LABEL = re.compile(r"^(\s*[-*+]?\s*[A-Za-z0-9_ ]+:)")
 
 
-def ground(pinned: Pinned, edits: list[Edit], resolve_handle: Callable[[str], bool]) -> tuple[list[Edit], list[str]]:
+def ground(pinned: Pinned, edits: list[Edit], resolve_handle: Callable[[str], bool],
+           owner_evidence: Callable[[str], bool] = lambda _h: False) -> tuple[list[Edit], list[str]]:
     """Step 8: Grounds proposed edits against the snapshot and verification rules.
-    Returns (accepted_edits, salvage_reasons).
+    Returns (accepted_edits, salvage_reasons). New content (a promote, correct or reframe, or any insert) needs at least one evidence
+    handle that is the owner's own words (`owner_evidence`): a file line or the assistant's text never is (memory-owner-only). The
+    default refuses, so a caller that passes nothing gets no new content.
     """
     accepted: list[Edit] = []
     salvage: list[str] = []
@@ -346,6 +350,11 @@ def ground(pinned: Pinned, edits: list[Edit], resolve_handle: Callable[[str], bo
                 if unresolved:
                     salvage.append(f"{e.handle}: unresolvable evidence handle(s): {', '.join(unresolved)}")
                     continue
+
+        # 6b. New content needs the owner's own words as evidence
+        if (e.reason in CONTENT_REASONS or e.op == "insert_after") and not any(owner_evidence(h) for h in e.evidence):
+            salvage.append(f"{e.handle}: needs the owner's own words as evidence")
+            continue
 
         # 7. Promote targets
         if e.reason == "promote":
@@ -790,8 +799,10 @@ def reconcile_file(
     log_append: Callable[[str], None],
     home: Any = None,
     run_id: str | None = None,
+    owner_evidence: Callable[[str], bool] = lambda _h: False,
 ) -> ReconcileStats:
-    """Coordinates steps 7-13 for one pinned file. Supports both sync and async model_call."""
+    """Coordinates steps 7-13 for one pinned file. Supports both sync and async model_call. `owner_evidence(handle)`: True for the
+    owner's own words (m<id> of an owner message, or a claim made from one); see ground()."""
     if home is None:
         home = _PINNED_HOME.get(id(pinned)) or Home(".")
 
@@ -809,6 +820,7 @@ def reconcile_file(
                 call_fn=_async_call_model,
                 model_call=model_call,
                 resolve_handle=resolve_handle,
+                owner_evidence=owner_evidence,
                 log_append=log_append,
                 home=home,
                 run_id=run_id,
@@ -834,6 +846,7 @@ def reconcile_file(
                 call_fn=_async_call_model,
                 model_call=model_call,
                 resolve_handle=resolve_handle,
+                owner_evidence=owner_evidence,
                 log_append=log_append,
                 home=home,
                 run_id=run_id,
@@ -856,6 +869,7 @@ def reconcile_file(
         home=home,
         run_id=run_id,
         initial_res=first_res,
+        owner_evidence=owner_evidence,
     )
 
 
@@ -870,6 +884,7 @@ def _reconcile_file_sync(
     home: Any,
     run_id: str,
     initial_res: Any = None,
+    owner_evidence: Callable[[str], bool] = lambda _h: False,
 ) -> ReconcileStats:
     # 1. Step 7: Reconcile request + parse
     if initial_res is not None:
@@ -894,7 +909,7 @@ def _reconcile_file_sync(
     edits: list[Edit] = parsed
 
     # 2. Step 8: Ground
-    grounded, salvage = ground(pinned, edits, resolve_handle)
+    grounded, salvage = ground(pinned, edits, resolve_handle, owner_evidence)
     if not grounded:
         return ReconcileStats({
             "status": "no_grounded_edits",
@@ -1048,6 +1063,7 @@ async def _reconcile_file_core(
     home: Any,
     run_id: str,
     initial_raw: str | None = None,
+    owner_evidence: Callable[[str], bool] = lambda _h: False,
 ) -> ReconcileStats:
     # 1. Step 7: Reconcile request + parse
     if initial_raw is not None:
@@ -1072,7 +1088,7 @@ async def _reconcile_file_core(
     edits: list[Edit] = parsed
 
     # 2. Step 8: Ground
-    grounded, salvage = ground(pinned, edits, resolve_handle)
+    grounded, salvage = ground(pinned, edits, resolve_handle, owner_evidence)
     if not grounded:
         return ReconcileStats({
             "status": "no_grounded_edits",

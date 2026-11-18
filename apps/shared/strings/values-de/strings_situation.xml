@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Was Kelo sich angesehen hat</string>
+    <string name="situation_title">Was Kelo sich angesehen hat</string>
+    <string name="situation_hourly_head">Was Kelo jede Stunde ansieht</string>
+    <string name="situation_read_when_needed_head">Nur bei Bedarf gelesen</string>
+    <string name="situation_read_when_needed_about">Diese werden gelesen, wenn eine Frage sie braucht. Ein Dienst kann jede Stunde angesehen werden, wenn er sagt, wie sein Zustand gelesen wird.</string>
+    <string name="situation_section_conversation">Gespräch</string>
+    <string name="situation_section_mail">Mail</string>
+    <string name="situation_section_calendar">Kalender</string>
+    <string name="situation_section_goals">Ziele</string>
+    <string name="situation_section_schedules">Termine</string>
+    <string name="situation_section_memory">Gedächtnis</string>
+    <string name="situation_section_other">Sonstiges</string>
+    <string name="situation_empty">Noch nichts. Der erste Blick ist in der nächsten Stunde um 9 Minuten nach, während Sie wach sind.</string>
+    <string name="situation_keep_days">Wird %d Tage aufbewahrt</string>
+    <string name="situation_outcome_no_change">Nichts Neues</string>
+    <string name="situation_outcome_nothing">Angesehen, nichts zu melden</string>
+    <string name="situation_outcome_proposed">%d vorbereitet</string>
+    <string name="situation_outcome_selected">%d ausgewählt</string>
+    <string name="situation_outcome_delivered">Ich habe Ihnen Bescheid gesagt</string>
+    <string name="situation_outcome_failed">Nicht ansehbar</string>
+    <string name="situation_outcome_running">Wird gerade angesehen</string>
+    <string name="situation_outcome_other">Angesehen</string>
+    <string name="situation_load_more">Mehr laden</string>
+    <string name="situation_detail_changed">Was sich geändert hat</string>
+    <string name="situation_detail_same">Wie zuvor (%d)</string>
+    <string name="situation_detail_failed">Konnte nicht gelesen werden</string>
+    <string name="situation_detail_off">Aus</string>
+    <string name="situation_detail_done">Was Kelo getan hat</string>
+    <string name="situation_detail_none">In diesem Blick wurde nichts vorbereitet.</string>
+    <string name="situation_state_new">Neu</string>
+    <string name="situation_state_same">Wie zuvor</string>
+    <string name="situation_state_changed">Geändert</string>
+    <string name="situation_state_failed">Konnte nicht gelesen werden</string>
+    <string name="situation_state_timeout">Hat zu lange gedauert</string>
+    <string name="situation_state_skipped">Nicht berücksichtigt: der Blick war voll</string>
+    <string name="situation_state_off">Aus</string>
+    <string name="situation_state_other">Sonstiges</string>
+    <string name="situation_event_proposed">Vorbereitet</string>
+    <string name="situation_event_updated">Aktualisiert</string>
+    <string name="situation_event_selected_today">Für heute ausgewählt</string>
+    <string name="situation_event_selected_regular">Als normale Nachricht ausgewählt</string>
+    <string name="situation_event_told">Ich habe Ihnen Bescheid gesagt</string>
+    <string name="situation_event_dropped">Zurückgestellt: %s</string>
+    <string name="situation_event_dropped_none">Zurückgestellt: nicht wichtig genug, um es zu melden</string>
+    <string name="situation_event_expired">Abgelaufen</string>
+    <string name="situation_event_waiting">Wartet auf einen besseren Zeitpunkt</string>
+</resources>

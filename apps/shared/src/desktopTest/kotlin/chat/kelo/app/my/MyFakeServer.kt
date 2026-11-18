@@ -9,7 +9,6 @@ import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 /**
@@ -18,7 +17,8 @@ import javax.crypto.KeyGenerator
  */
 class MyFakeServer(private val answer: (method: String, path: String, body: String) -> MockResponse?) {
     private val server = MockWebServer()
-    val requests: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    // a copy-on-write list: reading while the server thread appends is safe
+    val requests: MutableList<String> = java.util.concurrent.CopyOnWriteArrayList()
 
     private class MapStore : KeyValueStore {
         val map = HashMap<String, String>()
@@ -44,7 +44,7 @@ class MyFakeServer(private val answer: (method: String, path: String, body: Stri
         return Sessions(store, requireE2e = false)
     }
 
-    fun saw(prefix: String) = synchronized(requests) { requests.any { it.startsWith(prefix) } }   // the server thread appends while we read
+    fun saw(prefix: String) = requests.any { it.startsWith(prefix) }
 
     fun shutdown() = server.shutdown()
 

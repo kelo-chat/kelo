@@ -62,6 +62,9 @@ interface AppServices {
     val cardKeys: CardKeys
     val cardScanner: CardScanner?
 
+    /** The designed mail previews the approval cards fetched (per session; see [chat.kelo.app.chat.MailPreviewStore]). */
+    val mailPreviews: chat.kelo.app.chat.MailPreviewStore
+
     /** This device's copy of the Keyguard key ([chat.kelo.app.keyguard.KeyguardKeys.None]: the device never holds one). */
     val keyguardKeys: chat.kelo.app.keyguard.KeyguardKeys
 

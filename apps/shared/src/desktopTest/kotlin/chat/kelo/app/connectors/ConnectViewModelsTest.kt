@@ -52,7 +52,7 @@ class ConnectViewModelsTest {
     private fun fake(answer: (method: String, path: String, body: String) -> okhttp3.mockwebserver.MockResponse?) = MyFakeServer(answer).also { server = it }
 
     private class FakeBrowser(private val opens: Boolean = true) : ExternalBrowser {
-        val opened = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val opened = java.util.concurrent.CopyOnWriteArrayList<String>()
         override fun open(url: String): Boolean { opened += url; return opens }
     }
 

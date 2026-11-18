@@ -69,6 +69,16 @@ RUN mkdir -p /run/kelo-route /run/kelo-vpn && chown assistant:assistant /run/kel
 # the key container (keyring_service.py): its own user and state folder (a new keyring-state volume gets this owner; /state belongs to the server's user)
 RUN useradd -m -u 1005 keyring && mkdir -p /keyring-state && chown keyring:keyring /keyring-state && chmod 700 /keyring-state
 RUN mkdir -p /run/workroom && chown 1003:1050 /run/workroom && chmod 2770 /run/workroom
+# the voice container (voice_service.py): its own user; the Silero VAD model baked in, root-owned and checked by its hash (docker/voice.lock);
+# the socket folder is shared only with the server (group 1051); the speech models come from the voice-models volume the server writes
+COPY docker/voice.lock /tmp/voice.lock
+RUN set -eux; . /tmp/voice.lock; mkdir -p /opt/voice; \
+    curl -fsSL -o /opt/voice/silero_vad.onnx "$SILERO_VAD_URL"; \
+    echo "$SILERO_VAD_SHA256  /opt/voice/silero_vad.onnx" | sha256sum -c -; \
+    chmod 644 /opt/voice/silero_vad.onnx; rm -f /tmp/voice.lock
+RUN groupadd -g 1051 voice-io && useradd -m -u 1006 -g voice-io voice \
+    && mkdir -p /run/voice /voice-models && chown 1006:1051 /run/voice && chmod 2770 /run/voice \
+    && chown assistant:assistant /voice-models && chmod 755 /voice-models
 
 RUN pip install --no-cache-dir uv
 WORKDIR /app

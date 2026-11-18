@@ -56,7 +56,7 @@ def test_trash_moves_a_file_hides_it_everywhere_and_restore_puts_it_back(home):
 
 def test_a_folder_goes_with_its_files_and_comes_back_whole(home):
     seed(home)
-    e = home.trash("memory/people")
+    e = home.trash("memory/people", by="user")
     assert e["type"] == "dir" and e["bytes"] > 10 and not (home.root / "memory" / "people").exists()
     assert home.restore(e["id"]) == "memory/people"
     assert home.read("memory/people/kim.md").endswith("likes tea\n") and home.read("memory/people/lee.md") == "# Lee\n"
@@ -71,7 +71,7 @@ def test_restore_never_overwrites_what_is_there_now(home):
     home.write("notes/a.md", "newest\n", by="user")
     assert home.restore(second["id"]) == "notes/a (restored 2).md"
     assert home.read("notes/a.md") == "newest\n" and home.read("notes/a (restored).md") == "note a\n" and home.read("notes/a (restored 2).md") == "newer\n"
-    folder = home.trash("memory/people")
+    folder = home.trash("memory/people", by="user")
     home.mkdir("memory/people")
     assert home.restore(folder["id"]) == "memory/people (restored)" and home.read("memory/people (restored)/lee.md") == "# Lee\n"
 
@@ -82,7 +82,7 @@ def test_the_trash_is_purged_after_thirty_days_and_leaves_the_librarys_files_alo
     (home.root / ".trash" / "index.json").write_text("[]")                      # the library's own index and files share the folder
     (home.root / ".trash" / "abc123-report.xlsx").write_bytes(b"x")
     home.clock.t += (TRASH_DAYS - 1) * 86400
-    new = home.trash("memory/people/lee.md")
+    new = home.trash("memory/people/lee.md", by="user")
     home.clock.t += 2 * 86400                                                   # old: 31 days, new: 2 days
     assert home.purge_trash() == 1
     assert [r["id"] for r in home.trashed()] == [new["id"]] and not (home.root / ".trash" / old["id"]).exists()

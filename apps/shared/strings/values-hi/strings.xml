@@ -936,10 +936,14 @@
     <string name="live_held_elsewhere">दूसरे डिवाइस से कंट्रोल हो रहा है</string>
     <string name="live_give_back">वापस सौंपें</string>
     <string name="live_paused_banner">कंट्रोल आपके पास है। जब तक आप वापस नहीं सौंपते, आपका एजेंट इस टैब पर इंतज़ार करेगा।</string>
+    <string name="live_still_yours">आप अभी भी खुद नियंत्रित कर रहे हैं। जब तक आप लौटाएँगे नहीं, एजेंट इंतज़ार करेगा।</string>
+    <string name="live_screen_changed">स्क्रीन बदल गई है। फिर से टैप करें।</string>
     <string name="live_tab_closed">टैब बंद हो गया, इसलिए देखने को और कुछ नहीं है। आख़िरी स्क्रीन सेव हुई हो तो नीचे दिख रही है।</string>
     <string name="live_not_controller">अभी आप कंट्रोल नहीं कर सकते। फिर से \"कंट्रोल लें\" पर टैप करें।</string>
     <string name="live_input_failed">ब्राउज़र यह नहीं कर सका।</string>
     <string name="live_state_you">कंट्रोल आपके पास है</string>
+    <string name="live_work_browser">कार्य ब्राउज़र</string>
+    <string name="live_work_browser_note">यह टैब आपके अपने टैब से अलग, Kelo के कार्य ब्राउज़र में है। यहाँ किया गया साइन-इन काम खत्म होने पर Kelo के मुख्य ब्राउज़र में सेव हो जाता है।</string>
     <string name="live_state_other">कंट्रोल दूसरे डिवाइस के पास है</string>
     <string name="live_state_waiting">मंज़ूरी का इंतज़ार</string>
     <string name="live_connecting">कनेक्ट हो रहा है…</string>
@@ -1199,6 +1203,9 @@
     <string name="work_wait_answer">आगे कैसे बढ़ना है, यह बताते ही आगे बढ़ेगा।</string>
     <string name="work_wait_blocked">अपने-आप आगे नहीं बढ़ सकता, इसलिए रुका है।</string>
     <string name="work_wait_restart">सर्वर रीस्टार्ट होने पर रुक गया।</string>
+    <string name="work_picked_up">Kelo सर्वर फिर से शुरू हुआ, इसलिए काम जहाँ रुका था वहीं से आगे बढ़ा।</string>
+    <string name="work_picked_up_browser">ब्राउज़र फिर से शुरू हुआ, इसलिए काम एक नए टैब में आगे बढ़ा।</string>
+    <string name="work_wait_pickup">यह थोड़ी देर में जहाँ रुका था वहीं से आगे बढ़ेगा।</string>
     <string name="work_schedule_on">शेड्यूल चालू</string>
     <string name="work_schedule_off">शेड्यूल बंद</string>
     <string name="work_schedule_by_agent">आपके एजेंट ने बनाया</string>

@@ -124,7 +124,7 @@ def router(ctx: AppContext) -> APIRouter:
     @router.delete("/api/files/{path:path}", dependencies=[Depends(require_auth)])
     async def delete_agent_file(path: str) -> Any:
         try:
-            return {"ok": True, "trashed": need_home().trash(path)}
+            return {"ok": True, "trashed": need_home().trash(path, by="user")}
         except CoreFile:
             return JSONResponse({"detail": "core file", "reset": True}, status_code=409)
         except NotDeletable as e:

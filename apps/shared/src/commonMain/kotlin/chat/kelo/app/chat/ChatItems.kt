@@ -91,6 +91,8 @@ sealed interface ChatItem {
         val forgetPlan: String = "",
         /** The message this card sends, which the owner may fix first (mail body, text) */
         val editable: chat.kelo.app.agent.EditableMessage? = null,
+        /** A designed mail: its preview is shown on the card (null for any other card) */
+        val mail: MailDesign? = null,
     ) : ChatItem {
         val answered: Boolean get() = answer != null
         val open: Boolean get() = answer == null && !expired
@@ -110,6 +112,8 @@ sealed interface ChatItem {
         val hosts: List<String> = emptyList(),
         /** The phone card: the Android device (tab "android") instead of a browser tab; [host] and [url] stay empty */
         val device: Boolean = false,
+        /** The server's time of the card (unix seconds); 0 = unknown. A card the server no longer shows is dropped once it is older */
+        val at: Double = 0.0,
     ) : ChatItem
     /** An allowed payment waits for this phone's card until [expiresAt] (unix seconds); [ended]: the reply is over, nothing waits. */
     data class CardNeeded(
@@ -309,35 +313,50 @@ object ChatReducer {
                     lines = ev.lines, ask = ev.ask,
                     grant = ev.grant, urgent = ev.urgent, missed = ev.missed, items = ev.items, pin = ev.pin,
                     offers = if (ev.payment == null && ev.grant == null) ev.offers else emptyList(),
-                    preapproval = ev.preapproval, forgetPlan = ev.forgetPlan, editable = ev.editable,
+                    preapproval = ev.preapproval, forgetPlan = ev.forgetPlan, editable = ev.editable, mail = ev.mail,
                 )
             is TurnEvent.Browser -> {
-                // one live card per reply and tab: a new step, or another site in the same tab, updates it; only a new tab adds one
+                // one live card per reply and tab: a new step, or another site in the same tab, updates it; only a new tab adds one.
+                // A card of an earlier reply for the same tab moves here (one card per tab in the whole list)
                 val start = next.indexOfLast { it is ChatItem.Msg && it.mine } + 1
                 val i = (next.lastIndex downTo start).firstOrNull { j ->
                     val b = (next[j] as? ChatItem.Browser)?.takeIf { !it.device }
                     b != null && (b.id == ev.id || b.tab == ev.tab || (ev.tab.isEmpty() && b.tab.isNotEmpty()) || (b.tab.isEmpty() && ev.tab.isNotEmpty()))
                 } ?: -1
-                val old = next.getOrNull(i) as? ChatItem.Browser
+                val earlier = if (i >= 0) -1 else next.indexOfLast { j -> (j as? ChatItem.Browser)?.let { !it.device && (it.id == ev.id || (ev.tab.isNotEmpty() && it.tab == ev.tab)) } == true }
+                val old = (if (i >= 0) next.getOrNull(i) else next.getOrNull(earlier)) as? ChatItem.Browser
                 val hosts = old?.hosts.orEmpty().let { h -> if (ev.host.isEmpty() || ev.host in h) h else h + ev.host }
                 val card = ChatItem.Browser(
                     old?.key ?: newKey(), ev.id, ev.title, ev.host, ev.url, ev.status,
                     ev.image ?: old?.image, if (ev.image != null) ev.width else old?.width ?: 0, if (ev.image != null) ev.height else old?.height ?: 0,
-                    recent = filmstrip(old?.recent.orEmpty(), ev.image), tab = ev.tab.ifEmpty { old?.tab.orEmpty() }, hosts = hosts,
+                    recent = filmstrip(old?.recent.orEmpty(), ev.image), tab = ev.tab.ifEmpty { old?.tab.orEmpty() }, hosts = hosts, at = ev.at,
                 )
-                if (old != null) next[i] = card else next += card
+                when {
+                    i >= 0 -> next[i] = card
+                    earlier >= 0 -> { next.removeAt(earlier); next += card }
+                    else -> next += card
+                }
             }
             is TurnEvent.Device -> {
-                // one phone card per reply: every step of the device updates it in place
+                // one phone card per reply: every step of the device updates it in place (a card of an earlier reply moves here)
                 val start = next.indexOfLast { it is ChatItem.Msg && it.mine } + 1
                 val i = (next.lastIndex downTo start).firstOrNull { j -> (next[j] as? ChatItem.Browser)?.device == true } ?: -1
-                val old = next.getOrNull(i) as? ChatItem.Browser
+                val earlier = if (i >= 0) -1 else next.indexOfLast { j -> (j as? ChatItem.Browser)?.device == true }
+                val old = (if (i >= 0) next.getOrNull(i) else next.getOrNull(earlier)) as? ChatItem.Browser
                 val card = ChatItem.Browser(
                     old?.key ?: newKey(), ev.id, "", "", "", ev.status,
                     ev.image ?: old?.image, if (ev.image != null) ev.width else old?.width ?: 0, if (ev.image != null) ev.height else old?.height ?: 0,
-                    recent = filmstrip(old?.recent.orEmpty(), ev.image), tab = ev.key, device = true,
+                    recent = filmstrip(old?.recent.orEmpty(), ev.image), tab = ev.key, device = true, at = ev.at,
                 )
-                if (old != null) next[i] = card else next += card
+                when {
+                    i >= 0 -> next[i] = card
+                    earlier >= 0 -> { next.removeAt(earlier); next += card }
+                    else -> next += card
+                }
+            }
+            is TurnEvent.View -> {
+                // the server closed a tab or the phone's view in the chat: its card goes (a view that opens brings its card with the next step)
+                if (ev.state == "closed") next.removeAll { it is ChatItem.Browser && (if (ev.key == PHONE_VIEW_KEY) it.device else !it.device && it.tab == ev.key) }
             }
             is TurnEvent.CardNeeded -> {
                 // this phone already sent the card on Allow: nothing more to ask

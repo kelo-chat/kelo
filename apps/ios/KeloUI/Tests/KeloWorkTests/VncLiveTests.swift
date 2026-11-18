@@ -269,19 +269,39 @@ private final class Opens: @unchecked Sendable {
         #expect(VncBridge.script(for: "x").hasPrefix("window.keloVncReceive("))
         #expect(js.contains("'reset'"))       // the message the app sends when the screen is opened again at a new size
         #expect(VncBridge.reset() == #"{"t":"reset"}"#)
+        #expect(js.contains("t: 'clipboard'"))     // the text the browser copied, which the app offers to the owner
+        #expect(js.contains("from './zoom.js'"))   // the pinch is the zoom's (zoom.js ships beside the page)
     }
 
     @Test func theAndroidAndIPhonePagesAreTheSameFiles() throws {
-        // Android's assets/vnc is the original: the iPhone folder is a copy and the two must not drift apart
+        // Android's assets/vnc is the original; the iPhone folder is a copy made by apps/ios/tools/sync_vnc.py and the two must not drift apart
         let here = URL(fileURLWithPath: #filePath)   // apps/ios/KeloUI/Tests/KeloWorkTests/…
         let apps = here.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
         let android = apps.appendingPathComponent("android/kelo/app/src/main/assets/vnc")
         guard FileManager.default.fileExists(atPath: android.path) else { return }   // a checkout without the Android app
-        for name in ["view.js", "view.html", "SOURCE.md", "LICENSE.txt", "core/rfb.js", "vendor/pako/lib/zlib/inflate.js"] {
-            let a = try Data(contentsOf: android.appendingPathComponent(name))
-            #expect(a == VncAssets.answer(for: url("/" + name)).body, "\(name)")
+        let original = try regularFiles(under: android)
+        for rel in original.sorted() {
+            let a = try Data(contentsOf: android.appendingPathComponent(rel))
+            #expect(a == VncAssets.answer(for: url("/" + rel)).body, "\(rel): run python3 apps/ios/tools/sync_vnc.py")
         }
+        // and the bundled copy has no file the original lacks
+        let extra = try regularFiles(under: VncAssets.root).subtracting(original).sorted()
+        #expect(extra.isEmpty, "bundled but not in Android: \(extra.joined(separator: ", ")); run python3 apps/ios/tools/sync_vnc.py")
+    }
+
+    /// Relative paths of the regular files under `folder` (Finder's .DS_Store left out).
+    private func regularFiles(under folder: URL) throws -> Set<String> {
+        let prefix = folder.standardizedFileURL.path + "/"
+        guard let walker = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey]) else {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        var found = Set<String>()
+        for case let file as URL in walker where file.lastPathComponent != ".DS_Store" {
+            guard try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { continue }
+            found.insert(String(file.standardizedFileURL.path.dropFirst(prefix.count)))
+        }
+        return found
     }
 }
 
@@ -303,6 +323,63 @@ private final class Opens: @unchecked Sendable {
         host.release()
         relay.close()
         #expect(answered)
+    }
+
+    @Test func thePageHandsPinchToTheZoomNotToTheWebView() async {
+        // the page takes two-finger gestures itself (zoom.js): no touch-action left to the web view, no page zoom from the viewport
+        let relay = VncRelay(ticket: { "tk" }, open: { _, _ in PushSocket() }, answerMs: 5_000)
+        let host = VncWebHost(relay: relay)
+        defer { host.release(); relay.close() }
+        var touchAction = ""
+        for _ in 0..<100 {   // the page loads from the bundled folder: wait for its screen element
+            touchAction = (try? await host.webView.evaluateJavaScript("getComputedStyle(document.getElementById('screen')).touchAction") as? String) ?? ""
+            if touchAction == "none" { break }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(touchAction == "none")
+        let viewport = (try? await host.webView.evaluateJavaScript("document.querySelector('meta[name=viewport]').content") as? String) ?? ""
+        #expect(viewport.contains("user-scalable=no"))
+    }
+}
+
+/// The copy chip: what the browser copied waits for the owner's tap, and only the tap puts it on the phone's clipboard.
+@MainActor @Suite struct VncClipboardModelTests {
+    /// A live tab whose VNC screen is showing, with `copy` as the phone's clipboard.
+    private func showing(copy: @escaping (String) -> Void) async -> LiveModel {
+        let s = PushSocket()
+        let t = RoutedTransport()
+        t.down = true   // the live socket's ticket fails: only the VNC side is under test
+        let m = LiveModel(api: t.api(), tabId: "tab1")
+        m.makeRelay = { _, _ in VncRelay(ticket: { "tk" }, open: { _, _ in s }, answerMs: 200) }
+        m.copyText = copy
+        m.start()
+        m.reportVncArea(width: 390, height: 600, scale: 3)
+        s.push(.text(#"{"type":"vnc","width":1170,"height":1800}"#))
+        #expect(await eventually("showing") { m.showsVnc })
+        return m
+    }
+
+    @Test func aCopiedTextWaitsForATapAndThenGoesToThePhoneOnce() async {
+        var copied: [String] = []
+        let m = await showing { copied.append($0) }
+        m.vncRelay?.offerClipboard("x")
+        #expect(m.offeredClip == "x")
+        #expect(copied.isEmpty)                         // nothing reaches the phone by itself
+        m.takeClip()
+        #expect(copied == ["x"])
+        #expect(m.offeredClip == nil)
+        #expect(m.notice == L(R.string.live_copied_to_phone))
+        m.takeClip()                                    // nothing left to take
+        #expect(copied == ["x"])
+        m.stop()
+    }
+
+    @Test func aCopiedTextIsGoneWhenTheScreenCloses() async {
+        let m = await showing { _ in }
+        m.vncRelay?.offerClipboard("y")
+        #expect(m.offeredClip == "y")
+        m.stop()
+        #expect(m.offeredClip == nil)
     }
 }
 

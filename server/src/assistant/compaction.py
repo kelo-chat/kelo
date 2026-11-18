@@ -69,13 +69,6 @@ SUMMARY_PROMPT = (
     "and time (for example 2026-11-17 15:00), never 'today', 'tomorrow' or 'next week'; work them out from the time each message "
     "was sent. "
     "At most about {tokens} tokens (about {chars} characters). Reply with the summary only.")
-MEMORY_FLUSH_PROMPT = (
-    "Older messages of your conversation with the user (below) are about to be condensed into a short summary, and their details will "
-    "leave your context. Before that, save what is worth keeping for months: durable facts about the user and their life, "
-    "preferences, and commitments or promises with dates. Read MEMORY.md (and user.md if it matters) with read_file, then write the "
-    "whole updated file with write_file, keeping everything still true and adding only what is new. Do not save passwords, codes, "
-    "card numbers or other secrets, nor one-off chit-chat. If nothing is worth saving, write nothing. You can use only those file "
-    "tools. When you are done, reply with exactly {token} and nothing else; this step is silent and the user never sees it.")
 NO_REPLY = "NO_REPLY"
 
 

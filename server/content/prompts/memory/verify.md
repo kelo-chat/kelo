@@ -1,6 +1,6 @@
 # Verify Claims
 
-Review the proposed memory claims against the cited source texts. For each claim, you judge two specific lenses:
+Review the proposed memory claims against the cited source texts (always one of the user's own messages). For each claim, you judge two specific lenses:
 1. `refute`: Could this claim be false, speculative, an assumption beyond what was stated, or an assistant statement mistakenly attributed to the user? Does a date in the source fail to support the claimed event date?
 2. `evidence`: Does the quoted source text directly and unambiguously state what this claim asserts?
 

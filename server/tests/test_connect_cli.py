@@ -350,7 +350,7 @@ def test_a_copy_without_a_browser_still_starts_its_tunnel(tmp_path):
     connect.cloudflare_connect(m, m.load("alice"), "example.com", which=have, cf_home=home)
     m.start("alice", build_if_missing=False)
     up = [c for c in run.calls if "up" in c][-1]
-    assert up[-5:] == ["--no-deps", "server", "cloudflared", "workroom", "vpn"]
+    assert up[-6:] == ["--no-deps", "server", "cloudflared", "workroom", "vpn", "voice"]
 
 
 @pytest.mark.parametrize("link", ["https://alice.kelo.chat/#pair=ABCDEFGHJKLMNP", "https://kelo.me.duckdns.org/#pair=ABCDEFGHJKLMNPQRSTUV12"])

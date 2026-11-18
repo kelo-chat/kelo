@@ -181,6 +181,13 @@ class KeloApi(
         return bytes
     }
 
+    /** [send] with its own read timeout, for a call that takes long on the server (a voice transcription). Same interceptors, so KE2E still seals it. */
+    suspend fun sendWithReadTimeout(req: Request, seconds: Long): ByteArray {
+        val (code, bytes) = execute(req, client.newBuilder().readTimeout(seconds, TimeUnit.SECONDS).build())
+        if (code !in 200..299) throw failure(code, bytes)
+        return bytes
+    }
+
     private fun failure(code: Int, bytes: ByteArray): ApiError {
         val top = runCatching { json.parseToJsonElement(bytes.toString(Charsets.UTF_8)) as? JsonObject }.getOrNull()
         val raw = top?.get("detail")
@@ -215,8 +222,8 @@ class KeloApi(
         return client.newWebSocket(req, listener)
     }
 
-    private suspend fun execute(req: Request): Pair<Int, ByteArray> = suspendCancellableCoroutine { cont ->
-        val call = client.newCall(req)
+    private suspend fun execute(req: Request, using: OkHttpClient = client): Pair<Int, ByteArray> = suspendCancellableCoroutine { cont ->
+        val call = using.newCall(req)
         cont.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {

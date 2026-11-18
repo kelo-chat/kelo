@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">Pobrać model rozpoznawania mowy %1$s na serwer Kelo? Jeśli nie, używane jest rozpoznawanie mowy telefonu.</string>
+    <string name="voice_server_downloading">Pobieranie modelu mowy · %1$d%%</string>
+    <string name="voice_server_ready">Serwer Kelo rozumie już Twój głos.</string>
+    <string name="voice_server_download_failed">Model mowy nie został w całości pobrany.</string>
+    <string name="voice_server_no_room">Za mało miejsca na serwerze Kelo (potrzeba %1$s).</string>
+    <string name="voice_retry">Spróbuj ponownie</string>
+    <string name="voice_transcribing">Zamiana na tekst…</string>
+    <string name="voice_cancel_recording">Anuluj nagrywanie</string>
+    <string name="voice_stop_recording">Zatrzymaj nagrywanie</string>
+    <string name="voice_ends_in">Koniec za %1$d s</string>
+    <string name="voice_server_offline">Nie udało się połączyć z serwerem Kelo, aby zamienić mowę na tekst.</string>
+    <string name="voice_server_busy">Serwer Kelo przetwarza inne nagranie. Spróbuj za chwilę.</string>
+    <string name="voice_server_too_long">Nagranie jest za długie. Mów krócej niż 2 minuty.</string>
+    <string name="voice_page_title">Wpisywanie głosem</string>
+    <string name="voice_page_intro">Twój głos jest zamieniany na tekst na serwerze Kelo, a tekst trafia do pola. Nic nie jest wysyłane samo.</string>
+    <string name="voice_model_in_use">Używany model mowy</string>
+    <string name="voice_state_off">Rozpoznawanie mowy telefonu</string>
+    <string name="voice_change_model">Zmień model</string>
+    <string name="voice_download_model">Pobierz model</string>
+    <string name="voice_remove_model">Usuń model</string>
+    <string name="voice_remove_confirm">Usunąć model mowy? Potem używane będzie rozpoznawanie mowy telefonu.</string>
+    <string name="voice_phone_note">Modele mowy na serwerze Kelo nie znają jeszcze tego języka, dlatego używane jest rozpoznawanie mowy telefonu.</string>
+    <string name="voice_model_size">Rozmiar %1$s · pamięć podczas pracy %2$s</string>
+    <string name="voice_runtime_missing">Uruchom jeszcze raz instalator serwera Kelo, aby z tego korzystać.</string>
+</resources>

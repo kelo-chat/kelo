@@ -112,7 +112,7 @@ async def test_memory_pass_api_shows_the_last_pass_its_changes_and_undoes_it(tmp
         store.set_profile(timezone="Asia/Seoul")
         (tmp_path / "home" / "MEMORY.md").write_text("# MEMORY.md\n\n## About the user\n- Likes tea\n\n## Ongoing\n- Dentist visit is on "
                                                      "2026-11-10. Parking is behind the clinic.\n\n## Decided & done\n")
-        store.add_message("user", "I always take my tea without sugar")
+        store.add_message("user", "I always take my tea without sugar", author="owner")
         out = (await c.post("/api/reflection/memory/run")).json()
         assert out["status"] == "done" and "MEMORY.md" in out["files"]
         last = (await c.get("/api/reflection")).json()["memory"]["last_pass"]

@@ -40,6 +40,7 @@ struct BrowserTabPage: View {
             top(title: title, host: host, canClose: !device && !controlling && live.mode != .ended)
             if live.mode != .ended { strip }
             if controlling { banner }
+            if LiveRules.showWorkNote(live.status) { workNote }
             ZStack(alignment: .bottom) {
                 Group {
                     if live.mode == .ended && live.end != .noBrowser {
@@ -80,11 +81,16 @@ struct BrowserTabPage: View {
                     .padding(.horizontal, 12).padding(.vertical, 6)
             }
             if controlling {
+                // what the browser copied waits for a tap: nothing reaches the phone's clipboard before it
+                if live.showsVnc, live.offeredClip != nil {
+                    CopyChip(label: L(R.string.live_copy_from_browser)) { Haptics.tick(); live.takeClip() }
+                }
                 ControlBar(live: live, device: device)
             } else if live.mode != .ended {
                 let other = live.status.someoneElse
-                PrimaryButton(L(other ? R.string.live_held_elsewhere : R.string.live_take),
-                              enabled: !other && !live.controlBusy && live.frame != nil) {
+                // a tab another device holds is taken over only when that device has no live connection any more (the server moves it)
+                PrimaryButton(L(other && !live.status.holderAway ? R.string.live_held_elsewhere : R.string.live_take),
+                              enabled: (!other || live.status.holderAway) && !live.controlBusy && live.frame != nil) {
                     Task { await take() }
                 }
                 .padding(12)
@@ -114,7 +120,7 @@ struct BrowserTabPage: View {
             guard LiveRules.autoTake(asked: takeControl, done: autoTaken, hasFrame: live.frame != nil, controlling: controlling,
                                      someoneElse: live.status.someoneElse, busy: live.controlBusy) else { return }
             autoTaken = true
-            await take()
+            await take(handover: true)   // Kelo asked for this: a hand-over hold (leaving the page gives it back)
         }
         .keloConfirm(L(R.string.agent_tab_close_confirm), isPresented: $confirmClose, yes: L(R.string.agent_tab_close)) {
             model.closeTab(id, then: onBack)
@@ -124,8 +130,8 @@ struct BrowserTabPage: View {
     /// What the auto take-over waits on (Android LivePage's LaunchedEffect keys).
     private struct AutoTakeKey: Equatable { let hasFrame: Bool, controlling: Bool, someoneElse: Bool }
 
-    private func take() async {
-        switch await live.control(true) {
+    private func take(handover: Bool = false) async {
+        switch await live.control(true, handover: handover) {
         case .held: live.notice = L(R.string.live_held_elsewhere)
         case .gone: live.notice = L(R.string.live_tab_closed)
         case .failed: live.notice = L(R.string.live_input_failed)
@@ -133,9 +139,16 @@ struct BrowserTabPage: View {
         }
     }
 
+    /// Leaving with the owner's own button hold: the page says it stays theirs until they hand it back, then leaves.
+    private func leave() {
+        guard LiveRules.leaveNotice(live.status) else { onBack(); return }
+        live.notice = L(R.string.live_still_yours)
+        Task { try? await Task.sleep(nanoseconds: 1_400_000_000); onBack() }
+    }
+
     private func top(title: String, host: String, canClose: Bool) -> some View {
         HStack(spacing: 4) {
-            Button(action: onBack) { KeloIconView(.chevronLeft, size: 24, tint: c.ink).frame(width: 44, height: 44) }
+            Button(action: leave) { KeloIconView(.chevronLeft, size: 24, tint: c.ink).frame(width: 44, height: 44) }
                 .buttonStyle(.plain).accessibilityLabel(L(R.string.back))
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.system(.callout, weight: .bold)).foregroundStyle(c.ink).lineLimit(1)
@@ -166,6 +179,7 @@ struct BrowserTabPage: View {
         default: firstNonEmpty(s.label, s.agent.status, tab?.statusText) ?? ""
         }
         return FlowLayout(spacing: 8, lineSpacing: 4) {
+            if s.inWorkBrowser { pill(L(R.string.live_work_browser), c.accent) }   // the work pill first; the state pill follows
             pill(word, tone)
             if !line.isEmpty { Text(line).font(KeloFont.small).foregroundStyle(c.muted).lineLimit(2) }
             if live.mode == .polling { pill(L(R.string.live_slow_mode), c.muted) }
@@ -194,6 +208,14 @@ struct BrowserTabPage: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 14).fill(c.card))
+    }
+
+    /// Under the paused banner, while the owner holds a tab of the work browser: where their sign-in goes.
+    private var workNote: some View {
+        Text(L(R.string.live_work_browser_note)).font(KeloFont.small).foregroundStyle(c.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).padding(.vertical, 2)
     }
 
     /// While the user holds the tab: the agent waits; one tap gives it back.
@@ -558,6 +580,18 @@ private struct ControlBar: View {
             }
             HStack(spacing: 6) {
                 KeloTextField(L(device ? R.string.live_phone_type_hint : R.string.live_type_hint), text: $text, secure: hidden, keyboard: .ascii, maxLength: LiveMessages.maxText, focusRequest: live.editing, onSubmit: sendText)
+                #if os(iOS)
+                // the system's own paste control: no "Allow Paste" prompt, and it is greyed out while the phone's clipboard has no text
+                PasteButton(payloadType: String.self) { strings in
+                    guard let clip = ClipboardRules.pasteText(strings.first) else { return }
+                    live.type(clip)
+                    live.notice = L(R.string.live_pasted)
+                }
+                .labelStyle(.iconOnly)
+                .buttonBorderShape(.circle)
+                .tint(c.bubble)
+                .frame(width: 40, height: 40)
+                #endif
                 Button { hidden.toggle() } label: { KeloIconView(hidden ? .lock : .eye, size: 22, tint: c.muted).frame(width: 40, height: 40) }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L(hidden ? R.string.live_type_show : R.string.live_type_hide))
@@ -606,6 +640,34 @@ private struct ControlBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(L(desc))
+    }
+}
+
+/// The text the browser copied, offered to the owner: a full-width row above the controls; a tap copies it to the phone (the same look as
+/// Android's CopyChip). The words wrap, so a long label in any language stays on screen.
+private struct CopyChip: View {
+    let label: String
+    let action: () -> Void
+    @Environment(\.kelo) private var c
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                KeloIconView(.copy, size: 18, tint: c.ink)
+                Text(label).font(KeloFont.button).foregroundStyle(c.ink)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(Capsule().fill(c.bubble))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(c.card)
     }
 }
 

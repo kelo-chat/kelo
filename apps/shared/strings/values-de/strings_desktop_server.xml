@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">Diesen PC als Kelo-Server nutzen</string>
     <string name="desktop_server_row_hint">Installiert den Kelo-Server auf diesem Computer. Windows fragt einmal nach Administratorrechten.</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">Aktualisieren</string>
     <string name="desktop_server_install">Installieren</string>
     <string name="desktop_server_unavailable">Der Kelo-Server für Windows ist noch nicht verfügbar.</string>
+
+    <string name="desktop_server_row_mac">Diesen Mac als Kelo-Server nutzen</string>
+    <string name="desktop_server_row_hint_mac">Installiert den Kelo-Server auf diesem Mac. macOS fragt einmal nach dem Administratorpasswort.</string>
+    <string name="desktop_server_installed_mac">Der Kelo-Server ist auf diesem Mac</string>
+    <string name="desktop_server_unavailable_mac">Kelo-Server für Mac ist noch nicht verfügbar</string>
+    <string name="desktop_server_port_busy">Ein anderes Programm auf diesem Mac nutzt Port %1$d. Schließe es und versuche es noch einmal.</string>
+    <string name="desktop_server_downgrade">Ein neuerer Kelo-Server ist bereits installiert.</string>
+    <string name="desktop_server_remove">Entfernen</string>
+    <string name="desktop_server_remove_title">Kelo-Server von diesem Mac entfernen?</string>
+    <string name="desktop_server_remove_body">Chats, Schlüssel und Dateien bleiben erhalten, wenn du sie nicht löschen möchtest.</string>
+    <string name="desktop_server_remove_data">Chats, Schlüssel und Dateien auch löschen</string>
+    <string name="desktop_server_removing">Wird entfernt</string>
+    <string name="desktop_server_removed">Entfernt</string>
 </resources>

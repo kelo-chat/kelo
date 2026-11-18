@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">ซูมเข้า</string>
     <string name="desktop_chat_zoom_reset">พอดีกับหน้าต่าง</string>
     <string name="desktop_chat_zoom_hint">กด %1$s ค้างไว้แล้วหมุนล้อเพื่อซูม ลากเพื่อดูส่วนอื่น</string>
+    <string name="desktop_chat_search_hint">พิมพ์คำหรือบางส่วนของคำ คลิกผลลัพธ์เพื่อเปิดแชตที่ข้อความนั้น</string>
 </resources>

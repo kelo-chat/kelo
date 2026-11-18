@@ -192,7 +192,7 @@ async def test_taking_control_cancels_the_running_step_and_a_step_never_waits_fo
         hub.take("owner", "1")
         with pytest.raises(ToolStopped) as e:
             await task
-        assert e.value.text == TOOK_OVER_NOTE and "took over the browser" in e.value.text
+        assert e.value.text == TOOK_OVER_NOTE and "took over this tab" in e.value.text
         await settle()
         assert not sess.step_running("owner")
         # a step that starts anyway (or one that was running) must not wait 300 s in page(): it fails at once
@@ -217,6 +217,7 @@ async def test_the_interrupt_cleans_up_the_page_before_the_owners_first_input():
     base = FakeCDP()
     sess._tab_cdp["owner"] = base
     hub = LiveHub(sess, reaper=False)
+    sess._steps["owner"] = asyncio.ensure_future(asyncio.sleep(30))   # an agent step is running: taking the tab stops it and cleans up
     hub.take("owner", "1")
     await sess.settled("owner")
     methods = [m for m, _ in base.sent]

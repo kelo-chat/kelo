@@ -658,6 +658,11 @@ def _task_key() -> str:
     return str((current_turn.get() or {}).get("task_id") or "")
 
 
+def _job_tab() -> bool:
+    """A background job's own tab: its attempts are one checkout across all its runs (pick-ups included)."""
+    return browser_owner.get().startswith("task:w")
+
+
 def _owner_request() -> str:
     """The owner's own request words for this task (its request, or a saved job's request): never outside text."""
     from ..workers import current_turn
@@ -715,7 +720,7 @@ def _checkout_tools(session: BrowserSession, store: Reviews, *, confirm: Any, va
     covers = covers if covers is not None else {}
 
     def open_attempt() -> dict[str, Any] | None:
-        return attempts.open(browser_owner.get(), _task_key())
+        return attempts.open(browser_owner.get(), _task_key(), any_task=_job_tab())
 
     def nav_block() -> str | None:
         if CHECKING.get():   # the later check of an unknown order reads and opens the tab itself
@@ -1081,8 +1086,9 @@ def _result_tool(session: BrowserSession, ledger: Any, *, notify: Any = None, ti
         return str(args.get("outcome") or "placed")
 
     def journal_open() -> dict[str, Any] | None:
-        """The attempt of this owner/task that still waits for its outcome (pressed or unknown), None when there is none."""
-        return attempts.open(browser_owner.get(), _task_key()) if attempts is not None else None
+        """The attempt of this owner/task that still waits for its outcome (pressed or unknown), None when there is none. A job's tab
+        counts every run of the job: a picked-up run sees the press of the run it was cut from (job_cuts.py)."""
+        return attempts.open(browser_owner.get(), _task_key(), any_task=_job_tab()) if attempts is not None else None
 
     def validate(args: dict[str, Any]) -> str | None:
         out = outcome_of(args)

@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">Zoom in</string>
     <string name="desktop_chat_zoom_reset">Fit to the window</string>
     <string name="desktop_chat_zoom_hint">Hold %1$s and turn the wheel to zoom; drag to look around.</string>
+    <string name="desktop_chat_search_hint">Type a word or part of one. Click a result to open the chat at that message.</string>
 </resources>

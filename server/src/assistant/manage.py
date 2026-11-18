@@ -56,6 +56,14 @@ def run_command(args: Any, manager: Instances | None = None, ask: Callable[[str]
                 m.out(f"{n}: sizes moved to today's numbers for {size} (applies the next time it starts).")
         if args.cmd == "instance":
             _instance(m, args, ask if interactive else None, ui)
+        elif args.cmd == "operator":
+            from . import operator_link
+            if args.ocmd == "link":
+                operator_link.link(m, args.name, url=args.url, out=m.out)
+            elif args.ocmd == "status":
+                operator_link.status(m, out=m.out)
+            else:
+                operator_link.unlink(m, args.name, out=m.out)
         elif args.cmd == "connect":
             _connect(m, args)
         elif args.cmd == "limits":
@@ -180,13 +188,22 @@ def _instance(m: Instances, args: Any, ask: Callable[[str], str] | None, ui: Any
         name = args.name or "<name>"
         raise InstanceError(f"`instance remove` is gone, so nothing was changed. Use `{kelo_cmd()} instance stop {name}` "
                             f"(stops it; its data stays) or `{kelo_cmd()} instance delete {name}` (deletes it completely).")
+    elif c == "site-only":
+        running = bool(m.running(args.name))
+        inst = m.set_site_only(args.name, args.state == "on")
+        if running and ask is not None and ask("Restart it now? [y/N]: ").strip().lower() in ("y", "yes"):
+            m.start(args.name)
+            m.out(f"{inst.name} restarted.")
+        elif running:
+            m.out(f"Restart it to apply: {kelo_cmd()} instance start {args.name}")
     elif c == "list":
         rows = [m.load(MAIN)] if m.env_path(MAIN).is_file() else []
         rows += [m.load(n) for n in m.names()]
         for inst in rows:
             state = "running" if m.running(inst.name) else "stopped"
             via = f"  via {inst.connect_mode}: {inst.connect_url}" if inst.connect_mode else ""
-            m.out(f"{inst.name:20} {state:8} {inst.local_url}  {'browser' if inst.browser else 'no browser'}{via}")
+            kind = "site only" if inst.site_only else "browser" if inst.browser else "no browser"
+            m.out(f"{inst.name:20} {state:8} {inst.local_url}  {kind}{via}")
         if len(rows) <= 1:
             m.out("Make another copy: assistant instance create <name>")
     elif c == "update":                            # normally routed to updates.run_command by cli.main (exit code, lock)
@@ -415,7 +432,10 @@ def _status(m: Instances, name: str | None) -> None:
             m.load(MAIN)                                   # explains that there is no .env here
     for inst in rows:
         state = "running" if m.running(inst.name) else "stopped"
-        m.out(f"{inst.name}: {state}  {inst.address}" + (f"  (via {inst.connect_mode})" if inst.connect_mode else ""))
+        if inst.is_main and read_env(inst.env, "KELO_OPERATOR_SITE_URL"):
+            m.out(f"operator site: {read_env(inst.env, 'KELO_OPERATOR_SITE_URL')} linked")
+        m.out(f"{inst.name}: {state}  {inst.address}" + (f"  (via {inst.connect_mode})" if inst.connect_mode else "")
+              + ("  (site only: kelo.chat and the operator's services)" if inst.site_only else ""))
         flag = "" if inst.is_main else f" --instance {inst.name}"
         m.out(f"  subscription sign-ins (unofficial providers): {'on' if oauth_on(inst) else 'off'}"
               f"  [assistant {'disable' if oauth_on(inst) else 'enable'} oauth{flag}]")

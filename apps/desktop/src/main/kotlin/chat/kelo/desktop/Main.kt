@@ -10,7 +10,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
@@ -39,6 +38,7 @@ import chat.kelo.app.ui.text.loadString
 import chat.kelo.desktop.i18n.DesktopLocale
 import chat.kelo.desktop.ui.KeloApp
 import chat.kelo.desktop.ui.Page
+import chat.kelo.desktop.ui.windowShortcut
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -59,7 +59,7 @@ private class TrayWords(val open: String, val work: String, val quit: String, va
  *   Kelo --snapshot DIR   draw the main screens into DIR as PNGs and quit (screenshots for the README; see Snapshots.kt)
  *
  * Closing the window leaves Kelo in the tray (unless that is switched off in My → this device), where it keeps checking for the
- * agent's notifications. Ctrl+1…5 (⌘ on a Mac) switch pages.
+ * agent's notifications. Ctrl+1…5 (⌘ on a Mac) switch pages, Ctrl+F (⌘F) searches the chat.
  */
 fun main(args: Array<String>) {
     DesktopLocale.system   // the system's language, taken before the app sets its own as the default
@@ -150,12 +150,9 @@ fun main(args: Array<String>) {
             state = state,
             onPreviewKeyEvent = { e ->
                 val mod = if (DesktopPlatform.os == DesktopPlatform.Os.MAC) e.isMetaPressed else e.isCtrlPressed
-                if (e.type == KeyEventType.KeyDown && mod) {
-                    val page = when (e.key) {
-                        Key.One -> Page.CHAT; Key.Two -> Page.GOALS; Key.Three -> Page.WORK; Key.Four -> Page.CONNECTORS; Key.Five -> Page.MY
-                        else -> null
-                    }
-                    if (page != null) { app.openPage.value = page.name; true } else false
+                if (e.type == KeyEventType.KeyDown) {
+                    val shortcut = windowShortcut(e.key, mod)
+                    if (shortcut != null) { app.openPage.value = shortcut; true } else false
                 } else false
             },
         ) {

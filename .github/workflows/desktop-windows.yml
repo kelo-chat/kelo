@@ -152,6 +152,8 @@ jobs:
           path: |
             apps/desktop/build/reports/tests/test
             apps/desktop/build/test-results/test
+            apps/shared/build/reports/tests
+            apps/shared/build/test-results
             apps/desktop/build/parity
             apps/desktop/build/mock-server
           if-no-files-found: ignore

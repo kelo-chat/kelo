@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">Messaggio con grafica</string>
+    <string name="mail_preview_open">Visualizza più grande</string>
+    <string name="mail_preview_loading">Caricamento dell\'anteprima…</string>
+    <string name="mail_preview_failed">Impossibile caricare l\'anteprima.</string>
+    <string name="mail_preview_gone">L\'anteprima non è più disponibile.</string>
+    <string name="mail_preview_too_big">L\'anteprima è troppo grande per essere mostrata.</string>
+    <string name="mail_preview_pictures_note">Le immagini vengono inviate come link, non come immagini.</string>
+    <string name="mail_preview_link_title">Aprire questo indirizzo?</string>
+    <string name="mail_preview_link_open">Apri nel browser</string>
+    <string name="mail_preview_simple_note">In questa app la grafica viene mostrata in forma semplice.</string>
+    <string name="mail_preview_desc">Anteprima del messaggio con grafica</string>
+</resources>

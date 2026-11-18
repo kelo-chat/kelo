@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">이 컴퓨터에서 붙여넣기</string>
+    <string name="desktop_live_copied">이 컴퓨터에 복사했어요</string>
+    <string name="desktop_live_type_hint">페이지를 누르면 바로 입력돼요. 한글처럼 조합해서 쓰는 글은 아래 줄에 써 주세요.</string>
+</resources>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- it text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Cosa ha guardato Kelo</string>
+    <string name="situation_title">Cosa ha guardato Kelo</string>
+    <string name="situation_hourly_head">Cosa Kelo guarda ogni ora</string>
+    <string name="situation_read_when_needed_head">Letto solo quando serve</string>
+    <string name="situation_read_when_needed_about">Vengono letti quando una domanda ne ha bisogno. Un servizio può essere guardato ogni ora se dice come leggerne lo stato.</string>
+    <string name="situation_section_conversation">Conversazione</string>
+    <string name="situation_section_mail">Posta</string>
+    <string name="situation_section_calendar">Calendario</string>
+    <string name="situation_section_goals">Obiettivi</string>
+    <string name="situation_section_schedules">Programmi</string>
+    <string name="situation_section_memory">Memoria</string>
+    <string name="situation_section_other">Altro</string>
+    <string name="situation_empty">Ancora niente. Il primo controllo è al minuto 9 della prossima ora, nelle ore in cui è sveglio.</string>
+    <string name="situation_keep_days">Conservato per %d giorni</string>
+    <string name="situation_outcome_no_change">Niente di nuovo</string>
+    <string name="situation_outcome_nothing">Controllato, niente da segnalare</string>
+    <string name="situation_outcome_proposed">Preparati %d</string>
+    <string name="situation_outcome_selected">Scelti %d</string>
+    <string name="situation_outcome_delivered">Ve l\'ho detto</string>
+    <string name="situation_outcome_failed">Non è stato possibile controllare</string>
+    <string name="situation_outcome_running">In controllo ora</string>
+    <string name="situation_outcome_other">Controllato</string>
+    <string name="situation_load_more">Carica altro</string>
+    <string name="situation_detail_changed">Cosa è cambiato</string>
+    <string name="situation_detail_same">Uguale a prima (%d)</string>
+    <string name="situation_detail_failed">Impossibile leggere</string>
+    <string name="situation_detail_off">Disattivato</string>
+    <string name="situation_detail_done">Cosa ha fatto Kelo</string>
+    <string name="situation_detail_none">In questo controllo non è stato preparato nulla.</string>
+    <string name="situation_state_new">Nuovo</string>
+    <string name="situation_state_same">Uguale a prima</string>
+    <string name="situation_state_changed">Cambiato</string>
+    <string name="situation_state_failed">Impossibile leggere</string>
+    <string name="situation_state_timeout">Ci ha messo troppo</string>
+    <string name="situation_state_skipped">Escluso: il controllo era pieno</string>
+    <string name="situation_state_off">Disattivato</string>
+    <string name="situation_state_other">Altro</string>
+    <string name="situation_event_proposed">Preparato</string>
+    <string name="situation_event_updated">Aggiornato</string>
+    <string name="situation_event_selected_today">Scelto per oggi</string>
+    <string name="situation_event_selected_regular">Scelto come messaggio normale</string>
+    <string name="situation_event_told">Ve l\'ho detto</string>
+    <string name="situation_event_dropped">Messo da parte: %s</string>
+    <string name="situation_event_dropped_none">Messo da parte: non abbastanza importante da dirlo</string>
+    <string name="situation_event_expired">Scaduto</string>
+    <string name="situation_event_waiting">In attesa di un momento migliore</string>
+</resources>

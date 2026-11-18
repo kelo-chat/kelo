@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Kelo 看過的內容</string>
+    <string name="situation_title">Kelo 看過的內容</string>
+    <string name="situation_hourly_head">Kelo 每小時查看的內容</string>
+    <string name="situation_read_when_needed_head">只在需要時讀取的內容</string>
+    <string name="situation_read_when_needed_about">需要回答問題時才會讀取。能說明如何讀取狀態的連線，可以每小時查看。</string>
+    <string name="situation_section_conversation">對話</string>
+    <string name="situation_section_mail">郵件</string>
+    <string name="situation_section_calendar">行事曆</string>
+    <string name="situation_section_goals">目標</string>
+    <string name="situation_section_schedules">排程</string>
+    <string name="situation_section_memory">記憶</string>
+    <string name="situation_section_other">其他</string>
+    <string name="situation_empty">還沒有內容。第一次查看在您清醒時段內下一個小時的第 9 分鐘。</string>
+    <string name="situation_keep_days">保留 %d 天</string>
+    <string name="situation_outcome_no_change">沒有新內容</string>
+    <string name="situation_outcome_nothing">看過了，沒有需要告訴您的內容</string>
+    <string name="situation_outcome_proposed">已準備 %d 項</string>
+    <string name="situation_outcome_selected">已選擇 %d 項</string>
+    <string name="situation_outcome_delivered">已告訴您</string>
+    <string name="situation_outcome_failed">無法查看</string>
+    <string name="situation_outcome_running">正在查看</string>
+    <string name="situation_outcome_other">看過了</string>
+    <string name="situation_load_more">載入更多</string>
+    <string name="situation_detail_changed">有變化的內容</string>
+    <string name="situation_detail_same">與之前相同 (%d)</string>
+    <string name="situation_detail_failed">無法讀取</string>
+    <string name="situation_detail_off">已關閉</string>
+    <string name="situation_detail_done">Kelo 做了什麼</string>
+    <string name="situation_detail_none">這次查看沒有準備任何內容。</string>
+    <string name="situation_state_new">新增</string>
+    <string name="situation_state_same">與之前相同</string>
+    <string name="situation_state_changed">有變化</string>
+    <string name="situation_state_failed">無法讀取</string>
+    <string name="situation_state_timeout">耗時太長</string>
+    <string name="situation_state_skipped">未納入：本次查看已滿</string>
+    <string name="situation_state_off">已關閉</string>
+    <string name="situation_state_other">其他</string>
+    <string name="situation_event_proposed">已準備</string>
+    <string name="situation_event_updated">已更新</string>
+    <string name="situation_event_selected_today">已選為今天的內容</string>
+    <string name="situation_event_selected_regular">已選為一般訊息</string>
+    <string name="situation_event_told">已告訴您</string>
+    <string name="situation_event_dropped">已擱置：%s</string>
+    <string name="situation_event_dropped_none">已擱置：不值得告訴您</string>
+    <string name="situation_event_expired">已過期</string>
+    <string name="situation_event_waiting">等待更合適的時機</string>
+</resources>

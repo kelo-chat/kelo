@@ -25,7 +25,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 /** The Keyguard page's view model against a local fake server and a fake device key. Nothing reaches a real server. */
@@ -33,7 +32,7 @@ import javax.crypto.KeyGenerator
 class KeyguardViewModelTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<String>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<String>()
     @Volatile private var viewBody = """{"mode":"phone","locked":true,"phones":[{"device_id":7,"name":"Pixel","alg":1}]}"""
     @Volatile private var recoverAnswer = MockResponse().setBody("""{"ok":true,"locked":false}""")
 

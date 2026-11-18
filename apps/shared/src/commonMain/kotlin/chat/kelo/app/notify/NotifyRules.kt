@@ -151,8 +151,10 @@ object NoteTypes {
     const val STORAGE = "storage"
     /** The morning briefing (title "아침 브리핑", body its one-line summary); its card waits in the chat */
     const val BRIEFING = "briefing"
+    /** Kelo asks whether the owner keeps controlling a screen they hold (untouched for 10 minutes): keep or hand back (the chat's buttons) */
+    const val HOLD_IDLE = "hold_idle"
     val ALL = setOf(TASK_DONE, TASK_FAILED, APPROVAL_WAITING, PAYMENT_AUTO, SCHEDULE_DISABLED, SCHEDULE_PAUSED, WATCH_FIRED, WATCH_DISABLED, PROACTIVE, FOLLOWUP,
-        BETA_REQUEST, CLI_UPDATE, SERVER_UPDATE, STORAGE, BRIEFING)
+        BETA_REQUEST, CLI_UPDATE, SERVER_UPDATE, STORAGE, BRIEFING, HOLD_IDLE)
 }
 
 /**
@@ -167,7 +169,7 @@ object NotifyRules {
 
     fun channel(type: String, scheduleId: Long?): Channel = when (type) {
         // asked again about something that waits for the owner: with the approvals (it may badge the icon)
-        NoteTypes.APPROVAL_WAITING, NoteTypes.FOLLOWUP -> Channel.APPROVALS
+        NoteTypes.APPROVAL_WAITING, NoteTypes.FOLLOWUP, NoteTypes.HOLD_IDLE -> Channel.APPROVALS
         NoteTypes.PAYMENT_AUTO -> Channel.PAYMENTS
         NoteTypes.SCHEDULE_DISABLED, NoteTypes.SCHEDULE_PAUSED, NoteTypes.WATCH_FIRED, NoteTypes.WATCH_DISABLED -> Channel.SCHEDULES
         NoteTypes.PROACTIVE, NoteTypes.BRIEFING -> Channel.REPLIES
@@ -180,7 +182,7 @@ object NotifyRules {
      * paused or switched-off schedule → that schedule; a watcher → the watchers; a message the agent sent by itself → the chat.
      */
     fun target(n: ServerNotification): OpenTarget = when (n.type) {
-        NoteTypes.APPROVAL_WAITING -> OpenTarget.Chat
+        NoteTypes.APPROVAL_WAITING, NoteTypes.HOLD_IDLE -> OpenTarget.Chat
         NoteTypes.PAYMENT_AUTO -> OpenTarget.Wallet
         NoteTypes.SCHEDULE_DISABLED, NoteTypes.SCHEDULE_PAUSED -> n.scheduleId?.let(OpenTarget::Schedule) ?: OpenTarget.Schedules
         NoteTypes.WATCH_FIRED, NoteTypes.WATCH_DISABLED -> OpenTarget.Watchers

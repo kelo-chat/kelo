@@ -948,10 +948,14 @@
     <string name="live_held_elsewhere">Contrôlé depuis un autre appareil</string>
     <string name="live_give_back">Rendre la main</string>
     <string name="live_paused_banner">Vous avez la main. Votre agent attend sur cet onglet jusqu’à ce que vous la lui rendiez.</string>
+    <string name="live_still_yours">Vous contrôlez toujours. Votre agent attend que vous le rendiez.</string>
+    <string name="live_screen_changed">L\'écran a changé. Touchez à nouveau.</string>
     <string name="live_tab_closed">L’onglet a été fermé, il n’y a plus rien à voir. Si le dernier écran a été enregistré, il s’affiche ci-dessous.</string>
     <string name="live_not_controller">Vous n’avez pas la main pour l’instant. Touchez à nouveau Prendre la main.</string>
     <string name="live_input_failed">Le navigateur n’a pas pu le faire.</string>
     <string name="live_state_you">Vous avez la main</string>
+    <string name="live_work_browser">Navigateur de travail</string>
+    <string name="live_work_browser_note">Cet onglet est dans le navigateur de travail de Kelo, séparé de vos propres onglets. Une connexion faite ici est enregistrée dans le navigateur principal de Kelo à la fin de la tâche.</string>
     <string name="live_state_other">Un autre appareil a la main</string>
     <string name="live_state_waiting">En attente de validation</string>
     <string name="live_connecting">Connexion…</string>
@@ -1225,6 +1229,9 @@
     <string name="work_wait_answer">Reprendra dès que vous direz comment continuer.</string>
     <string name="work_wait_blocked">Arrêté : impossible d’aller plus loin seul.</string>
     <string name="work_wait_restart">Arrêté au redémarrage du serveur.</string>
+    <string name="work_picked_up">Le serveur Kelo a redémarré, donc la tâche a repris là où elle était arrêtée.</string>
+    <string name="work_picked_up_browser">Le navigateur a redémarré, la tâche continue donc dans un nouvel onglet.</string>
+    <string name="work_wait_pickup">Elle reprendra là où elle s\'est arrêtée dans un instant.</string>
     <string name="work_schedule_on">Automatisation activée</string>
     <string name="work_schedule_off">Automatisation désactivée</string>
     <string name="work_schedule_by_agent">Créée par votre agent</string>

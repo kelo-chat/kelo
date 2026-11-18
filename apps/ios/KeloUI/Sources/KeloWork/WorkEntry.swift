@@ -130,6 +130,7 @@ struct WorkTimeline: View {
     static let upcoming = "sec:upcoming"
     static let watch = "sec:watch"
     static let past = "sec:past"
+    static let openTabs = "sec:opentabs"
 
     let model: WorkModel
     let offersModel: OffersModel
@@ -211,6 +212,7 @@ struct WorkTimeline: View {
         let plan = Agenda.build(book?.items ?? [])
         let past = Timeline.past(nested, filter: filter, today: today)
         let tabs = model.browser.data?.items ?? []
+        let openTabs = Timeline.openTabs(tabs, now: now, workers: workerItems)
         let watching = Watching.order(model.watchers.data?.items ?? [])
 
         ScrollViewReader { proxy in
@@ -244,6 +246,14 @@ struct WorkTimeline: View {
                     // one identity per row, prefixed like the other sections' (an `.id` on a ForEach row gave the lazy stack two)
                     ForEach(model.grants.data ?? [], id: \.keyedId) { g in
                         RailItem(.live) { TaskGrantCard(grant: g) { Haptics.warning(); model.revokeGrant(g) } }
+                    }
+
+                    // ---- 열린 브라우저: the tabs no running work shows (after what runs, before the asks, as on Android)
+                    if !openTabs.isEmpty {
+                        SectionTitle(L(R.string.work_open_browsers), count: openTabs.count).id(WorkTimeline.openTabs)
+                        ForEach(openTabs, id: \.keyedTabId) { t in
+                            RailItem(.live) { OpenTabCard(tab: t) { onOpenLive(t.id) } }
+                        }
                     }
 
                     // ---- 답이 필요해요 (here while nothing waits; at the top, above 지금 하는 일, while something does)
@@ -443,6 +453,7 @@ extension TaskPermission { var keyedId: String { "grant:" + id } }
 // Distinct ids for the rows of the work page's one LazyVStack: a repeated id across its sections makes rows vanish.
 extension Watcher { var keyedId: String { "watch:\(id)" } }
 extension Agenda.Entry { var keyedId: String { "plan:\(at ?? 0):\(schedule.id)" } }
+extension BrowserTab { var keyedTabId: String { "tab:" + id } }
 extension Schedule {
     var unscheduledId: String { "unscheduled:\(id)" }
     var pausedId: String { "paused:\(id)" }

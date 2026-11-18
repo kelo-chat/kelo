@@ -27,8 +27,52 @@ def _token() -> Field:
 _ADDR_NOTE = N_("The address is the one you open the app with on your network, for example http://192.168.0.10:8123 (an address from Tailscale works too).")
 
 
+def _get(url: str, mode: str = "state", **more: Any) -> dict[str, Any]:
+    """A declared read of a self-hosted app: one GET through the connection's own call (situation_reads.py)."""
+    return {"tool": "connector_get", "arguments": {"name": "{{connection}}", "url": url}, "mode": mode, **more}
+
+
+# The situation read of each self-hosted app (data, see situation.md). Paths come from each app's documented API. Apps with no state
+# that changes the owner's situation, and those whose path could not be confirmed, have no entry (the note says why).
+SITUATION_READS: dict[str, dict[str, Any]] = {
+    "home_assistant": _get("/api/logbook/{{since}}", "changes", select="", id=["entity_id", "when"],
+                           fields={"when": "when", "entity": "entity_id", "name": "name", "state": "state", "message": "message"}, max_rows=50),
+    "frigate": _get("/api/events?after={{since_unix}}&limit=20", "changes", id=["id"],
+                    fields={"label": "label", "camera": "camera", "zones": "zones", "start_time": "start_time"}),
+    "paperless": _get("/api/documents/?ordering=-added&page_size=10", "changes", select="results", id=["id"],
+                      fields={"title": "title", "added": "added", "correspondent": "correspondent"}),
+    # mealie, tandoor, grocy: the date-filtered meal-plan and stock paths could not be confirmed against their docs; no read (see the report)
+    # firefly_iii: the transactions path and its start parameter are from the app's API; check them with a live instance before relying on them
+    "firefly_iii": _get("/api/v1/transactions?limit=10&start={{since_date}}", "changes", select="data", id=["id"],
+                        fields={"date": "attributes.transactions.0.date", "amount": "attributes.transactions.0.amount",
+                                "currency": "attributes.transactions.0.currency_code", "what": "attributes.transactions.0.description"}),
+    # miniflux, freshrss: unread news is context, not a reason to wake the look
+    "miniflux": _get("/v1/entries?status=unread&limit=20&order=published_at&direction=desc", "changes", select="entries", id=["id"],
+                     fields={"title": "title", "feed": "feed.title", "published_at": "published_at"}, wakes=False),
+    "freshrss": _get("/api/greader.php/reader/api/0/stream/contents/reading-list?n=20&output=json&xt=user/-/state/com.google/read",
+                     "changes", select="items", id=["id"], fields={"title": "title", "feed": "origin.title", "published": "published"},
+                     wakes=False),
+    "n8n": _get("/api/v1/executions?status=error&limit=10", "changes", select="data", id=["id"],
+                fields={"workflowId": "workflowId", "startedAt": "startedAt", "status": "status"}),
+    "uptime_kuma": _get("/metrics", "state", lines="^monitor_status\\{", max_rows=50),
+    "beszel": _get("/api/collections/systems/records?fields=name,status", "state", select="items", fields={"name": "name", "status": "status"}),
+    "adguard_home": _get("/control/status", "state", fields={"protection": "protection_enabled", "running": "running"}),
+    "pihole": _get("/api/dns/blocking", "state", fields={"blocking": "blocking"}),
+    "nextcloud": _get("/ocs/v2.php/apps/notifications/api/v2/notifications?format=json", "changes", select="ocs.data",
+                      id=["notification_id"], fields={"app": "app", "subject": "subject", "datetime": "datetime"},
+                      arguments={"name": "{{connection}}", "url": "/ocs/v2.php/apps/notifications/api/v2/notifications?format=json",
+                                 "headers": {"OCS-APIRequest": "true"}}),
+    "gitea": _get("/api/v1/notifications?status-types=unread&limit=20", "changes", id=["id"],
+                  fields={"title": "subject.title", "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"}),
+    "forgejo": _get("/api/v1/notifications?status-types=unread&limit=20", "changes", id=["id"],
+                    fields={"title": "subject.title", "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"}),
+    # immich, linkwarden, karakeep, wallabag, actual_budget: saved items or a budget, nothing that changes the owner's situation by the hour
+}
+
+
 def _p(pid: str, name: str, example: str, help_: tuple[str, ...], blurb: str, api: str, placement: dict, verify: str, **kw) -> KeyPreset:
     fields = kw.pop("fields", (_addr(example), _token()))
+    kw.setdefault("situation", SITUATION_READS.get(pid))
     return KeyPreset(pid, name, f"{pid.replace('_', '-')}-api", (), placement, (*help_, _ADDR_NOTE), blurb, api, fields=fields, verify=verify, local=True, **kw)
 
 

@@ -80,6 +80,8 @@ public struct ProactiveSettings: Decodable, Equatable, Sendable {
     public var dailyDeliveries: Int?
     public var todayDeliveries: Int?
     public var held: Int?
+    /// The hourly situation look is on ("research"): the "What Kelo looked at" row needs it.
+    public var research = false
 
     public init() {}
 
@@ -94,6 +96,7 @@ public struct ProactiveSettings: Decodable, Equatable, Sendable {
         awake = j.bool("awake")
         autoHours = j.bool("auto_hours"); hoursSource = j.str("hours_source", "default")
         dailyDeliveries = j.optInt("daily_deliveries"); todayDeliveries = j.optInt("today_deliveries"); held = j.optInt("held")
+        research = j.bool("research")
     }
 }
 

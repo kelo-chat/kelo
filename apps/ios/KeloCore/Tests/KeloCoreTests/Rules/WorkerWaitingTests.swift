@@ -50,3 +50,23 @@ import Testing
         #expect(copy.waiting)
     }
 }
+
+/// A job the server picked up by itself after a restart or a lost browser: `picked_up` (at, why) on the running job, and
+/// `waiting_for: "cut"` while a cut job waits to go on.
+@Suite struct WorkerPickedUpTests {
+    private func worker(_ json: String) throws -> Worker {
+        try JSONDecoder().decode(Worker.self, from: Data(json.utf8))
+    }
+
+    @Test func pickedUpIsDecodedAndAbsentForOlderServers() throws {
+        let w = try worker(#"{"id":"w1","status":"running","picked_up":{"at":1000.5,"why":"browser"}}"#)
+        #expect(w.pickedUp == PickedUp(at: 1000.5, why: "browser"))
+        #expect(try worker(#"{"id":"w2","status":"running"}"#).pickedUp == nil)
+    }
+
+    @Test func aCutJobWaitingToGoOnIsWaitingForCut() throws {
+        let w = try worker(#"{"id":"w3","status":"interrupted","waiting_for":"cut","wake_at":1790000000.5}"#)
+        #expect(w.waitingFor == "cut")
+        #expect(w.wakeAt == 1_790_000_000.5)
+    }
+}

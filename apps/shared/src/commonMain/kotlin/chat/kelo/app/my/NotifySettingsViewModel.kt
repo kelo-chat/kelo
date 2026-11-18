@@ -25,6 +25,8 @@ data class NotifyUiState(
     val followups: FollowupSettings? = null,
     val followupsMissing: Boolean = false,
     val error: String = "",
+    /** The server answers the "What Kelo looked at" route (an older server does not: the row is hidden). */
+    val situationReady: Boolean = false,
 )
 
 /** The heads-up, hours, checklist and follow-up settings of the notification page (the briefing has its own: [BriefingSettingsViewModel]). */
@@ -44,6 +46,9 @@ class NotifySettingsViewModel(private val sessions: Sessions) : ViewModel() {
             try { _state.update { it.copy(checklist = api.get("/api/checklist")) } } catch (e: ApiError) {
                 if (e.status == 404) _state.update { it.copy(checklistMissing = true) } else _state.update { it.copy(error = e.detail) }
             }
+            // The route exists on a server with the situation look; a 404 (or any failure) hides the row.
+            val ready = runCatching { api.get<SituationList>("/api/proactive/research?limit=1") }.isSuccess
+            _state.update { it.copy(situationReady = ready) }
             try {
                 val f = FollowupCalls(api).settings()
                 _state.update { it.copy(followups = f, followupsMissing = f == null) }

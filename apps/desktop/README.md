@@ -30,7 +30,7 @@ closed. Packaged as **MSI / EXE** (direct download) and **MSIX** (Microsoft Stor
   log out).
 - **Desktop**: system tray icon with the character (open, Work, quit), desktop notifications (finished replies while hidden,
   approvals, the agent's own news, scheduled runs; `GET /api/notifications` every 30 s), start at sign-in (hidden in the tray),
-  one instance per user, Ctrl+1…5 (⌘ on a Mac) to switch pages, light/dark/system, reduce motion.
+  one instance per user, Ctrl+1…5 (⌘ on a Mac) to switch pages, Ctrl+F (⌘F) to search the chat, light/dark/system, reduce motion.
 - **Updates** (the downloaded Windows/macOS app; the Microsoft Store copy updates itself): at start and once a day it reads the
   public list `https://kelo.chat/download/latest.json` (a plain GET with a `Kelo-Desktop/<version>` User-Agent, nothing else). A
   newer build shows a small banner once and a card in My; "받기" downloads the installer, checks its sha256 and only then opens it

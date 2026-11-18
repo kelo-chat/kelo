@@ -24,6 +24,7 @@ LABELS: dict[str, tuple[str, bool]] = {
     "nest_share_github": (N_("Sharing a package to GitHub"), False),
     "web_fetch": (N_("Reading a web page"), False),
     "browser_open": (N_("Opening a site"), False),
+    "chat_view": (N_("Updating the browser in the chat"), False),
     "browser_read": (N_("Checking the page"), False),
     "browser_view": (N_("Looking at the site"), False),
     "browser_click": (N_("Clicking on the page"), False),

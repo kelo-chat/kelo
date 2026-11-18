@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Kelo\'nun baktığı şeyler</string>
+    <string name="situation_title">Kelo\'nun baktığı şeyler</string>
+    <string name="situation_hourly_head">Kelo\'nun her saat baktığı şeyler</string>
+    <string name="situation_read_when_needed_head">Yalnızca gerektiğinde okunanlar</string>
+    <string name="situation_read_when_needed_about">Bir soru ihtiyaç duyduğunda okunurlar. Durumunu nasıl okuyacağını söyleyen bir bağlantıya her saat bakılabilir.</string>
+    <string name="situation_section_conversation">Sohbet</string>
+    <string name="situation_section_mail">Posta</string>
+    <string name="situation_section_calendar">Takvim</string>
+    <string name="situation_section_goals">Hedefler</string>
+    <string name="situation_section_schedules">Programlar</string>
+    <string name="situation_section_memory">Bellek</string>
+    <string name="situation_section_other">Diğer</string>
+    <string name="situation_empty">Henüz yok. İlk bakış, uyanık olduğunuz saatlerde bir sonraki saatin 9. dakikasında.</string>
+    <string name="situation_keep_days">%d gün saklanır</string>
+    <string name="situation_outcome_no_change">Yeni bir şey yok</string>
+    <string name="situation_outcome_nothing">Bakıldı, söylenecek bir şey yok</string>
+    <string name="situation_outcome_proposed">%d hazırlandı</string>
+    <string name="situation_outcome_selected">%d seçildi</string>
+    <string name="situation_outcome_delivered">Size bildirildi</string>
+    <string name="situation_outcome_failed">Bakılamadı</string>
+    <string name="situation_outcome_running">Şimdi bakılıyor</string>
+    <string name="situation_outcome_other">Bakıldı</string>
+    <string name="situation_load_more">Daha fazla yükle</string>
+    <string name="situation_detail_changed">Değişenler</string>
+    <string name="situation_detail_same">Öncekiyle aynı (%d)</string>
+    <string name="situation_detail_failed">Okunamadı</string>
+    <string name="situation_detail_off">Kapalı</string>
+    <string name="situation_detail_done">Kelo\'nun yaptıkları</string>
+    <string name="situation_detail_none">Bu bakışta hazırlanan bir şey yok.</string>
+    <string name="situation_state_new">Yeni</string>
+    <string name="situation_state_same">Öncekiyle aynı</string>
+    <string name="situation_state_changed">Değişti</string>
+    <string name="situation_state_failed">Okunamadı</string>
+    <string name="situation_state_timeout">Çok uzun sürdü</string>
+    <string name="situation_state_skipped">Dahil edilmedi: bakış doluydu</string>
+    <string name="situation_state_off">Kapalı</string>
+    <string name="situation_state_other">Diğer</string>
+    <string name="situation_event_proposed">Hazırlandı</string>
+    <string name="situation_event_updated">Güncellendi</string>
+    <string name="situation_event_selected_today">Bugün için seçildi</string>
+    <string name="situation_event_selected_regular">Normal bir mesaj olarak seçildi</string>
+    <string name="situation_event_told">Size bildirildi</string>
+    <string name="situation_event_dropped">Bir kenara bırakıldı: %s</string>
+    <string name="situation_event_dropped_none">Bir kenara bırakıldı: size bildirmeye değmez</string>
+    <string name="situation_event_expired">Süresi doldu</string>
+    <string name="situation_event_waiting">Daha uygun bir an bekleniyor</string>
+</resources>

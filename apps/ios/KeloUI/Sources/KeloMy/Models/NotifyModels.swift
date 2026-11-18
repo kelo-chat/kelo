@@ -13,6 +13,8 @@ import KeloShared
     private(set) var checklistMissing = false
     private(set) var error = ""
     private(set) var notice: String?
+    /// The server answers the "What Kelo looked at" route (an older server does not: the row is hidden).
+    private(set) var situationReady = false
     @ObservationIgnored private let api: KeloApi
     @ObservationIgnored private var proactiveSeq = Latest()
     @ObservationIgnored private var checklistSeq = Latest()
@@ -27,6 +29,7 @@ import KeloShared
         do { proactive = try await api.get("/api/proactive") } catch let e as ApiError { if e.status == 404 { proactiveMissing = true } else { error = ApiMessage.text(e) } } catch {}
         do { checklist = try await api.get("/api/checklist") } catch let e as ApiError { if e.status == 404 { checklistMissing = true } else { error = ApiMessage.text(e) } } catch {}
         do { followups = try await api.get("/api/followups/settings") } catch let e as ApiError { if e.status == 404 { followupsMissing = true } else { error = ApiMessage.text(e) } } catch {}
+        do { _ = try await api.get("/api/proactive/research?limit=1", as: SituationList.self); situationReady = true } catch { situationReady = false }
     }
 
     func putProactive(_ b: [String: JSON]) {
@@ -71,6 +74,51 @@ import KeloShared
 }
 
 /// 마이 → 알림 → the items Kelo keeps for a later message: read once when the page opens (Android ProactiveHeldViewModel).
+/// "What Kelo looked at": the newest passes, then older ones with `before` (read-only).
+@MainActor @Observable final class SituationModel {
+    private(set) var list: SituationList?
+    private(set) var missing = false
+    private(set) var error = ""
+    private(set) var loadingMore = false
+    @ObservationIgnored private let api: KeloApi
+
+    init(api: KeloApi) { self.api = api }
+
+    func load() async {
+        do { list = try await api.get("/api/proactive/research?limit=24", as: SituationList.self) }
+        catch let e as ApiError { if e.status == 404 { missing = true } else { error = ApiMessage.text(e) } }
+        catch {}
+    }
+
+    func loadMore() async {
+        guard !loadingMore, let before = list?.nextBefore else { return }
+        loadingMore = true
+        defer { loadingMore = false }
+        do {
+            let more = try await api.get("/api/proactive/research?limit=24&before=\(before)", as: SituationList.self)
+            list?.passes += more.passes
+            list?.nextBefore = more.nextBefore
+        } catch let e as ApiError { error = ApiMessage.text(e) } catch {}
+    }
+}
+
+/// One pass with what happened to its items (read-only).
+@MainActor @Observable final class SituationDetailModel {
+    private(set) var detail: SituationDetail?
+    private(set) var missing = false
+    private(set) var error = ""
+    @ObservationIgnored private let api: KeloApi
+    @ObservationIgnored private let passId: Int
+
+    init(api: KeloApi, passId: Int) { self.api = api; self.passId = passId }
+
+    func load() async {
+        do { detail = try await api.get("/api/proactive/research/passes/\(passId)", as: SituationDetail.self) }
+        catch let e as ApiError { if e.status == 404 { missing = true } else { error = ApiMessage.text(e) } }
+        catch {}
+    }
+}
+
 @MainActor @Observable final class ProactiveHeldModel {
     private(set) var items: [HeldItem]?
     private(set) var missing = false

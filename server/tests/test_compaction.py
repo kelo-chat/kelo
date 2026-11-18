@@ -235,33 +235,20 @@ async def test_clearing_the_chat_forgets_the_summary_and_a_fold_racing_a_clear_i
     assert not store.save_conversation_summary("x", 999, 1, expect_up_to=0)          # its messages are gone
 
 
-async def test_the_memory_step_runs_once_before_a_compaction_and_writes_only_memory(tmp_path):
+async def test_a_fold_has_no_memory_step_the_memory_pass_reads_the_messages_themselves(tmp_path):
+    """Nothing is saved before a fold any more (memory-owner-only): the memory pass reads the owner's messages from the table, which a
+    fold never deletes, so the memory files stay as they are and no memory step runs."""
     from assistant.home import Home
-    from assistant.tools.home_tools import memory_tools
     home = Home(tmp_path / "home")
+    home.write("MEMORY.md", "# MEMORY.md\n\n## About the user\n- Likes tea\n", by="system")
     store, fake = Store(), Fake(summaries=["요약 A"])
     seed(store, 60)
-    flushed = []
-
-    async def flush(provider, model, transcript):
-        flushed.append(transcript)
-        msgs = [{"role": "system", "content": compaction.MEMORY_FLUSH_PROMPT.format(token=compaction.NO_REPLY)},
-                {"role": "user", "content": transcript}]
-        said = [ev async for ev in run_agent(provider, model, msgs, memory_tools(home), stream_fn=fake)]
-        assert "NO_REPLY" in "".join(getattr(e, "text", "") for e in said)
-
-    c = Compactor(store, fake, flush_fn=flush)
+    before, count = (tmp_path / "home" / "MEMORY.md").read_text(), store.message_count()
+    c = Compactor(store, fake)
     res = await c.compact("p", "m", Window(4_000, None, "override"), 400)
-    assert res["status"] in ("done", "partial") and len(flushed) == 1                  # once, though the fold took several calls
-    assert len(fake.of("summary")) >= 2 and "m004" in flushed[0] and "m000" not in flushed[0]
-    assert "제주 여행 3월" in (tmp_path / "home" / "MEMORY.md").read_text()
-    assert store.conversation_summary()["memory_flushes"] == 1 and store.conversation_summary()["last_memory_flush_at"]
-    assert all("NO_REPLY" not in m["content"] for m in store.messages(limit=500))     # nothing reaches the chat
-    names = {t.name for t in memory_tools(home)}
-    assert names == {"read_file", "write_file"}
-    w = {t.name: t for t in memory_tools(home)}["write_file"]
-    assert (await w.handler({"path": "SOUL.md", "content": "x"})).startswith("error")
-    assert (await w.handler({"path": "notes/a.md", "content": "x"})).startswith("error")
+    assert res["status"] in ("done", "partial") and len(fake.of("summary")) >= 2
+    assert (tmp_path / "home" / "MEMORY.md").read_text() == before and not fake.of("flush")
+    assert store.conversation_summary()["memory_flushes"] == 0 and store.message_count() == count
 
 
 # ------------------------------------------------------------------------------------------------------------- inside one turn
@@ -451,7 +438,7 @@ async def test_a_context_length_error_lowers_the_window_retries_once_compacted_a
         assert (await c.get("/api/conversation/summary")).json()["source"] == "learned"
 
 
-async def test_the_memory_step_runs_in_the_app_before_a_fold_and_says_nothing_in_the_chat(tmp_path):
+async def test_the_app_fold_writes_no_memory_and_says_nothing_in_the_chat(tmp_path):
     fake = Fake(summaries=["요약 M"])
     s = app_settings(tmp_path, scheduler=False, home_dir=str(tmp_path / "home"))
     async with Running(create_app(s, tools=[], stream_fn=fake)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
@@ -459,14 +446,13 @@ async def test_the_memory_step_runs_in_the_app_before_a_fold_and_says_nothing_in
         seed(store, 40)
         events = await talk(c)
         assert "".join(e.get("text", "") for e in events if e["type"] == "text") == "네"
-        flushes = fake.of("flush")
-        assert len(flushes) == 2 and {t["function"]["name"] for t in flushes[0].tools} == {"read_file", "write_file"}
+        assert fake.of("flush") == []                                  # no memory step before a fold
         kinds = [Fake.kind(r) for _, r in fake.calls]
-        assert kinds.index("flush") < kinds.index("summary") < kinds.index("turn")
-        assert "제주 여행 3월" in (tmp_path / "home" / "MEMORY.md").read_text()
+        assert kinds.index("summary") < kinds.index("turn")
+        assert "제주 여행 3월" not in ((tmp_path / "home" / "MEMORY.md").read_text() if (tmp_path / "home" / "MEMORY.md").exists() else "")
         contents = [m["content"] for m in (await c.get("/api/messages", params={"limit": 500})).json()]
         assert contents[-1] == "네" and not any("NO_REPLY" in x for x in contents)
-        assert (await c.get("/api/conversation/summary")).json()["memory_flushes"] == 1
+        assert (await c.get("/api/conversation/summary")).json()["memory_flushes"] == 0
 
 
 async def test_scheduled_runs_read_the_summary_but_do_not_start_a_fold_afterwards(tmp_path):

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">ما نظر إليه Kelo</string>
+    <string name="situation_title">ما نظر إليه Kelo</string>
+    <string name="situation_hourly_head">ما ينظر إليه Kelo كل ساعة</string>
+    <string name="situation_read_when_needed_head">يُقرأ عند الحاجة فقط</string>
+    <string name="situation_read_when_needed_about">تُقرأ عندما يحتاج إليها سؤال. يمكن النظر إلى الخدمة كل ساعة إذا أوضحت كيفية قراءة حالتها.</string>
+    <string name="situation_section_conversation">المحادثة</string>
+    <string name="situation_section_mail">البريد</string>
+    <string name="situation_section_calendar">التقويم</string>
+    <string name="situation_section_goals">الأهداف</string>
+    <string name="situation_section_schedules">الجداول</string>
+    <string name="situation_section_memory">الذاكرة</string>
+    <string name="situation_section_other">أخرى</string>
+    <string name="situation_empty">لا شيء بعد. أول نظرة في الدقيقة 9 من الساعة القادمة، في ساعات يقظتك.</string>
+    <string name="situation_keep_days">تُحفظ لمدة %d يومًا</string>
+    <string name="situation_outcome_no_change">لا جديد</string>
+    <string name="situation_outcome_nothing">نظر، ولا شيء يُذكر</string>
+    <string name="situation_outcome_proposed">تم إعداد %d</string>
+    <string name="situation_outcome_selected">تم اختيار %d</string>
+    <string name="situation_outcome_delivered">أخبرتك</string>
+    <string name="situation_outcome_failed">تعذّر النظر</string>
+    <string name="situation_outcome_running">ينظر الآن</string>
+    <string name="situation_outcome_other">نظر</string>
+    <string name="situation_load_more">تحميل المزيد</string>
+    <string name="situation_detail_changed">ما الذي تغيّر</string>
+    <string name="situation_detail_same">كما كان من قبل (%d)</string>
+    <string name="situation_detail_failed">تعذّرت القراءة</string>
+    <string name="situation_detail_off">مُوقف</string>
+    <string name="situation_detail_done">ما فعله Kelo</string>
+    <string name="situation_detail_none">لم يُعدّ شيء في هذه النظرة.</string>
+    <string name="situation_state_new">جديد</string>
+    <string name="situation_state_same">كما كان من قبل</string>
+    <string name="situation_state_changed">تغيّر</string>
+    <string name="situation_state_failed">تعذّرت القراءة</string>
+    <string name="situation_state_timeout">استغرق وقتًا طويلًا</string>
+    <string name="situation_state_skipped">لم تُدرج: النظرة كانت ممتلئة</string>
+    <string name="situation_state_off">مُوقف</string>
+    <string name="situation_state_other">أخرى</string>
+    <string name="situation_event_proposed">أُعدّ</string>
+    <string name="situation_event_updated">تم التحديث</string>
+    <string name="situation_event_selected_today">اختير لليوم</string>
+    <string name="situation_event_selected_regular">اختير كرسالة عادية</string>
+    <string name="situation_event_told">أخبرتك</string>
+    <string name="situation_event_dropped">أُجّل: %s</string>
+    <string name="situation_event_dropped_none">أُجّل: لا يستحق أن أخبرك به</string>
+    <string name="situation_event_expired">انتهى الوقت</string>
+    <string name="situation_event_waiting">ينتظر وقتًا أفضل</string>
+</resources>

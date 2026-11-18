@@ -30,10 +30,12 @@ The storage warning and the cleanup screen cover their size.
 | `turn_log`, `turn_events` | per reply | 24 hours | none |
 | `actions` (done-once) | per action | 30 days | none |
 | `injection_events`, `injection_notices` | per detected injection | 90 days / 3 days | none |
-| `proactive_log` | per looked-at item | newest 4000 | none |
+| `proactive_log` | per looked-at item | newest 4000; source `situation` rows older than 90 days (`SituationResearch.cleanup`) | yes (both rules) |
 | `proactive_held` | per item kept for a later message | until its own deadline (`expire_held`), sent or dropped at once | none |
-| `help_items` | per proposal of the hourly situation research (situation.py) | NONE yet: told, dropped and expired rows stay | open: prune told / dropped / expired rows older than 90 days |
-| `situation_passes` | one row per situation pass | newest 200 (`KEEP_PASSES`, pruned in `_record_pass`) | none |
+| `help_items` | per proposal of the hourly situation research (situation.py) | told, dropped and expired rows older than 90 days (`SituationResearch.cleanup`, daily 04:35); prepared and selected rows expire first (48 h) | yes |
+| `help_events` | per status change of a help item (situation.py) | older than 90 days, and rows whose item is gone (`SituationResearch.cleanup`) | yes |
+| `situation_passes` | one row per situation pass | older than 90 days, never a running row (`SituationResearch.cleanup`); the count rule `KEEP_PASSES` is gone | yes |
+| `meta` (`situation:source:<sid>` snapshots) | one hash per declared source (fingerprint, ids, times; no content) | removed when its `read_at` is older than 90 days (a connector removed long ago) | yes |
 | `followups` | per follow-up | closed ones 30 days | none |
 | `offers` | per card | closed ones 60 days | none |
 | `briefings` | per day | 120 days | none |
@@ -46,6 +48,7 @@ The storage warning and the cleanup screen cover their size.
 | `place_cache` | per looked-up place | newest `CACHE_MAX` | none |
 | `kelo_claims`, `kelo_names` | per name claim | 1 day / idle 30 days | none |
 | `tester_signups`, `beta_requests`, `operator_reports` | per request | 180 / 30-180 / 365 days | none |
+| `operator_events` | per site event (sign-up, beta request, report, Kelo address pool notice) | 30 days (`operator_events.py`) | none |
 | `phone_notes`, `phone_tasks` | per phone sync | 7 days (tasks), age and count (notes) | none |
 | `follow_readings` | one per check run (every 10 minutes in a window) | NONE (the unbounded one) | older than 30 days, and readings of a check that is gone |
 | `follow_checks` | per planned check | NONE | finished or stopped and window ended 30 days ago; checks of an item that is gone |
@@ -99,10 +102,13 @@ The storage warning and the cleanup screen cover their size.
 - A job that fails does not stop the others and never stops the server (`DiskLimits.run` reports each part).
 - The limits screen and the apps need no change: the browser cache line already reads the setting, only its default text changed.
 
+The work browser (`work-browser` container) keeps no profile between starts: its profile folder is emptied at every start
+(`BROWSER_EPHEMERAL=1`), so its volume only holds what a running job wrote. Its downloads share the browser downloads folder, as before.
+
 ## Tests (`tests/test_disk_limits.py`)
 
 Rules on an empty database and with a missing table; follow-through age and parent/child removal; memory pass log keeps the newest and the
 claims are untouched; open rechecks stay; unknown and pressed payment attempts never go and referenced terms stay; rows hanging on removed
 messages go while chat stays; no rule names an owner table or lacks a WHERE; the database file shrinks (forced) and is not shrunk twice;
 browser history cap removes oldest whole tabs and spares a busy one; one failing part does not stop the run. Also
-`test_hosting_browser_arguments.py` (cache default for native and Docker), `test_hosting_seatbelt.py`, `test_limits.py`, `test_profiles.py`.
+`test_disk_limits.py::test_dockers_browser_caps_its_cache_by_default`, `test_limits.py`, `test_profiles.py`.

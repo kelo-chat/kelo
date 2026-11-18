@@ -18,17 +18,21 @@ extension ChatModel {
 
     /// `afterReply`: a reply just ended and its rows are on screen; each message is swapped for its stored version in place
     /// (`ChatReducer.mergeStored`), so the tidier stored text, the answer buttons and cards come in and nothing else moves.
-    func reloadNow(afterReply: Bool = false) async throws {
+    /// `keepRows`: the news check while the newest page is on screen; the rows that are not messages stay (`ChatReducer.refreshNewest`).
+    func reloadNow(afterReply: Bool = false, keepRows: Bool = false) async throws {
         let ms = try await fetch("/api/messages?limit=\(Self.page)")
         app.cache.put("messages", ChatHistory.trim(ms))
         if busy { return }   // a reply started meanwhile: its own items are on screen
         lastId = ms.last?.id ?? 0
-        items = afterReply ? ChatReducer.mergeStored(items, ms.map(ChatReducer.item)) : ms.map(ChatReducer.item)
+        _ = await syncViews()
+        let fresh = ms.map(ChatReducer.item)
+        let kept = keepRows ? ChatReducer.refreshNewest(items, fresh) : nil
+        items = withViews(kept ?? (afterReply ? ChatReducer.mergeStored(items, fresh) : fresh))
         hasNewer = false   // the newest page is in: a search window (if one was on screen) is gone
         secrets = SecretRules.settled(secrets)
         refreshAsks(force: true)   // a location card still waiting (it is not a stored message) comes back at the end
         loaded = true
-        if !afterReply { hasOlder = ms.count >= Self.page }
+        if !afterReply && kept == nil { hasOlder = ms.count >= Self.page }
         offline = false
         await loadFollowupsNow()
         await refreshSecretsNow()
@@ -74,13 +78,38 @@ extension ChatModel {
     }
 
     /// Another phone may have talked to the same assistant: while idle and in view, reload when the newest message changed.
+    /// The server's views (GET /api/chat/views): fetched when they changed since `viewsVersion`; true when they changed. An older server
+    /// (no such route) leaves the cards as they are.
+    func syncViews() async -> Bool {
+        guard let api = api() else { return false }
+        do {
+            let a = ChatViewsAnswer.parse(try await api.request("GET", "/api/chat/views?since=\(viewsVersion)"))
+            viewsAt = a.at
+            if a.unchanged { return false }
+            views = a.items
+            viewsVersion = a.version
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// The rows with the server's views applied (`ChatReducer.applyViews`); the rows as they are while nothing was fetched.
+    func withViews(_ rows: [ChatItem], insert: Bool = true) -> [ChatItem] {
+        guard let views else { return rows }
+        return ChatReducer.applyViews(rows, views, checkedAt: viewsAt, insert: insert)
+    }
+
     public func checkForNews() async {
         if busy || hasNewer { return }   // a search window stays as it is; the end of it loads what is newer
         await refreshing {
+            let changed = await syncViews()
             let ms = try await fetch("/api/messages?limit=1")
             if (ms.last?.id ?? 0) != lastId && !busy {
                 app.activity.touch()   // a new message came in: the character wakes up
-                try await reloadNow()
+                try await reloadNow(keepRows: true)   // the cards of the replies on screen stay
+            } else if changed && !busy {
+                items = withViews(items)   // a tab or the phone was shown or closed on the server
             }
         }
     }

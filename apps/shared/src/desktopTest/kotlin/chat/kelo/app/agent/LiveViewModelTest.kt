@@ -32,7 +32,7 @@ class LiveViewModelTest {
         override fun start() { starts++ }
         override fun stop(giveBack: Boolean) { stops++ }
         override fun close() { closes++ }
-        override suspend fun control(take: Boolean): LiveClient.ControlResult = LiveClient.ControlResult.Ok
+        override suspend fun control(take: Boolean, handover: Boolean): LiveClient.ControlResult = LiveClient.ControlResult.Ok
         override fun send(event: JsonObject) { sent += event }
         override fun type(text: String) {}
     }

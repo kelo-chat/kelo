@@ -193,20 +193,31 @@ private fun LiveTabContent(
     var notice by remember { mutableStateOf<StringResource?>(null) }
     LaunchedEffect(client) { client.notices.collect { notice = it } }
     LaunchedEffect(notice) { if (notice != null) { delay(3_500); notice = null } }
+    // the owner's paste into the VNC screen (Ctrl/⌘+V there, or the paste key): the clipboard's text is typed into the page, as the paste key does
+    val onPaste: () -> Unit = {
+        ClipboardRules.pasteText(clipboard.getText()?.text)?.let { client.type(it); notice = Res.string.live_pasted }
+    }
 
     val controlling = state.status.youControl
     // the live view is always capturable (owner decision): no secure window here, see LiveRules.guardScreen
     // opened to solve a human check: take the tab over once, as soon as the first picture is there and nobody else holds it
     var autoTaken by remember(client) { mutableStateOf(false) }
-    LaunchedEffect(client, takeControl, frame != null, state.status.someoneElse, controlling) {
-        if (!LiveRules.autoTake(takeControl, autoTaken, frame != null, controlling, state.status.someoneElse, state.controlBusy)) return@LaunchedEffect
+    LaunchedEffect(client, takeControl, frame != null, vncState, state.status.someoneElse, controlling) {
+        if (!LiveRules.autoTake(takeControl, autoTaken, LiveRules.hasPicture(frame != null, vncState), controlling, state.status.someoneElse, state.controlBusy)) return@LaunchedEffect
         autoTaken = true
-        when (client.control(true)) {
+        when (client.control(true, handover = true)) {   // Kelo asked for this: a hand-over hold (leaving the page gives it back)
             LiveClient.ControlResult.Held -> notice = Res.string.live_held_elsewhere
             LiveClient.ControlResult.Gone -> notice = Res.string.live_tab_closed
             is LiveClient.ControlResult.Failed -> notice = Res.string.live_input_failed
             LiveClient.ControlResult.Ok -> haptics.confirm()
         }
+    }
+    // leaving the page with the owner's own button hold: say it stays on until they hand it back, then leave
+    val leave: () -> Unit = {
+        if (LiveRules.leaveNotice(state.status)) {
+            notice = Res.string.live_still_yours
+            scope.launch { delay(1_400); onBack() }
+        } else onBack()
     }
     val header = frame?.header
     val meta by client.meta.collectAsStateWithLifecycle()
@@ -216,11 +227,12 @@ private fun LiveTabContent(
     val host = if (device) "" else LiveHeader.url(meta, header)?.let(::hostOf)?.ifBlank { null } ?: tab?.host.orEmpty()
 
     Column(Modifier.fillMaxSize().background(c.bg).safeDrawingPadding()) {
-        LiveTop(title, host, onBack, onCloseTab.takeIf { !device && !controlling && state.mode != LiveMode.ENDED })
+        LiveTop(title, host, leave, onCloseTab.takeIf { !device && !controlling && state.mode != LiveMode.ENDED })
         if (state.mode != LiveMode.ENDED) LiveStrip(state, tab)
         if (controlling) ControlBanner(busy = state.controlBusy) {
             scope.launch { client.control(false) }
         }
+        if (LiveRules.showWorkNote(state.status)) WorkNote()
         Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)) {
           Box(Modifier.fillMaxSize().onSizeChanged { area = ViewSize(it.width, it.height, density) }) {
             when {
@@ -233,7 +245,7 @@ private fun LiveTabContent(
                 state.mode == LiveMode.ENDED -> fallback()
                 else -> {
                     val host = vncHost
-                    if (host != null && VncRules.showsVnc(vncState)) host.Screen(vnc, controlling, Modifier.fillMaxSize())
+                    if (host != null && VncRules.showsVnc(vncState)) host.Screen(vnc, controlling, onPaste, Modifier.fillMaxSize())
                     else LiveCanvas(client, frame, controlling, device, onTapped = { haptics.tick() })
                 }
             }
@@ -246,6 +258,11 @@ private fun LiveTabContent(
                 )
             }
         }
+        // the desktop's VNC screen: the keys go to the page while the owner holds it; composed text (Korean, Japanese, Chinese) goes in the line below
+        if (pointer && controlling && vncHost != null && VncRules.showsVnc(vncState)) Text(
+            string(Res.string.desktop_live_type_hint), style = MaterialTheme.typography.bodySmall, color = c.muted,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+        )
         if (pointer) {
             val key = if (System.getProperty("os.name").orEmpty().lowercase().contains("mac")) "⌘" else "Ctrl"
             Text(string(Res.string.desktop_chat_zoom_hint, key), style = MaterialTheme.typography.bodySmall, color = c.muted,
@@ -260,17 +277,18 @@ private fun LiveTabContent(
                 CopyChip(string(Res.string.live_copy_from_browser)) {
                     clipboard.setText(AnnotatedString(text))
                     vnc.clearClipboard()
-                    notice = Res.string.live_copied_to_phone
+                    notice = ClipboardRules.words(pointer).copied
                 }
             }
-            ControlBar(client, device, editing = LiveHeader.editing(meta, header), canPaste = vncHost != null) { notice = it }
+            ControlBar(client, device, editing = LiveHeader.editing(meta, header), canPaste = vncHost != null, desktop = pointer, keysGoToScreen = pointer && VncRules.showsVnc(vncState), onNotice = { notice = it })
         }
         else if (state.mode != LiveMode.ENDED) {
             val other = state.status.someoneElse
             Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // a tab another device holds is taken over only when that device has no live connection any more (the server moves it)
                 PrimaryButton(
-                    string(if (other) Res.string.live_held_elsewhere else Res.string.live_take),
-                    enabled = !other && !state.controlBusy && frame != null,
+                    string(if (other && !state.status.holderAway) Res.string.live_held_elsewhere else Res.string.live_take),
+                    enabled = (!other || state.status.holderAway) && !state.controlBusy && LiveRules.hasPicture(frame != null, vncState),
                     modifier = Modifier.weight(1f),
                     onClick = {
                         scope.launch {
@@ -323,6 +341,7 @@ private fun LiveStrip(state: LiveState, tab: BrowserTab?) {
             s.agent.busy || tab?.status == "working" -> string(Res.string.agent_tab_working) to c.accent
             else -> string(Res.string.agent_tab_idle) to c.muted
         }
+        if (s.inWorkBrowser) WorkBrowserPill()   // the work pill first; the state pill follows
         Pill(word, color)
         val line = when (state.mode) {
             LiveMode.CONNECTING -> string(Res.string.live_connecting)
@@ -379,6 +398,16 @@ private fun ControlBanner(busy: Boolean, onGiveBack: () -> Unit) {
                 .clickable(enabled = !busy, role = Role.Button, onClick = onGiveBack).padding(horizontal = 14.dp, vertical = 8.dp),
         )
     }
+}
+
+/** Under the paused banner, while the owner holds a tab of the work browser: where their sign-in goes. */
+@Composable
+private fun WorkNote() {
+    val c = Kelo.colors
+    Text(
+        string(Res.string.live_work_browser_note), style = MaterialTheme.typography.bodySmall, color = c.muted,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+    )
 }
 
 /**
@@ -642,7 +671,7 @@ fun LiveCanvas(
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp, start = 12.dp, end = 12.dp),
             )
         }
-        if (pointer) ZoomButtons(zoom, Modifier.align(Alignment.BottomEnd),
+        if (pointer) LiveZoomButtons(zoom, Modifier.align(Alignment.BottomEnd),
             onOut = { client.zoomTo(zoom / LiveViewModel.BUTTON_STEP, size.width.toFloat(), size.height.toFloat()) },
             onIn = { client.zoomTo(zoom * LiveViewModel.BUTTON_STEP, size.width.toFloat(), size.height.toFloat()) },
             onReset = { client.resetZoom() })
@@ -651,7 +680,7 @@ fun LiveCanvas(
 
 /** The pointer's zoom buttons in a corner of the picture: out, the level (a click fits the window), in; with the wheel's hint under. */
 @Composable
-private fun ZoomButtons(zoom: Float, modifier: Modifier, onOut: () -> Unit, onIn: () -> Unit, onReset: () -> Unit) {
+fun LiveZoomButtons(zoom: Float, modifier: Modifier, onOut: () -> Unit, onIn: () -> Unit, onReset: () -> Unit) {
     val c = Kelo.colors
     val zoomInWords = string(Res.string.desktop_chat_zoom_in)
     val zoomResetWords = string(Res.string.desktop_chat_zoom_reset)
@@ -701,14 +730,14 @@ private fun PageBusyBanner(canReload: Boolean, onReload: () -> Unit, modifier: M
 
 /** Keys, back / forward / reload, and a line to type into the page (nothing typed is kept or logged). */
 @Composable
-private fun ControlBar(client: LiveViewModel, device: Boolean, editing: Boolean, canPaste: Boolean, onNotice: (StringResource) -> Unit) {
+private fun ControlBar(client: LiveViewModel, device: Boolean, editing: Boolean, canPaste: Boolean, desktop: Boolean, keysGoToScreen: Boolean, onNotice: (StringResource) -> Unit) {
     val c = Kelo.colors
     // a text field took focus on the page / phone (the server says so): the keyboard comes up, once per focus
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var wasEditing by remember { mutableStateOf(false) }
     LaunchedEffect(editing) {
-        if (EditingRule.raise(wasEditing, editing)) { runCatching { focus.requestFocus() }; keyboard?.show() }
+        if (EditingRule.focusTypeLine(wasEditing, editing, keysGoToScreen)) { runCatching { focus.requestFocus() }; keyboard?.show() }
         wasEditing = editing
     }
     var text by remember { mutableStateOf("") }
@@ -742,7 +771,7 @@ private fun ControlBar(client: LiveViewModel, device: Boolean, editing: Boolean,
                 keyboardActions = KeyboardActions(onSend = { sendText() }),
             )
             if (canPaste) IconButton(onClick = { paste() }, enabled = clipHasText, modifier = Modifier.size(40.dp)) {
-                Icon(KeloIcons.Paste, contentDescription = string(Res.string.live_paste), tint = if (clipHasText) c.ink else c.muted)
+                Icon(KeloIcons.Paste, contentDescription = string(ClipboardRules.words(desktop).paste), tint = if (clipHasText) c.ink else c.muted)
             }
             IconButton(onClick = { hidden = !hidden }) {
                 Icon(if (hidden) KeloIcons.Lock else KeloIcons.Eye, contentDescription = string(if (hidden) Res.string.live_type_show else Res.string.live_type_hide), tint = c.muted)

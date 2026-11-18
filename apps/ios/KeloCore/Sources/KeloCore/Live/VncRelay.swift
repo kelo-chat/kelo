@@ -141,6 +141,16 @@ public final class VncRelay {
     public private(set) var openedWith: VncViewSize?
     /// Told each time the screen was (re)opened, with the size it was opened with.
     public var onOpened: ((VncViewSize) -> Void)?
+    /// Text the browser copied, waiting for the owner to take it (the copy chip); nil when there is none. Held in memory only, never logged,
+    /// and gone when the screen closes or the owner takes it.
+    public private(set) var clipboard: String? {
+        didSet {
+            guard clipboard != oldValue else { return }
+            onClipboard?(clipboard)
+        }
+    }
+    /// Told on every change of `clipboard`.
+    public var onClipboard: ((String?) -> Void)?
     /// The first frame of the socket being opened has not come yet (state `.opening`, or `.showing` while a new size is being opened).
     private var awaiting = false
 
@@ -249,6 +259,12 @@ public final class VncRelay {
         transport?.send(bytes)
     }
 
+    /// The browser copied this text (already capped by `ClipboardRules.offer`): the owner may take it with a tap.
+    public func offerClipboard(_ text: String) { clipboard = text }
+
+    /// The owner took it or let it go: nothing is kept.
+    public func clearClipboard() { clipboard = nil }
+
     /// The page went away for good: the socket closes.
     public func close() {
         gen += 1
@@ -256,6 +272,7 @@ public final class VncRelay {
         transport = nil
         sink = nil
         early.removeAll()
+        clipboard = nil
         tasks.forEach { $0.cancel() }
         tasks.removeAll()
         if state == .opening || VncRules.showsVnc(state) { state = .closed }

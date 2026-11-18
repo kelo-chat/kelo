@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">Usar este PC como servidor de Kelo</string>
     <string name="desktop_server_row_hint">Instala el servidor de Kelo en este equipo. Windows pide permiso de administrador una vez.</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">Actualizar</string>
     <string name="desktop_server_install">Instalar</string>
     <string name="desktop_server_unavailable">El servidor de Kelo para Windows aún no está disponible.</string>
+
+    <string name="desktop_server_row_mac">Usar este Mac como servidor de Kelo</string>
+    <string name="desktop_server_row_hint_mac">Instala el servidor de Kelo en este Mac. macOS pide la contraseña de administrador una vez.</string>
+    <string name="desktop_server_installed_mac">El servidor de Kelo está en este Mac</string>
+    <string name="desktop_server_unavailable_mac">El servidor de Kelo para Mac todavía no está disponible</string>
+    <string name="desktop_server_port_busy">Otro programa de este Mac usa el puerto %1$d. Ciérralo e inténtalo de nuevo.</string>
+    <string name="desktop_server_downgrade">Ya hay instalado un servidor de Kelo más reciente.</string>
+    <string name="desktop_server_remove">Quitar</string>
+    <string name="desktop_server_remove_title">¿Quitar el servidor de Kelo de este Mac?</string>
+    <string name="desktop_server_remove_body">Los chats, las claves y los archivos se conservan salvo que elijas borrarlos.</string>
+    <string name="desktop_server_remove_data">Borrar también los chats, las claves y los archivos</string>
+    <string name="desktop_server_removing">Quitando</string>
+    <string name="desktop_server_removed">Quitado</string>
 </resources>

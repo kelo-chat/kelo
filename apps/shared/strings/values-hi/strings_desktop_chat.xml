@@ -4,4 +4,5 @@
     <string name="desktop_chat_zoom_in">बड़ा करें</string>
     <string name="desktop_chat_zoom_reset">विंडो में फ़िट करें</string>
     <string name="desktop_chat_zoom_hint">ज़ूम के लिए %1$s दबाए रखकर व्हील घुमाएँ; आसपास देखने के लिए खींचें।</string>
+    <string name="desktop_chat_search_hint">कोई शब्द या उसका हिस्सा लिखें। किसी परिणाम पर क्लिक करके उस संदेश पर चैट खोलें।</string>
 </resources>

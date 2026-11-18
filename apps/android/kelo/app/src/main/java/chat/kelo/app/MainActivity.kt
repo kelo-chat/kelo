@@ -34,6 +34,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import chat.kelo.app.agent.AndroidVncScreenHost
 import chat.kelo.app.agent.LocalVncScreenHost
+import chat.kelo.app.chat.AndroidMailPreviewHost
+import chat.kelo.app.chat.LocalMailPreviewHost
 
 val LocalAppContainer = staticCompositionLocalOf<AppContainer> { error("no AppContainer") }
 
@@ -72,7 +74,7 @@ class MainActivity : FragmentActivity() {
             receive(intent)
         }
         setContent {
-            CompositionLocalProvider(LocalAppContainer provides container, LocalAppServices provides container, LocalConsentMemory provides consent, LocalVncScreenHost provides AndroidVncScreenHost) {
+            CompositionLocalProvider(LocalAppContainer provides container, LocalAppServices provides container, LocalConsentMemory provides consent, LocalVncScreenHost provides AndroidVncScreenHost, LocalMailPreviewHost provides AndroidMailPreviewHost) {
                 ProvideAndroidPlatform(reduceMotion) {
                     KeloTheme { AppRoot(onSettled = ::onFirstScreen) }
                 }

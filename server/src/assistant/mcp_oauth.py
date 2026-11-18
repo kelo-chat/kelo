@@ -57,6 +57,7 @@ class McpService:
     # an OAuth 2 API from an installed package (connect type "oauth"): fixed endpoints, scopes, API hosts and a client id instead of
     # discovery and registration; the tokens are sent only to its hosts. None for an MCP server.
     oauth: Any = None
+    situation: Any = None    # the one read-only call that shows the service's state (situation_reads.py); None = none (see situation.md)
 
 
 def _svc(cid: str, name: str, url: str, blurb: str) -> McpService:

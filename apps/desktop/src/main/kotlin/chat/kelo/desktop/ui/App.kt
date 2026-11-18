@@ -64,6 +64,7 @@ fun KeloFrame(app: AppContainer, content: @Composable () -> Unit) {
         chat.kelo.app.LocalAppServices provides app,
         chat.kelo.app.ui.platform.LocalReloadOnReturn provides { key, load -> ReloadOnReturn(key, load) },
         chat.kelo.app.platform.LocalQrScanner provides DesktopLinkScanner,
+        chat.kelo.app.agent.LocalVncScreenHost provides chat.kelo.desktop.vnc.DesktopVncScreenHost,
         // a sub page sits below the floating header, centred and at most this wide
         LocalPageFrame provides PageFrame(topInset = HeaderHeight, maxWidth = SUB_PAGE_WIDTH.dp),
     ) {
@@ -99,8 +100,11 @@ fun KeloApp(app: AppContainer, initialPage: Page = Page.CHAT, initialLink: Strin
             val o = open ?: return@LaunchedEffect
             app.openPage.value = null
             when {
-                o.startsWith("connector:") -> { connector = o.removePrefix("connector:"); page = Page.CONNECTORS }
-                else -> Page.entries.firstOrNull { it.name.equals(o, ignoreCase = true) }?.let { page = it }
+                // Cmd/Ctrl+F: the chat with its search page open (over the chat, the field focused)
+                o == OPEN_CHAT_SEARCH -> { page = Page.CHAT; app.chatSearchOpen.value = true }
+                // any other page (a rail-style request, a connector's card) leaves the search page
+                o.startsWith("connector:") -> { app.chatSearchOpen.value = false; connector = o.removePrefix("connector:"); page = Page.CONNECTORS }
+                else -> Page.entries.firstOrNull { it.name.equals(o, ignoreCase = true) }?.let { app.chatSearchOpen.value = false; page = it }
             }
         }
         LaunchedEffect(api) {

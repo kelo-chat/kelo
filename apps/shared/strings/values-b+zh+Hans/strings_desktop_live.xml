@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">从这台电脑粘贴</string>
+    <string name="desktop_live_copied">已复制到这台电脑</string>
+    <string name="desktop_live_type_hint">点击页面即可直接输入。需要输入法组合的文字（如中文、日文、韩文）请写在下面一行。</string>
+</resources>

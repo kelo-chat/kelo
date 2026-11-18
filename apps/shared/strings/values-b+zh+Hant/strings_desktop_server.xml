@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: "Use this PC as the Kelo server"). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
 <resources>
     <string name="desktop_server_row">將這台電腦用作 Kelo 伺服器</string>
     <string name="desktop_server_row_hint">在這台電腦上安裝 Kelo 伺服器。Windows 會請您授權管理員權限一次。</string>
@@ -17,4 +17,17 @@
     <string name="desktop_server_update">更新</string>
     <string name="desktop_server_install">安裝</string>
     <string name="desktop_server_unavailable">Windows 版 Kelo 伺服器尚未準備好。</string>
+
+    <string name="desktop_server_row_mac">將這台 Mac 用作 Kelo 伺服器</string>
+    <string name="desktop_server_row_hint_mac">在這台 Mac 上安裝 Kelo 伺服器。macOS 會要求輸入一次管理員密碼。</string>
+    <string name="desktop_server_installed_mac">這台 Mac 上已有 Kelo 伺服器</string>
+    <string name="desktop_server_unavailable_mac">Mac 版 Kelo 伺服器尚未推出</string>
+    <string name="desktop_server_port_busy">這台 Mac 上的其他程式正在使用連接埠 %1$d。請關閉它後再試一次。</string>
+    <string name="desktop_server_downgrade">已安裝較新的 Kelo 伺服器。</string>
+    <string name="desktop_server_remove">刪除</string>
+    <string name="desktop_server_remove_title">要從這台 Mac 刪除 Kelo 伺服器嗎？</string>
+    <string name="desktop_server_remove_body">除非你選擇刪除，否則聊天、金鑰和檔案都會保留。</string>
+    <string name="desktop_server_remove_data">同時刪除聊天、金鑰和檔案</string>
+    <string name="desktop_server_removing">正在刪除</string>
+    <string name="desktop_server_removed">已刪除</string>
 </resources>

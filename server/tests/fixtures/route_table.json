@@ -893,6 +893,150 @@
    "methods": [
     "GET"
    ],
+   "name": "get_voice",
+   "path": "/api/voice",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "ModelIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "choose_model",
+   "path": "/api/voice/model",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "decline",
+   "path": "/api/voice/decline",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "remove_model",
+   "path": "/api/voice/model",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "transcribe",
+   "path": "/api/voice/transcribe",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "get_proactive",
    "path": "/api/proactive",
    "path_params": [],
@@ -1093,6 +1237,50 @@
    "name": "get_research",
    "path": "/api/proactive/research",
    "path_params": [],
+   "query": [
+    {
+     "alias": "limit",
+     "default": 24,
+     "kind": "Query",
+     "name": "limit",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "before",
+     "default": 0,
+     "kind": "Query",
+     "name": "before",
+     "required": false,
+     "type": "int"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_pass",
+   "path": "/api/proactive/research/passes/{pass_id}",
+   "path_params": [
+    {
+     "alias": "pass_id",
+     "default": null,
+     "kind": "Path",
+     "name": "pass_id",
+     "required": true,
+     "type": "int"
+    }
+   ],
    "query": [],
    "response_class": "JSONResponse",
    "schema": true,
@@ -5980,7 +6168,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6007,7 +6195,7 @@
     }
    ],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6025,7 +6213,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6172,7 +6360,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6272,7 +6460,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6316,7 +6504,7 @@
     }
    ],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6343,7 +6531,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6438,7 +6626,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6465,7 +6653,7 @@
     }
    ],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6492,7 +6680,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -6512,6 +6700,41 @@
     }
    ],
    "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_operator"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_operator_events",
+   "path": "/api/operator/events",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "after",
+     "default": 0,
+     "kind": "Query",
+     "name": "after",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "limit",
+     "default": 100,
+     "kind": "Query",
+     "name": "limit",
+     "required": false,
+     "type": "int"
+    }
+   ],
    "response_class": "JSONResponse",
    "schema": true,
    "status": null
@@ -8750,6 +8973,33 @@
    "methods": [
     "GET"
    ],
+   "name": "get_mail_preview",
+   "path": "/api/approvals/{approval_id}/mail-preview",
+   "path_params": [
+    {
+     "alias": "approval_id",
+     "default": null,
+     "kind": "Path",
+     "name": "approval_id",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "get_approval_history",
    "path": "/api/approvals/history",
    "path_params": [],
@@ -9666,6 +9916,33 @@
     }
    ],
    "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_chat_views",
+   "path": "/api/chat/views",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "since",
+     "default": null,
+     "kind": "Query",
+     "name": "since",
+     "required": false,
+     "type": "int | None"
+    }
+   ],
    "response_class": "JSONResponse",
    "schema": true,
    "status": null
@@ -12182,6 +12459,150 @@
    "methods": [
     "GET"
    ],
+   "name": "get_voice",
+   "path": "/api/voice",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "ModelIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "choose_model",
+   "path": "/api/voice/model",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "decline",
+   "path": "/api/voice/decline",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "remove_model",
+   "path": "/api/voice/model",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "transcribe",
+   "path": "/api/voice/transcribe",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "lang",
+     "default": null,
+     "kind": "Query",
+     "name": "lang",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "get_proactive",
    "path": "/api/proactive",
    "path_params": [],
@@ -12382,6 +12803,50 @@
    "name": "get_research",
    "path": "/api/proactive/research",
    "path_params": [],
+   "query": [
+    {
+     "alias": "limit",
+     "default": 24,
+     "kind": "Query",
+     "name": "limit",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "before",
+     "default": 0,
+     "kind": "Query",
+     "name": "before",
+     "required": false,
+     "type": "int"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_pass",
+   "path": "/api/proactive/research/passes/{pass_id}",
+   "path_params": [
+    {
+     "alias": "pass_id",
+     "default": null,
+     "kind": "Path",
+     "name": "pass_id",
+     "required": true,
+     "type": "int"
+    }
+   ],
    "query": [],
    "response_class": "JSONResponse",
    "schema": true,
@@ -17206,7 +17671,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17233,7 +17698,7 @@
     }
    ],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17251,7 +17716,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17398,7 +17863,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17498,7 +17963,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17542,7 +18007,7 @@
     }
    ],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17569,7 +18034,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17664,7 +18129,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17691,7 +18156,7 @@
     }
    ],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17718,7 +18183,7 @@
   {
    "body": [],
    "deps": [
-    "require_owner"
+    "require_operator"
    ],
    "headers": [],
    "kind": "APIRoute",
@@ -17738,6 +18203,41 @@
     }
    ],
    "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_operator"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_operator_events",
+   "path": "/api/operator/events",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "after",
+     "default": 0,
+     "kind": "Query",
+     "name": "after",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "limit",
+     "default": 100,
+     "kind": "Query",
+     "name": "limit",
+     "required": false,
+     "type": "int"
+    }
+   ],
    "response_class": "JSONResponse",
    "schema": true,
    "status": null
@@ -19976,6 +20476,33 @@
    "methods": [
     "GET"
    ],
+   "name": "get_mail_preview",
+   "path": "/api/approvals/{approval_id}/mail-preview",
+   "path_params": [
+    {
+     "alias": "approval_id",
+     "default": null,
+     "kind": "Path",
+     "name": "approval_id",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "get_approval_history",
    "path": "/api/approvals/history",
    "path_params": [],
@@ -20892,6 +21419,33 @@
     }
    ],
    "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_chat_views",
+   "path": "/api/chat/views",
+   "path_params": [],
+   "query": [
+    {
+     "alias": "since",
+     "default": null,
+     "kind": "Query",
+     "name": "since",
+     "required": false,
+     "type": "int | None"
+    }
+   ],
    "response_class": "JSONResponse",
    "schema": true,
    "status": null

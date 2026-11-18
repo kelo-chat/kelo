@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">设计版邮件</string>
+    <string name="mail_preview_open">放大查看</string>
+    <string name="mail_preview_loading">正在加载预览…</string>
+    <string name="mail_preview_failed">无法加载预览。</string>
+    <string name="mail_preview_gone">预览已不可用。</string>
+    <string name="mail_preview_too_big">预览内容太大，无法显示。</string>
+    <string name="mail_preview_pictures_note">图片以链接形式发送，而不是图片。</string>
+    <string name="mail_preview_link_title">打开这个地址？</string>
+    <string name="mail_preview_link_open">在浏览器中打开</string>
+    <string name="mail_preview_simple_note">此应用以简化形式显示设计。</string>
+    <string name="mail_preview_desc">设计版邮件预览</string>
+</resources>

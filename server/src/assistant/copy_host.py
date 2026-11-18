@@ -1,15 +1,14 @@
 """What the guided setup (wizard.py, setup_web.py) needs from the way Kelo runs on this computer.
 
-Docker (Linux, Windows, a Mac with Docker) and Apple's `container` (a Mac with the Kelo Server package) start, stop and look at
-Kelo's parts in different ways. The setup asks `CopyHost` for exactly four things and never calls either program itself:
+Docker runs Kelo's parts everywhere (Linux; Windows and macOS inside Kelo's own Linux VM). The setup asks `CopyHost` for exactly
+four things and never calls Docker itself:
 
   check()      is the runtime ready, and how much CPU and RAM does it hand out
   manager()    the copy list (instances.Instances) bound to this runtime: files are shared, start/stop/running/capacity are the runtime's own
   bring_up()   start the copy with the settings now in its .env and wait for the live output (the setup's step 3)
   commands     the words a person can type to start it and to read its log (shown in messages)
 
-`DockerCopyHost` (wizard.py) keeps what the setup always did; `AppleCopyHost` (hosting/apple_container/copies.py) drives the
-per-person LaunchAgent that runs Apple container.
+`DockerCopyHost` (wizard.py) is the one implementation; tests pass their own.
 """
 
 from __future__ import annotations
@@ -36,7 +35,7 @@ class CopyHost(Protocol):
     start_command: str       # what a person types to start Kelo by hand (shown when the setup does not start it)
     logs_command: str        # what a person types to read the server's log
     health_seconds: float | None   # how long Kelo may take to answer after a start; None = the wizard's own default
-    health_request_seconds: float  # how long one "are you there" request may take (Apple container's port forwarding needs a few seconds)
+    health_request_seconds: float  # how long one "are you there" request may take
 
     def check(self) -> HostCheck: ...
 

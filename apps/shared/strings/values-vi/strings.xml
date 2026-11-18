@@ -925,10 +925,14 @@
     <string name="live_held_elsewhere">Đang được điều khiển từ thiết bị khác</string>
     <string name="live_give_back">Trả lại</string>
     <string name="live_paused_banner">Bạn đang điều khiển. Trợ lý sẽ chờ trên tab này cho đến khi bạn trả lại.</string>
+    <string name="live_still_yours">Bạn vẫn đang điều khiển. Trợ lý chờ cho đến khi bạn trả lại.</string>
+    <string name="live_screen_changed">Màn hình đã thay đổi. Chạm lại.</string>
     <string name="live_tab_closed">Tab đã đóng nên không còn gì để xem. Nếu màn hình cuối được lưu, nó sẽ hiện bên dưới.</string>
     <string name="live_not_controller">Bạn chưa thể điều khiển lúc này. Hãy chạm Điều khiển lần nữa.</string>
     <string name="live_input_failed">Trình duyệt không làm được thao tác đó.</string>
     <string name="live_state_you">Bạn đang điều khiển</string>
+    <string name="live_work_browser">Trình duyệt công việc</string>
+    <string name="live_work_browser_note">Thẻ này nằm trong trình duyệt công việc của Kelo, tách biệt với các thẻ của bạn. Đăng nhập thực hiện ở đây sẽ được lưu vào trình duyệt chính của Kelo khi công việc kết thúc.</string>
     <string name="live_state_other">Thiết bị khác đang điều khiển</string>
     <string name="live_state_waiting">Đang chờ phê duyệt</string>
     <string name="live_connecting">Đang kết nối…</string>
@@ -1174,6 +1178,9 @@
     <string name="work_wait_answer">Sẽ tiếp tục khi bạn cho biết cách làm tiếp.</string>
     <string name="work_wait_blocked">Đã dừng vì không thể tự làm tiếp.</string>
     <string name="work_wait_restart">Đã dừng khi máy chủ khởi động lại.</string>
+    <string name="work_picked_up">Máy chủ Kelo đã khởi động lại, nên công việc tiếp tục từ chỗ đã dừng.</string>
+    <string name="work_picked_up_browser">Trình duyệt đã khởi động lại, nên công việc tiếp tục trong một thẻ mới.</string>
+    <string name="work_wait_pickup">Sẽ tiếp tục từ chỗ đã dừng trong giây lát.</string>
     <string name="work_schedule_on">Lịch đang bật</string>
     <string name="work_schedule_off">Lịch đang tắt</string>
     <string name="work_schedule_by_agent">Do trợ lý tạo</string>

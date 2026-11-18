@@ -21,7 +21,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 /**
@@ -32,7 +31,7 @@ import javax.crypto.KeyGenerator
 class ChatOpenAtTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<RecordedRequest>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<RecordedRequest>()
     @Volatile private var newest = """[{"id":40,"role":"user","content":"새 메시지"},{"id":41,"role":"assistant","content":"답"}]"""
 
     private class MapStore : KeyValueStore {

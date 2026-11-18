@@ -936,10 +936,14 @@
     <string name="live_held_elsewhere">Wordt bediend vanaf een ander apparaat</string>
     <string name="live_give_back">Teruggeven</string>
     <string name="live_paused_banner">Jij hebt de besturing. Je agent wacht op dit tabblad tot je het teruggeeft.</string>
+    <string name="live_still_yours">Je bedient het nog zelf. Je agent wacht tot je het teruggeeft.</string>
+    <string name="live_screen_changed">Het scherm is veranderd. Tik nog eens.</string>
     <string name="live_tab_closed">Het tabblad is gesloten, dus er is niets meer te zien. Als het laatste scherm is bewaard, staat het hieronder.</string>
     <string name="live_not_controller">Je kunt het nu niet bedienen. Tik nog eens op Overnemen.</string>
     <string name="live_input_failed">De browser kon dat niet doen.</string>
     <string name="live_state_you">Jij hebt de besturing</string>
+    <string name="live_work_browser">Werkbrowser</string>
+    <string name="live_work_browser_note">Dit tabblad staat in de werkbrowser van Kelo, los van je eigen tabbladen. Een aanmelding die je hier doet, wordt aan het eind van de taak opgeslagen in de hoofdbrowser van Kelo.</string>
     <string name="live_state_other">Een ander apparaat heeft de besturing</string>
     <string name="live_state_waiting">Wacht op goedkeuring</string>
     <string name="live_connecting">Verbinden…</string>
@@ -1199,6 +1203,9 @@
     <string name="work_wait_answer">Gaat verder zodra je zegt hoe het verder moet.</string>
     <string name="work_wait_blocked">Gestopt omdat het zelf niet verder kan.</string>
     <string name="work_wait_restart">Gestopt toen de server opnieuw opstartte.</string>
+    <string name="work_picked_up">De Kelo-server is opnieuw gestart, dus het is verder gegaan waar het stopte.</string>
+    <string name="work_picked_up_browser">De browser is opnieuw gestart, dus het gaat verder in een nieuw tabblad.</string>
+    <string name="work_wait_pickup">Het gaat zo verder waar het stopte.</string>
     <string name="work_schedule_on">Planning aan</string>
     <string name="work_schedule_off">Planning uit</string>
     <string name="work_schedule_by_agent">Gemaakt door je agent</string>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
+    <string name="mail_preview_title">อีเมลที่จัดรูปแบบ</string>
+    <string name="mail_preview_open">ดูแบบใหญ่</string>
+    <string name="mail_preview_loading">กำลังโหลดตัวอย่าง…</string>
+    <string name="mail_preview_failed">โหลดตัวอย่างไม่ได้</string>
+    <string name="mail_preview_gone">ตัวอย่างนี้ใช้ไม่ได้แล้ว</string>
+    <string name="mail_preview_too_big">ตัวอย่างใหญ่เกินไปจึงแสดงไม่ได้</string>
+    <string name="mail_preview_pictures_note">รูปภาพจะถูกส่งเป็นลิงก์ ไม่ใช่เป็นรูปภาพ</string>
+    <string name="mail_preview_link_title">เปิดที่อยู่นี้ไหม</string>
+    <string name="mail_preview_link_open">เปิดในเบราว์เซอร์</string>
+    <string name="mail_preview_simple_note">แอปนี้แสดงการจัดรูปแบบแบบย่อ</string>
+    <string name="mail_preview_desc">ตัวอย่างอีเมลที่จัดรูปแบบ</string>
+</resources>

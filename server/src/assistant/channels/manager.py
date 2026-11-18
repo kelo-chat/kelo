@@ -474,7 +474,8 @@ class ChannelManager:
             except asyncio.TimeoutError:
                 pass
         try:
-            got = self.prepare_talk(self._talk_in(text, attachments), owner="owner", via=cid, note=self.note.format(name=self.names[cid]))
+            got = self.prepare_talk(self._talk_in(text, attachments), owner="owner", via=cid, note=self.note.format(name=self.names[cid]),
+                                    forwarded=msg.forwarded)
             provider, model, ctx, observe, started = await got if inspect.isawaitable(got) else got
         except HTTPException as e:
             if e.status_code == 409:

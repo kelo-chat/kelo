@@ -421,7 +421,7 @@ Issues and suggestions are always welcome.
   them in the model list.
 - **Messenger channels**: talk to Kelo from Telegram, Discord and Slack, set up from the Connectors list, with replies as they
   happen (no polling).
-- **Native server install on Windows and macOS**: run the Kelo server without Docker, as an extra option next to it.
+- **One-click server on Windows and macOS**: the desktop app installs the Kelo server on the same computer, in its own Linux VM with Docker (no Docker Desktop needed).
 - **Kelo Nest**: a place to find and add skills, connectors and app extensions (new tabs) made for Kelo.
 
 ## License

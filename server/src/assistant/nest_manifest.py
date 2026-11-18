@@ -745,8 +745,57 @@ def parse_provides(raw: Any, *, kind: str, connect: Mapping[str, Any]) -> Mappin
     return MappingProxyType(out)
 
 
+SITUATION_FIELDS = ("request", "tool", "arguments", "mode", "select", "fields", "id", "lines", "max_rows", "max_chars", "every_minutes", "wakes")
+
+
+def parse_situation(raw: Any, *, connect: Mapping[str, Any]) -> Any:
+    """`connector.situation`: the one read-only call that shows the service's state (docs/nest.md, "Situation read"). Checked, then compiled to
+    a situation_reads.SituationRead: a request is a GET through the connection (connector_get), a tool is an MCP tool of the connection
+    (mcp_call_tool). None when absent. These two compile rules are the only place a package names Kelo's own tools."""
+    from .situation_reads import parse_read
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise PackageError("connector.situation must be an object")
+    bad = set(raw) - set(SITUATION_FIELDS)
+    if bad:
+        raise PackageError(f"connector.situation: unknown fields {', '.join(sorted(bad))}")
+    if ("request" in raw) == ("tool" in raw):
+        raise PackageError("connector.situation needs either a request or a tool")
+    ctype = connect.get("type")
+    if "request" in raw:
+        if "arguments" in raw:
+            raise PackageError("connector.situation: arguments belong to a tool, not to a request")
+        req = raw["request"]
+        if not isinstance(req, dict) or set(req) != {"method", "path"} or str(req.get("method")).upper() != "GET":
+            raise PackageError("connector.situation.request needs method GET and a path")
+        path = req["path"]
+        if not isinstance(path, str) or not path.startswith("/") or len(path) > 300 or "//" in path:
+            raise PackageError("connector.situation.request.path must start with /")
+        if not (ctype in ("key", "oauth") and connect.get("base_url")):
+            raise PackageError("connector.situation.request needs a key or OAuth connector with a base_url")
+        args: dict[str, Any] = {"name": "{{connection}}", "url": str(connect["base_url"]).rstrip("/") + path}
+        tool = "connector_get"
+    else:
+        name = raw["tool"]
+        if not isinstance(name, str) or not MCP_TOOL.fullmatch(name):
+            raise PackageError("connector.situation.tool must be a tool name")
+        if not (ctype == "mcp" or (ctype == "key" and bool(connect.get("mcp_url")))):
+            raise PackageError("connector.situation.tool needs an MCP connection (connect.type mcp, or a key connector with mcp_url)")
+        arguments = raw.get("arguments") or {}
+        if not isinstance(arguments, dict):
+            raise PackageError("connector.situation.arguments must be an object")
+        args = {"name": "{{connection}}", "tool": name, "arguments": arguments}
+        tool = "mcp_call_tool"
+    spec = {"tool": tool, "arguments": args, **{k: raw[k] for k in SITUATION_FIELDS if k in raw and k not in ("request", "tool", "arguments")}}
+    try:
+        return parse_read(spec, where="connector.situation")
+    except ValueError as e:
+        raise PackageError(str(e)) from None
+
+
 def implied_permissions(connect: Mapping[str, Any], ui: Mapping[str, Any], store: Mapping[str, Any],
-                        provides: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                        provides: Mapping[str, Any] | None = None, situation: Any = None) -> dict[str, Any]:
     """What the manifest really uses: hosts from the connector and the links, image hosts from fixed pictures, MCP tools and reads from
     data sources, surfaces, kinds of actions, whether it keeps entries."""
     hosts: set[str] = set()
@@ -776,6 +825,8 @@ def implied_permissions(connect: Mapping[str, Any], ui: Mapping[str, Any], store
     for cap, ops in (provides or {}).items():   # a mailbox or a calendar Kelo reads: that read, and the tools it calls
         reads.add(cap)
         tools |= {spec["tool"] for spec in ops.values() if spec.get("tool")}
+    if situation is not None and situation.tool == "mcp_call_tool":   # the situation read's MCP tool: shown on the install card too
+        tools.add(str(situation.arguments.get("tool")))
     images: set[str] = set()
     for s in (ui.get("screens") or {}).values():
         _walk_images(s["components"], images)

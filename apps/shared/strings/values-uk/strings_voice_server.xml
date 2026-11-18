@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
+    <string name="voice_server_offer_body">Завантажити мовну модель %1$s на ваш сервер Kelo? Якщо ні, використовуватиметься розпізнавання мовлення вашого телефона.</string>
+    <string name="voice_server_downloading">Завантаження мовної моделі · %1$d%%</string>
+    <string name="voice_server_ready">Ваш сервер Kelo тепер розуміє голос.</string>
+    <string name="voice_server_download_failed">Мовну модель не вдалося повністю завантажити.</string>
+    <string name="voice_server_no_room">Замало місця на сервері Kelo (потрібно %1$s).</string>
+    <string name="voice_retry">Повторити</string>
+    <string name="voice_transcribing">Перетворюємо на текст…</string>
+    <string name="voice_cancel_recording">Скасувати запис</string>
+    <string name="voice_stop_recording">Зупинити запис</string>
+    <string name="voice_ends_in">Завершиться за %1$d с</string>
+    <string name="voice_server_offline">Не вдалося зв\'язатися з сервером Kelo, щоб перетворити мовлення на текст.</string>
+    <string name="voice_server_busy">Сервер Kelo зараз обробляє інший запис. Спробуйте трохи пізніше.</string>
+    <string name="voice_server_too_long">Запис занадто довгий. Говоріть менше 2 хвилин.</string>
+    <string name="voice_page_title">Голосове введення</string>
+    <string name="voice_page_intro">Ваш голос перетворюється на текст на сервері Kelo, і текст потрапляє в поле. Нічого не надсилається само.</string>
+    <string name="voice_model_in_use">Мовна модель, що використовується</string>
+    <string name="voice_state_off">Розпізнавання мовлення телефона</string>
+    <string name="voice_change_model">Змінити модель</string>
+    <string name="voice_download_model">Завантажити модель</string>
+    <string name="voice_remove_model">Видалити модель</string>
+    <string name="voice_remove_confirm">Видалити мовну модель? Далі використовуватиметься розпізнавання мовлення телефона.</string>
+    <string name="voice_phone_note">Мовні моделі сервера Kelo поки не знають цієї мови, тому використовується розпізнавання мовлення телефона.</string>
+    <string name="voice_model_size">Розмір %1$s · пам\'ять під час роботи %2$s</string>
+    <string name="voice_runtime_missing">Запустіть інсталятор сервера Kelo ще раз, щоб це працювало.</string>
+</resources>

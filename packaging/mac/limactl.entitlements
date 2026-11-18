@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Lima's vz driver starts Linux guests with Virtualization.framework. -->
+	<key>com.apple.security.virtualization</key>
+	<true/>
+	<!-- The guest's user-mode network (slirp-like, no vmnet): outbound to the internet and the local port forwards. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+</dict>
+</plist>

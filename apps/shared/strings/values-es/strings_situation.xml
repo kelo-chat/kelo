@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- es text for strings_situation.xml (generated from values/strings_situation.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="situation_row">Lo que Kelo miró</string>
+    <string name="situation_title">Lo que Kelo miró</string>
+    <string name="situation_hourly_head">Lo que Kelo mira cada hora</string>
+    <string name="situation_read_when_needed_head">Se lee solo cuando hace falta</string>
+    <string name="situation_read_when_needed_about">Se leen cuando una pregunta los necesita. Una conexión puede mirarse cada hora si explica cómo leer su estado.</string>
+    <string name="situation_section_conversation">Conversación</string>
+    <string name="situation_section_mail">Correo</string>
+    <string name="situation_section_calendar">Calendario</string>
+    <string name="situation_section_goals">Objetivos</string>
+    <string name="situation_section_schedules">Horarios</string>
+    <string name="situation_section_memory">Memoria</string>
+    <string name="situation_section_other">Otros</string>
+    <string name="situation_empty">Todavía nada. La primera mirada es al minuto 9 de la próxima hora, en sus horas de vigilia.</string>
+    <string name="situation_keep_days">Se guarda %d días</string>
+    <string name="situation_outcome_no_change">Nada nuevo</string>
+    <string name="situation_outcome_nothing">Miró, nada que contar</string>
+    <string name="situation_outcome_proposed">Preparó %d</string>
+    <string name="situation_outcome_selected">Eligió %d</string>
+    <string name="situation_outcome_delivered">Le avisó</string>
+    <string name="situation_outcome_failed">No pudo mirar</string>
+    <string name="situation_outcome_running">Mirando ahora</string>
+    <string name="situation_outcome_other">Miró</string>
+    <string name="situation_load_more">Cargar más</string>
+    <string name="situation_detail_changed">Lo que cambió</string>
+    <string name="situation_detail_same">Igual que antes (%d)</string>
+    <string name="situation_detail_failed">No se pudo leer</string>
+    <string name="situation_detail_off">Desactivado</string>
+    <string name="situation_detail_done">Lo que hizo Kelo</string>
+    <string name="situation_detail_none">En esta mirada no se preparó nada.</string>
+    <string name="situation_state_new">Nuevo</string>
+    <string name="situation_state_same">Igual que antes</string>
+    <string name="situation_state_changed">Cambió</string>
+    <string name="situation_state_failed">No se pudo leer</string>
+    <string name="situation_state_timeout">Tardó demasiado</string>
+    <string name="situation_state_skipped">Fuera: la mirada estaba llena</string>
+    <string name="situation_state_off">Desactivado</string>
+    <string name="situation_state_other">Otros</string>
+    <string name="situation_event_proposed">Preparado</string>
+    <string name="situation_event_updated">Actualizado</string>
+    <string name="situation_event_selected_today">Elegido para hoy</string>
+    <string name="situation_event_selected_regular">Elegido como mensaje normal</string>
+    <string name="situation_event_told">Le avisó</string>
+    <string name="situation_event_dropped">Apartado: %s</string>
+    <string name="situation_event_dropped_none">Apartado: no vale la pena avisarle</string>
+    <string name="situation_event_expired">Se acabó el tiempo</string>
+    <string name="situation_event_waiting">Esperando un mejor momento</string>
+</resources>

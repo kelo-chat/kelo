@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">Вставить с этого компьютера</string>
+    <string name="desktop_live_copied">Скопировано на этот компьютер</string>
+    <string name="desktop_live_type_hint">Нажмите на страницу, чтобы печатать прямо в ней. Текст, который вводится через метод ввода (корейский, японский, китайский), пишите в строку ниже.</string>
+</resources>

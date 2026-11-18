@@ -70,8 +70,10 @@ def setup(tmp_path, fn, now=ts(2026, 11, 8, 3, 50)):
     return store, home, Reflection(store, home, Activity(store, clock), fn, lambda: ("p", "m"), clock=clock), clock
 
 
-def say(store, at, role, text):
-    store._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)", (role, text, at))
+def say(store, at, role, text, author=None):
+    """A message row; the owner's own user messages carry author 'owner' (pass author="" for a hidden row)."""
+    author = ("owner" if role == "user" else "") if author is None else author
+    store._run("INSERT INTO messages(role, content, created_at, author) VALUES(?,?,?,?)", (role, text, at, author))
 
 
 # ---------------------------------------------------------------------------------------------------------- the run
@@ -81,7 +83,7 @@ async def test_a_night_without_new_user_messages_is_skipped_without_a_model_call
     out = await r.run()
     assert out["status"] == "skipped" and fn.calls == [] and r.last_run()["status"] == "skipped"
     say(store, ts(2026, 11, 7, 20, 0), "assistant", "[Automatic run · morning brief]\nSunny today.")   # a scheduled run's answer only
-    say(store, ts(2026, 11, 7, 20, 1), "user", "[자동 실행 · 아침 브리핑]\n오늘 날씨")                      # a run saved by an older version
+    say(store, ts(2026, 11, 7, 20, 1), "user", "[자동 실행 · 아침 브리핑]\n오늘 날씨", author="")   # a run saved by an older version: not the owner's
     assert (await r.run())["status"] == "skipped" and fn.calls == []
 
 
@@ -155,8 +157,8 @@ async def test_the_list_stays_short(tmp_path):
 async def test_the_request_stays_small_even_after_a_long_day(tmp_path):
     fn = answering(reply())
     store, home, r, clock = setup(tmp_path, fn)
-    home.write("MEMORY.md", "# MEMORY.md\n" + "- 기억할 것 하나 둘 셋\n" * 3000)
-    home.write("user.md", "# user.md\n" + "- 사용자 정보\n" * 3000)
+    home.write("MEMORY.md", "# MEMORY.md\n" + "- 기억할 것 하나 둘 셋\n" * 3000, by="user")
+    home.write("user.md", "# user.md\n" + "- 사용자 정보\n" * 3000, by="user")
     for i in range(600):
         say(store, clock.t - 80_000 + i * 60, "user" if i % 2 == 0 else "assistant", f"메시지 {i} " + "긴 내용 " * 300)
     messages, info = r.build_request(r.messages_since(r._since()), r._since())
@@ -248,7 +250,7 @@ async def test_a_rule_stands_on_a_quote_found_in_the_owners_own_messages(tmp_pat
     store, home, r, clock = setup(tmp_path, fn)
     say(store, ts(2026, 11, 7, 21, 0), "user", "[Sat 2026-11-07 21:00:00 KST]\n음… 앞으로 캘린더에는, 직접   넣지 마!")
     say(store, ts(2026, 11, 7, 21, 1), "assistant", "알겠어요. 표로 정리해 드릴게요")
-    say(store, ts(2026, 11, 7, 21, 2), "user", "[Automatic run · 아침 알림]\n아침 알림은 보내지 말라고 했음")   # not typed by the owner
+    say(store, ts(2026, 11, 7, 21, 2), "user", "[Automatic run · 아침 알림]\n아침 알림은 보내지 말라고 했음", author="")   # not typed by the owner
     say(store, ts(2026, 11, 7, 21, 3), "user", "응")
     out = await r.run()
     assert out["added"] == 1
@@ -357,7 +359,7 @@ async def test_reflection_api_lists_rules_changes_their_status_and_runs(tmp_path
         assert (await c.post("/api/reflection/run")).json()["status"] == "skipped" and fn.calls == []
         store = Store(str(tmp_path / "a.db"))
         store.set_profile(timezone="Asia/Seoul")
-        store.add_message("user", SAID)
+        store.add_message("user", SAID, author="owner")
         out = (await c.post("/api/reflection/run")).json()
         assert out["status"] == "done" and out["changed"] and len(fn.calls) == 1
         got = (await c.get("/api/reflection")).json()

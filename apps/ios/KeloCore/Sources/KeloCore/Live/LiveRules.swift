@@ -164,14 +164,17 @@ public struct InputReply: Equatable, Sendable {
     public var x: Double? = nil, y: Double? = nil
     /// "frame" (the frame the owner saw) or "latest" (that frame was unknown); nil from an older server.
     public var mappedWith: String? = nil
+    /// Dropped: the tap was aimed at a picture from before the agent's stopped step's last move (tap again on the new picture).
+    public var stale = false
 
-    public init(ok: Bool = true, busy: Bool = false, x: Double? = nil, y: Double? = nil, mappedWith: String? = nil) {
-        self.ok = ok; self.busy = busy; self.x = x; self.y = y; self.mappedWith = mappedWith
+    public init(ok: Bool = true, busy: Bool = false, x: Double? = nil, y: Double? = nil, mappedWith: String? = nil, stale: Bool = false) {
+        self.ok = ok; self.busy = busy; self.x = x; self.y = y; self.mappedWith = mappedWith; self.stale = stale
     }
     init(_ o: Lenient) {
         ok = o.has("ok") ? o.bool("ok") : true; busy = o.bool("busy")
         x = o.has("x") ? o.double("x") : nil; y = o.has("y") ? o.double("y") : nil
         mappedWith = o.optStr("mapped_with")
+        stale = o.bool("stale")
     }
     public init(json: JSON) { self.init(Lenient(json)) }
 }
@@ -212,6 +215,12 @@ public struct LiveStatus: Equatable, Sendable {
     public var pointer: LivePointer? = nil
     public var pageBusy = false
     public var stale = false
+    /// "button": the owner's own 직접 조작 (only hand back ends it); "handover": the app took it because Kelo asked; "": nobody / an older server.
+    public var hold = ""
+    /// The holder has no live connection, so another device may take the tab (the take moves it).
+    public var holderAway = false
+    /// "work" on a tab of Kelo's work browser; "main" or "" (an older server) for the owner's own browser.
+    public var browser = ""
 
     public init() {}
     init(_ o: Lenient) {
@@ -220,17 +229,29 @@ public struct LiveStatus: Equatable, Sendable {
         pointer = o.has("pointer") ? LivePointer(o.obj("pointer")) : nil
         pageBusy = o.bool("page_busy")
         stale = o.bool("stale")
+        hold = o.str("hold"); holderAway = o.bool("holder_away")
+        browser = o.str("browser")
     }
 
     /// Another phone (or the owner's app) holds the tab.
     public var someoneElse: Bool { controller == "user" && !youControl }
+
+    /// The owner holds the tab for a hand-over Kelo asked for: leaving the page gives it back (owner decision 2026-11-18).
+    public var handoverHold: Bool { youControl && hold == "handover" }
+
+    /// The tab is in Kelo's work browser, apart from the owner's own tabs.
+    public var inWorkBrowser: Bool { browser == "work" }
 }
 
-/// `{"type":"meta","url","title"}`: the tab's address and title, sent while this viewer's frames are off (the VNC screen shows, so the frame
-/// headers that normally carry them do not come). A frame arriving again takes over.
+/// `{"type":"meta","url","title","editing"}`: the tab's address and title and whether a text field has focus, sent while this viewer's
+/// frames are off (the VNC screen shows, so the frame headers that normally carry them do not come). A frame arriving again takes over.
+/// A server from before `editing` leaves it out: false.
 public struct LiveMeta: Equatable, Sendable {
     public var url: String, title: String
-    public init(url: String = "", title: String = "") { self.url = url; self.title = title }
+    public var editing: Bool
+    public init(url: String = "", title: String = "", editing: Bool = false) {
+        self.url = url; self.title = title; self.editing = editing
+    }
 }
 
 /// What the live page's header shows of the page: a meta line while frames are off, else the newest frame's header.
@@ -242,6 +263,28 @@ public enum LiveHeader {
     public static func url(meta: LiveMeta?, frame: String?) -> String? {
         let u = meta?.url ?? frame
         return u?.isEmpty == false ? u : nil
+    }
+
+    /// A text field has focus on the page: the meta line while frames are off (the last frame header is old then and would never say
+    /// it), else the frame's own flag. This is what raises the keyboard into the type line.
+    public static func editing(meta: LiveMeta?, frame: Bool?) -> Bool { meta?.editing ?? (frame == true) }
+}
+
+/// Text going between the phone's clipboard and the page's: only when the owner taps, never on its own, never kept past use.
+public enum ClipboardRules {
+    /// The most text taken from the browser's clipboard for the owner to copy.
+    public static let maxOffer = 10_000
+
+    /// The phone's clipboard text to type into the page: nil when there is none (the paste key stays off), cut at what one entry takes.
+    public static func pasteText(_ clip: String?) -> String? {
+        guard let clip, !clip.isEmpty else { return nil }
+        return String(clip.prefix(LiveMessages.maxText))
+    }
+
+    /// The browser's clipboard text offered to the owner: nil for nothing worth offering, cut at `maxOffer`.
+    public static func offer(_ text: String?) -> String? {
+        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return String(text.prefix(maxOffer))
     }
 }
 
@@ -273,7 +316,7 @@ public enum LiveMessages {
         case "ended": return .ended(reason: o.str("reason"))
         case "error": return .error(code: o.str("code"), forType: o.str("for"))
         case "pong": return .pong
-        case "meta": return .meta(LiveMeta(url: o.str("url"), title: o.str("title")))
+        case "meta": return .meta(LiveMeta(url: o.str("url"), title: o.str("title"), editing: o.bool("editing")))
         case "input_ok": return .inputReply(InputReply(o))
         default: return .other
         }
@@ -324,7 +367,10 @@ public enum LiveMessages {
     /// back | forward | reload
     public static func nav(_ kind: String) -> JSON { ["type": .string(kind)] }
     /// The body of POST .../control.
-    public static func control(take: Bool) -> JSON { ["take": .bool(take)] }
+    /// Taking the tab: `by` "handover" when the app took it because Kelo asked (a hand-over hold); the owner's own press sends none.
+    public static func control(take: Bool, handover: Bool = false) -> JSON {
+        take && handover ? ["take": .bool(take), "by": .string("handover")] : ["take": .bool(take)]
+    }
 
     /// Whether the server sends JPEG frames over this live socket (`frames`): off while the VNC screen shows, on again when the
     /// picture is the fallback. Input, control and status stay on the socket either way.
@@ -358,6 +404,16 @@ public enum LiveKinds {
 /// When the live view takes its tab over by itself (it was opened to solve a human check).
 public enum LiveRules {
     /// Once only, when asked to, after the first picture came, while nobody holds the tab and no take-over is on its way.
+    /// Leaving the live page gives the tab back only for a hand-over hold; the owner's own button hold stays until they hand it back.
+    /// An older server says no hold, so nothing is given back on leaving (its own 30 s grace still applies).
+    public static func giveBackOnLeave(_ s: LiveStatus) -> Bool { s.handoverHold }
+
+    /// Leaving the page while the owner holds the tab by their own press: the page says it stays theirs until they hand it back.
+    public static func leaveNotice(_ s: LiveStatus) -> Bool { s.youControl && !s.handoverHold }
+
+    /// The owner holds a tab of the work browser: the line under the paused banner says where the sign-in goes.
+    public static func showWorkNote(_ s: LiveStatus) -> Bool { s.youControl && s.inWorkBrowser }
+
     public static func autoTake(asked: Bool, done: Bool, hasFrame: Bool, controlling: Bool, someoneElse: Bool, busy: Bool) -> Bool {
         asked && !done && hasFrame && !controlling && !someoneElse && !busy
     }

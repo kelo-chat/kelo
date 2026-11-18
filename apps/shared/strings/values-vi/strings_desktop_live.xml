@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<resources>
+    <string name="desktop_live_paste">Dán từ máy tính này</string>
+    <string name="desktop_live_copied">Đã sao chép vào máy tính này</string>
+    <string name="desktop_live_type_hint">Nhấp vào trang để gõ trực tiếp. Văn bản nhập bằng bộ gõ (tiếng Hàn, Nhật, Trung) thì gõ ở dòng bên dưới.</string>
+</resources>

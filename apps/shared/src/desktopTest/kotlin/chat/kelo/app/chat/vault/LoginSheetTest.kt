@@ -70,7 +70,7 @@ class LoginSheetTest {
     }
 
     @Test fun anUncheckedBoxSendsTheLoginForOneUse() {
-        val bodies = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val bodies = java.util.concurrent.CopyOnWriteArrayList<String>()
         val s = MyFakeServer { m, p, body -> if (m == "PUT" && p == "/api/vault/shop/login") { bodies += body; ok("""{}""") } else null }.also { server = it }
         val vm = vms.make { SecretEntryViewModel(s.sessions()) }
         var outcome: SecretOutcome? = null

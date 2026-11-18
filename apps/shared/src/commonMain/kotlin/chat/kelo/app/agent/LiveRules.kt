@@ -1,6 +1,8 @@
 package chat.kelo.app.agent
 
 import androidx.compose.ui.geometry.Offset
+import chat.kelo.app.res.*
+import org.jetbrains.compose.resources.StringResource
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -196,9 +198,21 @@ data class LiveStatus(
     val pointer: LivePointer? = null,
     @SerialName("page_busy") val pageBusy: Boolean = false,
     val stale: Boolean = false,
+    /** "button": the owner's own 직접 조작 (only hand back ends it); "handover": the app took it because Kelo asked; "": nobody (an older server) */
+    val hold: String = "",
+    /** The holder has no live connection, so another device may take the tab (the take moves it) */
+    @SerialName("holder_away") val holderAway: Boolean = false,
+    /** "work" on a tab of Kelo's work browser; "main" or "" (an older server) for the owner's own browser */
+    val browser: String = "",
 ) {
     /** Another phone (or the owner's app) holds the tab */
     val someoneElse: Boolean get() = controller == "user" && !youControl
+
+    /** The owner holds the tab for a hand-over Kelo asked for: leaving the page gives it back (owner decision 2026-11-18). */
+    val handoverHold: Boolean get() = youControl && hold == "handover"
+
+    /** The tab is in Kelo's work browser, apart from the owner's own tabs. */
+    val inWorkBrowser: Boolean get() = browser == "work"
 }
 
 /**
@@ -231,7 +245,15 @@ object ClipboardRules {
 
     /** The browser's clipboard text offered to the owner: null for nothing worth offering, cut at [MAX_OFFER]. */
     fun offer(text: String?): String? = text?.takeIf { it.isNotBlank() }?.take(MAX_OFFER)
+
+    /** The words of the paste key and of the "copied" notice: the phone's own, or the computer's (the desktop's VNC screen). */
+    fun words(desktop: Boolean): ClipboardWords =
+        if (desktop) ClipboardWords(Res.string.desktop_live_paste, Res.string.desktop_live_copied)
+        else ClipboardWords(Res.string.live_paste, Res.string.live_copied_to_phone)
 }
+
+/** Which strings the clipboard words use: the paste key's description and the notice after text was copied. */
+data class ClipboardWords(val paste: StringResource, val copied: StringResource)
 
 /** One text message from the server, sorted by type. */
 sealed interface LiveIn {
@@ -311,7 +333,11 @@ object LiveMessages {
     /** Back | forward | reload */
     fun nav(kind: String): JsonObject = buildJsonObject { put("type", kind) }
 
-    fun control(take: Boolean): JsonObject = buildJsonObject { put("take", take) }
+    /** Taking the tab: `by` "handover" when the app took it because Kelo asked (a hand-over hold); the owner's own press sends none. */
+    fun control(take: Boolean, handover: Boolean = false): JsonObject = buildJsonObject {
+        put("take", take)
+        if (take && handover) put("by", "handover")
+    }
 
     /** Whether the server sends JPEG frames over this socket (`frames`, live socket only). */
     fun frames(on: Boolean): JsonObject = buildJsonObject { put("type", "frames"); put("on", on) }
@@ -330,6 +356,8 @@ object LiveMessages {
             controller = s("controller") ?: before.controller,
             controlledBy = s("controlled_by"),
             youControl = (o["you_control"] as? JsonPrimitive)?.booleanOrNull ?: before.youControl,
+            hold = s("hold").orEmpty(),
+            holderAway = (o["holder_away"] as? JsonPrimitive)?.booleanOrNull == true,
         )
     }
 
@@ -470,6 +498,13 @@ object LiveKinds {
 
 /** When the live view takes its tab over by itself (it was opened to solve a human check). */
 object LiveRules {
+    /** Leaving the live page gives the tab back only for a hand-over hold; the owner's own button hold stays until they hand it back.
+     *  An older server says no hold, so nothing is given back on leaving (its own 30 s grace still applies). */
+    fun giveBackOnLeave(s: LiveStatus): Boolean = s.handoverHold
+
+    /** Leaving the page while the owner holds the tab by their own press: the page says it stays theirs until they hand it back. */
+    fun leaveNotice(s: LiveStatus): Boolean = s.youControl && !s.handoverHold
+
     /** Once only, when asked to, after the first picture came, while nobody holds the tab and no take-over is on its way. */
     fun autoTake(asked: Boolean, done: Boolean, hasFrame: Boolean, controlling: Boolean, someoneElse: Boolean, busy: Boolean): Boolean =
         asked && !done && hasFrame && !controlling && !someoneElse && !busy
@@ -480,4 +515,10 @@ object LiveRules {
      * the card screens keep their own guard (LocalSecureWindow there). The frame header's `secure` hint is still read but not used here.
      */
     fun guardScreen(): Boolean = false
+
+    /** A picture is on screen: the JPEG frame or the VNC screen (which has no frame of its own). The take button and the auto take wait for it. */
+    fun hasPicture(hasFrame: Boolean, vnc: VncState): Boolean = hasFrame || VncRules.showsVnc(vnc)
+
+    /** The owner holds a tab of the work browser: the line under the paused banner says where the sign-in goes. */
+    fun showWorkNote(s: LiveStatus): Boolean = s.youControl && s.inWorkBrowser
 }

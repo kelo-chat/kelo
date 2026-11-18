@@ -54,6 +54,9 @@ struct NowTaskCard: View {
                 .buttonStyle(.plain)
             }
             if t.running {
+                if let id = Timeline.tabFor(t, tabs: tabs, workers: workers), tabs.first(where: { $0.id == id })?.inWorkBrowser == true {
+                    WorkBrowserPill()   // the task runs in Kelo's work browser
+                }
                 FlowLayout(spacing: 0, lineSpacing: 0) {
                     if let tab = Timeline.tabFor(t, tabs: tabs, workers: workers) {
                         CardAction(L(R.string.work_live_view), icon: .eye) { onOpenLive(tab) }
@@ -105,6 +108,13 @@ struct JobBody: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 StatusChip(WorkText.jobStatus(w.status, wakeAt: w.wakeAt), c.job(w.status))
+            }
+            if w.running, let p = w.pickedUp {   // it went on by itself after a restart or a lost browser: one muted line
+                HStack(alignment: .top, spacing: 6) {
+                    KeloIconView(.info, size: 14, tint: c.muted)
+                    Text(L(p.why == "browser" ? R.string.work_picked_up_browser : R.string.work_picked_up))
+                        .font(KeloFont.small).foregroundStyle(c.muted).lineLimit(3)
+                }
             }
             if let st = w.statusText, !st.isEmpty { Text(st).font(KeloFont.small).foregroundStyle(c.muted).lineLimit(3) }
             if let p = Timeline.progress(w) {
@@ -273,6 +283,7 @@ struct PendingApprovalCard: View {
                     ApprovalFactsView(lines: ApprovalEditRules.withoutMessage(a.event.lines, e), detail: nil)
                     EditableMessageBlock(approvalId: a.id, editable: e, enabled: !working)
                 } else { ApprovalFactsView(lines: a.event.lines, detail: a.event.detail) }
+                if let mail = a.event.mail { MailPreviewBlock(approvalId: a.id, design: mail) }
                 if !a.event.forgetPlan.isEmpty { ForgetPlanList(planId: a.event.forgetPlan) }
                 if !a.event.items.isEmpty { ApprovalItems(items: a.event.items) }
                 if a.askedAt > 0 { Text(L(R.string.agent_perm_asked, WorkText.rel(a.askedAt))).font(KeloFont.label).foregroundStyle(c.muted) }
@@ -640,6 +651,30 @@ struct WatcherRow: View {
     }
 }
 
+/// An open browser the timeline lists when no running work shows it (Android's "Open browsers" rows): the tab's row in a card; a tap opens
+/// its live view.
+struct OpenTabCard: View {
+    let tab: BrowserTab
+    let action: () -> Void
+    @Environment(\.kelo) private var c
+
+    var body: some View {
+        TabRow(tab: tab, action: action)
+            .background(RoundedRectangle(cornerRadius: 12).fill(c.card))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(c.line, lineWidth: 1))
+    }
+}
+
+/// The tab runs in Kelo's work browser (scheduled and background jobs), not in the owner's own browser. Same pill style as "You're in control".
+struct WorkBrowserPill: View {
+    @Environment(\.kelo) private var c
+
+    var body: some View {
+        Text(L(R.string.live_work_browser)).font(.system(.caption2, weight: .semibold)).foregroundStyle(c.accent).lineLimit(1)
+            .padding(.horizontal, 7).padding(.vertical, 2).background(Capsule().fill(c.accent.opacity(0.12)))
+    }
+}
+
 /// A browser tab in a list: its picture, title, host, state and whose it is.
 struct TabRow: View {
     let tab: BrowserTab
@@ -665,6 +700,11 @@ struct TabRow: View {
                     if !t.host.isEmpty { Text(t.host).font(KeloFont.small).foregroundStyle(c.muted).lineLimit(1) }
                     FlowLayout(spacing: 6, lineSpacing: 4) {
                         tabStatus(t)
+                        if t.inWorkBrowser { WorkBrowserPill() }
+                        if t.controller == "user" {   // a hold left behind is visible here (owner decision 2026-11-18)
+                            Text(L(R.string.live_state_you)).font(.system(.caption2, weight: .semibold)).foregroundStyle(c.accent)
+                                .padding(.horizontal, 7).padding(.vertical, 2).background(Capsule().fill(c.accent.opacity(0.12)))
+                        }
                         Text(WorkText.tabKind(t)).font(KeloFont.label).foregroundStyle(c.muted).lineLimit(1)
                     }
                 }

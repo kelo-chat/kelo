@@ -382,12 +382,13 @@ fun vncRelay(api: KeloApi, tabId: String): VncRelay {
 }
 
 /**
- * The platform's VNC screen (Android: a WebView with noVNC). Null where there is none (desktop keeps the JPEG picture). It shows the
+ * The platform's VNC screen (Android: a WebView with noVNC; the desktop: its own RFB client). Null where there is none. It shows the
  * relay's bytes, attaches itself to the relay while it is shown, and holds the page's own input back unless the owner holds the tab.
+ * [onPaste] is the owner's paste (Ctrl/⌘+V in the screen, or the paste key): the platform calls it instead of sending the keys.
  */
 interface VncScreenHost {
     @Composable
-    fun Screen(relay: VncRelay, holding: Boolean, modifier: Modifier)
+    fun Screen(relay: VncRelay, holding: Boolean, onPaste: () -> Unit, modifier: Modifier)
 }
 
 val LocalVncScreenHost = staticCompositionLocalOf<VncScreenHost?> { null }

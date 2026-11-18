@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from . import approval_edit
 from .activity import is_short_reply, task_title
+from .chat_views import view_wanted
 from .injection_watch import current as injection_watch_var
 from .reply_paths import ReplyPaths
 from .reply_text import BOOKKEEPING, ReplyText
@@ -109,6 +110,7 @@ class Turn:
         self.goal_ids: set[int] = set()    # the goals it works on (goals.py "working": the app shows them as being worked on)
         self.goal_origin: set[int] = set() # the goals it was started for (a kickoff / resume): deleting one of them stops it
         self.reaction_msg = 0              # the owner's message it answers: 👀 now, its emoji when the work is over (reactions.py)
+        self.owner_message = 0             # the owner's own message (author owner, owner_messages.py) this turn answers; 0 = none
         self.reaction_choice = ""          # the emoji the model chose with `react`
         self.asked = False                 # it ended on a question to the user (quick_replies, await_reply)
         self.evidence = RunEvidence()      # what its tool calls did (scheduled_runs.py): the closing phase and the promise rule read it
@@ -362,6 +364,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     turns = ctx.turns
     window_for = ctx.window_for
     workers = ctx.workers
+    chat_views = getattr(ctx, "chat_views", None)   # the browser tabs and the phone the chat shows (chat_views.py)
     sweep()
     turn = Turn()
     turn.source, turn.unattended, turn.owner = source, unattended, owner or browser_owner.get()
@@ -446,7 +449,20 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     # the model's working folder (a provider sandbox path) in the reply's text becomes Kelo's own file name (reply_paths.py)
     reply_paths = ReplyPaths(getattr(ctx, "home_relativize", None))
 
+    def show_view(item: dict[str, Any]) -> None:
+        """A browser or phone card of a chat reply (or of a job a chat asked for) makes its view: it stays in the chat until closed."""
+        if chat_views is None or item.get("type") not in ("browser", "device"):
+            return
+        parent = str((workers._row(turn.worker_id) or {}).get("parent_source") or "") if turn.worker_id else ""
+        if not view_wanted(turn, parent):
+            return
+        if item["type"] == "device":
+            chat_views.card("android", "phone", item, turn_id=turn.id, worker_id=turn.worker_id or None)
+        else:
+            chat_views.card(str(item.get("tab") or turn.owner), "browser", item, turn_id=turn.id, worker_id=turn.worker_id or None)
+
     async def put(item: dict[str, Any]) -> None:
+        show_view(item)
         if item.get("type") == "text":
             text = reply_paths.feed(str(item.get("text", "")))
             if not text:
@@ -605,6 +621,13 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                         activity.add_offer(int(row), turn.task_id, turn.offer, asked[0][0]["options"][0])
             except Exception:  # noqa: BLE001
                 log.exception("quick replies could not be attached")
+        if chat_views is not None:   # this reply's cards go after the reply's own message (chat_views.py)
+            try:
+                row = store._all("SELECT MAX(id) AS m FROM messages WHERE role = 'assistant' AND id > ?", (turn.msg_floor,))[0]["m"]
+                if row:
+                    chat_views.anchor(turn.id, int(row))
+            except Exception:  # noqa: BLE001
+                log.exception("the chat views could not be anchored")
         if (card := pending_comparisons.pop(turn.id, None)) is not None:   # the comparison card under the message this reply ended with
             try:
                 row = store._all("SELECT MAX(id) AS m FROM messages WHERE role = 'assistant' AND id > ?", (turn.msg_floor,))[0]["m"]
@@ -714,6 +737,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                 extra = {}
         timeout = UNATTENDED_APPROVAL_SECONDS if turn.unattended else APPROVAL_TIMEOUT_SECONDS
         notice_title = str(extra.pop("notice_title", "") or "")   # a card with its own notice title (purchase_result's wrong charge)
+        notice_body = str(extra.pop("notice_body", "") or "")     # the notice's own text (a designed mail: its words, not the card's detail)
         if grant_check is not None and grant_check.reason:   # the task has a permission of this kind, but this step is outside it
             extra["lines"] = [{"label": i18n.t("Why it asks"), "value": i18n.t(GRANT_REASONS.get(grant_check.reason, grant_check.reason))},
                               *(extra.get("lines") or arg_lines(req.arguments))][:4]
@@ -741,10 +765,10 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             until = datetime.fromtimestamp(time.time() + timeout, sched_zone(store.profile()["timezone"])).strftime("%H:%M")
             body = i18n.t("Answer by {time}, or {missed}", time=until, missed=missed) if missed else i18n.t("Answer by {time}", time=until)
             activity.notify("approval_waiting", notice_title[:120] or i18n.t("Urgent: please confirm {label}", label=label),
-                            f"{body} · {req.detail or turn.title}"[:400], task_id=turn.task_id, approval_id=approval_id, urgent=True)
+                            f"{body} · {notice_body or req.detail or turn.title}"[:400], task_id=turn.task_id, approval_id=approval_id, urgent=True)
         elif turn.unattended:
-            activity.notify("approval_waiting", i18n.t("Please confirm: {label}", label=label), req.detail or turn.title, task_id=turn.task_id,
-                            approval_id=approval_id)
+            activity.notify("approval_waiting", i18n.t("Please confirm: {label}", label=label), notice_body or req.detail or turn.title,
+                            task_id=turn.task_id, approval_id=approval_id)
         turn.waiting += 1
         activity.set_task_status(turn.task_id, "waiting_approval")
         turn.status_text = i18n.t("Waiting for approval")
@@ -1129,7 +1153,8 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     async def pump() -> None:
         ui_sink.set(put)   # browser cards and other extra events from tools reach this reply (this task only)
         current_turn.set({"task_id": turn.task_id, "turn_id": turn.id, "source": turn.source, "unattended": turn.unattended,
-                          "cond": turn.cond, "request": turn.request, "picked": sorted(turn.picked)})
+                          "cond": turn.cond, "request": turn.request, "picked": sorted(turn.picked),
+                          "owner_message": turn.owner_message})
         browser_owner.set(turn.owner)
         injection_watch_var.set(watch)
         approval_timeout.set(UNATTENDED_APPROVAL_SECONDS if turn.unattended else APPROVAL_TIMEOUT_SECONDS)

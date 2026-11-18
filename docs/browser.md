@@ -149,6 +149,35 @@ the order.
 
 To have every click and typing step ask, as before, set `ASSISTANT_APPROVE_BROWSER_ACTIONS=1` in `.env` (default `0`).
 
+## The work browser
+
+Scheduled and background tabs run in a second browser, the work browser (the `work-browser` container, same image as the browser). The
+owner's chat tabs and the purchase sign-in stay in the main browser.
+
+- Which tabs: every tab whose key starts with `schedule:` or `task:` (schedules, watchers and their site tabs, the checklist, Work-page
+  tasks and jobs handed off from a chat). Chat tabs (`owner`, a device id) and `buy:` tabs stay in the main browser (`work_browser.work_tab`).
+- Each work tab has a context of its own in the work browser. Opening it copies every cookie of the main browser into that context (the
+  sign-in copy, one way, in memory). A site's local storage is copied when the tab first opens that site, from a main-browser page that is
+  already open; with none open, only the cookies are there.
+- When the work tab closes, the cookies of the sites the job signed in to are copied back to the main browser (the sign-in carry-back):
+  a site signed in by the vault login, or by the owner's own hands on that tab. Not copied back while a main-browser tab shows that site.
+  Cookies the job changed on other sites never reach the main browser.
+- Nothing is kept: the work browser starts with an empty profile folder (`BROWSER_EPHEMERAL=1`), and its work contexts are closed with their
+  tabs. A restart of the work browser or of the server ends its contexts; a resumed job opens a new work tab with a fresh copy.
+- No fallback: when the work browser does not answer, a work tab's step fails with a note saying so, and the job reports itself blocked.
+  The main browser is never used for a work tab.
+- Live view: the work browser has its own X screen (`WORK_VNC_PORT`, 5903). Watching or holding a work tab uses that screen, so it never
+  moves the owner's screen, and the owner's tab never makes a work tab "busy". A new window of a job's tab brings the held work tab forward.
+- Downloads from a work tab use the work browser's own DevTools session and its context, into the same download folder.
+- Limits: no hard cap by default (the owner's decision). A size (Minimum, Recommended) gives the work browser a share of RAM and CPU,
+  weight 1.5 against the browser's 2.0 (owner decision 2026-11-18). `assistant limits` can set `WORK_BROWSER_MEMORY` and `WORK_BROWSER_CPUS`,
+  shown next to the browser's own numbers. Under memory pressure the work browser is ended first (`oom_score_adj: 500`), and when both browsers are busy
+  it gets half the CPU weight (`cpu_shares: 512`).
+- Setting: `WORK_BROWSER_CDP_HOST` (default `work-browser`; empty = off, every tab in the main browser as before) and
+  `WORK_BROWSER_CDP_PORT` (default 9225).
+- Known limit: a site that rotates its sign-in token on every use may sign the main browser out after a job used the copied cookie. The
+  next chat on that site signs in again (the vault fills it in).
+
 ## Looking things up without the browser
 
 `web_search(query, count?)` and `web_fetch(url, start?)` (`tools/web.py`) read the web from the server itself, for every model and

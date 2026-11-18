@@ -22,7 +22,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
-import java.util.Collections
 import javax.crypto.KeyGenerator
 
 /**
@@ -33,7 +32,7 @@ import javax.crypto.KeyGenerator
 class ChatNewerTest {
     private val vms = chat.kelo.app.TestViewModels()
     private lateinit var server: MockWebServer
-    private val requests = Collections.synchronizedList(mutableListOf<RecordedRequest>())
+    private val requests = java.util.concurrent.CopyOnWriteArrayList<RecordedRequest>()
     /** what GET /api/messages/around?id=32&n=50 answers: the window's newest message and what follows it */
     @Volatile private var after = (33L..34L)
 
@@ -110,7 +109,8 @@ class ChatNewerTest {
         val from = synchronized(requests) { requests.size }
         vm.loadNewer()
         until("newer page") { !vm.state.value.loadingNewer && !vm.state.value.hasNewer }
-        val order = synchronized(requests) { requests.drop(from).map { it.method + " " + it.path.orEmpty() } }
+        // the server's views (GET /api/chat/views) are asked too on a load: only the messages are in this order
+        val order = synchronized(requests) { requests.drop(from).map { it.method + " " + it.path.orEmpty() }.filterNot { it.contains("/api/chat/views") } }
         assertEquals(listOf("GET /api/messages/around?id=32&n=50"), order)   // not the newest page
         assertEquals(listOf(30L, 31L, 32L, 33L, 34L), ids(vm))
         assertFalse(vm.state.value.hasNewer)   // a short page: the newest message is in
@@ -129,7 +129,8 @@ class ChatNewerTest {
         val vm = windowVm()
         val from = synchronized(requests) { requests.size }
         runBlocking { vm.checkForNews() }
-        val order = synchronized(requests) { requests.drop(from).map { it.method + " " + it.path.orEmpty() } }
+        // the server's views (GET /api/chat/views) are asked too on a load: only the messages are in this order
+        val order = synchronized(requests) { requests.drop(from).map { it.method + " " + it.path.orEmpty() }.filterNot { it.contains("/api/chat/views") } }
         assertTrue("no newest-message check while a window is open: $order", order.none { it.startsWith("GET /api/messages?limit=") })
         assertEquals(listOf(30L, 31L, 32L), ids(vm))
         assertTrue(vm.state.value.hasNewer)

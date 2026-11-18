@@ -983,10 +983,14 @@
     <string name="live_held_elsewhere">يُتحكَّم به من جهاز آخر</string>
     <string name="live_give_back">إعادة التحكم</string>
     <string name="live_paused_banner">أنت المتحكم. سينتظر وكيلك في هذا التبويب حتى تعيد إليه التحكم.</string>
+    <string name="live_still_yours">أنت ما زلت تتحكم. ينتظر وكيلك حتى تعيد التحكم إليه.</string>
+    <string name="live_screen_changed">تغيّرت الشاشة. اضغط مرة أخرى.</string>
     <string name="live_tab_closed">أُغلق التبويب، فلا شيء آخر لعرضه. إن حُفظت آخر شاشة فهي معروضة أدناه.</string>
     <string name="live_not_controller">لا يمكنك التحكم الآن. اضغط «تولَّ التحكم» مجددًا.</string>
     <string name="live_input_failed">تعذّر على المتصفح فعل ذلك.</string>
     <string name="live_state_you">أنت المتحكم</string>
+    <string name="live_work_browser">متصفح العمل</string>
+    <string name="live_work_browser_note">هذه البطاقة في متصفح العمل الخاص بـ Kelo، منفصلة عن بطاقاتك. يُحفظ تسجيل الدخول الذي تجريه هنا في المتصفح الرئيسي لـ Kelo عند انتهاء المهمة.</string>
     <string name="live_state_other">جهاز آخر يتحكم</string>
     <string name="live_state_waiting">بانتظار الموافقة</string>
     <string name="live_connecting">جارٍ الاتصال…</string>
@@ -1302,6 +1306,9 @@
     <string name="work_wait_answer">ستتابع بمجرد أن تقول كيف تمضي.</string>
     <string name="work_wait_blocked">توقفت لأنها لا تستطيع المتابعة وحدها.</string>
     <string name="work_wait_restart">توقفت عند إعادة تشغيل الخادم.</string>
+    <string name="work_picked_up">أعاد خادم Kelo التشغيل، فتابعت المهمة من حيث توقفت.</string>
+    <string name="work_picked_up_browser">أُعيد تشغيل المتصفح، فتابعت المهمة في علامة تبويب جديدة.</string>
+    <string name="work_wait_pickup">ستتابع من حيث توقفت بعد لحظة.</string>
     <string name="work_schedule_on">الجدولة مُفعَّلة</string>
     <string name="work_schedule_off">الجدولة متوقفة</string>
     <string name="work_schedule_by_agent">أنشأها وكيلك</string>

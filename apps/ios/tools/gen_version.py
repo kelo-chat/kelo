@@ -19,7 +19,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "version.json"
-OUT = ROOT / "apps/ios/KeloCore/Sources/KeloCore/Core/KeloVersion.swift"
+OUT_REL = Path("apps/ios/KeloCore/Sources/KeloCore/Core/KeloVersion.swift")
+OUT = ROOT / OUT_REL
 SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
 

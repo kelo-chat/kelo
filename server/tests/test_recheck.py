@@ -434,7 +434,7 @@ KELO = "비자 연장 신청은 만료 90일 전부터 가능합니다. 수수�
 
 
 def say(store, at, role, text):
-    store._run("INSERT INTO messages(role, content, created_at) VALUES(?,?,?)", (role, text, at))
+    store._run("INSERT INTO messages(role, content, created_at, author) VALUES(?,?,?,?)", (role, text, at, "owner" if role == "user" else ""))
 
 
 def reflect(tmp_path, k, reply):

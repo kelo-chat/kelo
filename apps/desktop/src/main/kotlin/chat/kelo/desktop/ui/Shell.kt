@@ -59,6 +59,7 @@ import chat.kelo.app.chat.AgentActivityRules
 import chat.kelo.app.connectors.ForgetDataHost
 import chat.kelo.app.chat.AgentStatus
 import chat.kelo.app.chat.BrowserTabsBrief
+import chat.kelo.app.chat.ChatSearchScreen
 import chat.kelo.app.chat.TasksBrief
 import chat.kelo.app.chat.WorkersBrief
 import chat.kelo.app.core.ApiError
@@ -126,8 +127,12 @@ fun Shell(
 }
 
 @Composable
-private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onPage: (Page) -> Unit, onSignedOut: () -> Unit, connectorToOpen: String?, onConnectorOpened: () -> Unit) {
+private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onNavigate: (Page) -> Unit, onSignedOut: () -> Unit, connectorToOpen: String?, onConnectorOpened: () -> Unit) {
     val c = Kelo.colors
+    // the chat's search page (over the chat only); any navigation to a page closes it, so no page opens under an open search
+    val searchOpen by app.chatSearchOpen.collectAsState()
+    val showSearch = searchOpen && page == Page.CHAT
+    val onPage: (Page) -> Unit = { app.chatSearchOpen.value = false; onNavigate(it) }
     val profile by app.profile.collectAsState()
     val p = profile ?: Profile()
     val shellVm = keloViewModel("shell") {
@@ -172,6 +177,7 @@ private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onPage
     LaunchedEffect(openRequest) {
         val target = openRequest ?: return@LaunchedEffect
         app.openRequests.value = null
+        app.chatSearchOpen.value = false   // a notification, a card's button or the tray: whatever it opens, the search page closes
         when (target) {
             OpenTarget.Chat -> { app.liveTab.value = null; onPage(Page.CHAT) }
             // Kelo is locked (Keyguard): only an owner phone unlocks it; this computer shows the locked banner (spec 2.4: no key here)
@@ -222,9 +228,20 @@ private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onPage
                 // a long chat (or list) scrolls on under the floating agent: the page's colour fades in towards the window's top edge, so
                 // older messages go out of sight there instead of showing through around the agent (backlog 39; the phone has its
                 // status-bar scrim for the same reason)
+                // the search page covers the chat (the chat stays composed underneath: a result scrolls it to the message); the header
+                // stays on top, as for every desktop sub page
+                if (showSearch) ChatSearchScreen(
+                    agentName = p.agentName.ifBlank { "Kelo" },
+                    onOpen = { id -> app.chatSearchOpen.value = false; app.chatFocus.value = id },
+                    onBack = { app.chatSearchOpen.value = false },
+                )
                 TopFade(Modifier.align(Alignment.TopCenter))
                 // as on the phone, the agent opens its own page (My → the agent: its name, picture and what it is doing)
-                FloatingHeader(p, shell, onAgent = { app.myPageRequests.value = MY_PAGE_AGENT; onPage(Page.MY) }, modifier = Modifier.align(Alignment.TopCenter))
+                FloatingHeader(
+                    p, shell, onAgent = { app.myPageRequests.value = MY_PAGE_AGENT; onPage(Page.MY) }, modifier = Modifier.align(Alignment.TopCenter),
+                    // the magnifier on the chat page while no search is open (the header keeps its place on every page)
+                    onSearch = if (page == Page.CHAT && !showSearch) ({ app.chatSearchOpen.value = true }) else null,
+                )
                 // a newer app version: a small pill once per version (My keeps the card and the download)
                 val popupUp = updatePopupOpen(app) != null
                 if (!popupUp) {

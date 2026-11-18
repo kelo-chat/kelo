@@ -19,10 +19,12 @@ public enum VncBridge {
     public enum FromPage: Equatable, Sendable {
         case bytes(Data)
         case ready
+        /// Text the browser copied, capped by `ClipboardRules.offer`: offered to the owner, never copied on its own.
+        case clipboard(String)
         case unknown
     }
 
-    /// What the page sent: `{"t":"d","b":…}` (RFB bytes), `{"t":"ready"}`; anything else is `.unknown`.
+    /// What the page sent: `{"t":"d","b":…}` (RFB bytes), `{"t":"ready"}`, `{"t":"clipboard","text":…}`; anything else is `.unknown`.
     public static func fromPage(_ text: String) -> FromPage {
         guard let v = try? JSON.parse(text), v.objectValue != nil else { return .unknown }
         switch v["t"]?.stringValue {
@@ -30,6 +32,8 @@ public enum VncBridge {
             guard let b = v["b"]?.stringValue, let bytes = decode(b) else { return .unknown }
             return .bytes(bytes)
         case "ready": return .ready
+        case "clipboard":
+            return ClipboardRules.offer(v["text"]?.stringValue).map(FromPage.clipboard) ?? .unknown
         default: return .unknown
         }
     }
@@ -94,6 +98,8 @@ public final class VncPageBridge {
             let queued = pending
             pending = []
             queued.forEach(post)
+        case .clipboard(let text):
+            if !released { relay.offerClipboard(text) }
         case .unknown: break
         }
     }

@@ -6,7 +6,8 @@ Choosing a size means everything this Kelo runs, together, stays within it:
 The disk number includes the program files (Docker images); what is left after them is the storage the copy may fill.
 
 Each container gets a share of the total, weighted by what was measured (see MEASURED): the browser needs the most RAM and CPU,
-the server and the work room about half of that each, and each Claude / agy container a quarter. The small tunnel / proxy
+the work browser (scheduled and background tabs) three quarters of it, the server and the work room about half of that each, and each
+Claude / agy container a quarter. The small tunnel / proxy
 container a copy may run is not capped (a few MB).
 """
 
@@ -30,18 +31,22 @@ IMAGES = int(2.5 * GB)
 CLI_IMAGE = int(1.5 * GB)
 
 # share of RAM and CPU per container (measured peaks: browser ~715 MB, server ~490 MB, work room ~440 MB, agy ~184 MB)
-WEIGHT = {"server": 1.0, "browser": 2.0, "workroom": 1.0, "cli": 0.5}
+WEIGHT = {"server": 1.0, "browser": 2.0, "work-browser": 1.5, "workroom": 1.0, "cli": 0.5}
 # what is left of the disk after the program files: the browser's page cache 5% (at most 512 MB), the work room's scratch space 25%,
 # and the rest for what the assistant stores (chats, uploads, images, notes)
 CACHE_SHARE, CACHE_MAX, WORKROOM_SHARE = 0.05, 512 * MB, 0.25
 
 GROUPS = {"server": ("memory", "cpus", "disk"), "browser": ("browser_memory", "browser_cpus", "browser_cache"),
+          "work-browser": ("work_browser_memory", "work_browser_cpus"),
           "workroom": ("workroom_memory", "workroom_cpus", "workroom_disk"), "cli": ("cli_memory", "cli_cpus")}
 
 # The least each container ran its heaviest ordinary work with (below it a single setting gets a warning; still allowed).
 FLOOR: dict[str, float] = {
     "memory": 256 * MB, "cpus": 0.25, "disk": 256 * MB,
     "browser_memory": 768 * MB, "browser_cpus": 0.5, "browser_cache": 50 * MB,
+    # a guess until measured (brief manual check 12): two thirds of the browser's RAM floor, so a Minimum copy's work browser share
+    # (about 585 MB) does not warn about itself; the browser's CPU floor halved for the same reason
+    "work_browser_memory": 512 * MB, "work_browser_cpus": 0.25,
     "cli_memory": 192 * MB, "cli_cpus": 0.1,
     "workroom_memory": 384 * MB, "workroom_cpus": 0.25, "workroom_disk": 256 * MB,
 }
@@ -68,6 +73,8 @@ MEASURED = {
             "under 25 MB) and is refused when it would pass this cap or the disk's free space; a generated image is about 1-3 MB; "
             "previews of photos and videos about 20-200 KB each",
     "browser_cache": "the browser's own page cache; only grows with browsing",
+    "work_browser_memory": "not measured yet (brief manual check 12); its share is weight 1.5 of the browser's 2.0 (a Recommended copy 1.1 GB, a Minimum copy 585 MB)",
+    "work_browser_cpus": "not measured yet (brief manual check 12); its share is weight 1.5 of the browser's 2.0 (a Recommended copy 1.09 CPUs, a Minimum copy 0.54)",
     "cli_cpus": "agy: at most about a quarter of a CPU while answering",
     "workroom_memory": "work room idle 20 MB; a 2-million-cell spreadsheet written with pandas, then a 300-paragraph Word file turned into a PDF by LibreOffice: about 440 MB at the peak",
     "workroom_cpus": "that job used about one CPU (pandas and LibreOffice work on one core); 11.5 s for the spreadsheet, 1.5 s for the PDF",
@@ -79,7 +86,7 @@ def applicable(*, browser: bool = True, clis: int = 0) -> list[str]:
     """The options that matter for a copy: its server and work room, its browser if it has one, the CLI containers if it has any."""
     out = list(GROUPS["server"])
     if browser:
-        out += GROUPS["browser"]
+        out += GROUPS["browser"] + GROUPS["work-browser"]
     out += GROUPS["workroom"]
     if clis:
         out += GROUPS["cli"]
@@ -97,14 +104,16 @@ def caps(profile: str, *, browser: bool = True, clis: int = 0) -> dict[str, floa
     if profile == "unlimited":
         return dict.fromkeys(opts)
     ram, cpus, disk = TOTALS[profile]
-    parts = {"browser": WEIGHT["browser"] if browser else 0.0, "workroom": WEIGHT["workroom"], "cli": WEIGHT["cli"] * clis}
+    # the work browser exists exactly when the browser does (a copy without one sets no work browser either)
+    parts = {"browser": WEIGHT["browser"] if browser else 0.0, "work-browser": WEIGHT["work-browser"] if browser else 0.0,
+             "workroom": WEIGHT["workroom"], "cli": WEIGHT["cli"] * clis}
     whole = WEIGHT["server"] + sum(parts.values())
 
     def split(total: float, unit: float) -> dict[str, float]:
         """Each share rounded down to `unit`; the server takes what is left, so the shares add up exactly."""
         got = {k: math.floor(total * w / whole / unit) * unit for k, w in parts.items()}
         got["cli"] = math.floor(total * WEIGHT["cli"] / whole / unit) * unit if clis else 0.0
-        got["server"] = total - got["browser"] * bool(browser) - got["workroom"] - got["cli"] * clis
+        got["server"] = total - got["browser"] * bool(browser) - got["work-browser"] * bool(browser) - got["workroom"] - got["cli"] * clis
         return got
 
     r, c = split(ram, MB), split(cpus, 0.01)
@@ -114,6 +123,7 @@ def caps(profile: str, *, browser: bool = True, clis: int = 0) -> dict[str, floa
     out: dict[str, float | None] = {
         "memory": r["server"], "cpus": round(c["server"], 2), "disk": data - cache - work,
         "browser_memory": r["browser"], "browser_cpus": round(c["browser"], 2), "browser_cache": cache,
+        "work_browser_memory": r["work-browser"], "work_browser_cpus": round(c["work-browser"], 2),
         "workroom_memory": r["workroom"], "workroom_cpus": round(c["workroom"], 2), "workroom_disk": work,
         "cli_memory": r["cli"], "cli_cpus": round(c["cli"], 2),
     }
