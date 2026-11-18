@@ -16,6 +16,8 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
+import org.junit.Assume.assumeFalse
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -35,6 +37,9 @@ import java.security.MessageDigest
  */
 class MacBundlePlanTest {
     @get:Rule val tmp = TemporaryFolder()
+
+    /** The Mac server install runs POSIX shell steps and paths; the Windows CI runner cannot run them (the Mac build and this Mac run these tests). */
+    @Before fun notOnWindows() = assumeFalse(System.getProperty("os.name").startsWith("Windows"))
     private var web: MockWebServer? = null
 
     @After fun stop() {

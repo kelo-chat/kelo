@@ -176,6 +176,7 @@ class MacServerRulesTest {
     }
 
     @Test fun theScriptsParseAsShell() {
+        org.junit.Assume.assumeFalse("no /bin/sh on Windows", System.getProperty("os.name").startsWith("Windows"))
         for (script in listOf(MacServerRules.ROOT_SCRIPT, MacServerRules.REMOVE_SCRIPT)) {
             val file = java.io.File.createTempFile("kelo-script", ".sh")
             try {
