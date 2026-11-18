@@ -16,6 +16,9 @@ import org.junit.Test
  * checks, the setup link's shape and the user name rule. No file, process or prompt is touched.
  */
 class MacServerRulesTest {
+    /** Mac-only rules (POSIX paths, /bin/sh): the Windows CI runner skips them; the Mac build and this Mac run them. */
+    @org.junit.Before fun notOnWindows() = org.junit.Assume.assumeFalse(System.getProperty("os.name").startsWith("Windows"))
+
     @After fun clearOverrides() {
         System.clearProperty("kelo.server.port")
         System.clearProperty("kelo.server.setupPort")
@@ -176,7 +179,6 @@ class MacServerRulesTest {
     }
 
     @Test fun theScriptsParseAsShell() {
-        org.junit.Assume.assumeFalse("no /bin/sh on Windows", System.getProperty("os.name").startsWith("Windows"))
         for (script in listOf(MacServerRules.ROOT_SCRIPT, MacServerRules.REMOVE_SCRIPT)) {
             val file = java.io.File.createTempFile("kelo-script", ".sh")
             try {
