@@ -63,7 +63,8 @@
 
   <Capabilities>
     <Capability Name="internetClient" />
-    <DeviceCapability Name="microphone" />
     <rescap:Capability Name="runFullTrust" />
+    <!-- the schema wants every DeviceCapability after the (restricted) capabilities -->
+    <DeviceCapability Name="microphone" />
   </Capabilities>
 </Package>
