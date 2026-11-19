@@ -149,6 +149,16 @@ Not part of this repository or the images. The Kelo server downloads these speec
 Included in the server image (the `voice` container): sherpa-onnx (k2-fsa), Apache-2.0; onnxruntime (Microsoft), MIT; Silero VAD
 (snakers4/silero-vad), MIT; opencc-python-reimplemented, Apache-2.0 (Simplified to Traditional Chinese for zh-Hant owners).
 
+Text to speech for call mode (server/src/assistant/voice_speak.py, docs/voice.md)
+---------------------------------------------------------------------------------
+Not part of this repository or the images. The Kelo server downloads this model from Hugging Face when the owner agrees (the first
+call, or My → 음성), checks each file by its SHA-256, and keeps it in the server's own volume:
+    - Supertonic 3, by Supertone Inc., https://huggingface.co/Supertone/supertonic-3, BigScience OpenRAIL-M
+      (https://huggingface.co/Supertone/supertonic-3/blob/3cadd1ee6394adea1bd021217a0e650ede09a323/LICENSE). Its use is subject to
+      the use restrictions in Attachment A of that licence. ONNX int8 conversion by k2-fsa
+      (huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11), used unchanged.
+Used as unmodified libraries: num2words (LGPL-2.1), Babel (BSD-3-Clause).
+
 Service icons (third-party trademarks)
 --------------------------------------
 

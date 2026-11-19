@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_connector_forget.xml (generated from values/strings_connector_forget.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
     <string name="connector_forget_title">Xóa luôn dữ liệu đến từ %1$s?</string>
     <string name="connector_forget_files">Tệp: %1$d</string>
     <string name="connector_forget_notes">Ghi chú: %1$d</string>

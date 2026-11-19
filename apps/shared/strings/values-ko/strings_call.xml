@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Kelo와 통화</string>
+    <string name="call_incoming_line">전화했어요</string>
+    <string name="call_accept">받기</string>
+    <string name="call_decline">거절</string>
+    <string name="call_connecting">연결하는 중…</string>
+    <string name="call_listening">듣고 있어요</string>
+    <string name="call_thinking">생각하는 중</string>
+    <string name="call_speaking">말하는 중</string>
+    <string name="call_muted">음소거됨</string>
+    <string name="call_mute">음소거</string>
+    <string name="call_unmute">음소거 해제</string>
+    <string name="call_speaker">스피커</string>
+    <string name="call_hang_up">통화 끝내기</string>
+    <string name="call_card_waiting">화면에서 확인할 게 있어요.</string>
+    <string name="call_card_open">보기</string>
+    <string name="call_back_to_call">통화로 돌아가기 · %1$s</string>
+    <string name="call_offline">Kelo 서버에 닿지 않아요. 다시 연결하는 중…</string>
+    <string name="call_ended_background">앱을 나가서 통화를 끝냈어요.</string>
+    <string name="call_ended_interrupted">다른 소리가 끼어들어 통화를 끝냈어요.</string>
+    <string name="call_ended_quiet">한동안 말이 없어서 통화를 끝냈어요.</string>
+    <string name="call_needs_speech_model">통화하려면 Kelo 서버에 음성 인식 모델이 있어야 해요.</string>
+    <string name="call_mic_denied">마이크를 쓸 수 없어 통화를 시작하지 못했어요.</string>
+    <string name="call_voice_offer">통화할 때 쓰는 Kelo의 자연스러운 목소리예요. 목소리 모델(%1$s)을 Kelo 서버에 한 번 받아 두면 다음 문장부터 이 목소리로 말해요. 받지 않으면 이 기기에 들어 있는 기계 목소리로 말해요.</string>
+    <string name="call_mark">통화</string>
+    <string name="call_voice_offer_title">Kelo의 목소리를 받을까요?</string>
+    <string name="call_voice_offer_ok">받기</string>
+    <string name="call_voice_offer_later">기기 목소리로 할게요</string>
+    <string name="call_voice_better">목소리 모델을 받으면 Kelo가 훨씬 자연스러운 목소리로 말해요.</string>
+    <string name="call_voice_get">받기</string>
+    <string name="call_voice_line_close">닫기</string>
+    <string name="call_ears_failed">휴대폰 음성 인식이 말을 듣지 못하고 있어요.</string>
+    <string name="voice_speech_title">Kelo 목소리</string>
+    <string name="voice_speech_download">목소리 모델 받기 · %1$s</string>
+    <string name="voice_speech_downloading">목소리 모델 받는 중 · %1$d%%</string>
+    <string name="voice_speech_remove">목소리 모델 지우기</string>
+    <string name="voice_speech_remove_confirm">목소리 모델을 지울까요? 그다음부터는 이 기기의 목소리로 말해요.</string>
+    <string name="voice_speech_device_note">목소리 모델이 없으면 이 기기에 들어 있는 목소리로 말해요.</string>
+    <string name="voice_speech_unsupported_lang">이 언어는 목소리 모델이 아직 몰라서 이 기기의 목소리로 말해요.</string>
+    <string name="voice_speech_voice_female">여성 목소리 %1$d</string>
+    <string name="voice_speech_voice_male">남성 목소리 %1$d</string>
+    <string name="voice_speech_listen">들어보기</string>
+    <string name="voice_speech_stop">멈추기</string>
+    <string name="voice_speech_speed">말하기 속도</string>
+    <string name="voice_speech_speed_value">%1$s배</string>
+    <string name="voice_speech_sample">안녕하세요. 이 목소리로 이야기할게요.</string>
+</resources>

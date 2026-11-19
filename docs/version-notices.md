@@ -33,9 +33,42 @@ short text and a link to https://kelo.chat/install (update section) instead. Ret
   desktop/sideload: the existing in-app updater). Dismissed versions are remembered per device.
 - Never shown when the app's own channel cannot get that version yet (a store row is only listed once live).
 
+## 4. Store releases through kelo.chat
+A store build (Play, App Store, Microsoft Store) learns of a newer store release from kelo.chat too, not only from the bundled
+releases/apps.json. latest.json's `"store"` object holds the newest live store release of each app, one row per platform and channel:
+`{"android": {"play": row}, "ios": {"appstore": row}, "desktop": {"msstore": row}}`. A row is `{channel, version, build, date[, min_server],
+sig, key}`; `sig` is the release key's Ed25519 signature over the text `kelo-store-v1` (release_sign.store_statement), so a store
+signature never verifies as a file row or a notices list, and back. Readers verify each row (release_sign.verify_store_row) and fall
+back to the bundled record when the list is unavailable.
+- `assistant release-record <platform> <version> <build> <play|appstore|msstore>` (on the operator's computer) records the release and
+  publishes the signed store row; `--no-publish` skips that. `assistant publish-store` re-publishes the newest store row of each app
+  from releases/apps.json (after a failed publish, or for a record committed elsewhere).
+- Every writer of the manifest keeps the `store` section (publish-app, sign-app, publish-server, publish-store).
+- The minimum app version rule stays on the bundled releases/apps.json only: network rows never raise or lower what a server enforces.
+  A signed store row whose `min_server` is above a server means that server offers nothing for that store channel.
+
+## 5. Server update notice
+When a newer server release exists, the apps tell the owner once in a while and lead to My -> Server update (the confirm and the
+progress are there).
+- Server: `ServerUpdates.offer()` reads the updater's last answer (no network call): the answer is at most 30 minutes old, the copy runs
+  release images, the release is newer than this server's version.json, no job runs, and automatic updates are off. It is sent as
+  header `X-Kelo-Server-Update: <version>` on /api/about and /api/profile and as `server_update` in GET /api/about, only to a caller that may
+  update this server (the access key, or a signed-in device that is not on a review copy).
+- No notice on a source build or Chrome build (the server cannot update itself), on a copy without an updater, and when automatic
+  updates are on (the server updates itself at night and tells the owner afterwards).
+- Apps: a dialog at most once per 24 hours per device, whatever the answer; never within an hour of the app-update popup, never over
+  a full-screen notice. "See the update" opens My -> Server update. Its text is in every app language (apps/shared/strings).
+
 ## Tests
 Contract test above; app_update_for picks only released rows, respects min_server and channel, ignores unsigned rows; banner state
 tests in shared and iOS; ServerTooOld button visible only when the API answers. Texts via i18n in every app language.
+
+## Built (2026-11-18, server part)
+- Part 4 (store rows): release_sign.store_statement / sign_store_row / verify_store_row; release.py notes_i18n; downloads.py
+  `_store_rows`, `StorePublisher`, `run_publish_store`; app_releases.py `newest_store`, `Release.store_row`, `release-record` publishes.
+- Part 5 (server notice, server side): server_updates.py `offer()`; api/about.py `server_update_for` and the header.
+- The shared Kotlin parser decodes only this platform's latest.json row (UpdateRules.parse): one row a build cannot read never hides
+  the others. The server row carries `notes` as an English string plus `notes_i18n` (release.Release.to_public_json), so installed APKs read it.
 
 ## Built (2026-11-16)
 - Part 1: `server/tests/test_released_apps_contract.py` and `server/tests/fixtures/app_requests/{android-0.10.1,desktop-1.0.9}.json`, recorded from

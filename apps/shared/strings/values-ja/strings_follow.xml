@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_follow.xml (generated from values/strings_follow.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="follow_section_title">Kelo が担当する予定</string>
     <string name="follow_stop">見守りをやめる</string>
@@ -28,4 +29,9 @@
     <string name="follow_summary_prep_general">%1$sの準備</string>
     <string name="follow_summary_watch_changes">変更を確認</string>
     <string name="follow_summary_default">予定を見守る</string>
+    <string name="follow_remove">一覧から削除</string>
+    <string name="follow_remove_confirm">この項目を削除しますか？</string>
+    <string name="follow_remove_confirm_detail">Kelo はもう確認せず、また戻すこともありません。</string>
+    <string name="follow_remove_yes">削除</string>
+    <string name="follow_stopped_toggle">停止中の項目 (%1$d)</string>
 </resources>

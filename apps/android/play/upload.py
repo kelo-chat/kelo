@@ -48,6 +48,8 @@ def main():
                     help="draft (default): you roll it out in Play Console; completed: roll out now; inProgress: staged rollout")
     ap.add_argument("--fraction", type=float, default=0.1, help="share of users for --status inProgress (0-1)")
     ap.add_argument("--notes", default="", help="release notes (ko-KR); empty for none")
+    ap.add_argument("--notes-en", default="", help="release notes (en-US); empty for none")
+    ap.add_argument("--version-code", type=int, help="do not upload; put this version code (already uploaded) on --track")
     ap.add_argument("--dry-run", action="store_true", help="check the key and the app, then throw the edit away")
     args = ap.parse_args()
 
@@ -81,20 +83,29 @@ def main():
             print("Dry run: key and app are fine; nothing was uploaded.")
             return
 
-        print(f"Uploading {os.path.basename(aab)} ({os.path.getsize(aab) // 1024} KB)...")
-        with open(aab, "rb") as f:
-            r = s.post(f"{UPLOAD}/edits/{edit}/bundles", params={"uploadType": "media"}, data=f,
-                       headers={"Content-Type": "application/octet-stream"}, timeout=600)
-        if r.status_code != 200:
-            fail(r, "Uploading the bundle")
-        code = r.json()["versionCode"]
-        print(f"Uploaded version code {code}.")
+        if args.version_code:
+            code = args.version_code
+            print(f"Not uploading; using version code {code} that is already in Play.")
+        else:
+            print(f"Uploading {os.path.basename(aab)} ({os.path.getsize(aab) // 1024} KB)...")
+            with open(aab, "rb") as f:
+                r = s.post(f"{UPLOAD}/edits/{edit}/bundles", params={"uploadType": "media"}, data=f,
+                           headers={"Content-Type": "application/octet-stream"}, timeout=600)
+            if r.status_code != 200:
+                fail(r, "Uploading the bundle")
+            code = r.json()["versionCode"]
+            print(f"Uploaded version code {code}.")
 
         release = {"versionCodes": [str(code)], "status": args.status}
         if args.status == "inProgress":
             release["userFraction"] = args.fraction
+        notes = []
         if args.notes:
-            release["releaseNotes"] = [{"language": "ko-KR", "text": args.notes[:500]}]
+            notes.append({"language": "ko-KR", "text": args.notes[:500]})
+        if args.notes_en:
+            notes.append({"language": "en-US", "text": args.notes_en[:500]})
+        if notes:
+            release["releaseNotes"] = notes
         r = s.put(f"{API}/edits/{edit}/tracks/{args.track}", json={"track": args.track, "releases": [release]})
         if r.status_code != 200:
             fail(r, f"Putting it on the {args.track} track")
@@ -107,7 +118,8 @@ def main():
         # Review and rollout can take days, so this script never marks a release live. The operator records it when it is
         # (a minimum app version may never be above a recorded release; internal testing does not count).
         print(f"When it is live for people (production or open testing, not internal testing), record it with\n"
-              f"  assistant release-record android <version> {code} play")
+              f"  assistant release-record android <version> {code} play\n"
+              "(it also publishes the signed store row to kelo.chat; run on the operator's computer)")
         if args.status == "draft":
             print("Open Play Console -> Test and release -> the track -> Edit release -> Review release -> roll it out.")
     finally:

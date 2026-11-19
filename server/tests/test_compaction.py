@@ -500,3 +500,22 @@ def test_a_fold_line_without_a_timezone_uses_utc_and_one_without_a_time_has_no_s
     from assistant.compaction import _line
     assert _line({"role": "user", "content": "hi", "created_at": 0}) == "[1970-01-01 00:00] User: hi"
     assert _line({"role": "assistant", "content": "ok"}) == "Assistant: ok"
+
+
+async def test_the_last_replies_steps_reach_the_model_only_and_the_chat_history_never_shows_them(tmp_path):
+    """2026-11-18: a steps line rides on the model's copy of the last six replies that had tool steps; the stored text and the app's
+    history stay as they were."""
+    store = Store(tmp_path / "s.db")
+    for k in range(8):
+        store.add_message("user", f"u{k}")
+        store.add_message("assistant", f"a{k}", steps=f"watch_add -> Watcher #{k} saved" if k % 2 == 0 else "")
+    c = Compactor(store, None)
+    rows = store.messages_after(0, limit=50)
+    assert all("steps" in r for r in rows)
+    window = windows.Window(200_000, None, "provider")
+    shown = c.assemble(window, 0)
+    noted = [m["content"] for m in shown.head + shown.history if m["role"] == "assistant" and "steps of this reply" in m["content"]]
+    assert len(noted) == 4 and "Watcher #0 saved" in noted[0] and "Not from the user" in noted[0]   # the head's reply (#0) too
+    assert len([m for m in shown.history if "steps of this reply" in m["content"]]) == 3
+    assert all("steps of this reply" not in r["content"] for r in store.messages(limit=50))
+    assert all("steps" not in m for m in store.messages(limit=50))

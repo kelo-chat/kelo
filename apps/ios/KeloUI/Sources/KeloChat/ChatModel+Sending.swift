@@ -6,6 +6,7 @@ import KeloShared
 
 extension ChatModel {
     func apply(_ ev: TurnEvent) {
+        onTurnEvent?(ev)
         if case .paymentStep(let step) = ev { paymentSteps = PaymentStepRules.upsert(paymentSteps, step) }
         if case .pinNeeded(let need) = ev {
             pinNeeds = PinNeedRow.upsert(pinNeeds, need)
@@ -64,16 +65,26 @@ extension ChatModel {
         }
     }
 
+    public func sendFromCall(text: String, callId: String) -> Bool {
+        if busy || secretAsk != nil || consentAsk != nil { return false }
+        start(text, fromComposer: false, tookAttachments: false, answers: [], secrets: nil, files: [], autoText: false, call: callId)
+        return true
+    }
+
+    public func followFromCall(turnId: String) {
+        followTurn(turnId)
+    }
+
     /// Starts the reply to `text`. `secrets` = `SecretGuard.allow` only when the owner chose "Send as is" on the secret sheet. When
     /// the server holds the message back for a secret (409), its bubble goes again, the composer and the attachments come back as
     /// they were, and `secretAsk` opens the sheet (no error row, no failed reply).
     func start(_ text: String, fromComposer: Bool, tookAttachments: Bool, answers: [ReplyAnswer], secrets: String?,
-                       files: [MessageFile] = [], autoText: Bool = false) {
+               files: [MessageFile] = [], autoText: Bool = false, call: String? = nil) {
         // a search window on screen: the newest page comes back first, so the reply lands under the newest messages (not in a gap)
         if hasNewer {
             leaveWindow { [weak self] in
                 self?.start(text, fromComposer: fromComposer, tookAttachments: tookAttachments, answers: answers, secrets: secrets,
-                            files: files, autoText: autoText)
+                            files: files, autoText: autoText, call: call)
             }
             return
         }
@@ -89,14 +100,16 @@ extension ChatModel {
         busy = true
         phase = Phase(.waiting, since: clock())
         let bubble = key()
-        items.append(.msg(.init(key: bubble, mine: true, text: text, at: Int64(Date().timeIntervalSince1970 * 1000), files: files, autoText: autoText)))
+        items.append(.msg(.init(key: bubble, mine: true, text: text, at: Int64(Date().timeIntervalSince1970 * 1000), files: files, autoText: autoText, fromCall: call != nil)))
         onEvent(.sent)
         app.activity.startFollowing()
+        let canCallFn = canCall
         turn = Task { [weak self] in
             var finished = false
             do {
-                try await TurnFollower(api: KeloTurnApi(api: api)).talk(text: text, timezone: TimeZone.current.identifier, answers: answers,
-                                                                        secrets: secrets, attachments: files.map(\.path), autoText: autoText, onId: { id in
+                try await TurnFollower(api: KeloTurnApi(api: api, canCall: canCallFn)).talk(
+                    text: text, timezone: TimeZone.current.identifier, answers: answers,
+                    secrets: secrets, attachments: files.map(\.path), autoText: autoText, call: call, onId: { id in
                     await MainActor.run { self?.turnId = id }
                 }) { ev in
                     await MainActor.run { self?.apply(ev) }
@@ -166,10 +179,11 @@ extension ChatModel {
         self.turnId = turnId
         phase = Phase(.waiting, since: clock())
         app.activity.startFollowing()
+        let canCallFn = canCall
         turn = Task { [weak self] in
             var finished = false
             do {
-                try await TurnFollower(api: KeloTurnApi(api: api)).follow(id: turnId) { ev in
+                try await TurnFollower(api: KeloTurnApi(api: api, canCall: canCallFn)).follow(id: turnId) { ev in
                     await MainActor.run { self?.apply(ev) }
                 }
                 finished = true

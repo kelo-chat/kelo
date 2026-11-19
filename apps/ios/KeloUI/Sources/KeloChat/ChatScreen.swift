@@ -26,7 +26,10 @@ public struct ChatScreen: View {
             .keloShellInsets()
             .keloHideNavigationBar()
         }
-        .onAppear { if model == nil { model = ChatModel(app: app, cardSender: cardSender) } }
+        .onAppear {
+            if model == nil { model = ChatModel(app: app, cardSender: cardSender) }
+            if let model { _ = app.calls.attach(chat: model) }
+        }
         .onChange(of: app.historyCleared) { _, _ in model?.forgetHistory() }
     }
 }
@@ -70,6 +73,24 @@ struct ChatPage: View {
     @State private var notifyPending = false
     @State private var composerFocused = false
     /// A secure entry's card a row in 답이 필요해요 led to: marked for a moment
+
+    static func callMarks(in rows: [ChatItem]) -> Set<String> {
+        var marks = Set<String>()
+        var inRun = false
+        for item in rows {
+            if let m = item.asMsg {
+                if m.fromCall {
+                    if !inRun {
+                        marks.insert(item.key)
+                        inRun = true
+                    }
+                } else {
+                    inRun = false
+                }
+            }
+        }
+        return marks
+    }
     @State private var markedEntry: String?
     @State private var offersModel = OffersModel()
     /// 소리 내어 읽기: one message speaks at a time; it stops when this screen is left
@@ -301,6 +322,7 @@ struct ChatPage: View {
         let asks = ChatAsks.visible(model.asks, items: model.items)
         // the messages that start a new stretch (first shown, a new day, or TimeLabels.gapMinutes after the one before) get a time line
         let timed = TimeLabels.labelled(model.items, zone: .current)
+        let callMarks = Self.callMarks(in: model.rows)
         if model.loaded && model.rows.isEmpty && model.phase == nil && asks.isEmpty {
             ScrollView {
                 Text(L(R.string.chat_hint, agentName)).font(KeloFont.bodyLarge).foregroundStyle(c.muted)
@@ -332,6 +354,7 @@ struct ChatPage: View {
                             ForEach(model.rows) { item in
                                 VStack(alignment: .leading, spacing: 6) {
                                     if timed.contains(item.key), let m = item.asMsg { TimeLine(atMs: m.at) }
+                                    if callMarks.contains(item.key) { CallMark() }
                                     row(item)
                                 }
                                 .id(item.key)
@@ -500,12 +523,12 @@ struct ChatPage: View {
                 let words = ChatWords.attachmentWords()
                 let shown = MessageFileRules.shownText(m.text, files: m.files, autoText: m.autoText, line: words.line)
                 if m.files.isEmpty {
-                    UserBubble(text: m.text, reaction: m.reaction, actions: actions) { a in act(item, text: m.text, a) }
+                    UserBubble(text: m.text, reaction: m.reaction, fromCall: m.fromCall, actions: actions) { a in act(item, text: m.text, a) }
                 } else {
                     VStack(alignment: .trailing, spacing: 6) {
                         HStack { Spacer(minLength: 48); UserFiles(files: m.files) }
                         if !shown.isEmpty {
-                            UserBubble(text: shown, reaction: m.reaction, actions: actions) { a in act(item, text: m.text, a) }
+                            UserBubble(text: shown, reaction: m.reaction, fromCall: m.fromCall, actions: actions) { a in act(item, text: m.text, a) }
                         }
                     }
                 }
@@ -515,7 +538,7 @@ struct ChatPage: View {
                 VStack(alignment: .leading, spacing: 6) {
                     let streaming = model.busy && m.id == nil && model.items.last?.key == m.key
                     if !m.text.isEmpty || m.images.isEmpty {
-                        AssistantBubbles(text: m.text, streaming: streaming, actions: streaming ? [] : actions) { text, a in act(item, text: text, a) }
+                        AssistantBubbles(text: m.text, streaming: streaming, fromCall: m.fromCall, actions: streaming ? [] : actions) { text, a in act(item, text: text, a) }
                     }
                     ForEach(m.images, id: \.self) { img in ChatPicture(image: img) }
                     if let id = m.id, let f = model.followups[id] { MessageFollowups(followup: f, model: model) }
@@ -768,8 +791,44 @@ struct Composer: View {
     let onChip: () -> Void
     @Environment(AppModel.self) private var app
     @Environment(\.kelo) private var c
+    #if os(iOS)
+    /// The voice of this chat: while the owner speaks, the whole composer is the recording bar (RecordingBar.swift).
+    @State private var voice = ComposerVoiceModel()
+    #endif
 
     var body: some View {
+        VStack(spacing: 0) {
+            #if os(iOS)
+            if voice.showsBar, let bar = voice.bar {
+                RecordingBarView(state: bar, trail: voice.trail, busy: model.busy,
+                                 onDiscard: { voice.discard() },
+                                 onStop: { voice.finish(.field) },
+                                 onSend: { voice.finish(.send) })
+            } else {
+                fieldAndRow
+            }
+            #else
+            fieldAndRow
+            #endif
+        }
+        .background(RoundedRectangle(cornerRadius: 24).fill(c.card))
+        .overlay(RoundedRectangle(cornerRadius: 24).stroke(focused.wrappedValue ? c.accent : c.line, lineWidth: 1))
+        .padding(.horizontal, Self.sideRoom).padding(.top, Self.topRoom).padding(.bottom, 10)
+        .frame(maxWidth: Self.maxWidth).frame(maxWidth: .infinity)
+        #if os(iOS)
+        .onAppear {
+            voice.attach(app: app)
+            // the words go into the field the Composer shows; ↑ sends them the way the send button does
+            voice.target = ComposerVoiceModel.Target(get: { model.input }, set: { model.setInput($0) }, send: { text in
+                model.setInput(text)
+                model.send(words: ChatWords.attachmentWords())
+            })
+        }
+        .onDisappear { voice.discardAll() }
+        #endif
+    }
+
+    @ViewBuilder private var fieldAndRow: some View {
         VStack(spacing: 0) {
             ComposerField(text: Binding(get: { model.input }, set: { model.setInput($0) }), focused: focused,
                           placeholder: L(R.string.chat_input_placeholder),
@@ -790,7 +849,9 @@ struct Composer: View {
                 .accessibilityLabel(L(R.string.chat_attach))
                 Spacer(minLength: 4)
                 ModelChip(text: ChatWords.chip(app.profile, providers: model.providers, list: model.modelList), action: onChip)
-                MicButton(text: Binding(get: { model.input }, set: { model.setInput($0) }))
+                #if os(iOS)
+                MicButton(voice: voice)
+                #endif
                 Button(action: { model.busy ? model.stop() : model.send(words: ChatWords.attachmentWords()) }) {
                     KeloIconView(model.busy ? .stop : .send, size: 20, tint: model.canSend ? c.bg : c.disabledInk)
                         .frame(width: 40, height: 40)
@@ -803,10 +864,6 @@ struct Composer: View {
             }
             .padding(.leading, 4).padding(.trailing, 6).padding(.bottom, 6)
         }
-        .background(RoundedRectangle(cornerRadius: 24).fill(c.card))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(focused.wrappedValue ? c.accent : c.line, lineWidth: 1))
-        .padding(.horizontal, Self.sideRoom).padding(.top, Self.topRoom).padding(.bottom, 10)
-        .frame(maxWidth: Self.maxWidth).frame(maxWidth: .infinity)
     }
 }
 

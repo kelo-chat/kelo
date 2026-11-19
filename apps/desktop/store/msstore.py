@@ -306,6 +306,7 @@ def commit_and_wait(store, sid, wait):
             # Certification takes days, so this script never marks a release live. The operator records it when it is.
             say("When it is published in the Microsoft Store, record it with\n"
                 "  assistant release-record desktop <version> <build> msstore\n"
+                "(it also publishes the signed store row to kelo.chat; run on the operator's computer)\n"
                 "(build = major*100000000 + minor*100000 + patch of the package number, for example 1.0.8 -> 100000008)")
             return 0
         if time.monotonic() >= deadline:

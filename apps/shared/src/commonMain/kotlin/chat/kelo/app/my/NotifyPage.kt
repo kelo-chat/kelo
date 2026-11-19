@@ -78,6 +78,15 @@ import kotlinx.serialization.json.put
 @Serializable
 data class ProactivePass(val at: Double? = null, val status: String = "", val reason: String = "", val sent: Int = 0)
 
+/** GET /api/proactive "send_times": the proactive send times ("HH:MM") of the contact window now or next; the briefing has its own part. */
+@Serializable
+data class SendTimes(
+    val day: String = "",
+    val times: List<String> = emptyList(),
+    val briefing: String? = null,
+    @SerialName("next_at") val nextAt: Double? = null,
+)
+
 /** GET /api/proactive: messages the agent may send by itself (off by default). [today] counts by urgency (보통 / 오늘 / 지금). */
 @Serializable
 data class ProactiveSettings(
@@ -105,10 +114,10 @@ data class ProactiveSettings(
     @SerialName("weekend_suggestion") val weekendSuggestion: HoursSuggestion? = null,
     val learned: Map<String, LearnedWindow?> = emptyMap(),
     @SerialName("holiday_country") val holidayCountry: String? = null,
-    /** Messages Kelo starts a day (0..10; 0 = only what cannot wait), how many went out today, and how many items it is holding: null on an older server. */
-    @SerialName("daily_deliveries") val dailyDeliveries: Int? = null,
-    @SerialName("today_deliveries") val todayDeliveries: Int? = null,
+    /** How many items Kelo is keeping for a later message (GET /api/proactive/held): null on an older server. */
     val held: Int? = null,
+    /** When Kelo may send (research on): null on an older server or with research off. */
+    @SerialName("send_times") val sendTimes: SendTimes? = null,
     /** The hourly situation look is on ("research", GET /api/proactive); the "What Kelo looked at" row needs it. */
     val research: Boolean = false,
 ) {
@@ -117,13 +126,22 @@ data class ProactiveSettings(
         weekendSuggestion, learned, holidayCountry = holidayCountry)
 }
 
-/** GET /api/checklist: the things to keep an eye on (CHECKLIST.md), looked over with each heads-up pass while those are on. */
+/** GET /api/checklist: the things to keep an eye on (CHECKLIST.md); each entry says whether it has a job of its own (older servers send none). */
 @Serializable
 data class ChecklistSettings(
     val text: String = "",
     val items: Int = 0,
     val list: List<String> = emptyList(),
+    val entries: List<ChecklistEntry> = emptyList(),
 )
+
+/** One item and how Kelo looks after it: state "own" (its own job) or "send_times". */
+@Serializable
+data class ChecklistEntry(val text: String = "", val state: String = "", val job: ChecklistJob? = null)
+
+/** The job Kelo made for an item (a schedule, a watcher, ...): only its name is shown. */
+@Serializable
+data class ChecklistJob(val kind: String = "", val id: Long = 0, val name: String = "", val description: String = "", val on: Boolean = true)
 
 /** The settings' small rules, apart from the UI. */
 object NotifySettingsRules {
@@ -146,6 +164,12 @@ object NotifySettingsRules {
 
     fun formatTime(hour: Int, minute: Int): String = String.format(java.util.Locale.ROOT, "%02d:%02d", hour, minute)
 
+    /** The send times the page lists, in the server's order; none from an older server, with research off, or not a time. */
+    fun sendTimes(p: ProactiveSettings): List<String> = p.sendTimes?.times.orEmpty().filter { parseTime(it) != null }
+
+    /** Whether the about text tells the send-time schedule (a server that sends "send_times"); an older server keeps the old text. */
+    fun aboutSendTimes(p: ProactiveSettings): Boolean = p.sendTimes != null
+
     /**
      * The one "at most N a day" the page shows, as the server's three caps: the day's total is N, and neither the regular nor the
      * urgent cap may be above it. Returns (daily_regular, daily_total, daily_now).
@@ -160,12 +184,16 @@ object NotifySettingsRules {
         val clean = item.replace(Regex("\\s+"), " ").trim().take(MAX_ITEM)
         return if (clean.isEmpty() || clean in list || list.size >= MAX_ITEMS) list else list + clean
     }
+
+    /** The name of the job Kelo made for [item] when it has its own timing; null for an item looked at at the send times (and from an older server). */
+    fun ownJob(k: ChecklistSettings, item: String): String? =
+        k.entries.firstOrNull { it.text == item && it.state == "own" }?.job?.name?.takeIf { it.isNotBlank() }
 }
 
 /**
  * 마이 → 알림: this phone's notifications (on or off, in the system's settings), follow-ups, and one "Kelo tells you first" (the
  * agent may write first: on or off, at most N times a day, only between the hours set). Its optional "things to keep an eye on" list
- * (CHECKLIST.md) is looked over in the same pass; it has no switch or pace of its own.
+ * (CHECKLIST.md): each item gets its own job or is looked at at the send times.
  */
 @Composable
 fun NotifyPage(onBack: () -> Unit, onDevices: () -> Unit) {
@@ -257,7 +285,7 @@ fun NotifyPage(onBack: () -> Unit, onDevices: () -> Unit) {
         if (p?.enabled == true && !checklistMissing) {
             val k = checklist
             if (k == null) SkeletonRows(1)
-            else WatchList(k.list, onChange = { items -> vm.putChecklist(buildJsonObject { put("items", JsonArray(items.map { JsonPrimitive(it) })) }) })
+            else WatchList(k.list, own = { NotifySettingsRules.ownJob(k, it) }, onChange = { items -> vm.putChecklist(buildJsonObject { put("items", JsonArray(items.map { JsonPrimitive(it) })) }) })
         }
 
         // which calendars and mailboxes the briefing and the heads-ups read (one choice for both; BriefingSources.kt)
@@ -288,8 +316,8 @@ private fun ToggleLine(title: String, body: String, on: Boolean, onToggle: (Bool
 }
 
 /**
- * 새 소식 알림 (proactive.py): every few hours (the server's own every_minutes) it looks for new things the owner should know; on or
- * off, and when on at most how many times a day (the hours it may write in: [HoursBlock]). The about text says how often, and that
+ * 새 소식 알림 (proactive.py, situation.py): every hour new mail and connected services, everything else at the send times; on or
+ * off, and when on at most how many times a day (the hours it may write in: [HoursBlock]). The about text says when it looks, and that
  * what waits for the owner is asked again by the follow-ups (다시 묻기) whatever this is set to.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -297,8 +325,11 @@ private fun ToggleLine(title: String, body: String, on: Boolean, onToggle: (Bool
 private fun HeadsUpBlock(
     p: ProactiveSettings, onPut: (JsonObject) -> Unit, onOpenHeld: () -> Unit, showSituation: Boolean, onOpenSituation: () -> Unit,
 ) {
-    val c = Kelo.colors
-    val about = string(Res.string.heads_about, everyText(p.everyMinutes), string(Res.string.followup_settings_title))
+    val about = if (NotifySettingsRules.aboutSendTimes(p)) {
+        string(Res.string.heads_about_send_times, string(Res.string.heads_per_day), string(Res.string.followup_settings_title))
+    } else {
+        string(Res.string.heads_about, everyText(p.everyMinutes), string(Res.string.followup_settings_title))   // an older server
+    }
     ToggleLine(string(Res.string.heads_switch), about, p.enabled) { on -> onPut(buildJsonObject { put("enabled", on) }) }
     if (!p.enabled) return
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -306,11 +337,14 @@ private fun HeadsUpBlock(
             val (r, t, n) = NotifySettingsRules.perDay(v, p.dailyRegular, p.dailyNow)
             onPut(buildJsonObject { put("daily_regular", r); put("daily_total", t); put("daily_now", n) })
         }
-        DeliveriesBlock(p, onChange = { n -> onPut(buildJsonObject { put("daily_deliveries", n) }) }, onOpenHeld = onOpenHeld)
+        SentHeldLine(p.today.values.sum(), p.held, onOpenHeld = onOpenHeld)
+        val times = NotifySettingsRules.sendTimes(p)
+        if (times.isNotEmpty()) {
+            val words = times.map { timeWords(it) }
+            Text(string(Res.string.heads_send_times, words.joinToString(" · ")), style = MaterialTheme.typography.bodySmall, color = Kelo.colors.muted)
+        }
         if (showSituation) SituationRow(onClick = onOpenSituation)
         MailSwitch(p.mailCheck) { on -> onPut(buildJsonObject { put("mail_check", on) }) }
-        val sent = p.today.values.sum()
-        if (sent > 0) Text(plural(Res.plurals.heads_sent_today, sent, sent), style = MaterialTheme.typography.bodySmall, color = c.muted)
     }
 }
 
@@ -442,9 +476,9 @@ private fun TimesRow(content: @Composable () -> Unit) {
     }
 }
 
-/** 챙겨볼 것: optional things Kelo looks at in the same pass (CHECKLIST.md's list lines); add and remove, nothing else to set. */
+/** 챙겨볼 것: optional things Kelo keeps an eye on (CHECKLIST.md's list lines); add and remove; an item with its own job says so. */
 @Composable
-private fun WatchList(items: List<String>, onChange: (List<String>) -> Unit) {
+private fun WatchList(items: List<String>, own: (String) -> String?, onChange: (List<String>) -> Unit) {
     val c = Kelo.colors
     var draft by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -457,7 +491,10 @@ private fun WatchList(items: List<String>, onChange: (List<String>) -> Unit) {
                 items.forEachIndexed { i, item ->
                     if (i > 0) HorizontalDivider(color = c.line)
                     Row(Modifier.fillMaxWidth().padding(start = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(item, style = MaterialTheme.typography.bodyMedium, color = c.ink, modifier = Modifier.weight(1f).padding(vertical = 10.dp))
+                        Column(Modifier.weight(1f).padding(vertical = 10.dp)) {
+                            Text(item, style = MaterialTheme.typography.bodyMedium, color = c.ink)
+                            own(item)?.let { MutedText(string(Res.string.heads_list_own, it), small = true) }
+                        }
                         IconButton(onClick = { onChange(items - item) }) {
                             Icon(KeloIcons.Close, contentDescription = string(Res.string.heads_list_remove, item), tint = c.muted)
                         }
@@ -518,7 +555,7 @@ private fun everyText(minutes: Int): String = NotifySettingsRules.every(minutes)
 }
 
 @Composable
-private fun timeWords(text: String): String = NotifySettingsRules.parseTime(text)?.let { (h, m) -> clockText(h, m) } ?: text
+internal fun timeWords(text: String): String = NotifySettingsRules.parseTime(text)?.let { (h, m) -> clockText(h, m) } ?: text
 
 /** A label with − n +. */
 @Composable

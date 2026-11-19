@@ -9,8 +9,8 @@ module is what the route stands on, with no I/O of its own except `XScreen`:
 - `XScreen`: asks the X server for another screen size over a short RFB connection of its own (SetDesktopSize, RFB's ExtendedDesktopSize).
 - `VncScreen`: the arbiter. One X screen shows one tab at a time; viewers of that tab share it; a second tab is told it is busy and the
   app shows the picture stream (tools/live.py) instead. It brings the tab forward and puts everything back when the last viewer
-  leaves. A tab in the phone ("mobile") view gets a screen the size of the viewer's; a tab in the desktop view keeps the desktop
-  screen as it is (the page is not laid out again) and the viewer scales the whole picture down, zooming in when the owner pinches.
+  leaves. The screen keeps its desktop size (the page is not laid out again) and the viewer scales the whole picture down, zooming
+  in when the owner pinches.
 """
 
 from __future__ import annotations
@@ -95,8 +95,9 @@ class ClientFilter:
     split anywhere: a message is judged when its first bytes are in and the rest is passed or dropped as it comes, so nothing is
     buffered beyond a few header bytes (a clipboard is never held in memory). An unknown message type raises VncError: the relay closes."""
 
-    def __init__(self, can_input: Callable[..., bool]):
+    def __init__(self, can_input: Callable[..., bool], on_release: Callable[[], None] | None = None):
         self.can_input = _asks_active(can_input)
+        self.on_release = on_release          # called when a kept PointerEvent lets go of the last button (pages focus a field on mouseup)
         self._buf = bytearray()
         self._version = bytearray()           # the viewer's version string while it comes in
         self._handshake = 12                  # handshake bytes still to pass: the version first, then the choice and ClientInit
@@ -151,7 +152,13 @@ class ClientFilter:
             if self._keep:
                 out += self._buf[:take]
                 if kind == TYPE_POINTER:
+                    released = bool(self.mask) and not mask
                     self.mask, self.x, self.y = mask, x, y
+                    if released and self.on_release is not None:
+                        try:
+                            self.on_release()
+                        except Exception:  # noqa: BLE001 - a look at the focus must never break the relay
+                            pass
                 elif kind == TYPE_KEY:
                     _, down, key = struct.unpack(">BBxxI", bytes(self._buf[:8]))
                     (self.keys_down.add if down else self.keys_down.discard)(key)
@@ -304,10 +311,9 @@ class XScreen:
 class VncScreen:
     """Who owns the X screen. One tab key at a time; more devices on the same key share it.
 
-    `acquire(key, device, w, h)` is True when the screen shows `key` now (a phone-view tab: sized `w` x `h` CSS px when this device is the
-    first; a desktop-view tab: the screen keeps its desktop size, `w` x `h` are not used), False when another tab holds it (busy), and
-    raises VncUnavailable when the screen could not be set up. `release(key, device)` after it. The last release (or the tab closing:
-    `tab_closed`) puts the screen and the tab's phone view back."""
+    `acquire(key, device)` is True when the screen shows `key` now, False when another tab holds it (busy), and raises VncUnavailable
+    when the screen could not be set up. `release(key, device)` after it. The last release (or the tab closing: `tab_closed`) puts the
+    screen back."""
 
     def __init__(self, session: Any, xscreen: XScreen, *, default: tuple[int, int] = DEFAULT_SIZE,
                  refit: Callable[[str], Awaitable[Any]] | None = None):
@@ -317,7 +323,6 @@ class VncScreen:
         self.refit = refit                      # key -> the live view's own tab size again (LiveHub.refit) once the screen is released
         self.key: str | None = None
         self.size: tuple[int, int] = default
-        self._resized = False                   # the screen was sized for this tab (a phone view), so it goes back to `default` when freed
         self._devices: dict[str, int] = {}      # device -> its open screens of this tab
         self._lock = asyncio.Lock()
         self.gone: dict[str, asyncio.Event] = {}  # key -> set when the tab closed under its viewers
@@ -341,7 +346,7 @@ class VncScreen:
     def size_of(self, key: str) -> tuple[int, int] | None:
         return self.size if self.key == key else None
 
-    async def acquire(self, key: str, device: str, width: int, height: int) -> bool:
+    async def acquire(self, key: str, device: str) -> bool:
         async with self._lock:
             if self.key is not None and self.key != key:
                 return False
@@ -349,9 +354,9 @@ class VncScreen:
                 self._devices[device] = self._devices.get(device, 0) + 1
                 return True
             try:
-                size = await self._set_up(key, width, height)
+                size = await self._set_up(key)
             except Exception as e:  # noqa: BLE001 - whatever failed, the screen is put back and the viewer is told it is unavailable
-                await self._tear_down(key, (width, height) if self.session.view(key) == "mobile" else self.default)
+                await self._tear_down(key)
                 log.info("live view: the screen could not be set up (%s)", type(e).__name__)
                 raise VncUnavailable(str(e) or type(e).__name__) from None
             self.key, self.size = key, size
@@ -380,10 +385,10 @@ class VncScreen:
             self._devices.clear()
             await self._free(key, tab_alive=False)
 
-    async def reapply(self, key: str) -> None:
-        """The tab's own view settings (the phone view's size) are put back to what the screen needs (after something reset them)."""
-        if self.key == key and self.session.view(key) == "mobile":
-            await self._phone_metrics(key, *self.size)
+    async def tab_switched(self, key: str) -> None:
+        """The held tab's window changed its active tab (the owner switched tabs): the new one is brought forward."""
+        if self.key == key:
+            await self.refront()
 
     async def refront(self) -> None:
         """Bring the held tab forward again (a new window opened on this screen took the front). Best effort, under the lock."""
@@ -406,10 +411,9 @@ class VncScreen:
                     await self._quietly(cdp.detach)
 
     async def _free(self, key: str, tab_alive: bool = True) -> None:
-        size, self.key = (self.size if self._resized else self.default), None
-        self.size, self._resized = self.default, False
+        self.key, self.size = None, self.default
         self.gone.pop(key, None)
-        await self._tear_down(key, size, tab_alive=tab_alive)
+        await self._tear_down(key, tab_alive=tab_alive)
 
     # ------------------------------------------------------------------ the tab and the screen
     async def _cdp(self, key: str) -> tuple[Any, bool]:
@@ -425,33 +429,23 @@ class VncScreen:
     async def _send(self, cdp: Any, method: str, params: dict[str, Any] | None = None) -> Any:
         return await asyncio.wait_for(cdp.send(method, params or {}), STEP_SECONDS)
 
-    async def _set_up(self, key: str, width: int, height: int) -> tuple[int, int]:
-        """Bring the tab forward and make the screen right for it; the screen's size now. A phone-view tab gets a screen of the viewer's
-        size (the phone view follows). A desktop-view tab keeps the desktop screen: the page is laid out as wide as a desktop browser
-        and the viewer scales the picture down (a screen sized to the phone made sites show their narrow layout)."""
+    async def _set_up(self, key: str) -> tuple[int, int]:
+        """Bring the tab forward and make the screen right for it; the screen's size now. The screen keeps its desktop size: the page
+        is laid out as wide as a desktop browser and the viewer scales the picture down."""
         cdp, temporary = await self._cdp(key)
-        mobile = self.session.view(key) == "mobile"
         try:
             target = await self._target(key, cdp)
             await self._try(cdp, "Target.activateTarget", {"targetId": target})
             await self._try(cdp, "Page.bringToFront")
-            size = (width, height) if mobile else await self._desktop_screen()
-            if mobile:
-                await self.xscreen.resize(*size)
-            self._resized = mobile
+            size = await self._desktop_screen()
             await self._fullscreen(cdp, target)
-            if mobile:
-                await self._phone_metrics(key, width, height)
-                phone = self.session.phone_cdp(key)
-                if phone is not None:
-                    await self._send(phone, "Emulation.setEmitTouchEventsForMouse", {"enabled": True, "configuration": "mobile"})
             return size
         finally:
             if temporary:
                 await self._quietly(cdp.detach)
 
     async def _desktop_screen(self) -> tuple[int, int]:
-        """The screen a desktop-view tab is shown on: as it is. One narrower than the desktop default (a phone's size a crashed server left
+        """The screen a tab is shown on: as it is. One narrower than the desktop default (a size a crashed server left
         behind) is put back to the default first, so a desktop page is never laid out narrow."""
         size = await self.xscreen.size()
         if size[0] < self.default[0]:
@@ -459,24 +453,12 @@ class VncScreen:
             return self.default
         return size
 
-    async def _tear_down(self, key: str, size: tuple[int, int], *, tab_alive: bool = True) -> None:
-        """Put the screen back to its default size and the tab's phone view back (each step on its own: a failed one stops no other)."""
-        if size != self.default:
-            await self._quietly(lambda: self.xscreen.resize(*self.default))
+    async def _tear_down(self, key: str, *, tab_alive: bool = True) -> None:
+        """Let the tab go: its live view is laid out again (each step on its own: a failed one stops no other)."""
         if not tab_alive or self.session.raw_page(key) is None:
             return
-        phone = self.session.phone_cdp(key)
-        if phone is not None:
-            await self._quietly(lambda: self._send(phone, "Emulation.setEmitTouchEventsForMouse", {"enabled": False}))
-            await self._quietly(lambda: self.session.keep_view(key))
         if self.refit is not None:
             await self._quietly(lambda: self.refit(key))
-
-    async def _phone_metrics(self, key: str, width: int, height: int) -> None:
-        phone = self.session.phone_cdp(key)
-        if phone is not None:
-            await self._send(phone, "Emulation.setDeviceMetricsOverride",
-                             {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": True, "screenWidth": width, "screenHeight": height})
 
     async def _target(self, key: str, cdp: Any) -> str:
         known = self.session.target_id(key)
@@ -520,8 +502,8 @@ class VncScreens:
     def upstream_of(self, key: str) -> tuple[str, int]:
         return self.screen(key).upstream_of(key)
 
-    async def acquire(self, key: str, device: str, width: int, height: int) -> bool:
-        return await self.screen(key).acquire(key, device, width, height)
+    async def acquire(self, key: str, device: str) -> bool:
+        return await self.screen(key).acquire(key, device)
 
     async def release(self, key: str, device: str) -> None:
         await self.screen(key).release(key, device)
@@ -529,9 +511,6 @@ class VncScreens:
     async def tab_closed(self, key: str) -> None:
         for screen in self._screens():
             await screen.tab_closed(key)
-
-    async def reapply(self, key: str) -> None:
-        await self.screen(key).reapply(key)
 
     def holds(self, key: str) -> bool:
         return self.screen(key).holds(key)
@@ -554,6 +533,10 @@ class VncScreens:
     def refit(self, value: Callable[[str], Awaitable[Any]] | None) -> None:
         for screen in self._screens():
             screen.refit = value
+
+    async def tab_switched(self, key: str) -> None:
+        """A tab of a held window was switched to: that screen brings the new active tab forward (the other screen is not touched)."""
+        await self.screen(key).tab_switched(key)
 
     async def work_window_opened(self, key: str) -> None:
         """A new window of a work tab appeared: when a work tab is held on the work screen, that one is brought forward again."""

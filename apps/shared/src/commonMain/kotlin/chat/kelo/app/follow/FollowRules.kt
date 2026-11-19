@@ -69,7 +69,7 @@ object FollowRules {
 
         // 3. Fallback
         if (parts.isEmpty()) {
-            if (item.checks.isNotEmpty() || tell?.onChange == true) {
+            if (item.checks.isNotEmpty()) {   // only when a check really reads something
                 parts += if (isKo) "변경 사항 확인" else "Watch for changes"
             } else {
                 parts += if (isKo) "일정 챙기기" else "Look after schedule"
@@ -126,7 +126,7 @@ fun followPlanSummary(item: FollowItem): String {
     }
 
     if (parts.isEmpty()) {
-        if (item.checks.isNotEmpty() || tell?.onChange == true) {
+        if (item.checks.isNotEmpty()) {   // only when a check really reads something
             parts += string(Res.string.follow_summary_watch_changes)
         } else {
             parts += string(Res.string.follow_summary_default)

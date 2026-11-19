@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hans text for strings_live_clipboard.xml (generated from values/strings_live_clipboard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="live_paste">从手机粘贴</string>
     <string name="live_pasted">已粘贴。请检查输入框。</string>

@@ -81,6 +81,7 @@ from pydantic import BaseModel, Field
 
 from .agent import Tool, emit_ui
 from .i18n import N_, t
+from .shopping import ID_RE, Product
 
 GOAL_MARK = "[Goal work, not from the user]"   # leads the hidden message of a kickoff / resume turn
 STEP_STATUSES = ("todo", "doing", "done")
@@ -645,6 +646,11 @@ class GoalBook:
                 card["image"] = img
             if detail := _clip(c.get("detail"), CARD_DETAIL_MAX):
                 card["detail"] = detail
+            if c.get("product") not in (None, ""):
+                prod = str(c.get("product")).strip()
+                if not ID_RE.match(prod):
+                    raise GoalError("product is a result id from a job's product report")
+                card["product"] = prod
             if c.get("recommended") is True:
                 card["recommended"] = True
             by_label[label] = card
@@ -823,7 +829,8 @@ class GoalBook:
               goal_schedules: Callable[[int], list[dict[str, Any]]] = lambda _g: [],
               link_schedule: Callable[[int, int], str] | None = None,
               on_goal: Callable[[str, int], None] = lambda _t, _g: None,
-              card_images: Callable[[str, list[str]], Awaitable[list[dict[str, Any] | None]]] | None = None) -> list[Tool]:
+              card_images: Callable[[str, list[str]], Awaitable[list[dict[str, Any] | None]]] | None = None,
+              product_of: Callable[[str], Product | None] | None = None) -> list[Tool]:
         """`on_goal(turn_id, goal_id)`: a tool of the running turn used that goal (the app then shows the goal as being worked on).
         `card_images(turn_id, urls)`: stores the pictures of choice cards (chat_images.ChatImages.card_pictures); one entry per address,
         None where a picture could not be had."""
@@ -919,6 +926,32 @@ class GoalBook:
             turn = current_turn() or {}
             if not turn.get("turn_id"):
                 return "Error: buttons can only go with a chat reply."
+            for q in qs:
+                cards = q.get("cards")
+                if not cards:
+                    continue
+                typed = set(q.get("typed") or [])
+                options = q.get("options") or []
+                if any(c.get("product") for c in cards):
+                    for opt, card in zip(options, cards):
+                        if opt not in typed and not card.get("product"):
+                            return ("Error: not shown. A choice of products to buy offers only products from a job's report, "
+                                    "each card with its product id; do not mix in items from elsewhere.")
+                    for card in cards:
+                        if not card.get("product"):
+                            continue
+                        pid = card["product"]
+                        p = product_of(pid) if product_of is not None else None
+                        if p is None:
+                            return (f"Error: not shown. {pid} is not a product a job saw on a seller's page. "
+                                    "Offer only the ids listed in a job's report; never items or prices from search results or articles.")
+                        detail_text = (f"{p.sale_price} ({p.price})" if p.sale_price else p.price) + f" · {p.seller}"
+                        card["detail"] = detail_text[:CARD_DETAIL_MAX]
+                        if p.image_url:
+                            card["image"] = p.image_url
+                        else:
+                            card.pop("image", None)
+                        card.pop("product", None)
             failed = await self.resolve_card_images(str(turn["turn_id"]), qs, card_images)
             on_replies(str(turn["turn_id"]), qs, gid)
             if gid:
@@ -971,7 +1004,8 @@ class GoalBook:
             Tool("quick_replies", "Put tap-to-answer fields under the message you are writing, one per question in it. Choices are "
                  "suggestions: never narrow the answer space; the user can always answer outside them (every choice field also gets "
                  "an Other box). For anything personal include an answer meaning \"I'd rather not say\". Options may carry cards "
-                 "(picture, one detail line, one recommended) when looks or price matter, e.g. products, rooms, places.",
+                 "(picture, one detail line, one recommended) when looks or price matter. A choice of things to buy: each card's product is a result id from a job's product report and the card shows that seller's price and picture; never offer items, prices or links from search results or articles. Only for a question "
+                 "you need answered; never to confirm what the user already asked for.",
                  {"type": "object", "properties": {"questions": {"type": "array", "items": {"type": "object", "properties": {
                      "question": {"type": "string", "description": "the question in a few words"},
                      "kind": {"type": "string", "enum": list(QUESTION_KINDS),
@@ -981,7 +1015,8 @@ class GoalBook:
                                "items": {"type": "object", "properties": {
                                    "image": {"type": "string", "description": "public https picture address"},
                                    "detail": {"type": "string", "description": "one short line, e.g. price · arrival"},
-                                   "recommended": {"type": "boolean", "description": "at most one"}}}},
+                                   "recommended": {"type": "boolean", "description": "at most one"},
+                                   "product": {"type": "string", "description": "a result id from a job's product report (p + 10 hex)"}}}},
                      "says": {"type": "array", "items": {"type": "string"},
                               "description": "optional, one per option: the whole sentence the user sends by tapping it, in their "
                                              "language (option 'Plan B' -> 'Let's go with Plan B, the 500M internet + TV bundle'); the "

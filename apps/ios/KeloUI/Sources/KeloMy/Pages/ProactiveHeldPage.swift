@@ -60,7 +60,6 @@ struct HeldRow: View {
 @MainActor enum HeldText {
     static func why(_ w: DeliveryRules.Why) -> String {
         switch w {
-        case .slots: L(R.string.deliveries_why_slots)
         case .overCap: L(R.string.deliveries_why_cap)
         case .waitingForReply: L(R.string.deliveries_why_reply)
         case .other: L(R.string.deliveries_why_other)

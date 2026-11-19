@@ -13,6 +13,9 @@ What is in the card (each section only when it has something; sections can be tu
 - Things you may have missed: open follow-ups (a question waiting for an answer, an approval that ran out, a job or login waiting for
   the owner), important unread mail (judged like the proactive pass: what it already judged worth telling, plus what today's one model
   call picks), tracked goals due today or tomorrow, and dated promises under "## Commitments" in MEMORY.md for today or tomorrow.
+- Corrections (only the automatic morning card, with the AI consent): what Kelo told the owner in the last day and found wrong or
+  changed (corrections.CorrectionCheck, the same check the hourly look uses), one note each, also as a "connections" note so the
+  apps show it; each told correction goes in the proactive ledger so the hourly look never tells it again.
 - A quiet day (nothing notable, no events, nothing missed): a short card with just the weather (quiet_days "short", the default) or
   nothing at all ("skip").
 - When the owner's contact hours have a pending suggestion (proactive.py, per day type), one line at the bottom offers it with the
@@ -50,6 +53,9 @@ When (time_mode):
   start time as usual.
 - "fixed": at `fixed_time` every day (it overrides the learned time and the early open). A fixed time outside the contact hours puts
   the card in the chat without waking the phone (no push).
+- Never before the start of that day's contact hours (owner 2026-11-19): the due time is clamped to it (an offset, a learned start
+  while the hours are default, a fixed time saved before the hours moved later), an early app open counts only from it, and a
+  fixed_time earlier than the earliest window start (`earliest`: weekdays or weekends) is refused (422). A later time is fine.
 Once a local day at most; not before the owner's first chat message on this server; never in the middle of a chat reply (it waits
 up to the end of the delivery window, DELIVER_HOURS after the time it was due, and not past the end of the contact hours); a day that
 was missed (the server was off) is skipped, not sent late. Nothing sends it at night: the automatic one only goes out in its window
@@ -67,7 +73,7 @@ the card ("briefing" on that message), and a notification of type "briefing" (bo
 2 events · 1 waiting on you"; pushed as "proactive" so push brokers from before this type still carry it).
 
 BRIEFING API (also next to serialize() in server.py):
-GET  /api/briefing   {"enabled" (true), "time_mode": auto|fixed, "fixed_time": "HH:MM", "offset_min" (0), "early_open" (true),
+GET  /api/briefing   {"enabled" (true), "time_mode": auto|fixed, "fixed_time": "HH:MM", "earliest": "HH:MM" (the earliest fixed time allowed), "offset_min" (0), "early_open" (true),
                       "sections": {"weather", "calendar", "missed": bool}, "quiet_days": short|skip, "next_at": unix|null,
                       "due_source": fixed|learned|hours, "last": {"day", "message_id", "at"}|null, "last_skip": {"day", "reason"}|null,
                       "weather": {"provider": auto|open_meteo|kma|weatherapi, "here": Place+{"at"}|null (where the weather is for;
@@ -88,6 +94,7 @@ Card: {"day", "summary", "line"|null, "headline"|null, "connections": [{"text", 
        "ahead": [{"id": "a1".., "title", "start", "kind": flight|stay|trip|days, "first": "YYYY-MM-DD", "last": "YYYY-MM-DD", "open": {"kind": "event", "start"}}]
                 (big events in the next 7 days, at most 3; [] or missing on older cards),
        "missed": [{"id": "m1".., "kind": followup|job|approval|login|mail|goal|promise, "title", "detail", "open": {...}|null, "source"? (mail)}],
+       "corrections": [{"id": "c1".., "key": "correction:<message id>", "text", "url"|null, "message_id"}] (also copied into connections; [] or missing on older cards),
        "hours": {"id", "day_type", "wake_start", "wake_end", "current_start", "current_end"}|null}
 headline / connections / suggestions: the model's parts (above); null / [] / [] without them, and absent on cards from before. "refs" are
         ids of items on the card (w, e*, a*, m*); a mail the model referred to is on the card only when it was picked as important.
@@ -107,7 +114,7 @@ import logging
 import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -119,8 +126,10 @@ from .day_types import WEEKDAY, WEEKEND
 from .i18n import N_, t
 from .model_limits import limit_of
 from .prompt import tone_line
-from .proactive import HHMM, find_date, section, unread_by_account
+from .proactive import HHMM, _minutes, find_date, section, unread_by_account
 from .providers import ChatRequest, TextDelta
+from .tools.connect_tools import asked_in_chat
+
 from .reflection import parse_output
 from .weather import Weather, WeatherError, notable, temp_in, units_for, wind_in
 
@@ -233,6 +242,7 @@ class Briefing:
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep):
         self._sleep = sleep   # the wait between weather tries (tests pass a fake)
         self.looking_after = looking_after   # titles of the chat items follow-through made lately (follow/upcoming.py), for one line
+        self.corrections: Any = None   # corrections.CorrectionCheck, set by the server: Kelo's own earlier answers, checked for the morning card
         self.sources = sources   # briefing_sources.Sources: which accounts are read, and the labels shown when there are several
         self.store, self.weather, self.proactive, self.home, self.followups, self.mail = store, weather, proactive, home, followups, mail
         self.calendar, self.stream_fn, self.model, self.key_args, self.deliver = calendar, stream_fn, model, key_args, deliver
@@ -240,7 +250,7 @@ class Briefing:
         self.consent = consent   # False while the AI-consent flow (ai_consent.py) still waits for the owner's answer: no model call
         self.tone = tone or (lambda: store.profile().get("tone", ""))   # how Kelo talks to the user (prompt.tone_line)
         self.lock = asyncio.Lock()
-        self._learned: tuple[str, dict[str, Any]] | None = None
+        self._learned: dict[str, dict[str, Any]] = {}   # day -> the learned windows of that day (start_time; the send times ask for three days)
         with store._lock:
             store._db.executescript(SCHEMA)
             store._db.commit()
@@ -274,7 +284,10 @@ class Briefing:
                 if not isinstance(v, str) or not HHMM.match(v.strip()):
                     raise ValueError("fixed_time must be a time like 07:30")
                 h, m = v.strip().split(":")
-                cfg[k] = f"{int(h):02d}:{m}"
+                fixed, first = f"{int(h):02d}:{m}", self.earliest()
+                if _minutes(fixed) < _minutes(first):   # owner 2026-11-19: never before the contact hours
+                    raise ValueError(f"fixed_time cannot be before the start of the contact hours ({first})")
+                cfg[k] = fixed
             elif k == "offset_min":
                 try:
                     n = int(v)
@@ -312,7 +325,7 @@ class Briefing:
     def public(self) -> dict[str, Any]:
         cfg, st = self.config(), self.state()
         due, src = self.due_at()
-        return {**cfg, "next_at": None if st.get("last_day") == self._today() else due, "due_source": src,
+        return {**cfg, "earliest": self.earliest(), "next_at": None if st.get("last_day") == self._today() else due, "due_source": src,
                 "last": st.get("last"), "last_skip": st.get("last_skip"), "weather": self.weather.public()}
 
     # ------------------------------------------------------------------ when
@@ -327,25 +340,58 @@ class Briefing:
         start, _end, src = self.proactive.window(kind)
         if src == "default":
             day = self._today(now)
-            if self._learned is None or self._learned[0] != day:
+            if day not in self._learned:
+                if len(self._learned) > 3:
+                    self._learned.clear()
                 try:
-                    self._learned = (day, self.proactive.learned_windows(now))
+                    self._learned[day] = self.proactive.learned_windows(now)
                 except Exception:  # noqa: BLE001
-                    self._learned = (day, {WEEKDAY: None, WEEKEND: None})
-            got = self._learned[1].get(kind) or (self._learned[1].get(WEEKDAY) if kind == WEEKEND else None)
+                    self._learned[day] = {WEEKDAY: None, WEEKEND: None}
+            learned = self._learned[day]
+            got = learned.get(kind) or (learned.get(WEEKDAY) if kind == WEEKEND else None)
             if got:
                 return got["wake_start"], "learned"
         return start, "hours"
 
+    def floor(self, now: float | None = None) -> float:
+        """The start of the contact hours of `now`'s day (its day type's window): the briefing never goes out before it (owner
+        2026-11-19), whatever its time setting, a learned start or an early app open."""
+        now = self.clock() if now is None else now
+        start, _end, _kind = self.proactive.window_at(now)
+        return _at(datetime.fromtimestamp(now, self.tz()), start)
+
+    def earliest(self) -> str:
+        """The earliest a fixed time may be: the earlier start of the two contact windows (weekdays; weekends and holidays)."""
+        return min((self.proactive.window(k)[0] for k in (WEEKDAY, WEEKEND)), key=_minutes)
+
     def due_at(self, now: float | None = None) -> tuple[float, str]:
-        """(unix time today's briefing is due, fixed|learned|hours)."""
+        """(unix time today's briefing is due, fixed|learned|hours): never before the start of today's contact hours."""
         now = self.clock() if now is None else now
         cfg = self.config()
         day = datetime.fromtimestamp(now, self.tz())
         if cfg["time_mode"] == "fixed":
-            return _at(day, cfg["fixed_time"]), "fixed"
+            return max(_at(day, cfg["fixed_time"]), self.floor(now)), "fixed"
         start, src = self.start_time(now)
-        return _at(day, start) + int(cfg["offset_min"]) * 60, src
+        return max(_at(day, start) + int(cfg["offset_min"]) * 60, self.floor(now)), src
+
+    def due_on(self, day: date) -> float | None:
+        """When the automatic briefing of `day` is due (as due_at), or None while the briefing is off. The proactive send times
+        (send_times.py) give the briefing the part of the day nearest to this time."""
+        if not self.config()["enabled"]:
+            return None
+        return self.due_at(datetime(day.year, day.month, day.day, 12, 0, tzinfo=self.tz()).timestamp())[0]
+
+    def covers(self) -> list[str]:
+        """What the automatic briefing reads, as the codes of the app's "What Kelo looked at" page (situation.SituationResearch.looks):
+        its sections that are on, then "corrections" while the correction check can run (wired, and the AI consent given). [] while the
+        briefing is off."""
+        cfg = self.config()
+        if not cfg["enabled"]:
+            return []
+        out = [s for s in SECTIONS if cfg["sections"][s]]
+        if self.corrections is not None and bool(self.consent()):
+            out.append("corrections")
+        return out
 
     def next_briefing(self, now: float | None = None) -> tuple[float | None, str, str]:
         """(when the next automatic briefing goes out, fixed|learned|hours, what happened today: "sent" | "quiet" | "missed" | "due" |
@@ -428,10 +474,10 @@ class Briefing:
                     "arguments it only shows.",
                     {"type": "object", "properties": {
                         "enabled": {"type": "boolean"},
-                        "time": {"type": "string", "description": "HH:MM for a fixed time, or auto (the start of the contact hours)"},
+                        "time": {"type": "string", "description": "HH:MM for a fixed time, or auto (the start of the contact hours); never before the start of the contact hours"},
                         "offset_min": {"type": "integer", "minimum": 0, "maximum": 60, "description": "auto: minutes after the start"},
                         "sections": {"type": "object", "properties": {k: {"type": "boolean"} for k in SECTIONS}}}},
-                    briefing, requires_approval=True, auto_approve=lambda a: not changes(a), describe=describe)
+                    briefing, requires_approval=True, auto_approve=lambda a: not changes(a) or asked_in_chat(), describe=describe)
 
     def _window_end(self, due: float) -> float:
         """The latest moment today's briefing may still go out: DELIVER_HOURS after it was due, and not past the end of the contact hours
@@ -479,7 +525,7 @@ class Briefing:
         if not cfg["enabled"] or cfg["time_mode"] != "auto" or not cfg["early_open"] or self.state().get("last_day") == self._today(now):
             return False
         due, _src = self.due_at(now)
-        if not due - EARLY_WINDOW <= now < due:
+        if not max(due - EARLY_WINDOW, self.floor(now)) <= now < due:
             return False
         return now - self.last_activity_before(now, prev_use) >= REST_GAP
 
@@ -511,7 +557,7 @@ class Briefing:
         if st.get("last_day") == today or (st.get("last_skip") or {}).get("day") == today:
             return None
         due, _src = self.due_at(now)
-        if now < due and not (early and due - EARLY_WINDOW <= now):   # an early open counts only in the hour before (never at night)
+        if now < due and not (early and max(due - EARLY_WINDOW, self.floor(now)) <= now):   # an early open counts only in the hour before (never at night)
             return None
         if not early and now > self._window_end(due):
             self._save_state(last_skip={"day": today, "reason": "missed"})   # the server was off: not sent late
@@ -523,12 +569,13 @@ class Briefing:
         async with self.lock:
             if self.state().get("last_day") == today:   # the morning's first open and the minute tick at once: only one goes
                 return None
-            card = await self.build(now, use_model=True)
+            card = await self.build(now, use_model=True, corrections=True)
             if card is None:
                 self._save_state(last_day=today, last_skip={"day": today, "reason": "quiet"})
                 return None
             push = cfg["time_mode"] != "fixed" or self.proactive.awake(now)
             mid = await self._deliver(card, push)
+            self._told_corrections(card)
             self._save_state(last_day=today, last={"day": today, "message_id": mid, "at": now})
             return card
 
@@ -608,13 +655,13 @@ class Briefing:
         return False
 
     # ------------------------------------------------------------------ the card
-    async def build(self, now: float, *, use_model: bool = False, force: bool = False) -> dict[str, Any] | None:
+    async def build(self, now: float, *, use_model: bool = False, force: bool = False, corrections: bool = False) -> dict[str, Any] | None:
         cfg, tz = self.config(), self.tz()
         sec = cfg["sections"]
         today = self._today(now)
         card: dict[str, Any] = {"day": today, "summary": "", "line": None, "headline": None, "connections": [], "suggestions": [],
                                 "quiet": False, "place": None, "weather": None, "events": [], "ahead": [], "missed": [], "hours": None,
-                                "looking_after": []}
+                                "looking_after": [], "corrections": []}
         notes: list[dict[str, Any]] = []
         day_parts: list[str] = []
         if sec["weather"]:
@@ -652,7 +699,9 @@ class Briefing:
             card["missed"], unread = await self._missed(now, tz)
         if self.looking_after is not None:
             card["looking_after"] = list(self.looking_after(now))
-        quiet = not notes and not card["events"] and not card["ahead"] and not card["missed"] and not unread and not card["looking_after"]
+        if corrections and use_model:
+            card["corrections"] = await self._corrections(now)
+        quiet = not notes and not card["events"] and not card["ahead"] and not card["missed"] and not unread and not card["looking_after"] and not card["corrections"]
         if quiet and not force:
             if cfg["quiet_days"] == "skip" or card["weather"] is None:
                 return None
@@ -682,6 +731,8 @@ class Briefing:
                             continue   # a note that points at nothing on the card is not shown
                         rows.append({"text": r["text"], "refs": refs})
                     card[key] = rows
+        for c in card["corrections"]:   # the apps show connections today; a correction is one note without chips
+            card["connections"].append({"text": c["text"], "refs": []})
         card["hours"] = self._hours_line(now)
         card["summary"] = self._summary(card, notes, tz)
         return card
@@ -806,6 +857,27 @@ class Briefing:
                                     **({"source": source} if source else {})})
         return out[:MAX_MISSED], unread[:MAX_MAIL_ASK]
 
+    async def _corrections(self, now: float) -> list[dict[str, Any]]:
+        """Corrections of Kelo's own answers of the last day (corrections.py), for the morning card: [{"id", "key", "text", "url",
+        "message_id"}]. Nothing without the AI consent, and nothing when the check fails: the card goes out without them."""
+        if self.corrections is None:
+            return []
+        try:
+            if not bool(self.consent()):
+                return []
+            found = await self.corrections.check(now)
+        except Exception as e:  # noqa: BLE001 - the card goes out without corrections
+            log.info("briefing: the correction check did not finish (%s)", type(e).__name__)
+            return []
+        return [{"id": f"c{i}", "key": c.key, "text": c.line(), "url": c.url, "message_id": c.message_id} for i, c in enumerate(found, 1)]
+
+    def _told_corrections(self, card: dict[str, Any]) -> None:
+        """The card went out: each correction on it is in the proactive ledger, so the hourly look never tells it again."""
+        if self.corrections is None:
+            return
+        for c in card.get("corrections") or []:
+            self.corrections.record(c["key"], "told", c["text"])
+
     @staticmethod
     def _short_day(a: dict[str, Any]) -> str:
         """"11-16" or "11-16–11-19" for a coming-up line in the plain text (the apps write the dates in the user's language)."""
@@ -887,6 +959,9 @@ class Briefing:
         lines += [f"[{m['id']}] {m['kind']}: {one(m['title'])}" + (f" — {one(m['detail'])}" if m.get("detail") else "") for m in card["missed"]]
         lines.append("Unread mail nobody judged yet:" if unread else "Unread mail nobody judged yet: none")
         lines += [f"[u{i}] {one(m['subject'])} — from {one(m['from'])}" for i, m in enumerate(unread, 1)]
+        if card.get("corrections"):
+            lines.append("Corrections of what Kelo told the owner earlier (already on the card as notes):")
+            lines += [f"- {one(c['text'])}" for c in card["corrections"]]
         ids = {"w"} if w else set()
         ids |= {x["id"] for k in ("events", "ahead", "missed") for x in card[k]} | {f"u{i}" for i in range(1, len(unread) + 1)}
         return "\n".join(lines), ids

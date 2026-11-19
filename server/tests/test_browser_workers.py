@@ -177,7 +177,7 @@ def test_the_buying_paragraph_follows_the_switch_and_the_rest_of_the_prompt_is_t
     content = Path(__file__).resolve().parents[1] / "content"
     on, off = (PromptBuilder.load(content, None, None, pay_split=v).base for v in (True, False))
     section = lambda t: t.split("**Buying, ordering, booking.**", 1)[1].split("\n\n**", 1)[0]   # noqa: E731
-    assert "Do it yourself in the browser" in section(off) and "checkout_submit(review_id)" in section(off)
+    assert "A browser job does it" in section(off) and "checkout_submit(review_id)" in section(off)   # owner 2026-11-19 03:10: no web work in the chat
     assert "delegate" not in section(off) and "You cannot pay" not in section(off)
     assert "You cannot pay" in section(on) and "checkout_submit(review_id)" not in section(on)
     assert on.split("**Buying, ordering, booking.**")[0] == off.split("**Buying, ordering, booking.**")[0]

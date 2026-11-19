@@ -16,7 +16,7 @@ browser would rather than teleporting the pointer and filling fields in one inst
   `Input.dispatchKeyEvent` keyDown "Process" (keyCode 229, the physical key's code), `Input.imeSetComposition` with the syllable as far as
   it is typed (ㅂ, 바, 박), keyUp, a human gap; after the last key of a syllable `Input.insertText` commits it. A page so sees keydown,
   compositionstart/update/end and input events as from a real keyboard, not one paste-like insert per syllable. If the composition call
-  is refused (a phone view, a frame), the same keys are sent with only the commit per syllable. Never for secrets. Needs the page's
+  is refused (a frame, a page that refuses it), the same keys are sent with only the commit per syllable. Never for secrets. Needs the page's
   DevTools session (`cdp`, a coroutine function (method, params) -> result that bounds each call); without it the text is typed as before.
 - Scrolling: wheel steps of uneven size with uneven pauses, sometimes a small step back.
 - Dwell: after a page loads, a short random look (with a small pointer drift) before it is read or acted on.
@@ -362,7 +362,7 @@ def _set_pointer(page: Any, p: Point) -> None:
 
 
 def set_pressed(page: Any, down: bool, at: Point | None = None) -> None:
-    """The button (or a finger: the phone view's taps, BrowserSession._tap) went down or up at `at` (default: where the pointer is)."""
+    """The button went down or up at `at` (default: where the pointer is)."""
     if page is None:
         return
     (_held.add if down else _held.discard)(id(page))
@@ -577,7 +577,7 @@ async def _ime_char(send: ImeSend, ch: str, keys: list[ime.ImeKey], waits: list[
         if composing:
             try:
                 await send("Input.imeSetComposition", {"text": k.composed, "selectionStart": len(k.composed), "selectionEnd": len(k.composed)})
-            except Exception as e:  # noqa: BLE001 - not supported here (phone view, a frame): keys and commits only
+            except Exception as e:  # noqa: BLE001 - not supported here (a frame): keys and commits only
                 if _is_timeout(e):
                     raise
                 composing = False
@@ -766,3 +766,12 @@ async def dwell(owner: Any) -> None:
 async def glance(owner: Any) -> None:
     """After a click that stayed on the same page: a shorter look at what changed."""
     await _look(owner, _state.timing.glance_s)
+
+
+async def bring_into_view(owner: Any, locator: Any, timeout_ms: int) -> dict[str, float] | None:
+    """The element scrolled into view the way a person does it (the wheel, see _box_in_view), before anything reads whether it is
+    covered. None when the page has no mouse to scroll with."""
+    mp = _mouse_page(owner)
+    if mp is None or not enabled():
+        return None
+    return await _box_in_view(mp, locator, timeout_ms)

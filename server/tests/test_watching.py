@@ -1,5 +1,5 @@
 """Scheduling and watching (S2): quiet runs, self-pause, run history, interval and "around" schedules, archive and restore,
-approvals kept for one scheduled job (never payments), goal-owned jobs, the periodic checklist, and watchers (fake clock, fake model,
+approvals kept for one scheduled job (never payments), goal-owned jobs, the checklist's manual run, and watchers (fake clock, fake model,
 fake pages)."""
 
 import asyncio
@@ -447,19 +447,19 @@ async def test_checklist_job_runs_only_when_on_non_empty_and_awake_and_records_q
     ch = Checklist(store, home, start, clock=clock, waking=lambda t: awake["on"], switch=lambda: switch["on"], room=lambda: room["ok"],
                    pace=lambda: 30 * 60.0, on_said=said.append)
     assert (home.root / "CHECKLIST.md").is_file() and (home.root / "NOTIFY_PREFS.md").is_file()   # made on start
-    assert "proactive pass" in (home.root / "CHECKLIST.md").read_text()                          # the English template
-    assert (await ch.tick())["status"] == "skipped" and seen == []                               # empty: no model call
+    assert "send times" in (home.root / "CHECKLIST.md").read_text()                          # the English template
+    assert (await ch.run())["status"] == "skipped" and seen == []                               # empty: no model call
     ch.update(text="# CHECKLIST.md\n\n- 새 메일 중 급한 것\n")
     awake["on"] = False
-    assert (await ch.tick())["reason"] == "It is quiet time" and seen == []
+    assert (await ch.run())["reason"] == "It is quiet time" and seen == []
     awake["on"] = True
     room["ok"] = False
-    assert (await ch.tick())["reason"] == "Today's limit is reached" and seen == []
+    assert (await ch.run())["reason"] == "Today's limit is reached" and seen == []
     room["ok"] = True
-    assert (await ch.tick())["status"] == "quiet" and "새 메일 중 급한 것" in seen[0] and said == []
-    assert (await ch.tick())["status"] == "done" and ch.last_run()["task_id"] == 2 and said == [2]
+    assert (await ch.run())["status"] == "quiet" and "새 메일 중 급한 것" in seen[0] and said == []
+    assert (await ch.run())["status"] == "done" and ch.last_run()["task_id"] == 2 and said == [2]
     switch["on"] = False                                                                          # the proactive switch
-    assert (await ch.tick())["reason"] == "It is turned off" and len(seen) == 2
+    assert (await ch.run())["reason"] == "It is turned off" and len(seen) == 2
     assert ch.public()["enabled"] is False and ch.public()["every_minutes"] == 30
     ch.update(enabled=True, every_minutes=2)                                                      # retired fields: ignored
     assert ch.public()["enabled"] is False
@@ -469,20 +469,6 @@ async def test_checklist_job_runs_only_when_on_non_empty_and_awake_and_records_q
     assert ch.items() == ["우산 챙기기", "택배 확인"] and ch.text().startswith("# CHECKLIST.md\n") and ch.public()["list"] == ch.items()
     ch.update(items=[])
     assert ch.items() == [] and ch.text().startswith("# CHECKLIST.md")
-    # the scheduler runs it every period (the first period starts with the server)
-    sched = Scheduler(Schedules(store, clock), None, clock=clock)
-    runs = []
-
-    async def tick():
-        runs.append(clock.t)
-    sched.add_every("checklist", ch.period, tick)
-    sched.tick()
-    clock.t += 29 * 60
-    sched.tick()
-    clock.t += 2 * 60
-    sched.tick()
-    await asyncio.sleep(0.01)
-    assert len(runs) == 1
 
 
 async def test_checklist_over_http_is_quiet_unless_something_needs_attention(tmp_path):
@@ -652,7 +638,7 @@ async def test_a_watcher_starts_off_needs_a_dry_run_and_fires_on_a_change_into_i
     await w.check(wt["id"])
     assert len(fired) == 2
     kinds = [e["kind"] for e in w.events(wt["id"])]
-    assert kinds[:2] == ["fired", "fired"] and "dry_run" in kinds and "enabled" in kinds
+    assert kinds.count("fired") == 2 and "checked" in kinds and "dry_run" in kinds and "enabled" in kinds
     w.update(wt["id"], threshold=500_000)                            # what it checks changed: off until a new dry run
     assert w.get(wt["id"])["enabled"] is False and w.get(wt["id"])["can_enable"] is False
     w.update(wt["id"], name="자전거")                                  # a new name is not a new condition
@@ -708,24 +694,106 @@ async def test_a_script_watcher_runs_in_the_work_room_with_the_page_as_files():
     assert "work room" in (await nowr.dry_run(s2["id"]))["error"]
 
 
-async def test_watch_tools_make_the_agent_dry_run_and_the_user_approve_turning_on():
+async def test_watch_tools_check_a_watcher_once_and_keep_the_list_clean():
     store, clock, pages, w, fired, offs = watch_setup()
     tools = {t.name: t for t in watch_tools(w)}
     out = await tools["watch_add"].handler({"name": "품절 해제", "url": "https://shop.example.com/x", "mode": "text_disappears",
                                             "match": "품절"})
-    assert "off" in out and "watch_dry_run" in out
+    assert "It is off" in out and "watch_enable" in out
     wid = w.list()[0]["id"]
-    assert tools["watch_enable"].requires_approval and "watch_dry_run" in tools["watch_enable"].validate({"id": wid})
+    assert tools["watch_enable"].requires_approval
     dry = await tools["watch_dry_run"].handler({"id": wid})
-    assert "TRUE right now" in dry and "Show this to the user" in dry
+    assert "TRUE right now" in dry and "current value" in dry
     assert tools["watch_enable"].validate({"id": wid}) is None
     assert "result of the check just now" in await tools["watch_enable"].describe({"id": wid})
-    assert tools["watch_enable"].auto_approve({"id": wid, "enabled": False}) and not tools["watch_enable"].auto_approve({"id": wid})
+    assert tools["watch_enable"].auto_approve({"id": wid, "enabled": False}) and tools["watch_enable"].auto_approve({"id": wid})
     assert "Turned on" in await tools["watch_enable"].handler({"id": wid})
     assert "품절 해제" in await tools["watch_list"].handler({})
     assert await tools["watch_remove"].handler({"id": wid}) == "Removed." and w.list() == []
     for t in tools.values():
         assert not re.search(r"\b[\w-]+\.(com|net|org|kr|io)\b", t.description)
+
+
+async def test_watch_add_with_start_turns_a_get_watcher_on_in_one_call_and_reports_the_value():
+    store, clock, pages, w, fired, offs = watch_setup()
+    tools = {t.name: t for t in watch_tools(w)}
+    out = await tools["watch_add"].handler({"name": "자전거", "url": "https://shop.example.com/bike", "mode": "number_below",
+                                            "selector": ".price", "threshold": 1000000, "every_minutes": 30, "start": True})
+    wt = w.list()[0]
+    assert wt["enabled"] and wt["state"] == "watching" and wt["every_minutes"] == 30
+    assert "is ON" in out and "1,250,000" in out and "watch_dry_run" not in out and "watch_enable" not in out
+    assert not tools["watch_add"].requires_approval
+    assert tools["watch_enable"].auto_approve({"id": wt["id"]}) is True
+
+
+async def test_a_get_watcher_turns_on_without_a_card_and_a_post_watcher_asks_for_one():
+    store, clock, pages, w, fired, offs = watch_setup()
+    tools = {t.name: t for t in watch_tools(w)}
+    g = w.create(name="재입고", url="https://shop.example.com/x", mode="text_appears", match="재입고")
+    p = w.create(name="검색", url="https://shop.example.com/search", mode="text_appears", match="재입고", method="POST", body='{"q": "bike"}')
+    assert tools["watch_enable"].auto_approve({"id": g["id"]}) is True
+    assert tools["watch_enable"].auto_approve({"id": p["id"]}) is False
+    assert tools["watch_enable"].auto_approve({"id": p["id"], "enabled": False}) is True
+    assert tools["watch_enable"].validate({"id": g["id"]}) is None and tools["watch_enable"].validate({"id": p["id"]})
+
+
+async def test_watch_enable_runs_the_check_itself_for_a_get_watcher_and_stays_off_when_the_check_fails():
+    store, clock, pages, w, fired, offs = watch_setup()
+    tools = {t.name: t for t in watch_tools(w)}
+    g = w.create(name="자전거", url="https://shop.example.com/bike", mode="number_below", selector=".price", threshold=1000000)
+    assert tools["watch_enable"].validate({"id": g["id"]}) is None      # no dry run yet: the enable itself runs one
+    assert "Turned on" in await tools["watch_enable"].handler({"id": g["id"]})
+    assert w.get(g["id"])["enabled"] is True
+    bad = w.create(name="무효", url="https://shop.example.com/y", mode="number_above", selector=".none", threshold=1)
+    out = await tools["watch_enable"].handler({"id": bad["id"]})
+    assert out.startswith("Not turned on") and w.get(bad["id"])["enabled"] is False
+
+
+async def test_an_agent_watch_add_with_the_same_settings_reuses_its_watcher():
+    store, clock, pages, w, fired, offs = watch_setup()
+    tools = {t.name: t for t in watch_tools(w)}
+    args = {"name": "자전거", "url": "https://shop.example.com/bike", "mode": "number_below", "selector": ".price", "threshold": 1000000,
+            "every_minutes": 30}
+    await tools["watch_add"].handler(dict(args))
+    again = await tools["watch_add"].handler({**args, "name": "자전거 가격"})
+    assert len(w.list()) == 1 and "already" in again and w.list()[0]["name"] == "자전거 가격"
+    await tools["watch_add"].handler({**args, "threshold": 500000})            # another line: another watcher
+    assert len(w.list()) == 2
+    w.create(name="사용자 것", url="https://shop.example.com/bike", mode="number_below", selector=".price", threshold=900000)
+    await tools["watch_add"].handler({**args, "threshold": 900000})            # the owner's own watcher is not reused by the agent
+    assert len(w.list()) == 4
+
+
+async def test_the_watch_texts_never_ask_for_a_second_confirmation():
+    store, clock, pages, w, fired, offs = watch_setup()
+    tools = {t.name: t for t in watch_tools(w)}
+    texts = " ".join(tools[n].description for n in ("watch_add", "watch_dry_run", "watch_enable", "watch_update")).lower()
+    for phrase in ("before turning it on", "show the user", "they approve", "show the result", "shows that to the user"):
+        assert phrase not in texts, phrase
+    assert "start" in tools["watch_add"].parameters["properties"]
+    made = await tools["watch_add"].handler({"name": "품절", "url": "https://shop.example.com/x", "mode": "text_disappears", "match": "품절"})
+    assert "watch_enable" in made and "Show" not in made
+    dry = await tools["watch_dry_run"].handler({"id": w.list()[0]["id"]})
+    assert "Show this" not in dry and "before turning it on" not in dry
+
+
+async def test_a_watch_request_in_chat_is_set_up_and_turned_on_in_one_step(tmp_path):
+    def script(req, n):
+        if req.messages[-1].get("role") == "tool":
+            return say("30분마다 확인하는 감시를 켰어요. 지금은 1,250,000원이라 아직 기준보다 위예요.")
+        return call("watch_add", {"name": "자전거", "url": "https://shop.example.com/bike", "mode": "number_below", "selector": ".price",
+                                  "threshold": 1000000, "every_minutes": 30, "start": True})
+    fn = model(script)
+    async with Running(create_app(settings(tmp_path), tools=[], stream_fn=fn, with_schedule_tools=True)) as srv, \
+            httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        srv.server.config.app.state.watchers.fetch = FakePages()
+        turn = (await c.post("/api/turns", json={"text": "1000000원 아래로 내려가면 30분마다 확인해서 알려줘. https://shop.example.com/bike"})).json()
+        events = await follow(c, turn["id"])
+        assert not any(e["type"] == "approval_request" for e in events)
+        assert len(fn.calls) == 2
+        items = (await c.get("/api/watchers")).json()["items"]
+        assert len(items) == 1 and items[0]["enabled"] and items[0]["every_minutes"] == 30
+        assert (await c.get("/api/messages")).json()[-1]["content"].startswith("30분마다 확인하는 감시를 켰어요")
 
 
 async def test_a_firing_watcher_notifies_and_wakes_the_agent_with_a_hidden_handoff(tmp_path):
@@ -772,6 +840,134 @@ async def _assistant(c):
     return msgs if msgs and msgs[-1]["role"] == "assistant" else None
 
 
+async def test_scheduled_check_stores_last_detail_and_api_returns_last_check_newer_than_dry_run():
+    store, clock, pages, w, fired, offs = watch_setup()
+    wt = w.create(name="자전거 가격", url="https://shop.example.com/bike", mode="number_below", selector=".price", threshold=1_000_000,
+                  every_minutes=30)
+    wid = wt["id"]
+
+    # Before any dry run or check, last_check is None
+    cur = w.get(wid)
+    assert cur["last_check"] is None
+    assert cur["dry_run"] is None
+
+    # Run dry run
+    dry = await w.dry_run(wid)
+    assert dry["ok"]
+    cur = w.get(wid)
+    assert cur["dry_run"]["at"] == clock.t
+    assert cur["last_check"] is None  # Still None because no scheduled check ran yet
+
+    # Enable watcher and advance clock
+    w.enable(wid)
+    clock.t += 1800
+
+    # Scheduled check runs
+    res = await w.check(wid)
+    assert res["ok"]
+    assert res["detail"]
+
+    # DB column last_detail was saved
+    row = store._all("SELECT last_detail, last_checked_at FROM watchers WHERE id = ?", (wid,))[0]
+    assert row["last_detail"] == res["detail"]
+    assert row["last_checked_at"] == clock.t
+
+    # API returns last_check newer than dry_run
+    cur = w.get(wid)
+    lc = cur["last_check"]
+    assert lc is not None
+    assert lc["at"] == clock.t
+    assert lc["at"] > dry["at"]
+    assert lc["detail"] == res["detail"]
+    assert lc["value"] == "1,250,000"
+    assert lc["hit"] is False
+    assert lc["error"] is None
+
+    # And confirming / fired path also stores last_detail
+    pages.html = PAGE.replace("1,250,000", "980,000")
+    clock.t += 1800
+    confirming_res = await w.check(wid)
+    assert confirming_res["confirming"]
+    row = store._all("SELECT last_detail FROM watchers WHERE id = ?", (wid,))[0]
+    assert row["last_detail"] == confirming_res["detail"]
+    cur = w.get(wid)
+    assert cur["last_check"]["detail"] == confirming_res["detail"]
+
+    # When a check fails with error, last_error is recorded in last_check
+    pages.fail = "public host"
+    clock.t += 1800
+    err_res = await w.check(wid)
+    assert not err_res["ok"]
+    cur = w.get(wid)
+    assert cur["last_error"]
+    assert cur["last_check"]["error"] == cur["last_error"]
+    assert cur["last_check"]["at"] == clock.t
+
+
+async def test_routine_checks_collapse_in_watch_events():
+    store, clock, pages, w, fired, offs = watch_setup()
+    wt = w.create(name="자전거 가격", url="https://shop.example.com/bike", mode="number_below", selector=".price", threshold=1_000_000,
+                  every_minutes=30)
+    wid = wt["id"]
+    await w.dry_run(wid)
+    w.enable(wid)
+
+    # 1. Three checks with the same value -> one row, count 3, at = last
+    clock.t = 1_800_000_100.0
+    await w.check(wid)
+    evs = w.events(wid)
+    checked_evs = [e for e in evs if e["kind"] == "checked"]
+    assert len(checked_evs) == 1
+    assert checked_evs[0]["count"] == 1
+    assert checked_evs[0]["value"] == "1,250,000"
+    assert checked_evs[0]["at"] == 1_800_000_100.0
+
+    clock.t = 1_800_000_200.0
+    await w.check(wid)
+    evs = w.events(wid)
+    checked_evs = [e for e in evs if e["kind"] == "checked"]
+    assert len(checked_evs) == 1
+    assert checked_evs[0]["count"] == 2
+    assert checked_evs[0]["at"] == 1_800_000_200.0
+
+    clock.t = 1_800_000_300.0
+    await w.check(wid)
+    evs = w.events(wid)
+    checked_evs = [e for e in evs if e["kind"] == "checked"]
+    assert len(checked_evs) == 1
+    assert checked_evs[0]["count"] == 3
+    assert checked_evs[0]["at"] == 1_800_000_300.0
+
+    # 2. A changed value (still above threshold) -> a new row
+    pages.html = PAGE.replace("1,250,000", "1,150,000")
+    clock.t = 1_800_000_400.0
+    await w.check(wid)
+    evs = w.events(wid)
+    checked_evs = [e for e in evs if e["kind"] == "checked"]
+    assert len(checked_evs) == 2
+    assert checked_evs[0]["value"] == "1,150,000"
+    assert checked_evs[0]["count"] == 1
+    assert checked_evs[0]["at"] == 1_800_000_400.0
+    assert checked_evs[1]["value"] == "1,250,000"
+    assert checked_evs[1]["count"] == 3
+
+    # 3. A fired check still adds its own row (kind == "fired", count == 1)
+    pages.html = PAGE.replace("1,250,000", "950,000")
+    clock.t = 1_800_000_500.0
+    # First look -> confirming
+    await w.check(wid)
+    # Second look 30s later -> fires
+    clock.t += 30.0
+    await w.check(wid)
+    evs = w.events(wid)
+    assert evs[0]["kind"] == "fired"
+    assert evs[0]["count"] == 1
+    assert evs[0]["value"] == "950,000"
+    # The checked rows are preserved
+    assert evs[1]["kind"] == "checked" and evs[1]["count"] == 1
+    assert evs[2]["kind"] == "checked" and evs[2]["count"] == 3
+
+
 # ---------------------------------------------------------------------------------------------------------- our own words
 def test_the_prompt_lines_are_few_and_generic():
     prompt = (ROOT / "server" / "content" / "prompts" / "system.md").read_text(encoding="utf-8")
@@ -795,3 +991,4 @@ def test_schedule_create_says_to_ask_when_before_picking_a_time():
     assert "never pick it yourself" in desc and "quick_replies" in desc and "1-2 sensible suggestions" in desc
     kind = re.search(r"kind (\w+)", desc).group(1)
     assert kind == "weekdays_time" and kind in QUESTION_KINDS
+    assert "until its outcome is known" in desc and "an unchanged result tells nobody" in desc and "needs the user's yes" in desc

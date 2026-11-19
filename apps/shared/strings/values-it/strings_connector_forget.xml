@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- it text for strings_connector_forget.xml (generated from values/strings_connector_forget.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Asking whether to forget a disconnected connector's data (connectors/ForgetRules.kt). "%1$s" = the connector name. -->
     <string name="connector_forget_title">Eliminare anche i dati arrivati da %1$s?</string>
     <string name="connector_forget_files">File: %1$d</string>
     <string name="connector_forget_notes">Note: %1$d</string>

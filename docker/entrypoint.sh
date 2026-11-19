@@ -78,29 +78,49 @@ case "${ROLE:-}" in
       [ "$base" != "$first" ] && list="$list,$base"
       case ",$list," in *,en,*) ;; *) list="$list,en-US,en" ;; esac
       LANG_FLAGS="--lang=$first --accept-lang=$list"
+      # Linux Chrome ignores --lang for its own UI locale (Intl), so the environment says it too: ko-KR -> ko_KR:ko, en-US -> en_US:en.
+      if [ "$base" != "$first" ]; then export LANGUAGE="$(printf '%s' "$first" | tr - _):$base"; else export LANGUAGE="$first"; fi
     fi
     # Downloads (the server reads them through a read-only mount) are kept for a day.
     mkdir -p /downloads 2>/dev/null || true
     ( while true; do find /downloads -mindepth 1 -maxdepth 1 -type f -mmin +1440 -delete 2>/dev/null; sleep 1800; done ) &
-    # Identity: the browser presents as Google Chrome. Google Chrome (BROWSER=chrome, amd64/arm64) simply is Chrome. A Chromium build
-    # gets the matching Chrome release's User-Agent (flag, for requests made outside DevTools) and, from browser_identity.py, the same
-    # User-Agent string plus Chrome's User-Agent Client Hints on every tab, popup, frame and worker.
+    # Identity (docs/browser.md "Identity"): the browser states the machine's own OS, Linux, unless browser_identity.STATED_OS is
+    # "chromeos" (the one switch; read from the module so there is one source of truth). Google Chrome on Linux already states exactly
+    # that, so BROWSER=chrome (/etc/kelo-browser) needs no identity loop and no flag while the stated OS is Linux (as before f5277b45).
+    # A Chromium build always needs them (Debian's Chromium names itself "Chromium"), and so does Google Chrome when the switch is on.
+    # The loop and the flag give the matching Chrome release's User-Agent (flag, for requests made outside DevTools) and the same
+    # User-Agent string plus its User-Agent Client Hints on every tab, popup, frame and worker.
     UA_FLAG=""
-    if [ "$(cat /etc/kelo-browser 2>/dev/null || echo chromium)" != "chrome" ]; then
+    STATED_OS=$(python -m assistant.browser_identity --stated-os 2>/dev/null || echo linux)
+    if [ "$(cat /etc/kelo-browser 2>/dev/null || echo chromium)" != "chrome" ] || [ "$STATED_OS" != "linux" ]; then
       full=$(browser --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+){3}' | head -n1)
       if [ -n "$full" ]; then
         UA_FLAG="--user-agent=$(python -m assistant.browser_identity --user-agent "$full")"
         ( while true; do python -m assistant.browser_identity; sleep 2; done ) &
       fi
     fi
+    # The owner's browser keeps its sign-ins across a restart (card p-browser-signin-shared): a session cookie (a sign-in without "stay
+    # signed in") survives only when Chrome restores the last session, so that preference is set; the tabs it had open are not brought
+    # back (the cookies are what stays). The work browser (BROWSER_EPHEMERAL=1) starts empty and is not touched.
+    if [ "${BROWSER_EPHEMERAL:-0}" != 1 ]; then
+      mkdir -p /data/profile/Default
+      python -c 'import json, os; p = "/data/profile/Default/Preferences"; d = json.load(open(p)) if os.path.exists(p) else {}; d = d if isinstance(d, dict) else {}; s = d.get("session") if isinstance(d.get("session"), dict) else {}; s["restore_on_startup"] = 1; d["session"] = s; json.dump(d, open(p, "w"))' 2>/dev/null || true
+      rm -rf /data/profile/Default/Sessions
+    fi
     # --no-sandbox: Chrome's sandbox needs user namespaces the container does not grant. The
     # container (unprivileged, no capabilities, no host mounts, no network route but the proxy) is the sandbox instead.
     # Managed policy (/etc/chromium/policies/managed/kelo.json): no sync, sign-in, password manager, autofill, metrics or component
-    # updates; notifications ask (nobody answers, so no site is ever granted); location denied; PDFs open in the browser. Headful on a
+    # updates; notifications and location ask (nobody answers, so no site is ever granted); PDFs open in the browser. The mouse is
+    # declared as a fine pointer with hover (--blink-settings below): the Xvnc pointer is not seen as a mouse otherwise. Headful on a
     # 1440x900 screen with a Chrome identity (above). WebGL is on the way a desktop Chrome without a GPU has it: SwiftShader (software
-    # GL inside the browser, no GPU needed). That enables a feature every normal Chrome has; no value is faked. navigator.webdriver is
+    # GL inside the browser, no GPU needed). That enables a feature every normal Chrome has. The stated OS is the machine's own, Linux
+    # (the identity above); the CPU, the language and the time zone are the machine's own, and the GPU name is SwiftShader's (never
+    # faked as a real one; a host render node replaces it). navigator.webdriver is
     # already false when the browser is driven over DevTools like this; --disable-blink-features=AutomationControlled keeps the
     # rest of Blink's automation mode off as well, as on a desktop Chrome a person uses.
+    # A real GPU: when the host passed its render node in (tools/gpu_override.py writes compose.override.yml on Linux hosts that
+    # have one), Chrome uses that driver and no software GL is named; without a node the SwiftShader line stays (no fake name).
+    if ls /dev/dri/renderD* >/dev/null 2>&1; then SWIFT_FLAGS=""; else SWIFT_FLAGS="--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist"; fi
     # shellcheck disable=SC2086
     exec browser \
       --no-sandbox --no-first-run --no-default-browser-check \
@@ -108,8 +128,9 @@ case "${ROLE:-}" in
       --user-data-dir=/data/profile \
       --window-size=1440,900 --start-maximized --disable-dev-shm-usage \
       --kiosk --disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
-      --use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist \
+      $SWIFT_FLAGS \
       --disable-blink-features=AutomationControlled \
+      --blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2 \
       $CACHE_FLAG $PROXY_FLAG $LANG_FLAGS \
       ${UA_FLAG:+"$UA_FLAG"} \
       about:blank

@@ -206,6 +206,9 @@ async def test_the_plain_text_reading_stays_when_the_tree_cannot_be_read(ctx, mo
 
 
 # ---------------------------------------------------------------------------------------------------------------- browser_look
+# the look host is found by its style only (no attribute in the page, addendum 9): position fixed, the top z-index
+LOOK_HOSTS_JS = "() => [...document.body.querySelectorAll('div')].filter((e) => e.style.zIndex === '2147483647').length"
+MARKS_JS = "() => document.querySelectorAll('[data-kelo-look]').length"
 async def test_look_labels_the_controls_and_always_takes_the_labels_out(ctx, monkeypatch):
     env = await env_on(ctx)
     await env.run([("browser_open", {"url": SHOP + "/"})])
@@ -213,21 +216,21 @@ async def test_look_labels_the_controls_and_always_takes_the_labels_out(ctx, mon
     seen = []
     real = env.session.shoot
 
-    async def shoot(page, key=None, **kw):
-        seen.append(await page.evaluate("() => document.querySelectorAll('[data-kelo-look]').length"))
-        return await real(page, key, **kw)
+    async def shoot(page, **kw):
+        seen.append(await page.evaluate(LOOK_HOSTS_JS))
+        return await real(page, **kw)
     monkeypatch.setattr(env.session, "shoot", shoot)
     jpeg, w, h, n = await env.session.look()
     assert jpeg and jpeg[:2] == b"\xff\xd8" and w == 1000 and h > 0 and n >= 4   # search, Go, Next page, the frame's button
     assert seen == [1]                                                             # one host while the picture was taken
-    assert await env.page.evaluate("() => document.querySelectorAll('[data-kelo-look]').length") == 0
+    assert await env.page.evaluate(LOOK_HOSTS_JS) == 0 and await env.page.evaluate(MARKS_JS) == 0
     assert env.session._look_url["owner"] == SHOP + "/" and env.session._shot_scale["owner"] == pytest.approx(1.0)
 
     async def broken(page, key=None, **kw):
         raise RuntimeError("no picture")
     monkeypatch.setattr(env.session, "shoot", broken)
     assert (await env.session.look())[0] is None
-    assert await env.page.evaluate("() => document.querySelectorAll('[data-kelo-look]').length") == 0
+    assert await env.page.evaluate(LOOK_HOSTS_JS) == 0
 
 
 async def test_look_boxes_of_a_frame_are_moved_to_where_the_frame_sits(ctx, monkeypatch):
@@ -235,13 +238,13 @@ async def test_look_boxes_of_a_frame_are_moved_to_where_the_frame_sits(ctx, monk
     await env.run([("browser_open", {"url": SHOP + "/"})])
     browser_owner.set("owner")
     drawn = []
-    real = env.page.evaluate
+    real = env.page.evaluate_handle
 
-    async def evaluate(js, arg=None):
-        if "data-kelo-look" in js and isinstance(arg, list):
+    async def evaluate_handle(js, arg=None):
+        if "attachShadow" in js and isinstance(arg, list):
             drawn.extend(arg)
-        return await (real(js, arg) if arg is not None else real(js))
-    monkeypatch.setattr(env.page, "evaluate", evaluate)
+        return await real(js, arg)
+    monkeypatch.setattr(env.page, "evaluate_handle", evaluate_handle)
     await env.session.look()
     inner = next(b for b in drawn if b["ref"].startswith("f"))
     frame_el = await env.page.locator("iframe").bounding_box()

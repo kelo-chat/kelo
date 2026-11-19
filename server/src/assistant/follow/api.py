@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +16,7 @@ from .store import FollowStore
 
 
 def follow_routes(app: Any, runner: FollowRunner, auth: Callable[..., Any]) -> None:
-    """The FOLLOW-THROUGH API: GET /api/follow, POST /api/follow/{key}/stop, POST /api/follow/{key}/replan."""
+    """The FOLLOW-THROUGH API: GET /api/follow, POST /api/follow/{key}/stop, POST /api/follow/{key}/replan, DELETE /api/follow/{key}."""
 
     @app.get("/api/follow", dependencies=[Depends(auth)])
     async def get_follow_items() -> dict[str, Any]:
@@ -47,6 +48,7 @@ def follow_routes(app: Any, runner: FollowRunner, auth: Callable[..., Any]) -> N
                 "kind": it["kind"],
                 "title": it["title"],
                 "starts_at": it["starts_at"],
+                "all_day": bool((it.get("refs") or {}).get("all_day")),   # no time was given: the apps show the day only
                 "checks": checks_out,
                 "prep": preps_out,
                 "plan": it.get("plan", {}),
@@ -61,6 +63,12 @@ def follow_routes(app: Any, runner: FollowRunner, auth: Callable[..., Any]) -> N
             raise HTTPException(404, f"no such follow item: {key}")
         runner.store.stop_item(key)
         return {"ok": True, "key": key, "state": "stopped"}
+
+    @app.delete("/api/follow/{key}", dependencies=[Depends(auth)])
+    async def remove_follow_item(key: str) -> dict[str, Any]:
+        if not runner.store.remove_item(key):
+            raise HTTPException(404, f"no such follow item: {key}")
+        return {"ok": True, "key": key, "state": "removed"}
 
     @app.post("/api/follow/{key}/replan", dependencies=[Depends(auth)])
     async def replan_follow_item(key: str) -> dict[str, Any]:
@@ -103,20 +111,58 @@ def follow_routes(app: Any, runner: FollowRunner, auth: Callable[..., Any]) -> N
         return {"ok": True, "key": key, "state": state}
 
 
+STATE_WORDS = {"later": "waiting until its window", "planned": "planned", "watching": "being watched", "done": "done",
+               "stopped": "stopped"}
+LIST_MAX = 40   # items the list tool prints (the soonest ones)
+SOURCE_WORDS = {"calendar": "calendar", "mail": "mail", "order": "order", "goal": "goal", "chat": "chat"}
+
+
+def item_when(it: dict[str, Any], tz: Any) -> str:
+    """The item's day (and time, when it has one) in the owner's zone."""
+    local = datetime.fromtimestamp(float(it.get("starts_at") or 0), tz)
+    return local.strftime("%Y-%m-%d") if (it.get("refs") or {}).get("all_day") else local.strftime("%Y-%m-%d %H:%M")
+
+
+def item_does(it: dict[str, Any], checks: list[dict[str, Any]]) -> str:
+    """What Kelo does for the item, in a few words: its reminders, what it watches, what it prepares."""
+    plan = it.get("plan") or {}
+    parts = []
+    lead = (plan.get("tell") or {}).get("lead") or []
+    if lead:
+        parts.append("reminds before it (" + ", ".join(str(x) for x in lead) + ")")
+    for ch in checks:
+        parts.append(f"watches {ch['kind']} ({ch['state']})")
+    preps = it.get("prep") or plan.get("prep") or []
+    if preps:
+        parts.append(f"prepares {len(preps)} thing(s)")
+    if (plan.get("tell") or {}).get("on_change") and checks:
+        parts.append("tells the owner about changes")
+    return "; ".join(parts) or "keeps it on the list only"
+
+
 def follow_tools(runner: FollowRunner) -> list[Tool]:
-    """Agent on-demand tools: follow_list, follow_stop."""
+    """Agent on-demand tools: follow_list, follow_stop, follow_remove."""
 
     async def follow_list(_args: dict[str, Any]) -> str:
         items = runner.store.list_items()
         if not items:
-            return "No items currently being followed."
-        lines = []
-        for it in items:
-            state = it.get("state", "planned")
-            lines.append(f"- [{state}] {it['title']} (starts: {it['starts_at']}, key: {it['key']})")
+            return "Kelo keeps nothing for the owner right now."
+        tz = runner.tz
+        lines = [f"Kelo keeps {len(items)} item(s) for the owner (the owner's local time), soonest first:"]
+        for it in items[:LIST_MAX]:
             checks = runner.store.list_checks(item_key=it["key"])
-            for ch in checks:
-                lines.append(f"    * watch {ch['kind']}: {', '.join(ch['fields'])} ({ch['state']})")
+            state = STATE_WORDS.get(it.get("state", "planned"), it.get("state", "planned"))
+            source = SOURCE_WORDS.get(str(it.get("source") or ""), str(it.get("source") or "unknown"))
+            where = f", {it['place']}" if it.get("place") else ""
+            lines.append(f"- {item_when(it, tz)} {it['title']} (from {source}{where}; {state}; key {it['key']})")
+            refs = it.get("refs") or {}
+            if refs.get("what"):
+                lines.append(f"    what: {refs['what']}")
+            if refs.get("quote"):
+                lines.append(f"    the owner's words: {refs['quote']}")
+            lines.append(f"    Kelo: {item_does(it, checks)}")
+        if len(items) > LIST_MAX:
+            lines.append(f"(+{len(items) - LIST_MAX} more not shown)")
         return "\n".join(lines)
 
     async def follow_stop(args: dict[str, Any]) -> str:
@@ -129,10 +175,22 @@ def follow_tools(runner: FollowRunner) -> list[Tool]:
         runner.store.stop_item(key)
         return f"Stopped watching {it['title']} ({key})."
 
+    async def follow_remove(args: dict[str, Any]) -> str:
+        key = str(args.get("key") or "").strip()
+        if not key:
+            return "Error: key is required to remove a follow item."
+        it = runner.store.get_item(key)
+        if it is None or not runner.store.remove_item(key):
+            return f"No follow item found with key {key}."
+        return f"Removed {it['title']} ({key}) from the list; Kelo will not add it again."
+
     return [
         Tool(
             "follow_list",
-            "List upcoming events, flights, and items Kelo is following or watching.",
+            "List what Kelo keeps for the owner (the Work screen's follow list): upcoming events, flights, bookings, parcels and dates "
+            "taken from the chat. Each line gives the local day (and time when there is one), the title, where it came from, its state, "
+            "what Kelo does for it and its key. Call it first when the owner asks about one of these items or about a date that may be on "
+            "the list.",
             {"type": "object", "properties": {}},
             follow_list,
         ),
@@ -147,5 +205,18 @@ def follow_tools(runner: FollowRunner) -> list[Tool]:
                 "required": ["key"],
             },
             follow_stop,
+        ),
+        Tool(
+            "follow_remove",
+            "Take an item off the list for good (the owner's own wish to drop it, not just to pause it): Kelo stops it and does not add "
+            "it again. Use follow_stop to pause instead.",
+            {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "The item key to remove from the list (e.g. 'cal:123')"},
+                },
+                "required": ["key"],
+            },
+            follow_remove,
         ),
     ]

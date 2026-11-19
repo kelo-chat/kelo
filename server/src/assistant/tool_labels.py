@@ -23,10 +23,10 @@ LABELS: dict[str, tuple[str, bool]] = {
     "nest_draft_from_skill": (N_("Making a draft from a skill"), False),
     "nest_share_github": (N_("Sharing a package to GitHub"), False),
     "web_fetch": (N_("Reading a web page"), False),
+    "start_voice_call": (N_("Calling you in the app"), False),
     "browser_open": (N_("Opening a site"), False),
     "chat_view": (N_("Updating the browser in the chat"), False),
     "browser_read": (N_("Checking the page"), False),
-    "browser_view": (N_("Looking at the site"), False),
     "browser_click": (N_("Clicking on the page"), False),
     "browser_click_at": (N_("Clicking on the page"), False),
     "browser_drag": (N_("Dragging on the page"), False),
@@ -63,8 +63,11 @@ LABELS: dict[str, tuple[str, bool]] = {
     "browser_upload": (N_("Uploading a file"), False),
     "browser_save_pdf": (N_("Saving the page as PDF"), False),
     "browser_private": (N_("Switching to a private tab"), False),
+    "browser_tabs": (N_("Switching tabs"), False),
     "browser_site_state": (N_("Moving the sign-in"), False),
     "browser_forget_site": (N_("Clearing site data"), False),
+    "browser_profiles": (N_("Looking at browser profiles"), False),
+    "browser_profile_delete": (N_("Deleting a browser profile"), False),
     "find_login_code": (N_("Finding a sign-in code in mail"), False),
     "browser_human_check": (N_("Trying the human check"), False),
     "browser_look": (N_("Looking at the page"), False),
@@ -98,11 +101,8 @@ LABELS: dict[str, tuple[str, bool]] = {
     "briefing": (N_("Checking the morning briefing"), False),
     "follow_list": (N_("Checking what is coming up"), False),
     "follow_stop": (N_("Stopping what is watched"), False),
+    "follow_remove": (N_("Removing what is watched from the list"), False),
     "big_event_notice": (N_("Setting when to mention big events"), False),
-    "recheck_later": (N_("Noting to look at this again"), True),
-    "recheck_watch": (N_("Starting to keep an eye on this"), False),
-    "recheck_stop": (N_("Stopping a recheck"), False),
-    "recheck_result": (N_("Noting what the recheck found"), True),
     "offer_post": (N_("Offering something I can do next"), True),
     "calendar_events": (N_("Checking the calendars"), False),
     "phone_calendar_add": (N_("Adding to the phone calendar"), False),
@@ -152,6 +152,7 @@ LABELS: dict[str, tuple[str, bool]] = {
     "ha_watch_add": (N_("Creating a Home Assistant watch"), False),
     "ha_watch_list": (N_("Checking Home Assistant watches"), True),
     "ha_watch_remove": (N_("Deleting a Home Assistant watch"), False),
+    "checklist_link": (N_("Things to keep an eye on"), False),
     "journal_search": (N_("Searching the journal"), False),
     "delegate": (N_("Handing off a task"), False),
     "report": (N_("Reporting on a task"), False),
@@ -225,6 +226,7 @@ ASKS: dict[str, str] = {
     "browser_click_at": N_("Click this point on the page?"),
     "browser_drag": N_("Drag on the page?"),
     "browser_forget_site": N_("Clear this site's cookies and data?"),
+    "browser_profile_delete": N_("Delete this browser profile?"),
     "browser_login": N_("Sign in?"),
     "browser_type": N_("Type into this field?"),
     "browser_upload": N_("Upload these files?"),
@@ -308,10 +310,17 @@ def _ask_fields(name: str, args: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+# the question of a mailbox change that stays in the mailbox (only trash asks by default; see ASKS["email_update"])
+MAIL_ASKS = {"read": N_("Mark these messages as read?"), "unread": N_("Mark these messages as unread?"), "flag": N_("Flag these messages?"),
+             "unflag": N_("Unflag these messages?"), "archive": N_("Archive these messages?"), "move": N_("Move these messages?")}
+
+
 def ask(name: str, args: dict[str, Any] | None = None) -> str:
     """The approval card's question for this tool in the user's language, or "" (see ASKS)."""
     if name not in ASKS:
         return ""
+    if name == "email_update" and str((args or {}).get("action") or "").strip().lower() in MAIL_ASKS:
+        return t(MAIL_ASKS[str(args["action"]).strip().lower()])
     if name == "request_task_permission" and (whole := _ask_many(args or {})):
         return whole
     fields = _ask_fields(name, args or {})

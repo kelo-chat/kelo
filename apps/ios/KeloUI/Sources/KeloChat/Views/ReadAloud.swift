@@ -53,7 +53,7 @@ public final class ReadAloud: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     /// The voice for a BCP-47 language ("ko", "pt-BR"): the system's own match, else the first installed voice of that language.
-    static func voice(for tag: String) -> AVSpeechSynthesisVoice? {
+    nonisolated static func voice(for tag: String) -> AVSpeechSynthesisVoice? {
         if let v = AVSpeechSynthesisVoice(language: tag) { return v }
         let base = tag.split(separator: "-").first.map { $0.lowercased() } ?? tag.lowercased()
         return AVSpeechSynthesisVoice.speechVoices().first { $0.language.lowercased().hasPrefix(base) }

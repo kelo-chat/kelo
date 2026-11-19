@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hans text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Kelo 的文件</string>
     <string name="files_about">Kelo 为自己记下的内容：你是谁、它的记忆、它的笔记。你可以查看、修改和删除。上传的文件和成果各有自己的页面。</string>

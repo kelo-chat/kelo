@@ -494,6 +494,16 @@
     <string name="vault_saved_plain">सेव है</string>
     <string name="vault_not_entered">अभी डाला नहीं गया</string>
     <string name="vault_last_used">आख़िरी इस्तेमाल %1$s</string>
+    <string name="vault_browser_title">Kelo का ब्राउज़र</string>
+    <string name="vault_browser_signed_in">%1$s साइन इन · आखिरी बार इस्तेमाल %2$s</string>
+    <string name="vault_browser_sign_out">इस साइट से Kelo के ब्राउज़र को साइन आउट करें</string>
+    <string name="vault_browser_sign_out_confirm">Kelo का ब्राउज़र %1$s से साइन आउट हो जाएगा और उसकी कुकीज़ और साइट डेटा हटा दिए जाएंगे। सहेजा गया लॉगिन रहेगा।</string>
+    <string name="vault_browser_sites_title">बिना सहेजे लॉगिन के साइन इन</string>
+    <string name="vault_profiles_title">ब्राउज़र प्रोफ़ाइल</string>
+    <string name="vault_profile_sites">%1$s साइटों पर साइन इन</string>
+    <string name="vault_profile_empty">अभी कहीं साइन इन नहीं</string>
+    <string name="vault_profile_delete">इस प्रोफ़ाइल को हटाएँ</string>
+    <string name="vault_profile_delete_confirm">प्रोफ़ाइल %1$s और उसमें रखे सभी साइन-इन हटा दिए जाएंगे।</string>
     <string name="vault_place">Key %1$s में जाती है</string>
     <string name="vault_place_header_named">हेडर %1$s</string>
     <string name="vault_place_query_named">क्वेरी %1$s</string>
@@ -939,6 +949,9 @@
     <string name="live_still_yours">आप अभी भी खुद नियंत्रित कर रहे हैं। जब तक आप लौटाएँगे नहीं, एजेंट इंतज़ार करेगा।</string>
     <string name="live_screen_changed">स्क्रीन बदल गई है। फिर से टैप करें।</string>
     <string name="live_tab_closed">टैब बंद हो गया, इसलिए देखने को और कुछ नहीं है। आख़िरी स्क्रीन सेव हुई हो तो नीचे दिख रही है।</string>
+    <string name="live_tabs_label">टैब</string>
+    <string name="live_tab_untitled">नया टैब</string>
+    <string name="live_tab_close">टैब बंद करें</string>
     <string name="live_not_controller">अभी आप कंट्रोल नहीं कर सकते। फिर से \"कंट्रोल लें\" पर टैप करें।</string>
     <string name="live_input_failed">ब्राउज़र यह नहीं कर सका।</string>
     <string name="live_state_you">कंट्रोल आपके पास है</string>
@@ -965,6 +978,8 @@
     <string name="live_touch_missed">आपका स्पर्श पेज तक नहीं पहुँचा</string>
     <string name="live_type_hint">पेज पर टाइप करने के लिए टेक्स्ट</string>
     <string name="live_type_send">टाइप करें</string>
+    <string name="live_keyboard">कीबोर्ड</string>
+    <string name="live_keyboard_desc">पेज के लिए कीबोर्ड दिखाएँ या छिपाएँ</string>
     <string name="live_type_hide">टेक्स्ट छिपाएँ</string>
     <string name="live_type_show">टेक्स्ट दिखाएँ</string>
     <string name="live_key_enter">Enter</string>
@@ -1131,7 +1146,6 @@
     <string name="work_now_empty">अभी कुछ नहीं चल रहा।</string>
     <string name="work_asks">आपका जवाब चाहिए</string>
     <string name="work_asks_empty">कोई सवाल इंतज़ार में नहीं है।</string>
-
     <string name="offers_title">Kelo इसे अभी कर सकता है</string>
     <string name="offer_start">सौंपें</string>
     <string name="offer_needs">आवश्यकता: %1$s</string>
@@ -1257,6 +1271,7 @@
     <string name="work_watch_ev_fired">शर्त पूरी हुई</string>
     <string name="work_watch_ev_error">फ़ेल</string>
     <string name="work_watch_ev_check">जाँचा गया</string>
+    <string name="work_watch_ev_count">· %1$d बार जाँचा गया</string>
     <string name="work_watch_ev_on">चालू</string>
     <string name="work_watch_ev_off">बंद</string>
     <string name="work_watch_delete">निगरानी मिटाएँ</string>
@@ -1302,14 +1317,17 @@
     <string name="heads_section">नई खबरों की सूचना</string>
     <string name="heads_switch">Kelo पहले बताए</string>
     <string name="heads_about">%1$s Kelo नए ईमेल, आने वाले इवेंट और डेडलाइन देखता है, और कुछ जानने लायक हो तो पहले बता देता है। जिन बातों का जवाब आपको देना है (मंज़ूरी, सवाल), वे इस सेटिंग से अलग “%2$s” में फिर से पूछी जाती हैं।</string>
+    <string name="heads_about_send_times">संदेश के समय में Kelo हर घंटे नए ईमेल और आपकी जुड़ी सेवाएँ देखता है, और जो बात इंतज़ार नहीं कर सकती वह तुरंत बताता है। बाकी सब भेजने के समय तक रुकता है; तब Kelo बातचीत, कैलेंडर, लक्ष्य, कार्यक्रम और मेमोरी भी देखता है। एक बार भेजना “%1$s” में एक ही बार गिना जाता है, उसमें चाहे जितनी बातें हों। दिन की गिनती पूरी होने के बाद सिर्फ़ वही बताया जाता है जो इंतज़ार नहीं कर सकता। जिन बातों का जवाब आपको देना है (मंज़ूरी, सवाल), वे इस सेटिंग से अलग “%2$s” में फिर से पूछी जाती हैं।</string>
     <string name="heads_per_day">प्रतिदिन अधिकतम</string>
+    <string name="heads_send_times">भेजने का समय: %1$s</string>
     <string name="heads_mail">नए ईमेल भी देखें</string>
     <string name="heads_mail_about">बंद: Kelo इस जाँच के लिए आपके मेलबॉक्स नहीं खोलता; इवेंट और डेडलाइन की जाँच जारी रहती है। सुबह की झलक अपने मेलबॉक्स खुद चुनती है।</string>
     <string name="heads_list_title">ध्यान रखने वाली बातें</string>
-    <string name="heads_list_about">वैकल्पिक। Kelo हर बार इन्हें देखेगा और तभी बताएगा जब किसी चीज़ पर ध्यान देना हो।</string>
+    <string name="heads_list_about">वैकल्पिक। जब आप कुछ जोड़ते हैं, Kelo उसके लिए सही समय तय करता है: ज़रूरत हो तो अलग जाँच, नहीं तो भेजने के समय पर एक नज़र। तभी बताएगा जब किसी चीज़ पर ध्यान देना हो।</string>
     <string name="heads_list_hint">जैसे: आज आई डिलीवरी सूचनाएँ</string>
     <string name="heads_list_add">जोड़ें</string>
     <string name="heads_list_remove">%1$s हटाएँ</string>
+    <string name="heads_list_own">अलग से जाँचा जा रहा है · %1$s</string>
     <plurals name="heads_times">
         <item quantity="one">%d बार</item>
         <item quantity="other">%d बार</item>
@@ -1523,7 +1541,6 @@
     <string name="comparison_recommended">सुझाया गया</string>
     <string name="comparison_choose">%1$s चुनें</string>
     <string name="comparison_choose_say">%1$s चुनते हैं</string>
-
     <string name="endpoint_add">एंडपॉइंट जोड़ें</string>
     <string name="endpoint_name">नाम</string>
     <string name="endpoint_name_hint">उदा. होम Ollama</string>

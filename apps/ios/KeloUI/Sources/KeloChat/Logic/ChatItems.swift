@@ -67,10 +67,14 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         public var files: [MessageFile]
         /// The text is the app's own sentence ("read and summarise …"): only `files` show.
         public var autoText: Bool
+        /// Whether this message arrived via an in-app voice call.
+        public var fromCall: Bool
         public init(key: String, mine: Bool, text: String, id: Int64? = nil, replies: ReplySet? = nil, at: Int64 = 0, reaction: String = "",
-                    briefing: BriefingCard? = nil, comparison: ComparisonCard? = nil, images: [ChatImage] = [], files: [MessageFile] = [], autoText: Bool = false) {
+                    briefing: BriefingCard? = nil, comparison: ComparisonCard? = nil, images: [ChatImage] = [], files: [MessageFile] = [], autoText: Bool = false,
+                    fromCall: Bool = false) {
             self.key = key; self.mine = mine; self.text = text; self.id = id; self.replies = replies; self.at = at; self.reaction = reaction
             self.briefing = briefing; self.comparison = comparison; self.images = images; self.files = files; self.autoText = autoText
+            self.fromCall = fromCall
         }
     }
 
@@ -731,11 +735,18 @@ public enum ChatReducer {
             if let id = o.id, let i = byId[id] { swap[o.key] = i; used.insert(i) }
         }
         var p = free.count - 1
-        for o in shownMsgs.reversed() where o.id == nil {
-            guard p >= 0, msgs[free[p]].mine == o.mine else { break }
-            swap[o.key] = free[p]
-            used.insert(free[p])
-            p -= 1
+        var folded = Set<String>()   // streamed bubbles that one stored reply covers (a reply split by tool chips)
+        for run in idLessRuns(shown).reversed() {
+            var matched = 0
+            for o in run.reversed() {
+                guard p >= 0, msgs[free[p]].mine == o.mine else { break }
+                swap[o.key] = free[p]
+                used.insert(free[p])
+                p -= 1
+                matched += 1
+            }
+            // the earlier streamed bubbles of a matched run go: the stored text is in its last bubble
+            if matched > 0 { for o in run.dropLast(matched) { folded.insert(o.key) } }
         }
 
         guard let anchor = used.max() else { return shown }
@@ -747,11 +758,32 @@ public enum ChatReducer {
             m.images = n.images + o.images.filter { !n.images.contains($0) }
             return m
         }
-        let rows: [ChatItem] = shown.map { item in
-            guard case .msg(let m) = item, let i = swap[m.key] else { return item }
+        let rows: [ChatItem] = shown.compactMap { item in
+            guard case .msg(let m) = item else { return item }
+            if folded.contains(m.key) { return nil }
+            guard let i = swap[m.key] else { return item }
             return .msg(merged(m, msgs[i]))
         }
         return rows + appended
+    }
+
+    /// The id-less message bubbles of one reply, in order: bubbles separated only by tool chips are one run (a live reply split by
+    /// a tool chip). Any other row ends a run.
+    private static func idLessRuns(_ shown: [ChatItem]) -> [[ChatItem.Msg]] {
+        var runs: [[ChatItem.Msg]] = []
+        var open = false   // the last row that is not a tool chip is an id-less bubble
+        for item in shown {
+            switch item {
+            case .tool:
+                continue
+            case .msg(let m) where m.id == nil:
+                if open, let last = runs.last?.last, last.mine == m.mine { runs[runs.count - 1].append(m) } else { runs.append([m]) }
+                open = true
+            default:
+                open = false
+            }
+        }
+        return runs
     }
 
     /// The rows after the newest page was loaded again while it was on screen (the news check; Android `refreshNewest`): the rows that
@@ -901,7 +933,8 @@ public enum ChatReducer {
     /// A stored message as a row.
     public static func item(_ m: ChatMessage) -> ChatItem {
         .msg(.init(key: "m\(m.id)", mine: m.role == "user", text: m.content, id: m.id, replies: m.replies, at: Int64(m.createdAt * 1000),
-                   reaction: m.reaction, briefing: m.briefing, comparison: m.comparison, images: m.images, files: m.attachments, autoText: m.autoText))
+                   reaction: m.reaction, briefing: m.briefing, comparison: m.comparison, images: m.images, files: m.attachments, autoText: m.autoText,
+                   fromCall: m.via == "call"))
     }
 
     /// The server's "replies" or "comparison" event: answer buttons or a comparison card was attached, KeloCore keeps it as an unknown type.

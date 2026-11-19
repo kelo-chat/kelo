@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_android_device.xml (generated from values/strings_android_device.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="android_device_title">Urządzenie z Androidem</string>
     <string name="android_device_connected">Połączono</string>

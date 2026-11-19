@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">このスマートフォンをもう一度接続してください</string>
     <string name="e2e_key_changed_body">Keloサーバーの暗号化キーが変わったため、このスマートフォンは本当にあなたのサーバーか確認できません。別の端末の「マイ → マイデバイス」かサーバーマシンで、新しい接続用QRコードをスキャンしてください。</string>

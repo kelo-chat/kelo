@@ -90,7 +90,7 @@ async def test_autocomplete_form(browser):
     got = dict(await values(page))
     assert got["cc-number"] == VISA and got["cc-exp"] == f"{M:02d} / {Y % 100:02d}" and got["cc-csc"] == "987"
     assert got["cc-name"] == "HONG GILDONG" and got["billing postal-code"] == "04524" and got["email"] == ""
-    assert VISA not in res.text and await page.evaluate("document.querySelectorAll('[data-kelo-cc]').length") == 0   # marks removed
+    assert VISA not in res.text and await page.evaluate("document.querySelectorAll('[data-kelo-cc],[data-kelo-addr],[data-kelo-otp],[data-kelo-opt],[data-kelo-pin],[data-kelo-key]').length") == 0   # no mark is left in the page
 
 
 async def test_korean_split_number_selects_and_a_filled_postal_code_left_alone(browser):

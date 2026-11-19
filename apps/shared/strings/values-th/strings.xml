@@ -495,6 +495,16 @@
     <string name="vault_saved_plain">บันทึกแล้ว</string>
     <string name="vault_not_entered">ยังไม่ได้ป้อน</string>
     <string name="vault_last_used">ใช้ล่าสุด %1$s</string>
+    <string name="vault_browser_title">เบราว์เซอร์ของ Kelo</string>
+    <string name="vault_browser_signed_in">ลงชื่อเข้าใช้ %1$s · ใช้ล่าสุด %2$s</string>
+    <string name="vault_browser_sign_out">ให้เบราว์เซอร์ของ Kelo ออกจากระบบจากเว็บไซต์นี้</string>
+    <string name="vault_browser_sign_out_confirm">เบราว์เซอร์ของ Kelo จะออกจากระบบจาก %1$s และลบคุกกี้กับข้อมูลเว็บไซต์ ล็อกอินที่บันทึกไว้จะยังอยู่</string>
+    <string name="vault_browser_sites_title">ลงชื่อเข้าใช้โดยไม่มีล็อกอินที่บันทึกไว้</string>
+    <string name="vault_profiles_title">โปรไฟล์เบราว์เซอร์</string>
+    <string name="vault_profile_sites">ลงชื่อเข้าใช้ %1$s เว็บไซต์</string>
+    <string name="vault_profile_empty">ยังไม่ได้ลงชื่อเข้าใช้ที่ไหน</string>
+    <string name="vault_profile_delete">ลบโปรไฟล์นี้</string>
+    <string name="vault_profile_delete_confirm">โปรไฟล์ %1$s และการลงชื่อเข้าใช้ทั้งหมดที่เก็บไว้ในนั้นจะถูกลบ</string>
     <string name="vault_place">คีย์อยู่ใน %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -929,6 +939,9 @@
     <string name="live_still_yours">คุณยังควบคุมอยู่ ผู้ช่วยจะรอจนกว่าคุณจะคืนให้</string>
     <string name="live_screen_changed">หน้าจอเปลี่ยนแล้ว แตะอีกครั้ง</string>
     <string name="live_tab_closed">แท็บถูกปิดแล้ว จึงไม่มีอะไรให้ดูอีก ถ้าหน้าจอสุดท้ายถูกบันทึกไว้ จะแสดงด้านล่าง</string>
+    <string name="live_tabs_label">แท็บ</string>
+    <string name="live_tab_untitled">แท็บใหม่</string>
+    <string name="live_tab_close">ปิดแท็บ</string>
     <string name="live_not_controller">ตอนนี้ควบคุมไม่ได้ แตะ ควบคุมเอง อีกครั้ง</string>
     <string name="live_input_failed">เบราว์เซอร์ทำสิ่งนั้นไม่ได้</string>
     <string name="live_state_you">คุณกำลังควบคุม</string>
@@ -954,6 +967,8 @@
     <string name="live_touch_missed">การแตะไม่ถึงหน้าเว็บ</string>
     <string name="live_type_hint">ข้อความที่จะพิมพ์ลงในหน้าเว็บ</string>
     <string name="live_type_send">พิมพ์</string>
+    <string name="live_keyboard">แป้นพิมพ์</string>
+    <string name="live_keyboard_desc">แสดงหรือซ่อนแป้นพิมพ์สำหรับหน้าเว็บ</string>
     <string name="live_type_hide">ซ่อนข้อความ</string>
     <string name="live_type_show">แสดงข้อความ</string>
     <string name="live_key_enter">Enter</string>
@@ -1109,7 +1124,6 @@
     <string name="work_now_empty">ตอนนี้ไม่มีอะไรทำงานอยู่</string>
     <string name="work_asks">รอคำตอบจากคุณ</string>
     <string name="work_asks_empty">ไม่มีคำถามที่รออยู่</string>
-
     <string name="offers_title">Kelo สามารถทำได้ทันที</string>
     <string name="offer_start">มอบหมาย</string>
     <string name="offer_needs">สิ่งที่ต้องใช้: %1$s</string>
@@ -1231,6 +1245,7 @@
     <string name="work_watch_ev_fired">ตรงเงื่อนไข</string>
     <string name="work_watch_ev_error">ไม่สำเร็จ</string>
     <string name="work_watch_ev_check">ตรวจแล้ว</string>
+    <string name="work_watch_ev_count">· ตรวจแล้ว %1$d ครั้ง</string>
     <string name="work_watch_ev_on">เปิด</string>
     <string name="work_watch_ev_off">ปิด</string>
     <string name="work_watch_delete">ลบการเฝ้าดู</string>
@@ -1273,14 +1288,17 @@
     <string name="heads_section">แจ้งเตือนเรื่องใหม่</string>
     <string name="heads_switch">ให้ Kelo บอกก่อน</string>
     <string name="heads_about">%1$s Kelo จะดูอีเมลใหม่ นัดหมายที่ใกล้เข้ามา และกำหนดส่ง แล้วบอกคุณก่อนถ้ามีเรื่องที่ควรรู้ ส่วนเรื่องที่คุณต้องตอบ (การอนุมัติ คำถาม) จะถามซ้ำแยกต่างหากใน “%2$s” ไม่ว่าจะตั้งค่านี้อย่างไร</string>
+    <string name="heads_about_send_times">ในช่วงเวลาข้อความ Kelo จะดูอีเมลใหม่และบริการที่เชื่อมต่อไว้ทุกชั่วโมง และบอกทันทีถ้ามีเรื่องที่รอไม่ได้ ส่วนเรื่องอื่นจะรอถึงเวลาส่ง ตอนนั้น Kelo จะดูบทสนทนา ปฏิทิน เป้าหมาย ตารางเวลา และความจำไปด้วย การส่งหนึ่งครั้งนับเป็นหนึ่งครั้งใน “%1$s” ไม่ว่าจะมีกี่เรื่อง เมื่อใช้ครบสำหรับวันนั้นแล้ว จะบอกเฉพาะเรื่องที่รอไม่ได้ ส่วนเรื่องที่คุณต้องตอบ (การอนุมัติ คำถาม) จะถามซ้ำแยกต่างหากใน “%2$s” ไม่ว่าจะตั้งค่านี้อย่างไร</string>
     <string name="heads_per_day">สูงสุดต่อวัน</string>
+    <string name="heads_send_times">เวลาส่ง: %1$s</string>
     <string name="heads_mail">ดูอีเมลใหม่ด้วย</string>
     <string name="heads_mail_about">ปิด: Kelo จะไม่เปิดกล่องจดหมายของคุณสำหรับการตรวจสอบนี้ ส่วนนัดหมายและกำหนดส่งยังคงได้รับการตรวจสอบตามปกติ สรุปยามเช้าจะเลือกกล่องจดหมายของตนเองแยกต่างหาก</string>
     <string name="heads_list_title">เรื่องที่ต้องคอยดู</string>
-    <string name="heads_list_about">ไม่บังคับ Kelo จะดูรายการนี้ทุกครั้งและบอกเฉพาะเมื่อมีเรื่องที่ต้องใส่ใจ</string>
+    <string name="heads_list_about">ไม่บังคับ เมื่อคุณเพิ่มรายการ Kelo จะกำหนดเวลาที่เหมาะให้ ถ้าต้องมีเวลาของตัวเองจะตรวจแยกต่างหาก ไม่อย่างนั้นจะดูพร้อมกันในเวลาส่ง และบอกเฉพาะเมื่อมีเรื่องที่ต้องใส่ใจ</string>
     <string name="heads_list_hint">เช่น แจ้งเตือนพัสดุวันนี้</string>
     <string name="heads_list_add">เพิ่ม</string>
     <string name="heads_list_remove">ลบ %1$s</string>
+    <string name="heads_list_own">ตรวจแยกต่างหาก · %1$s</string>
     <plurals name="heads_times">
         <item quantity="other">%d ครั้ง</item>
     </plurals>
@@ -1488,7 +1506,6 @@
     <string name="comparison_recommended">แนะนำ</string>
     <string name="comparison_choose">เลือก %1$s</string>
     <string name="comparison_choose_say">ไปกับ %1$s กันเถอะ</string>
-
     <string name="endpoint_add">เพิ่มปลายทาง</string>
     <string name="endpoint_name">ชื่อ</string>
     <string name="endpoint_name_hint">เช่น Ollama ที่บ้าน</string>

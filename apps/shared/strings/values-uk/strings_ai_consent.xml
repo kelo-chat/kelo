@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- uk text for strings_ai_consent.xml (edit freely, keep the names) -->
+<!-- uk text for strings_ai_consent.xml (generated from values/strings_ai_consent.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="ai_consent_title">Перед першим повідомленням</string>
     <string name="ai_consent_body">Щоб відповісти, Kelo надсилає ваші повідомлення й те, що для них потрібно (вкладені файли, результати з під’єднаних сервісів), до обраного вами ШІ-сервісу.</string>

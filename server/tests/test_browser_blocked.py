@@ -72,14 +72,12 @@ async def test_an_access_denied_page_says_so_and_a_host_blocked_twice_is_not_tri
     out = plain(await s.open("https://denied.example.test/a"))
     assert "is blocking Kelo's browser" in out and 'HTTP 403 "Access Denied"' in out and "Do not retry" in out
     assert "Blocked again" not in out and "Access Denied" in out          # the page's own text stays
-    out = plain(await s.open("https://denied.example.test/b"))
-    assert "is blocking Kelo's browser" in out and "Blocked again" in out
     n = len(ctx.hits)
-    out = plain(await s.open("https://denied.example.test/c"))            # answered at once: nothing is loaded
-    assert "Blocked again" in out and len(ctx.hits) == n
-    await s.open("https://home.example.test/")
+    out = plain(await s.open("https://denied.example.test/b"))            # the refusal paused the site: answered at once, nothing loaded
+    assert "will not load" in out and "is blocking" not in out and len(ctx.hits) == n
+    s._refused_until.clear()                                                    # six hours later it may be tried again
+    s._blocked[(s._task(), "denied.example.test")] = (1, s.clock() - 700)
     n = len(ctx.hits)
-    s._blocked[(s._task(), "denied.example.test")] = (2, s.clock() - 700)   # ten minutes later it may be tried again
     await s.open("https://denied.example.test/d")
     assert len(ctx.hits) > n
 
@@ -87,10 +85,9 @@ async def test_an_access_denied_page_says_so_and_a_host_blocked_twice_is_not_tri
 async def test_a_click_on_the_page_of_a_host_that_blocked_twice_is_answered_without_clicking(ctx):
     s, page = await session_on(ctx)
     await s.open("https://denied.example.test/a")
-    await s.open("https://denied.example.test/b")
     n = len(ctx.hits)
     out = plain(await s.click("#go"))
-    assert "Blocked again" in out and len(ctx.hits) == n
+    assert "will not load" in out and len(ctx.hits) == n
 
 
 async def test_a_long_403_page_is_an_ordinary_page(ctx):

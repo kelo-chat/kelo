@@ -60,16 +60,12 @@ struct VoiceServerTests {
         #expect(Array(wav[4..<8]) == [0xA4, 0x0C, 0, 0])        // 36 + 3200 = 0x0CA4
     }
 
-    @Test func soundBarsMeasureAndKeepTheNewest() {
+    @Test func soundBarsMeasure() {
         let silence = Data(repeating: 0, count: 1_600)
         #expect(SoundBars.rms(silence, from: 0, to: silence.count) == 0)
         var loud = Data()
         for _ in 0..<800 { loud.append(contentsOf: [0xFF, 0x7F]) }   // full scale
         #expect(SoundBars.rms(loud, from: 0, to: loud.count) > 0.9)
-        var bars: [Float] = []
-        for i in 0..<60 { bars = SoundBars.push(bars, Float(i) / 100) }
-        #expect(bars.count == 48)
-        #expect(abs((bars.last ?? 0) - 0.59) < 0.001)
     }
 
     @Test func clockAndCountdownUseTwoMinutes() {

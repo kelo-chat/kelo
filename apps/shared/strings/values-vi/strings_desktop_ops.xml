@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_desktop_ops.xml (generated from values/strings_desktop_ops.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_ops_wallet_note">Thẻ được thêm, và mỗi khoản thanh toán được xác nhận, trong ứng dụng Kelo trên điện thoại: số thẻ được khóa bằng khóa mà chỉ điện thoại đó có. Ở đây bạn có thể xem thẻ, đổi tên hoặc xóa thẻ, tắt tự động thanh toán và đặt hạn mức.</string>
     <string name="desktop_ops_tag_phone">Thanh toán từ điện thoại</string>

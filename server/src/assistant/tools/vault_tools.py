@@ -542,6 +542,11 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                 raise
             # logged once the outcome is known: ok only on signed-in evidence (a verification still open is code_needed, not ok)
             store.add_vault_log(name, "used", f"browser_login on {parts.hostname}: {result.outcome}", result.outcome == "success")
+            if result.outcome == "success":   # Kelo's browser now holds this site's sign-in (browser_sign_ins.py, the Keychain card)
+                store.note_browser_sign_in(site_key(parts.hostname or ""), "login", session.profile_of(browser_owner.get() or ""))
+                session.clear_pause(site_key(parts.hostname or ""))   # the sign-in pass worked: the site loads again (brief B2)
+            if result.outcome in ("success", "failed", "blocked"):
+                session.end_sign_in_pass(site_key(parts.hostname or ""))   # a sign-in pass ends with an outcome; code_needed goes on
             note = settle(name, item, once, result, username, password, step, submit)
             if once is not None and submit and step in ("both", "password") and result.outcome == "unknown" and transient.promotes(name):
                 job = asyncio.get_running_loop().create_task(
@@ -605,7 +610,9 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         return False
 
     tools.append(Tool("browser_login", "Type a saved login into the sign-in form of the page you are on and submit it; the user approves "
-                      "unless they allowed that login. Works only on the site it was saved for; you never see the values. If the result "
+                      "unless they allowed that login. When the sign-in form itself offers to keep you signed in or remember this device, "
+                      "call with submit=false, tick that option with browser_click, then submit the form. "
+                      "Works only on the site it was saved for; you never see the values. If the result "
                       "is failed, do not try again: tell the user. Signed in only when the result says success. On the user's own "
                       "account (never someone else's), accept an offer to keep this browser signed in or skip verification next time (any "
                       "wording, any language); not saving the password, marketing or cookie consent, a recovery phone or email, or security "

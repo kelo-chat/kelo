@@ -1,5 +1,6 @@
 package chat.kelo.desktop.ui
 
+import chat.kelo.app.call.CallOverlay
 import chat.kelo.app.shell.ProvideNest
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat.kelo.app.ui.platform.keloViewModel
@@ -237,10 +238,12 @@ private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onNavi
                 )
                 TopFade(Modifier.align(Alignment.TopCenter))
                 // as on the phone, the agent opens its own page (My → the agent: its name, picture and what it is doing)
+                val canCall by app.calls.available.collectAsState()
                 FloatingHeader(
                     p, shell, onAgent = { app.myPageRequests.value = MY_PAGE_AGENT; onPage(Page.MY) }, modifier = Modifier.align(Alignment.TopCenter),
                     // the magnifier on the chat page while no search is open (the header keeps its place on every page)
                     onSearch = if (page == Page.CHAT && !showSearch) ({ app.chatSearchOpen.value = true }) else null,
+                    onCall = if (page == Page.CHAT && canCall) app.calls::ringFromButton else null,
                 )
                 // a newer app version: a small pill once per version (My keeps the card and the download)
                 val popupUp = updatePopupOpen(app) != null
@@ -255,6 +258,13 @@ private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onNavi
                 if (locked) LockedBanner(
                     onRecover = { app.liveTab.value = null; app.myPageRequests.value = MyPage.KEYGUARD_CODE; onPage(Page.MY) },
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = HeaderHeight + 8.dp, start = 12.dp, end = 12.dp).widthIn(max = 560.dp),
+                )
+                // the server has a newer release (X-Kelo-Server-Update): once a day, on the chat only, never over another notice or a full screen
+                ServerNoticeHost(
+                    app,
+                    covered = popupUp || updateRequired || locked || keyChanged || serverOld || AppVersion.serverTooOld(serverSeen),
+                    onChat = page == Page.CHAT && !showSearch && app.liveTab.value == null,
+                    onOpenServerUpdate = { app.liveTab.value = null; app.myPageRequests.value = MY_PAGE_SERVER_UPDATE; onPage(Page.MY) },
                 )
                 // a browser tab live over the page ("solve it" on a human check, from the chat or 작업)
                 val liveTab by app.liveTab.collectAsState()
@@ -272,6 +282,12 @@ private fun ShellBody(app: AppContainer, chat: ChatViewModel, page: Page, onNavi
             }
             ServerTooOldScreen(serverSeen, onRetry = { app.sessions.recheckServer(); oldUpdater.probe() }, updater = oldUpdater)
         }
+        val agentPhoto by app.agentAvatar.image.collectAsState()
+        CallOverlay(
+            center = app.calls,
+            agentName = p.agentName.ifBlank { "Kelo" },
+            photo = agentPhoto,
+        )
     }
 }
 

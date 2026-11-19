@@ -9,6 +9,12 @@ public enum BriefingSettingsRules {
     public static let providers = ["auto", "open_meteo", "kma", "weatherapi"]
     public static let keyed = ["kma", "weatherapi"]
 
+    /// Whether a fixed time may be chosen: never before the start of the contact hours (`earliest`); an older server takes any time.
+    public static func fixedAllowed(_ b: BriefingSettings, hour: Int, minute: Int) -> Bool {
+        guard let e = b.earliest, let first = NotifySettingsRules.parseTime(e) else { return true }
+        return hour * 60 + minute >= first.hour * 60 + first.minute
+    }
+
     /// The offset choices, with the current one kept even when it is not a preset.
     public static func offsets(current: Int) -> [Int] { Array(Set(offsets + [min(60, max(0, current))])).sorted() }
 
@@ -150,10 +156,11 @@ struct BriefingBlock: View {
             .keloSheet(isPresented: $picking, detents: [.medium]) {
                 VStack(spacing: 12) {
                     SheetHeader(L(R.string.briefing_when_fixed)) { picking = false }
-                    DatePicker("", selection: $pickTime, displayedComponents: .hourAndMinute).labelsHidden()
+                    DatePicker("", selection: $pickTime, in: earliestDate()..., displayedComponents: .hourAndMinute).labelsHidden()
                         #if os(iOS)
                         .datePickerStyle(.wheel)
                         #endif
+                    if let e = settings.earliest { MutedText(L(R.string.briefing_fixed_from, timeWords(e)), small: true) }
                     PrimaryButton(L(R.string.ok)) {
                         let comps = Calendar.current.dateComponents([.hour, .minute], from: pickTime)
                         model.put(["fixed_time": .string(NotifySettingsRules.formatTime(comps.hour ?? 7, comps.minute ?? 30))])
@@ -186,9 +193,16 @@ struct BriefingBlock: View {
 
     private func timeWords(_ text: String) -> String { NotifySettingsRules.parseTime(text).map { MyFormat.clock($0.hour, $0.minute) } ?? text }
 
+    /// Today at the earliest fixed time the server takes (the start of the contact hours); the start of today on an older server.
+    private func earliestDate() -> Date {
+        let t = settings.earliest.flatMap { NotifySettingsRules.parseTime($0) } ?? (0, 0)
+        return Calendar.current.date(bySettingHour: t.hour, minute: t.minute, second: 0, of: Date()) ?? Date()
+    }
+
     private func openPicker(_ value: String) {
         let t = NotifySettingsRules.parseTime(value) ?? (7, 30)
-        pickTime = Calendar.current.date(bySettingHour: t.hour, minute: t.minute, second: 0, of: Date()) ?? Date()
+        let stored = Calendar.current.date(bySettingHour: t.hour, minute: t.minute, second: 0, of: Date()) ?? Date()
+        pickTime = max(stored, earliestDate())   // a stored time before the contact hours starts the picker at them
         picking = true
     }
 }

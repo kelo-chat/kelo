@@ -38,7 +38,7 @@ from ..wallet import CARD_TTL, EXPLAIN, CardDeliveries, CardSecret, Decision, Wa
 from .browser import EXTRA_AUTH_NOTE, PURCHASE_WINDOW_SECONDS, BrowserPolicyError, BrowserSession, browser_owner
 from .. import order_check, pay_terms
 from ..pay_preapprovals import COVER_SOURCES, SOURCE_ALLOW, SOURCE_PREAPPROVAL, Preapprovals
-from .checkout import CHECKING, DESCRIBE_JS, MARK, Reviews, amount_over, origin_of, read_page, total_shown
+from .checkout import CHECKING, DESCRIBE_JS, Reviews, amount_over, origin_of, read_page, total_shown
 from .page_tree import ref_selector
 from .sites import registrable as site_key, same_site
 
@@ -1029,7 +1029,7 @@ def _checkout_tools(session: BrowserSession, store: Reviews, *, confirm: Any, va
         if preapprovals is not None and approval["source"] == SOURCE_PREAPPROVAL:
             preapprovals.mark_used(approval["approval_id"])   # one order
         try:
-            text = await session.click(f'[{MARK}="1"]')
+            text = await session.click(probe.target)
         except BaseException:
             attempts.settle(aid, "unknown", "the press was started and then failed or was cut off: nobody saw whether it went through")
             rv.used = True

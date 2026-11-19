@@ -380,7 +380,7 @@ async def test_every_skip_leaves_one_record_with_a_code_and_a_time(tmp_path):
 async def test_unanswered_messages_stop_then_back_off_doubling_up_to_a_week(tmp_path):
     mail = FakeMail([])
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
-    p.update(wake_start="00:00", wake_end="00:00", every_minutes=30, daily_regular=10, daily_total=20, daily_deliveries=10,   # awake all day, caps aside
+    p.update(wake_start="00:00", wake_end="00:00", every_minutes=30, daily_regular=10, daily_total=20,   # awake all day, caps aside
              change_alerts=False)                                  # (with change alerts on, a held pass still reads mail: test_proactive_mail.py)
     n = 0
 
@@ -422,7 +422,7 @@ async def test_unanswered_messages_stop_then_back_off_doubling_up_to_a_week(tmp_
 async def test_one_pass_sends_no_more_than_the_guard_allows_and_settings_change_it(tmp_path):
     mail = FakeMail(mails("a", "b", "c", "d", "e"))
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
-    p.update(daily_regular=10, daily_total=20, unanswered_limit=2, pause_hours=2, pause_max_days=1, daily_deliveries=10)
+    p.update(daily_regular=10, daily_total=20, unanswered_limit=2, pause_hours=2, pause_max_days=1)
     r = await p.tick()
     assert r["sent"] == 2 and r["backoff_level"] == 1 and r["next_allowed_at"] == clock.t + 2 * 3600
     assert [x["why"] for x in p.held()] == ["waiting_for_reply"] * 3                      # kept, not dropped
@@ -449,10 +449,10 @@ async def test_checklist_runs_count_and_are_held_back_too(tmp_path):
 
     ck = Checklist(store, home, start, clock=clock, room=p.room_today, on_said=p.checklist_said, hold=p.checklist_hold)
     ck.update(items=["메일 확인"])
-    r = await ck.tick()
+    r = await ck.run()
     assert r["status"] == "skipped" and r["reason"] == "Waiting for your reply to the earlier messages" and started == []
     store.add_message("user", "응")
-    assert (await ck.tick())["status"] == "done" and p.public()["guard"]["unanswered"] == 1
+    assert (await ck.run())["status"] == "done" and p.public()["guard"]["unanswered"] == 1
 
 
 async def test_a_manual_run_is_not_held_back_but_counts(tmp_path):

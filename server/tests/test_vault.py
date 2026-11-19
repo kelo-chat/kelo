@@ -300,20 +300,21 @@ class Page:
     def __init__(self, url="https://github.com/login", found=None, fail=False, after_press=None, body="Welcome nahyun.kim@example.com, password hunter2-Pa$$w0rd!",
                  state=None, field=None):
         self.field = field or {}
-        self.url, self.found, self.fail, self.after_press, self.body = url, found or {"u": True, "p": True}, fail, after_press, body
+        self.url, self.fail, self.after_press, self.body = url, fail, after_press, body
+        self.found = {"u": True, "p": True, "p_count": 1, "u_path": "#vault-u", "p_path": "#vault-p", **(found or {})}
         self.state = state or {"pw": False, "text": "Signed in. Logout"}             # what the page shows after Enter
         self.filled, self.pressed, self.untagged, self.goto_calls = [], [], 0, []
 
-    async def evaluate(self, js):
+    async def evaluate(self, js, arg=None):
         if "kelo_check" in js:                                  # the structure of the page (bot-check reading): from the state after Enter
             return self.state.get("probe")
         if "webkitTextSecurity" in js:                           # the password field's state at the moment of typing (lengths only)
-            typed = [v for sel, v in self.filled if "data-vault-p" in sel]
+            typed = [v for sel, v in self.filled if sel == "#vault-p"]
             return {"n": 1, "input": True, "type": "password", "tagged": "password", "masked": True,
                     "length": len(typed[-1]) if typed else 0, **self.field}
         if "pw:" in js:
             return self.state
-        if "setAttribute" in js:
+        if "u_path" in js:                                     # the login fields: their CSS paths
             return self.found
         if "removeAttribute" in js:
             self.untagged += 1
@@ -353,28 +354,28 @@ def session_for(page):
 async def test_the_login_goes_to_the_page_and_comes_back_only_as_the_page_with_both_values_removed():
     page = Page()
     result = await session_for(page).fill_login(USER, PASSWORD)
-    assert page.filled == [("[data-vault-u]", USER), ("[data-vault-p]", PASSWORD)] and page.pressed == [("[data-vault-p]", "Enter")]
+    assert page.filled == [("#vault-u", USER), ("#vault-p", PASSWORD)] and page.pressed == [("#vault-p", "Enter")]
     out = result.text
-    assert PASSWORD not in out and USER not in out and "[hidden]" in out and "Sign in" in out and page.untagged >= 1
+    assert PASSWORD not in out and USER not in out and "[hidden]" in out and "Sign in" in out
     assert isinstance(result, SignIn) and result.outcome == "success"
 
 
 async def test_a_two_page_sign_in_can_be_done_in_two_steps():
     first, second = Page(found={"u": True, "p": False}), Page(found={"u": False, "p": True})
     await session_for(first).fill_login(USER, PASSWORD, step="username", submit=True)
-    assert first.filled == [("[data-vault-u]", USER)] and first.pressed == [("[data-vault-u]", "Enter")]
+    assert first.filled == [("#vault-u", USER)] and first.pressed == [("#vault-u", "Enter")]
     await session_for(second).fill_login(USER, PASSWORD, step="password", submit=False)
-    assert second.filled == [("[data-vault-p]", PASSWORD)] and second.pressed == []
+    assert second.filled == [("#vault-p", PASSWORD)] and second.pressed == []
     third = Page(found={"u": False, "p": True})
     await session_for(third).fill_login(USER, PASSWORD)                          # "both" on a password-only page fills just the password
-    assert third.filled == [("[data-vault-p]", PASSWORD)]
+    assert third.filled == [("#vault-p", PASSWORD)]
 
 
 async def test_a_page_without_a_sign_in_form_gets_nothing_and_is_cleaned_up():
     page = Page(found={"u": False, "p": False})
     with pytest.raises(BrowserPolicyError, match="no sign-in form"):
         await session_for(page).fill_login(USER, PASSWORD)
-    assert page.filled == [] and page.untagged >= 1
+    assert page.filled == []
 
 
 async def test_a_driver_error_that_quotes_the_typed_value_is_replaced_by_its_kind():
@@ -439,9 +440,9 @@ async def test_a_login_typed_for_one_use_works_for_the_whole_sign_in_and_then_is
     t.put("github", USER, PASSWORD)
     first, second = Page(found={"u": True, "p": False}), Page(found={"u": False, "p": True})
     await with_browser(st, first, t)["browser_login"].handler({"name": "github", "step": "username"})
-    assert t.has("github") and first.filled == [("[data-vault-u]", USER)]                       # still there for the password page
+    assert t.has("github") and first.filled == [("#vault-u", USER)]                       # still there for the password page
     await with_browser(st, second, t)["browser_login"].handler({"name": "github", "step": "password"})
-    assert second.filled == [("[data-vault-p]", PASSWORD)] and not t.has("github")
+    assert second.filled == [("#vault-p", PASSWORD)] and not t.has("github")
     again = await with_browser(st, Page(), t)["browser_login"].handler({"name": "github"})
     assert again.startswith("error:") and "has not entered" in again
 
@@ -593,3 +594,12 @@ async def test_a_sign_in_whose_form_fails_is_logged_as_used_and_not_ok(tmp_path)
     assert got.startswith("error:")
     row = st.vault_log(1)[0]
     assert row["action"] == "used" and row["ok"] is False and row["detail"].startswith("browser_login on github.com: failed")
+
+
+async def test_a_successful_browser_login_records_the_site_and_a_failed_one_does_not(tmp_path):
+    st = filled(tmp_path)
+    await with_browser(st, Page(url="https://login.github.com/session"))["browser_login"].handler({"name": "github"})
+    assert [(r["profile"], r["site"], r["how"]) for r in st.browser_sign_ins()] == [("", "github.com", "login")]
+    st2 = filled(tmp_path / "second")
+    out = await with_browser(st2, Page(url="https://github.com/login", fail=True))["browser_login"].handler({"name": "github"})
+    assert not out.startswith("[sign-in result: success") and st2.browser_sign_ins() == []

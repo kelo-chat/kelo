@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Gọi cho Kelo</string>
+    <string name="call_incoming_line">đang gọi cho bạn</string>
+    <string name="call_accept">Trả lời</string>
+    <string name="call_decline">Từ chối</string>
+    <string name="call_connecting">Đang kết nối…</string>
+    <string name="call_listening">Đang lắng nghe</string>
+    <string name="call_thinking">Đang suy nghĩ</string>
+    <string name="call_speaking">Đang nói</string>
+    <string name="call_muted">Đã tắt tiếng</string>
+    <string name="call_mute">Tắt tiếng</string>
+    <string name="call_unmute">Bật tiếng</string>
+    <string name="call_speaker">Loa ngoài</string>
+    <string name="call_hang_up">Kết thúc cuộc gọi</string>
+    <string name="call_card_waiting">Có nội dung cần kiểm tra trên màn hình.</string>
+    <string name="call_card_open">Xem</string>
+    <string name="call_back_to_call">Quay lại cuộc gọi · %1$s</string>
+    <string name="call_offline">Không thể kết nối đến máy chủ Kelo. Đang kết nối lại…</string>
+    <string name="call_ended_background">Cuộc gọi đã kết thúc vì bạn rời khỏi ứng dụng.</string>
+    <string name="call_ended_interrupted">Cuộc gọi đã kết thúc do có âm thanh khác xen vào.</string>
+    <string name="call_ended_quiet">Cuộc gọi đã kết thúc sau một khoảng thời gian im lặng.</string>
+    <string name="call_needs_speech_model">Để gọi thoại, máy chủ Kelo cần có mô hình giọng nói.</string>
+    <string name="call_mic_denied">Không thể bắt đầu cuộc gọi: chưa cấp quyền micro.</string>
+    <string name="call_voice_offer">Đây là giọng nói tự nhiên của Kelo khi gọi. Tải mô hình giọng nói (%1$s) về máy chủ Kelo một lần và Kelo sẽ nói bằng giọng này từ câu tiếp theo. Nếu không tải, Kelo sẽ dùng giọng nói máy móc của thiết bị này.</string>
+    <string name="call_mark">Cuộc gọi</string>
+    <string name="call_voice_offer_title">Tải giọng nói của Kelo?</string>
+    <string name="call_voice_offer_ok">Tải về</string>
+    <string name="call_voice_offer_later">Tạm thời dùng giọng thiết bị</string>
+    <string name="call_voice_better">Với mô hình giọng nói, Kelo sẽ nói chuyện bằng giọng tự nhiên hơn nhiều.</string>
+    <string name="call_voice_get">Tải về</string>
+    <string name="call_voice_line_close">Đóng</string>
+    <string name="call_ears_failed">Tính năng nhận dạng giọng nói của điện thoại không nghe thấy bạn.</string>
+    <string name="voice_speech_title">Giọng nói Kelo</string>
+    <string name="voice_speech_download">Tải mô hình giọng nói · %1$s</string>
+    <string name="voice_speech_downloading">Đang tải mô hình giọng nói · %1$d%%</string>
+    <string name="voice_speech_remove">Xóa mô hình giọng nói</string>
+    <string name="voice_speech_remove_confirm">Xóa mô hình giọng nói? Sau đó Kelo sẽ nói bằng giọng của thiết bị này.</string>
+    <string name="voice_speech_device_note">Nếu không có mô hình giọng nói, Kelo sẽ nói bằng giọng tích hợp của thiết bị này.</string>
+    <string name="voice_speech_unsupported_lang">Mô hình giọng nói chưa hỗ trợ ngôn ngữ này nên sẽ dùng giọng thiết bị.</string>
+    <string name="voice_speech_voice_female">Giọng nữ %1$d</string>
+    <string name="voice_speech_voice_male">Giọng nam %1$d</string>
+    <string name="voice_speech_listen">Nghe thử</string>
+    <string name="voice_speech_stop">Dừng</string>
+    <string name="voice_speech_speed">Tốc độ nói</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">Xin chào. Tôi sẽ nói chuyện bằng giọng này.</string>
+</resources>

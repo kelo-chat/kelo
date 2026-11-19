@@ -494,6 +494,16 @@
     <string name="vault_saved_plain">Đã lưu</string>
     <string name="vault_not_entered">Chưa nhập</string>
     <string name="vault_last_used">Dùng lần cuối %1$s</string>
+    <string name="vault_browser_title">Trình duyệt của Kelo</string>
+    <string name="vault_browser_signed_in">Đã đăng nhập %1$s · dùng lần cuối %2$s</string>
+    <string name="vault_browser_sign_out">Đăng xuất trình duyệt của Kelo khỏi trang này</string>
+    <string name="vault_browser_sign_out_confirm">Trình duyệt của Kelo sẽ đăng xuất khỏi %1$s và xóa cookie cùng dữ liệu trang. Đăng nhập đã lưu vẫn giữ nguyên.</string>
+    <string name="vault_browser_sites_title">Đã đăng nhập mà không có đăng nhập đã lưu</string>
+    <string name="vault_profiles_title">Hồ sơ trình duyệt</string>
+    <string name="vault_profile_sites">Đã đăng nhập %1$s trang</string>
+    <string name="vault_profile_empty">Chưa đăng nhập ở đâu</string>
+    <string name="vault_profile_delete">Xóa hồ sơ này</string>
+    <string name="vault_profile_delete_confirm">Hồ sơ %1$s và mọi đăng nhập được lưu trong đó sẽ bị xóa.</string>
     <string name="vault_place">Khóa được đặt vào %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -928,6 +938,9 @@
     <string name="live_still_yours">Bạn vẫn đang điều khiển. Trợ lý chờ cho đến khi bạn trả lại.</string>
     <string name="live_screen_changed">Màn hình đã thay đổi. Chạm lại.</string>
     <string name="live_tab_closed">Tab đã đóng nên không còn gì để xem. Nếu màn hình cuối được lưu, nó sẽ hiện bên dưới.</string>
+    <string name="live_tabs_label">Tab</string>
+    <string name="live_tab_untitled">Tab mới</string>
+    <string name="live_tab_close">Đóng tab</string>
     <string name="live_not_controller">Bạn chưa thể điều khiển lúc này. Hãy chạm Điều khiển lần nữa.</string>
     <string name="live_input_failed">Trình duyệt không làm được thao tác đó.</string>
     <string name="live_state_you">Bạn đang điều khiển</string>
@@ -953,6 +966,8 @@
     <string name="live_touch_missed">Lần chạm không đến được trang</string>
     <string name="live_type_hint">Văn bản cần nhập trên trang</string>
     <string name="live_type_send">Nhập</string>
+    <string name="live_keyboard">Bàn phím</string>
+    <string name="live_keyboard_desc">Hiện hoặc ẩn bàn phím cho trang</string>
     <string name="live_type_hide">Ẩn văn bản</string>
     <string name="live_type_show">Hiện văn bản</string>
     <string name="live_key_enter">Enter</string>
@@ -1108,7 +1123,6 @@
     <string name="work_now_empty">Hiện không có gì đang chạy.</string>
     <string name="work_asks">Cần bạn trả lời</string>
     <string name="work_asks_empty">Không có câu hỏi nào đang chờ.</string>
-
     <string name="offers_title">Kelo có thể làm việc này ngay</string>
     <string name="offer_start">Giao việc</string>
     <string name="offer_needs">Cần: %1$s</string>
@@ -1230,6 +1244,7 @@
     <string name="work_watch_ev_fired">Đạt điều kiện</string>
     <string name="work_watch_ev_error">Thất bại</string>
     <string name="work_watch_ev_check">Đã kiểm tra</string>
+    <string name="work_watch_ev_count">· Đã kiểm tra %1$d lần</string>
     <string name="work_watch_ev_on">Bật</string>
     <string name="work_watch_ev_off">Tắt</string>
     <string name="work_watch_delete">Xóa mục theo dõi</string>
@@ -1272,14 +1287,17 @@
     <string name="heads_section">Thông báo tin mới</string>
     <string name="heads_switch">Kelo báo trước cho bạn</string>
     <string name="heads_about">%1$s, Kelo xem thư mới, sự kiện sắp tới và hạn chót, rồi báo trước cho bạn khi có điều cần biết. Những việc bạn cần trả lời (phê duyệt, câu hỏi) sẽ được hỏi lại riêng ở “%2$s”, dù cài đặt này thế nào.</string>
+    <string name="heads_about_send_times">Trong giờ nhắn tin, mỗi giờ Kelo xem thư mới và các dịch vụ đã kết nối, và báo ngay những gì không thể chờ. Phần còn lại chờ đến giờ gửi; lúc đó Kelo cũng xem cả trò chuyện, lịch, mục tiêu, lịch trình và bộ nhớ. Mỗi lần gửi chỉ tính một lần trong “%1$s”, dù có bao nhiêu nội dung. Khi đã dùng hết số lần trong ngày, bạn chỉ nhận những gì không thể chờ. Những việc bạn cần trả lời (phê duyệt, câu hỏi) sẽ được hỏi lại riêng ở “%2$s”, dù cài đặt này thế nào.</string>
     <string name="heads_per_day">Tối đa mỗi ngày</string>
+    <string name="heads_send_times">Giờ gửi: %1$s</string>
     <string name="heads_mail">Kiểm tra cả thư mới</string>
     <string name="heads_mail_about">Tắt: Kelo không mở hộp thư của bạn cho lần kiểm tra này; sự kiện và hạn chót vẫn được kiểm tra. Tin buổi sáng tự chọn hộp thư riêng.</string>
     <string name="heads_list_title">Việc cần để mắt</string>
-    <string name="heads_list_about">Không bắt buộc. Mỗi lần Kelo sẽ xem qua và chỉ báo khi có việc cần bạn chú ý.</string>
+    <string name="heads_list_about">Không bắt buộc. Khi bạn thêm một mục, Kelo chọn thời điểm phù hợp: kiểm tra riêng nếu cần, nếu không thì xem cùng lúc ở giờ gửi. Chỉ báo khi có việc cần bạn chú ý.</string>
     <string name="heads_list_hint">vd: thông báo giao hàng hôm nay</string>
     <string name="heads_list_add">Thêm</string>
     <string name="heads_list_remove">Xóa %1$s</string>
+    <string name="heads_list_own">Đang kiểm tra riêng · %1$s</string>
     <plurals name="heads_times">
         <item quantity="other">%d lần</item>
     </plurals>
@@ -1487,7 +1505,6 @@
     <string name="comparison_recommended">Được đề xuất</string>
     <string name="comparison_choose">Chọn %1$s</string>
     <string name="comparison_choose_say">Hãy chọn %1$s</string>
-
     <string name="endpoint_add">Thêm điểm cuối</string>
     <string name="endpoint_name">Tên</string>
     <string name="endpoint_name_hint">ví dụ: Ollama ở nhà</string>

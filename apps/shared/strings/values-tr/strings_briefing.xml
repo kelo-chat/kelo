@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">Günüm başladığında (öğrenilen)</string>
     <string name="briefing_when_fixed">Seçtiğim saatte</string>
     <string name="briefing_fixed_at">Her gün %1$s</string>
+    <string name="briefing_fixed_from">İletişim saatlerinin başladığı %1$s itibarıyla</string>
     <string name="briefing_offset">Gün başladıktan ne kadar sonra</string>
     <string name="briefing_offset_none">Hemen başta</string>
     <string name="briefing_offset_min">%1$d dk sonra</string>

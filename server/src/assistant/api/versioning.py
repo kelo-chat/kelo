@@ -6,6 +6,8 @@
   ASSISTANT_MIN_APP_* build) gets 426 {"code": "app_too_old", ...} on /api/*, except the few calls an app needs to show its
   "update needed" screen (/api/about, /api/e2e/info) and /healthz. Requests without the header (older apps, scripts) are never
   refused here: their apps read min_app_version from /api/profile as before.
+- /api/about and /api/profile also send `X-Kelo-Server-Update: <version>` (and /api/about `server_update`) when the caller may update this
+  server and a newer server release is known (api/about.py, server_updates.offer); the apps show a notice for it.
 """
 
 from __future__ import annotations

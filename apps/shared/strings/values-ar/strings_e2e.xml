@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">أعد توصيل هذا الهاتف</string>
     <string name="e2e_key_changed_body">تغيّر مفتاح التشفير في خادم Kelo، لذلك لا يستطيع هذا الهاتف التأكد من أنه خادمك فعلًا. امسح رمز QR جديدًا للاتصال من «حسابي ← أجهزتي» على جهاز آخر، أو من جهاز الخادم.</string>

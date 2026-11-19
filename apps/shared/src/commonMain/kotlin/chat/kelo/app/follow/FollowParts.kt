@@ -19,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import chat.kelo.app.ui.text.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.agent.clockText
 import chat.kelo.app.agent.dayClockText
+import chat.kelo.app.agent.dayOnlyText
 import chat.kelo.app.res.*
 import chat.kelo.app.ui.components.ConfirmDialog
 import chat.kelo.app.ui.components.KeloModal
@@ -40,9 +42,11 @@ import chat.kelo.app.ui.icons.KeloIcons
 import chat.kelo.app.ui.text.string
 import chat.kelo.app.ui.theme.Kelo
 import chat.kelo.app.work.EntryBox
+import chat.kelo.app.work.RAIL_WIDTH
 import chat.kelo.app.work.RailItem
 import chat.kelo.app.work.RailMarker
 import chat.kelo.app.work.StatusChip
+import androidx.compose.ui.semantics.Role
 
 /** One row in the "Kelo가 챙기는 일" section. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -53,7 +57,7 @@ fun FollowItemRow(item: FollowItem, onClick: () -> Unit) {
         "done" -> RailMarker.DONE
         else -> RailMarker.LIVE
     }
-    val timeLabel = if (item.startsAt > 0) clockText(item.startsAt) else null
+    val timeLabel = if (item.startsAt > 0 && !item.allDay) clockText(item.startsAt) else null
     val c = Kelo.colors
 
     RailItem(marker = marker, label = timeLabel) {
@@ -77,7 +81,7 @@ fun FollowItemRow(item: FollowItem, onClick: () -> Unit) {
 
             if (item.startsAt > 0) {
                 Text(
-                    dayClockText(item.startsAt),
+                    followWhenText(item),
                     style = MaterialTheme.typography.bodySmall,
                     color = c.muted,
                 )
@@ -110,9 +114,24 @@ fun FollowItemRow(item: FollowItem, onClick: () -> Unit) {
     }
 }
 
+/** The one row that folds the stopped items of "Kelo가 챙기는 일": opened, they are listed under it. */
+@Composable
+fun FollowStoppedToggle(count: Int, open: Boolean, onToggle: () -> Unit) {
+    val c = Kelo.colors
+    Row(
+        Modifier.fillMaxWidth().padding(start = RAIL_WIDTH - 8.dp).clip(RoundedCornerShape(8.dp))
+            .clickable(role = Role.Button, onClick = onToggle).padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(string(Res.string.follow_stopped_toggle, count), style = MaterialTheme.typography.bodySmall, color = c.muted,
+            modifier = Modifier.weight(1f))
+        Icon(if (open) KeloIcons.Minus else KeloIcons.Plus, contentDescription = null, tint = c.muted, modifier = Modifier.size(16.dp))
+    }
+}
+
 /**
  * Tap opens a sheet with the full plan and buttons:
- * "그만 챙기기" (POST stop, confirm first) and "다시 계획하기" (POST replan).
+ * "그만 챙기기" (POST stop, confirm first), "다시 계획하기" (POST replan) and "목록에서 지우기" (DELETE, confirm first).
  */
 @Composable
 fun FollowPlanSheet(
@@ -120,9 +139,11 @@ fun FollowPlanSheet(
     onDismiss: () -> Unit,
     onStop: (String) -> Unit,
     onReplan: (String) -> Unit,
+    onRemove: (String) -> Unit = {},
 ) {
     val c = Kelo.colors
     var confirmStop by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
 
     KeloModal(onDismiss = onDismiss) {
         Column(
@@ -145,7 +166,7 @@ fun FollowPlanSheet(
                     )
                     if (item.startsAt > 0) {
                         Text(
-                            dayClockText(item.startsAt),
+                            followWhenText(item),
                             style = MaterialTheme.typography.bodySmall,
                             color = c.muted,
                             modifier = Modifier.padding(top = 2.dp),
@@ -269,6 +290,14 @@ fun FollowPlanSheet(
                     modifier = Modifier.weight(1f),
                 )
             }
+
+            // "목록에서 지우기": the item leaves the list for good (not a pause)
+            TextButton(
+                onClick = { confirmRemove = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(string(Res.string.follow_remove), style = MaterialTheme.typography.labelLarge, color = c.danger)
+            }
         }
     }
 
@@ -286,4 +315,23 @@ fun FollowPlanSheet(
             danger = true,
         )
     }
+
+    if (confirmRemove) {
+        ConfirmDialog(
+            title = string(Res.string.follow_remove_confirm),
+            text = string(Res.string.follow_remove_confirm_detail),
+            yes = string(Res.string.follow_remove_yes),
+            onYes = {
+                confirmRemove = false
+                onRemove(item.key)
+                onDismiss()
+            },
+            onDismiss = { confirmRemove = false },
+            danger = true,
+        )
+    }
 }
+
+/** When the item is: "11월 8일 (일) 오전 9:00", or the day alone when no time was given. */
+@Composable
+private fun followWhenText(item: FollowItem): String = if (item.allDay) dayOnlyText(item.startsAt) else dayClockText(item.startsAt)

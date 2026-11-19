@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_desktop_pay.xml (generated from values/strings_desktop_pay.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pin_allow_note">Als je toestaat, vraagt je telefoon of de opgeslagen betaalpincode voor deze site verstuurd mag worden. Bevestig het daar.</string>
     <string name="desktop_pin_need_body">Open de Kelo-app op je telefoon om de pincode ‘%1$s’ één keer vrij te geven voor de betaling bij %2$s (%3$s).</string>

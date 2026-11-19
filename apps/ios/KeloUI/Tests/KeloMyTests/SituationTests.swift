@@ -1,6 +1,8 @@
 import Testing
 import Foundation
 import KeloCore
+import KeloTestSupport
+@testable import KeloShared
 @testable import KeloMy
 
 // Android my/SituationRulesTest.kt: "What Kelo looked at" — the codes, the grouping in a local zone, the decoding.
@@ -113,6 +115,32 @@ import KeloCore
         #expect(d.events[0].itemId == 7 && d.events[0].status == "told")
         #expect(d.pass.counts.proposed == 1)
         #expect(try list("{}").passes.isEmpty)
+    }
+
+    @Test func theLooksAreReadAndAnOlderServerHasNone() throws {
+        let l = try list(#"""
+        {"research": true, "keep_days": 90, "looked_at": [], "passes": [],
+         "looks": [{"when": "hourly", "times": [], "covers": [{"id": "mail", "name": "", "kind": "section"}]},
+                   {"when": "send", "times": ["12:00", "16:00", "x"], "covers": [{"id": "conversation", "name": "", "kind": "section"}]},
+                   {"when": "briefing", "times": ["08:00"], "covers": [{"id": "corrections", "name": "", "kind": "section"}]},
+                   {"when": "later_kind", "times": [], "covers": [{"id": "a", "name": "A", "kind": "connector"}]},
+                   {"when": "needed", "times": [], "covers": []}]}
+        """#)
+        let shown = SituationRules.shownLooks(l.looks ?? [])
+        #expect(shown.map { SituationRules.lookKind($0.whenCode) } == [.hourly, .send, .briefing])
+        #expect(SituationRules.lookTimes(shown[1]) == ["12:00", "16:00"])
+        #expect(shown[2].covers.map(\.id) == ["corrections"])
+        #expect(try list(#"{"looked_at": []}"#).looks == nil)
+    }
+
+    @MainActor @Test func theNewSectionCodesHaveTheirNames() {
+        withLanguage("en") {
+            #expect(sectionName("corrections") == L(R.string.situation_section_corrections))
+            #expect(sectionName("held") == L(R.string.deliveries_held_title))
+            #expect(sectionName("weather") == L(R.string.briefing_weather))
+            #expect(sectionName("missed") == L(R.string.briefing_missed))
+            #expect(sectionName("a_new_code") == L(R.string.situation_section_other))
+        }
     }
 
     @Test func theProactiveSettingsReadTheResearchFlag() throws {

@@ -495,6 +495,16 @@
     <string name="vault_saved_plain">Сохранено</string>
     <string name="vault_not_entered">Ещё не введено</string>
     <string name="vault_last_used">Последнее использование %1$s</string>
+    <string name="vault_browser_title">Браузер Kelo</string>
+    <string name="vault_browser_signed_in">Вход %1$s · последнее использование %2$s</string>
+    <string name="vault_browser_sign_out">Выйти из этого сайта в браузере Kelo</string>
+    <string name="vault_browser_sign_out_confirm">Браузер Kelo выйдет из %1$s, его cookie и данные сайта будут удалены. Сохранённый вход останется.</string>
+    <string name="vault_browser_sites_title">Вход без сохранённого логина</string>
+    <string name="vault_profiles_title">Профили браузера</string>
+    <string name="vault_profile_sites">Вход на %1$s сайтах</string>
+    <string name="vault_profile_empty">Пока нигде не выполнен вход</string>
+    <string name="vault_profile_delete">Удалить этот профиль</string>
+    <string name="vault_profile_delete_confirm">Профиль %1$s и все сохранённые в нём входы будут удалены.</string>
     <string name="vault_place">Ключ передаётся: %1$s</string>
     <string name="vault_place_header_named">заголовок %1$s</string>
     <string name="vault_place_query_named">параметр %1$s</string>
@@ -962,6 +972,9 @@
     <string name="live_still_yours">Вы всё ещё управляете сами. Агент ждёт, пока вы вернёте управление.</string>
     <string name="live_screen_changed">Экран изменился. Нажмите ещё раз.</string>
     <string name="live_tab_closed">Вкладка закрыта, смотреть больше нечего. Если последний экран сохранился, он показан ниже.</string>
+    <string name="live_tabs_label">Вкладки</string>
+    <string name="live_tab_untitled">Новая вкладка</string>
+    <string name="live_tab_close">Закрыть вкладку</string>
     <string name="live_not_controller">Сейчас управлять нельзя. Нажмите «Взять управление» ещё раз.</string>
     <string name="live_input_failed">Браузер не смог это выполнить.</string>
     <string name="live_state_you">Управляете вы</string>
@@ -990,6 +1003,8 @@
     <string name="live_touch_missed">Касание не дошло до страницы</string>
     <string name="live_type_hint">Текст для ввода на странице</string>
     <string name="live_type_send">Ввести</string>
+    <string name="live_keyboard">Клавиатура</string>
+    <string name="live_keyboard_desc">Показать или скрыть клавиатуру для страницы</string>
     <string name="live_type_hide">Скрыть текст</string>
     <string name="live_type_show">Показать текст</string>
     <string name="live_key_enter">Enter</string>
@@ -1178,7 +1193,6 @@
     <string name="work_now_empty">Сейчас ничего не выполняется.</string>
     <string name="work_asks">Ждёт вашего ответа</string>
     <string name="work_asks_empty">Вопросов нет.</string>
-
     <string name="offers_title">Kelo может сделать это сейчас</string>
     <string name="offer_start">Поручить</string>
     <string name="offer_needs">Требуется: %1$s</string>
@@ -1312,6 +1326,7 @@
     <string name="work_watch_ev_fired">Условие выполнено</string>
     <string name="work_watch_ev_error">Сбой</string>
     <string name="work_watch_ev_check">Проверено</string>
+    <string name="work_watch_ev_count">· Проверено %1$d раз</string>
     <string name="work_watch_ev_on">Включено</string>
     <string name="work_watch_ev_off">Выключено</string>
     <string name="work_watch_delete">Удалить отслеживание</string>
@@ -1363,14 +1378,17 @@
     <string name="heads_section">Уведомления о новом</string>
     <string name="heads_switch">Kelo сообщает первым</string>
     <string name="heads_about">%1$s Kelo проверяет новую почту, ближайшие события и сроки и первым сообщает, если есть что-то важное. То, на что нужно ответить вам (подтверждения, вопросы), напоминается отдельно в разделе «%2$s», независимо от этой настройки.</string>
+    <string name="heads_about_send_times">В часы сообщений Kelo каждый час проверяет новую почту и подключённые сервисы и сразу сообщает о том, что не может ждать. Остальное ждёт времени отправки: тогда Kelo также просматривает разговоры, календарь, цели, расписания и память. Одна отправка считается в «%1$s» один раз, сколько бы в ней ни было. Когда лимит на день исчерпан, приходит только то, что не может ждать. То, на что нужно ответить вам (подтверждения, вопросы), напоминается отдельно в разделе «%2$s», независимо от этой настройки.</string>
     <string name="heads_per_day">Не чаще чем в день</string>
+    <string name="heads_send_times">Время отправки: %1$s</string>
     <string name="heads_mail">Проверять и новую почту</string>
     <string name="heads_mail_about">Выключено: Kelo не открывает ваши почтовые ящики для этой проверки; события и сроки продолжают проверяться. Утренняя сводка выбирает свои почтовые ящики отдельно.</string>
     <string name="heads_list_title">На что обратить внимание</string>
-    <string name="heads_list_about">Необязательно. Kelo каждый раз проверяет это и сообщает, только если нужно ваше внимание.</string>
+    <string name="heads_list_about">Необязательно. Когда вы что-то добавляете, Kelo подбирает нужное время: отдельную проверку, если она нужна, иначе просмотр во время отправки. Сообщает, только если нужно ваше внимание.</string>
     <string name="heads_list_hint">напр.: уведомления о доставке за сегодня</string>
     <string name="heads_list_add">Добавить</string>
     <string name="heads_list_remove">Удалить «%1$s»</string>
+    <string name="heads_list_own">Проверяется отдельно · %1$s</string>
     <plurals name="heads_times">
         <item quantity="one">%d раз</item>
         <item quantity="few">%d раза</item>
@@ -1596,7 +1614,6 @@
     <string name="comparison_recommended">Рекомендуется</string>
     <string name="comparison_choose">Выбрать %1$s</string>
     <string name="comparison_choose_say">Давай выберем %1$s</string>
-
     <string name="endpoint_add">Добавить эндпоинт</string>
     <string name="endpoint_name">Имя</string>
     <string name="endpoint_name_hint">например, Домашний Ollama</string>

@@ -433,15 +433,11 @@ async def test_the_path_taken_is_logged_without_the_text(on, caplog):
     assert "type_text: fallback: value differs" in lines and not any("비밀" in l or "text" in l.split(":", 1)[1].split("fallback")[0] for l in lines)
 
 
-@pytest.mark.parametrize("phone", [False, True])
-async def test_a_real_page_sees_korean_as_input_method_events(chromium, on, phone):
+async def test_a_real_page_sees_korean_as_input_method_events(chromium, on):
     page = chromium
     await page.set_content("<input id=q><script>window.ev=[];for(const t of ['keydown','compositionstart','compositionupdate','compositionend',"
                            "'input'])q.addEventListener(t,e=>ev.push(t=='keydown'?'keydown:'+e.key+'/'+e.keyCode:t=='compositionupdate'?t+':'+e.data:t))</script>")
     session = await page.context.new_cdp_session(page)
-    if phone:
-        await session.send("Emulation.setDeviceMetricsOverride", {"width": 390, "height": 800, "deviceScaleFactor": 3, "mobile": True})
-        await session.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
 
     async def fill(ms):
         raise AssertionError("fell back to the plain fill")

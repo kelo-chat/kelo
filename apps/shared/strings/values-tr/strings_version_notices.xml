@@ -10,4 +10,7 @@
     <string name="update_popup_title">Yeni bir sürüm var (%1$s)</string>
     <string name="update_popup_update">Güncelle</string>
     <string name="update_popup_later">Sonra</string>
+    <string name="server_notice_title">Kelo sunucusu için güncelleme var (%1$s)</string>
+    <string name="server_notice_body">En son düzeltmeleri almak için güncelleyin. Sunucu yeniden başlarken Kelo birkaç dakika kullanılamaz.</string>
+    <string name="server_notice_open">Güncellemeyi gör</string>
 </resources>

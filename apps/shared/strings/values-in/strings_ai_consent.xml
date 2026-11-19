@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- in text for strings_ai_consent.xml (edit freely, keep the names) -->
+<!-- id text for strings_ai_consent.xml (generated from values/strings_ai_consent.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="ai_consent_title">Sebelum pesan pertama Anda</string>
     <string name="ai_consent_body">Untuk menjawab, Kelo mengirim pesan Anda dan yang diperlukan untuknya (file yang dilampirkan, hasil dari layanan yang terhubung) ke layanan AI yang Anda pilih.</string>

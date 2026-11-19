@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_desktop_ops.xml (generated from values/strings_desktop_ops.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_ops_wallet_note">Kartlar telefonundaki Kelo uygulamasında eklenir ve her ödeme orada onaylanır: kart numaraları yalnızca o telefonda olan bir anahtarla kilitlenir. Burada kartlarını görebilir, adlarını değiştirebilir ya da silebilir, otomatik ödemeyi kapatıp limitlerini belirleyebilirsin.</string>
     <string name="desktop_ops_tag_phone">Telefondan öder</string>

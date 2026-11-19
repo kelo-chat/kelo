@@ -567,3 +567,13 @@ def test_a_needs_input_with_need_site_data_reset_offers_the_clear_and_retry_choi
         assert "need" not in ws._live["w-need"].report
     finally:
         current_worker.reset(token)
+
+
+def test_a_research_job_is_told_its_browser_is_not_signed_in_and_its_tab_kind_is_known(monkeypatch):
+    ws = _bare_workers()
+    monkeypatch.setattr(ws, "_row", lambda wid: {"kind": "research"} if wid == "rjob" else {"kind": "browser"} if wid == "bjob" else None)
+    assert ws.kind_of("rjob") == "research" and ws.kind_of("bjob") == "browser" and ws.kind_of("none") == ""
+    brief = ws._brief("rjob", "compare prices", "research", "", [], 10, 5)
+    assert ("This browser is not signed in to any site. When a step needs a sign-in, skip it and say in your report what you "
+            "could not check.") in brief
+    assert "not signed in" not in ws._brief("bjob", "compare prices", "browser", "", [], 10, 5)

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- fr text for strings_desktop_ops.xml (generated from values/strings_desktop_ops.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_ops_wallet_note">Les cartes s\'ajoutent, et chaque paiement se confirme, dans l\'app Kelo de ton téléphone : les numéros de carte sont verrouillés par une clé que seul ce téléphone possède. Ici, tu peux voir tes cartes, les renommer ou les supprimer, couper le paiement automatique et régler ses plafonds.</string>
     <string name="desktop_ops_tag_phone">Paie depuis ton téléphone</string>

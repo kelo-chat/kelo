@@ -495,6 +495,16 @@
     <string name="vault_saved_plain">Gespeichert</string>
     <string name="vault_not_entered">Noch nicht eingegeben</string>
     <string name="vault_last_used">Zuletzt genutzt %1$s</string>
+    <string name="vault_browser_title">Kelo-Browser</string>
+    <string name="vault_browser_signed_in">Angemeldet %1$s · zuletzt verwendet %2$s</string>
+    <string name="vault_browser_sign_out">Kelo-Browser von dieser Seite abmelden</string>
+    <string name="vault_browser_sign_out_confirm">Kelo-Browser wird von %1$s abgemeldet, Cookies und Website-Daten werden entfernt. Ein gespeicherter Login bleibt erhalten.</string>
+    <string name="vault_browser_sites_title">Angemeldet ohne gespeicherten Login</string>
+    <string name="vault_profiles_title">Browserprofile</string>
+    <string name="vault_profile_sites">Bei %1$s Websites angemeldet</string>
+    <string name="vault_profile_empty">Noch nirgends angemeldet</string>
+    <string name="vault_profile_delete">Dieses Profil löschen</string>
+    <string name="vault_profile_delete_confirm">Das Profil %1$s und alle darin gespeicherten Anmeldungen werden gelöscht.</string>
     <string name="vault_place">Schlüssel kommt in %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -940,6 +950,9 @@
     <string name="live_still_yours">Sie steuern noch selbst. Ihr Agent wartet, bis Sie es zurückgeben.</string>
     <string name="live_screen_changed">Der Bildschirm hat sich geändert. Tippen Sie noch einmal.</string>
     <string name="live_tab_closed">Der Tab wurde geschlossen, es gibt nichts mehr zu sehen. Falls der letzte Bildschirm gespeichert wurde, siehst du ihn unten.</string>
+    <string name="live_tabs_label">Tabs</string>
+    <string name="live_tab_untitled">Neuer Tab</string>
+    <string name="live_tab_close">Tab schließen</string>
     <string name="live_not_controller">Du kannst gerade nicht steuern. Tippe noch mal auf „Übernehmen“.</string>
     <string name="live_input_failed">Das konnte der Browser nicht ausführen.</string>
     <string name="live_state_you">Du steuerst</string>
@@ -966,6 +979,8 @@
     <string name="live_touch_missed">Die Berührung ist nicht angekommen</string>
     <string name="live_type_hint">Text, der auf der Seite getippt wird</string>
     <string name="live_type_send">Tippen</string>
+    <string name="live_keyboard">Tastatur</string>
+    <string name="live_keyboard_desc">Tastatur für die Seite ein- oder ausblenden</string>
     <string name="live_type_hide">Text ausblenden</string>
     <string name="live_type_show">Text einblenden</string>
     <string name="live_key_enter">Enter</string>
@@ -1132,7 +1147,6 @@
     <string name="work_now_empty">Gerade läuft nichts.</string>
     <string name="work_asks">Wartet auf deine Antwort</string>
     <string name="work_asks_empty">Keine offenen Fragen.</string>
-
     <string name="offers_title">Kelo kann das jetzt erledigen</string>
     <string name="offer_start">Übergeben</string>
     <string name="offer_needs">Benötigt: %1$s</string>
@@ -1258,6 +1272,7 @@
     <string name="work_watch_ev_fired">Bedingung erfüllt</string>
     <string name="work_watch_ev_error">Fehlgeschlagen</string>
     <string name="work_watch_ev_check">Geprüft</string>
+    <string name="work_watch_ev_count">· %1$d-mal geprüft</string>
     <string name="work_watch_ev_on">An</string>
     <string name="work_watch_ev_off">Aus</string>
     <string name="work_watch_delete">Beobachtung löschen</string>
@@ -1303,14 +1318,17 @@
     <string name="heads_section">Neuigkeiten</string>
     <string name="heads_switch">Kelo meldet sich zuerst</string>
     <string name="heads_about">%1$s prüft Kelo neue Mails, anstehende Termine und Fristen und meldet sich zuerst, wenn du etwas wissen solltest. Was du beantworten musst (Freigaben, Fragen), kommt unabhängig davon unter „%2$s“ noch einmal.</string>
+    <string name="heads_about_send_times">In deinen Nachrichtenzeiten prüft Kelo jede Stunde neue Mails und deine verbundenen Dienste und meldet sofort, was nicht warten kann. Der Rest wartet bis zu den Sendezeiten; dann sieht Kelo auch Gespräche, Kalender, Ziele, Termine und sein Gedächtnis durch. Eine Sendung zählt bei „%1$s“ nur einmal, egal wie viel sie enthält. Sind die Sendungen des Tages aufgebraucht, kommt nur noch, was nicht warten kann. Was du beantworten musst (Freigaben, Fragen), kommt unabhängig davon unter „%2$s“ noch einmal.</string>
     <string name="heads_per_day">Höchstens pro Tag</string>
+    <string name="heads_send_times">Sendezeiten: %1$s</string>
     <string name="heads_mail">Auch nach neuen Mails schauen</string>
     <string name="heads_mail_about">Aus: Kelo öffnet für diese Prüfung keine Postfächer; Termine und Fristen werden weiterhin geprüft. Der Morgenüberblick wählt seine Postfächer selbst aus.</string>
     <string name="heads_list_title">Im Blick behalten</string>
-    <string name="heads_list_about">Optional. Kelo schaut jedes Mal danach und meldet sich nur, wenn etwas deine Aufmerksamkeit braucht.</string>
+    <string name="heads_list_about">Optional. Wenn du etwas hinzufügst, gibt Kelo ihm den passenden Zeitpunkt: eine eigene Prüfung, wenn es eine braucht, sonst einen Blick zu deinen Sendezeiten. Du hörst nur etwas, wenn es deine Aufmerksamkeit braucht.</string>
     <string name="heads_list_hint">z. B. heutige Lieferhinweise</string>
     <string name="heads_list_add">Hinzufügen</string>
     <string name="heads_list_remove">%1$s entfernen</string>
+    <string name="heads_list_own">Wird separat geprüft · %1$s</string>
     <plurals name="heads_times">
         <item quantity="one">%d-mal</item>
         <item quantity="other">%d-mal</item>
@@ -1525,7 +1543,6 @@
     <string name="comparison_recommended">Empfohlen</string>
     <string name="comparison_choose">%1$s wählen</string>
     <string name="comparison_choose_say">Lass uns %1$s nehmen</string>
-
     <string name="endpoint_add">Endpunkt hinzufügen</string>
     <string name="endpoint_name">Name</string>
     <string name="endpoint_name_hint">z. B. Home Ollama</string>

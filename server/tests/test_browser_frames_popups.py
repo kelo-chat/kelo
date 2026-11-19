@@ -1,5 +1,5 @@
 """Buying through a window the page opens and a frame from another host of the same site (the shape of many ticket, lottery and
-booking sites): the window becomes the tab's page (in the tab's view), the frame's text is read and its buttons clicked, the
+booking sites): the window becomes the tab's page, the frame's text is read and its buttons clicked, the
 approved order covers the site's other hosts (Public Suffix List), and after confirm_purchase the final button needs no second card.
 A click that changes nothing says so. Real Chromium on pages served from memory (skipped without Playwright's browser)."""
 
@@ -12,7 +12,7 @@ import pytest
 from assistant.agent.fence import plain
 from assistant.store import Store
 from assistant.tools import humanize
-from assistant.tools.browser import NO_CHANGE_NOTE, POPUP_BACK_NOTE
+from assistant.tools.browser import NO_CHANGE_NOTE, TAB_CLOSED_NOTE
 from assistant.tools.sites import registrable, same_site
 
 from fixtures.order_harness import Env
@@ -104,40 +104,14 @@ async def test_an_approved_order_through_a_window_and_a_frame_is_exactly_one_car
     assert "accepted (inside the purchase the user allowed)" in plain(run.result("browser_click", 2).output)
 
 
-async def test_after_the_window_closes_the_tab_is_back_on_its_opener(ctx):
+async def test_after_the_window_closes_the_task_is_back_on_its_opener_tab(ctx):
     env = await env_on(ctx)
     run = await env.run([("browser_open", {"url": HOME}), ("browser_click", {"selector": "#open"}),
                          ("browser_click", {"selector": "#bye"}), ("browser_read", {})])
     closed = plain(run.result("browser_click", 1).output)   # the window closed itself: the reading after the click is the opener
-    assert not run.result("browser_click", 1).is_error and POPUP_BACK_NOTE in closed and f"URL: {HOME}" in closed
+    note = TAB_CLOSED_NOTE.split("{")[0]   # the window's own tab is now the one that is active (brief C1: the popup is a tab of the task)
+    assert not run.result("browser_click", 1).is_error and note in closed and f"URL: {HOME}" in closed
     assert f"URL: {HOME}" in plain(run.result("browser_read").output)
-
-
-async def test_a_window_opened_in_the_phone_view_is_in_the_phone_view(ctx):
-    env = await env_on(ctx)
-    run = await env.run([("browser_open", {"url": HOME, "view": "mobile"}), ("browser_click", {"selector": "#open"})])
-    assert "opened a new window" in plain(run.result("browser_click").output)
-    popup = next(p for p in ctx.pages if p.url == GAME)
-    facts = await popup.evaluate("() => ({ua: navigator.userAgent, w: screen.width, mobile: navigator.userAgentData && navigator.userAgentData.mobile})")
-    assert "Mobile" in facts["ua"] and facts["w"] == 412 and facts["mobile"] is True
-    assert any(u == GAME and "Mobile" in ua for u, ua in ctx.seen)              # the window's page was asked for as a phone
-    assert env.session.view() == "mobile"
-
-
-@pytest.mark.parametrize("opener", ["#open", "#blank"])
-async def test_a_window_opened_in_the_phone_view_asks_for_the_phone_page_from_its_first_request(ctx, opener):
-    """The window's FIRST request already carries the phone identity (2026-11-10: a "바로구매" window came in the PC version because
-    the overrides attached after its first load), for a pop-up and a target=_blank link alike, and it is not loaded twice."""
-    env = await env_on(ctx)
-    run = await env.run([("browser_open", {"url": HOME, "view": "mobile"}), ("browser_click", {"selector": opener})])
-    assert "opened a new window" in plain(run.result("browser_click").output)
-    asks = [h for u, h in ctx.heads if u == GAME]
-    assert asks and "Android" in asks[0]["user-agent"] and "Mobile" in asks[0]["user-agent"]
-    assert asks[0].get("sec-ch-ua-mobile") == "?1" and asks[0].get("sec-ch-ua-platform") == '"Android"'
-    assert len(asks) == 1                                                        # asked once, as a phone: no reload
-    popup = next(p for p in ctx.pages if p.url.startswith(GAME))
-    await asyncio.sleep(0.3)
-    assert await popup.evaluate("() => screen.width") == 412
 
 
 async def test_a_click_that_changes_nothing_says_so_and_an_allowed_one_is_not_asked_again(ctx):

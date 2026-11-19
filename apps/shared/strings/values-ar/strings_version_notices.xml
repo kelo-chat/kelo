@@ -10,4 +10,7 @@
     <string name="update_popup_title">يتوفر إصدار جديد (%1$s)</string>
     <string name="update_popup_update">تحديث</string>
     <string name="update_popup_later">لاحقًا</string>
+    <string name="server_notice_title">يتوفر تحديث لخادم Kelo (%1$s)</string>
+    <string name="server_notice_body">حدّثه للحصول على أحدث الإصلاحات. لن يكون Kelo متاحًا لبضع دقائق أثناء إعادة تشغيل الخادم.</string>
+    <string name="server_notice_open">عرض التحديث</string>
 </resources>

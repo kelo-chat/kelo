@@ -201,4 +201,35 @@ import KeloCore
         #expect(ChatReducer.mergeStored(shown, stored).map(\.key) == ["a-now"])
         #expect(ChatReducer.mergeStored(shown, stored)[0].asMsg?.id == nil)
     }
+
+    // A reply split by a tool chip (live: text, chip, text) is one reply once stored: one bubble (Android ChatMergeTest).
+
+    private func chip(_ key: String) -> ChatItem {
+        .tool(.init(key: key, id: "t-\(key)", name: "email_update", state: .ok, service: nil, label: ""))
+    }
+
+    @Test func aReplySplitByAToolChipIsOneBubbleAfterReload() {
+        let shown: [ChatItem] = [msg("u1", mine: true, text: "q", id: 1), msg("a2", text: "before the tool"), chip("t3"), msg("a4", text: "after the tool")]
+        let stored: [ChatItem] = [msg("s1", mine: true, text: "q", id: 1), msg("s2", text: "before the tool\n\nafter the tool", id: 2)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.map(\.key) == ["u1", "t3", "a4"])
+        #expect(merged[2].asMsg?.text == "before the tool\n\nafter the tool")
+        #expect(merged[2].asMsg?.id == 2)
+    }
+
+    @Test func aTurnWithTwoStoredRowsKeepsTwoBubbles() {
+        let shown: [ChatItem] = [msg("a2", text: "part one"), chip("t3"), msg("a4", text: "part two")]
+        let stored: [ChatItem] = [msg("s2", text: "part one", id: 2), msg("s3", text: "part two", id: 3)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.map(\.key) == ["a2", "t3", "a4"])
+        #expect(merged.compactMap(\.asMsg?.text) == ["part one", "part two"])
+    }
+
+    @Test func aReplyWithoutAToolIsMatchedAsBefore() {
+        let shown: [ChatItem] = [msg("u1", mine: true, text: "q", id: 1), msg("a2", text: "streamed")]
+        let stored: [ChatItem] = [msg("s1", mine: true, text: "q", id: 1), msg("s2", text: "the saved reply", id: 2)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.map(\.key) == ["u1", "a2"])
+        #expect(merged[1].asMsg?.text == "the saved reply")
+    }
 }

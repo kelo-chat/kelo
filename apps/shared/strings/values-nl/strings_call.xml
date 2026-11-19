@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Kelo bellen</string>
+    <string name="call_incoming_line">belt je</string>
+    <string name="call_accept">Beantwoorden</string>
+    <string name="call_decline">Weigeren</string>
+    <string name="call_connecting">Verbinden…</string>
+    <string name="call_listening">Luistert</string>
+    <string name="call_thinking">Denkt na</string>
+    <string name="call_speaking">Praat</string>
+    <string name="call_muted">Gedempt</string>
+    <string name="call_mute">Dempen</string>
+    <string name="call_unmute">Dempen opheffen</string>
+    <string name="call_speaker">Luidspreker</string>
+    <string name="call_hang_up">Ophangen</string>
+    <string name="call_card_waiting">Er moet iets op het scherm worden gecontroleerd.</string>
+    <string name="call_card_open">Bekijken</string>
+    <string name="call_back_to_call">Terug naar gesprek · %1$s</string>
+    <string name="call_offline">Kan Kelo-server niet bereiken. Opnieuw verbinden…</string>
+    <string name="call_ended_background">Oproep beëindigd omdat je de app hebt verlaten.</string>
+    <string name="call_ended_interrupted">Oproep beëindigd door ander geluid.</string>
+    <string name="call_ended_quiet">Oproep beëindigd na lange stilte.</string>
+    <string name="call_needs_speech_model">Om te bellen heeft de Kelo-server het spraakmodel nodig.</string>
+    <string name="call_mic_denied">Kan oproep niet starten: microfoon is niet toegestaan.</string>
+    <string name="call_voice_offer">Dit is Kelo\'s natuurlijke stem voor oproepen. Download het stemmodel (%1$s) eenmalig naar je Kelo-server en Kelo spreekt vanaf de volgende zin hiermee. Zonder model gebruikt Kelo de robotstem van dit apparaat.</string>
+    <string name="call_mark">Oproep</string>
+    <string name="call_voice_offer_title">Kelo\'s stem downloaden?</string>
+    <string name="call_voice_offer_ok">Downloaden</string>
+    <string name="call_voice_offer_later">Voorlopig apparaatstem gebruiken</string>
+    <string name="call_voice_better">Met het stemmodel spreekt Kelo met een veel natuurlijkere stem.</string>
+    <string name="call_voice_get">Downloaden</string>
+    <string name="call_voice_line_close">Sluiten</string>
+    <string name="call_ears_failed">De spraakherkenning van de telefoon hoort je niet.</string>
+    <string name="voice_speech_title">Kelo\'s stem</string>
+    <string name="voice_speech_download">Stemmodel downloaden · %1$s</string>
+    <string name="voice_speech_downloading">Stemmodel downloaden · %1$d%%</string>
+    <string name="voice_speech_remove">Stemmodel verwijderen</string>
+    <string name="voice_speech_remove_confirm">Stemmodel verwijderen? Kelo spreekt daarna met de stem van dit apparaat.</string>
+    <string name="voice_speech_device_note">Zonder stemmodel spreekt Kelo met de ingebouwde stem van dit apparaat.</string>
+    <string name="voice_speech_unsupported_lang">Het stemmodel kent deze taal nog niet, dus de apparaatstem wordt gebruikt.</string>
+    <string name="voice_speech_voice_female">Vrouwelijke stem %1$d</string>
+    <string name="voice_speech_voice_male">Mannelijke stem %1$d</string>
+    <string name="voice_speech_listen">Beluisteren</string>
+    <string name="voice_speech_stop">Stoppen</string>
+    <string name="voice_speech_speed">Spreeksnelheid</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">Hallo. Dit is de stem waarmee ik praat.</string>
+</resources>

@@ -113,7 +113,7 @@ async def model_steps(s, tools, events):
     out = await tools["browser_login"].handler({"name": "kakao"})
     events.append(("login_result", time.monotonic(), out))
     assert "find_login_code" not in out and "verification code" not in out.lower()
-    m = re.search(r'(\[data-kelo-opt="\d+"\]): [^\n]*이 브라우저에서 2단계 인증 사용 안 함', plain(out))
+    m = re.search(r'(?m)^- `([^`]+)`: [^\n]*이 브라우저에서 2단계 인증 사용 안 함', plain(out))
     assert m, out
     allowed = tools["browser_click"].auto_approve({"selector": m.group(1)})
     assert (await allowed if hasattr(allowed, "__await__") else allowed) is True

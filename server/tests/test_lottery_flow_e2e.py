@@ -1,4 +1,4 @@
-"""A purchase through a window opened from a phone-view tab, the shape of a lottery site (2026-11-10, tasks 162-165: the quantity
+"""A purchase through a window opened from a tab, the shape of a lottery site (2026-11-10, tasks 162-165: the quantity
 list was never set, and after the approved payment the buy button "did nothing"). A local fake on real Chromium:
 sign-in -> "바로구매" opens a window on another host of the site -> a native quantity <select> AND a custom quantity dropdown ->
 "구매하기" asks confirm("구매하시겠습니까?") -> result page. Quantity 5 is set in one step per list; after confirm_purchase the click
@@ -64,17 +64,14 @@ async def ctx():
     humanize.configure(reset=True)
 
 
-@pytest.mark.parametrize("handler", ["onclick", "ontouchend"])   # a phone page whose buy button listens to touch only
-async def test_a_purchase_in_a_window_of_a_phone_view_tab_sets_the_quantity_and_goes_through_after_one_card(ctx, tmp_path, monkeypatch,
-                                                                                                          handler):
-    monkeypatch.setitem(PAGES, GAME, PAGES[GAME].replace("<button id=buy onclick=", f"<button id=buy {handler}="))
+async def test_a_purchase_in_a_window_sets_the_quantity_and_goes_through_after_one_card(ctx, tmp_path):
     store = Store(tmp_path / "a.db", KEY)
     store.save_credential("lotto", "Lotto", ["www.lotto.example"], {}, kind="login")
     store.set_login("lotto", "kim", "secret-pw")
     env = Env(store, await ctx.new_page())
     env.session.overlay_pause = 0.05
     run = await env.run([
-        ("browser_open", {"url": LOGIN, "view": "mobile"}),
+        ("browser_open", {"url": LOGIN}),
         ("browser_login", {"name": "lotto"}),
         ("begin_order", {"site": "lotto.example", "what": "로또 자동 5게임"}),
         ("browser_click", {"selector": "#buynow"}),                     # the purchase window

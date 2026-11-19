@@ -6,6 +6,11 @@ import KeloShared
 enum FollowRules {
     static func isDayLead(_ offset: String) -> Bool { offset == "-1d" || offset == "-24h" }
 
+    /// The items still followed, and the stopped ones (folded under one row on the work page, in the order the server gave).
+    static func splitStopped(_ items: [FollowItem]) -> (live: [FollowItem], stopped: [FollowItem]) {
+        (items.filter { $0.state != "stopped" }, items.filter { $0.state == "stopped" })
+    }
+
     /// The hours of a "-3h" / "+3h" offset (3 when it cannot be read).
     static func leadHours(_ offset: String) -> Int {
         Int(offset.trimmingCharacters(in: CharacterSet(charactersIn: "+-")).trimmingCharacters(in: CharacterSet(charactersIn: "hH"))) ?? 3
@@ -39,7 +44,7 @@ enum FollowRules {
             parts.append(L(R.string.follow_summary_prep_general, first))
         }
         if parts.isEmpty {
-            parts.append(!item.checks.isEmpty || tell?.onChange == true ? L(R.string.follow_summary_watch_changes) : L(R.string.follow_summary_default))
+            parts.append(!item.checks.isEmpty ? L(R.string.follow_summary_watch_changes) : L(R.string.follow_summary_default))
         }
         return parts.joined(separator: " · ")
     }

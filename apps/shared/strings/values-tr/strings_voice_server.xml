@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">%1$s konuşma tanıma modeli Kelo sunucunuza indirilsin mi? İndirmezseniz telefonunuzun kendi konuşma tanıması kullanılır.</string>
     <string name="voice_server_downloading">Konuşma modeli indiriliyor · %1$d%%</string>
     <string name="voice_server_ready">Kelo sunucunuz artık sesinizi anlıyor.</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">Metne dönüştürmek için Kelo sunucunuza ulaşılamadı.</string>
     <string name="voice_server_busy">Kelo sunucunuz başka bir kayıtla meşgul. Biraz sonra yeniden deneyin.</string>
     <string name="voice_server_too_long">Kayıt çok uzun. Lütfen 2 dakikadan kısa konuşun.</string>
-    <string name="voice_page_title">Sesle giriş</string>
+    <string name="voice_page_title">Ses</string>
     <string name="voice_page_intro">Sesiniz Kelo sunucunuzda metne dönüştürülür ve metin alana eklenir. Kendiliğinden gönderilen bir şey olmaz.</string>
     <string name="voice_model_in_use">Kullanılan konuşma modeli</string>
     <string name="voice_state_off">Telefonun kendi konuşma tanıması</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Kelo sunucusundaki konuşma modelleri bu dili henüz desteklemiyor, bu yüzden telefonun kendi konuşma tanıması kullanılır.</string>
     <string name="voice_model_size">Boyut %1$s · kullanırken bellek %2$s</string>
     <string name="voice_runtime_missing">Bunu kullanmak için Kelo sunucu kurulumunu bir kez daha çalıştırın.</string>
+    <string name="voice_send_now">Söylediklerini gönder</string>
+    <string name="voice_elapsed">Kayıt süresi %1$s</string>
 </resources>

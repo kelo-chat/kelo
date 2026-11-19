@@ -16,6 +16,15 @@ import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 
+actual fun graphemeStarts(s: String): IntArray {
+    val it = java.text.BreakIterator.getCharacterInstance()
+    it.setText(s)
+    val out = ArrayList<Int>()
+    var i = it.first()
+    while (i != java.text.BreakIterator.DONE && i < s.length) { out.add(i); i = it.next() }
+    return out.toIntArray()
+}
+
 actual fun decodeImage(bytes: ByteArray): ImageBitmap? =
     runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }.getOrNull()
 

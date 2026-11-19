@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">請重新連接這支手機</string>
     <string name="e2e_key_changed_body">你的 Kelo 伺服器的加密金鑰變了，這支手機無法確認它真的是你的伺服器。請在另一台裝置的「我的 → 我的裝置」或伺服器電腦上掃描新的連接 QR 碼。</string>

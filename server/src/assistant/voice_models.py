@@ -135,6 +135,61 @@ CATALOG: dict[str, SpeechModel] = {
     ),
 }
 
+# ---- Kelo's voice (text to speech for call mode). Not in CATALOG: CATALOG is the speech-to-text list that recommend() reads.
+_SUPERTONIC_REPO = "https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11/resolve/"
+_SUPERTONIC_COMMIT = "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4"
+SUPERTONIC_ID = "supertonic-3"
+SPEAK_LANGS: tuple[str, ...] = (
+    "en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es", "et", "fi", "fr", "hi", "hr", "hu", "id",
+    "it", "lt", "lv", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi",
+)
+
+_SUPERTONIC_FILES = (
+    ("duration_predictor.int8.onnx", 3_700_147, "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db"),
+    ("text_encoder.int8.onnx", 36_416_150, "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff"),
+    ("vector_estimator.int8.onnx", 78_400_833, "20cd86fa5c6effedfda0e7cffe5b0569ca401c440a0c3a1d72bf39286c0db3fd"),
+    ("vocoder.int8.onnx", 25_991_073, "e923d60f53f95eb1ce235f1dc33ec56d9c057823c96fa6f8acf98f32b0da6152"),
+    ("tts.json", 8_253, "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09"),
+    ("unicode_indexer.bin", 262_144, "8402ca48e5189a8950138580b0fff64db6f072f24ac07cd54ba8b2fbb9883b30"),
+    ("voice.bin", 517_168, "67d5209b0ee8ce6c74105ffbe12fe6a7628aea3b4ba2fcb308a4a67938a93ce8"),
+    ("LICENSE", 1_070, "0dfe0d0ba84416fe3879d9a34f4909d8d0137c78d1e95834177b0414ac096fa2"),
+)
+
+SPEECH_OUT: dict[str, SpeechModel] = {
+    SUPERTONIC_ID: SpeechModel(
+        id=SUPERTONIC_ID,
+        name="Supertonic 3",
+        maker="Supertone Inc.",
+        license_name="BigScience OpenRAIL-M",
+        license_url="https://huggingface.co/Supertone/supertonic-3/blob/3cadd1ee6394adea1bd021217a0e650ede09a323/LICENSE",
+        source_url="https://huggingface.co/Supertone/supertonic-3",
+        attribution=(
+            "Supertonic 3 (text to speech) by Supertone Inc. BigScience OpenRAIL-M; the use restrictions in its Attachment A "
+            "apply. ONNX int8 conversion by k2-fsa, used unchanged."
+        ),
+        languages=SPEAK_LANGS,
+        kind="supertonic",
+        files=tuple(
+            ModelFile(name=n, url=_SUPERTONIC_REPO + _SUPERTONIC_COMMIT + "/" + n, size=size, sha256=sha)
+            for n, size, sha in _SUPERTONIC_FILES
+        ),
+        memory_bytes=512 * 1024 * 1024,
+    ),
+}
+
+ALL: dict[str, SpeechModel] = {**CATALOG, **SPEECH_OUT}
+
+# Kelo's own names for the ten voices: sid 0-4 female, 5-9 male (the order the owner corrected).
+VOICES: tuple[tuple[int, str, int], ...] = tuple((sid, "female" if sid < 5 else "male", sid % 5 + 1) for sid in range(10))
+
+
+def speak_lang(tag: str) -> str | None:
+    """The Supertonic language for a BCP-47 tag or Kelo locale: its primary subtag lower-cased ("pt-BR" -> "pt", "en-US" -> "en")
+    when SPEAK_LANGS has it, else None (zh-*, th, anything unknown: the device voice speaks it)."""
+    primary = (tag or "").replace("_", "-").split("-", 1)[0].lower()
+    return primary if primary in SPEAK_LANGS else None
+
+
 # Locale -> model. Locales not listed (ar, hi, id, th, tr, vi) keep the phone's own recognizer (brief D1).
 _FOR_LOCALE: dict[str, str] = {
     "ko": SENSE_ID, "ja": SENSE_ID, "zh-Hans": SENSE_ID, "zh-Hant": SENSE_ID,

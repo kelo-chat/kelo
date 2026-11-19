@@ -294,7 +294,7 @@ class DeviceLive:
         cast.last, cast.device = mark, (dw, dh)
         async with cast.cond:
             cast.seq += 1
-            cast.frame = Frame(cast.seq, jpeg, w, h, time.time(), "", TITLE, {"deviceWidth": dw, "deviceHeight": dh}, secure=True,
+            cast.frame = Frame(cast.seq, jpeg, w, h, time.time(), "", TITLE, {"deviceWidth": dw, "deviceHeight": dh}, live_v=2, secure=True,
                                editing=cast.editing)
             cast.recent[cast.seq] = (w, h, (dw, dh))
             for old in [q for q in cast.recent if q <= cast.seq - RECENT_FRAMES]:

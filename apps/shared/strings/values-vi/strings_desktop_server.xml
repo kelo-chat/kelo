@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- vi text for strings_desktop_server.xml (generated from values/strings_desktop_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_server_row">Dùng máy tính này làm máy chủ Kelo</string>
     <string name="desktop_server_row_hint">Cài máy chủ Kelo lên máy tính này. Windows sẽ hỏi quyền quản trị viên một lần.</string>
@@ -17,7 +17,6 @@
     <string name="desktop_server_update">Cập nhật</string>
     <string name="desktop_server_install">Cài đặt</string>
     <string name="desktop_server_unavailable">Máy chủ Kelo cho Windows chưa sẵn sàng.</string>
-
     <string name="desktop_server_row_mac">Dùng Mac này làm máy chủ Kelo</string>
     <string name="desktop_server_row_hint_mac">Cài máy chủ Kelo trên Mac này. macOS sẽ hỏi mật khẩu quản trị viên một lần.</string>
     <string name="desktop_server_installed_mac">Máy chủ Kelo đã có trên Mac này</string>

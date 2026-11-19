@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.agent.DayGroups
+import chat.kelo.app.res.*
 import chat.kelo.app.my.MyFakeServer.Companion.fail
 import chat.kelo.app.my.MyFakeServer.Companion.ok
 import chat.kelo.app.my.MyFakeServer.Companion.until
@@ -178,6 +179,32 @@ class SituationRulesTest {
     private val onePass = """{"research": true, "keep_days": 90, "looked_at": [{"id": "mail", "kind": "section", "hourly": true}],
         "passes": [{"id": 5, "at": 1762650000.0, "status": "nothing", "counts": {}, "sources": []}], "next_before": 5}"""
 
+    @Test fun theLooksAreReadAndAnOlderServerHasNone() {
+        val list = json.decodeFromString<SituationList>(
+            """{"research": true, "keep_days": 90, "looked_at": [], "passes": [],
+            "looks": [{"when": "hourly", "times": [], "covers": [{"id": "mail", "name": "", "kind": "section"}]},
+                      {"when": "send", "times": ["12:00", "16:00", "x"], "covers": [{"id": "conversation", "name": "", "kind": "section"}]},
+                      {"when": "briefing", "times": ["08:00"], "covers": [{"id": "corrections", "name": "", "kind": "section"}]},
+                      {"when": "later_kind", "times": [], "covers": [{"id": "a", "name": "A", "kind": "connector"}]},
+                      {"when": "needed", "times": [], "covers": []}]}""",
+        )
+        val shown = SituationRules.shownLooks(list.looks!!)
+        assertEquals(listOf(SituationRules.LookKind.HOURLY, SituationRules.LookKind.SEND, SituationRules.LookKind.BRIEFING),
+            shown.map { SituationRules.lookKind(it.whenCode) })
+        assertEquals(listOf("12:00", "16:00"), SituationRules.lookTimes(shown[1]))
+        assertEquals("corrections", shown[2].covers.single().id)
+        assertNull(json.decodeFromString<SituationList>("""{"looked_at": []}""").looks)
+    }
+
+    @Test fun theNewSectionCodesHaveTheirNames() {
+        assertEquals(Res.string.situation_section_corrections, sectionRes("corrections"))
+        assertEquals(Res.string.deliveries_held_title, sectionRes("held"))
+        assertEquals(Res.string.briefing_weather, sectionRes("weather"))
+        assertEquals(Res.string.briefing_missed, sectionRes("missed"))
+        assertEquals(Res.string.situation_section_conversation, sectionRes(" conversation "))
+        assertEquals(Res.string.situation_section_other, sectionRes("a_new_code"))
+    }
+
     @Test fun theListLoadsOnceAndAnOlderServerWithoutTheRouteIsMissing() {
         val s = serve { m, p, _ -> if (m == "GET" && p.startsWith("/api/proactive/research?limit=24")) ok(onePass) else null }
         val vm = vms.make { SituationViewModel(s.sessions()) }
@@ -258,5 +285,14 @@ class SituationRulesTest {
             SituationEvent(itemId = 1, title = longWord, status = "dropped", why = "Zu lang, um es zu melden, und es gibt keinen Grund dafür", at = 1762650000.0),
             SituationEvent(itemId = 1, title = longWord, status = "waiting", why = "waiting:busy", at = 1762650100.0),
         )).single())
+    }
+
+    @Test fun theLookGroupsFitInGermanAndJapanese() {
+        val send = SituationLook("send", listOf("12:00", "16:00", "20:00"), listOf(
+            SituationLooked("conversation", "", "section"), SituationLooked("corrections", "", "section"), SituationLooked("held", "", "section")))
+        val briefing = SituationLook("briefing", listOf("08:00"), listOf(
+            SituationLooked("missed", "", "section"), SituationLooked("", longWord, "connector")))
+        check("looks", Locale.GERMAN) { LookGroup(send); LookGroup(briefing) }
+        check("looks", Locale.JAPANESE) { LookGroup(send); LookGroup(briefing) }
     }
 }

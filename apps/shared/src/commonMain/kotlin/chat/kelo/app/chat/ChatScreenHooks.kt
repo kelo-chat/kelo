@@ -57,4 +57,6 @@ class ChatScreenHooks(
     val pinCard: (@Composable (need: PinNeed, onSend: () -> Unit) -> Unit)? = null,
     /** A message held back for a card number: it goes on to the card form. */
     val secretToCard: () -> Unit = {},
+    /** The recording bar's voice of this chat (the composer turns into the bar while the owner speaks); null = no bar. */
+    val voice: chat.kelo.app.voice.ComposerVoice? = null,
 )

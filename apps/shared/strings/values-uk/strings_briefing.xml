@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">Коли починається мій день (за звичками)</string>
     <string name="briefing_when_fixed">У вибраний час</string>
     <string name="briefing_fixed_at">Щодня о %1$s</string>
+    <string name="briefing_fixed_from">З %1$s, коли починаються твої години зв’язку</string>
     <string name="briefing_offset">Через скільки після початку дня</string>
     <string name="briefing_offset_none">Одразу на початку</string>
     <string name="briefing_offset_min">Через %1$d хв</string>

@@ -11,6 +11,8 @@ public protocol TurnApi: Sendable {
     /// The same with the files sent with it ("attachments": "uploads/<name>" paths, kept with the message by the server) and
     /// "auto_text": the text is the app's own sentence (nothing was typed), so the bubbles show only the files.
     func start(text: String, timezone: String, answers: [ReplyAnswer], secrets: String?, attachments: [String], autoText: Bool) async throws -> String
+    /// The same with "call": the call id when the message comes from a voice call in the Kelo app.
+    func start(text: String, timezone: String, answers: [ReplyAnswer], secrets: String?, attachments: [String], autoText: Bool, call: String?) async throws -> String
     /// GET /api/turns/{id}?after=n&wait=20
     func poll(id: String, after: Int) async throws -> TurnPoll
     /// DELETE /api/turns/{id}
@@ -57,14 +59,17 @@ public extension TurnApi {
         return try await start(text: text, timezone: timezone, answers: answers)
     }
     func start(text: String, timezone: String, answers: [ReplyAnswer], secrets: String?, attachments: [String], autoText: Bool) async throws -> String {
-        try await start(text: text, timezone: timezone, answers: answers, secrets: secrets)
+        try await start(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText, call: nil)
+    }
+    func start(text: String, timezone: String, answers: [ReplyAnswer], secrets: String?, attachments: [String], autoText: Bool, call: String?) async throws -> String {
+        try await start(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText)
     }
 }
 
 /// Builds the POST /api/turns body (KeloTurnApi and tests).
 public enum TurnBody {
     public static func of(text: String, timezone: String, answers: [ReplyAnswer] = [], secrets: String? = nil, attachments: [String] = [],
-                          autoText: Bool = false) -> JSON {
+                          autoText: Bool = false, call: String? = nil, canCall: Bool = false) -> JSON {
         // "ai_consent": held back (428) until someone agreed on this server (AiConsent)
         var body: [String: JSON] = ["text": .string(text), "timezone": .string(timezone), "ai_consent": .string(AiConsent.check)]
         if let secrets { body["secrets"] = .string(secrets) }
@@ -75,6 +80,8 @@ public enum TurnBody {
         if !answers.isEmpty {
             body["answers"] = .array(answers.map { .object(["question": .number(Double($0.question)), "value": .string($0.value)]) })
         }
+        if let call { body["call"] = .string(call) }
+        body["can_call"] = .bool(canCall)
         return .object(body)
     }
 }
@@ -88,7 +95,12 @@ public struct ReplyAnswer: Equatable, Sendable {
 
 public struct KeloTurnApi: TurnApi {
     public let api: KeloApi
-    public init(api: KeloApi) { self.api = api }
+    public let canCall: @Sendable () -> Bool
+
+    public init(api: KeloApi, canCall: @escaping @Sendable () -> Bool = { false }) {
+        self.api = api
+        self.canCall = canCall
+    }
 
     public func start(text: String, timezone: String) async throws -> String {
         try await start(text: text, timezone: timezone, answers: [])
@@ -103,7 +115,11 @@ public struct KeloTurnApi: TurnApi {
     }
 
     public func start(text: String, timezone: String, answers: [ReplyAnswer], secrets: String?, attachments: [String], autoText: Bool) async throws -> String {
-        let body = TurnBody.of(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText)
+        try await start(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText, call: nil)
+    }
+
+    public func start(text: String, timezone: String, answers: [ReplyAnswer], secrets: String?, attachments: [String], autoText: Bool, call: String?) async throws -> String {
+        let body = TurnBody.of(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText, call: call, canCall: canCall())
         return try await api.request("POST", "/api/turns", body: body)["id"]?.text ?? ""
     }
 
@@ -162,10 +178,12 @@ public struct TurnFollower: Sendable {
 
     /// `secrets`: `SecretGuard.allow` only after the owner chose "Send as is" for a message the server held back.
     public func talk(text: String, timezone: String, answers: [ReplyAnswer] = [], secrets: String? = nil, attachments: [String] = [],
-                     autoText: Bool = false, onId: @Sendable (String) async -> Void = { _ in },
+                     autoText: Bool = false, call: String? = nil, onId: @Sendable (String) async -> Void = { _ in },
                      onEvent: @Sendable (TurnEvent) async -> Void) async throws {
         let id: String
-        if !attachments.isEmpty {
+        if call != nil {
+            id = try await api.start(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText, call: call)
+        } else if !attachments.isEmpty {
             id = try await api.start(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText)
         } else if secrets != nil { id = try await api.start(text: text, timezone: timezone, answers: answers, secrets: secrets) }
         else if answers.isEmpty { id = try await api.start(text: text, timezone: timezone) }

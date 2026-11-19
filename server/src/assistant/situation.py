@@ -1,13 +1,24 @@
 """The hourly look at the owner's situation: gather what changed, research further on its own, choose what to tell.
 
-Instead of classifying a list of candidates (proactive.py, `research` off), every hour (at minute 9 of the hour in the profile's time
-zone, inside the owner's waking hours, plus one pass at wake start; `research_every_minutes`, default 60) one pass does:
+Instead of classifying a list of candidates (proactive.py, `research` off), two kinds of pass (owner decision 2026-11-19, card
+p-proactive-slots):
+- The watch (run_watch), every hour on the hour inside the contact hours (plus one at their start; `research_every_minutes`, default
+  60): only new mail and what changed in the connected services (the declared reads, and the SituationSources with outside = True;
+  the calendar, what was told, the open items and the owner's rules as context). Nothing new there -> no model call. Its research
+  turn (situation_watch.md) proposes items; what the model calls urgent is written by the main agent as one message and delivered at
+  once as one urgent send, 지금 (daily_now; over it, an ordinary send). The rest waits, open, for the next send time.
+- The send pass (run_pass), at each send time (send_times.py: the contact window in equal parts, daily_total of them plus the
+  morning briefing's part while it is on; a missed one is caught up once, never past the next): everything, as below. Every message
+  of one pass is ONE send toward daily_total (proactive.today_counts counts deliveries). With today's daily_total used up a send
+  time is spent without a pass. POST /api/proactive/run is a send pass.
+The send pass does:
 
 1. A context pack, built in code (build_pack): the clock, the last 24 hours of the conversation (what came after the checkpoint
    first), new mail, the calendar of the next 7 days (what changed marked), goals and follow-through items (what changed marked),
    schedules and watchers, the connected sources (SituationSource: one more source per kind of data, e.g. a smart home later), new
    memory claims, what was told and what was dropped in the last 7 days, the items still open from earlier passes and the owner's
-   preferences. Every entry has a `[source:N]` label so evidence can be cited. The checkpoint (meta "situation:checkpoint") is the time
+   preferences. The checklist's items that have no job of their own (checklist.py) are a section too: they are read in a pass that runs anyway
+   (something changed); a pass with nothing new still makes no model call. Every entry has a `[source:N]` label so evidence can be cited. The checkpoint (meta "situation:checkpoint") is the time
    of the last pass that finished; "since" is measured against it.
 2. No change, no model call: a fingerprint of the change-bearing parts of the pack (not the clock, not the split between new and
    earlier, not what was told) equal to the last pass's, and no item open -> the pass ends ("no_change"). With open items and an
@@ -19,16 +30,22 @@ zone, inside the owner's waking hours, plus one pass at wake start; `research_ev
    and dropped, the conversation, the preferences and the delivery estimate (code), picks at most one "today" and one "regular"
    message and at most MAX_SELECTED items, with a handoff, or drops items (`select_help`, `drop_help`).
 5. Delivery: each selected message goes to the main agent as a handoff (the writer turn: it checks live facts with read tools and writes the
-   text, or answers NO_REPLY and the items are dropped), then through Proactive.deliver as one message (today -> 오늘, regular -> 보통),
-   under the same daily caps, delivery slots and unanswered guard, and is logged in the ledger (proactive_log, source "situation"), so
+   text, or answers NO_REPLY and the items are dropped), then through Proactive.deliver as one message (now -> 지금, today -> 오늘, regular -> 보통; one delivery id per pass),
+   under the same daily caps and unanswered guard, and is logged in the ledger (proactive_log, source "situation"), so
    the next pass's `told` section shows it.
+6. Corrections: in a pass that runs, corrections.CorrectionCheck looks again at Kelo's own answers of the last day; what it keeps
+   becomes an open item (key "correction:<message id>") for the selection and the writer; told or set aside, it is in the proactive
+   ledger, so neither this look nor the morning briefing tells it again.
 
 Nothing here sends, pays, deletes or clicks: the research and selection turns have no acting tool.
 
 SITUATION API (next to proactive's):
 GET /api/proactive/research   {"research": bool, "every_minutes", "checkpoint": unix|null, "passes": [{"id", "at", "status": no_change|
-                              nothing|proposed|selected|delivered|failed|skipped, "proposed", "selected", "delivered", "dropped",
-                              "model_calls", "input_tokens", "output_tokens", "note"}] newest first, "open": [item]}
+                              nothing|proposed|selected|delivered|failed|skipped, "kind": watch|send, "proposed", "selected", "delivered", "dropped",
+                              "model_calls", "input_tokens", "output_tokens", "note"}] newest first, "open": [item],
+                              "looked_at": [{"id", "name", "kind": section|connector|phone, "hourly"}] (as before: released apps read it),
+                              "looks": [{"when": hourly|send|briefing|needed, "times": ["HH:MM"], "covers": [{"id", "name", "kind"}]}]
+                              (when each thing is looked at, for the app's page; [] with research off; SituationResearch.looks)}
                               item = {"id", "key", "title", "prepared", "evidence": [..], "useful_until"|null, "expires_at",
                               "suggested_action", "status": prepared|selected|dropped|told|expired, "priority"|null, "created_at",
                               "updated_at", "pass_at", "reason"}
@@ -46,7 +63,7 @@ import os
 import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -55,11 +72,14 @@ from fastapi import Depends, FastAPI, HTTPException
 from . import big_events
 from .agent import Tool
 from .agent.fence import fence
+from .checklist import CHECKLIST_SECTION
+from .day_types import day_type
 from .home import NOTIFY_PREFS
 from .i18n import t
 from .owner_messages import OwnerMessages
 from .proactive import DROPPED_KEEP, HOLD_MAX_DAYS, SENT_KEEP, Candidate, _until_from
 from .reflection import find_quote
+from .send_times import DayPlan, plan as day_plan
 from .situation_reads import SourceReader, SourceSection
 from .tool_roles import SELECTION_READ, WRITER_READ, research_tools
 
@@ -75,7 +95,8 @@ def prompts_dir() -> Path:
     return Path(d) / "prompts" if d else PROMPTS
 NO_REPLY = "NO_REPLY"
 
-TICK_MINUTE = 9                  # the pass runs at minute 9 of the hour (then every research_every_minutes from there)
+TICK_MINUTE = 0                  # the hourly watch runs on the hour (owner 2026-11-19), then every research_every_minutes from there
+SEND_COVERS = ("conversation", "calendar", "goals", "schedules", "memory", "corrections", "held")   # read only at the send times ("looks")
 RESEARCH_STEPS = 20              # steps of the research turn
 RESEARCH_SECONDS = 240.0         # its time, then it ends with what it proposed
 SELECT_STEPS = 10
@@ -86,7 +107,7 @@ WINDOW_HOURS = 24                # the conversation shown
 TOLD_DAYS = 7                    # told and dropped items stay in view (and out of reach of a re-proposal) this long
 MAX_SELECTED = 8                 # items in all, across the messages of one pass
 MAX_PRIORITIES = ("today", "regular")
-URGENCY = {"today": "오늘", "regular": "보통"}   # the stored urgency values of proactive.py
+URGENCY = {"now": "지금", "today": "오늘", "regular": "보통"}   # the stored urgency values of proactive.py ("now": the watch's urgent send)
 UNKNOWN_OPEN_HOURS = 48          # an item without a useful_until stays open this long at most
 CONVERSATION_CHARS = 30_000      # the conversation section (the newest are kept)
 MESSAGE_CHARS = 1500
@@ -99,6 +120,9 @@ CHECKPOINT = "situation:checkpoint"
 HASH = "situation:hash"
 SELECT_SIG = "situation:select_sig"
 ATTEMPT = "situation:last_attempt"
+SEND_ATTEMPT = "situation:send_attempt"        # when the last send-time pass started (a send time is due until one starts after it)
+WATCH_CHECKPOINT = "situation:watch_checkpoint"   # the last watch that got through (the send pass keeps CHECKPOINT)
+WATCH_HASH = "situation:watch_hash"               # the watch's own no-change fingerprint
 CALENDAR_SNAPSHOT = "situation:calendar"
 
 SCHEMA = """
@@ -140,7 +164,8 @@ class Section:
 class SituationSource(Protocol):
     """Where the pack gets more of the owner's situation: `SituationResearch.sources` lists them. The first are the connected
     sources (mailboxes, connectors); a smart home (presence, entity changes, automations) is one more source that returns its
-    Section here. `section` may be a plain or an async function; None = nothing to say now."""
+    Section here. `section` may be a plain or an async function; None = nothing to say now. A source whose class says outside = True carries
+    changes from outside Kelo (a smart home's state): the hourly watch reads it too; the others are read at the send times only."""
 
     def section(self, now: float, since: float) -> Section | None | Awaitable[Section | None]: ...
 
@@ -250,12 +275,20 @@ class SituationResearch:
         self.sources: list[SituationSource] = []
         self.reader = reader   # the declared reads of the connected services and phone items (situation_reads.py)
         self.looked_at: Callable[[], list[dict[str, Any]]] = lambda: []   # what the look covers now (the app's list), set by the server
+        self.briefing_at: Callable[[date], float | None] = lambda _day: None   # briefing.Briefing.due_on, set by the server (None: off)
+        self.briefing_covers: Callable[[], list[str]] = lambda: []   # briefing.Briefing.covers, set by the server: what it reads ([]: off)
+        self.checklist: Any = None   # checklist.Checklist, set by the server: the items that ride the send times
+        self.corrections: Any = None   # corrections.CorrectionCheck, set by the server: Kelo's own earlier answers, checked in each pass that runs
         self._st: PassState | None = None
         self._calendar_now: dict[str, str] | None = None   # the calendar as this pass read it: saved when the pass is through
         with self.store._lock:
             self.store._db.executescript(SCHEMA)
             if "sources_json" not in {r["name"] for r in self.store._all("PRAGMA table_info(situation_passes)")}:
                 self.store._db.execute("ALTER TABLE situation_passes ADD COLUMN sources_json TEXT NOT NULL DEFAULT '[]'")
+            if "kind" not in {r["name"] for r in self.store._all("PRAGMA table_info(situation_passes)")}:
+                self.store._db.execute("ALTER TABLE situation_passes ADD COLUMN kind TEXT NOT NULL DEFAULT 'send'")
+            if "urgent" not in {r["name"] for r in self.store._all("PRAGMA table_info(help_items)")}:
+                self.store._db.execute("ALTER TABLE help_items ADD COLUMN urgent INTEGER NOT NULL DEFAULT 0")
             self.store._run("UPDATE situation_passes SET status = 'failed', note = 'the server stopped during the pass' WHERE status = 'running'")
             self.store._db.commit()
         proactive.situation = self
@@ -278,7 +311,7 @@ class SituationResearch:
 
     # ------------------------------------------------------------------ ticking
     def slot_start(self, now: float) -> float:
-        """The latest time at or before `now` that a pass is due: minute 9 of the hour, then every research_every_minutes from there."""
+        """The latest time at or before `now` that a pass is due: the start of the hour, then every research_every_minutes from there."""
         tz = self.p.tz()
         every = max(15, int(self.p.config()["research_every_minutes"])) * 60
         d = datetime.fromtimestamp(now, tz)
@@ -292,10 +325,81 @@ class SituationResearch:
         last = self._meta_float(ATTEMPT)
         return last < self.slot_start(now) or last < self.p.wake_start_today(now)
 
+    def plan(self, day: date) -> DayPlan:
+        """`day`'s send times: its day type's contact window, daily_total, and the briefing's time that day (send_times.py)."""
+        start, end, _src = self.p.window(day_type(day, self.p.country()))
+        return day_plan(day, start, end, int(self.p.config()["daily_total"]), self.briefing_at(day), self.p.tz())
+
+    def plans(self, now: float) -> list[DayPlan]:
+        """Yesterday's, today's and tomorrow's plans (local calendar days of `now`): a window past midnight and the next morning."""
+        d = datetime.fromtimestamp(now, self.p.tz()).date()
+        return [self.plan(d + timedelta(days=k)) for k in (-1, 0, 1)]
+
+    def next_send(self, now: float) -> float | None:
+        """The next proactive send time after `now`; while today's daily_total is used up, the rest of that window day's are skipped
+        (owner 2026-11-19: no more research that day)."""
+        full = None if self.p.room_today() else self.p.window_day(now)
+        times = [t for pl in self.plans(now) if pl.day.isoformat() != full for t in pl.times if t > now]
+        return min(times) if times else None
+
+    def due_send(self, now: float) -> float | None:
+        """The send time whose pass is due now, or None: the latest of the send times, the briefing's parts and the window ends at or
+        before `now` is a send time, and no send pass started at or after it (a server that was off catches up once, never past the
+        next of these moments)."""
+        marks: list[tuple[float, str]] = []
+        for pl in self.plans(now):
+            marks += [(t, "send") for t in pl.times] + [(pl.end, "end")]
+            if pl.briefing is not None:
+                marks.append((pl.briefing, "briefing"))
+        past = [m for m in marks if m[0] <= now]
+        if not past:
+            return None
+        at, what = max(past)   # the same moment: "send" before "end" before "briefing"
+        return at if what == "send" and self._meta_float(SEND_ATTEMPT) < at else None
+
+    def send_times_view(self, now: float) -> dict[str, Any]:
+        """GET /api/proactive "send_times": the window now (or the next one) with its send times as local "HH:MM"."""
+        tz = self.p.tz()
+        pl = next(pl for pl in self.plans(now) if pl.end > now)
+
+        def hhmm(t: float) -> str:
+            return datetime.fromtimestamp(t, tz).strftime("%H:%M")
+        return {"day": pl.day.isoformat(), "times": [hhmm(t) for t in pl.times], "briefing": hhmm(pl.briefing) if pl.briefing else None,
+                "next_at": self.next_send(now)}
+
+    def looks(self, now: float) -> list[dict[str, Any]]:
+        """GET /api/proactive/research "looks", for the app's page (owner 2026-11-19 schedule): when each thing is looked at, as groups
+        {"when", "times", "covers"}. "hourly": new mail (while mail_check is on) and every connected service or phone item with a read
+        (the watch; the send passes read them again); "send": the rest of the owner's day, read only at the send times (`times`: those
+        of the window now or next); "briefing": what the morning briefing reads, at its time (only while it is on); "needed": the
+        connected services without a read (read when a question needs them). A group with nothing in it is left out. `looked_at`
+        stays as it was: released apps read it."""
+        def section(code: str) -> dict[str, Any]:
+            return {"id": code, "name": "", "kind": "section"}
+
+        def cover(row: dict[str, Any]) -> dict[str, Any]:
+            return {"id": row["id"], "name": row["name"], "kind": row["kind"]}
+        others = [r for r in self.looked_at() if r.get("kind") != "section"]
+        view = self.send_times_view(now)
+        groups = [
+            {"when": "hourly", "times": [],
+             "covers": ([section("mail")] if self.p.config()["mail_check"] else []) + [cover(r) for r in others if r.get("hourly")]},
+            {"when": "send", "times": view["times"],
+             "covers": [section(c) for c in SEND_COVERS if c != "corrections" or self.corrections is not None]},
+            {"when": "briefing", "times": [view["briefing"]] if view["briefing"] else [],
+             "covers": [section(c) for c in self.briefing_covers()]},
+            {"when": "needed", "times": [], "covers": [cover(r) for r in others if not r.get("hourly")]},
+        ]
+        return [g for g in groups if g["covers"]]
+
     async def tick(self, now: float) -> dict[str, Any] | None:
-        """What Proactive.tick calls each minute while `research` is on: a pass when one is due, in waking hours, and not held back."""
+        """What Proactive.tick calls each minute while `research` is on: the send pass at a send time, else the hourly watch, in the
+        contact hours and when nothing holds them back. With today's daily_total used up a send time is spent without a pass (owner
+        2026-11-19: no more research that day); the watch goes on."""
         p = self.p
-        if not self.due(now):
+        send_at = self.due_send(now)
+        watch = self.due(now)
+        if send_at is None and not watch:
             return None
         if not p.awake(now):
             p._skip("outside_waking_hours")
@@ -306,7 +410,13 @@ class SituationResearch:
         if p.busy():
             p._skip("chat_running")
             return None
-        return await p.run(guarded=True)
+        if send_at is not None and not p.room_today():
+            self.store.set_meta(SEND_ATTEMPT, str(now))
+            send_at = None
+            if not watch:
+                p._skip("cap_used")
+                return None
+        return await p.run(guarded=True, look="send" if send_at is not None else "watch")
 
     # ------------------------------------------------------------------ the items
     def _public(self, r: dict[str, Any]) -> dict[str, Any]:
@@ -416,7 +526,7 @@ class SituationResearch:
             return [], f"unknown evidence {bad[:3]}: use a [source:N] label from this run's pack, a URL, or a file path you read"
         return out, ""
 
-    def propose_tool(self) -> Tool:
+    def propose_tool(self, urgent: bool = False) -> Tool:
         async def propose_help(a: dict[str, Any]) -> str:
             st, now = self._st, self.clock()
             key = " ".join(str(a.get("key") or "").split())[:120]
@@ -436,6 +546,7 @@ class SituationResearch:
             until = min(until, now + HOLD_MAX_DAYS * 86400) if until else None
             expires = until if until else now + UNKNOWN_OPEN_HOURS * 3600
             new_fact = _clip(a.get("new_fact"), 400)
+            flag = 1 if urgent and a.get("urgent") is True else 0   # the watch: urgent is the model's judgment (owner 2026-11-19)
             recent = self.store._all("SELECT * FROM help_items WHERE key = ? AND status IN ('told', 'dropped') AND updated_at > ? "
                                      "ORDER BY id DESC LIMIT 1", (key, now - TOLD_DAYS * 86400))
             if recent and not new_fact:
@@ -443,7 +554,7 @@ class SituationResearch:
                 return (f"Refused: '{key}' was {r['status']} on {self._local(r['updated_at'])}" + (f" ({_clip(r['reason'], 120)})" if r["reason"] else "")
                         + ". Propose it again only when a NEW fact changes why; then give that fact in new_fact.")
             row = {"title": title, "prepared": prepared, "evidence": json.dumps(evidence), "until": until, "expires": expires,
-                   "action": _clip(a.get("suggested_action"), 300)}
+                   "action": _clip(a.get("suggested_action"), 300), "urgent": flag}
             open_rows = self.store._all("SELECT id FROM help_items WHERE key = ? AND status IN ('prepared', 'selected') ORDER BY id DESC", (key,))
             if open_rows:
                 if until is None:   # an update that says nothing about the time keeps the time it had
@@ -451,34 +562,38 @@ class SituationResearch:
                     if old["useful_until"]:
                         row["until"], row["expires"] = old["useful_until"], old["expires_at"]
                 self.store._run("UPDATE help_items SET title=?, prepared=?, evidence_json=?, useful_until=?, expires_at=?, suggested_action=?, "
-                                "status='prepared', priority='', handoff='', updated_at=?, pass_at=? WHERE id=?",
-                                (row["title"], row["prepared"], row["evidence"], row["until"], row["expires"], row["action"], now,
+                                "urgent=?, status='prepared', priority='', handoff='', updated_at=?, pass_at=? WHERE id=?",
+                                (row["title"], row["prepared"], row["evidence"], row["until"], row["expires"], row["action"], row["urgent"], now,
                                  st.at if st else now, open_rows[0]["id"]))
                 self._event(open_rows[0]["id"], "updated")
                 verb = "updated"
             else:
-                cur = self.store._run("INSERT INTO help_items(key, title, prepared, evidence_json, useful_until, expires_at, suggested_action, status, "
-                                      "created_at, updated_at, pass_at, reason) VALUES(?,?,?,?,?,?,?,'prepared',?,?,?,?)",
-                                (key, row["title"], row["prepared"], row["evidence"], row["until"], row["expires"], row["action"], now, now,
+                cur = self.store._run("INSERT INTO help_items(key, title, prepared, evidence_json, useful_until, expires_at, suggested_action, urgent, status, "
+                                      "created_at, updated_at, pass_at, reason) VALUES(?,?,?,?,?,?,?,?,'prepared',?,?,?,?)",
+                                (key, row["title"], row["prepared"], row["evidence"], row["until"], row["expires"], row["action"], row["urgent"], now, now,
                                  st.at if st else now, f"new fact: {new_fact}" if new_fact else ""))
                 self._event(cur.lastrowid, "proposed")
                 verb = "saved"
             if st:
                 st.proposed.add(key)
-            return f"{verb}: {key}" + ("" if until else " (no useful_until: it stays open for a short while only)")
+            return (f"{verb}: {key}" + ("" if until else " (no useful_until: it stays open for a short while only)")
+                    + (" (urgent: it goes to the owner now)" if flag else ""))
 
-        return Tool("propose_help",
-                    "Propose one way to help the owner, with the work prepared. The same key again updates the open item. A key that was told "
-                    "or dropped in the last 7 days is refused unless new_fact names the new fact that changes why. Nothing is sent by this.",
-                    {"type": "object", "properties": {
+        props: dict[str, Any] = {
                         "key": {"type": "string", "description": "short stable id of the concrete outcome"},
                         "title": {"type": "string"},
                         "prepared": {"type": "string", "description": "why it matters now, what you learned or did, what you checked, what is unknown, what is left"},
                         "evidence": {"type": "array", "items": {"type": "string"}, "description": "[source:N] labels from this run's pack (or a URL or file path)"},
                         "useful_until": {"type": "string", "description": "YYYY-MM-DD or YYYY-MM-DD HH:MM local, grounded in the situation; leave out when unknown"},
                         "suggested_action": {"type": "string"},
-                        "new_fact": {"type": "string", "description": "only to propose something told or dropped within 7 days again: the new fact"}},
-                     "required": ["key", "title", "prepared", "evidence"]},
+                        "new_fact": {"type": "string", "description": "only to propose something told or dropped within 7 days again: the new fact"}}
+        if urgent:
+            props["urgent"] = {"type": "boolean", "description": "true only when waiting until the next send time would cost the owner"}
+        return Tool("propose_help",
+                    "Propose one way to help the owner, with the work prepared. The same key again updates the open item. A key that was told "
+                    "or dropped in the last 7 days is refused unless new_fact names the new fact that changes why. Nothing is sent by this."
+                    + (" With urgent: it goes to the owner now; everything else waits for the next send time." if urgent else ""),
+                    {"type": "object", "properties": props, "required": ["key", "title", "prepared", "evidence"]},
                     propose_help)
 
     def preference_tool(self) -> Tool:
@@ -552,6 +667,8 @@ class SituationResearch:
             self._set(r["id"], "dropped", why)
             self._event(r["id"], "dropped", why)
             self.p._record(Candidate(key=f"situation:{r['key']}", source="situation", title=r["title"]), "dropped", why, keep=DROPPED_KEEP)
+            if self.corrections is not None and self.corrections.owns(r["key"]):
+                self.corrections.record(r["key"], "dropped", r["title"])
             if self._st:
                 self._st.dropped += 1
             return f"dropped: {r['key']}"
@@ -717,16 +834,11 @@ class SituationResearch:
         pack.add("Goals and follow-through", goals, fingerprint=goals_fp)
         sched, sched_fp = self._schedules()
         pack.add("Schedules and watchers already covering things", sched, note="Do not propose what these already do.", fingerprint=sched_fp)
-        for src in self.sources:
-            try:
-                sec = src.section(now, since)
-                if inspect.isawaitable(sec):
-                    sec = await sec
-            except Exception as e:  # noqa: BLE001 - one source failing never stops the pass
-                pack.add(f"Source {type(src).__name__}", [], note=f"could not be read ({type(e).__name__})", hashed=False)
-                continue
-            if sec is not None:
-                pack.add(sec.title, sec.entries, note=sec.note, fingerprint=sec.fingerprint)
+        listed = self.checklist.send_time_items() if self.checklist is not None else []
+        if listed:
+            pack.add(CHECKLIST_SECTION, listed, note="The owner asked Kelo to keep an eye on these at the send times. Items with a job of "
+                     "their own are not listed.", fingerprint="\n".join(listed))
+        await self._add_sources(pack, now, since)
         if self.reader is not None:
             for s in await self.reader.sections(now, since):
                 self._add_read(pack, s)
@@ -740,6 +852,47 @@ class SituationResearch:
             for i in openn], note="They carry over only if you propose them again with the same key.", hashed=False)
         prefs = self._preferences()
         pack.add("Preferences", [prefs], labelled=False, fingerprint=prefs)
+        return pack
+
+    async def _add_sources(self, pack: Pack, now: float, since: float, *, outside_only: bool = False) -> None:
+        """The SituationSources (all of them, or only those with outside = True for the watch)."""
+        for src in self.sources:
+            if outside_only and not getattr(src, "outside", False):
+                continue
+            try:
+                sec = src.section(now, since)
+                if inspect.isawaitable(sec):
+                    sec = await sec
+            except Exception as e:  # noqa: BLE001 - one source failing never stops the pass
+                pack.add(f"Source {type(src).__name__}", [], note=f"could not be read ({type(e).__name__})", hashed=False)
+                continue
+            if sec is not None:
+                pack.add(sec.title, sec.entries, note=sec.note, fingerprint=sec.fingerprint)
+
+    async def build_watch_pack(self, now: float, since: float) -> Pack:
+        """The hourly watch's pack: new mail and the connected services (the declared reads and the sources with outside = True); the
+        calendar, what was told, the open items and the owner's rules only as context (never a change). No conversation, goals,
+        schedules, memory or dropped items: those are looked at at the send times."""
+        pack = Pack()
+        tz = self.p.tz()
+        nxt = self.next_send(now)
+        pack.add("Clock", [f"Now: {datetime.fromtimestamp(now, tz).strftime('%a %Y-%m-%d %H:%M')} ({tz.key})",
+                           f"Next send time: {self._local(nxt) if nxt else 'none ahead'}"], hashed=False, labelled=False)
+        mail, mail_note, mail_ids = await self._mail(now)
+        pack.add("Mail: new since the last look", mail, note=mail_note or "Unread, non-bulk mail that arrived since the last look.",
+                 fence_as="email" if mail else "", ids=mail_ids)
+        await self._add_sources(pack, now, since, outside_only=True)
+        if self.reader is not None:
+            for s in await self.reader.sections(now, since):
+                self._add_read(pack, s)
+        cal, _sigs, cal_note = await self._calendar(now, since)
+        pack.add(f"Calendar: next {CALENDAR_DAYS} days", cal, note=(cal_note + " " if cal_note else "")
+                 + "Context only: what a mail or a change means for the owner's day.", hashed=False)
+        pack.add("Told: proactive messages delivered in the last 7 days", self._told(now), hashed=False)
+        pack.add("Prepared: items open for the next send time", [
+            f"key {i['key']} · {i['title']} · useful until {self._local(i['useful_until']) if i['useful_until'] else 'unknown'} · {_clip(i['prepared'], 500)}"
+            for i in self.open_items()], hashed=False)
+        pack.add("Preferences", [self._preferences()], labelled=False, hashed=False)
         return pack
 
     def _add_read(self, pack: Pack, s: SourceSection) -> None:
@@ -765,18 +918,24 @@ class SituationResearch:
     # ------------------------------------------------------------------ delivery room
     def blocked(self, priority: str, now: float) -> str:
         """Why a message of this priority cannot go out now ("" when it can): the same rules as the old pass (waking hours, the
-        unanswered guard, the daily caps and delivery slots)."""
+        unanswered guard, the daily caps). A second message of a pass that already delivered is not checked again (_deliver)."""
         p, cfg = self.p, self.p.config()
         if not p.awake(now):
             return "outside_waking_hours"
         if hold := p.hold_reason(now):
             return hold
         n = p.today_counts()
+        if priority == "now" and n["지금"] < int(cfg["daily_now"]):
+            return ""   # an urgent send: outside daily_total, at most daily_now a day (proactive.py docstring 4)
         if n["보통"] + n["오늘"] >= int(cfg["daily_total"]) or (priority == "regular" and n["보통"] >= int(cfg["daily_regular"])):
             return "over_cap"
-        if p.today_deliveries() >= int(cfg["daily_deliveries"]):
-            return "slots"
         return ""
+
+    def _urgency(self, prio: str) -> str:
+        """The stored urgency of a message of this priority: "now" over daily_now is an ordinary send, 오늘 (proactive.py docstring 4)."""
+        if prio == "now" and self.p.today_counts()["지금"] >= int(self.p.config()["daily_now"]):
+            return URGENCY["today"]
+        return URGENCY[prio]
 
     def estimate(self, now: float) -> str:
         """The delivery estimate the selection step is given: for each priority the earliest opening, computed in code."""
@@ -815,9 +974,10 @@ class SituationResearch:
             row_id = int(cur.lastrowid or 0)
         return {"at": at, "status": status}
 
-    def _start_row(self, now: float) -> int:
+    def _start_row(self, now: float, kind: str = "send") -> int:
         """The pass's row, written when it starts (status running) so the app can show a pass that is still going."""
-        return int(self.store._run("INSERT INTO situation_passes(at, status, note, sources_json) VALUES(?,?,?,?)", (now, "running", "", "[]")).lastrowid or 0)
+        return int(self.store._run("INSERT INTO situation_passes(at, status, note, sources_json, kind) VALUES(?,?,?,?,?)",
+                                   (now, "running", "", "[]", kind)).lastrowid or 0)
 
     def _pass_view(self, r: Any) -> dict[str, Any]:
         """A pass as the app shows it: its counts and its sources. Never the pack, the note (an error text) or any content."""
@@ -825,7 +985,7 @@ class SituationResearch:
             sources = json.loads(r["sources_json"] or "[]")
         except ValueError:
             sources = []
-        return {"id": r["id"], "at": r["at"], "status": r["status"], "proposed": r["proposed"], "selected": r["selected"],
+        return {"id": r["id"], "at": r["at"], "status": r["status"], "kind": r["kind"], "proposed": r["proposed"], "selected": r["selected"],
                 "delivered": r["delivered"], "dropped": r["dropped"], "model_calls": r["model_calls"], "input_tokens": r["input_tokens"],
                 "output_tokens": r["output_tokens"], "counts": {"proposed": r["proposed"], "selected": r["selected"], "told": r["delivered"],
                                                                  "dropped": r["dropped"]}, "sources": sources}
@@ -870,18 +1030,19 @@ class SituationResearch:
         return await self.run_turn(system, user, tools, steps, seconds, title, scope)
 
     async def run_pass(self) -> dict[str, Any]:
-        """One pass (called by Proactive._run while `research` is on, under Proactive's lock). A model limit is left to the caller: the
+        """One send pass (at a send time, or POST /api/proactive/run; called by Proactive._run under Proactive's lock): the whole pack. A model limit is left to the caller: the
         checkpoint stays where it was, so the same changes are looked at next time."""
         p, now = self.p, self.clock()
         started = now
         self.store.set_meta(ATTEMPT, str(now))
+        self.store.set_meta(SEND_ATTEMPT, str(now))
         self.expire(now)
         checkpoint = self.checkpoint()
         since = checkpoint or now - 3600
         self._calendar_now = None
         self.store._run("UPDATE help_items SET status = 'prepared', priority = '', handoff = '' WHERE status = 'selected'")   # left over by a pass that stopped
         self._st = st = PassState(at=now)
-        st.pass_id = self._start_row(now)
+        st.pass_id = self._start_row(now, "send")
         try:
             pack = await self.build_pack(now, since, checkpoint)
             st.pack = pack
@@ -900,6 +1061,7 @@ class SituationResearch:
             if not same:
                 await self._turn(self._prompt("situation_research.md"), pack.render(), research_tools(self.tools()) + [self.propose_tool(), self.preference_tool()],
                                  RESEARCH_STEPS, RESEARCH_SECONDS, t("Looking at what changed"), "situation")
+                await self._add_corrections(now)
             openn = self.open_items()
             delivered = 0
             if openn:
@@ -918,20 +1080,85 @@ class SituationResearch:
                 self._record_pass(now, "failed", st, started, note="the pass stopped")
             self._st = None
 
-    def _done(self, now: float, started: float, st: PassState, status: str, fp: str, *, delivered: int) -> dict[str, Any]:
-        """The pass got through: the checkpoint moves to now, the mail cursors and the calendar snapshot are saved."""
+    async def run_watch(self) -> dict[str, Any]:
+        """The hourly watch (owner 2026-11-19; Proactive._run(look="watch") under Proactive's lock): only new mail and what changed in
+        the connected services. Nothing new there -> no model call. What it finds is an open item for the next send time; what the
+        model calls urgent is written as one message and delivered now: one urgent send, 지금 (daily_now; over it, an ordinary send)."""
+        p, now = self.p, self.clock()
+        started = now
+        self.store.set_meta(ATTEMPT, str(now))
+        self.expire(now)
+        since = max(self._meta_float(WATCH_CHECKPOINT), self._meta_float(CHECKPOINT)) or now - 3600
+        self._calendar_now = None
+        self.store._run("UPDATE help_items SET status = 'prepared', priority = '', handoff = '' WHERE status = 'selected'")
+        self._st = st = PassState(at=now)
+        st.pass_id = self._start_row(now, "watch")
+        try:
+            pack = await self.build_watch_pack(now, since)
+            st.pack = pack
+            fp = pack.fingerprint()
+            try:
+                prev = json.loads(self.store.meta(WATCH_HASH) or "null")
+            except ValueError:
+                prev = None
+            news = [s for s in pack.sections if s["hashed"] and s["entries"]]
+            if not news or (prev is not None and not Pack.changed(pack.snapshot(), prev)):
+                return self._done(now, started, st, "no_change", fp, delivered=0, watch=True)
+            if not p.model():
+                self._record_pass(now, "skipped", st, started, note="no model is set")
+                return p._finish("skipped", t("No model is set"), code="no_model")
+            await self._turn(self._prompt("situation_watch.md"), pack.render(), research_tools(self.tools()) + [self.propose_tool(urgent=True)],
+                             RESEARCH_STEPS, RESEARCH_SECONDS, t("Looking at new mail and changes"), "situation")
+            delivered = 0
+            rows = self.store._all("SELECT * FROM help_items WHERE status = 'prepared' AND urgent = 1 AND pass_at = ? ORDER BY id", (st.at,))
+            if rows:
+                handoff = self._urgent_handoff(rows, self.next_send(now))
+                for r in rows:
+                    self._set(r["id"], "selected", "", priority="now", handoff=handoff)
+                    self._event(r["id"], "selected", priority="now")
+                st.selected += len(rows)
+                delivered = await self._deliver(now, ("now",))
+            return self._done(now, started, st, "delivered" if delivered else "proposed" if st.proposed else "nothing", fp,
+                              delivered=delivered, watch=True)
+        except BaseException as e:
+            self._record_pass(now, "skipped" if _is_limit(e) else "failed", st, started, note=f"{type(e).__name__}: {str(e)[:160]}")
+            raise
+        finally:
+            if not st.recorded:
+                self._record_pass(now, "failed", st, started, note="the pass stopped")
+            self._st = None
+
+    def _urgent_handoff(self, rows: list[dict[str, Any]], nxt: float | None) -> str:
+        """The handoff of the watch's urgent message (no selection step)."""
+        head = (f"Urgent: the watch judged this cannot wait for the next send time ({self._local(nxt)})." if nxt else
+                "Urgent: the watch judged this cannot wait; there is no send time ahead.")
+        return "\n".join([head, "Tell the owner now, briefly: what changed and what they must do or know, by when.",
+                          *[f"- {r['title']}" for r in rows]])
+
+    def _done(self, now: float, started: float, st: PassState, status: str, fp: str, *, delivered: int, watch: bool = False) -> dict[str, Any]:
+        """A pass got through: its checkpoint and fingerprint (the watch has its own), the mail cursors and the connected
+        snapshots are saved; the calendar snapshot only by the send pass."""
         p = self.p
-        self.store.set_meta(CHECKPOINT, str(now))
-        self.store.set_meta(HASH, fp)
+        self.store.set_meta(WATCH_CHECKPOINT if watch else CHECKPOINT, str(now))
+        self.store.set_meta(WATCH_HASH if watch else HASH, fp)
         if self.reader is not None:
             self.reader.commit()
-        if self._calendar_now is not None:
+        if self._calendar_now is not None and not watch:   # the calendar snapshot is the send pass's (in the watch it is context)
             self.store.set_meta(CALENDAR_SNAPSHOT, json.dumps(self._calendar_now))
         p.commit_mail()
         self._record_pass(now, status, st, started, delivered=delivered)
         if status == "no_change":
             return p._finish("nothing_new", "", code="nothing_new")
         return p._finish("done", "", sent=delivered, dropped=st.dropped, candidates=len(st.proposed))
+
+    async def _add_corrections(self, now: float) -> None:
+        """Corrections of Kelo's own earlier answers (corrections.py) join the open items, so the selection and the writer treat them like
+        any other help. The proactive ledger keeps one told (here or in the morning briefing) from being told again."""
+        if self.corrections is None:
+            return
+        for c in await self.corrections.check(now):
+            await self.propose_tool().handler({"key": c.key, "title": _clip(c.now, 160), "prepared": c.prepared(self._local(c.said_at)),
+                                               "evidence": [str(s["url"]) for s in c.sources]})
 
     # ------------------------------------------------------------------ selection and delivery
     async def _select(self, now: float, pack: Pack, openn: list[dict[str, Any]]) -> None:
@@ -942,14 +1169,15 @@ class SituationResearch:
         await self._turn(self._prompt("situation_select.md"), "\n\n".join(b for b in body if b),
                          research_tools(self.tools(), SELECTION_READ) + self.select_tool(), SELECT_STEPS, SELECT_SECONDS, t("Choosing what to tell you"), "situation_select")
 
-    async def _deliver(self, now: float) -> int:
+    async def _deliver(self, now: float, priorities: tuple[str, ...] = MAX_PRIORITIES) -> int:
         """Each selected message: checked against today's room, written by the main agent, delivered as one message, logged."""
         p, delivered = self.p, 0
-        for prio in MAX_PRIORITIES:
+        for prio in priorities:
             rows = self.store._all("SELECT * FROM help_items WHERE status = 'selected' AND priority = ? ORDER BY id", (prio,))
             if not rows:
                 continue
-            if why := self.blocked(prio, self.clock()):   # it cannot go out now: the items stay open until they expire
+            why = "" if delivered else self.blocked(prio, self.clock())   # a second message of the same pass joins its send (counts once)
+            if why:   # it cannot go out now: the items stay open until they expire
                 for r in rows:
                     self._set(r["id"], "prepared", f"waiting: {why}", priority="", handoff="")
                     self._event(r["id"], "waiting", f"waiting:{why}")
@@ -963,22 +1191,30 @@ class SituationResearch:
                     self._event(r["id"], "dropped", why)
                     p._record(Candidate(key=f"situation:{r['key']}", source="situation", title=r["title"]), "dropped",
                               t("Not worth telling you"), keep=DROPPED_KEEP)
+                    if self.corrections is not None and self.corrections.owns(r["key"]):
+                        self.corrections.record(r["key"], "dropped", r["title"])
                 continue
             title = rows[0]["title"] if len(rows) == 1 else t("{n} things to tell you", n=len(rows))
-            tid = await p.deliver({"key": f"situation:{rows[0]['key']}", "source": "situation", "title": title, "urgency": URGENCY[prio],
+            urgency = self._urgency(prio)
+            delivery = f"situation:{self._st.pass_id if self._st else int(now)}" + (":now" if urgency == "지금" else "")
+            tid = await p.deliver({"key": f"situation:{rows[0]['key']}", "source": "situation", "title": title, "urgency": urgency,
                                    "message": text, "kind": "", "notice": ""}) if p.deliver is not None else None
             cand = Candidate(key=f"situation:{rows[0]['key']}", source="situation", title=title)
-            p._record(cand, "sent", ", ".join(r["key"] for r in rows)[:300], urgency=URGENCY[prio], message=text, keep=SENT_KEEP, task_id=tid)
-            p._count_unanswered(self.clock())
+            p._record(cand, "sent", ", ".join(r["key"] for r in rows)[:300], urgency=urgency, message=text, keep=SENT_KEEP, task_id=tid,
+                       delivery=delivery)
+            if not delivered:
+                p._count_unanswered(self.clock())   # the guard counts sends too
             for r in rows:
                 self._set(r["id"], "told", f"told as {prio}")
                 self._event(r["id"], "told", f"told:{prio}", priority=prio)
+                if self.corrections is not None and self.corrections.owns(r["key"]):
+                    self.corrections.record(r["key"], "told", r["title"])
             delivered += 1
         return delivered
 
     def _brief(self, prio: str, rows: list[dict[str, Any]]) -> str:
         tail = self.p._recent_chat()
-        parts = [f"Priority: {prio} (today: acting today changes the outcome; regular: can wait for a normal opening).",
+        parts = [f"Priority: {prio} (now: it cannot wait for the next send time; today: acting today changes the outcome; regular: can wait for the next send time).",
                  f"Now: {self._local(self.clock())} ({self.p.tz().key}).", self.p.tone() and f"Voice: {self.p.tone()}", "",
                  "Handoff from the selection step:", rows[0]["handoff"], "", "Items:"]
         for r in rows:
@@ -1040,7 +1276,8 @@ def situation_routes(app: FastAPI, situation: SituationResearch, auth: Callable[
         cfg = situation.p.config()
         page = situation.passes_page(limit, before)
         return {"research": bool(cfg["research"]), "every_minutes": int(cfg["research_every_minutes"]), "checkpoint": situation.checkpoint(),
-                "keep_days": KEEP_DAYS, "looked_at": situation.looked_at(), "passes": page["passes"], "open": situation.open_items_view(),
+                "keep_days": KEEP_DAYS, "looked_at": situation.looked_at(),
+                "looks": situation.looks(situation.clock()) if cfg["research"] else [], "passes": page["passes"], "open": situation.open_items_view(),
                 "next_before": page["next_before"]}
 
     @app.get("/api/proactive/research/passes/{pass_id}", dependencies=[Depends(auth)])

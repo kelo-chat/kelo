@@ -82,6 +82,7 @@ struct MyDestination: View {
             case .vaultAi(let name): AiKeyPage(name: name, vault: vault)
             case .vaultAddLogin: AddLoginPage(vault: vault)
             case .vaultLog: VaultLogPage(vault: vault)
+            case .vaultProfile(let id): VaultProfilePage(id: id, vault: vault)
             case .resources: ResourcesPage(api: api)
             case .voice: VoicePage(api: api)
             case .cleanup: CleanupPage(api: api)

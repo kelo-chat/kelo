@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_admin_key.xml (generated from values/strings_admin_key.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="admin_key_add">也查看花費與餘額</string>
     <string name="admin_key_title">用於花費與餘額的管理員金鑰</string>

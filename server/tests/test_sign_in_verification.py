@@ -5,6 +5,7 @@ waits with its time limit, and goes on when the page moves on. Real Chromium on 
 from __future__ import annotations
 
 import asyncio
+import re
 
 import pytest
 
@@ -381,7 +382,7 @@ async def test_the_card_goes_out_at_once_and_the_agent_ticks_the_remember_option
         assert asked == ["verification"] and first.outcome == "code_needed" and first.step == "approve"   # the card is out already
         text = plain(first.text)
         assert "has just been asked" in text and "이 브라우저에서 2단계 인증 사용 안 함" in text and "There is NO code" in text
-        sel = '[data-kelo-opt="1"]'
+        sel = re.search(r"- `([^`]+)`", text).group(1)
         assert sel in text and s.approve_pending("id.example.com")
         click = {t.name: t for t in browser_tools(s)}["browser_click"]
         allowed = click.auto_approve({"selector": sel})

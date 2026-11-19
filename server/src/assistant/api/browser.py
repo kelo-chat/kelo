@@ -15,8 +15,9 @@ from pydantic import BaseModel, Field
 from ..activity import title_from
 from .. import i18n
 from ..tools.browser import (
-    CHAT_TAB_IDLE_SECONDS, browser_owner, SITE_TAB_IDLE_SECONDS, TAB_SWEEP_SECONDS, is_site_tab, one_run_tab,
+    BrowserPolicyError, CHAT_TAB_IDLE_SECONDS, browser_owner, SITE_TAB_IDLE_SECONDS, TAB_SWEEP_SECONDS, is_site_tab, one_run_tab,
 )
+from ..tools.sites import registrable
 from ..chat_views import PHONE_KEY, VIEW_IDLE_SECONDS, ChatViews
 from ..live_source import LiveSource, LiveSources
 from ..tools.live import Frame, FrameGate, LiveEnded, LiveError, PointerThrottle, TICKET_SECONDS, pump_frames, pump_meta, viewer_css_size
@@ -34,6 +35,10 @@ class BrowserTaskIn(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
     url: str | None = Field(default=None, max_length=2000)
     secrets: str | None = Field(default=None, pattern="^(allow|mask)$")
+
+
+class TabIn(BaseModel):
+    action: str = Field(max_length=10)   # "activate" | "close" (C1d: a tab of the held task window)
 
 
 class ControlIn(BaseModel):
@@ -115,6 +120,7 @@ def router(ctx: AppContext) -> APIRouter:
             t = busy.get(key)
             holder = tab.get("controlled_by")
             items.append({"id": key, "label": tab_label(key), "source": "browser", "browser": tab.get("browser", "main"),
+                          "tabs": await session.window_tabs(key),
                           "kind": ("owner" if key == "owner" else "device" if key.isdigit() else key.split(":", 1)[0]),
                           "title": tab["title"], "url": tab["url"], "host": tab["host"],
                           "status": "working" if t else ("failed" if tab_failed.get(key) else "idle"),
@@ -129,6 +135,23 @@ def router(ctx: AppContext) -> APIRouter:
         if device is not None:   # the Android device the owner set up: a live source next to the tabs
             items.insert(0, await device.listing(running_turns()))
         return {"available": True, "items": items}
+
+    @router.post("/api/browser/sessions/{key}/tabs/{tab}", dependencies=[Depends(require_auth)])
+    async def browser_window_tab(key: str, tab: str, body: TabIn, request: Request) -> dict[str, Any]:
+        """Take the owner's own view of a held task window: switch to one of its tabs or close one (C1d). Only the device that holds
+        the tab may; the window keeps its last tab (the task closes it)."""
+        if session is None or session.controlled_by(key) != device_of(request):
+            raise HTTPException(409, "take control of this tab first")
+        if body.action not in ("activate", "close"):
+            raise HTTPException(422, "action is activate or close")
+        try:
+            if body.action == "activate":
+                await session.switch_tab(key, tab)
+            else:
+                await session.close_window_tab(key, tab)
+        except BrowserPolicyError as e:
+            raise HTTPException(409, str(e)) from None
+        return {"tabs": await session.window_tabs(key)}
 
     @router.get("/api/browser/sessions/{key}/screenshot", dependencies=[Depends(require_auth)])
     async def get_browser_screenshot(key: str) -> Response:
@@ -153,6 +176,49 @@ def router(ctx: AppContext) -> APIRouter:
         title = title_from(body.prompt)
         turn = start_background(prompt, title=title, source="background", owner=key, note=BACKGROUND_NOTE, saved_as=i18n.t("[Task handed over · {title}]", title=title))
         return {"id": key, "task_id": turn.task_id, "turn_id": turn.id}
+
+    @router.get("/api/browser/refusal-pauses", dependencies=[Depends(require_auth)])
+    async def get_refusal_pauses() -> dict[str, Any]:
+        """The sites the browser does not load for a while after they refused it (browser.py REFUSAL_PAUSE_SECONDS, six hours)."""
+        return {"pauses": session.refusal_pauses() if session is not None else []}
+
+    @router.delete("/api/browser/sign-ins/{site}", dependencies=[Depends(require_auth)])
+    async def forget_browser_sign_in(site: str) -> dict[str, bool]:
+        """The owner signs Kelo's browser out of a site: cookies and site data go, and the sign-in row goes (brief B4). A saved login stays."""
+        if session is not None:
+            try:
+                await session.forget_site(site)   # also drops the sign-in row (on_site_forgotten)
+            except BrowserPolicyError as e:
+                raise HTTPException(400, str(e)) from None
+        store.forget_browser_sign_in(registrable(site.strip().lower()))   # the row goes even when no browser is running
+        return {"ok": True}
+
+    @router.delete("/api/browser/profiles/{profile}", dependencies=[Depends(require_auth)])
+    async def delete_browser_profile(profile: str) -> dict[str, bool]:
+        """The owner deletes a named browser profile in the Keychain: its open windows close, its units and sign-in rows go (brief C2d)."""
+        if not any(p["id"] == profile for p in store.browser_profiles()):
+            raise HTTPException(404, "no such profile")
+        if session is not None:
+            await session.close_profile_windows(profile)
+        store.delete_browser_profile(profile)
+        return {"ok": True}
+
+    @router.delete("/api/browser/profiles/{profile}/sites/{site}", dependencies=[Depends(require_auth)])
+    async def forget_browser_profile_site(profile: str, site: str) -> dict[str, bool]:
+        """The owner signs a named profile out of a site: its open contexts lose the site's cookies, its unit and the row go."""
+        if not any(p["id"] == profile for p in store.browser_profiles()):
+            raise HTTPException(404, "no such profile")
+        if session is not None:
+            await session.forget_profile_site(profile, site)
+        store.forget_browser_unit(profile, registrable(site.strip().lower()))
+        return {"ok": True}
+
+    @router.delete("/api/browser/refusal-pauses/{site}", dependencies=[Depends(require_auth)])
+    async def clear_refusal_pause(site: str) -> dict[str, bool]:
+        """The owner clears a site's pause: the browser may load it again at once."""
+        if session is None or not session.clear_pause(site):
+            raise HTTPException(404, "not paused")
+        return {"ok": True}
 
     @router.delete("/api/browser/sessions/{key}", dependencies=[Depends(require_auth)])
     async def close_browser_session(key: str) -> dict[str, bool]:
@@ -591,13 +657,13 @@ def router(ctx: AppContext) -> APIRouter:
             await ws.close(close, code)
 
         q = ws.query_params
-        size = viewer_css_size(*(_number(q.get(n)) for n in ("width", "height", "density")), session.view(key) if session is not None else "desktop")
+        size = viewer_css_size(*(_number(q.get(n)) for n in ("width", "height", "density")))
         if (live is None or live.kind != "browser" or vnc is None or size is None or not live.available(key)):
             await refuse("unavailable", 4503)
             return
         width, height, _ratio = size
         try:
-            if not await vnc.acquire(key, device, width, height):
+            if not await vnc.acquire(key, device):
                 await refuse("busy", 4409)
                 return
         except VncUnavailable:
@@ -620,7 +686,7 @@ def router(ctx: AppContext) -> APIRouter:
                     live.touched(key, device)
                 return True
 
-            screen = ClientFilter(allow)
+            screen = ClientFilter(allow, on_release=(lambda: live.poke_editing(key)) if hasattr(live, "poke_editing") else None)
             gone = vnc.gone.get(key)
 
             async def from_viewer() -> None:
@@ -699,7 +765,7 @@ def router(ctx: AppContext) -> APIRouter:
         from urllib.parse import quote
         headers.update({"X-Frame-Seq": str(frame.seq), "X-Frame-W": str(frame.w), "X-Frame-H": str(frame.h),
                         "X-Frame-Css-W": str(frame.meta.get("deviceWidth") or ""), "X-Frame-Css-H": str(frame.meta.get("deviceHeight") or ""),
-                        "X-Frame-Ts": f"{frame.ts:.3f}", "X-Live-V": "2", "X-Frame-Editing": "1" if frame.editing else "0", "X-Frame-Url": quote(frame.url[:1000], safe=":/?&=#%"),
+                        "X-Frame-Ts": f"{frame.ts:.3f}", "X-Live-V": "3", "X-Frame-Editing": "1" if frame.editing else "0", "X-Frame-Kind": frame.kind, "X-Frame-Field": frame.field_id, "X-Frame-Url": quote(frame.url[:1000], safe=":/?&=#%"),
                         "X-Frame-Title": quote(frame.title[:200], safe=""), "X-Content-Type-Options": "nosniff"})
         return Response(frame.jpeg, media_type="image/jpeg", headers=headers)
 

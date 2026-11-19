@@ -495,6 +495,16 @@
     <string name="vault_saved_plain">保存済み</string>
     <string name="vault_not_entered">まだ入力していません</string>
     <string name="vault_last_used">最終使用: %1$s</string>
+    <string name="vault_browser_title">Kelo のブラウザ</string>
+    <string name="vault_browser_signed_in">%1$s にサインイン · 最終使用 %2$s</string>
+    <string name="vault_browser_sign_out">Kelo のブラウザをこのサイトからサインアウト</string>
+    <string name="vault_browser_sign_out_confirm">Kelo のブラウザを %1$s からサインアウトし、Cookie とサイトデータを削除します。保存済みのログインは残ります。</string>
+    <string name="vault_browser_sites_title">保存済みのログインなしでサインイン</string>
+    <string name="vault_profiles_title">ブラウザのプロフィール</string>
+    <string name="vault_profile_sites">%1$s 件のサイトにサインイン中</string>
+    <string name="vault_profile_empty">まだどこにもサインインしていません</string>
+    <string name="vault_profile_delete">このプロフィールを削除</string>
+    <string name="vault_profile_delete_confirm">プロフィール %1$s と、その中に保存されたサインインがすべて削除されます。</string>
     <string name="vault_place">キーの付け先: %1$s</string>
     <string name="vault_place_header_named">ヘッダー %1$s</string>
     <string name="vault_place_query_named">クエリ %1$s</string>
@@ -930,6 +940,9 @@
     <string name="live_still_yours">まだ直接操作中です。返すまでエージェントは待っています。</string>
     <string name="live_screen_changed">画面が変わりました。もう一度タップしてください。</string>
     <string name="live_tab_closed">タブが閉じられたため、これ以上表示できません。最後の画面が保存されていれば、下に表示されます。</string>
+    <string name="live_tabs_label">タブ</string>
+    <string name="live_tab_untitled">新しいタブ</string>
+    <string name="live_tab_close">タブを閉じる</string>
     <string name="live_not_controller">今は操作できません。もう一度「操作を代わる」をタップしてください。</string>
     <string name="live_input_failed">ブラウザでその操作ができませんでした。</string>
     <string name="live_state_you">あなたが操作中</string>
@@ -955,6 +968,8 @@
     <string name="live_touch_missed">タッチがページに届きませんでした</string>
     <string name="live_type_hint">ページに入力するテキスト</string>
     <string name="live_type_send">入力</string>
+    <string name="live_keyboard">キーボード</string>
+    <string name="live_keyboard_desc">ページ用のキーボードを表示または非表示にする</string>
     <string name="live_type_hide">テキストを隠す</string>
     <string name="live_type_show">テキストを表示</string>
     <string name="live_key_enter">Enter</string>
@@ -1110,7 +1125,6 @@
     <string name="work_now_empty">今は何も実行していません。</string>
     <string name="work_asks">あなたの回答が必要</string>
     <string name="work_asks_empty">待っている質問はありません。</string>
-
     <string name="offers_title">Kelo がすぐできること</string>
     <string name="offer_start">任せる</string>
     <string name="offer_needs">必要なもの: %1$s</string>
@@ -1232,6 +1246,7 @@
     <string name="work_watch_ev_fired">条件を満たしました</string>
     <string name="work_watch_ev_error">失敗</string>
     <string name="work_watch_ev_check">確認</string>
+    <string name="work_watch_ev_count">· %1$d回確認</string>
     <string name="work_watch_ev_on">オン</string>
     <string name="work_watch_ev_off">オフ</string>
     <string name="work_watch_delete">見守りを削除</string>
@@ -1274,14 +1289,17 @@
     <string name="heads_section">新着のお知らせ</string>
     <string name="heads_switch">Kelo から先に知らせる</string>
     <string name="heads_about">%1$sに新着メール、近づく予定、締め切りを確認し、知っておくべきことがあれば先に知らせます。あなたの返事が必要なこと（承認、質問）は、この設定に関係なく「%2$s」で別にお知らせします。</string>
+    <string name="heads_about_send_times">通知する時間のあいだ、Kelo は毎時、新着メールと連携したサービスを確認し、待てないことはすぐに知らせます。それ以外は送る時刻まで待ち、そのときに会話、予定、目標、スケジュール、メモリもあわせて確認します。1回の送信は、内容がいくつあっても「%1$s」では1回と数えます。その日の回数を使い切ると、待てないことだけを知らせます。あなたの返事が必要なこと（承認、質問）は、この設定に関係なく「%2$s」で別にお知らせします。</string>
     <string name="heads_per_day">1日の上限</string>
+    <string name="heads_send_times">送る時刻: %1$s</string>
     <string name="heads_mail">新着メールも確認する</string>
     <string name="heads_mail_about">オフにすると、この確認ではメールボックスを開きません。予定と締め切りは引き続き確認します。朝のブリーフィングのメールボックスはブリーフィング側で個別に設定します。</string>
     <string name="heads_list_title">気にかけること</string>
-    <string name="heads_list_about">任意です。毎回一緒に確認し、気にすべきことがあるときだけ知らせます。</string>
+    <string name="heads_list_about">任意です。追加すると Kelo が合うタイミングを決めます。決まった時間が必要なものは別に確認し、それ以外は送る時刻にまとめて確認します。気にすべきことがあるときだけ知らせます。</string>
     <string name="heads_list_hint">例: 今日届いた配達のお知らせ</string>
     <string name="heads_list_add">追加</string>
     <string name="heads_list_remove">%1$s を削除</string>
+    <string name="heads_list_own">別に確認中 · %1$s</string>
     <plurals name="heads_times">
         <item quantity="other">%d回</item>
     </plurals>
@@ -1489,7 +1507,6 @@
     <string name="comparison_recommended">おすすめ</string>
     <string name="comparison_choose">%1$s にする</string>
     <string name="comparison_choose_say">%1$s にします</string>
-
     <string name="endpoint_add">エンドポイントを追加</string>
     <string name="endpoint_name">名前</string>
     <string name="endpoint_name_hint">例: 自宅 Ollama</string>

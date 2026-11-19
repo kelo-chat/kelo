@@ -331,8 +331,19 @@ class CardFrame:
         if self.broken:
             raise RuntimeError("frame was detached")
         if "kindOf" in js:
-            return self.found
+            return {**self.found, "paths": self._paths()} if self.found else self.found
         return self.otp if "one-time-code" in js else None   # the extra-authentication reading: a one-time-code input is shown (structure)
+
+    def _paths(self):
+        f = self.found
+        paths = {f"number-{i}": f"#cc-number-{i}" for i in range(len(f.get("number") or []))}
+        for k in ("exp", "exp_month", "exp_year"):
+            if f.get(k):
+                paths[k] = f"#cc-{k}"
+        for k in ("cvc", "name", "postal"):
+            if f.get(k):
+                paths[k] = f"#cc-{k}"
+        return paths
 
     def locator(self, sel):
         return Locator(self, sel)
@@ -415,9 +426,9 @@ async def test_auto_pay_inside_the_rules_pays_without_asking_but_shows_and_notif
     assert filled.output.startswith("Filled in card ••4242: number, expiry, cvc, holder, postal code.") and not filled.is_error
     assert not clicked.is_error and ("click", "text=Pay now") in page.calls                # the pay click is inside the window
     typed = dict(page.frames[0].typed)
-    assert typed['[data-kelo-cc="number-0"]'] == VISA and typed['[data-kelo-cc="cvc"]'] == CVC   # typed into the page...
-    assert typed['[data-kelo-cc="exp"]'] == f"{future()[0]:02d} / {future()[1] % 100:02d}"
-    assert typed['[data-kelo-cc="name"]'] == "HONG GILDONG" and typed['[data-kelo-cc="postal"]'] == "04524"
+    assert typed['#cc-number-0'] == VISA and typed['#cc-cvc'] == CVC   # typed into the page...
+    assert typed['#cc-exp'] == f"{future()[0]:02d} / {future()[1] % 100:02d}"
+    assert typed['#cc-name'] == "HONG GILDONG" and typed['#cc-postal'] == "04524"
     no_secrets([r.output for r in results], shown, store.vault_log())                     # ...and nowhere else
     auto = [e for e in shown if e.get("type") == "payment_auto"]
     assert len(auto) == 1 and auto[0]["payment"]["amount"] == 24000 and auto[0]["card"]["last4"] == "4242" and auto[0]["id"] == "c2"
@@ -478,7 +489,7 @@ async def test_end_to_end_card_needs_allow_and_the_phones_card_once():
     assert "your phone sends the card details once" in asked[0][0].detail
     need = [e for e in shown if e.get("type") == "card_needed"]
     assert need and need[0]["approval_id"] == asked[0][1] and need[0]["card"]["last4"] == "4444" and need[0]["expires_at"] > time.time()
-    assert filled.output.startswith("Filled in card ••4444") and dict(page.frames[0].typed)['[data-kelo-cc="number-0"]'] == MC
+    assert filled.output.startswith("Filled in card ••4444") and dict(page.frames[0].typed)['#cc-number-0'] == MC
     assert "no longer here" in again.output                                                  # the phone's card is typed once
     assert deliveries.pending() == []
     no_secrets([r.output for r in (approved, filled, again)], shown, store.vault_log())
@@ -568,9 +579,9 @@ async def test_fill_card_reports_split_fields_frames_it_cannot_reach_and_extra_a
     assert "could not be reached: ads.example.org" in out
     assert "extra authentication" in out and "WAIT" in out and "a one-time-code box" in out   # by structure, never by the words of the page
     typed = frames[1].typed
-    assert [v for s, v in typed if s.startswith('[data-kelo-cc="number')] == ["3782", "822463", "10005"]
-    assert ('[data-kelo-cc="exp_month"]', f"select:{future()[0]:02d}") in typed
-    assert ('[data-kelo-cc="exp_year"]', f"select:{future()[1]}") in typed
+    assert [v for s, v in typed if s.startswith('#cc-number')] == ["3782", "822463", "10005"]
+    assert ('#cc-exp_month', f"select:{future()[0]:02d}") in typed
+    assert ('#cc-exp_year', f"select:{future()[1]}") in typed
     no_secrets(out)
     assert "378282246310005" not in out
 
@@ -773,7 +784,7 @@ async def test_paying_over_http_first_site_then_auto_with_notification(tmp_path,
         assert [p["kind"] for p in hist] == ["auto", "approved"]
         assert (await c.get("/api/wallet/limits")).json()["limits"][0]["spent_this_month"] == 12000
         answers = [json.dumps(events, ensure_ascii=False), (await c.get("/api/wallet")).text, (await c.get("/api/vault/log")).text]
-    assert [v for s, v in page.frames[0].typed if s.endswith('"number-0"]')] == [VISA, VISA]
+    assert [v for s, v in page.frames[0].typed if s == "#cc-number-0"] == [VISA, VISA]
     no_secrets(*answers, *all_logs.lines)
 
 
@@ -825,7 +836,7 @@ async def test_end_to_end_card_over_http_allow_then_phone_delivery(tmp_path, mon
         assert results["browser_click"]["approved"] is None and ("click", "text=Pay now") in page.calls
         assert (await c.get("/api/wallet/deliveries")).json() == {"items": []}
         answers = [json.dumps(events, ensure_ascii=False), *posted]
-    assert dict(page.frames[0].typed)['[data-kelo-cc="number-0"]'] == MC
+    assert dict(page.frames[0].typed)['#cc-number-0'] == MC
     no_secrets(*answers, *all_logs.lines)
     raw = (tmp_path / "a.db").read_bytes()
     assert MC.encode() not in raw and CVC.encode() + b'"' not in raw

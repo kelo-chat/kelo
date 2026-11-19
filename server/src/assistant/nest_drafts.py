@@ -840,7 +840,7 @@ def draft_tools(
             {"label": t("Content"), "value": content, "full": True},
         ]
         if outside:
-            lines.append({"label": t("Why it asks"), "value": t("Kelo read outside text (a page, mail or message) before this step, and you did not name {target}.", target=pid)})
+            lines.append({"label": t("Why it asks"), "value": t("Kelo read something in a page, mail or message before this step, and you did not name {target}.", target=pid)})
         return {
             "id": pid,
             "path": path,

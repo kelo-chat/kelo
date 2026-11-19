@@ -121,7 +121,15 @@ def _research_list() -> dict:
         {"id": 1, "at": NOW - 7200, "status": "no_change", "proposed": 0, "selected": 0, "delivered": 0, "dropped": 0,
          "counts": {"proposed": 0, "selected": 0, "told": 0, "dropped": 0}, "sources": []},
     ]
+    looks = [{"when": "hourly", "times": [], "covers": [{"id": "mail", "name": "", "kind": "section"},
+                                                        {"id": "home_assistant", "name": "Home Assistant", "kind": "connector"}]},
+             {"when": "send", "times": ["12:00", "16:00", "20:00"], "covers": [
+                 {"id": c, "name": "", "kind": "section"} for c in ("conversation", "calendar", "goals", "schedules", "memory", "corrections", "held")]},
+             {"when": "briefing", "times": ["08:00"], "covers": [
+                 {"id": c, "name": "", "kind": "section"} for c in ("weather", "calendar", "missed", "corrections")]},
+             {"when": "needed", "times": [], "covers": [{"id": "notes", "name": "Notes", "kind": "connector"}]}]
     return {"research": True, "every_minutes": 60, "checkpoint": NOW - 600, "keep_days": 90, "looked_at": looked,
+            "looks": looks,
             "passes": passes, "open": [], "next_before": None}
 
 

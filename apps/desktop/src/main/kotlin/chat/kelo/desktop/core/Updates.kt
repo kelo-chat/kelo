@@ -181,11 +181,16 @@ class Updater(
     private val clock: () -> Long = System::currentTimeMillis,
     /** The release keys the app accepts (tests pass their own). */
     private val keys: Map<String, String> = ReleaseKeys.ALL,
+    /** The Store copy's question to Windows ([StoreUpdates.run] of [StoreUpdates.command]); tests pass their own. */
+    private val storeRun: () -> String? = { StoreUpdates.run(StoreUpdates.command()) },
 ) {
     private val key = UpdateRules.platformKey(os)
     private val _state = MutableStateFlow(UpdateState())
     val state: StateFlow<UpdateState> = _state.asStateFlow()
     @Volatile private var lastCheck: Long? = null
+    private val _storeNewer = MutableStateFlow(false)
+    /** The Store copy only: the Store says a newer build of Kelo is out (see [checkStore]). Always false for the other copies. */
+    val storeNewer: StateFlow<Boolean> = _storeNewer.asStateFlow()
     private val _required = MutableStateFlow(false)
     /** The server says this version is too old (`min_app_version.desktop`): the shell covers the app with the required-update screen. */
     val required: StateFlow<Boolean> = _required.asStateFlow()
@@ -238,13 +243,36 @@ class Updater(
         }
     }
 
-    /** The automatic check: at start, then once a day (the shell calls it every hour). */
+    /**
+     * The Store copy's own question to the Store, at most every six hours ([checkStore]); the other copies check their installer at start,
+     * then once a day. The shell calls it every hour.
+     */
     suspend fun checkIfDue() {
+        if (store) { checkStore(); return }
         if (enabled && UpdateRules.due(lastCheck, clock())) check()
     }
 
-    /** The manual "업데이트 확인" too. A download in progress or done is left as it is. */
+    /**
+     * The Store copy: asks the Store whether a newer Kelo is out ([StoreUpdates]); the answer is kept for six hours (also across runs of the
+     * app), and a failed question counts as no answer. Nothing is downloaded: the Store updates the app itself.
+     */
+    suspend fun checkStore() {
+        if (!store || currentVersion == null) return
+        val now = clock()
+        val last = readLast()
+        if (!StoreUpdates.due(last, now)) { _storeNewer.value = (last?.updates ?: -1) > 0; return }
+        val count = withContext(Dispatchers.IO) { StoreUpdates.parse(runCatching { storeRun() }.getOrNull()) } ?: -1
+        writeLast(StoreUpdates.Last(now, count))
+        _storeNewer.value = count > 0
+    }
+
+    private fun lastFile(): File = File(dir, "store-updates.txt")
+    private fun readLast(): StoreUpdates.Last? = runCatching { StoreUpdates.decode(lastFile().readText()) }.getOrNull()
+    private fun writeLast(last: StoreUpdates.Last) { runCatching { dir.mkdirs(); lastFile().writeText(StoreUpdates.encode(last)) } }
+
+    /** The manual "업데이트 확인" too. A download in progress or done is left as it is. The Store copy asks the Store (at most every six hours). */
     suspend fun check() {
+        if (store) { checkStore(); return }
         val version = currentVersion ?: return
         if (!enabled || _state.value.phase in BUSY) return
         lastCheck = clock()
@@ -330,8 +358,8 @@ class Updater(
 
     companion object {
         private val BUSY = setOf(UpdateState.Phase.CHECKING, UpdateState.Phase.DOWNLOADING, UpdateState.Phase.VERIFYING)
-        /** The Microsoft Store's own "Downloads and updates" page (the Store copy is updated there, never by this app). */
-        const val STORE_UPDATES = "ms-windows-store://downloadsandupdates"
+        /** Kelo's page in the Microsoft Store (Store ID 9P54HX2TX361, "Kelo AI"): the Store copy is updated there, never by this app. */
+        const val STORE_UPDATES = "ms-windows-store://pdp/?productid=9P54HX2TX361"
 
         /** The website in the browser; the Store page through Windows itself. */
         fun openLink(url: String): Boolean =

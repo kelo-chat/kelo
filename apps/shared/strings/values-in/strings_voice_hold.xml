@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- in text for strings_voice_hold.xml (edit freely, keep the names) -->
+<!-- id text for strings_voice_hold.xml (generated from values/strings_voice_hold.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="voice_hold_label">Tahan untuk berbicara</string>
     <string name="voice_hold_hint">Lepas untuk selesai, geser keluar untuk membatalkan</string>

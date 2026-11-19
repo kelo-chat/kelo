@@ -31,6 +31,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -113,7 +114,20 @@ fun ChatScreen(
 ) {
     val container = LocalAppContainer.current
     val sessions = container.sessions
-    val vm: ChatViewModel = viewModel { ChatViewModel(sessions, container.store, container.agentActivity, container.replyWatch, AndroidChatPlatform) }
+    val vm: ChatViewModel = viewModel {
+        ChatViewModel(
+            sessions,
+            container.store,
+            container.agentActivity,
+            container.replyWatch,
+            AndroidChatPlatform,
+            canCall = { container.calls.available.value },
+        )
+    }
+    DisposableEffect(vm) {
+        val h = container.calls.attach(vm)
+        onDispose { h.close() }
+    }
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val haptics = LocalHaptics.current
@@ -214,12 +228,15 @@ fun ChatScreen(
     // the tab bar's re-select scrolls to the newest message
     val reselect = remember { MutableSharedFlow<Unit>(extraBufferCapacity = 1) }
     OnTabReselect(Routes.CHAT) { reselect.emit(Unit) }
+    // the composer's voice: the mic and the recording bar share it (remembered here, above the composer)
+    val voice = chat.kelo.app.voice.rememberAndroidComposerVoice()
     val hooks = ChatScreenHooks(
         addEntries = entries,
         // a picture pasted or tapped in from the keyboard: the same way as one picked with "+"
         fieldModifier = Modifier.contentReceiver(PastedImages.receiver { uris -> uris.take(MAX_PHOTOS).forEach { uri ->
             vm.attach(image = true, label = photoLabel) { AttachmentReader.photo(resolver, uri) } } }),
-        mic = { field, setField -> chat.kelo.app.voice.MicButton(field = field, onField = setField) },
+        voice = voice.composer,
+        mic = { _, _ -> chat.kelo.app.voice.MicButton(voice) },
         cardSenders = { chat.kelo.app.wallet.rememberCardSenders() },
         keyboardChrome = { imeVisible, composerFocused -> HideShellChrome(ShellChrome.KEY_KEYBOARD, ChromeRules.keyboardHidesBar(imeVisible, composerFocused)) },
         bottomInset = bottomBarHeight(),

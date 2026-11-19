@@ -43,6 +43,7 @@ from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -56,19 +57,22 @@ from .agent.loop import digest_tool_results
 from .compaction import request_tokens
 from .i18n import N_, t
 from .job_cuts import Cut, cut_result, next_pickup, open_calls, pickup_note
+from .shopping import ProductResults, pages_read, verify
+from .tools.sites import registrable
 
 log = logging.getLogger("uvicorn.error")
 
 KINDS = ("browser", "research", "general", tool_roles.CHECKOUT_KIND, tool_roles.PHONE_KIND)
 REPORT_STATUSES = ("done", "needs_input", "blocked", "failed")
 REPORT_NEEDS = ("answer", "site_data_reset")       # report(need=...): a typed reason the code may branch on; the summary is never read
+REPORT_REASONS = ("site_refused", "sign_in", "human_check", "not_available", "site_error")
 STATUSES = ("running", "needs_input", "blocked", "done", "failed", "stopped", "interrupted")
 PAUSED = ("needs_input", "blocked", "interrupted")
 MAIN_ONLY = ("delegate", "workers_list", "worker_status", "worker_message", "worker_stop", "resume",
              "await_reply", "followup_snooze", "followup_cancel",   # these three: follow-ups (followups.py) are the main chat's
              "set_owner_settings", "finish_first_chat",   # the first conversation is the main chat's (first_chat.py)
              "set_tone",   # how Kelo talks to the user: changed only when the user asks in the chat
-             "browser_forget_site",
+             "browser_forget_site", "browser_profiles", "browser_profile_delete",   # sign-in data controls: the owner asks the chat
              "chat_view")   # the browser or phone shown in the chat is hidden only by the main agent (chat_views.py)
 HANDOFF_MARK = "[Handoff from a background job, not from the user]"   # leads the hidden message; GET /api/messages leaves these out
 STATUS_HEAD = {"done": N_("Finished"), "needs_input": N_("Needs your help"), "blocked": N_("Got stuck"), "failed": N_("It did not work out")}
@@ -192,6 +196,7 @@ class WorkerHost:
     retire_tab: Callable[[str], Awaitable[Any]] | None = None
     login_saved: Callable[[str], bool] = lambda _n: False
     window: Callable[[], int] = lambda: 150_000
+    bind_profile: Callable[[str, str], Any] = lambda _key, _profile: None   # (tab key, named browser profile id): the job's window opens in it
     on_delegate: Callable[[str, str], Any] = lambda _turn_id, _wid: None   # (parent turn id, job id): the job takes on the turn's permissions
     on_end: Callable[[str, str], Any] = lambda _wid, _status: None   # (job id, status) a job ended without a report (stopped)
     # the model's usage limit (model_limits.py): the paused line, the hold's end now (None = not held), and the one notice
@@ -220,6 +225,8 @@ class _Live:
     stop: bool = False
     timed_out: bool = False
     report: dict[str, Any] | None = None
+    product_refused: int = 0
+    report_products: list[Any] | None = None
     seen: set[str] = field(default_factory=set)   # distinct tool calls that succeeded in this job (progress)
     chunk_progress: int = 0                        # of them, in the stretch of work going on now
     chunks: int = 0                                # fresh budgets given since the job was (re)started
@@ -324,6 +331,7 @@ class Workers:
     def __init__(self, store: Any, host: WorkerHost, limits: Limits | None = None, *, resume_on_start: bool = True,
                  clock: Callable[[], float] = time.time):
         self.store, self.host, self.limits, self.resume_on_start, self._clock = store, host, limits or Limits(), resume_on_start, clock
+        self.products = ProductResults(store)
         self.chat_views: Any = None   # the chat's views (chat_views.py), set by server.py
         self._live: dict[str, _Live] = {}
         self._queue: list[tuple[str, str]] = []     # automatic resumes waiting for a free slot: (id, why)
@@ -340,7 +348,7 @@ class Workers:
                 store._db.execute("ALTER TABLE workers ADD COLUMN question_id TEXT NOT NULL DEFAULT ''")
             if "parent_cond" not in have:   # the conditional task (watcher:N / schedule:N) that handed the job over, "" for a chat
                 store._db.execute("ALTER TABLE workers ADD COLUMN parent_cond TEXT NOT NULL DEFAULT ''")
-            for col, ddl in (("cut", "TEXT NOT NULL DEFAULT ''"), ("cuts", "INTEGER NOT NULL DEFAULT 0"),
+            for col, ddl in (("profile", "TEXT NOT NULL DEFAULT ''"), ("cut", "TEXT NOT NULL DEFAULT ''"), ("cuts", "INTEGER NOT NULL DEFAULT 0"),
                              ("pickups", "INTEGER NOT NULL DEFAULT 0"), ("picked_up_at", "REAL NOT NULL DEFAULT 0")):
                 if col not in have:   # job_cuts.py: the last cut, the cuts in a row, the pick-ups, when the last one started
                     store._db.execute(f"ALTER TABLE workers ADD COLUMN {col} {ddl}")
@@ -414,6 +422,7 @@ class Workers:
         for r in old:
             self.store._run("DELETE FROM worker_messages WHERE worker_id = ?", (r["id"],))
             self.store._run("DELETE FROM workers WHERE id = ?", (r["id"],))
+        self.products.forget_workers({r["id"] for r in self.store._all("SELECT id FROM workers")})
 
     # ------------------------------------------------------------------ what the app and the agent see
     def open_job_for(self, turn_id: str = "", task_id: int | None = None, owner: str = "", known: Any = ()) -> dict[str, Any] | None:
@@ -478,6 +487,11 @@ class Workers:
         r = self._row(wid)
         return self.public(r, full=True) if r else None
 
+    def kind_of(self, wid: str) -> str:
+        """The kind of a job ("browser", "research", ...), "" when there is no such job."""
+        r = self._row(wid)
+        return str(r["kind"] or "") if r else ""
+
     def prompt_block(self, within: float = 86400) -> str:
         """For the main agent's turn lines: the jobs that run or wait now and the ones that ended in the last day, with their state
         right now. The chat may still say "it runs in the background" after the user stopped a job from the Work page (a stop sends
@@ -533,7 +547,8 @@ class Workers:
             lines.append("Use your browser tools; this job has a browser tab of its own." + self._notes())
         elif kind == "research":
             lines.append("Look things up with web_search and web_fetch (the browser only for pages that need it) and read the sources; "
-                         "put the addresses you used in details." + self._notes())
+                         "put the addresses you used in details. This browser is not signed in to any site. When a step needs a "
+                         "sign-in, skip it and say in your report what you could not check." + self._notes())
         elif kind == tool_roles.PHONE_KIND:
             lines.append(PHONE_BRIEF)
         elif self.host.phone_split or self.host.browser_split:
@@ -604,6 +619,12 @@ class Workers:
             if (other := self._open_checkout(host_of(url))) is not None:
                 return (f"Error: checkout job {other} for this shop is still open. A shop gets one checkout window at a time: continue that "
                         "job with worker_message or resume instead of starting another (a new job is not a way to retry an unresolved order).")
+        profile = str(args.get("profile") or "").strip()
+        if profile and kind == "browser":   # another account on the same site: a browser job only (research is signed out, a checkout is the owner's)
+            if not any(p["id"] == profile for p in self.store.browser_profiles()):
+                return "Error: there is no browser profile with this id. browser_profiles lists them; leave profile out for the default one."
+        else:
+            profile = ""
         files = [str(f).strip()[:200] for f in (args.get("files") or []) if str(f).strip()][:10] if isinstance(args.get("files"), list) else []
         steps, minutes = self.limits.budget(kind, args.get("deadline_min"))
         parent = current_turn.get() or {}
@@ -618,6 +639,9 @@ class Workers:
             (wid, kind, title, task[:8000], url, json.dumps(files, ensure_ascii=False), "running", parent.get("task_id"),
              str(parent.get("source") or "chat"), str(parent.get("cond") or "")[:80], f"task:{wid}", now, now, steps, now + minutes * 60,
              minutes, self.limits.tokens))
+        if profile:
+            self.store._run("UPDATE workers SET profile = ? WHERE id = ?", (profile, wid))
+            self.host.bind_profile(f"task:{wid}", profile)
         self._append(wid, 0, {"role": "user", "content": self._brief(wid, task, kind, url, files, steps, minutes)})
         try:
             self.host.on_delegate(str(parent.get("turn_id") or ""), wid)
@@ -832,6 +856,8 @@ class Workers:
     async def _run(self, wid: str, note: str) -> None:
         live = self._live[wid]
         current_worker.set(wid)
+        if (r0 := self._row(wid)) is not None and r0["profile"]:
+            self.host.bind_profile(f"task:{wid}", r0["profile"])   # a resumed job's window opens in its profile again
         if note:
             self._append(wid, self._next_seq(wid), {"role": "user", "content": note})
         nudged = False
@@ -1119,6 +1145,11 @@ class Workers:
             report["deadline"] = str(live.report["deadline"]).strip()[:40]   # when waiting longer is too late (followups.py reminds before it)
         if live.report and live.report.get("need"):
             report["need"] = live.report["need"]                             # a typed reason (REPORT_NEEDS), never read from the summary
+        if live.report and live.report.get("reason"):
+            report["reason"] = live.report["reason"]
+        if getattr(live, "report_products", None):
+            self.products.save(wid, live.report_products, now)
+            report["products"] = [p.id for p in live.report_products]
         self._update(wid, status=status, report=json.dumps(report, ensure_ascii=False), wait_on=json.dumps(wait), keep_tab=int(keep),
                      wake_at=wake_at, finished_at=now if status in ("done", "failed") else None,
                      question_id=new_question_id() if status == "needs_input" else "")
@@ -1154,6 +1185,21 @@ class Workers:
                  f"{rep['status']}.", f"Summary: {rep['summary'] or '-'}"]
         if rep["details"]:
             lines.append(f"Details: {rep['details']}")
+        if rep.get("products"):
+            lines.append("Products this job saw on the sellers' own pages (offer only these, by id):")
+            for pid in rep["products"]:
+                p = self.products.get(pid)
+                if p:
+                    sale = f" (now {p.sale_price})" if p.sale_price else ""
+                    lines.append(f"- {p.id} · {p.name} · {p.price}{sale} · {p.seller}")
+            lines.append(
+                "Offer them as one choice card: quick_replies with one option per product (a short name as the label) and each card's product set to "
+                "its id, one of them recommended."
+            )
+            lines.append(
+                "In your text give one short takeaway and the decisive difference, naming at most two; do not list them."
+            )
+            lines.append("Do not rebuild products from the summary.")
         if progress := self._progress_line(r):
             lines.append(progress)
         if (picks := int(r.get("pickups") or 0)) > 0:
@@ -1186,8 +1232,20 @@ class Workers:
                 lines.append(f"The job will retry by itself at {time_str}. Tell the user once, in one line (e.g. that the site is "
                              f"blocking for now and it will try again at {time_str}; they can keep talking).")
             else:
-                lines.append("Say what stopped it: tell the user the site does not let Kelo's browser in right now and offer the live view "
-                             "(take over) or another shop; it goes on by itself when they hand the browser tab back.")
+                site = registrable(urlsplit(str(r.get("last_url") or "")).hostname or "") if r.get("last_url") else ""
+                if not site:
+                    site = "the site"
+                if r.get("parent_source") not in ("chat", "api"):
+                    lines.append(f"Say in the result that {site} stopped the job and why; nothing else.")
+                elif rep.get("reason") in ("site_refused", "sign_in", "human_check"):
+                    lines.append(
+                        f"Tell the user in one or two lines that {site} did not let Kelo's browser in, so nothing was found or bought there, "
+                        f"and the next step: take over the browser (the live view) to sign in or get past it, or save that site's login; the job "
+                        f"goes on by itself when they hand the browser back. If no other seller could be opened either, give only the refusal and "
+                        f"the sign-in path, no prices. Never show prices, stock or links from a text search, not even as information."
+                    )
+                else:
+                    lines.append("Say in one or two lines what stopped it and the next step. Never show prices, stock or links from a text search, not even as information.")
         else:
             lines.append("Say that it stopped, why, and how far it got (the counts above are the server's own record: use them; never "
                          "guess that something was not done).")
@@ -1404,6 +1462,15 @@ class Workers:
                 return f"Error: status must be one of {', '.join(REPORT_STATUSES)}."
             if not summary:
                 return "Error: summary is required: say in a few sentences what came of the job, in the user's language."
+            raw = args.get("products")
+            if raw not in (None, []):
+                kept, left = verify(raw if isinstance(raw, list) else [], pages_read(self.transcript(wid)), wid)
+                if left and live.product_refused == 0:
+                    live.product_refused = 1
+                    return ("Error: not recorded. Report only products whose own page you opened in this job, with the price that page shows "
+                            "and only when it can be bought now. Left out:\n- " + "\n- ".join(left) +
+                            "\nOpen each one's page and report it again as it shows there, or leave it out, then call report again.")
+                live.report_products = kept          # second try: what passed is kept, the rest stays out (no loop)
             retry_after_min = None
             if "retry_after_min" in args and args["retry_after_min"] is not None:
                 try:
@@ -1414,6 +1481,8 @@ class Workers:
                            "keep_tab": bool(args.get("keep_tab")), "deadline": str(args.get("deadline") or "")}
             if args.get("need") in REPORT_NEEDS:
                 live.report["need"] = args["need"]
+            if args.get("reason") in REPORT_REASONS:
+                live.report["reason"] = args["reason"]
             if retry_after_min is not None:
                 live.report["retry_after_min"] = retry_after_min
             return "Report received. Stop here."
@@ -1429,7 +1498,9 @@ class Workers:
                                                       "need": {"type": "string", "enum": list(REPORT_NEEDS),
                                                                "description": "needs_input: what you need from the user. site_data_reset = the site "
                                                                               "keeps refusing you and clearing its cookies and site data, then retrying, may help"},
-                                                      "retry_after_min": {"type": "integer", "description": "blocked: minutes to wait before retrying once (5-30, use 10 for access-denied sites)"}},
+                                                      "products": {"type": "array", "description": "products found, each from its own page you opened in this job: name, url (that page), price (as the page shows it), sale_price (only a real reduced price the page shows), image_url (a direct https picture address from the page), availability ('in_stock' only when the product page indicates it can be added to the cart or purchased now)", "items": {"type": "object", "properties": {"name": {"type": "string"}, "url": {"type": "string"}, "price": {"type": "string"}, "sale_price": {"type": "string"}, "image_url": {"type": "string"}, "availability": {"type": "string", "enum": ["in_stock"]}}, "required": ["name", "url", "price", "availability"]}},
+                                                      "reason": {"type": "string", "enum": list(REPORT_REASONS), "description": "blocked or needs_input: what stopped you. site_refused = a block or access-denied page, or the site says it does not allow assistants; sign_in = the site needs the user's sign-in and no saved login works; human_check = a check you could not pass; not_available = the site does not have or sell it; site_error = the site is down or fails"},
+                                                      "retry_after_min": {"type": "integer", "description": "blocked: minutes to wait before retrying once (5-30), only when a service asked you to slow down; never for a site that refused you"}},
                      "required": ["status", "summary"]}, report, ends_turn=True)
 
     def main_tools(self) -> list[Tool]:
@@ -1502,6 +1573,7 @@ class Workers:
                  {"type": "object", "properties": {"task": {"type": "string"}, "kind": {"type": "string", "enum": list(KINDS)},
                                                    "url": {"type": "string", "description": "where to start"},
                                                    "files": {"type": "array", "items": {"type": "string"}, "description": "your files to use"},
+                                                   "profile": {"type": "string", "description": "a browser_profiles id"},
                                                    "deadline_min": {"type": "integer"}}, "required": ["task"]}, delegate),
             Tool("workers_list", "List your background jobs with their status, when the user asks about them.",
                  {"type": "object", "properties": {}}, workers_list, read_only=True),

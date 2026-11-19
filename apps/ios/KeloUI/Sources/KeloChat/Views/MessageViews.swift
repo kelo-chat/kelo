@@ -49,10 +49,15 @@ struct BubbleMenu: ViewModifier {
 struct UserBubble: View {
     let text: String
     var reaction: String = ""
+    var fromCall: Bool = false
     let actions: [MsgAction]
     let onAction: (MsgAction) -> Void
     @Environment(\.kelo) private var c
     @Environment(\.keloWindow) private var window
+
+    private var spoken: String {
+        fromCall ? "\(text), \(L(R.string.call_mark))" : text
+    }
 
     var body: some View {
         HStack {
@@ -64,6 +69,7 @@ struct UserBubble: View {
                     .background(RoundedRectangle(cornerRadius: 20).fill(c.mine))
                     .contentShape(RoundedRectangle(cornerRadius: 20))
                     .modifier(BubbleMenu(actions: actions, text: text, onAction: onAction))
+                    .accessibilityLabel(spoken)
                 if !reaction.isEmpty { ReactionChip(emoji: reaction) }
             }
             // a wide window keeps lines readable: at most 540 pt, on the right
@@ -140,6 +146,7 @@ struct ReactionChip: View {
 struct AssistantBubbles: View {
     let text: String
     let streaming: Bool
+    var fromCall: Bool = false
     let actions: [MsgAction]
     let onAction: (String, MsgAction) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduce
@@ -197,6 +204,7 @@ struct AssistantBubbles: View {
                         .background(RoundedRectangle(cornerRadius: 20).fill(BubbleColor.assistant))
                         .contentShape(RoundedRectangle(cornerRadius: 20))
                         .modifier(BubbleMenu(actions: actions, text: plain) { a in onAction(plain, a) })
+                        .accessibilityLabel(fromCall ? "\(plain), \(L(R.string.call_mark))" : plain)
                         .keloBubbleCap(window.bubbleMax, alignment: .leading)
                     Spacer(minLength: 48)
                 }

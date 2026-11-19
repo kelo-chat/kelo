@@ -39,6 +39,7 @@ struct BrowserTabPage: View {
         VStack(spacing: 0) {
             top(title: title, host: host, canClose: !device && !controlling && live.mode != .ended)
             if live.mode != .ended { strip }
+            if LiveRules.showTabs(live.tabs) { tabChips }
             if controlling { banner }
             if LiveRules.showWorkNote(live.status) { workNote }
             ZStack(alignment: .bottom) {
@@ -110,6 +111,12 @@ struct BrowserTabPage: View {
             if p == .active { live.start() } else if p == .background { live.stop(giveBack: false) }
         }
         .task { await live.loadTab() }
+        .task(id: live.mode == .ended) {
+            while live.mode != .ended && !Task.isCancelled {
+                await live.refreshTabs()
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
         #if os(iOS)
         // the keyboard shortens the live area: that is not a size change for the VNC screen (a rotation is)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in live.setKeyboard(up: true) }
@@ -124,6 +131,35 @@ struct BrowserTabPage: View {
         }
         .keloConfirm(L(R.string.agent_tab_close_confirm), isPresented: $confirmClose, yes: L(R.string.agent_tab_close)) {
             model.closeTab(id, then: onBack)
+        }
+    }
+
+    /// One row of chips under the top bar: the task's tabs. Tappable only while this device holds the tab; the active one is selected.
+    private var tabChips: some View {
+        let tappable = LiveRules.tabsTappable(live.status)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(live.tabs, id: \.id) { t in
+                    HStack(spacing: 8) {
+                        Text(t.title.isEmpty ? L(R.string.live_tab_untitled) : t.title)
+                            .font(KeloFont.small).lineLimit(1)
+                            .foregroundStyle(t.active ? c.bg : c.ink)
+                        if LiveRules.tabClosable(t, tappable: tappable) {
+                            Button { Task { await live.tabAction(t, close: true) } } label: {
+                                Text("×").font(KeloFont.body).foregroundStyle(c.muted)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(L(R.string.live_tab_close))
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .frame(maxWidth: 180)
+                    .background(Capsule().fill(t.active ? c.ink : c.card))
+                    .contentShape(Capsule())
+                    .onTapGesture { if tappable && !t.active { Task { await live.tabAction(t, close: false) } } }
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 4)
         }
     }
 
@@ -549,6 +585,7 @@ private struct ControlBar: View {
     var device = false
     @State private var text = ""
     @State private var hidden = false
+    @State private var keyboardToggles = 0   // taps on the keyboard key (live typing)
     @Environment(\.kelo) private var c
 
     private static let keys: [(String, StringKey, StringKey)] = [
@@ -567,7 +604,7 @@ private struct ControlBar: View {
                     navKey(.arrowRight, R.string.live_forward) { live.send(LiveMessages.nav("forward")) }
                     navKey(.retry, R.string.live_reload) { live.send(LiveMessages.nav("reload")) }
                     ForEach(ControlBar.keys, id: \.0) { key, label, desc in
-                        Button { live.send(LiveMessages.key(key)) } label: {
+                        Button { if live.liveTyping { live.typingKeys([key]) } else { live.send(LiveMessages.key(key)) } } label: {
                             Text(L(label)).font(KeloFont.button).foregroundStyle(c.ink).lineLimit(1)
                                 .frame(minWidth: 52, minHeight: 40).padding(.horizontal, 4)
                                 .background(RoundedRectangle(cornerRadius: 10).fill(c.bubble))
@@ -575,22 +612,32 @@ private struct ControlBar: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel(L(desc))
                     }
+                    #if os(iOS)
+                    if live.liveTyping {
+                        Button { keyboardToggles += 1 } label: {
+                            KeloIconView(.keyboard, size: 20, tint: c.ink).frame(width: 40, height: 40)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(c.bubble))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L(R.string.live_keyboard_desc))
+                    }
+                    #endif
                 }
             }
             }
-            HStack(spacing: 6) {
-                KeloTextField(L(device ? R.string.live_phone_type_hint : R.string.live_type_hint), text: $text, secure: hidden, keyboard: .ascii, maxLength: LiveMessages.maxText, focusRequest: live.editing, onSubmit: sendText)
+            if live.liveTyping {
                 #if os(iOS)
-                // the system's own paste control: no "Allow Paste" prompt, and it is greyed out while the phone's clipboard has no text
-                PasteButton(payloadType: String.self) { strings in
-                    guard let clip = ClipboardRules.pasteText(strings.first) else { return }
-                    live.type(clip)
-                    live.notice = L(R.string.live_pasted)
+                HStack(spacing: 6) {
+                    RemoteKeyboard(live: live, typing: live.typing, toggles: keyboardToggles).frame(width: 1, height: 1)
+                    Spacer(minLength: 0)
+                    pasteButton
                 }
-                .labelStyle(.iconOnly)
-                .buttonBorderShape(.circle)
-                .tint(c.bubble)
-                .frame(width: 40, height: 40)
+                #endif
+            } else {
+            HStack(spacing: 6) {
+                KeloTextField(L(device ? R.string.live_phone_type_hint : R.string.live_type_hint), text: $text, secure: hidden, keyboard: .text, maxLength: LiveMessages.maxText, focusRequest: live.editing, onSubmit: sendText)
+                #if os(iOS)
+                pasteButton
                 #endif
                 Button { hidden.toggle() } label: { KeloIconView(hidden ? .lock : .eye, size: 22, tint: c.muted).frame(width: 40, height: 40) }
                     .buttonStyle(.plain)
@@ -600,10 +647,26 @@ private struct ControlBar: View {
                     .disabled(text.isEmpty)
                     .accessibilityLabel(L(R.string.live_type_send))
             }
+            }
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(c.card)
     }
+
+    #if os(iOS)
+    /// The system's own paste control: no "Allow Paste" prompt, and it is greyed out while the phone's clipboard has no text.
+    private var pasteButton: some View {
+        PasteButton(payloadType: String.self) { strings in
+            guard let clip = ClipboardRules.pasteText(strings.first) else { return }
+            live.type(clip)
+            live.notice = L(R.string.live_pasted)
+        }
+        .labelStyle(.iconOnly)
+        .buttonBorderShape(.circle)
+        .tint(c.bubble)
+        .frame(width: 40, height: 40)
+    }
+    #endif
 
     private func sendText() {
         guard !text.isEmpty else { return }

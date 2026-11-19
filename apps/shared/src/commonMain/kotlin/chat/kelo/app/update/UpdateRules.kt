@@ -2,6 +2,7 @@ package chat.kelo.app.update
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import java.io.InputStream
 import java.net.URI
 import java.security.MessageDigest
@@ -46,8 +47,10 @@ object UpdateRules {
      * null otherwise (nothing is offered): an unsigned or wrongly signed row is treated like an incomplete one.
      */
     fun parse(body: String, platform: String = PLATFORM, keys: Map<String, String> = ReleaseKeys.ALL): Release? {
-        val all = runCatching { json.decodeFromString<Map<String, Release>>(body) }.getOrNull() ?: return null
-        val r = all[platform] ?: return null
+        // Only this platform's entry is decoded: the file also carries other rows ("server", "store") that this build does not read,
+        // and one of them must never make the whole file fail (a row this build cannot read is simply not offered).
+        val entry = runCatching { json.parseToJsonElement(body).jsonObject[platform] }.getOrNull() ?: return null
+        val r = runCatching { json.decodeFromJsonElement(Release.serializer(), entry) }.getOrNull() ?: return null
         if (r.version.isBlank() || r.size <= 0 || !SHA256.matches(r.sha256.lowercase()) || r.url.isBlank()) return null
         val sha = r.sha256.lowercase()
         if (!ReleaseSignature.verify(platform, r.file, r.version, r.code, r.size, sha, r.commit, r.key, r.sig, keys)) return null

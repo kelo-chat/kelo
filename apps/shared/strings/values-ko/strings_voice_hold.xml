@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ko text for strings_voice_hold.xml (edit freely, keep the names) -->
+<!-- ko text for strings_voice_hold.xml (generated from values/strings_voice_hold.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="voice_hold_label">누른 채 말하기</string>
     <string name="voice_hold_hint">손을 떼면 끝, 밖으로 밀면 취소</string>

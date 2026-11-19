@@ -10,4 +10,7 @@
     <string name="update_popup_title">Hay una versión nueva (%1$s)</string>
     <string name="update_popup_update">Actualizar</string>
     <string name="update_popup_later">Más tarde</string>
+    <string name="server_notice_title">Hay una actualización del servidor de Kelo (%1$s)</string>
+    <string name="server_notice_body">Actualízalo para tener las correcciones más recientes. Kelo no estará disponible unos minutos mientras el servidor se reinicia.</string>
+    <string name="server_notice_open">Ver la actualización</string>
 </resources>

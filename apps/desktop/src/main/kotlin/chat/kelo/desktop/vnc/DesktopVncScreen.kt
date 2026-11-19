@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.agent.LiveGeometry
+import chat.kelo.app.agent.LocalRemoteKeyboard
 import chat.kelo.app.agent.LiveZoomButtons
 import chat.kelo.app.agent.VncRelay
 import chat.kelo.app.agent.VncScreenHost
@@ -125,6 +127,21 @@ fun VncSurface(session: DesktopVncSession, holding: Boolean, onPaste: () -> Unit
     val metaNow by rememberUpdatedState(metaHeld)
     val holdingNow by rememberUpdatedState(holding)
     val pasteNow by rememberUpdatedState(onPaste)
+    // live typing: the keys of the page go through the capture field (one channel, in order); the screen keeps only shortcuts and F keys
+    val remoteKeyboard = LocalRemoteKeyboard.current
+    val shortcutsDown = remember { HashSet<Long>() }
+    val shortcut: (KeyEvent) -> Boolean = { e ->
+        routedKey(
+            e.type == KeyEventType.KeyDown, e.type == KeyEventType.KeyUp, e.key, e.isCtrlPressed, e.isMetaPressed, e.isAltPressed, e.utf16CodePoint,
+            holdingNow, mac, shortcutsDown, session, { pasteNow() },
+        )
+    }
+    val shortcutNow by rememberUpdatedState(shortcut)
+    DisposableEffect(remoteKeyboard, session) {
+        val mine: (KeyEvent) -> Boolean = { shortcutNow(it) }
+        remoteKeyboard?.shortcut = mine
+        onDispose { if (remoteKeyboard?.shortcut === mine) remoteKeyboard.shortcut = null }
+    }
     val frameNow by rememberUpdatedState(frame)
     val boxNow by rememberUpdatedState(box)
     val zoomNow by rememberUpdatedState(zoom)
@@ -162,7 +179,7 @@ fun VncSurface(session: DesktopVncSession, holding: Boolean, onPaste: () -> Unit
             .onPreviewKeyEvent { e ->
                 ctrlHeld = e.isCtrlPressed
                 metaHeld = e.isMetaPressed
-                keyEvent(e, session, holdingNow, mac) { pasteNow() }
+                if (remoteKeyboard?.on == true) shortcutNow(e) else keyEvent(e, session, holdingNow, mac) { pasteNow() }
             }
             .pointerHoverIcon(icon)
             .pointerInput(session) {
@@ -191,7 +208,10 @@ fun VncSurface(session: DesktopVncSession, holding: Boolean, onPaste: () -> Unit
                             val bit = buttonBit(event.button)
                             if (bit != null) {
                                 session.pointer.button(bit, down = event.type == PointerEventType.Press, p = at)
-                                if (event.type == PointerEventType.Press) runCatching { focus.requestFocus() }
+                                if (event.type == PointerEventType.Press) {
+                                    val rk = remoteKeyboard
+                                    runCatching { if (rk?.on == true) rk.requester.requestFocus() else focus.requestFocus() }
+                                }
                             }
                         } else {
                             session.pointer.move(at, System.currentTimeMillis())
@@ -247,6 +267,31 @@ private fun keyEvent(e: KeyEvent, session: DesktopVncSession, holding: Boolean, 
         else -> true
     }
 }
+
+/**
+ * One key while live typing is on (the capture field has the focus and takes everything that is typing): only shortcuts (Ctrl, ⌘ or Alt held)
+ * and F keys go to the page as real keys, and each key goes up when it was sent down. Ctrl+V (⌘V on macOS) is the paste. True = taken.
+ */
+internal fun routedKey(
+    down: Boolean, up: Boolean, key: Key, ctrl: Boolean, meta: Boolean, alt: Boolean, codePoint: Int,
+    holding: Boolean, mac: Boolean, pressed: MutableSet<Long>, session: DesktopVncSession, paste: () -> Unit,
+): Boolean {
+    if (!holding) return false
+    if (down) {
+        val fn = key.keyCode in FUNCTION_KEYS
+        if (!(ctrl || meta || alt || fn)) return false
+        if ((ctrl || (mac && meta)) && key == Key.V) { paste(); return true }
+        pressed += key.keyCode
+        session.keyDown(key.keyCode, codePoint, ctrl || (mac && meta))
+        return true
+    }
+    if (up && pressed.remove(key.keyCode)) { session.keyUp(key.keyCode); return true }
+    return false
+}
+
+private val FUNCTION_KEYS: Set<Long> = setOf(
+    Key.F1, Key.F2, Key.F3, Key.F4, Key.F5, Key.F6, Key.F7, Key.F8, Key.F9, Key.F10, Key.F11, Key.F12,
+).map { it.keyCode }.toSet()
 
 /**
  * The server's picture as an image: refreshed at most once per display frame, and only when the frame changed (its version). The

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_actions.xml (generated from values/strings_actions.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="actions_title">Apa yang dilakukan Kelo</string>
     <string name="actions_period_today">Hari ini</string>

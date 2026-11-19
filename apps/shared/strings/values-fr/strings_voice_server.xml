@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- fr text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">Télécharger le modèle de reconnaissance vocale %1$s sur votre serveur Kelo ? Sinon, la reconnaissance vocale de votre téléphone sera utilisée.</string>
     <string name="voice_server_downloading">Téléchargement du modèle vocal · %1$d %%</string>
     <string name="voice_server_ready">Votre serveur Kelo comprend maintenant votre voix.</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">Impossible de joindre votre serveur Kelo pour convertir la voix en texte.</string>
     <string name="voice_server_busy">Votre serveur Kelo traite un autre enregistrement. Réessayez dans un instant.</string>
     <string name="voice_server_too_long">L\'enregistrement est trop long. Restez en dessous de 2 minutes.</string>
-    <string name="voice_page_title">Saisie vocale</string>
+    <string name="voice_page_title">Voix</string>
     <string name="voice_page_intro">Votre voix est transcrite sur votre serveur Kelo, puis le texte va dans le champ. Rien n\'est envoyé tout seul.</string>
     <string name="voice_model_in_use">Modèle vocal utilisé</string>
     <string name="voice_state_off">Reconnaissance vocale du téléphone</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Les modèles vocaux de votre serveur Kelo ne connaissent pas encore cette langue ; la reconnaissance vocale du téléphone est donc utilisée.</string>
     <string name="voice_model_size">Taille %1$s · mémoire en service %2$s</string>
     <string name="voice_runtime_missing">Relancez une fois l\'installateur du serveur Kelo pour pouvoir l\'utiliser.</string>
+    <string name="voice_send_now">Envoyer ce que vous avez dit</string>
+    <string name="voice_elapsed">Durée d’enregistrement %1$s</string>
 </resources>

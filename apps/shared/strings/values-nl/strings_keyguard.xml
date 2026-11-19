@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">Je wachtwoorden, sleutels en kaarten gaan open met één sleutel. Normaal bewaart de server die ernaast. Staat dit aan, dan heeft alleen je telefoon hem, dus wie de schijf van de server meeneemt, kan ze niet openen.</string>

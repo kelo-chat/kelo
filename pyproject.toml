@@ -1,6 +1,6 @@
 [project]
 name = "assistant"
-version = "0.10.5"
+version = "0.10.6"
 description = "Kelo: a self-hosted personal AI agent"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE", "NOTICE"]
@@ -30,6 +30,8 @@ dependencies = [
     "opencc-python-reimplemented",
     "sherpa-onnx==2.0.1",
     "numpy>=2",
+    "num2words==0.5.14",
+    "babel>=2.16",
 ]
 
 [project.scripts]

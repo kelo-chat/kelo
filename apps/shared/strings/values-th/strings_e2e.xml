@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">เชื่อมต่อโทรศัพท์เครื่องนี้อีกครั้ง</string>
     <string name="e2e_key_changed_body">คีย์เข้ารหัสของเซิร์ฟเวอร์ Kelo เปลี่ยนไป โทรศัพท์เครื่องนี้จึงตรวจไม่ได้ว่าเป็นเซิร์ฟเวอร์ของคุณจริง โปรดสแกนคิวอาร์โค้ดเชื่อมต่อใหม่จาก ฉัน → อุปกรณ์ของฉัน บนอุปกรณ์อื่น หรือจากเครื่องเซิร์ฟเวอร์</string>

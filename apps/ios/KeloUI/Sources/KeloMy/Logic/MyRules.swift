@@ -129,6 +129,12 @@ public enum NotifySettingsRules {
 
     public static func formatTime(_ hour: Int, _ minute: Int) -> String { String(format: "%02d:%02d", hour, minute) }
 
+    /// The send times the page lists, in the server's order; none from an older server, with research off, or not a time.
+    public static func sendTimes(_ p: ProactiveSettings) -> [String] { p.sendTimes.filter { parseTime($0) != nil } }
+
+    /// Whether the about text tells the send-time schedule (a server that sends "send_times"); an older server keeps the old text.
+    public static func aboutSendTimes(_ p: ProactiveSettings) -> Bool { p.hasSendTimes }
+
     /// How often the 새 소식 알림 pass looks, as (in hours, the number): whole hours as hours, else minutes.
     public static func every(_ minutes: Int) -> (hours: Bool, n: Int) {
         minutes >= 60 && minutes % 60 == 0 ? (true, minutes / 60) : (false, max(1, minutes))
@@ -145,6 +151,12 @@ public enum NotifySettingsRules {
         let clean = String(item.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(maxItem))
         if clean.isEmpty || list.contains(clean) || list.count >= maxItems { return list }
         return list + [clean]
+    }
+
+    /// The name of the job Kelo made for `item` when it has its own timing; nil for an item looked at at the send times (and from an older server).
+    public static func ownJob(_ k: ChecklistSettings, _ item: String) -> String? {
+        guard let e = k.entries.first(where: { $0.text == item && $0.state == "own" }), !e.jobName.isEmpty else { return nil }
+        return e.jobName
     }
 }
 
@@ -250,7 +262,7 @@ public enum MyRoute: Hashable, Sendable {
     case serverUpdate
     /// 마이 → Kelo 서버 자원 → 정리하기 (what can safely be removed; owner only)
     case cleanup
-    case vaultItem(String), vaultAi(String), vaultAddLogin, vaultLog
+    case vaultItem(String), vaultAi(String), vaultAddLogin, vaultLog, vaultProfile(String)
     /// 마이 → 알림 → the items Kelo keeps for a later message (read-only)
     case proactiveHeld
     /// 마이 → 알림 → What Kelo looked at (the passes), and one pass's detail

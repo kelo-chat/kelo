@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">Bu telefonu yeniden bağlayın</string>
     <string name="e2e_key_changed_body">Kelo sunucunuzun şifreleme anahtarı değişti, bu yüzden bu telefon gerçekten sizin sunucunuz olduğunu doğrulayamıyor. Başka bir cihazda Benim → Cihazlarım bölümünden ya da sunucu bilgisayarından yeni bir bağlantı QR kodu tarayın.</string>

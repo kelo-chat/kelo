@@ -3,7 +3,7 @@ language decides anything: docs/no-word-lists.md, hc-pagefields):
 
 Windows covering the page. A notice window or any fixed layer over the middle of the page (role=dialog, aria-modal, <dialog open>,
 a high fixed element under the viewport's center) is found by OVERLAY_JS, which also marks its own close control
-(data-kelo-close) when it can tell by STRUCTURE: an icon-only control (no words) that is declared a close control (command=close,
+(its centre is returned as close_at, nothing is marked) when it can tell by STRUCTURE: an icon-only control (no words) that is declared a close control (command=close,
 data-dismiss, data-bs-dismiss) or drawn in the top corner of the layer or of its sheet. A control that has words
 is never pressed (nothing can tell "Close" from "Accept" or "Don't show again" in a language the code does not read), nor anything that
 could commit. Windows with form fields (a sign-in or search form) or an embedded frame (payment, verification, a human check), any
@@ -117,9 +117,10 @@ OVERLAY_JS = r"""() => {
       backdrop: (app && sheet) ? [Math.max(rr.left + 4, 4), Math.max(rr.top + 4, 4)] : null };
     if (item.backdrop && sheet && item.backdrop[0] >= sheet.left && item.backdrop[0] <= sheet.right && item.backdrop[1] >= sheet.top && item.backdrop[1] <= sheet.bottom) item.backdrop = null;
     if (best) {
-      document.querySelectorAll('[data-kelo-close]').forEach((x) => x.removeAttribute('data-kelo-close'));
-      best.setAttribute('data-kelo-close', String(++n));
-      item.close = n;
+      // no mark in the page (addendum 9): the close control is pressed by a person's click or tap at its centre (browser.py _close)
+      const cb = best.getBoundingClientRect();
+      item.close = ++n;
+      item.close_at = [Math.round((cb.left + cb.width / 2) * 10) / 10, Math.round((cb.top + cb.height / 2) * 10) / 10];
       item.close_label = ((best.innerText || best.value || '').trim() || best.getAttribute('aria-label') || best.getAttribute('title') || 'X').slice(0, 40);
     }
     found.push(item);
@@ -127,11 +128,6 @@ OVERLAY_JS = r"""() => {
   }
   return { kelo_overlay, found };
 }"""
-
-
-def click_js(index: int) -> str:
-    """A plain JavaScript click on the marked close control, for when the browser's own click cannot reach it."""
-    return f"() => {{ const e = document.querySelector('[data-kelo-close=\"{int(index)}\"]'); if (e) {{ e.click(); return 1; }} return 0; }}"
 
 
 def overlays(probe: Any) -> list[dict[str, Any]]:
@@ -143,11 +139,15 @@ def overlays(probe: Any) -> list[dict[str, Any]]:
         if isinstance(f, dict) and isinstance(f.get("label"), str):
             close = f.get("close")
             back = f.get("backdrop")
-            out.append({"kind": str(f.get("kind") or "overlay"), "label": f["label"][:LABEL_CHARS], "app": bool(f.get("app")),
-                        "backdrop": [float(back[0]), float(back[1])] if isinstance(back, list) and len(back) == 2 else None,
-                        "close": close if isinstance(close, int) and not isinstance(close, bool) else None,
-                        "close_label": str(f.get("close_label") or "")[:40],
-                        "skipped": [str(s)[:40] for s in (f.get("skipped") or []) if isinstance(s, str)][:2]})
+            at = f.get("close_at")
+            item = {"kind": str(f.get("kind") or "overlay"), "label": f["label"][:LABEL_CHARS], "app": bool(f.get("app")),
+                    "backdrop": [float(back[0]), float(back[1])] if isinstance(back, list) and len(back) == 2 else None,
+                    "close": close if isinstance(close, int) and not isinstance(close, bool) else None,
+                    "close_label": str(f.get("close_label") or "")[:40],
+                    "skipped": [str(s)[:40] for s in (f.get("skipped") or []) if isinstance(s, str)][:2]}
+            if item["close"] is not None and isinstance(at, list) and len(at) == 2:   # the close control's centre (CSS px)
+                item["close_at"] = [float(at[0]), float(at[1])]
+            out.append(item)
     return out
 
 

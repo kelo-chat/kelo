@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from ..oauth_connect import OAuthError
 from .. import credentials as cred_clean
 from ..netguard import NetGuardError
+from ..tools.sites import registrable
 from ..tools.vault_tools import site_host
 from ..vault import VaultError
 from fastapi import APIRouter
@@ -113,7 +114,21 @@ def router(ctx: AppContext) -> APIRouter:
         for c in rows:
             if not c["has_secret"] and c["kind"] in ("api", "login") and not transient.has(c["name"]):
                 entries.ensure_draft("key" if c["kind"] == "api" else "login", c["name"], c["label"], c["hosts"])
-        return {"locked": store.vault_locked(), "mail_codes_auto": store.mail_codes_auto(),
+        # Kelo's browser sign-ins (brief B4): per login the sign-in of its site, and the sites signed in without a saved login
+        signs = {r["site"]: r for r in store.browser_sign_ins("")}
+        login_sites: set[str] = set()
+        for c in rows:
+            c["browser"] = None
+            if c["kind"] == "login":
+                sites = {registrable(h) for h in c["hosts"]}
+                login_sites |= sites
+                hit = next((signs[s] for s in sorted(sites) if s in signs), None)
+                if hit is not None:
+                    c["browser"] = {"site": hit["site"], "how": hit["how"], "signed_at": hit["signed_at"], "last_used": hit["last_used"]}
+        browser_sites = [{"site": s, "how": r["how"], "signed_at": r["signed_at"], "last_used": r["last_used"]}
+                         for s, r in signs.items() if s not in login_sites]
+        return {"locked": store.vault_locked(), "mail_codes_auto": store.mail_codes_auto(), "browser_sites": browser_sites,
+                "browser_profiles": store.browser_profiles(),   # named profiles only (ids, names, sites: never a cookie or a value)
                 "items": [c for c in rows if c["has_secret"]], "pending": [c for c in rows if not c["has_secret"]],
                 "entered_once": [c["name"] for c in rows if transient.has(c["name"])],
                 "verifying": [c["name"] for c in rows if transient.promotes(c["name"])]}

@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">Quando inizia la mia giornata (appreso)</string>
     <string name="briefing_when_fixed">A un orario che scelgo</string>
     <string name="briefing_fixed_at">Ogni giorno alle %1$s</string>
+    <string name="briefing_fixed_from">Dalle %1$s, quando iniziano le tue ore di contatto</string>
     <string name="briefing_offset">Quanto dopo l\'inizio della giornata</string>
     <string name="briefing_offset_none">Subito all\'inizio</string>
     <string name="briefing_offset_min">%1$d min dopo</string>

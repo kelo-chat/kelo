@@ -128,12 +128,6 @@ class SoundBarsTest {
         assertTrue(SoundBars.rms(loud, 0, loud.size) > 0.95f)
     }
 
-    @Test fun pushKeepsTheNewestAtTheEnd() {
-        var bars = emptyList<Float>()
-        for (i in 1..60) bars = SoundBars.push(bars, i / 100f)
-        assertEquals(48, bars.size)
-        assertEquals(0.60f, bars.last(), 0.0001f)
-    }
 }
 
 class ResampleTest {

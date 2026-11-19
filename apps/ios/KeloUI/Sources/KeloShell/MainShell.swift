@@ -83,10 +83,13 @@ struct MainShell: View {
             // the chat's search: a magnifier at the end of the header, on the chat tab only (Android ShellParts)
             .overlay(alignment: .topTrailing) {
                 if !router.headerHidden && router.tab == .chat && router.nestTab == nil && !router.workOpen && router.liveTab == nil {
-                    ChatSearchButton { router.chatSearch = true }
-                        .padding(.top, 6).padding(.trailing, 6)
-                        .frame(maxWidth: left ?? .infinity, alignment: .topTrailing)
-                        .transition(.opacity)
+                    HStack(spacing: 0) {
+                        CallButton(calls: app.calls)
+                        ChatSearchButton { router.chatSearch = true }
+                    }
+                    .padding(.top, 6).padding(.trailing, 6)
+                    .frame(maxWidth: left ?? .infinity, alignment: .topTrailing)
+                    .transition(.opacity)
                 }
             }
             .overlay(alignment: .bottom) {
@@ -127,7 +130,7 @@ struct MainShell: View {
             // a newer released app that works with this server (X-Kelo-App-Update): once per version, under the header, clear of the
             // model card and the locked banner; the button opens Kelo's App Store page
             if let version = app.appNotice, router.tab != .my, !router.workOpen, router.liveTab == nil, !router.headerHidden,
-               !app.locked, popupVersion == nil, !(app.profile.map(ProfileRules.needsModel) ?? false) {
+               !app.locked, shellPopup == nil, !(app.profile.map(ProfileRules.needsModel) ?? false) {
                 AppNoticeBanner(version: version, onOpen: {
                     app.dismissAppNotice(version)
                     openURL(AppNoticeRules.storeURL(appStoreId: AppUpdateRules.appStoreId))
@@ -178,6 +181,7 @@ struct MainShell: View {
         // Kelo made or changed something (nest_changed): its tab, section or card may be new; and again when the app comes back
         .task { for await _ in NestLive.ids() { await app.nest?.reload() } }
         .onChange(of: phase) { _, p in if p == .active { Task { await app.nest?.reload() } } }
+        .task(id: phase == .active) { if phase == .active { await app.checkStore() } }   // the App Store's newest version, at most every 6 h
         // the status poll and the notification check run while the app is in the foreground
         .task(id: phase == .active) {
             guard phase == .active else { return }
@@ -201,24 +205,61 @@ struct MainShell: View {
         .onChange(of: phase) { _, p in
             if p == .background { app.appLeft() } else if p == .active { app.appCameBack() }
         }
-        // a newer released app (X-Kelo-App-Update): a popup at launch and on coming back, at most once a day
-        .alert(popupVersion.map { L(R.string.app_notice_new, $0) } ?? "", isPresented: popupShown) {
-            Button(L(R.string.update_now)) {
-                app.popupAnswered()
-                openURL(AppNoticeRules.storeURL(appStoreId: AppUpdateRules.appStoreId))
+        // one popup at a time: a newer released app (X-Kelo-App-Update) at launch and on coming back, at most once a day; then the newer
+        // server release (X-Kelo-Server-Update), on the chat only, once a day and never within an hour of the app popup
+        .alert(shellPopupTitle, isPresented: shellPopupShown) {
+            if case .server? = shellPopup {
+                Button(L(R.string.server_notice_open)) {
+                    app.serverPopupAnswered()
+                    router.openMyPage(.serverUpdate)
+                }
+                Button(L(R.string.update_popup_later), role: .cancel) {
+                    app.serverPopupAnswered()
+                }
+            } else {
+                Button(L(R.string.update_now)) {
+                    app.popupAnswered()
+                    openURL(AppNoticeRules.storeURL(appStoreId: AppUpdateRules.appStoreId))
+                }
+                Button(L(R.string.offer_reason_later), role: .cancel) {
+                    app.popupAnswered()
+                }
             }
-            Button(L(R.string.offer_reason_later), role: .cancel) {
-                app.popupAnswered()
+        } message: {
+            if case .server? = shellPopup { Text(L(R.string.server_notice_body)) }
+        }
+        .overlay {
+            CallOverlay(calls: app.calls, agentName: app.profile?.agentName ?? "Kelo")
+        }
+        .onChange(of: phase) { _, p in
+            if p == .background {
+                app.calls.session?.appBackground()
             }
         }
+        #if os(iOS)
+        .onChange(of: app.calls.session != nil && !app.calls.isMinimized) { _, keepAwake in
+            UIApplication.shared.isIdleTimerDisabled = keepAwake
+        }
+        #endif
     }
 
-    /// The version the popup asks about now: not while a full-screen notice (app too old, pair again, server too old) covers the app.
-    private var popupVersion: String? {
+    /// The popup the shell shows now. Nothing while a full-screen notice (app too old, pair again, server too old) covers the app.
+    private enum ShellPopup: Equatable { case app(String), server(String) }
+    private var shellPopup: ShellPopup? {
         if app.appTooOld || app.pairAgain || app.serverTooOld != nil { return nil }
-        return app.appPopup()
+        if let v = app.appPopup() { return .app(v) }
+        let router = app.router
+        guard router.tab == .chat, !router.workOpen, router.liveTab == nil, let v = app.serverPopup() else { return nil }
+        return .server(v)
     }
-    private var popupShown: Binding<Bool> { Binding(get: { popupVersion != nil }, set: { _ in }) }
+    private var shellPopupTitle: String {
+        switch shellPopup {
+        case .app(let v)?: return L(R.string.app_notice_new, v)
+        case .server(let v)?: return L(R.string.server_notice_title, v)
+        case nil: return ""
+        }
+    }
+    private var shellPopupShown: Binding<Bool> { Binding(get: { shellPopup != nil }, set: { _ in }) }
 
     /// With two panes the live view and the work list live beside the chat: whoever opened one from another tab lands on the chat,
     /// and the work page needs no flag (its list is already there). The flag is the router's, so the chrome follows it.

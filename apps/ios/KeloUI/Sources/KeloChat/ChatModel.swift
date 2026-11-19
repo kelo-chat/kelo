@@ -77,6 +77,8 @@ public final class ChatModel {
 
     @ObservationIgnored let app: any ChatHost
     @ObservationIgnored var onEvent: (ChatEvent) -> Void = { _ in }
+    @ObservationIgnored public var onTurnEvent: (@Sendable (TurnEvent) -> Void)? = nil
+    @ObservationIgnored public var canCall: @Sendable () -> Bool = { false }
     @ObservationIgnored let uploader: ChatUploader
     @ObservationIgnored let cardSender: ChatCardSender?
     @ObservationIgnored let clock: () -> Double
@@ -111,6 +113,8 @@ public final class ChatModel {
         lastId = kept?.last?.id ?? 0
         providers = ModelCatalog.keptModelProviders(app.cache)
         input = app.cache.get("draft") ?? ""
+        let calls = (app as? AppModel)?.calls
+        self.canCall = { [weak calls] in calls?.isAvailable ?? false }
     }
 
     // ---- small helpers -----------------------------------------------------------------------------------------------------

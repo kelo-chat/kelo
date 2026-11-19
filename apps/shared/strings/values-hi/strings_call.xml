@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Kelo को कॉल करें</string>
+    <string name="call_incoming_line">आपको कॉल कर रहा है</string>
+    <string name="call_accept">उत्तर दें</string>
+    <string name="call_decline">अस्वीकार करें</string>
+    <string name="call_connecting">कनेक्ट हो रहा है…</string>
+    <string name="call_listening">सुन रहा है</string>
+    <string name="call_thinking">सोच रहा है</string>
+    <string name="call_speaking">बोल रहा है</string>
+    <string name="call_muted">म्यूट किया गया</string>
+    <string name="call_mute">म्यूट करें</string>
+    <string name="call_unmute">अनम्यूट करें</string>
+    <string name="call_speaker">स्पीकर</string>
+    <string name="call_hang_up">कॉल समाप्त करें</string>
+    <string name="call_card_waiting">स्क्रीन पर कुछ जांचने के लिए है।</string>
+    <string name="call_card_open">देखें</string>
+    <string name="call_back_to_call">कॉल पर वापस जाएं · %1$s</string>
+    <string name="call_offline">Kelo सर्वर से कनेक्ट नहीं हो पा रहा है। पुन: कनेक्ट कर रहा है…</string>
+    <string name="call_ended_background">कॉल समाप्त हो गई क्योंकि आपने ऐप छोड़ दिया।</string>
+    <string name="call_ended_interrupted">कॉल समाप्त हो गई क्योंकि कोई अन्य आवाज़ बीच में आ गई।</string>
+    <string name="call_ended_quiet">लंबे समय तक चुप्पी रहने के बाद कॉल समाप्त हो गई।</string>
+    <string name="call_needs_speech_model">बात करने के लिए आपके Kelo सर्वर पर वॉयस मॉडल होना चाहिए।</string>
+    <string name="call_mic_denied">कॉल शुरू नहीं हो सकी: माइक्रोफ़ोन की अनुमति नहीं है।</string>
+    <string name="call_voice_offer">यह कॉल के लिए Kelo की स्वाभाविक आवाज़ है। अपने Kelo सर्वर पर एक बार वॉयस मॉडल (%1$s) डाउनलोड करें, और Kelo अगले वाक्य से इसमें बोलेगा। इसके बिना, Kelo इस डिवाइस की रोबोटिक आवाज़ का उपयोग करता है।</string>
+    <string name="call_mark">कॉल</string>
+    <string name="call_voice_offer_title">Kelo की आवाज़ डाउनलोड करें?</string>
+    <string name="call_voice_offer_ok">डाउनलोड</string>
+    <string name="call_voice_offer_later">फ़िलहाल डिवाइस की आवाज़ का उपयोग करें</string>
+    <string name="call_voice_better">वॉयस मॉडल के साथ, Kelo अधिक स्वाभाविक आवाज़ में बात करता है।</string>
+    <string name="call_voice_get">डाउनलोड</string>
+    <string name="call_voice_line_close">बंद करें</string>
+    <string name="call_ears_failed">फ़ोन का वाक् पहचान आपको सुन नहीं पा रहा है।</string>
+    <string name="voice_speech_title">Kelo की आवाज़</string>
+    <string name="voice_speech_download">वॉयस मॉडल डाउनलोड करें · %1$s</string>
+    <string name="voice_speech_downloading">वॉयस मॉडल डाउनलोड हो रहा है · %1$d%%</string>
+    <string name="voice_speech_remove">वॉयस मॉडल हटाएं</string>
+    <string name="voice_speech_remove_confirm">वॉयस मॉडल हटाएं? इसके बाद Kelo इस डिवाइस की आवाज़ में बोलेगा।</string>
+    <string name="voice_speech_device_note">वॉयस मॉडल के बिना, Kelo इस डिवाइस की अंतर्निहित आवाज़ में बात करता है।</string>
+    <string name="voice_speech_unsupported_lang">वॉयस मॉडल अभी इस भाषा को नहीं जानता, इसलिए डिवाइस की आवाज़ का उपयोग किया जाता है।</string>
+    <string name="voice_speech_voice_female">महिला आवाज़ %1$d</string>
+    <string name="voice_speech_voice_male">पुरुष आवाज़ %1$d</string>
+    <string name="voice_speech_listen">सुनें</string>
+    <string name="voice_speech_stop">रोकें</string>
+    <string name="voice_speech_speed">बोलने की गति</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">नमस्ते। यह वह आवाज़ है जिसमें मैं बात करूंगा।</string>
+</resources>

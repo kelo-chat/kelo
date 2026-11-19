@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">Когда начинается мой день (по привычкам)</string>
     <string name="briefing_when_fixed">В выбранное время</string>
     <string name="briefing_fixed_at">Каждый день в %1$s</string>
+    <string name="briefing_fixed_from">С %1$s, когда начинаются твои часы связи</string>
     <string name="briefing_offset">Через сколько после начала дня</string>
     <string name="briefing_offset_none">Сразу в начале</string>
     <string name="briefing_offset_min">Через %1$d мин</string>

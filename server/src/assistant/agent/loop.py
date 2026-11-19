@@ -190,6 +190,14 @@ class ApprovalRequest:
     # set by the app's approve() when the owner fixed the outgoing message in the card (approval_edit.py): the new text is checked again
     edited: bool = False
     editable: bool = True   # False for a second card about a send (after an edit, or a changed send): its text is final
+    # set by the app's approve(): "skipped" (nobody can answer this run) | "expired" (nobody answered in time) | "" (answered)
+    outcome: str = ""
+
+
+SKIPPED_LINE = ("{name} was not run: it needs the owner's OK, and nobody can answer during this run. Do not try it again or another "
+                "way around it. Go on with what you have, and say in your result what you could not check.")
+EXPIRED_LINE = ("{name} was not run: nobody answered the request for the owner's OK in time. Do not retry it now. Go on with what "
+                "you have, and say in your result what was not done.")
 
 
 @dataclass(slots=True)
@@ -764,7 +772,8 @@ async def run_agent(
             yield AgentDone(total_in, total_out, step, new_messages, cache_read, cache_write, reasoning)
             return
 
-        ending = False
+        ending = False   # a tool that ends the turn (ends_turn); a step also ends when every call closes the reply (closes_reply)
+        closers: list[bool] = []   # one per call of this step: did it close the reply (react, quick_replies, await_reply)
         for call in calls:
             yield ToolStarted(call.id, call.name, _safe_args(call.arguments))
             call_facts: dict[str, Any] = {}   # what the tool hands to the apps next to its text (facts.py)
@@ -819,7 +828,7 @@ async def run_agent(
                                       and re.search(rf"(?<![\w]){re.escape(n)}(?![\w])", own)])
                 if tool_def is not None and not is_error:
                     progress_keys.add(key)
-                    ending = ending or tool_def.ends_turn or (tool_def.closes_reply and said and not output.startswith("Error"))
+                    ending = ending or tool_def.ends_turn
                     if tool_def.read_only:
                         done_calls.add(key)
                     else:
@@ -835,7 +844,9 @@ async def run_agent(
                     *({"type": "image_url", "image_url": {"url": url}} for url in images)]}
                 history.append(seen)
                 retire_pictures()
+            closers.append(bool(tool_def is not None and tool_def.closes_reply and not is_error and not output.startswith("Error")))
             yield ToolResult(call.id, call.name, output, is_error, approved, {} if is_error else call_facts)
+        ending = ending or (said and bool(closers) and all(closers))   # 2026-11-18: react alone ends it; react plus a read does not
         if ending:
             yield AgentDone(total_in, total_out, step, new_messages, cache_read, cache_write, reasoning)
             return
@@ -926,6 +937,8 @@ async def _execute_inner(call: ToolCall, by_name: dict[str, Tool], approve: Appr
         asked = ApprovalRequest(call.id, call.name, args, detail, force=forced, trail=list(getattr(verdict, "trail", None) or []))
         approved = await approve(asked)
         if not approved:
+            if asked.outcome in ("skipped", "expired"):
+                return (SKIPPED_LINE if asked.outcome == "skipped" else EXPIRED_LINE).format(name=call.name), True, False, None
             said = ""
             try:
                 said = tool.declined(args) if callable(tool.declined) else tool.declined

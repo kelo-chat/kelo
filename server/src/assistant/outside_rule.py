@@ -25,12 +25,13 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from .connector_rules import SEP
 from .effects import Effect, norm_target, site_target
 from .i18n import N_, t
 
-CARD_LINE = N_("Kelo read outside text (a page, mail or message) before this step, and you did not name {target}.")
+CARD_LINE = N_("Kelo read something in a page, mail or message before this step, and you did not name {target}.")
 CHECKED_KINDS = ("send", "change", "delete")
 URL_TOOLS = frozenset({"web_fetch", "browser_open"})         # a request to an address: its host is the place the call reaches
 SUBMIT_COMMITS = frozenset({"form", "personal", "apply"})   # a typing step (tools/commits.py) that puts something on a site
@@ -56,6 +57,12 @@ class Person:
     """Someone in memory/people: the names they go by and the addresses and numbers on their page."""
     names: frozenset[str]
     targets: frozenset[str]
+
+
+def _after_host(address: str) -> str:
+    """The part of an address after its host: the query and the fragment (where data can ride out in a plain GET)."""
+    parts = urlsplit(address.strip() if "://" in address else "https://" + address.strip())
+    return parts.query + parts.fragment
 
 
 def _site(domain: str) -> str:
@@ -221,10 +228,12 @@ class OutsideReview:
     started (tools/order.py begin_order), "" when none."""
 
     def __init__(self, rule: OutsideTextRule, owner: OwnerWords, *, seen: Callable[[], bool], turn: Callable[[], dict[str, Any] | None],
-                 ordered_site: Callable[[], str] = lambda: "", derive: Callable[[list[str], str], Derived | None] | None = None):
+                 ordered_site: Callable[[], str] = lambda: "", derive: Callable[[list[str], str], Derived | None] | None = None,
+                 given: Callable[[str], bool] | None = None):
         """`derive(targets, text)`: what of a step comes from outside text (None: no outside text in the run); without it, outside text
         anywhere earlier in the run (`seen`) counts for every step (the turn latch)."""
         self.rule, self.owner, self.seen, self.turn, self.ordered_site, self.derive = rule, owner, seen, turn, ordered_site, derive
+        self.given = given   # given(url): the whole address is a link in outside text this run read (data_trail.given_link)
 
     def names_site(self, host: str) -> bool:
         """The task's own site: the site of the order the owner started, or one the owner's own words name verbatim, or one the running
@@ -252,11 +261,20 @@ class OutsideReview:
         try:
             turn = dict(self.turn() or {})
             outside: bool | Derived = True
+            if (tool == "web_fetch" and turn.get("self_started") and self.given is not None and effect.text and not strict
+                    and self.given(effect.text)):
+                return None   # a run nobody can answer reads a link its outside text gave, as written: nothing of the owner's is sent
             if strict:
                 return self.rule.needs_card(effect, True, set(), "")
             if self.derive is not None and not str(turn.get("source") or "").startswith("group:"):
-                outside = self.derive([x for x in effect.targets if x], effect.text or "")   # a group's own words are outside text
+                plain_read = tool == "web_fetch" and str(turn.get("source") or "").startswith("recheck")   # a recheck run reads pages only
+                # a recheck run's read of a page the search found is no send: only what the address carries after its host (query, fragment)
+                # can carry outside text out, so only that is checked; the page's own address is outside text already
+                text = _after_host(effect.text or "") if plain_read else (effect.text or "")
+                outside = self.derive([x for x in effect.targets if x], text)   # a group's own words are outside text
                 if outside is None:
+                    return None
+                if plain_read and not (isinstance(outside, Derived) and outside.content):
                     return None
             elif not self.seen():
                 return None

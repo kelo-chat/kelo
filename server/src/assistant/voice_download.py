@@ -6,8 +6,10 @@ The server does the download; the voice container only reads the folder (see voi
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import logging
 import os
 import shutil
 import time
@@ -20,6 +22,8 @@ import httpx
 
 from . import voice_models as vm
 from .netguard import NetGuardError, resolve_public
+
+log = logging.getLogger("assistant.voice")
 
 CHUNK = 1024 * 1024
 MAX_HOPS = 5
@@ -66,7 +70,7 @@ class ModelDownloader:
         self._resolver = resolver
 
     def _folder(self, model_id: str) -> Path:
-        if model_id not in vm.CATALOG:
+        if model_id not in vm.ALL:
             raise ValueError("unknown speech model")
         return self.root / model_id
 
@@ -162,3 +166,47 @@ class ModelDownloader:
         if not meta_path.is_file():
             return False
         return all((folder / f.name).is_file() and (folder / f.name).stat().st_size == f.size for f in model.files)
+
+
+class DownloadJob:
+    """One background download of one model, with its progress and last error (kept in memory; the caller keeps meta)."""
+
+    def __init__(self, downloader: ModelDownloader, on_error: Callable[[str], None]):
+        self.downloader = downloader
+        self.on_error = on_error
+        self.progress: Progress | None = None
+        self.error: str | None = None
+        self._task: asyncio.Task | None = None
+
+    def running(self) -> bool:
+        return self._task is not None and not self._task.done()
+
+    def start(self, model: vm.SpeechModel) -> None:
+        if self.running():
+            return
+        self.error = None
+
+        def on_progress(p: Progress) -> None:
+            self.progress = p
+
+        async def run() -> None:
+            try:
+                await self.downloader.fetch(model, on_progress)
+            except DownloadError as e:
+                self.error = e.code
+                self.on_error(e.code)
+                log.info("speech model download failed: %s", e.code)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - never leave the state stuck on downloading
+                self.error = "failed"
+                self.on_error("failed")
+                log.exception("speech model download crashed")
+            finally:
+                self.progress = None
+
+        self._task = asyncio.get_running_loop().create_task(run())
+
+    def cancel(self) -> None:
+        if self.running():
+            self._task.cancel()

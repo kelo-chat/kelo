@@ -495,6 +495,16 @@
     <string name="vault_saved_plain">已儲存</string>
     <string name="vault_not_entered">尚未輸入</string>
     <string name="vault_last_used">上次使用 %1$s</string>
+    <string name="vault_browser_title">Kelo 瀏覽器</string>
+    <string name="vault_browser_signed_in">%1$s 已登入 · 上次使用 %2$s</string>
+    <string name="vault_browser_sign_out">讓 Kelo 瀏覽器登出此網站</string>
+    <string name="vault_browser_sign_out_confirm">Kelo 瀏覽器將登出 %1$s，並刪除其 Cookie 和網站資料。已儲存的登入保留。</string>
+    <string name="vault_browser_sites_title">未儲存登入而已登入</string>
+    <string name="vault_profiles_title">瀏覽器設定檔</string>
+    <string name="vault_profile_sites">已登入 %1$s 個網站</string>
+    <string name="vault_profile_empty">尚未登入任何網站</string>
+    <string name="vault_profile_delete">刪除此設定檔</string>
+    <string name="vault_profile_delete_confirm">設定檔 %1$s 及其中儲存的所有登入將被刪除。</string>
     <string name="vault_place">金鑰放在 %1$s</string>
     <string name="vault_place_header_named">標頭 %1$s</string>
     <string name="vault_place_query_named">查詢 %1$s</string>
@@ -930,6 +940,9 @@
     <string name="live_still_yours">您還在直接操作。您交還之前，智能體會一直等待。</string>
     <string name="live_screen_changed">畫面已變化，請再點一次。</string>
     <string name="live_tab_closed">分頁已關閉，沒有其他內容可看。如果有儲存最後的畫面，會顯示在下方。</string>
+    <string name="live_tabs_label">分頁</string>
+    <string name="live_tab_untitled">新分頁</string>
+    <string name="live_tab_close">關閉分頁</string>
     <string name="live_not_controller">你目前無法操作。請再點一次「接手操作」。</string>
     <string name="live_input_failed">瀏覽器無法執行這個操作。</string>
     <string name="live_state_you">由你操作中</string>
@@ -955,6 +968,8 @@
     <string name="live_touch_missed">這次觸碰沒有傳到頁面</string>
     <string name="live_type_hint">要在頁面上輸入的文字</string>
     <string name="live_type_send">輸入</string>
+    <string name="live_keyboard">鍵盤</string>
+    <string name="live_keyboard_desc">顯示或隱藏網頁鍵盤</string>
     <string name="live_type_hide">隱藏文字</string>
     <string name="live_type_show">顯示文字</string>
     <string name="live_key_enter">Enter</string>
@@ -1110,7 +1125,6 @@
     <string name="work_now_empty">目前沒有正在執行的工作。</string>
     <string name="work_asks">需要你回答</string>
     <string name="work_asks_empty">沒有等待中的問題。</string>
-
     <string name="offers_title">Kelo 現在可以做的事</string>
     <string name="offer_start">交給它</string>
     <string name="offer_needs">需要：%1$s</string>
@@ -1232,6 +1246,7 @@
     <string name="work_watch_ev_fired">條件已達成</string>
     <string name="work_watch_ev_error">失敗</string>
     <string name="work_watch_ev_check">已檢查</string>
+    <string name="work_watch_ev_count">· 已檢查 %1$d 次</string>
     <string name="work_watch_ev_on">開啟</string>
     <string name="work_watch_ev_off">關閉</string>
     <string name="work_watch_delete">刪除監看</string>
@@ -1274,14 +1289,17 @@
     <string name="heads_section">新消息提醒</string>
     <string name="heads_switch">讓 Kelo 主動告訴你</string>
     <string name="heads_about">%1$s查看一次新郵件、即將到來的行程和截止日期，有你該知道的事就先告訴你。需要你回應的事（核准、問題）不受此設定影響，會在「%2$s」中另行提醒。</string>
+    <string name="heads_about_send_times">在通知時間內，Kelo 每小時查看新郵件和已連結的服務，等不了的事會馬上告訴你。其餘的等到傳送時間，那時 Kelo 還會一併查看對話、行事曆、目標、排程和記憶。一次傳送不論帶了多少內容，在「%1$s」裡都只算一次。當天的次數用完後，只會告訴你等不了的事。需要你回應的事（核准、問題）不受此設定影響，會在「%2$s」中另行提醒。</string>
     <string name="heads_per_day">每天最多</string>
+    <string name="heads_send_times">傳送時間：%1$s</string>
     <string name="heads_mail">同時查看新郵件</string>
     <string name="heads_mail_about">關閉後，此檢查不會開啟你的信箱；行程和截止日期仍會照常檢查。早晨簡報讀取的信箱在簡報中單獨設定。</string>
     <string name="heads_list_title">要留意的事</string>
-    <string name="heads_list_about">可選。Kelo 每次都會看一下，只有需要你留意時才告訴你。</string>
+    <string name="heads_list_about">可選。新增後 Kelo 會為它安排合適的時間：需要單獨時間的會單獨查看，其餘的在傳送時間一起查看。只有需要你留意時才告訴你。</string>
     <string name="heads_list_hint">例如：今天收到的快遞通知</string>
     <string name="heads_list_add">新增</string>
     <string name="heads_list_remove">刪除%1$s</string>
+    <string name="heads_list_own">單獨查看中 · %1$s</string>
     <plurals name="heads_times">
         <item quantity="other">%d次</item>
     </plurals>
@@ -1489,7 +1507,6 @@
     <string name="comparison_recommended">推薦</string>
     <string name="comparison_choose">選擇 %1$s</string>
     <string name="comparison_choose_say">就選 %1$s 吧</string>
-
     <string name="endpoint_add">新增端點</string>
     <string name="endpoint_name">名稱</string>
     <string name="endpoint_name_hint">例如：家中 Ollama</string>

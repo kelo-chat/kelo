@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_server_address.xml (generated from values/strings_server_address.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="server_address_row">Адреса сервера</string>
     <string name="server_address_title">Зміна адреси сервера</string>

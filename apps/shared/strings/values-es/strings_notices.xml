@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- es text for strings_notices.xml (generated from values/strings_notices.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="notices_title">Avisos</string>
     <string name="notices_important">Importante</string>

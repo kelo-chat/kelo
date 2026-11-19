@@ -58,10 +58,18 @@ public struct AppNoticeStore: Sendable {
     let save: @Sendable (String) -> Void
     let loadShown: @Sendable () -> String?
     let saveShown: @Sendable (String) -> Void
+    let loadServerShown: @Sendable () -> String?
+    let saveServerShown: @Sendable (String) -> Void
+    let loadStoreLookup: @Sendable () -> String?
+    let saveStoreLookup: @Sendable (String) -> Void
 
     public init(load: @escaping @Sendable () -> String?, save: @escaping @Sendable (String) -> Void,
-                loadShown: @escaping @Sendable () -> String? = { nil }, saveShown: @escaping @Sendable (String) -> Void = { _ in }) {
+                loadShown: @escaping @Sendable () -> String? = { nil }, saveShown: @escaping @Sendable (String) -> Void = { _ in },
+                loadServerShown: @escaping @Sendable () -> String? = { nil }, saveServerShown: @escaping @Sendable (String) -> Void = { _ in },
+                loadStoreLookup: @escaping @Sendable () -> String? = { nil }, saveStoreLookup: @escaping @Sendable (String) -> Void = { _ in }) {
         self.load = load; self.save = save; self.loadShown = loadShown; self.saveShown = saveShown
+        self.loadServerShown = loadServerShown; self.saveServerShown = saveServerShown
+        self.loadStoreLookup = loadStoreLookup; self.saveStoreLookup = saveStoreLookup
     }
 
     /// In UserDefaults (this device only).
@@ -69,7 +77,11 @@ public struct AppNoticeStore: Sendable {
         load: { UserDefaults.standard.string(forKey: "kelo.appNotice.seen") },
         save: { UserDefaults.standard.set($0, forKey: "kelo.appNotice.seen") },
         loadShown: { UserDefaults.standard.string(forKey: "kelo.appNotice.popupShown") },
-        saveShown: { UserDefaults.standard.set($0, forKey: "kelo.appNotice.popupShown") })
+        saveShown: { UserDefaults.standard.set($0, forKey: "kelo.appNotice.popupShown") },
+        loadServerShown: { UserDefaults.standard.string(forKey: "kelo.serverNotice.shown") },
+        saveServerShown: { UserDefaults.standard.set($0, forKey: "kelo.serverNotice.shown") },
+        loadStoreLookup: { UserDefaults.standard.string(forKey: "kelo.appStore.lookup") },
+        saveStoreLookup: { UserDefaults.standard.set($0, forKey: "kelo.appStore.lookup") })
 
     public func dismissed() -> Set<String> { AppNoticeRules.decode(load()) }
     public func add(_ version: String) -> Set<String> {
@@ -80,4 +92,12 @@ public struct AppNoticeStore: Sendable {
 
     public func lastShown() -> Date? { loadShown().flatMap(TimeInterval.init).map(Date.init(timeIntervalSince1970:)) }
     public func shown(now: Date) { saveShown(String(Int(now.timeIntervalSince1970))) }
+
+    /// When the server-update notice last showed on this device (null: never).
+    public func lastServerShown() -> Date? { loadServerShown().flatMap(TimeInterval.init).map(Date.init(timeIntervalSince1970:)) }
+    public func serverShown(now: Date) { saveServerShown(String(Int(now.timeIntervalSince1970))) }
+
+    /// The App Store lookup as it was last answered: when it was asked and the version it named (see AppStoreVersionRules).
+    public func lastStoreLookup() -> (checked: Date, version: String?)? { AppStoreVersionRules.decode(loadStoreLookup()) }
+    public func storeLookup(checked: Date, version: String?) { saveStoreLookup(AppStoreVersionRules.encode(checked: checked, version: version)) }
 }

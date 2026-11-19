@@ -212,7 +212,7 @@ struct Odd: Error {}
         let t = FakeTransport(.ok(200, #"{"id":"abc"}"#), .ok(200, #"{"events":[{"type":"text","text":"x"}],"next":1,"done":true}"#), .ok(200, #"{"ok":true}"#))
         let api = KeloTurnApi(api: KeloApi(baseUrl: "https://k", token: "t", transport: t))
         #expect(try await api.start(text: "안녕", timezone: "Asia/Seoul") == "abc")
-        #expect(t.lastBody == #"{"ai_consent":"check","text":"안녕","timezone":"Asia/Seoul"}"#)
+        #expect(t.lastBody == #"{"ai_consent":"check","can_call":false,"text":"안녕","timezone":"Asia/Seoul"}"#)
         #expect(try await api.poll(id: "abc", after: 0).done)
         #expect(t.last.url?.absoluteString == "https://k/api/turns/abc?after=0&wait=20")
         try await api.stop(id: "abc")

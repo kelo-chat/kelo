@@ -39,7 +39,7 @@ CHECKOUT_HELPERS: frozenset[str] = frozenset({
     "vault_status", "request_login", "find_login_code", "read_skill", "report", "job_progress", "action_result",
 })
 # What the specialist never has, even though it starts with `browser_` (steering other jobs is the main agent's alone: MAIN_ONLY).
-CHECKOUT_DENIED: frozenset[str] = frozenset({"browser_forget_site"})
+CHECKOUT_DENIED: frozenset[str] = frozenset({"browser_forget_site", "browser_profiles", "browser_profile_delete"})
 
 
 # The phone's tools are every `android_*` tool (by prefix, as the specialist takes every `browser_*`), except the ones that need the chat
@@ -58,16 +58,15 @@ PHONE_HELPERS: frozenset[str] = frozenset({"vault_status", "request_login", "fin
 
 # The browser tools the chat keeps while the browser split is on: the ones that read or show a page, or move a file, and do not act on it.
 #   browser_open: opens a public address and returns its text (the chat's reading of a page, as web_fetch does for a job-less lookup)
-#   browser_read: the page text again; browser_view: switches the desktop / phone view and reloads (no click)
+#   browser_read: the page text again (no click)
 #   browser_downloads / browser_save_download / browser_save_pdf: list and keep what a tab downloaded or the page as a PDF
 #   browser_site_state: lists and moves a saved sign-in state; browser_forget_site: clears a site's data, but only after the owner's card
 # Everything else named `browser_*` (click, click_at, type, drag, upload, login, look, human_check, private, fill_shipping, ...) acts on a
 # page: a job's. `find_login_code` types a one-time code into a page, so it is a job's too.
 BROWSER_PREFIX = "browser_"
-BROWSER_CHAT_KEEPS: frozenset[str] = frozenset({
-    "browser_open", "browser_read", "browser_view", "browser_site_state", "browser_forget_site",
-    "browser_downloads", "browser_save_download", "browser_save_pdf",
-})
+# Owner 2026-11-19 03:10: the chat has no web work at all (opening, reading, acting): every such step is a browser job with one window.
+# What stays in the chat is what is not web work: the owner's sign-in and data controls (a card each).
+BROWSER_CHAT_KEEPS: frozenset[str] = frozenset({"browser_site_state", "browser_forget_site", "browser_profiles", "browser_profile_delete"})
 BROWSER_JOB_ONLY_EXTRA: frozenset[str] = frozenset({"find_login_code"})
 
 

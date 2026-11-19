@@ -35,6 +35,7 @@ The storage warning and the cleanup screen cover their size.
 | `help_items` | per proposal of the hourly situation research (situation.py) | told, dropped and expired rows older than 90 days (`SituationResearch.cleanup`, daily 04:35); prepared and selected rows expire first (48 h) | yes |
 | `help_events` | per status change of a help item (situation.py) | older than 90 days, and rows whose item is gone (`SituationResearch.cleanup`) | yes |
 | `situation_passes` | one row per situation pass | older than 90 days, never a running row (`SituationResearch.cleanup`); the count rule `KEEP_PASSES` is gone | yes |
+| `checklist_links` | one row per checklist item: how it is looked after (its own job, or the send times) | an item taken off the list loses its row (`Checklist.reconcile`); at most MAX_ITEMS (30) rows | yes |
 | `meta` (`situation:source:<sid>` snapshots) | one hash per declared source (fingerprint, ids, times; no content) | removed when its `read_at` is older than 90 days (a connector removed long ago) | yes |
 | `followups` | per follow-up | closed ones 30 days | none |
 | `offers` | per card | closed ones 60 days | none |
@@ -43,7 +44,7 @@ The storage warning and the cleanup screen cover their size.
 | `watch_events` | per check | 50 per watcher | none |
 | `goal_log` | per goal event | 300 per goal | none |
 | `vault_log` | per vault use | newest `LOG_KEEP` | none |
-| `workers`, `worker_messages` | per background job | purged with the job | none |
+| `workers`, `worker_messages`, `product_results` | per background job | purged with the job | none |
 | `secret_requests` | per request | open 1 day, answered 7 days | none |
 | `place_cache` | per looked-up place | newest `CACHE_MAX` | none |
 | `kelo_claims`, `kelo_names` | per name claim | 1 day / idle 30 days | none |
@@ -54,12 +55,16 @@ The storage warning and the cleanup screen cover their size.
 | `follow_checks` | per planned check | NONE | finished or stopped and window ended 30 days ago; checks of an item that is gone |
 | `follow_items` | per trip / appointment | NONE | ended more than 60 days ago |
 | `follow_usage` | one row per source and month | NONE | older than 24 months |
+| `follow_removed` | one per item the owner removed from the list | NONE | start more than 60 days ago (`disk_limits.py`) |
 | `memory_runs` | one row per memory pass | NONE | newest 500 (claims untouched) |
 | `forget_plans` | one row per forget request | removed at confirm; open plans after `PLAN_TTL` (forget.py) | none needed |
 | `forget_tombstones` | one row per forgotten topic (owner action) | never: the owner removes one with "allow again" | none needed (tiny, owner-made) |
 | `order_preapprovals` | one row per pre-approved order (owner card) | NONE | none needed: tiny, a payment record (kept like the other payment tables) |
 | `schedule_pay_allows` | one row per schedule payment allow | removed with its schedule or by the owner | none needed |
-| `rechecks` | per recheck | NONE | closed / stopped / sent and older than 180 days; open ones stay |
+| `browser_sign_ins` | one row per site Kelo's browser is signed in to (sites and times only) | removed by the owner's sign-out or the profile's delete | none needed: one row per site |
+| `browser_profiles` | one row per named browser profile (made only when the owner asks) | removed by the owner (chat card or Keychain) | none needed: a few rows |
+| `browser_profile_units` | one sealed row per profile and site (cookies and storage of that site) | removed with its profile or the owner's sign-out | none needed: one row per profile and site |
+| `rechecks` | per recheck (no new rows since 2026-11-19; the service is retired) | NONE | closed / stopped / sent and older than 180 days; open ones stay |
 | `kept_corrections` | per owner correction | NONE | resolved and older than 365 days; open ones stay |
 | `review_days` | one row per night | NONE | older than 400 days |
 | `order_terms`, `pay_approvals`, `pay_attempts` | per order | NONE | never pruned: the owner's payment record (a few hundred bytes per order) |

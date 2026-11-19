@@ -80,11 +80,11 @@ def router(ctx: AppContext) -> APIRouter:
     async def talk(body: TalkIn, request: Request) -> StreamingResponse:
         """The reply as a stream (the page that leaves stops it). Quick tunnels and sleeping phones drop streams: the app uses /api/turns."""
         provider, model, ctx, observe, started = await prepare_talk(body, request)
-        return stream_turn(started(start_turn(provider, model, ctx.tail, observe, context=ctx)))
+        return stream_turn(started(start_turn(provider, model, ctx.tail, observe, context=ctx, can_call=body.can_call)))
 
     @router.post("/api/turns", dependencies=[Depends(require_auth)])
     async def begin_turn(body: TalkIn, request: Request) -> dict[str, str]:
         """Start a reply and return at once; the page follows it with short requests to GET /api/turns/{id}."""
         provider, model, ctx, observe, started = await prepare_talk(body, request)
-        return {"id": started(start_turn(provider, model, ctx.tail, observe, context=ctx)).id}
+        return {"id": started(start_turn(provider, model, ctx.tail, observe, context=ctx, can_call=body.can_call)).id}
     return router

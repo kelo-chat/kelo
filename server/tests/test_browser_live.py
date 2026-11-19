@@ -1,6 +1,7 @@
 """Live view of a browser tab (CDP screencast) and the user taking control, against a fake DevTools session."""
 
 import asyncio
+from types import SimpleNamespace
 import base64
 import io
 import json
@@ -15,7 +16,7 @@ from assistant.agent import ApprovalRequest, ToolResult, run_agent
 from assistant.providers import Done, TextDelta, ToolCall
 from assistant.server import _NoTickets, create_app
 from assistant.tools import live as live_mod
-from assistant.tools.browser import CONTROLLED_NOTE, BrowserSession, browser_owner, browser_tools
+from assistant.tools.browser import CHAT_CONTROL_WAIT_SECONDS, CONTROLLED_CHAT_NOTE, CONTROLLED_NOTE, BrowserSession, browser_owner, browser_tools, hold_patience
 from assistant.tools.live import Frame, LiveError, LiveHub, Tickets, map_delta, map_point, page_point, pump_frames, settings_from
 
 from test_agent_profile import app_settings
@@ -682,3 +683,118 @@ def test_an_old_frame_without_the_answer_has_no_secure_field():
     f = Frame(1, b"\xff\xd8", 10, 10, 1.0, "", "", {})
     assert "secure" not in f.header()
 
+
+
+# ---------------------------------------------------------------------------------------- a chat reply does not sit silently on a held tab (2026-11-18)
+async def test_a_chat_reply_step_on_a_held_tab_is_told_at_once_and_the_reply_says_so():
+    """The owner pressed 직접 조작 and the chat asks for a step: the step is not held for minutes behind nothing; the reply is told (the
+    owner's rule: no step goes on until the owner hands the tab back, and the reply says that it waits for them)."""
+    import time
+    sess, _ = make_session()
+    sess.control_wait = 300.0   # an unattended run keeps the long wait
+    tools = browser_tools(sess, approve_actions=True)
+    sess.take_control("owner", "1")
+
+    async def approve(req):
+        return True
+
+    token, patience = browser_owner.set("owner"), hold_patience.set(CHAT_CONTROL_WAIT_SECONDS)
+    try:
+        started = time.monotonic()
+        events = [ev async for ev in run_agent("p", "m", [{"role": "user", "content": "x"}], tools, approve=approve,
+                                               stream_fn=calling(("browser_click", '{"selector": "text=Buy"}')))]
+        waited = time.monotonic() - started
+    finally:
+        hold_patience.reset(patience)
+        browser_owner.reset(token)
+    result = next(e for e in events if isinstance(e, ToolResult))
+    assert result.output == CONTROLLED_CHAT_NOTE and waited < 60
+    assert sess._pages["owner"].gone_to == []
+
+
+async def test_a_hand_back_during_the_short_chat_wait_lets_the_step_run():
+    sess, _ = make_session()
+    sess.control_wait = 300.0
+    tools = browser_tools(sess, approve_actions=True)
+    sess.take_control("owner", "1")
+
+    async def approve(req):
+        return True
+
+    async def hand_back():
+        await asyncio.sleep(0.05)
+        await sess.release_control("owner", "owner")
+
+    async def run():
+        token, patience = browser_owner.set("owner"), hold_patience.set(10.0)
+        try:
+            return [ev async for ev in run_agent("p", "m", [{"role": "user", "content": "x"}], tools, approve=approve,
+                                                 stream_fn=calling(("browser_click", '{"selector": "text=Buy"}')))]
+        finally:
+            hold_patience.reset(patience)
+            browser_owner.reset(token)
+
+    events, _ = await asyncio.gather(run(), hand_back())
+    result = next(e for e in events if isinstance(e, ToolResult))
+    assert result.output not in (CONTROLLED_NOTE, CONTROLLED_CHAT_NOTE)
+
+
+async def test_the_owners_scroll_is_a_mouse_wheel_on_the_one_desktop_view():
+    clock = Clock()
+    page = FakePage()
+    sess, cdps = make_session(page)
+    hub = LiveHub(sess, clock, reaper=False)
+    await hub.join("owner", "a")
+    cdps[0].frame()
+    await hub.wait_frame("owner", 0, 1.0)
+    hub.take("owner", "1")
+    hub.connected("owner", "1", +1)
+    await hub.input("owner", "1", {"type": "scroll", "dy": 100})
+    assert cdps[0].methods("Input.dispatchMouseEvent")[-1]["type"] == "mouseWheel"
+    assert not cdps[0].methods("Input.dispatchTouchEvent")
+
+
+
+
+async def test_the_picture_follows_a_tab_switch_at_once():
+    """C1d: when the active tab of a key changes (take-over: a switch or a new tab), a running picture follows it at once."""
+    sess, _cdps = make_session()
+    hub = LiveHub(sess, reaper=False)
+    followed = []
+
+    async def follow(cast, page):
+        followed.append((cast.key, page))
+
+    hub._follow = follow
+    hub.casts["owner"] = SimpleNamespace(key="owner")
+    await hub.tab_switched("owner")
+    assert followed == [("owner", sess.raw_page("owner"))]
+    await hub.tab_switched("task:nobody")          # no picture running for it: nothing to follow
+    assert len(followed) == 1
+
+
+async def test_the_holder_switches_and_closes_tabs_of_the_held_window_and_nobody_else_does(tmp_path):
+    """C1d API: POST /api/browser/sessions/{key}/tabs/{tab}: only the device holding the tab may switch or close one of its tabs; the
+    window keeps its last tab."""
+    from assistant.tools.task_window import TaskWindow
+    sess, _cdps = make_session()
+    first = sess._pages["owner"]
+    win = sess._windows["owner"] = TaskWindow("owner")
+    t1 = win.add(first)
+    win.activate(t1.id)
+    second = FakePage("https://b.example/")
+    t2 = win.add(second)
+    win.activate(t2.id)
+    sess._pages["owner"] = second
+    app = create_app(app_settings(tmp_path), tools=[], stream_fn=calling(), browser=sess)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        assert (await c.post("/api/browser/sessions/owner/tabs/t1", json={"action": "activate"})).status_code == 409
+        assert (await c.post("/api/browser/sessions/owner/control", json={"take": True})).status_code == 200
+        r = await c.post("/api/browser/sessions/owner/tabs/t1", json={"action": "activate"})
+        assert r.status_code == 200 and sess._windows["owner"].active == "t1" and sess._pages["owner"] is first
+        assert (await c.post("/api/browser/sessions/owner/tabs/t9", json={"action": "activate"})).status_code == 409
+        assert (await c.post("/api/browser/sessions/owner/tabs/t1", json={"action": "fly"})).status_code == 422
+        assert (await c.post("/api/browser/sessions/owner/tabs/t2", json={"action": "close"})).status_code == 200
+        assert second.is_closed()
+        assert (await c.post("/api/browser/sessions/owner/tabs/t1", json={"action": "close"})).status_code == 409
+        assert [t.id for t in sess._windows["owner"].tabs] == ["t1"]

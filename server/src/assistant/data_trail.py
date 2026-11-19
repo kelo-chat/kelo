@@ -461,6 +461,17 @@ class DataTrail:
             log.exception("could not label outside text")
             self.outside_broken.add(run)
 
+    def given_link(self, url: str) -> bool:
+        """The whole address, as written, is a link in outside text this run read (a search result, a page): reading it sends nothing the
+        run made up. False when unsure."""
+        try:
+            toks = tokens_of(normalise(url))
+            if not toks:
+                return False
+            return any(toks <= fp.tokens for lb, fp in self.store.labels(self.run_id()) if lb.outside)
+        except Exception:  # noqa: BLE001 - unsure: not given
+            return False
+
     def derive(self, targets: list[str], text: str) -> Derived | None:
         """What of a step comes from the run's outside text (docs/data-trail.md, "T3 as built"). None: no outside text in this run."""
         run = self.run_id()

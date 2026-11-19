@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- es text for strings_ai_consent.xml (edit freely, keep the names) -->
+<!-- es text for strings_ai_consent.xml (generated from values/strings_ai_consent.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="ai_consent_title">Antes de tu primer mensaje</string>
     <string name="ai_consent_body">Para responder, Kelo envía tus mensajes y lo que necesita para ellos (archivos que adjuntas, resultados de tus servicios conectados) al servicio de IA que elijas.</string>

@@ -324,6 +324,28 @@ data class VaultState(
     val items: List<VaultEntry> = emptyList(),
     val pending: List<VaultEntry> = emptyList(),
     val verifying: List<String> = emptyList(),
+    /** Sites Kelo's browser is signed in to without a saved login (brief B4). */
+    @SerialName("browser_sites") val browserSites: List<BrowserSignIn> = emptyList(),
+    /** Named browser profiles (brief C2d): another account on a site; made only by asking Kelo. */
+    @SerialName("browser_profiles") val browserProfiles: List<BrowserProfile> = emptyList(),
+)
+
+/** A named browser profile: its id, its name and the sites it is signed in to. Never a cookie or a value. */
+@Serializable
+data class BrowserProfile(
+    val id: String = "",
+    val label: String = "",
+    @SerialName("created_at") val createdAt: Double? = null,
+    val sites: List<BrowserSignIn> = emptyList(),
+)
+
+/** A site Kelo's browser holds a sign-in for: how it got there ("login" or "owner"), when and when last used. Sites only, no cookies. */
+@Serializable
+data class BrowserSignIn(
+    val site: String = "",
+    val how: String = "",
+    @SerialName("signed_at") val signedAt: Double? = null,
+    @SerialName("last_used") val lastUsed: Double? = null,
 )
 
 @Serializable
@@ -346,6 +368,8 @@ data class VaultEntry(
     @SerialName("last_result_detail") val lastResultDetail: String = "",
     /** Schedules allowed (once, at setup) to sign in with this login without asking */
     @SerialName("schedule_grants") val scheduleGrants: List<chat.kelo.app.agent.ScheduleGrant> = emptyList(),
+    /** Kelo's browser is signed in to this login's site (brief B4); null when it is not. */
+    val browser: BrowserSignIn? = null,
 ) {
     val isLogin: Boolean get() = kind == KIND_LOGIN
 

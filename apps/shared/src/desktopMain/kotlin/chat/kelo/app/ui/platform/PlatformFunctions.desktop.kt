@@ -15,6 +15,15 @@ import java.time.format.DateTimeFormatterBuilder
 import java.time.format.FormatStyle
 import java.util.Locale
 
+actual fun graphemeStarts(s: String): IntArray {
+    val it = java.text.BreakIterator.getCharacterInstance()
+    it.setText(s)
+    val out = ArrayList<Int>()
+    var i = it.first()
+    while (i != java.text.BreakIterator.DONE && i < s.length) { out.add(i); i = it.next() }
+    return out.toIntArray()
+}
+
 actual fun decodeImage(bytes: ByteArray): ImageBitmap? =
     runCatching { org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap() }.getOrNull()
 

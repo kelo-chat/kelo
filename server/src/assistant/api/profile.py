@@ -12,6 +12,7 @@ from ..providers import get_provider
 from ..providers.registry import REMOVED_PROVIDERS
 from fastapi import APIRouter
 from .context import AppContext
+from .about import SERVER_HEADER, server_update_for
 
 
 class LanguageIn(BaseModel):
@@ -78,6 +79,8 @@ def router(ctx: AppContext) -> APIRouter:
         update = await ctx.app_updates.for_header(request.headers.get("x-kelo-app"), request.headers.get(app_updates.CHANNEL_HEADER))
         if update:
             response.headers[app_updates.HEADER] = update   # a newer released app that works with this server (app_updates.py)
+        if server_update := server_update_for(ctx, request):
+            response.headers[SERVER_HEADER] = server_update   # a newer server release the caller may install (api/about.py)
         prof = store.profile()
         return {**prof, **signing_view(), "avatar_version": avatar.version(), "model_ready": model_ready(prof),
                 "min_app_version": dict(settings.min_app_version)}

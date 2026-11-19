@@ -254,5 +254,5 @@ Shared vectors for the apps: `docs/security/approval-sign-vectors.json` (exact m
 
 The recording for speech to text is sent inside KE2E like every other call. The server holds it in memory for one recognition, hands
 the raw frames to the `voice` container over a Unix socket, and drops them; nothing is written to disk, the chat or the logs. The
-`voice` container has no network at all, no env file and a read-only root.
+`voice` container has no network at all, no env file and a read-only root. Kelo's own voice (text to speech, docs/voice.md) works the same way: the text goes in KE2E, is held only in memory, and the container has no network.
 

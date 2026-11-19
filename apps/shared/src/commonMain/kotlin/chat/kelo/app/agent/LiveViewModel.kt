@@ -45,11 +45,50 @@ class LiveViewModel(source: (CoroutineScope) -> LiveSource) : ViewModel() {
     val touch: StateFlow<TouchState> = _touch.asStateFlow()
     private var markId = 0L
 
+    // ---- live typing (live_v 3): the capture field's changes, in order with every other input
+    private var typer: RemoteTypingSender? = null
+    private fun typer(): RemoteTypingSender = typer ?: RemoteTypingSender(viewModelScope) { live.send(it) }.also { typer = it }
+    private val _typingResets = MutableStateFlow(0)
+    /** Bumps whenever the capture field must start again from [RemoteTyping.EMPTY] (the page's field is no longer what the app thinks). */
+    val typingResets: StateFlow<Int> = _typingResets.asStateFlow()
+
+    /** The capture field's new state: what changed goes to the page at once (see [RemoteTypingSender]). */
+    fun typingUpdate(t: Typed) = typer().update(t)
+
+    /** Sends what is pending now (before any other input, so the order stays the owner's). */
+    fun typingFlush() { typer?.flush() }
+
+    /**
+     * Named keys for the page (Enter, Tab, arrows, Backspace from the key bar...): what composes is committed first, the keys go as one
+     * `edit` (none for an empty list: only the restart), and the capture field starts again (the page's caret moved or its text changed behind the buffer's back).
+     */
+    fun typingKeys(names: List<String>) {
+        typer?.commit()
+        if (names.isNotEmpty()) live.send(LiveMessages.edit(names.take(RemoteTyping.MAX_STEPS).map { Step.Key(it) }))
+        typer?.reset()
+        _typingResets.update { it + 1 }
+    }
+
+    /** The page keeps what the owner saw: a composition still showing is committed. */
+    fun typingCommit() { typer?.commit() }
+
+    /** The capture field starts again from empty (no steps); false while composing, then nothing changes. */
+    fun typingReset(): Boolean = typer?.reset() ?: true
+
+    /** What the page has was last sent as this: the capture field mirrors it after a reset. */
+    val typingSent: Typed get() = typer?.lastSent ?: RemoteTyping.EMPTY
+
     init {
+        // an `edit` the page did not take: what it shows is no longer known, the capture field starts again
+        ownScope.launch {
+            live.replies.collect { r ->
+                if (r.input == "edit" && r.notReached) { typer?.forceReset(); _typingResets.update { it + 1 } }
+            }
+        }
         // the server says a tap was dropped (the page or the phone was busy): the mark that showed it landing turns into a missed one
         ownScope.launch {
             live.replies.collect { r ->
-                if (!r.notReached) return@collect
+                if (!r.notReached || r.input == "edit") return@collect   // an `edit` the page did not take is the capture field's business (above)
                 _touch.update { t -> t.copy(mark = t.mark?.takeIf { it.kind == MarkKind.LANDED }?.let { TouchMarkRules.busy(it, ++markId) } ?: t.mark) }
                 own.tryEmit(Res.string.live_touch_missed)
             }
@@ -66,17 +105,22 @@ class LiveViewModel(source: (CoroutineScope) -> LiveSource) : ViewModel() {
     fun start() = live.start()
 
     /** Off screen (another app, the screen off): the connection closes; the tab stays held for a short while. */
-    fun stop() = live.stop(giveBack = false)
+    fun stop() { typer?.commit(); live.stop(giveBack = false) }
 
-    suspend fun control(take: Boolean, handover: Boolean = false): LiveClient.ControlResult = live.control(take, handover)
+    suspend fun control(take: Boolean, handover: Boolean = false): LiveClient.ControlResult {
+        if (!take) typer?.commit()   // handing back while a syllable forms: the page keeps it
+        return live.control(take, handover)
+    }
     /** JPEG frames on or off (off while the VNC screen shows). */
     fun setFrames(on: Boolean) = live.setFrames(on)
     /** Keys, back / forward / reload: with the seq of the frame on screen when the server takes it. */
     fun send(event: JsonObject) {
+        if (event["type"].toString().trim('"') != "edit") typer?.flush()   // the owner's order on the socket
         val seq = LiveProtocol.seqFor(live.frame.value?.header)
         live.send(if (seq != null && event["frame_seq"] == null && event["type"].toString().trim('"') in STAMPED) JsonObject(event + ("frame_seq" to kotlinx.serialization.json.JsonPrimitive(seq))) else event)
     }
     fun type(text: String) {
+        typer?.let { it.flush(); if (!it.reset()) { it.commit(); it.reset() }; _typingResets.update { n -> n + 1 } }   // a paste: the field starts again
         val seq = LiveProtocol.seqFor(live.frame.value?.header)
         if (seq == null) live.type(text) else LiveMessages.chunks(text).forEach { live.send(LiveMessages.text(it, seq)) }
     }

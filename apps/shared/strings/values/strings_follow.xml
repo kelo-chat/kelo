@@ -28,4 +28,9 @@
     <string name="follow_summary_prep_general">Prepare %1$s</string>
     <string name="follow_summary_watch_changes">Watch for changes</string>
     <string name="follow_summary_default">Look after schedule</string>
+    <string name="follow_remove">Remove from list</string>
+    <string name="follow_remove_confirm">Remove this item?</string>
+    <string name="follow_remove_confirm_detail">Kelo won\'t check it or bring it back.</string>
+    <string name="follow_remove_yes">Remove</string>
+    <string name="follow_stopped_toggle">Stopped items (%1$d)</string>
 </resources>

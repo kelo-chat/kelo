@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_desktop_pay.xml (generated from values/strings_desktop_pay.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pin_allow_note">許可すると、このサイト用に保存した支払いパスワードを送るか、スマホで確認します。スマホで承認してください。</string>
     <string name="desktop_pin_need_body">スマホの Kelo アプリを開いて、支払いパスワード「%1$s」を %2$s の支払い（%3$s）に一度だけ送ってください。</string>

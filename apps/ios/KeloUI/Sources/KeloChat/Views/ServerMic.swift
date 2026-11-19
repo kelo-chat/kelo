@@ -4,21 +4,24 @@ import KeloCore
 #if os(iOS)
 
 /// The server path of the mic (Android: voice/ServerMicController.kt): record in memory, send the WAV to the Kelo server when the owner
-/// stops, and hand the text back at the caret. Nothing is sent by itself. The phase rules are the same as on Android: one recording at
-/// a time, two minutes at most, a lost connection keeps the recording for "다시 하기".
+/// ends it, and hand the text back. The text goes to `onText` with what the owner asked for: the field (■, the two-minute cap) or sent
+/// at once (↑). A lost connection keeps the recording for "다시 하기", which puts the text in the field. The bar is the composer while
+/// it records (ComposerVoice.swift); `bar` is what it draws.
 @MainActor
 @Observable
 final class ServerDictationModel {
     enum Phase: Equatable { case idle, recording, sending }
 
-    /// The audio thread's side: the levels and the byte count, read by the clock every 50 ms.
+    /// The audio thread's side: one level per 80 ms window (LevelMeter) and the byte count, drained by the clock every 50 ms.
     final class Meter: @unchecked Sendable {
         private let lock = NSLock()
+        private let windows = LevelMeter()
         private var levels: [Float] = []
         private var count: Int64 = 0
         func add(_ chunk: Data) {
-            let level = SoundBars.rms(chunk, from: 0, to: chunk.count)
-            lock.lock(); levels.append(level); count += Int64(chunk.count); lock.unlock()
+            lock.lock(); defer { lock.unlock() }
+            levels += windows.add(chunk)
+            count += Int64(chunk.count)
         }
         func drain() -> (levels: [Float], bytes: Int64) {
             lock.lock(); defer { lock.unlock() }
@@ -26,12 +29,13 @@ final class ServerDictationModel {
             levels = []
             return (out.0, out.1)
         }
-        func reset() { lock.lock(); levels = []; count = 0; lock.unlock() }
+        func reset() { lock.lock(); windows.reset(); levels = []; count = 0; lock.unlock() }
     }
 
     private(set) var phase: Phase = .idle
-    private(set) var bars: [Float] = []
     private(set) var elapsedMs: Int64 = 0
+    /// The newest levels for the bar's waveform.
+    let trail = LevelTrail()
     /// The one line under the composer (nil = nothing to show).
     var problem: VoiceProblem?
     /// The mic permission was refused: the view asks to open the settings.
@@ -42,15 +46,31 @@ final class ServerDictationModel {
     @ObservationIgnored private var ticker: Task<Void, Never>?
     @ObservationIgnored private var sending: Task<Void, Never>?
     @ObservationIgnored private var pending: Data?
-    @ObservationIgnored private let api: () -> KeloApi?
-    /// Where the words go: called when a recording starts (the caret / the end of the field).
+    /// The signed-in server; nil while signed out (the recording then counts as offline).
+    @ObservationIgnored var api: () -> KeloApi?
+    /// The speech endpoint (a test replaces it).
+    @ObservationIgnored private let transcribe: (KeloApi, Data) async throws -> String
+    /// Called when a recording starts: remember where the words go.
     @ObservationIgnored var onBegin: () -> Void = {}
-    /// The recognised words for the field (trimmed, never empty).
-    @ObservationIgnored var onText: (String) -> Void = { _ in }
+    /// The recognised words (trimmed, never empty) and what the owner asked for.
+    @ObservationIgnored var onText: (String, AfterSpeech) -> Void = { _, _ in }
 
-    init(api: @escaping () -> KeloApi?) { self.api = api }
+    init(api: @escaping () -> KeloApi? = { nil },
+         transcribe: @escaping (KeloApi, Data) async throws -> String = { api, wav in try await VoiceAPI.transcribe(api, wav: wav) }) {
+        self.api = api
+        self.transcribe = transcribe
+    }
 
     var recording: Bool { phase == .recording }
+
+    /// What the composer draws while the server path is busy: nil when idle.
+    var bar: RecordingBarState? {
+        switch phase {
+        case .idle: return nil
+        case .recording: return RecordingBarState(stage: .listening, elapsedMs: elapsedMs, endsInSeconds: RecordingBarRules.endsIn(elapsedMs: elapsedMs), held: false)
+        case .sending: return RecordingBarState(stage: .turningToText, elapsedMs: elapsedMs, endsInSeconds: nil, held: false)
+        }
+    }
 
     func toggle() {
         if phase == .recording { stop() } else { start() }
@@ -70,7 +90,7 @@ final class ServerDictationModel {
         pending = nil
         onBegin()
         meter.reset()
-        bars = []
+        trail.clear()
         elapsedMs = 0
         do {
             let meter = self.meter
@@ -85,107 +105,72 @@ final class ServerDictationModel {
                 try? await Task.sleep(nanoseconds: 50_000_000)
                 guard let self, self.phase == .recording else { return }
                 let drained = self.meter.drain()
-                for level in drained.levels { self.bars = SoundBars.push(self.bars, level) }
+                let now = Int64(DispatchTime.now().uptimeNanoseconds)
+                for level in drained.levels { self.trail.push(level, atNanos: now) }
                 self.elapsedMs = drained.bytes * 1000 / 32_000
-                if self.elapsedMs >= RecordingClock.maxMs { self.stop(); return }   // the two-minute cap
+                if self.elapsedMs >= RecordingClock.maxMs { self.stop(); return }   // the two-minute cap: into the field, never sent
             }
         }
     }
 
-    /// Tap again, or the hold is released: send what was said.
-    func stop() {
+    /// ■ (or the two-minute cap): the words go into the field.
+    func stop() { finish(.field) }
+
+    /// ↑ or ■: the recording goes to the server, and the reply goes to `onText` with `after`.
+    func finish(_ after: AfterSpeech) {
         guard phase == .recording else { return }
         ticker?.cancel()
         ticker = nil
         let wav = Wav.encode(pcm16le: recorder.stop())
         phase = .sending
-        send(wav)
+        send(wav, after: after)
     }
 
-    /// ✕ or a slide off the button: drops the recording, or the reply that is on its way.
-    func cancel() {
+    /// ✕: drops the recording, or the reply that is on its way.
+    func discard() {
         if phase == .recording { recorder.cancel() }
         ticker?.cancel(); ticker = nil
         sending?.cancel(); sending = nil
         pending = nil
-        bars = []
+        trail.clear()
         elapsedMs = 0
         phase = .idle
     }
 
-    /// The owner asks again after the server could not be reached: the same recording goes up once more.
+    /// The owner asks again after the server could not be reached: the same recording goes up once more, into the field.
     func retry() {
         guard let wav = pending else { return }
         pending = nil
         problem = nil
         phase = .sending
-        send(wav)
+        send(wav, after: .field)
     }
 
     func clearProblem() { problem = nil }
 
-    private func send(_ wav: Data) {
+    private func send(_ wav: Data, after: AfterSpeech) {
         let client = api()
+        let transcribe = self.transcribe
         sending = Task { @MainActor [weak self] in
             do {
                 guard let client else { throw ApiError(status: ApiError.noResponse, detail: "not signed in") }
-                let text = try await VoiceAPI.transcribe(client, wav: wav)
+                let text = try await transcribe(client, wav)
                 guard !Task.isCancelled, let self else { return }
-                if text.isEmpty { self.problem = .nothingHeard } else { self.onText(text) }
+                if text.isEmpty { self.problem = .nothingHeard } else { self.onText(text, after) }
                 self.phase = .idle
+                self.trail.clear()
             } catch let e as ApiError {
                 guard !Task.isCancelled, let self else { return }
                 let lost = e.status == ApiError.noResponse
                 self.pending = lost ? wav : nil
                 self.problem = voiceProblem(httpStatus: lost ? nil : e.status, code: e.code)
                 self.phase = .idle
+                self.trail.clear()
             } catch {
                 self?.phase = .idle
             }
             self?.sending = nil
         }
-    }
-}
-
-/// The card above the mic while the owner speaks: ✕, the sound graph, the clock (a countdown from 1:50), and stop.
-struct ServerRecordingCard: View {
-    let model: ServerDictationModel
-    @Environment(\.kelo) private var c
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Button { model.cancel() } label: {
-                Text(L(R.string.voice_cancel_recording)).font(KeloFont.small).foregroundStyle(c.muted)
-            }
-            if model.phase == .sending {
-                ProgressView().controlSize(.small)
-                Text(L(R.string.voice_transcribing)).font(KeloFont.small).foregroundStyle(c.ink)
-                Spacer(minLength: 0)
-            } else {
-                HStack(alignment: .center, spacing: 2) {
-                    ForEach(Array(model.bars.enumerated()), id: \.offset) { _, level in
-                        Capsule().fill(c.accent).frame(width: 3, height: 3 + 25 * CGFloat(level))
-                    }
-                }
-                .frame(height: 28)
-                .accessibilityHidden(true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(RecordingClock.clock(model.elapsedMs)).font(KeloFont.small).foregroundStyle(c.ink).monospacedDigit()
-                    if model.elapsedMs >= RecordingClock.countdownFromMs {
-                        Text(L(R.string.voice_ends_in, Int((RecordingClock.maxMs - model.elapsedMs) / 1000)))
-                            .font(KeloFont.small).foregroundStyle(c.dangerInk)
-                    }
-                }
-                Button { model.stop() } label: {
-                    Text(L(R.string.voice_stop_recording)).font(KeloFont.small.weight(.semibold)).foregroundStyle(c.accent)
-                }
-            }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .frame(width: 300)
-        .background(RoundedRectangle(cornerRadius: 16).fill(c.card))
-        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
     }
 }
 
@@ -223,31 +208,45 @@ struct ServerProblemLine: View {
 }
 
 /// The server mic button: a tap starts, a tap stops and sends. The card above shows while the owner speaks.
-struct ServerMicButton: View {
-    let model: ServerDictationModel
+/// The download ring: a circle with the speech model's progress (a spinner when the server gives no percent). Replaces the mic.
+struct VoiceDownloadRingView: View {
+    let percent: Int?
+    let label: String
     @Environment(\.kelo) private var c
 
     var body: some View {
-        Button { model.toggle() } label: {
-            ZStack {
-                if model.recording {
-                    Circle().stroke(c.accent.opacity(0.35), lineWidth: 3)
-                }
-                KeloIconView(model.recording ? .stop : .mic, size: 22, tint: model.recording ? c.accent : c.muted)
+        ZStack {
+            if let percent {
+                Circle().stroke(c.muted.opacity(0.25), lineWidth: 2.5)
+                Circle().trim(from: 0, to: CGFloat(percent) / 100)
+                    .stroke(c.accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            } else {
+                ProgressView().controlSize(.small).tint(c.accent)
             }
-            .frame(width: 40, height: 40)
-            .contentShape(Rectangle())
+        }
+        .frame(width: 22, height: 22)
+        .frame(width: 40, height: 40)
+        .accessibilityLabel(label)
+    }
+}
+
+/// The server mic: a tap starts; while it records the composer is the bar (ComposerVoice.swift), so only the problem line shows here.
+struct ServerMicButton: View {
+    let voice: ComposerVoiceModel
+    @Environment(\.kelo) private var c
+
+    var body: some View {
+        Button { voice.server.toggle() } label: {
+            KeloIconView(.mic, size: 22, tint: c.muted)
+                .frame(width: 40, height: 40)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(L(model.recording ? R.string.voice_stop : R.string.voice_start))
-        .accessibilityValue(model.recording ? L(R.string.voice_listening) : "")
+        .accessibilityLabel(L(R.string.voice_start))
         .overlay(alignment: .topTrailing) {
-            if model.phase != .idle {
-                ServerRecordingCard(model: model)
-                    .fixedSize()
-                    .offset(y: -50)
-            } else if let problem = model.problem {
-                ServerProblemLine(model: model, problem: problem)
+            if let problem = voice.server.problem {
+                ServerProblemLine(model: voice.server, problem: problem)
                     .fixedSize()
                     .offset(y: -50)
             }

@@ -26,7 +26,7 @@ Where offers come from (column `source`):
   followup  kind `resume`: every open follow-up that waits for a piece of information from the owner (a job paused for an answer, a
             question asked in the chat, a login, a fill-in card). The sentence is a template plus the task's title; the request is
             "<title> 이어서 해 줘" (in the owner's language); the steps point at that task. The offer closes with the follow-up.
-  nightly   kind wish | routine | deadline, up to 3 a night, from the same request as the rules, goals and rechecks.
+  nightly   kind wish | routine | deadline, up to 3 a night, from the same request as the rules and goals.
   chat      kind `chat`: the agent posts one with offer_post when a concrete next task shows up in conversation that the owner did not ask
             for now. Only such an offer may carry numbers (a price, a fee, a condition), and only with `sources` that pass
             recheck.SourceRule (two sources from different sites, or one official one); it is then kept with the time it was checked and

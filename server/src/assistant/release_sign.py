@@ -14,6 +14,17 @@ The signed text (UTF-8, "\\n" line ends, one final "\\n"; identical in apps/shar
 The signature is the 64 raw bytes over that text, base64 (standard, padded). The key id is the first 16 hex characters of
 sha256(raw 32-byte public key). The private key lives on the operator's computer only: never in a container, never on the state
 volume, never inside the compose folder.
+
+STORE ROWS (latest.json "store"): the newest live store release of an app, signed with the same key over its own text, which starts
+with a different prefix so that no store signature verifies as a file row or a notices list, and back:
+
+    kelo-store-v1
+    platform=<android | ios | desktop>
+    channel=<play | appstore | msstore>          (the one store channel of that platform, STORE_CHANNELS)
+    version=<MAJOR.MINOR.PATCH>
+    build=<integer>
+    min_server=<MAJOR.MINOR.PATCH, or empty>
+    date=<YYYY-MM-DD>
 """
 
 from __future__ import annotations
@@ -24,6 +35,7 @@ import hashlib
 import os
 import re
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +44,12 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 from . import release_keys
+from . import version as release_version
 from .release_keys import RELEASE_KEYS
 
 PLATFORM_KEYS = ("android", "windows", "windows-msi", "windows-server-msi", "mac", "mac-server-bundle")
+# the app platforms that have a store, and the one store channel each: the rows of latest.json "store" (see the module doc)
+STORE_CHANNELS = {"android": "play", "ios": "appstore", "desktop": "msstore"}
 DEFAULT_KEY_PATH = Path("~/.kelo-release/signing.key")
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -73,6 +88,70 @@ def statement(platform: str, row: Mapping[str, Any]) -> bytes:
             f"size={size}\nsha256={sha}\ncommit={commit or ''}\n").encode("utf-8")
 
 
+def store_statement(platform: str, row: Mapping[str, Any]) -> bytes:
+    """The exact bytes signed for one store row (see the module doc). Raises ValueError when a field is malformed."""
+    channel, version, build, min_server, day = row.get("channel"), row.get("version"), row.get("build"), row.get("min_server"), row.get("date")
+    if platform not in STORE_CHANNELS:
+        raise ValueError("platform")
+    if channel != STORE_CHANNELS[platform]:
+        raise ValueError("channel")
+    if not (isinstance(version, str) and version == version.strip()):
+        raise ValueError("version")
+    try:
+        release_version.parse(version)
+    except ValueError:
+        raise ValueError("version") from None
+    if not (_int(build) and 0 < build <= 2**63 - 1):
+        raise ValueError("build")
+    if min_server in (None, ""):
+        min_server = ""
+    elif not (isinstance(min_server, str) and min_server == min_server.strip()):
+        raise ValueError("min_server")
+    else:
+        try:
+            release_version.parse(min_server)
+        except ValueError:
+            raise ValueError("min_server") from None
+    try:
+        if not (isinstance(day, str) and len(day) == 10 and date.fromisoformat(day).isoformat() == day):
+            raise ValueError("date")
+    except ValueError:
+        raise ValueError("date") from None
+    return (f"kelo-store-v1\nplatform={platform}\nchannel={channel}\nversion={version}\nbuild={build}\n"
+            f"min_server={min_server}\ndate={day}\n").encode("utf-8")
+
+
+def sign_store_row(platform: str, row: Mapping[str, Any], key_path: str | Path, root: Path | None = None) -> dict[str, Any]:
+    """The store row plus "sig" and "key" (the row itself is not changed)."""
+    key = load_key(Path(key_path), root)
+    sig = key.sign(store_statement(platform, row))
+    return {**row, "sig": base64.b64encode(sig).decode("ascii"), "key": key_id(_raw_public(key))}
+
+
+def verify_store_row(platform: str, row: Mapping[str, Any], keys: Mapping[str, str] | None = None) -> bool:
+    """True only when the store row's signature checks against a listed key. False on anything malformed; never raises."""
+    try:
+        text = store_statement(platform, row)
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return _check(text, row.get("key"), row.get("sig"), release_keys.RELEASE_KEYS if keys is None else keys)
+
+
+def _check(text: bytes, kid: Any, sig_b64: Any, keys: Mapping[str, str]) -> bool:
+    """The shared end of every verify: the key id is one of `keys`, the key matches its id, and the signature checks. Never raises."""
+    try:
+        if not (isinstance(kid, str) and isinstance(sig_b64, str)) or kid not in keys:
+            return False
+        sig = base64.b64decode(sig_b64, validate=True)
+        pub = base64.b64decode(keys[kid], validate=True)
+        if len(sig) != 64 or len(pub) != 32 or key_id(pub) != kid:
+            return False
+        Ed25519PublicKey.from_public_bytes(pub).verify(sig, text)
+        return True
+    except (ValueError, TypeError, binascii.Error, InvalidSignature):
+        return False
+
+
 def key_id(pub_raw: bytes) -> str:
     return hashlib.sha256(pub_raw).hexdigest()[:16]
 
@@ -91,18 +170,10 @@ def sign_row(platform: str, row: Mapping[str, Any], key_path: str | Path, root: 
 def verify_row(platform: str, row: Mapping[str, Any], keys: Mapping[str, str] | None = None) -> bool:
     """True only when the row's signature checks against a listed key. False on anything malformed; never raises."""
     try:
-        keys = release_keys.RELEASE_KEYS if keys is None else keys
-        kid, sig_b64 = row.get("key"), row.get("sig")
-        if not (isinstance(kid, str) and isinstance(sig_b64, str)) or kid not in keys:
-            return False
-        sig = base64.b64decode(sig_b64, validate=True)
-        pub = base64.b64decode(keys[kid], validate=True)
-        if len(sig) != 64 or len(pub) != 32 or key_id(pub) != kid:
-            return False
-        Ed25519PublicKey.from_public_bytes(pub).verify(sig, statement(platform, row))
-        return True
-    except (ValueError, TypeError, binascii.Error, InvalidSignature):
+        text = statement(platform, row)
+    except (ValueError, TypeError, AttributeError):
         return False
+    return _check(text, row.get("key"), row.get("sig"), release_keys.RELEASE_KEYS if keys is None else keys)
 
 
 # ---------------------------------------------------------------------------------------------------------------- the key file
@@ -175,17 +246,10 @@ def sign_notices(notices: list, key_path: str | Path, root: Path | None = None) 
 def verify_notices(notices: list, sig_b64: str, kid: str, keys: "dict[str, str] | None" = None) -> bool:
     """True only when sig_b64 is a valid Ed25519 signature over the notices list by a known key. Never raises."""
     try:
-        keys = release_keys.RELEASE_KEYS if keys is None else keys
-        if kid not in keys:
-            return False
-        sig = base64.b64decode(sig_b64, validate=True)
-        pub = base64.b64decode(keys[kid], validate=True)
-        if len(sig) != 64 or len(pub) != 32 or key_id(pub) != kid:
-            return False
-        Ed25519PublicKey.from_public_bytes(pub).verify(sig, notices_statement(notices))
-        return True
-    except (ValueError, TypeError, binascii.Error, InvalidSignature):
+        text = notices_statement(notices)
+    except (ValueError, TypeError):
         return False
+    return _check(text, kid, sig_b64, release_keys.RELEASE_KEYS if keys is None else keys)
 
 
 def load_key(path: str | Path, root: Path | None = None) -> Ed25519PrivateKey:

@@ -8,6 +8,14 @@ LABEL chat.kelo.image="1"
 
 ARG TARGETARCH
 ARG BROWSER=chromium
+# BROWSER=chrome: the exact Google Chrome build (the pool .deb version). Changing it is a decision with a rollback tag (review 2026-11-18:
+# the 0.10.5 rebuild moved Chrome 157 -> 158 without anyone choosing it). The package is held after install (apt-mark hold).
+# The Chrome OS platform version that shipped with each milestone, stated by the desktop identity (browser_identity.py
+# CHROME_OS_PLATFORM_VERSIONS must have these rows; tests/test_browser_identity.py checks it). Source: chromiumdash, cros/fetch_serving_builds,
+# read 2026-11-18 (Chrome 158 beta builds 158.0.8127.24 run ChromeOS 16868.13.0). A milestone with no row keeps the Linux identity.
+# milestone  chromeos_platform_version
+#   158      16868.13.0
+ARG CHROME_VERSION=158.0.8127.36-1
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/opt/venv UV_LINK_MODE=copy \
@@ -32,7 +40,13 @@ RUN set -eux; \
       curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /etc/apt/keyrings/google-chrome.asc; \
       echo "deb [arch=$arch signed-by=/etc/apt/keyrings/google-chrome.asc] https://dl.google.com/linux/chrome/deb/ stable main" \
         > /etc/apt/sources.list.d/google-chrome.list; \
-      apt-get update; apt-get install -y --no-install-recommends google-chrome-stable; \
+      apt-get update; \
+      curl -fsSL "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_${arch}.deb" \
+        -o /tmp/google-chrome.deb; \
+      apt-get install -y --no-install-recommends /tmp/google-chrome.deb; \
+      rm -f /tmp/google-chrome.deb; \
+      apt-mark hold google-chrome-stable; \
+      echo "$CHROME_VERSION" > /etc/kelo-chrome-version; \
       ln -s /usr/bin/google-chrome-stable /usr/local/bin/browser; \
     else \
       apt-get update; apt-get install -y --no-install-recommends chromium; \

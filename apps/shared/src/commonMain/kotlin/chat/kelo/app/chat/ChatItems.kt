@@ -20,6 +20,8 @@ sealed interface ChatItem {
         val files: List<MessageFile> = emptyList(),
         /** The text is the app's own sentence ("read and summarise …"): only [files] show */
         val autoText: Boolean = false,
+        /** Live bubble or stored message arrived from an in-app voice call */
+        val fromCall: Boolean = false,
     ) : ChatItem
     /**
      * The reply needs this phone's place (location_request): Share / Not now, or the phone's settings when the owner refused before

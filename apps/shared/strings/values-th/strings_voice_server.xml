@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">ดาวน์โหลดโมเดลการรู้จำเสียงพูด %1$s ลงในเซิร์ฟเวอร์ Kelo ของคุณหรือไม่ ถ้าไม่ จะใช้การรู้จำเสียงพูดของโทรศัพท์</string>
     <string name="voice_server_downloading">กำลังดาวน์โหลดโมเดลเสียง · %1$d%%</string>
     <string name="voice_server_ready">เซิร์ฟเวอร์ Kelo ของคุณเข้าใจเสียงของคุณแล้ว</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">เชื่อมต่อเซิร์ฟเวอร์ Kelo ไม่ได้ จึงแปลงเป็นข้อความไม่ได้</string>
     <string name="voice_server_busy">เซิร์ฟเวอร์ Kelo กำลังประมวลผลการบันทึกอื่นอยู่ ลองใหม่อีกครั้งในอีกสักครู่</string>
     <string name="voice_server_too_long">การบันทึกยาวเกินไป กรุณาพูดไม่เกิน 2 นาที</string>
-    <string name="voice_page_title">การป้อนข้อความด้วยเสียง</string>
+    <string name="voice_page_title">เสียง</string>
     <string name="voice_page_intro">เสียงของคุณจะถูกแปลงเป็นข้อความบนเซิร์ฟเวอร์ Kelo แล้วข้อความจะไปอยู่ในช่องพิมพ์ ไม่มีการส่งเองอัตโนมัติ</string>
     <string name="voice_model_in_use">โมเดลเสียงที่ใช้อยู่</string>
     <string name="voice_state_off">การรู้จำเสียงพูดของโทรศัพท์</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">โมเดลเสียงของเซิร์ฟเวอร์ Kelo ยังไม่รองรับภาษานี้ จึงใช้การรู้จำเสียงพูดของโทรศัพท์</string>
     <string name="voice_model_size">ขนาด %1$s · หน่วยความจำขณะใช้ %2$s</string>
     <string name="voice_runtime_missing">รันตัวติดตั้งเซิร์ฟเวอร์ Kelo อีกครั้งเพื่อใช้งานฟีเจอร์นี้</string>
+    <string name="voice_send_now">ส่งสิ่งที่พูด</string>
+    <string name="voice_elapsed">เวลาบันทึก %1$s</string>
 </resources>

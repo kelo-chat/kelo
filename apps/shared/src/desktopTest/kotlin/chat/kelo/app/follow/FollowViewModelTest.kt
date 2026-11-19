@@ -107,6 +107,8 @@ class FollowViewModelTest {
                         MockResponse().setBody("""{"ok":true,"key":"cal:123","state":"stopped"}""")
                     request.method == "POST" && path.startsWith("/api/follow/") && path.endsWith("/replan") ->
                         MockResponse().setBody("""{"ok":true,"key":"cal:123","state":"watching"}""")
+                    request.method == "DELETE" && java.net.URLDecoder.decode(path, "UTF-8") == "/api/follow/cal:123" ->
+                        MockResponse().setBody("""{"ok":true,"key":"cal:123","state":"removed"}""")
                     else -> MockResponse().setResponseCode(404).setBody("""{"detail":"not found"}""")
                 }
             }
@@ -245,6 +247,21 @@ class FollowViewModelTest {
     }
 
     @Test
+    fun removeCallsDeleteAndTakesTheRowOffTheList() {
+        val vm = vms.make { FollowViewModel(sessions()) }
+        until { vm.state.value.items.isNotEmpty() }
+
+        var removed = false
+        vm.remove("cal:123") { removed = true }
+        until { removed }
+
+        assertTrue("remove callback must be invoked", removed)
+        assertTrue("the row is gone from the list", vm.state.value.items.isEmpty())
+        assertFalse("the key is not left in the removing set", "cal:123" in vm.state.value.removing)
+        assertNotNull("DELETE /api/follow/{key} must be called", requests.firstOrNull { it.startsWith("DELETE /api/follow/cal") })
+    }
+
+    @Test
     fun replanCallsTheApi() {
         val vm = vms.make { FollowViewModel(sessions()) }
         until { vm.state.value.items.isNotEmpty() }
@@ -295,5 +312,10 @@ class FollowViewModelTest {
         )
         assertEquals("변경 사항 확인", FollowRules.planSummary(parcelItem, isKo = true))
         assertEquals("Watch for changes", FollowRules.planSummary(parcelItem, isKo = false))
+
+        // a plan that only says "tell me on change" (no check reads anything) is not "watching for changes"
+        val nothingChecked = FollowItem(key = "cal:9c", kind = "flight", title = "Flight", plan = FollowPlanData(tell = FollowPlanTell(onChange = true)))
+        assertEquals("일정 챙기기", FollowRules.planSummary(nothingChecked, isKo = true))
+        assertEquals("Look after schedule", FollowRules.planSummary(nothingChecked, isKo = false))
     }
 }

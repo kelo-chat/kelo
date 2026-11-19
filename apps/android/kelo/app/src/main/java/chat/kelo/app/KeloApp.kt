@@ -5,6 +5,9 @@ import chat.kelo.app.approval.AndroidApprovalSigner
 import chat.kelo.app.notify.PollJobService
 import chat.kelo.app.notify.PushRegistrar
 import chat.kelo.app.phonecal.PhoneCalendarSync
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +38,16 @@ class KeloApp : Application() {
         // the phone's approval key for signed payment Allows (approval/AndroidApprovalSigner.kt); its check needs the screen's activity
         AndroidApprovalSigner.attach(this) { container.activityHost.current as? androidx.fragment.app.FragmentActivity }
         registerActivityLifecycleCallbacks(container.visibility)
+        container.visibility.onHidden = {
+            container.calls.session.value?.appBackground()
+        }
+        runCatching {
+            androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                    container.calls.session.value?.appBackground()
+                }
+            })
+        }
         container.notifier.ensureChannels()
         chat.kelo.app.device.DeviceTasks.init(this)
         // signed in: the 15-minute check runs (a JobScheduler job) and this phone's push token goes to its server; signed out: the check stops

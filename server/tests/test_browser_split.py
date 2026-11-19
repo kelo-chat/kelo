@@ -36,11 +36,11 @@ def names(tools):
 
 ACTING = ("browser_click", "browser_click_at", "browser_type", "browser_drag", "browser_upload", "browser_login", "browser_look",
           "browser_human_check", "browser_private", "browser_fill_shipping", "find_login_code")
-KEPT = ("browser_open", "browser_read", "browser_view", "browser_site_state", "browser_forget_site", "browser_downloads",
-        "browser_save_download", "browser_save_pdf")
+KEPT = ("browser_site_state", "browser_forget_site")   # the chat's data controls only (owner 2026-11-19 03:10: no web work in the chat)
+JOB_WEB = ("browser_open", "browser_read", "browser_downloads", "browser_save_download", "browser_save_pdf")
 OTHERS = ("web_search", "web_fetch", "read_file", "delegate", "begin_order", "request_login", "vault_status", "checkout_review",
           "android_tap", "android_send_screenshot")
-APP_TOOLS = (*ACTING, *KEPT, *OTHERS)
+APP_TOOLS = (*ACTING, *KEPT, *JOB_WEB, *OTHERS)
 
 
 # ---------------------------------------------------------------------------------------------------------- tool sets
@@ -49,13 +49,14 @@ def test_the_chat_keeps_the_reading_tools_and_loses_every_acting_one():
     chat = names(for_kind(tools, None))
     assert not chat & set(ACTING)
     assert set(KEPT) <= chat and {"web_search", "web_fetch", "delegate", "begin_order", "request_login"} <= chat
+    assert not chat & set(JOB_WEB)                                                   # the chat opens and reads no page: a job does
     assert names(for_kind(tools, None, browser_split=False)) >= set(ACTING)        # the kill switch: the old chat
 
 
 def test_a_job_of_kind_browser_general_or_research_keeps_every_browser_tool():
     tools = fake(*APP_TOOLS)
     for kind in ("browser", "general", "research"):
-        assert set(ACTING) | set(KEPT) <= names(for_kind(tools, kind, browser_split=True)), kind
+        assert set(ACTING) | set(KEPT) | set(JOB_WEB) <= names(for_kind(tools, kind, browser_split=True)), kind
 
 
 def test_the_checkout_and_phone_sets_do_not_change_with_the_browser_split():
@@ -128,7 +129,7 @@ async def test_asked_to_book_on_a_site_the_chat_delegates_a_browser_job_and_cann
         await follow(c, (await c.post("/api/turns", json={"text": "book a table for two on Friday at tables.example.com"})).json()["id"])
         w = await one_worker(c, "done")
     assert w["kind"] == "browser"
-    assert "delegate" in seen["chat"] and "browser_read" in seen["chat"] and not seen["chat"] & set(ACTING)    # the chat cannot call browser_click
+    assert "delegate" in seen["chat"] and "browser_read" not in seen["chat"] and not seen["chat"] & (set(ACTING) | set(JOB_WEB))   # the chat cannot read or click a page
     assert set(ACTING) <= seen["job"] and set(KEPT) - {"browser_forget_site"} <= seen["job"]    # forgetting a site's data is the chat's alone (MAIN_ONLY)
     assert "you are that job" in seen["brief"] and "window side" in seen["brief"]
 
@@ -157,7 +158,7 @@ def test_the_prompt_follows_the_browser_switch_and_only_in_the_websites_and_buyi
         assert "`delegate` job of kind browser" in on and "self-contained `task`" in on and "answer_to" in on and "`web_fetch`" in on
         assert "Do it yourself in the browser" not in on and "begin_order" in buying(on)
         assert on.split("**Websites.**")[0] == off.split("**Buying, ordering, booking.**")[0]
-        assert on.split("\n\n**Apps on the Android device.**", 1)[1] == off.split("\n\n**Apps on the Android device.**", 1)[1]
+        assert on.split("\n\n**Later and repeated work.**", 1)[1] == off.split("\n\n**Later and repeated work.**", 1)[1]
     assert "delegate` kind checkout" in buying(texts[(True, True)]) and "delegate` kind checkout" not in buying(texts[(False, True)])
     assert texts[(False, False)] == (content / "prompts" / "system.md").read_text(encoding="utf-8")
 

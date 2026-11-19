@@ -24,5 +24,5 @@ description: Reminders, recurring jobs, watching a page, and "when X happens, do
 - `watch_list`, `watch_update`, `watch_remove` manage them. A watcher wakes you only when its condition holds; its message is a handoff, not the user's words.
 
 ## Small recurring checks and notifications
-- CHECKLIST.md holds short things to look at now and then, one per line starting with "- ".
+- CHECKLIST.md is the owner's list of things to keep an eye on, one per line starting with "- ". A line that needs timing of its own gets its own job (the one that fits what it follows, made by you and recorded with `checklist_link`); the others are looked at with everything else at the proactive send times (`checklist_link` with an empty job). Taking a line off in the app removes the job made for it; when you take one off, offer to remove its job.
 - NOTIFY_PREFS.md is your notes on what the user wants to be told or not, and when. The rules Kelo follows are the user's own copy, saved in the app: you cannot change them with a file edit. When they ask to be told or not told about something, say so and tell them to set it in NOTIFY_PREFS.md in the app.

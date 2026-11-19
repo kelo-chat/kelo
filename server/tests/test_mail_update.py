@@ -480,3 +480,59 @@ async def test_reading_still_peeks(tmp_path):
     assert all(c[2] is True for c in fake.commands("SELECT"))                             # opened read-only
     assert "\\Seen" not in fake.msgs[1].flags
     assert Selection.of(uids=["2", "1", "3"]).criteria() == ["UID", "1:3"]
+
+
+def test_marking_and_moving_inside_the_own_mailbox_reach_no_outside_place():
+    """Only trash changes what leaves the mailbox: the other actions name no place, so after outside mail they ask nothing."""
+    from assistant.effects import effect_of
+    for action in ("read", "unread", "flag", "unflag", "archive", "move"):
+        e = effect_of("email_update", {"account": "gmail", "action": action, "to": "Receipts"})
+        assert e.kind == "change" and e.targets == [], action
+    assert effect_of("email_update", {"account": "gmail", "action": "trash"}).targets == ["connector:gmail"]
+
+
+async def test_after_outside_mail_marking_gets_no_card_and_trash_still_does(tmp_path):
+    from assistant.effects import effect_of
+    from assistant.outside_rule import OutsideReview, OutsideTextRule, OwnerWords
+    from assistant.permissions import Gate, Permissions
+    from assistant.privacy_guard import PrivacyGuard
+    from assistant.store import Store
+    from test_permissions import fake_tools
+    fake = FakeImap()
+    fake.add(Msg(1, subject="Sale"))
+    _, _, tools = await connected(tmp_path, fake)
+    turn = {"source": "chat", "unattended": False, "request": "이메일 다 읽음처리해줘"}
+    review = OutsideReview(OutsideTextRule(), OwnerWords(None), seen=lambda: True, turn=lambda: turn)
+    perms = Permissions(Store(), tools=lambda: fake_tools(), names=lambda cid: cid,
+                        accounts=lambda: [{"name": "gmail", "provider": "gmail", "address": "me@gmail.com"}])
+    gate = Gate(perms, PrivacyGuard(), outside=review)
+    read = {"account": "gmail", "action": "read", "folder": "INBOX", "all": True}
+    trash = {"account": "gmail", "action": "trash", "folder": "INBOX", "all": True}
+    assert review.line(effect_of("email_update", read)) is None
+    assert review.line(effect_of("email_update", trash)) is not None
+    assert (await gate.check(tools["email_update"], read)).action != "ask"
+    verdict = await gate.check(tools["email_update"], trash)
+    assert verdict.action == "ask" and "gmail" in verdict.card
+    no_deletion(fake)
+
+
+async def test_the_card_words_name_the_action_and_never_show_a_question_mark(tmp_path):
+    fake = FakeImap()
+    fake.add(Msg(1, subject="Sale"))
+    _, _, tools = await connected(tmp_path, fake)
+    tool = tools["email_update"]
+    for action in ("read", "unread", "flag", "unflag", "archive", "move"):
+        words = await tool.describe({"action": action, "folder": "INBOX", "all": True})
+        assert "?" not in words and "trash" not in words.lower(), (action, words)
+    assert await tool.describe({"action": "read", "folder": "INBOX"}) == "Mark messages in INBOX as read"
+    assert "?" not in await tool.describe({"action": "trash", "folder": "INBOX"})          # no batch found: no count, never "?"
+    assert ask("email_update", {"action": "read"}) == "Mark these messages as read?"
+    assert ask("email_update", {"action": "move", "to": "Receipts"}) == "Move these messages?"
+    assert ask("email_update", {"action": "trash"}) == ask("email_update") == "Move these messages to the trash?"
+    tok = i18n.use("ko")
+    try:
+        assert ask("email_update", {"action": "read"}) == "이 메일들을 읽음으로 표시할까요?"
+        assert ask("email_update", {"action": "trash"}) == "이 메일들을 휴지통으로 옮길까요?"
+        assert "?" not in await tool.describe({"action": "trash", "folder": "INBOX"})
+    finally:
+        i18n.reset(tok)

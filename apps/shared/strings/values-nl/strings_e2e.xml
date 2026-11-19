@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- nl text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">Verbind deze telefoon opnieuw</string>
     <string name="e2e_key_changed_body">De versleutelingssleutel van je Kelo-server is veranderd, dus deze telefoon kan niet controleren of het echt jouw server is. Scan een nieuwe verbindings-QR-code via Mijn → Mijn apparaten op een ander apparaat, of op de servercomputer.</string>

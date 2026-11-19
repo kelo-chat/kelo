@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Pliki Kelo</string>
     <string name="files_about">To, co Kelo zapisuje dla siebie: kim jesteś, jego pamięć, notatki. Możesz je czytać, zmieniać i usuwać. Przesłane pliki i wyniki mają własne strony.</string>

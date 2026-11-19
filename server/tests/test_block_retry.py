@@ -91,7 +91,7 @@ class FakeCdp:
 
 
 # ------------------------------------------------------------------ 1. Worker retry & timer
-def test_worker_report_blocked_retry_stores_wake_at_and_timer_resumes_once(tmp_path):
+def test_worker_report_blocked_site_refused_has_no_retry_and_slowdown_keeps_wake_at(tmp_path):
     store = Store(str(tmp_path / "kelo.db"))
     clock = FakeClock()
     handoffs = []
@@ -121,72 +121,56 @@ def test_worker_report_blocked_retry_stores_wake_at_and_timer_resumes_once(tmp_p
         workers._live[wid] = _Live()
         report_tool = workers.report_tool()
 
-        # Test out-of-range clamping:
-        # A) retry_after_min=2 clamped to 5
-        res = asyncio.run(report_tool.handler({"status": "blocked", "summary": "Access denied", "retry_after_min": 2}))
+        # On a blocked site (site_refused), no retry_after_min is passed -> stops at once, wake_at=0
+        res = asyncio.run(report_tool.handler({
+            "status": "blocked",
+            "reason": "site_refused",
+            "summary": "Access denied by example.test",
+        }))
         assert "Report received" in res
-        assert workers._live[wid].report["retry_after_min"] == 5
+        assert workers._live[wid].report.get("reason") == "site_refused"
+        assert workers._live[wid].report.get("retry_after_min") is None
 
-        # B) retry_after_min=50 clamped to 30
-        res = asyncio.run(report_tool.handler({"status": "blocked", "summary": "Access denied", "retry_after_min": 50}))
-        assert "Report received" in res
-        assert workers._live[wid].report["retry_after_min"] == 30
-
-        # C) Valid 10 minutes
-        res = asyncio.run(report_tool.handler({"status": "blocked", "summary": "Access denied", "retry_after_min": 10}))
-        assert "Report received" in res
-        assert workers._live[wid].report["retry_after_min"] == 10
-
-        # Now settle the blocked worker
-        asyncio.run(workers._settle(wid, ("blocked", "Access denied", "", False), None))
-
-        # Check wake_at stored
+        # Settle
+        asyncio.run(workers._settle(wid, ("blocked", "Access denied by example.test", "", False), None))
         row = workers._row(wid)
         assert row["status"] == "blocked"
-        assert row["wake_at"] == pytest.approx(now + 600.0)
+        assert row["wake_at"] == 0.0
         assert row["retries"] == 0
 
-        # Public API shows status "waiting" and wake_at float
+        # Public API shows status "blocked" (not "waiting")
         pub = workers.get(wid)
-        assert pub["status"] == "waiting"
-        assert pub["wake_at"] == pytest.approx(now + 600.0)
+        assert pub["status"] == "blocked"
+        assert not pub.get("wake_at")
 
-        # Timer checks: before wake_at, nothing resumes
-        clock.advance(300.0)
-        resumed = workers.wake_tick()
-        assert resumed == []
-        assert workers._row(wid)["status"] == "blocked"
-
-        # Timer checks: at or after wake_at, resumes exactly once
-        clock.advance(305.0)  # now is 605s after start
-        resumed = workers.wake_tick()
-        assert resumed == [wid]
-
-        # Worker is resumed, retries count incremented, wake_at cleared to 0
-        row_after = workers._row(wid)
-        assert row_after["status"] == "running"
-        assert row_after["wake_at"] == 0.0
-        assert row_after["retries"] == 1
-
-        # Calling timer again does NOT resume again (resumes exactly once)
-        clock.advance(100.0)
+        # Timer checks: nothing to wake
+        clock.advance(1000.0)
         assert workers.wake_tick() == []
 
-        # Second blocked report: does NOT schedule another retry because retries >= 1
-        workers._live[wid] = _Live()
-        asyncio.run(report_tool.handler({"status": "blocked", "summary": "Blocked again", "retry_after_min": 10}))
-        asyncio.run(workers._settle(wid, ("blocked", "Blocked again", "", False), None))
-
-        row_second = workers._row(wid)
-        assert row_second["status"] == "blocked"
-        assert row_second["wake_at"] == 0.0  # NOT scheduled!
-        assert row_second["retries"] == 1
+        # But when retry_after_min IS passed (e.g. connector slowdown), clamping and wake_at still work
+        wid2 = "w0002"
+        now2 = clock()
+        store._run(
+            "INSERT INTO workers(id, kind, title, task, status, tab, created_at, updated_at, deadline_at, minutes, max_steps, token_cap) "
+            "VALUES(?, 'general', 'Connector job', 'Sync', 'running', 'task:w0002', ?, ?, ?, 60, 200, 1000000)",
+            (wid2, now2, now2, now2 + 3600),
+        )
+        current_worker.set(wid2)
+        workers._live[wid2] = _Live()
+        res2 = asyncio.run(report_tool.handler({"status": "blocked", "summary": "Rate limited", "retry_after_min": 15}))
+        assert workers._live[wid2].report["retry_after_min"] == 15
+        asyncio.run(workers._settle(wid2, ("blocked", "Rate limited", "", False), None))
+        row2 = workers._row(wid2)
+        assert row2["status"] == "blocked"
+        assert row2["wake_at"] == pytest.approx(now2 + 900.0)
+        pub2 = workers.get(wid2)
+        assert pub2["status"] == "waiting"
     finally:
         current_worker.reset(token)
 
 
-# ------------------------------------------------------------------ 2. Handoff mentions retry time
-def test_handoff_mentions_retry_time(tmp_path):
+# ------------------------------------------------------------------ 2. Handoff on site refusal
+def test_handoff_on_site_refusal_gives_takeover_and_no_retry_time(tmp_path):
     store = Store(str(tmp_path / "kelo.db"))
     clock = FakeClock()
     handoffs = []
@@ -206,8 +190,8 @@ def test_handoff_mentions_retry_time(tmp_path):
     wid = "w0002"
     now = clock()
     store._run(
-        "INSERT INTO workers(id, kind, title, task, status, tab, created_at, updated_at, deadline_at, minutes, max_steps, token_cap) "
-        "VALUES(?, 'browser', 'Shop job', 'Buy gift', 'running', 'task:w0002', ?, ?, ?, 60, 200, 1000000)",
+        "INSERT INTO workers(id, kind, title, task, status, tab, created_at, updated_at, deadline_at, minutes, max_steps, token_cap, last_url) "
+        "VALUES(?, 'browser', 'Shop job', 'Buy gift', 'running', 'task:w0002', ?, ?, ?, 60, 200, 1000000, 'https://shop.example/item')",
         (wid, now, now, now + 3600),
     )
 
@@ -215,38 +199,19 @@ def test_handoff_mentions_retry_time(tmp_path):
     try:
         workers._live[wid] = _Live()
         report_tool = workers.report_tool()
-        asyncio.run(report_tool.handler({"status": "blocked", "summary": "Site returned HTTP 403", "retry_after_min": 10}))
+        asyncio.run(report_tool.handler({
+            "status": "blocked",
+            "reason": "site_refused",
+            "summary": "Site returned HTTP 403",
+        }))
         asyncio.run(workers._settle(wid, ("blocked", "Site returned HTTP 403", "", False), None))
 
         assert len(handoffs) == 1
         row, msg, head = handoffs[0]
         assert HANDOFF_MARK in msg
-        # Handoff must mention that the job will retry by itself at HH:MM
-        expected_time = workers._format_time(now + 600.0)
-        assert f"retry by itself at {expected_time}" in msg
-        assert f"try again at {expected_time}" in msg
-
-        # Second block handoff (needs_input with cookies) mentions quick_replies
-        handoffs.clear()
-        workers._live[wid] = _Live()
-        # the cookie advice goes by the typed need, never by the words of the summary (hc-final-a, commit e35745b7)
-        asyncio.run(report_tool.handler({"status": "needs_input", "summary": "Site keeps blocking. Clear cookies?",
-                                         "need": "site_data_reset"}))
-        asyncio.run(workers._settle(wid, ("needs_input", "Site keeps blocking. Clear cookies?", "", False), None))
-        assert len(handoffs) == 1
-        _, msg2, _ = handoffs[0]
-        assert "quick_replies" in msg2
-        assert "browser_forget_site" in msg2
-
-        # Third block handoff (blocked without retry) mentions live view / another shop
-        handoffs.clear()
-        workers._live[wid] = _Live()
-        asyncio.run(report_tool.handler({"status": "blocked", "summary": "Blocked again permanently"}))
-        asyncio.run(workers._settle(wid, ("blocked", "Blocked again permanently", "", False), None))
-        assert len(handoffs) == 1
-        _, msg3, _ = handoffs[0]
-        assert "site does not let Kelo's browser in right now" in msg3
-        assert "live view" in msg3
+        assert "did not let Kelo's browser in" in msg
+        assert "take over the browser" in msg
+        assert "retry by itself" not in msg
     finally:
         current_worker.reset(token)
 
@@ -306,36 +271,22 @@ async def test_browser_forget_site_removes_registrable_cookies_storage_and_asks_
 
 # ------------------------------------------------------------------ 4. blocked_note wording
 def test_blocked_note_wording():
-    # 1. First block in a job
-    note1 = blocked_note("example.test", 'HTTP 403 "Access Denied"', job=True, count=1)
-    assert "is blocking Kelo's browser" in note1
-    assert 'HTTP 403 "Access Denied"' in note1
-    assert "Do not retry" in note1
-    assert "report(status='blocked'" in note1
-    assert "retry_after_min=10" in note1
+    # 1. Job variant: any count -> one text
+    for count in (1, 2, 3):
+        note = blocked_note("example.test", 'HTTP 403 "Access Denied"', job=True, count=count)
+        assert "is blocking Kelo's browser: it answered HTTP 403 \"Access Denied\"" in note
+        assert "Stop on this site: do not retry, open another address of it or switch to its mobile site." in note
+        assert "Call report(status='blocked', reason='site_refused', summary=...)" in note
+        assert "the user can take over the browser to sign in or get past it." in note
+        assert "retry_after_min" not in note
+        assert "clear that site's cookies" not in note
 
-    # 2. Second block in a job
-    note2 = blocked_note("example.test", 'HTTP 403 "Access Denied"', job=True, count=2)
-    assert "is blocking Kelo's browser" in note2
-    assert "keeps blocking" in note2
-    assert 'HTTP 403 "Access Denied"' in note2
-    assert "report(status='needs_input'" in note2
-    assert "clear that site's cookies" in note2
-
-    # 3. Main turn (not a job)
-    note3 = blocked_note("example.test", 'HTTP 403 "Access Denied"', job=False)
-    assert "is blocking Kelo's browser" in note3
-    assert 'HTTP 403 "Access Denied"' in note3
-    assert "Do not retry" in note3
-    assert "retry in 10 minutes as a background job" in note3
-
-    # 4. Third block in a job
-    note4 = blocked_note("example.test", 'HTTP 403 "Access Denied"', job=True, count=3)
-    assert "is blocking Kelo's browser" in note4
-    assert 'HTTP 403 "Access Denied"' in note4
-    assert "Do not retry" in note4
-    assert "report(status='blocked'" in note4
-    assert "without retry_after_min" in note4
+    # 2. Main turn (chat variant)
+    note_chat = blocked_note("example.test", 'HTTP 403 "Access Denied"', job=False)
+    assert "is blocking Kelo's browser: it answered HTTP 403 \"Access Denied\"" in note_chat
+    assert "Do not retry." in note_chat
+    assert "Tell the user plainly that it refused Kelo's browser and that they can take over the browser to sign in or get past it." in note_chat
+    assert "retry in 10 minutes" not in note_chat
 
 
 # ------------------------------------------------------------------ 5. Browser block limits and short-circuit

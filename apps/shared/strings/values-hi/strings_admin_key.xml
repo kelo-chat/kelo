@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_admin_key.xml (generated from values/strings_admin_key.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="admin_key_add">खर्च और बैलेंस भी देखें</string>
     <string name="admin_key_title">खर्च और बैलेंस के लिए एडमिन key</string>

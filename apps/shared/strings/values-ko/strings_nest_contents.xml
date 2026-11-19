@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_nest_contents.xml (generated from values/strings_nest_contents.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="nest_contents_open">설치될 내용 전체 보기</string>
     <string name="nest_contents_title">설치될 내용</string>

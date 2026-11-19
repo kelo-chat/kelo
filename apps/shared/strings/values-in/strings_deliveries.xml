@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- id text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="deliveries_label">Pesan yang Kelo mulai setiap hari</string>
-    <string name="deliveries_about">Kelo menggabungkan hal yang ingin disampaikannya ke dalam sejumlah pesan per hari ini. Jika 0, Kelo hanya mengirim yang tidak bisa menunggu.</string>
-    <plurals name="deliveries_today">
-        <item quantity="other">Terkirim %d kali hari ini</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="other">%d item ditahan</item>
     </plurals>
@@ -13,7 +8,6 @@
     <string name="deliveries_held_about">Kelo menyimpan ini untuk pesan berikutnya. Kelo memeriksanya lagi sebelum mengirim dan membuang yang sudah tidak penting.</string>
     <string name="deliveries_held_empty">Saat ini tidak ada yang ditahan.</string>
     <string name="deliveries_held_until">Ditahan sampai %1$s</string>
-    <string name="deliveries_why_slots">Menunggu pesan berikutnya hari ini</string>
     <string name="deliveries_why_cap">Tidak cukup mendesak untuk mengirim lebih banyak hari ini</string>
     <string name="deliveries_why_reply">Menunggu jawaban Anda atas pesan terakhir</string>
     <string name="deliveries_why_other">Menunggu waktu yang lebih tepat</string>

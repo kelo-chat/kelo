@@ -308,3 +308,111 @@ def test_the_mac_server_bundle_row_has_its_own_signed_statement():
     assert text.splitlines()[1] == "platform=mac-server-bundle"
     assert statement("mac-server-bundle", row) != statement("mac", row)
     assert "mac-server-bundle" in PLATFORM_KEYS
+
+
+# ---------------------------------------------------------------------------------------------------------------- store rows (kelo-store-v1)
+STORE = {"channel": "play", "version": "0.10.3", "build": 402600, "date": "2026-11-18"}
+
+
+def test_store_row_signs_and_verifies(tmp_path):
+    path = tmp_path / "k" / "signing.key"
+    kid, pub = new_key(path)
+    signed = release_sign.sign_store_row("android", STORE, path, tmp_path / "root")
+    assert signed["key"] == kid and set(signed) == set(STORE) | {"sig", "key"}
+    assert release_sign.verify_store_row("android", signed, {kid: pub}) is True
+    assert release_sign.verify_store_row("android", signed) is False      # the real key list does not know this key
+
+
+def test_store_row_with_a_changed_field_fails(tmp_path):
+    path = tmp_path / "k" / "signing.key"
+    kid, pub = new_key(path)
+    keys = {kid: pub}
+    signed = release_sign.sign_store_row("android", {**STORE, "min_server": "0.10.0"}, path, tmp_path / "root")
+    assert release_sign.verify_store_row("android", signed, keys) is True
+    for field, value in {"version": "0.10.4", "build": 402601, "min_server": "0.10.1", "date": "2026-11-19", "channel": "appstore"}.items():
+        assert release_sign.verify_store_row("android", {**signed, field: value}, keys) is False, field
+    assert release_sign.verify_store_row("android", {k: v for k, v in signed.items() if k != "min_server"}, keys) is False
+    assert release_sign.verify_store_row("ios", signed, keys) is False
+
+
+def test_store_channel_must_match_platform():
+    with pytest.raises(ValueError):
+        release_sign.store_statement("android", {**STORE, "channel": "appstore"})
+    with pytest.raises(ValueError):
+        release_sign.store_statement("ios", STORE)
+    with pytest.raises(ValueError):
+        release_sign.store_statement("mac", {**STORE, "channel": "download"})
+    for bad in ({"build": True}, {"build": 0}, {"date": "2026-13-01"}, {"version": "1.2"}, {"min_server": "x"}):
+        with pytest.raises(ValueError):
+            release_sign.store_statement("android", {**STORE, **bad})
+
+
+def test_store_signature_never_verifies_as_a_file_row_or_notices(tmp_path):
+    path = tmp_path / "k" / "signing.key"
+    kid, pub = new_key(path)
+    keys = {kid: pub}
+    store = release_sign.sign_store_row("android", STORE, path, tmp_path / "root")
+    file_row = {"file": "kelo-0.10.3.apk", "version": "0.10.3", "size": 5, "sha256": "c" * 64}
+    as_file = sign_row("android", file_row, path, tmp_path / "root")
+    assert verify_row("android", {**file_row, "sig": store["sig"], "key": kid}, keys) is False
+    assert release_sign.verify_notices([], store["sig"], kid, keys) is False
+    assert release_sign.verify_store_row("android", {**STORE, "sig": as_file["sig"], "key": kid}, keys) is False
+    notices_sig, notices_kid = release_sign.sign_notices([], path, tmp_path / "root")
+    assert release_sign.verify_store_row("android", {**STORE, "sig": notices_sig, "key": notices_kid}, keys) is False
+
+
+def test_store_statement_bytes():
+    text = release_sign.store_statement("desktop", {"channel": "msstore", "version": "1.0.2", "build": 100000002,
+                                                    "min_server": "0.10.1", "date": "2026-11-18"})
+    assert text == (b"kelo-store-v1\nplatform=desktop\nchannel=msstore\nversion=1.0.2\nbuild=100000002\n"
+                    b"min_server=0.10.1\ndate=2026-11-18\n")
+    assert release_sign.store_statement("ios", {"channel": "appstore", "version": "0.10.4", "build": 26111411, "date": "2026-11-18"}) == (
+        b"kelo-store-v1\nplatform=ios\nchannel=appstore\nversion=0.10.4\nbuild=26111411\nmin_server=\ndate=2026-11-18\n")
+
+
+def test_sign_app_keeps_store_rows(tmp_path, signing):
+    volume = tmp_path / "vol"
+    dmg = tmp_path / "Kelo.dmg"
+    dmg.write_bytes(DMG)
+    store = {"android": {"play": {"channel": "play", "version": "0.10.3", "build": 402600, "date": "2026-11-18", "sig": "A" * 86 + "==",
+                                 "key": "0123456789abcdef"}}}
+    Publisher(signing.root, run=FakeDocker(volume), out=lambda s: None).publish("mac", dmg, "1.0.8", unsigned=True)
+    raw = json.loads((volume / "manifest.json").read_text())
+    (volume / "manifest.json").write_text(json.dumps({**raw, "store": store}))
+    Publisher(signing.root, run=FakeDocker(volume), out=lambda s: None).sign("mac", COMMIT, signing.path)
+    assert json.loads((volume / "manifest.json").read_text())["store"] == store
+
+
+def _store_record():
+    from assistant.app_releases import AppReleases
+
+    def e(version, build, channel):
+        return {"version": version, "build": build, "channel": channel, "date": "2026-11-18"}
+    return AppReleases.parse({"android": [e("0.10.2", 402500, "play"), e("0.10.3", 402600, "play")],
+                              "ios": [e("0.10.1", 26111401, "appstore")], "desktop": [e("1.0.2", 100000002, "download")]})
+
+
+def test_publish_store_signs_the_newest_store_release_per_platform(tmp_path, signing):
+    from assistant.downloads import StorePublisher
+
+    volume, lines = tmp_path / "vol", []
+    StorePublisher(signing.root, run=FakeDocker(volume), out=lines.append).publish_store(_store_record(), signing.path)
+    store = json.loads((volume / "manifest.json").read_text())["store"]
+    assert set(store) == {"android", "ios"} and set(store["android"]) == {"play"} and set(store["ios"]) == {"appstore"}
+    assert store["android"]["play"]["version"] == "0.10.3" and store["ios"]["appstore"]["version"] == "0.10.1"
+    assert release_sign.verify_store_row("android", store["android"]["play"]) and release_sign.verify_store_row("ios", store["ios"]["appstore"])
+    assert Downloads(volume).latest()["store"] == store                                  # the readers see the same rows
+    assert any(line.startswith("Published store releases: android 0.10.3 (play), ios 0.10.1 (appstore)") for line in lines)
+
+
+def test_publish_store_refuses_without_a_key_and_on_a_non_operator_copy(tmp_path, signing):
+    from assistant.downloads import PublishError, StorePublisher, run_publish_store
+
+    volume = tmp_path / "vol"
+    with pytest.raises(PublishError, match="no signing key"):
+        StorePublisher(signing.root, run=FakeDocker(volume), out=lambda s: None).publish_store(_store_record(), None)
+    assert not (volume / "manifest.json").exists()
+    copy, lines, docker = tmp_path / "copy", [], FakeDocker(volume)
+    copy.mkdir()
+    assert run_publish_store(SimpleNamespace(sign_key=str(signing.path)), copy, run=docker, out=lines.append, record=_store_record()) == 1
+    assert lines and not docker.calls and not (volume / "manifest.json").exists()

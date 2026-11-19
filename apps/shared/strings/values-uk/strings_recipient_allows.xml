@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_recipient_allows.xml (generated from values/strings_recipient_allows.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="trail_kind_mail">пошта</string>
     <string name="trail_kind_file">файл</string>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- in text for strings_connector_perms.xml (generated from values/strings_connector_perms.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<!-- id text for strings_connector_perms.xml (generated from values/strings_connector_perms.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="perm_title">Yang boleh dilakukan Kelo</string>
     <string name="perm_about">Izinkan: tanpa kartu. Tanya: kartu setiap kali. Mati: Kelo tidak melakukannya. Pembayaran dan pendaftaran selalu bertanya.</string>

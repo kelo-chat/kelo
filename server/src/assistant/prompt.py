@@ -110,9 +110,25 @@ def schedules_line(rows: list[dict[str, Any]] | None, tz_name: str | None, now: 
     return (f"Next scheduled jobs (user's local time): {shown}" + (f" (+{more} more)" if more else "") + f". {tools}.")
 
 
+def watchers_line(rows: list[dict[str, Any]] | None) -> str:
+    """The watchers (Watchers.list() rows) in one line: the ones on, and how many are off. Their page-derived values and addresses
+    never go here (the page can say anything); watch_list shows them with their state."""
+    if not rows:
+        return ""
+    on = [r for r in rows if r.get("enabled")]
+    off = len(rows) - len(on)
+    tools = "watch_list shows them all, watch_update changes one."
+    if not on:
+        return f"Watchers: none on ({off} off); {tools}"
+    shown = "; ".join(f"#{r['id']} {str(r.get('name') or '')[:60]} (on, every {r.get('every_minutes')} min)" for r in on[:5])
+    more = len(on) - min(len(on), 5)
+    return f"Watchers: {shown}" + (f" (+{more} more on)" if more else "") + (f" (+{off} off)" if off else "") + f"; {tools}"
+
+
 def turn_lines(*, tz_name: str | None, now: datetime | None = None, agent_name: str = "", user_name: str = "",
                goals: list[dict[str, Any]] | None = None, provider: str = "", model: str = "",
-               schedules: list[dict[str, Any]] | None = None, tone: str = "", limits: str = "", first_chat: str = "") -> list[str]:
+               schedules: list[dict[str, Any]] | None = None, tone: str = "", limits: str = "", first_chat: str = "",
+               follow: list[dict[str, Any]] | None = None, watchers: list[dict[str, Any]] | None = None) -> list[str]:
     """What changes every turn, as lines: the time, the calendar, the model, names, how to talk to the user, the next scheduled jobs
     and the goals being tracked. `first_chat`: the first-conversation block (first_chat.py), only while that conversation is open."""
     out = [now_line(tz_name, now),
@@ -129,6 +145,10 @@ def turn_lines(*, tz_name: str | None, now: datetime | None = None, agent_name: 
         out.append(limits)
     if line := schedules_line(schedules, tz_name, now):
         out.append(line)
+    if line := watchers_line(watchers):
+        out.append(line)
+    if line := follow_line(follow, tz_name, now):
+        out.append(line)
     if block := goals_block(goals):
         out.append(block)
     if first_chat:
@@ -137,6 +157,23 @@ def turn_lines(*, tz_name: str | None, now: datetime | None = None, agent_name: 
 
 
 GOAL_LINES, GOAL_CHARS = 8, 2_200
+FOLLOW_LINES = 5
+
+
+def follow_line(rows: list[dict[str, Any]] | None, tz_name: str | None, now: datetime | None = None) -> str:
+    """The next few things Kelo keeps for the owner (follow items, soonest first) in one line, with the local date, the title and the
+    source; "" when there are none. The list itself is the follow_list tool's: the line only tells the model that it is there."""
+    if not rows:
+        return ""
+    tz = ZoneInfo(valid_timezone(tz_name) or "UTC")
+    shown = []
+    for r in rows[:FOLLOW_LINES]:
+        local = datetime.fromtimestamp(float(r.get("starts_at") or 0), tz)
+        day = local.strftime("%Y-%m-%d") if r.get("all_day") else local.strftime("%Y-%m-%d %H:%M")
+        shown.append(f"{day} {str(r.get('title') or '')[:80]} ({r.get('source') or 'unknown'})")
+    more = len(rows) - min(len(rows), FOLLOW_LINES)
+    return ("Kept for the owner (next items, user's local time): " + "; ".join(shown) + (f" (+{more} more)" if more else "")
+            + ". follow_list shows each one in full, with what Kelo does for it.")
 
 
 def goal_line(g: dict[str, Any]) -> str:
@@ -235,17 +272,19 @@ class PromptBuilder:
     def build(self, *, agent_name: str = "", user_name: str = "", provider: str = "", model: str = "",
               goals: list[dict[str, Any]] | None = None, tz_name: str | None = None, now: datetime | None = None,
               connected: set[str] | None = None, schedules: list[dict[str, Any]] | None = None, tone: str = "",
-              limits: str = "", first_chat: str = "") -> str:
+              limits: str = "", first_chat: str = "", follow: list[dict[str, Any]] | None = None,
+              watchers: list[dict[str, Any]] | None = None) -> str:
         """The whole prompt in one text: the stable part, then this turn's lines (see build_parts)."""
         stable, turn = self.build_parts(agent_name=agent_name, user_name=user_name, provider=provider, model=model, goals=goals,
                                         tz_name=tz_name, now=now, connected=connected, schedules=schedules, tone=tone,
-                                        limits=limits, first_chat=first_chat)
+                                        limits=limits, first_chat=first_chat, follow=follow, watchers=watchers)
         return f"{stable}\n\n{turn}"
 
     def build_parts(self, *, agent_name: str = "", user_name: str = "", provider: str = "", model: str = "",
                     goals: list[dict[str, Any]] | None = None, tz_name: str | None = None, now: datetime | None = None,
                     connected: set[str] | None = None, schedules: list[dict[str, Any]] | None = None,
-                    tone: str = "", limits: str = "", first_chat: str = "") -> tuple[str, str]:
+                    tone: str = "", limits: str = "", first_chat: str = "",
+                    follow: list[dict[str, Any]] | None = None, watchers: list[dict[str, Any]] | None = None) -> tuple[str, str]:
         """(stable, turn). Stable, from what changes least to most: rules, skills, learned preferences (at most nightly), the user's
         files (when written). It is byte-for-byte the same from turn to turn until one of those changes, so a provider that caches
         the start of the request reuses it. Turn: "## This Turn" (the clock to the minute, calendar, model, names, how to talk to
@@ -266,5 +305,6 @@ class PromptBuilder:
             parts.append(files)
         turn = "## This Turn\n" + "\n".join(turn_lines(tz_name=tz_name, now=now, agent_name=agent_name, user_name=user_name,
                                                          goals=goals, provider=provider, model=model, schedules=schedules,
-                                                         tone=tone, limits=limits, first_chat=first_chat))
+                                                         tone=tone, limits=limits, first_chat=first_chat, follow=follow,
+                                                         watchers=watchers))
         return "\n\n".join(parts), turn

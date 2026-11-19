@@ -44,6 +44,7 @@ def test_there_is_one_page_per_area_with_a_title_and_a_summary(docs):
     ("can you tidy my email inbox", "connectors"),
     ("how do I make a reminder that repeats every day", "schedules-and-watches"),
     ("watch a page and tell me when the price drops", "schedules-and-watches"),
+    ("what are the send times and does urgent news count toward the most a day", "schedules-and-watches"),
     ("forget something you remembered about me", "memory-and-forget"),
     ("do you ask before paying for something", "payments"),
     ("what happens when the order outcome is unknown after pressing pay", "payments"),

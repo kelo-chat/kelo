@@ -53,7 +53,7 @@ says briefly that it started.
   runs, handoff turns. A job of kind browser / general / research keeps them; the checkout and phone sets are unchanged. The chat's tool search
   (`find_tools`) never lists the taken tools. A new `browser_*` tool is a job's until it is added to `BROWSER_CHAT_KEEPS`.
 - What the chat keeps, and why: `browser_open` (opens a public address and returns its text, as reading), `browser_read` (the page text again),
-  `browser_view` (desktop / phone view, reloads, no click), `browser_downloads` and `browser_save_download` and `browser_save_pdf` (list and keep
+  `browser_downloads` and `browser_save_download` and `browser_save_pdf` (list and keep
   what a tab downloaded, or the page as a file), `browser_site_state` (lists and moves saved sign-in state), `browser_forget_site` (clears a
   site's data only after the owner's card; the chat's answer to a `site_data_reset` question). Also kept as before: `web_search`, `web_fetch`,
   `begin_order`, `request_login`, `vault_status`, `delegate`, the `worker_*` tools and `resume`.
@@ -143,3 +143,25 @@ instance without touching it:
 - on exit, also on failure or Ctrl-C, removes the container (and with it the database copy) and the image tag.
 The eval's own checks stay: OpenAI is refused, `--yes` is needed, CI refuses. The run spends the owner's model quota (about 5-30 requests a
 run); it needs the owner's OK to start.
+
+## Product search (2026-11-19, card p-shopping-like-reference)
+The shopping flow matches the reference flow (F1-F9):
+1. Ask only required attributes (deciding fit) before searching; no questions about price or tastes.
+2. Product search is one `delegate` job of kind `browser`. Search results/articles inform the brief or rankings, never direct offers or prices.
+3. The job visits sellers' home pages, opens product pages, and calls `report(products=[...])`. The server verifies that each product's page was opened by the job and records it in `product_results` with a result ID.
+4. The handoff instructs the chat to present products via a choice card (`quick_replies`, options carrying `product: <result id>`), auto-filling seller price and picture from the verified record.
+5. If a merchant blocks or refuses access, the job checks up to two other established sellers of the same item in the user's country unless the user asked for that seller only. The chat discloses that the requested merchant could not be checked, offers takeover/sign-in, and offers verified results from the other sellers as a choice card (or only the refusal and sign-in path if none could be opened; never text search prices). Nightly rechecks exclude claims about things offered to buy.
+
+Table of differences (rows 2-12):
+- Products source: pure browser worker finding; verified against opened pages and stored with result IDs in `product_results`.
+- Brief template: structured brief template in shopping skill without hardcoded merchant names (at most 3 sellers / 10 products, dedicated product pages, in-stock definition, discovery only).
+- Typed products: `report(products=[...])` verified against transcript and stored as `ProductResults`.
+- No snippet prices: web_search description, shared shopping text, and skill prohibit offering prices from snippets or articles; never shown even as information.
+- Choice cards: `quick_replies` cards accept `product: <id>`, server fills price/picture, rejects manual pricing.
+- Handoff & refinement: clear items purchased directly; choices presented as cards; selection passed back via `worker_message`.
+- Merchant refusal: requested merchant checked first; on refusal, continues to up to two other established sellers (unless user specified only that seller); plain refusal notice + takeover offer + card from verified results of other sellers; no search snippet prices.
+- Block handling: immediate stop on block with `site_refused` reason; no retry ladder.
+- Recheck exclusion: nightly extractor tags `buying: true` on candidate purchase claims and drops them.
+- Reviews: used only to rank choices, never to price.
+- Single report: one job reports once when finished.
+

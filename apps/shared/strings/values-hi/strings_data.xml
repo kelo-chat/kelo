@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- hi text for strings_data.xml (edit freely, keep the names) -->
+<!-- hi text for strings_data.xml (generated from values/strings_data.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="data_title">आपका डेटा</string>
     <string name="data_intro">Kelo आपके बारे में जो रखता है उसकी एक प्रति डाउनलोड करें, किसी दूसरे असिस्टेंट की यादें लाएँ, या नए सिरे से शुरू करें।</string>

@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 # The other products' names, kept encoded so that this file itself does not name them.
 BANNED = re.compile("|".join(codecs.decode(w, "rot13") for w in (r"\oZhfr\o", r"zhfr[\.\-_]", r"\oUngpu\o", r"/bcg/ungpu", r"\oCvpxyr\o",
                                                                    r"\oZrgn NV\o", r"Zrgn'f")), re.I)
-SCANNED = ("server/src", "server/tests", "server/content", "docs", "scripts", "NOTICE", "compose.yml", "docker/server.Dockerfile", "docker/cli.Dockerfile", "docker/workroom.Dockerfile",
+SCANNED = ("server/src", "server/tests", "server/content", "prompts", "docs", "scripts", "NOTICE", "compose.yml", "docker/server.Dockerfile", "docker/cli.Dockerfile", "docker/workroom.Dockerfile",
            "pyproject.toml", ".dockerignore")
 
 

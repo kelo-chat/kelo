@@ -395,8 +395,9 @@ def effect_of(tool: Any, args: dict[str, Any] | None, *, site: str = "", commit:
     if name == "email_update":
         box = str(args.get("account") or "").strip().casefold().removeprefix("mail-") or "mail"
         trash = str(args.get("action") or "").strip().lower() == "trash"
-        return Effect("delete" if trash else "change", mail_connector(str(args.get("account") or ""), accounts), [f"connector:{box}"], "",
-                      "email_trash" if trash else name)
+        # only trash changes what leaves the owner's mailbox: read, unread, flag, archive and move name no outside place (no card after outside text)
+        return Effect("delete" if trash else "change", mail_connector(str(args.get("account") or ""), accounts),
+                      [f"connector:{box}"] if trash else [], "", "email_trash" if trash else name)
     if name == "phone_send_text":
         return Effect("send", "phone", [norm_target(str(args.get("to") or ""))], str(args.get("text") or ""), name)
     if name == "phone_call":

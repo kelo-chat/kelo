@@ -27,9 +27,40 @@ class UpdatePopupTest {
 
     @Test fun aStoreBuildTakesTheServersVersionAndOpensTheStore() {
         for (channel in listOf("play", "appstore", "msstore")) {
-            assertEquals(UpdatePopupRules.Source.STORE, UpdatePopupRules.candidate(state("0.9.0"), "0.9.1", channel)!!.source)
+            assertEquals(UpdatePopupRules.Source.STORE, UpdatePopupRules.candidate(state("0.9.0", rel("0.9.1")), "0.9.1", channel)!!.source)
         }
         assertEquals("0.9.1", UpdatePopupRules.candidate(state("0.9.0", rel("0.9.5")), "0.9.1", "play")!!.version)
+    }
+
+    @Test fun aStoreBuildNeedsTheStoreToSayNewerFirst() {
+        // the store says none, although the server names a newer app (its signed store row exists): no popup
+        for (channel in listOf("play", "appstore", "msstore")) {
+            assertNull(UpdatePopupRules.candidate(state("0.9.0"), "0.9.1", channel))
+        }
+    }
+
+    @Test fun aStoreOfferWithoutTheServersNameShowsNothing() {
+        // the store has a newer build, but the server names none for this server (the store row's min_server is above it)
+        assertNull(UpdatePopupRules.candidate(state("0.9.0", rel("0.9.1")), null, "play"))
+        assertNull(UpdatePopupRules.candidate(state("0.9.0", rel("0.9.1")), " ", "appstore"))
+    }
+
+    @Test fun aStoreBuildWithoutAnOfferOfItsOwnTakesTheStoresWordAsTheOffer() {
+        // the Windows Store copy has no Release offer: the Store's own answer (storeNewer) is what says newer comes first
+        val storeSaysNewer = state("0.9.0").copy(storeNewer = true)
+        assertEquals(UpdatePopupRules.Source.STORE, UpdatePopupRules.candidate(storeSaysNewer, "0.9.1", "msstore")!!.source)
+        assertEquals("0.9.1", UpdatePopupRules.candidate(storeSaysNewer, "0.9.1", "msstore")!!.version)
+        // the Store says none: no popup, although the server names a newer app
+        assertNull(UpdatePopupRules.candidate(state("0.9.0"), "0.9.1", "msstore"))
+        // the Store says newer but the server names none for this server (min_server): nothing
+        assertNull(UpdatePopupRules.candidate(storeSaysNewer, null, "msstore"))
+        // the Store's word is not the file build's: it takes its news from the server and opens its own updater
+        assertEquals(UpdatePopupRules.Source.UPDATER, UpdatePopupRules.candidate(storeSaysNewer, "0.9.1", "download")!!.source)
+    }
+
+    @Test fun aStoreBuildNeverTakesTheFileOffer() {
+        // a store build's notice comes from the store, not from kelo.chat's file rows
+        assertNull(UpdatePopupRules.candidate(state("0.9.0", null), null, "play"))
     }
 
     @Test fun anOlderOrEqualVersionNeverPopsUp() {

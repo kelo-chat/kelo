@@ -1,5 +1,4 @@
-"""Proactive messages that cannot go out now are held until their deadline, judged again when they are released, and bundled into the
-day's delivery slots (docs/proactive.md). Fake model, fake clock, fake mail."""
+"""Proactive messages that cannot go out now are held until their deadline, judged again when they are released, and bundled one message per pass, with no daily count of messages (docs/proactive.md). Fake model, fake clock, fake mail."""
 
 import json
 from datetime import datetime
@@ -91,63 +90,52 @@ async def test_a_held_item_is_not_judged_twice_when_its_source_shows_it_again(tm
     assert len(judge.requests) == n + 1 and len(new_items) == 1         # only the held one is asked about, not the mails seen before
 
 
-async def test_two_delivery_slots_a_day_and_the_rest_waits_for_the_next_delivery(tmp_path):
+async def test_there_is_no_daily_count_of_messages_only_the_daily_cap(tmp_path):
     mail = FakeMail([])
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
     p.update(daily_regular=10, daily_total=20, every_minutes=30, wake_start="00:00", wake_end="00:00")
-    assert p.config()["daily_deliveries"] == 2
-    for n in (1, 2):
+    assert "daily_deliveries" not in p.config() and "today_deliveries" not in p.public()
+    for n in (1, 2, 3, 4):                                             # four passes, one message each: none waits for a "slot"
         one(mail, n)
         clock.t += 3600
         assert (await p.run())["sent"] == 1
-    assert p.today_deliveries() == 2
-    one(mail, 3)
-    clock.t += 3600
-    r = await p.run()
-    assert r["sent"] == 0 and r["held"] == 1 and p.held()[0]["why"] == "slots" and len(sent) == 2
-    one(mail, 4)
-    clock.t = ts(2026, 11, 8, 9, 0)                                    # next day: one message carries the held one and the new one
-    r = await p.run()
-    assert r["sent"] == 2 and len(sent) == 3 and sent[-1]["message"].count("•") == 2 and p.held() == []
+    assert len(sent) == 4 and p.held() == []
 
 
-async def test_urgent_items_are_never_held_by_the_slots(tmp_path):
+async def test_a_stored_message_count_from_before_is_ignored_and_dropped_on_the_next_save(tmp_path):
     mail = FakeMail([])
-    judge = Judge(lambda items: [{"n": n, "urgency": "지금", "reason": "r", "message": f"M{n}", "due": "09:30"} for n, _ in items])
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
-    p.update(daily_regular=10, daily_total=20, daily_deliveries=1, daily_now=5)
+    cfg = json.loads(store.meta("proactive:config"))
+    store.set_meta("proactive:config", json.dumps({**cfg, "daily_deliveries": 0, "daily_regular": 10, "daily_total": 20}))
+    assert "daily_deliveries" not in p.config()
     one(mail, 1)
-    assert (await p.run())["sent"] == 1                                # the one ordinary slot
-    p.stream_fn = judge
-    one(mail, 2)
-    clock.t += 600
-    assert (await p.run())["sent"] == 1 and sent[-1]["urgency"] == "지금" and p.held() == []
-    assert p.today_deliveries() == 1                                    # an urgent message is not an ordinary delivery
-    p.update(daily_deliveries=0)
-    p.stream_fn = all_as("보통")
-    one(mail, 3)
-    clock.t += 600
-    assert (await p.run())["held"] == 1
+    assert (await p.run())["sent"] == 1 and p.held() == []             # 0 used to mean "only what cannot wait"
+    p.update(daily_deliveries=5)                                       # an unknown key: ignored, no error
+    assert "daily_deliveries" not in json.loads(store.meta("proactive:config"))
+
+
+def test_held_rows_that_waited_for_a_slot_wait_as_over_the_cap(tmp_path):
+    store, home, clock, p, sent = setup(tmp_path, all_as("보통"), FakeMail([]))
+    store._run("INSERT INTO proactive_held(key, source, title, urgency, reason, message, cand, held_at, expires_at, why) "
+               "VALUES(?,?,?,?,?,?,?,?,?,?)", ("mail:a:1", "mail", "a", "보통", "r", "m", "{}", clock.t, clock.t + 3600, "slots"))
+    Proactive(store, home, stream_fn=all_as("보통"), model=lambda: ("p", "m"), clock=clock)   # the server starts again
+    assert [h["why"] for h in p.held()] == ["over_cap"]
 
 
 async def test_the_unanswered_guard_holds_instead_of_dropping(tmp_path):
     mail = FakeMail(mails("a", "b", "c"))
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
-    p.update(daily_regular=10, daily_total=20, daily_deliveries=10, unanswered_limit=2)
+    p.update(daily_regular=10, daily_total=20, unanswered_limit=2)
     r = await p.tick()
     assert r["sent"] == 2 and r["held"] == 1 and p.held()[0]["why"] == "waiting_for_reply"
 
 
 async def test_api_and_settings(tmp_path):
-    import pytest
     mail = FakeMail(mails("a", "b", "c"))
     store, home, clock, p, sent = setup(tmp_path, all_as("보통"), mail)
     await p.run()
     pub = p.public()
-    assert pub["daily_deliveries"] == 2 and pub["today_deliveries"] == 1 and pub["held"] == 1
-    for bad in (-1, 11):
-        with pytest.raises(ValueError):
-            p.update(daily_deliveries=bad)
+    assert "daily_deliveries" not in pub and "today_deliveries" not in pub and pub["held"] == 1
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from assistant.proactive import proactive_routes
@@ -156,8 +144,9 @@ async def test_api_and_settings(tmp_path):
     c = TestClient(app)
     items = c.get("/api/proactive/held").json()["items"]
     assert [i["title"] for i in items] == ["c"] and set(items[0]) == {"key", "source", "title", "urgency", "message", "why", "held_at", "expires_at"}
-    assert c.put("/api/proactive", json={"daily_deliveries": 3}).json()["daily_deliveries"] == 3
-    assert c.put("/api/proactive", json={"daily_deliveries": 99}).status_code == 422
+    r = c.put("/api/proactive", json={"daily_deliveries": 3})       # released apps may still send it: accepted, ignored
+    assert r.status_code == 200 and "daily_deliveries" not in r.json() and "daily_deliveries" not in p.config()
+    assert c.put("/api/proactive", json={"daily_deliveries": 99}).status_code == 200
 
 
 async def test_forgetting_a_connector_deletes_its_held_items(tmp_path):

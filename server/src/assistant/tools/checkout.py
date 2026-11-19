@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
+from .page_paths import with_path
+
 REFUSAL = ("this is a checkout step: use checkout_review / checkout_submit. checkout_review states what is bought and the total shown "
            "on the page (the owner's card or their standing permission covers it); checkout_submit then presses the pay control "
            "recorded at the review. Other steps of the checkout (lists, fields, shipping) work with browser_type and the fill tools. If you have no "
@@ -31,7 +33,6 @@ REFUSAL = ("this is a checkout step: use checkout_review / checkout_submit. chec
            "url = this page); a background job reports done with a checkout brief in details instead.")
 
 REVIEW_SECONDS = 20 * 60        # a review that was approved stays usable this long
-MARK = "data-kelo-checkout"     # attribute put on the control checkout_submit clicks (only inside the page, never read back)
 # True inside the run of a later check of an unknown order (order_checks.py): it may open and read the tab, which is otherwise
 # blocked while an attempt of that task is pressed or unknown. It has no pay tools.
 CHECKING: ContextVar[bool] = ContextVar("order_check_run", default=False)
@@ -47,8 +48,9 @@ def origin_of(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}".lower() if parts.scheme and parts.netloc else ""
 
 
-# What the page is, read in the page itself. `want` = {role, label} of the control to mark with MARK (checkout_submit), else null.
-PROBE_JS = """(want) => {
+# What the page is, read in the page itself. `want` = {role, label} of the control checkout_submit may press, else null; its CSS path
+# comes back as `target` (page_paths: nothing is written into the page).
+PROBE_JS = with_path("""(want) => {
   const clean = s => (s || '').replace(/\\s+/g, ' ').trim();
   const vis = e => { const r = e.getBoundingClientRect(); if (r.width <= 0 || r.height <= 0) return false;
                      const s = getComputedStyle(e); return s.visibility !== 'hidden' && s.display !== 'none'; };
@@ -70,12 +72,11 @@ PROBE_JS = """(want) => {
   const totalForms = new Set(totals.map(t => t.closest('form')).filter(Boolean));
   const cand = controls.filter(c => (submitType(c) && formOf(c) && (payForms.has(formOf(c)) || totalForms.has(formOf(c)))) || near(c));
   const candidate = c => cand.includes(c);
-  let marked = false;
-  document.querySelectorAll('[%(mark)s]').forEach(e => e.removeAttribute('%(mark)s'));
+  let marked = false, target = '';
   if (want) {
     const hits = controls.filter(c => roleOf(c) === want.role && labelOf(c) === want.label);
     const pick = hits.length === 1 ? hits[0] : (hits.filter(candidate).length === 1 ? hits.filter(candidate)[0] : null);
-    if (pick) { pick.setAttribute('%(mark)s', '1'); marked = true; }
+    if (pick) { target = keloPath(pick); marked = true; }
     else if (hits.length > 1) marked = 'ambiguous';
   }
   const describe = c => ({role: roleOf(c), label: labelOf(c), submit: submitType(c), pay_form: !!(formOf(c) && payForms.has(formOf(c)))});
@@ -83,8 +84,8 @@ PROBE_JS = """(want) => {
   const currency = curEl ? clean(curEl.getAttribute('content') || curEl.getAttribute('data-currency') || curEl.textContent).toUpperCase().slice(0, 3) : '';
   return {url: location.href, currency, text: (document.body ? document.body.innerText : '').slice(0, 40000), payment_inputs: cc.length + numeric.length,
           totals: totals.map(t => clean(t.innerText || t.textContent || t.value).slice(0, 60)).slice(0, 5),
-          controls: cand.map(describe).slice(0, 12), marked};
-}""" % {"mark": MARK}
+          controls: cand.map(describe).slice(0, 12), marked, target};
+}""")
 
 # What one child frame holds (read in that frame): visible card inputs, or numeric inputs in a form with an amount and a submit.
 FRAME_JS = """() => {
@@ -135,6 +136,7 @@ class Probe:
     controls: list[dict[str, Any]]
     marked: Any
     currency: str = ""           # the ISO code the page itself declares (schema.org priceCurrency, data-currency), "" when it declares none
+    target: str = ""            # the CSS path of the control `want` named (when marked is True)
 
     @property
     def path(self) -> str:
@@ -152,7 +154,7 @@ def parse_probe(raw: Any) -> Probe | None:
     return Probe(str(raw.get("url") or ""), str(raw.get("text") or ""), int(raw.get("payment_inputs") or 0),
                  [str(x) for x in raw.get("totals") or []], [str(x) for x in raw.get("frames") or []],
                  [c for c in raw.get("controls") or [] if isinstance(c, dict)], raw.get("marked"),
-                 str(raw.get("currency") or ""))
+                 str(raw.get("currency") or ""), str(raw.get("target") or ""))
 
 
 async def read_page(session: Any, want: dict[str, str] | None = None) -> Probe | None:

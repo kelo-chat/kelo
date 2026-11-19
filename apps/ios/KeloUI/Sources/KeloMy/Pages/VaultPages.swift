@@ -82,6 +82,15 @@ struct VaultPage: View {
             }
             .padding(.horizontal, 16)
             PaymentPinSection(api: api, locked: v.locked)
+            if !v.browserSites.isEmpty { BrowserSitesCard(sites: v.browserSites, vault: vault).padding(.horizontal, 16) }
+            if !v.browserProfiles.isEmpty {
+                SectionLabel(L(R.string.vault_profiles_title))
+                ForEach(v.browserProfiles, id: \.id) { p in
+                    MenuRow(.globe, p.label, value: p.sites.isEmpty ? L(R.string.vault_profile_empty) : L(R.string.vault_profile_sites, String(p.sites.count))) {
+                        nav.push(.vaultProfile(p.id))
+                    }
+                }
+            }
             if !mailboxes.isEmpty {
                 SectionLabel(L(R.string.vault_mailboxes))
                 ForEach(mailboxes, id: \.name) { i in itemRow(i, icon: .key, label: i.label.components(separatedBy: " · ").first ?? i.label) }
@@ -197,6 +206,63 @@ struct WaitingEntries: View {
 }
 
 /// One login or key: where it can be used, how it last went, how a login is allowed, and replacing or removing it.
+/// Sites Kelo's browser is signed in to without a saved login (brief B4): one row per site, each with its sign-out.
+struct BrowserSitesCard: View {
+    let sites: [BrowserSignIn]
+    let vault: VaultModel
+    @State private var pending: String?
+
+    var body: some View {
+        MyCard {
+            Text(L(R.string.vault_browser_sites_title)).font(KeloFont.titleSmall)
+            ForEach(sites, id: \.site) { s in
+                Text(s.site)
+                MutedText(L(R.string.vault_browser_signed_in, MyFormat.whenText(s.signedAt), MyFormat.whenText(s.lastUsed)), small: true)
+                LinkButton(L(R.string.vault_browser_sign_out), danger: true) { pending = s.site }
+            }
+        }
+        .keloConfirm(L(R.string.vault_browser_sign_out_confirm, pending ?? ""), isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+                     yes: L(R.string.delete)) {
+            if let site = pending { vault.signOutBrowser(site) }
+            pending = nil
+        }
+    }
+}
+
+/// One named browser profile: the sites it is signed in to (each with its sign-out) and deleting it. No create button: Kelo makes one when asked.
+struct VaultProfilePage: View {
+    let id: String
+    let vault: VaultModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var pending: String?
+    @State private var deleting = false
+
+    var body: some View {
+        let p = vault.info?.browserProfiles.first { $0.id == id }
+        SubPage(p?.label ?? L(R.string.vault_profiles_title), onBack: { dismiss() }) {
+            if let p {
+                MyCard {
+                    if p.sites.isEmpty { MutedText(L(R.string.vault_profile_empty), small: true) }
+                    ForEach(p.sites, id: \.site) { s in
+                        Text(s.site)
+                        MutedText(L(R.string.vault_browser_signed_in, MyFormat.whenText(s.signedAt), MyFormat.whenText(s.lastUsed)), small: true)
+                        LinkButton(L(R.string.vault_browser_sign_out), danger: true) { pending = s.site }
+                    }
+                }
+                LinkButton(L(R.string.vault_profile_delete), danger: true) { deleting = true }
+            }
+        }
+        .keloConfirm(L(R.string.vault_browser_sign_out_confirm, pending ?? ""), isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+                     yes: L(R.string.delete)) {
+            if let site = pending { vault.signOutProfileSite(id, site) }
+            pending = nil
+        }
+        .keloConfirm(L(R.string.vault_profile_delete_confirm, p?.label ?? ""), isPresented: $deleting, yes: L(R.string.delete)) {
+            vault.deleteProfile(id) { dismiss() }
+        }
+    }
+}
+
 struct VaultItemPage: View {
     let name: String
     let vault: VaultModel
@@ -204,6 +270,7 @@ struct VaultItemPage: View {
     @Environment(\.kelo) private var c
     @State private var open: Bool?
     @State private var confirm = false
+    @State private var browserOut = false
 
     var body: some View {
         let v = vault.info
@@ -257,6 +324,16 @@ struct VaultItemPage: View {
             if bad && !signedIn {
                 ErrorText(item.isLogin ? L(R.string.vault_bad_login) : L(R.string.vault_bad_key), small: true)
                 LinkButton(L(R.string.vault_try_again)) { vault.patch(name, ["clear_result": true]) }
+            }
+        }
+        if let b = item.browser {
+            MyCard {
+                Text(L(R.string.vault_browser_title)).font(KeloFont.titleSmall)
+                MutedText(L(R.string.vault_browser_signed_in, MyFormat.whenText(b.signedAt), MyFormat.whenText(b.lastUsed)), small: true)
+                LinkButton(L(R.string.vault_browser_sign_out), danger: true) { browserOut = true }
+            }
+            .keloConfirm(L(R.string.vault_browser_sign_out_confirm, b.site), isPresented: $browserOut, yes: L(R.string.delete)) {
+                vault.signOutBrowser(b.site)
             }
         }
         if item.isLogin {

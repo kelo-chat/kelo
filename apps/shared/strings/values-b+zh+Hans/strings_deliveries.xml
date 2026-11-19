@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- zh-Hans text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="deliveries_label">每天主动发送的消息数</string>
-    <string name="deliveries_about">Kelo 会把想告诉你的事汇总成每天这么多条消息。设为 0 时，只发送不能等的事。</string>
-    <plurals name="deliveries_today">
-        <item quantity="other">今天已发送 %d 次</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="other">已保留 %d 项</item>
     </plurals>
@@ -13,7 +8,6 @@
     <string name="deliveries_held_about">这些是 Kelo 留到下一条消息的内容。发送前会再看一遍，不再重要的会去掉。</string>
     <string name="deliveries_held_empty">目前没有保留的内容。</string>
     <string name="deliveries_held_until">保留至 %1$s</string>
-    <string name="deliveries_why_slots">等待下一条消息</string>
     <string name="deliveries_why_cap">今天不够紧急，不再多发</string>
     <string name="deliveries_why_reply">等你回复上一条消息</string>
     <string name="deliveries_why_other">等待更合适的时机</string>

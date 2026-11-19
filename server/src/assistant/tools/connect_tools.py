@@ -138,6 +138,17 @@ async def mcp_session_call(fetcher: Fetcher, cred: dict[str, Any], method: str, 
 MAX_DOWNLOAD = 50 * 1024**2
 
 
+def asked_in_chat() -> bool:
+    """Kelo's own settings the owner asks for in the chat (snooze a reminder, which calendars Kelo reads, the briefing, a schedule), or
+    asks for from the app in a turn that carries their request (items they added to the checklist: Turn.owner_asked, checklist.py):
+    the request is the owner's go-ahead, so no card, unless a page, mail or message (outside text) reached this run or nobody is in
+    the chat. A step Kelo takes by itself (a background job, a watcher) or after outside text still asks."""
+    turn = current_turn.get() or {}
+    seen = outside_seen.get()
+    asked = (turn.get("source") == "chat" and not turn.get("unattended")) or bool(turn.get("owner_asked"))
+    return asked and not (seen and seen[0])
+
+
 def connect_tools(store: Store, home: Home | None = None, fetcher: Fetcher = fetch, local_fetcher: Fetcher = fetch_local,
                   keyring: Any = None) -> list[Tool]:
     library = Deliverables(home) if home is not None else None
@@ -178,11 +189,7 @@ def connect_tools(store: Store, home: Home | None = None, fetcher: Fetcher = fet
         """No approval card for a change to the owner's own device app when the owner asked for it in their own chat message and
         nothing from outside (a page, mail, message, another app's data) has reached this run. A step Kelo takes by itself (a
         background job, a schedule, a watcher) or after outside text still asks; a task the owner set up runs under its own permission."""
-        if not own_device(args):
-            return False
-        turn = current_turn.get() or {}
-        seen = outside_seen.get()
-        return turn.get("source") == "chat" and not turn.get("unattended") and not (seen and seen[0])
+        return own_device(args) and asked_in_chat()
 
     def registration(args: dict[str, Any]) -> tuple[str, list[str], dict[str, Any], str, str]:
         """(name, hosts, placement, MCP endpoint, check URL) from the call; raises NetGuardError when something is not allowed."""
@@ -496,10 +503,9 @@ def connect_tools(store: Store, home: Home | None = None, fetcher: Fetcher = fet
              {"type": "object", "properties": {"name": name_prop, "url": url_prop, "save_as": {"type": "string", "description": "file name"},
                                                "headers": {"type": "object"}}, "required": ["name", "url"]},
              connector_download, source="connector", trail="connector"),
-        Tool("connector_send", "Change something in a connected service (the server adds the key). The user approves each call, "
-             "except for a change to their own smart-home app (Home Assistant) that they asked for in their own message: that goes ahead "
-             "at once (switching, locking, heating). A change nobody asked for, or one prompted by text from a page, mail or message, is "
-             "asked first.",
+        Tool("connector_send", "Change something in a connected service (the server adds the key). A change to the user's own devices on their own network "
+             "that they asked for in this chat goes ahead at once; any other call, or one prompted by something you read, shows the user "
+             "a card first.",
              {"type": "object", "properties": {"name": name_prop, "method": {"type": "string", "enum": ["POST", "PUT", "PATCH", "DELETE"]},
                                                "url": url_prop, "json": {"description": "request body"}, "headers": {"type": "object"},
                                                "uses": USES_PARAM},
@@ -508,8 +514,8 @@ def connect_tools(store: Store, home: Home | None = None, fetcher: Fetcher = fet
         Tool("mcp_list_tools", "List the tools of a connected MCP server with their input schemas.",
              {"type": "object", "properties": {"name": name_prop, "cursor": {"type": "string"}}, "required": ["name"]},
              mcp_list_tools, untrusted=True, source="mcp", read_only=True, own_data=own_device),
-        Tool("mcp_call_tool", "Call one tool of a connected MCP server. The user approves each call (not for the user's own smart-home "
-             "app when they asked for it in their own message).",
+        Tool("mcp_call_tool", "Call one tool of a connected MCP server. Same rule as connector_send: the user's own devices, asked for in this "
+             "chat, go at once; anything else shows a card first.",
              {"type": "object", "properties": {"name": name_prop, "tool": {"type": "string"}, "arguments": {"type": "object"},
                                                "uses": USES_PARAM},
               "required": ["name", "tool"]}, mcp_call_tool, requires_approval=True, untrusted=True, source="mcp", auto_approve=asked_directly, trail="connector"),

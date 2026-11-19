@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">Als mijn dag begint (geleerd)</string>
     <string name="briefing_when_fixed">Op een tijd die ik kies</string>
     <string name="briefing_fixed_at">Elke dag om %1$s</string>
+    <string name="briefing_fixed_from">Vanaf %1$s, wanneer je contacturen beginnen</string>
     <string name="briefing_offset">Hoelang na het begin van mijn dag</string>
     <string name="briefing_offset_none">Meteen bij het begin</string>
     <string name="briefing_offset_min">%1$d min later</string>

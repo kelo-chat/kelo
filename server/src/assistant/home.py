@@ -22,6 +22,7 @@ Older layouts are moved into this one at start-up (`migrate`), with the original
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -36,6 +37,8 @@ from .i18n import t
 from .media import AUDIO_SUFFIXES, VIDEO_SUFFIXES, MediaCache, disk_free, kind_of
 from .photos import IMAGE_SUFFIXES, MAX_IMAGE, PhotoError, is_image, prepare_upload
 from .quota import fmt_size as _fmt
+
+log = logging.getLogger("assistant.home")
 
 CORE = ("assistant.md", "user.md", "MEMORY.md", "AGENTS.md")
 # Files the agent and the user both keep but that are not injected into every turn: the short recurring checks (checklist.py) and
@@ -88,8 +91,9 @@ TEMPLATES = {
 
 # made when a job that reads them starts (checklist.py, proactive.py), not with the rest: they are optional
 SIDE_TEMPLATES = {
-    CHECKLIST: "# CHECKLIST.md\n\nThings to look over during each proactive pass (only while proactive messages are on), one per line, "
-               "each starting with \"- \". Say only what needs the user's attention. Nothing is checked while this list is empty.\n",
+    CHECKLIST: "# CHECKLIST.md\n\nThings to keep an eye on, one per line, each starting with \"- \". When one is added, Kelo gives it the timing "
+               "it needs: a job of its own when it needs one, otherwise a look at the proactive send times (only while proactive messages "
+               "are on). Say only what needs the user's attention.\n",
     NOTIFY_PREFS: "# NOTIFY_PREFS.md\n\nHow to reach out first. When the user asks to be told, or not told, about something, write it here.\n\n"
                   "## Tell me\n\n## Do not tell me\n\n## When\n\n## How\n",
 }
@@ -99,7 +103,9 @@ SIDE_TEMPLATES = {
 OLD_SIDE_TEMPLATES = {
     CHECKLIST: ("# CHECKLIST.md\n\n자주 확인할 짧은 일을 한 줄에 하나씩 \"- \"로 적어요. 비어 있으면 확인하지 않아요.\n",
                 "# CHECKLIST.md\n\nShort things to check now and then, one per line, each starting with \"- \". Nothing is checked "
-                "while this is empty.\n"),
+                "while this is empty.\n",
+                "# CHECKLIST.md\n\nThings to look over during each proactive pass (only while proactive messages are on), one per line, each "
+                "starting with \"- \". Say only what needs the user's attention. Nothing is checked while this list is empty.\n"),
     NOTIFY_PREFS: ("# NOTIFY_PREFS.md\n\n먼저 알릴 때 지킬 것. 사용자가 무엇을 알려 달라거나 알리지 말라고 하면 여기에 적어요.\n\n"
                    "## 알려 줘\n\n## 알리지 마\n\n## 시간대\n\n## 방식\n",),
 }
@@ -195,6 +201,7 @@ def too_large(limit: int) -> UploadTooLarge:
 class Home:
     quota: Any = None   # set by the app: a Quota that refuses writes past the storage cap
     owner_copies: Any = None   # set by the app: the owner's saved copies of the files the server trusts (owner_copies.py)
+    on_write: Any = None   # set by the app: called (path, by) after every write (checklist.py follows CHECKLIST.md)
     clock = staticmethod(time.time)   # tests replace it
 
     def __init__(self, root: str | Path):
@@ -463,6 +470,11 @@ class Home:
             self.quota.wrote()
         if by == "user" and self.owner_copies is not None:
             self.owner_copies.record(norm, content)   # the owner's saved version: the copy the server trusts (owner_copies.py)
+        if self.on_write is not None:
+            try:
+                self.on_write(norm, by)
+            except Exception:  # noqa: BLE001 - a listener never fails the write
+                log.exception("after writing %s", norm)
         return norm
 
     def policy(self, rel: str) -> str:

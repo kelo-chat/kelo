@@ -76,3 +76,16 @@ async def test_the_server_still_serves_the_released_app(platform, tmp_path):
                 if missing:
                     problems.append(f"{tag}: items lost {missing}")
     assert not problems, f"the server breaks {platform} {rel.version}:\n" + "\n".join(problems)
+
+
+async def test_a_released_app_may_still_send_the_retired_message_count(tmp_path):
+    """iPhone 0.10.5 and desktop 1.0.12 (commit e13b30e5) have a "messages a day" stepper that PUTs daily_deliveries and shows only
+    while GET /api/proactive has that field. The setting is retired (owner 2026-11-19): GET no longer has it, so those apps hide the
+    stepper, and a PUT of it still answers 200 and changes nothing."""
+    for i, app in enumerate(("ios/0.10.5+26111812", "desktop/0.10.5+100000012")):
+        s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None, db_path=str(tmp_path / f"{i}.db"), home_dir=str(tmp_path / f"home{i}"))
+        async with Running(create_app(s, tools=[])) as srv, httpx.AsyncClient(base_url=srv.url, headers={**AUTH, "X-Kelo-App": app}, timeout=30) as c:
+            got = await c.put("/api/proactive", json={"daily_deliveries": 2})
+            assert got.status_code == 200 and "daily_deliveries" not in got.json() and "held" in got.json(), (app, got.text[:200])
+            body = (await c.get("/api/proactive")).json()
+            assert "daily_deliveries" not in body and "today_deliveries" not in body and "held" in body

@@ -84,6 +84,8 @@ GET  /api/about                {"version", "build", "min_app", "min_server", "mi
                                X-Kelo-Server: <version>+<build>; an app older than min_app (X-Kelo-App) gets 426 app_too_old
                                "app_update": newest released app (version) for the caller's X-Kelo-App + X-Kelo-App-Channel that
                                works with this server, or null; also header X-Kelo-App-Update on /api/about and /api/profile
+                               "server_update": newer server release (version) the caller may install, or null; also header
+                               X-Kelo-Server-Update on /api/about and /api/profile (api/about.py)
 GET /api/server-update, POST /api/server-update/check|update|rollback, PUT /api/server-update/settings   any signed-in device (not on a review copy): update this
                                server from the app through the updater container (see server_updates.py)
 GET  /oauth/client-metadata.json   Kelo's OAuth Client ID Metadata Document (no auth; only on the server holding the shared relay page)
@@ -159,7 +161,7 @@ from .compaction import (
 from . import windows
 from . import version as release_version
 from .schedules import CATCH_UP_SECONDS, SCHEDULE_MARK, ScheduleError, Scheduler, Schedules, schedule_check_text, schedule_tools
-from .checklist import NOTE as CHECKLIST_NOTE, Checklist, checklist_routes
+from .checklist import CHECKLIST_MARK, NOTE as CHECKLIST_NOTE, Checklist, JobKind, checklist_routes, checklist_tools, setup_text as checklist_setup_text
 from .buy_ready import FAST_STEPS, FAST_TOOLS, LOGIN_PROMPT, LOGIN_STEPS, LOGIN_TOOLS, BuyReady
 from .buy_replay import Plans, Recorder, ReplayStream
 from .watchers import WATCH_MARK, Page as WatchPage, WatchError, Watchers, handoff_text as watch_handoff_text, watch_tools, watcher_routes
@@ -178,7 +180,8 @@ from .tools import checkout_handover
 from .tools.checkout_handover import CheckoutHandover
 from .tools.tab_book import TabBook
 from . import tool_roles
-from .recheck import RECHECK_MARK, RESEARCH_STEPS, RESEARCH_TOOLS, build_rechecks, recheck_routes
+from .recheck import RECHECK_MARK, retire_rechecks
+from .corrections import CorrectionCheck
 from .briefing import Briefing, briefing_routes
 from .owner_messages import OWNER, OwnerMessages, author_for
 from .briefing_sources import Sources, sources_routes
@@ -186,6 +189,8 @@ from .follow import AeroApiFlights, FollowRunner, FollowStore, IncheonFlights, I
 from .follow.upcoming import UpcomingExtractor
 from .calendars import Calendars
 from .weather import Weather
+from .calls import CALL_NOTE
+from .tools.call_tools import call_tools
 from .wallet import CardDeliveries, Wallet, site_keys as wallet_site_keys
 from .payment_pins import PaymentLedger, PaymentPaths, PaymentPins, PinDeliveries
 from .payment_steps import PaymentSteps
@@ -523,9 +528,14 @@ class TalkIn(BaseModel):
     # ids of items the owner picked in the app for this message (a mail, a photo, a contact, a file): what the message may use and
     # send on (data_trail.py decision 4). Kept for this turn only.
     picked: list[str] | None = Field(default=None, max_length=50)
+    # the in-app call this spoken message belongs to (calls.py): stored with via "call", and the model gets the spoken-reply rules
+    call: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]{8,64}$")
+    # the app sending this can show a call screen (it has call mode and a microphone): call_tools.py may ring it
+    can_call: bool = False
 
 
 # A reply in progress, the approvals it waits on and MODEL_STARTED live in turn_engine.py; re-exported here
+from . import checklist as checklist_mod
 from . import turn_engine
 from . import turn_resume
 from . import turn_goals
@@ -538,6 +548,7 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 # What a reply sends to the app, in order (SSE `data:` lines on /api/chat and /api/talk; `events` of GET /api/turns/{id}):
 #   {"type": "reaction", "message_id", "emoji"}           the owner's message of this reply: 👀 first, its emoji right before "done" (⚠️ before "error") (reactions.py)
 #   {"type": "thinking"}                                   the model is reasoning (no text)
+#   {"type": "call_offer", "id", "call_id", "topic"}       the reply asked the app to show its incoming-call screen (tools/call_tools.py)
 #   {"type": "text", "text": "..."}                        a piece of the answer
 #   {"type": "tool_started", "id", "name", "arguments", "label", "hidden"}
 #   {"type": "approval_request", "approval_id", "id", "name", "arguments", "detail", "label", "site", "can_remember", "task_id", "expires_at"}
@@ -821,7 +832,7 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #        Closes: 4401 bad/used/expired ticket, 4404 no such tab (after {"type":"ended","reason":"no_tab"}), 4408 no message for 60 s,
 #        4429 too many failed attempts, 1000 the tab closed (after {"type":"ended","reason":"tab_closed"}).
 #   server -> phone
-#     text {"type":"frame","seq","w","h","ts","url","title","bytes","css_w","css_h","secure"?} and RIGHT AFTER it one binary message: the JPEG
+#     text {"type":"frame","seq","w","h","ts","url","title","bytes","css_w","css_h","live_v","editing","kind","field","secure"?} and RIGHT AFTER it one binary message: the JPEG
 #          (`bytes` long, w x h pixels; css_w x css_h = the CSS size of the viewport it shows). Only the newest frame is sent: a slow
 #          phone skips frames, never more than one is in flight. At most `fps` a second; a still page sends nothing new.
 #          `secure` (new and optional; an app that does not know it ignores it): true while a secret field shows in the picture (a
@@ -834,7 +845,12 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #          did not answer a probe in 3 s); `page_busy` true = `stale`, or the user's last input was not taken by the page in 3 s.
 #          Both go back to false with the next frame.
 #          Browser tabs only, new and optional: `pointer` {"x","y","down"} = where the agent's pointer was last (a new watcher draws it at once).
-#     text {"type":"pointer","x","y","down"}   the agent's pointer (mouse, or a finger in the phone view), new and optional (an app that does
+#          `live_v` 3 (live typing): `editing` = a text field has focus; `kind` = what keyboard fits it (secret|number|tel|email|url|
+#          search|multiline|text); `field` = an opaque id (8 hex, of the field's tag, type, name, id, autocomplete and place; never its
+#          value) that changes when the focus moves to another field. A phone-device take-over says live_v 2 (its typing is the device's).
+#          While the viewer's frames are off, {"type":"meta","url","title","editing","kind","field","live_v"} carries them whenever one changes
+#          (a pointer release or a tap makes the focus be looked at again 60 and 250 ms later, and a change goes out at once).
+#     text {"type":"pointer","x","y","down"}   the agent's pointer (the mouse), new and optional (an app that does
 #          not know it ignores the message). x, y are CSS px of the viewport, the space of the frames' css_w x css_h (picture pixel =
 #          x * w / css_w, y * h / css_h; no offsetTop shift). Sent while the agent moves, at most 20 a second (the newest position wins);
 #          `down` true when a button or finger is pressed: a press and a release are always sent at once, so a tap is down true, then false.
@@ -852,10 +868,14 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #       {"type":"tap","x","y"}  {"type":"long_press","x","y","ms"?:700}  {"type":"scroll","dx","dy","x"?,"y"?}
 #       {"type":"text","text"} (typed as is, never logged)  {"type":"key","key":Enter|Backspace|Tab|Escape|ArrowUp|ArrowDown|ArrowLeft|
 #       ArrowRight|Delete|Home|End|PageUp|PageDown}  {"type":"back"}  {"type":"forward"}  {"type":"reload"}
+#       {"type":"edit","steps":[...]} (live_v 3; at most 64 steps, run in order, never logged, answered with {"type":"input_ok","input":"edit",
+#       "steps":n}): ["text",s] = Input.insertText (1..2000 chars, no control chars; also commits a composition), ["compose",s,cursor?] =
+#       Input.imeSetComposition (0..200 chars, "" ends it; cursor in UTF-16 units), ["back",n] = n Backspaces (1..200), ["key",name].
+#       A composition still showing when the hold ends is committed. KELO_LIVE_COMPOSE=0 types a composition as plain text instead.
 #       x, y, dx, dy are pixels of the last frame received (optional "frame_w","frame_h" when they refer to a frame of another size).
 #       Mapping: css_x = x * css_w / w; css_y = y * css_h / h - offsetTop (kept inside the viewport); dx, dy scale the same way.
 # GET  /api/browser/sessions/{id}/frame?after=<seq>&wait=10[&max_width&quality&fps]   the same frames without a WebSocket:
-#        200 image/jpeg + X-Frame-Seq, X-Frame-W, X-Frame-H, X-Frame-Css-W, X-Frame-Css-H, X-Frame-Ts, X-Frame-Url, X-Frame-Title
+#        200 image/jpeg + X-Frame-Seq, X-Frame-W, X-Frame-H, X-Frame-Css-W, X-Frame-Css-H, X-Frame-Ts, X-Frame-Url, X-Frame-Title, X-Live-V, X-Frame-Editing, X-Frame-Kind, X-Frame-Field
 #        (both %-encoded), X-Controller, X-You-Control; 204 when nothing newer came within `wait` (≤ 25 s); 404 no such tab.
 #        Each request keeps this device watching for 60 s; DELETE .../frame stops at once.
 # POST /api/browser/sessions/{id}/control {"take": bool, "by"?: "button"|"handover"}
@@ -1038,7 +1058,7 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #   "code"|null, "note", "every_minutes" (≥ 5; ≥ 2 when ready to buy), "enabled", "once", "state":
 #   off|watching|error|done, "description", "last_value", "last_checked_at", "next_check_at", "last_fired_at", "fire_count",
 #   "error_count", "last_error", "disabled_reason", "dry_run": {"at", "ok", "satisfied", "value", "detail", "error", "url", "title",
-#   "level": light|tab|page|null (how the dry run looked)}|null,
+#   "level": light|tab|page|null (how the dry run looked)}|null, "last_check": {"at", "detail", "value", "hit", "error"}|null,
 #   "can_enable": bool, "buy": {"armed", "tab", "last_kept_at", "signed_in", "problems", "remembered" (true when a plan exists)}|null,
 #   "created_at", "updated_at", "created_by"}
 # GET/POST /api/watchers, GET/PATCH/DELETE /api/watchers/{id}, POST /api/watchers/{id}/dry-run -> {"result", "watcher"},
@@ -1061,13 +1081,12 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 # GET /api/briefing/preview, POST /api/briefing/run. Its message carries "briefing" (the card) in GET /api/messages; its notification
 # has type "briefing" (title "Morning briefing", body the one-line summary). The agent's `weather` tool answers weather questions.
 # ---- CHECKLIST API: CHECKLIST.md, part of the proactive messages (checklist.py) ---------------------------------------------------
-# GET /api/checklist {"enabled" (= the proactive switch), "every_minutes" (= the proactive pace), "text", "items": n, "list": [item],
-#   "path", "last_run": {"at", "status": done|quiet|failed|skipped, "reason", "task_id"}|null, "next_run_at", "running"};
-#   PUT {"items"? [item] (replaces the list lines), "text"? (whole file)} ("enabled"/"every_minutes" accepted and ignored);
-# POST /api/checklist/run (409 while running). Runs only while proactive messages are on, in waking hours, while today's daily_total
-# has room. No items = no run and no model call; quiet (NO_REPLY) = no message, no notification; otherwise the answer joins the chat
-# as "[Recurring check]", a task_done "Take a look: Recurring check" notification goes out (task source "checklist") and it counts
-# as one 오늘 message (proactive log source "checklist").
+# GET /api/checklist {"enabled" (= the proactive switch), "every_minutes" (= the proactive setting), "text", "items": n, "list": [item],
+#   "entries": [{"text", "state": own|send_times, "job": {"kind", "id", "name", "description", "on"}|null}], "path",
+#   "last_run": {"at", "status": done|quiet|failed|skipped, "reason", "task_id"}|null, "next_run_at" (the next send time while an item
+#   rides the send times), "running"}; PUT {"items"? [item] (replaces the list lines), "text"? (whole file)} ("enabled"/"every_minutes"
+#   accepted and ignored); POST /api/checklist/run (409 while running): the send-time items now. No pace of its own: an item that needs
+#   its own timing has its own job (made by the agent when the owner adds it); the rest are looked at in each send pass (situation.py).
 #
 # ---- PROACTIVE API: unprompted messages, off by default (proactive.py; NOTIFY_PREFS.md holds the user's rules) ---------------------
 # GET/PUT /api/proactive {"enabled" (false), "wake_start" ("07:00"), "wake_end" ("22:00"), "every_minutes" (120; 30..1440),
@@ -1235,6 +1254,7 @@ def create_app(
     with_react_tool: bool | None = None,   # `react`: the emoji on the owner's message (reactions.py)
     with_tone_tool: bool | None = None,    # `set_tone`: how Kelo talks to the user, changed from the chat (profile "tone")
     with_schedule_check: bool | None = None,   # hand schedules the user saves to the agent (default: on unless tools are given)
+    with_checklist_setup: bool | None = None,   # hand checklist items the owner adds to the agent (default: on unless tools are given)
     cloudflare_transport: httpx.AsyncBaseTransport | None = None,
     ddns_transport: httpx.AsyncBaseTransport | None = None,
     push_fetcher: McpFetcher | None = None,
@@ -1282,6 +1302,8 @@ def create_app(
         # a site copy (site_only.py) starts none of the assistant's background work: no keyring, scheduler, CLI watch, sweeper,
         # model warm-up, workers, VPN, notices feed, messengers or Keyguard notice; the tester notices (below) still go out
         site = settings.site_only
+        if not site:   # Kelo's voice (voice_speak.py, call mode): a chosen model that is not complete resumes its download
+            await voice_out.resume()
         boot_at = time.time()   # what this process started after; a step started before it was cut off by a restart (job_cuts.py)
         action_ledger.cut_open(boot_at)   # a send / change / delete started and never answered: marked cut, still unknown until checked
         payment_pay_ledger.attempts.cut_open(boot_at)   # a press reserved and never pressed: unknown until the shop's page says
@@ -1324,6 +1346,11 @@ def create_app(
                 store.keyguard.after_unlock(ha_events.restart)
             else:
                 ha_events.restart()
+        if not site and checklist is not None:   # items kept from before this version (and any left waiting) get their setup turn
+            if store.keyguard.locked:
+                store.keyguard.after_unlock(checklist_setup_soon)
+            else:
+                checklist_setup_soon()
         if not site:   # a site copy has no jobs or turns to resume
             if store.keyguard.locked:
                 keep, workers.resume_on_start = workers.resume_on_start, False
@@ -1638,7 +1665,7 @@ def create_app(
     appctx.add(home_relativize=home.relativize if home else None)   # turn_engine: a sandbox path of the model in a reply -> Kelo's file (reply_paths.py)
     appctx.add(connector_data=ConnectorData(store, home))   # what came from a connector, counted and forgotten on the owner's word (connector_data.py)
     goal_book = GoalBook(store, home)   # each goal's facts, plan, numbers, log, documents; suggestions; quick replies (goals.py)
-    comparisons = Comparisons(store, hidden_marks=(HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK))
+    comparisons = Comparisons(store, hidden_marks=(HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK))
     images = ImageStore(Path(settings.home_dir) / ".tryon") if settings.home_dir else None
     state_root = Path(settings.db_path).parent if settings.db_path != ":memory:" else (Path(settings.home_dir).parent if settings.home_dir else None)
     # KE2E (api/e2e_gate.py): the server key at <state>/e2e/server.key; /e2e and /e2e/ws are opened in the outermost layer
@@ -1662,6 +1689,7 @@ def create_app(
     given_tool_names = frozenset(t.name for t in tools or [])
     tool_scopes = ToolScopes(store.meta, store.set_meta)   # the tools each conversation, schedule and job has loaded
     schedule_check_on = with_schedule_check if with_schedule_check is not None else not tools_given
+    checklist_setup_on = with_checklist_setup if with_checklist_setup is not None else not tools_given
     browser_more: BrowserExtras | None = None
 
     def grant_alive(scope: str) -> bool:
@@ -1749,12 +1777,14 @@ def create_app(
     if tools is None:
         tools = []
         if settings.cdp_host:
+            store.set_meta("browser.site_views", "")   # the per-site view memory is gone (one desktop view, 2026-11-19): an old value is dropped
             session = BrowserSession(settings.cdp_host, settings.cdp_port, allow_private=settings.allow_private_browsing)
             session.book = TabBook(store)   # the page of each tab key, kept across a server restart (tools/tab_book.py)
             session.order_dialog = orders.dialog_ok
             session.on_cancel_click = cancel_click_used
             if settings.work_cdp_host:   # the work browser: scheduled and background tabs (work_browser.py); unset = every tab in the main browser
-                session.work = WorkBrowser(settings.work_cdp_host, settings.work_cdp_port, gpu=session._install_gpu)
+                session.work = WorkBrowser(settings.work_cdp_host, settings.work_cdp_port)
+                session.work.on_connected = session.work_connected   # its frames and workers keep their tab's language
             session.handback_listeners.append(session.owner_handed_back)   # the owner's hands on a work tab: its site counts as signed in by the job
             session.step_judge = step_judge
             session.page_judge = PageJudge(judge_model.ask)   # what a checkout or sign-in page asks, and which form field is which, when structure is silent (page_judge.py)
@@ -1791,13 +1821,14 @@ def create_app(
                  *oauth_tools(lambda: connect_ways(store, mail, browser=session is not None, google_open=google_web.open_here(), registry=packages, relay=settings.oauth_relay, vpn=vpn), device_flows, mail, packages), *mail_tools(mailboxes),
                  *calendar_tools(gcal), *phone_calendar_tools(phone_cals, lambda: store.profile().get("timezone")),
                  *phone_calendar_write_tools(phone_data, phone_cals, lambda: store.profile().get("timezone")), sources.tool(), sources.calendar_tool(lambda: store.profile().get("timezone")),
-                 *phone_tools(phone_data, lambda: store.profile().get("timezone")), weather.tool(), weather.location_tool(), places_tool(weather), help_docs.tool(), earlier_messages_tool(store)]
+                 *phone_tools(phone_data, lambda: store.profile().get("timezone")), weather.tool(), weather.location_tool(), *call_tools(current_turn.get), places_tool(weather), help_docs.tool(), earlier_messages_tool(store)]
         if session is not None:   # downloads, uploads, PDFs, private tabs, sign-in states, codes from mail, run pictures (browser_more.py)
             browser_more = BrowserExtras(
                 session, home=home, files=deliverables, mail=mailboxes, locale=settings.browser_lang, download_dir=settings.browser_download_dir,
+                language=lambda: store.meta("ui_lang"),   # the user's own app language (the tabs' locale, browser_locale.py)
                 archive=ActionArchive(state_root / "browser-history") if state_root else None, timezone=lambda: store.profile()["timezone"],
                 notify=lambda title, body, task_id, push: activity.notify("browser_check", title, body, task_id=task_id, push=push),
-                auto_codes=store.mail_codes_auto, vault_log=store.add_vault_log)
+                auto_codes=store.mail_codes_auto, vault_log=store.add_vault_log, profiles=store)
             tools = [*tools, *browser_more.tools(), chat_images.tool(browser_grab(session), current_turn.get)]   # a screenshot into the chat
         if deliverables is not None and chat_images.root is not None:
             # a picture from the library, a saved product or generated photo (images: same home_dir condition), or a web address
@@ -1880,8 +1911,10 @@ def create_app(
     app.state.watchers = watchers
     ha_events = HaEvents(store, connect=ha_connect)   # Home Assistant live watches (backlog 62); tests pass a fake socket
     app.state.ha_events = ha_events
+    checklist_box: list[Any] = [None]   # the Checklist, made further down; its tool is listed here with the other job tools
     if with_schedule_tools or (with_schedule_tools is None and not tools_given):
-        tools = [*tools, *schedule_tools(schedules, scheduler), *task_allow_tools(schedule_grants, wallet), *watch_tools(watchers), *ha_watch_tools(ha_events)]
+        tools = [*tools, *schedule_tools(schedules, scheduler), *task_allow_tools(schedule_grants, wallet), *watch_tools(watchers), *ha_watch_tools(ha_events),
+                 *(checklist_tools(lambda: checklist_box[0]) if home else [])]
     # the journal (written each night with the main model) and the agent's read-only search of it
     journal = Journal(store, job_stream("journal"), lambda: journal_model(), lambda p: key_args(p))
     # the nightly run that learns the user's preferences (reflection.py), also with the main model
@@ -1931,7 +1964,7 @@ def create_app(
         except Exception:  # noqa: BLE001 - a turn never fails over this line
             log.exception("could not list the background jobs for the turn")
             return ""
-    goal_book.hidden_marks = (GOAL_MARK, HANDOFF_MARK, WATCH_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK)
+    goal_book.hidden_marks = (GOAL_MARK, HANDOFF_MARK, WATCH_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK)
     if not tools_given:
         tools = [*tools, *journal_tools(journal)]
     if session is None:
@@ -1950,6 +1983,10 @@ def create_app(
         hub.vnc = vnc
         if hasattr(session, "close_listeners"):
             session.close_listeners.append(vnc.tab_closed)
+        if hasattr(session, "active_listeners"):
+            session.active_listeners.append(vnc.tab_switched)   # C1d: the held screen brings the new active tab forward
+    if hub is not None and hasattr(session, "active_listeners"):
+        session.active_listeners.append(hub.tab_switched)   # C1d: a running picture follows the active tab at once
     live_sources = LiveSources(hub, android_live)   # watch and take over: the browser's tabs, and the device under the key "android"
     hold_book = HoldBook(store)                       # the owner's button holds, saved so a restart keeps them (hold_asks.py)
     hold_asker = HoldAsker(live_sources, store, activity, goal_book, agent_name=lambda: store.profile().get("agent_name") or "Kelo",
@@ -2031,7 +2068,8 @@ def create_app(
     outside_review = OutsideReview(   # a send, change or delete after outside text asks unless the owner named the target (outside_rule.py)
         OutsideTextRule(is_own=privacy.is_own), OwnerWords(PeopleBook(owner_copies), granted=schedule_grants.covered_targets, recent=owner_recent_words),
         seen=outside_now, turn=lambda: current_turn.get() or {}, ordered_site=lambda: (o.site if (o := orders.current()) else ""),
-        derive=lambda targets, text: data_trail_guard.derive(targets, text))   # the precise rule: what of a step comes from outside text (data_trail.py)
+        derive=lambda targets, text: data_trail_guard.derive(targets, text),
+        given=lambda url: data_trail_guard.given_link(url))   # the precise rule: what of a step comes from outside text (data_trail.py)
 
     async def browser_step(tool: str, args: dict[str, Any]) -> tuple[str, str]:
         """(commit kind, site) of a browser click or typing step, for the privacy guard; ("", "") without a browser. A phone app's
@@ -2257,6 +2295,25 @@ def create_app(
             log.exception("could not list schedules for the prompt")
             return None
 
+    def watchers_for_prompt() -> list[dict[str, Any]] | None:
+        """The watchers for the per-turn line (prompt.watchers_line); None when they cannot be read."""
+        try:
+            return watchers.list()
+        except Exception:  # noqa: BLE001 - a turn never fails over this line
+            log.exception("could not list watchers for the prompt")
+            return None
+
+    def follow_for_prompt() -> list[dict[str, Any]]:
+        """The next follow items (not done or stopped, from yesterday on), soonest first, for the per-turn line (prompt.follow_line)."""
+        try:
+            now = time.time()
+            rows = [i for i in follow_store.list_items() if i.get("state") not in ("done", "stopped")
+                    and float(i.get("starts_at") or 0) >= now - 86400]
+            return [{**i, "all_day": bool((i.get("refs") or {}).get("all_day"))} for i in rows]
+        except Exception:  # noqa: BLE001 - a turn never fails over this line
+            log.exception("could not list follow items for the prompt")
+            return []
+
     def system_parts(provider: str, model: str, tz_name: str) -> tuple[str, str]:
         """(stable system text, this turn's lines): see PromptBuilder.build_parts. The stable part stays byte-identical between turns,
         so it can be a cached prefix; the turn's lines (the clock to the minute, schedules, goals) go after it."""
@@ -2265,7 +2322,7 @@ def create_app(
             return prompts.build_parts(agent_name=prof["agent_name"], user_name=prof["user_name"], provider=provider, model=model,
                                        goals=goal_book.for_prompt(), tz_name=tz_name, connected=connected_ids(),
                                        schedules=schedules_for_prompt(), tone=prof["tone"], limits=permissions.limits_line(),
-                                       first_chat=first_chat.block())
+                                       first_chat=first_chat.block(), follow=follow_for_prompt(), watchers=watchers_for_prompt())
         return settings.system_prompt, persona(tz_name).lstrip("\n")
 
     def system_text(provider: str, model: str, tz_name: str) -> str:
@@ -2638,8 +2695,8 @@ def create_app(
     scheduler.run_fn, scheduler.on_disabled = run_schedule, schedule_off
     schedules.on_paused = schedule_paused
 
-    # the checklist (checklist.py): CHECKLIST.md, part of the proactive messages (their switch, pace, waking hours and daily cap),
-    # quiet unless something needs attention
+    # the checklist (checklist.py): CHECKLIST.md, part of the proactive messages; its manual run (POST /api/checklist/run) is quiet unless
+    # something needs attention
     async def run_checklist(body: str) -> dict[str, Any]:
         turn = start_background(body, title=i18n.t("Recurring check"), source="checklist", owner="task:checklist", note=CHECKLIST_NOTE,
                                 saved_as=i18n.t("[Recurring check]"))
@@ -2653,6 +2710,56 @@ def create_app(
                           pace=lambda: proactive.config()["every_minutes"] * 60.0, room=lambda: proactive.room_today(),
                           on_said=lambda task_id: proactive.checklist_said(task_id),
                           hold=lambda: proactive.checklist_hold()) if home else None
+    if checklist:
+        checklist_box[0] = checklist
+        checklist.jobs = {   # every kind in checklist.JOB_KINDS: what an item's own job is and how it goes with the item
+            "schedule": JobKind(get=lambda i: (s := schedules.get(i)) and {"name": s["name"], "description": s["description"],
+                                                                             "on": s["enabled"] and not s["paused"]},
+                                remove=schedules.delete),
+            "watcher": JobKind(get=lambda i: (w := watchers.get(i)) and {"name": w["name"], "description": w["description"],
+                                                                          "on": w["state"] != "off"},
+                               remove=watchers.delete),
+            "ha_watch": JobKind(get=lambda i: (h := ha_events.get(i)) and {"name": h["name"], "description": h["entity_id"],
+                                                                            "on": bool(h["enabled"])},
+                                remove=ha_events.remove),
+        }
+    checklist_setup_task: list[Any] = [None]
+
+    def checklist_send_times() -> str:
+        """The send times the setup turn is told about (checklist.py SETUP)."""
+        if not proactive.config()["enabled"]:
+            return "none: the owner's proactive messages are off, so nothing is looked at at send times until they turn them on"
+        try:
+            times = situation.send_times_view(time.time()).get("times") or []
+        except Exception:  # noqa: BLE001
+            times = []
+        return ", ".join(times) if times else "none left in today's contact hours"
+
+    def checklist_setup_soon() -> None:
+        """New items from the owner (and, once, the items kept from before this version) go to the agent after SETUP_DELAY, so a few
+        quick additions make one turn (checklist.py)."""
+        if checklist is None or not checklist_setup_on:
+            return
+        running = checklist_setup_task[0]
+        if running is not None and not running.done():
+            return
+
+        async def later() -> None:
+            await asyncio.sleep(checklist_mod.SETUP_DELAY)
+            if journal_model() is None:
+                return   # no model yet: the items wait for the next change or start
+            added, kept = checklist.take_pending()
+            if added:
+                turn_goals.start_checklist_setup(appctx, added, owner_asked=True)
+            if kept:
+                turn_goals.start_checklist_setup(appctx, kept, owner_asked=True, added=False)   # the owner's own list: no card either (owner 2026-11-19)
+        try:
+            checklist_setup_task[0] = asyncio.ensure_future(later())
+        except RuntimeError:   # no running loop (a write outside the server): the next change or start picks the items up
+            return
+
+    if checklist:
+        checklist.on_new = checklist_setup_soon
 
     def journal_model() -> tuple[str, str] | None:
         prof = store.profile()
@@ -2676,8 +2783,6 @@ def create_app(
     scheduler.paused = lambda: store.keyguard.locked   # jobs that need a key wait for Keyguard's unlock (schedules.Scheduler.held)
     scheduler.add_daily("schedule_archive", 4, 30, purge_schedules, needs_secrets=False)   # deleted schedules older than 30 days go for good
     scheduler.add_every("watchers", 30, watchers.check_due)
-    if checklist:
-        scheduler.add_every("checklist", checklist.period, checklist.tick)
     if reflection:
         nightly_jobs.append(reflection.nightly)
     if memory_upkeep:
@@ -2742,6 +2847,7 @@ def create_app(
         has_picture=lambda k: session is not None and (session.has_tab(k) or k in ended_tabs),
         controlled=lambda k: held_by(k) is not None, retire_tab=lambda k: retire_tab(k),
         login_saved=lambda n: transient.has(n) or bool((c := store.credential(n)) and c.get("secret")), window=worker_window,
+        bind_profile=lambda k, p: session is not None and session.bind_profile(k, p),
         on_delegate=delegated, on_end=lambda wid, status: (reactions.job_ended(wid, status), schedule_grants.drop_job(wid)),
         limit_text=worker_limit_text, limit_until=worker_limit_until, limit_notice=worker_limit_notice,
         progress=lambda wid: task_grants.progress(f"job:{wid}"),
@@ -2757,6 +2863,25 @@ def create_app(
     workers.chat_views = chat_views   # a job's hand-off says whether its tab is shown in the chat (chat_views.py)
     if session is not None:
         session.on_lost = workers.browser_lost   # a browser that restarted under a job: its card says so (job_cuts.py)
+        # a research job's tab browses signed out: it is never given the owner's sign-ins and writes none back (brief A6)
+        session.signed_out_tab = lambda key: key.startswith("task:w") and workers.kind_of(key[5:]) == "research"
+        # Kelo's browser sign-in records (brief B1): sites only, shown in the Keychain
+        session.on_owner_sign_in = lambda site, profile="": store.note_browser_sign_in(site, "owner", profile)
+        session.on_site_used = lambda site, profile="": store.touch_browser_site(site, profile)
+        session.on_site_forgotten = lambda site, profile="": store.forget_browser_sign_in(site, profile)
+        session.signed_in_site = lambda site: any(r["site"] == site for r in store.browser_sign_ins(""))
+        # named browser profiles (brief C2): another account on a site; the units are sealed in the store
+        session.profile_unit = store.browser_unit
+        session.profile_save = store.save_browser_unit
+        session.profile_check = store.check_browser_profile
+
+        def saved_login_for(site: str) -> str:   # a saved website login (with a value) that may be typed on the site; "" when none
+            from .tools.vault_tools import login_site_ok
+            for c in store.credentials():
+                if c["kind"] == "login" and c["has_secret"] and login_site_ok(site, c["hosts"]):
+                    return c["name"]
+            return ""
+        session.login_for = saved_login_for
     if with_worker_tools or (with_worker_tools is None and not tools_given):
         tools = [*tools, *workers.main_tools()]
     if android_session is not None:   # first-run handling: the job's brief and Kelo's small table of what was answered per app (android/tools.py)
@@ -2947,6 +3072,12 @@ def create_app(
                   converter=_zh_hant_converter())
     appctx.add(voice=voice, require_auth=require_auth, store=store)
     app.state.voice = voice
+    # Kelo's own voice (voice_speak.py, call mode): the same downloader and voice container; tests that swap voice.client swap this too
+    from .spoken_numbers import SpokenNumbers
+    from .voice_speak import VoiceOut
+    voice_out = VoiceOut(store, voice.downloader, voice.client, SpokenNumbers())
+    appctx.add(voice_out=voice_out)
+    app.state.voice_out = voice_out
     from .api import voice as api_voice
     app.include_router(api_voice.router(appctx))
 
@@ -2969,7 +3100,7 @@ def create_app(
                           deliver=deliver_proactive, mail=sources.mail_view(), schedules=schedules, watchers=watchers,
                           calendar=events_ahead(AHEAD_DAYS),
                           busy=lambda: any(t.source in ("chat", "api") for t in running_turns()),
-                          owner_marks=(HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK), tone=lambda: store.profile()["tone"])
+                          owner_marks=(HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK), tone=lambda: store.profile()["tone"])
     notify_block = NotifyBlock(judge_model.ask)   # the owner's don't-tell-me rules read by the main model (notify_block.py)
     proactive.notify_block = notify_block
     proactive.kinds = EventKinds(judge_model.ask)   # single-day trips and stays named only by words (event_kinds.py)
@@ -2977,47 +3108,8 @@ def create_app(
     scheduler.add_every("proactive", 60, proactive.tick)
     app.include_router(module_router(proactive_routes, proactive, require_auth))
 
-    # rechecks (recheck.py): Kelo looks again at what it told the owner and corrects itself first. A restricted research turn (web_search,
-    # web_fetch, weather, no conversation) per due row; a verified change goes to the main agent as a hidden handoff (RECHECK_MARK)
-    async def run_recheck_turn(system: str, user: str) -> str:
-        provider, model = resolve_model(None, None)
-        by_name = {t.name: t for t in tools if t.name in RESEARCH_TOOLS}
-        said, final = ReplyText(), [""]
-
-        def observe(item: dict[str, Any] | None) -> None:
-            if item is None:
-                final[0] = said.text()
-            else:
-                said.feed(item)
-
-        turn = start_turn(provider, model, [{"role": "system", "content": system}, {"role": "user", "content": user}], observe, source="recheck",
-                          title=i18n.t("Rechecking an earlier answer"), unattended=True, tools_=[by_name[n] for n in RESEARCH_TOOLS if n in by_name],
-                          max_steps=RESEARCH_STEPS, tool_scope="recheck")
-        turn.quiet_end = True   # a research run tells nobody; only a verified change does, through the main agent
-        await turn.ended.wait()
-        if turn.final_status != "done":
-            raise RuntimeError(str(turn.final_error or turn.final_status))
-        return final[0]
-
-    async def send_recheck(row: Any, text: str) -> None:
-        await worker_handoff({"id": "", "title": (row.claim[:80] or i18n.t("An earlier answer")), "parent_task_id": None}, text,
-                             i18n.t("An update on what I said"))
-
-    def recheck_replied(text: str) -> bool:
-        asked = store._all("SELECT id FROM messages WHERE role = 'user' AND content = ? ORDER BY id DESC LIMIT 1", (text,))
-        return bool(asked) and bool(store._all("SELECT 1 FROM messages WHERE role = 'assistant' AND id > ? LIMIT 1", (asked[0]["id"],)))
-
-    rechecks = build_rechecks(store, run_turn=run_recheck_turn, send=send_recheck, replied=recheck_replied, awake=proactive.awake,
-                              next_awake=proactive.next_awake, prefs=proactive.prefs, config=proactive.config, tz=proactive.tz,
-                              busy=lambda: any(t.source in ("chat", "api") for t in running_turns()),
-                              ready=lambda: consents.required(store.profile(), settings.provider) is None,
-                              turn_id=lambda: str((current_turn.get() or {}).get("id") or ""))
-    rechecks.service.notify_block = notify_block
-    proactive.sources.append(rechecks.source)
-    if reflection:
-        reflection.rechecks = rechecks.extractor   # the nightly look-back asks for rechecks in its own request
-    app.state.rechecks = rechecks
-    scheduler.add_every("rechecks", 300, rechecks.service.tick)
+    # the old recheck service is retired (recheck.py): corrections of earlier answers come from corrections.CorrectionCheck
+    retire_rechecks(store, time.time())
 
     # the hourly look at the owner's situation (situation.py): an unattended turn per step (research, selection, the message), read-only
     # tools and its own proposal tools, on the main model; its kind "situation" steps aside when a usage window is nearly used up
@@ -3070,6 +3162,11 @@ def create_app(
                                     names=connector_name, store=store, tz=proactive.tz, clock=time.time)
     situation = SituationResearch(proactive, run_turn=run_situation_turn, tools=lambda: tools, follow_items=situation_follow_items,
                                   reader=situation_reader)
+    # corrections of what Kelo told the owner (corrections.py): ONE check, used by the hourly look (proactive messages on) and the morning
+    # briefing (briefing on); the proactive ledger keeps a correction told by one from being told by the other
+    correction_check = CorrectionCheck(proactive, run_turn=run_situation_turn, tools=lambda: tools)
+    situation.corrections = correction_check
+    situation.checklist = checklist   # the items that ride the send times (checklist.py)
     def situation_looked_at() -> list[dict[str, Any]]:
         """What the look covers now, for the app's list: the sections first, then each connected connector (hourly when it has a read),
         then the phone items the owner shares (each is read hourly)."""
@@ -3123,7 +3220,6 @@ def create_app(
 
     order_checks = OrderChecks(payment_pay_ledger, run_order_check, wrong_charge_notice)
     scheduler.add_every("order_checks", 60, order_checks.tick)
-    app.include_router(module_router(recheck_routes, rechecks.service, require_auth))
 
     # updating this server from the app (server_updates.py; the updater container does the work, updater_service.py): any signed-in device (not on a review copy),
     # and only on the main copy (the one whose server has UPDATER_TOKEN and reaches the updater)
@@ -3135,6 +3231,7 @@ def create_app(
         awake=lambda ts: proactive.awake(ts), last_use=lambda: last_use[0],
         busy=lambda: any(t.source in ("chat", "api") for t in running_turns()) or workers.step_busy(), default_auto=settings.auto_update)
     app.state.server_updates = server_updates
+    appctx.add(server_updates=server_updates)   # api/about.py: the server-update notice (X-Kelo-Server-Update)
     if settings.updater_token:
         scheduler.add_every("server_update", 300, lambda: run_server_update_tick(server_updates), needs_secrets=False)
     app.include_router(module_router(server_update_routes, server_updates, require_owner))
@@ -3292,11 +3389,10 @@ def create_app(
             turn.reaction_choice = chosen
             # 2026-11-12: a reply already written got a second closing line after the reaction ("필요한 일 말씀해 주세요." then
             # "필요하실 때 말씀해 주세요")
-            return (f"{chosen} goes on the user's message once you are done with it. If your reply is already written, end here: "
-                    "add no second closing line.")
-        return Tool("react", "Put one emoji on the user's message (it shows once you have finished with it).",
+            return (f"{chosen} goes on the user's message. If your answer is written, stop here: more text would repeat it.")
+        return Tool("react", "Put one emoji on the user's message. Call it last, once your answer is written.",
                     {"type": "object", "properties": {"emoji": {"type": "string", "description": "one emoji"}},
-                     "required": ["emoji"]}, react)
+                     "required": ["emoji"]}, react, closes_reply=True)
 
     def tone_tool() -> Tool:
         """set_tone: the owner asks in the chat to be talked to casually or politely. Saved like the app's own setting (no card: it only
@@ -3321,7 +3417,8 @@ def create_app(
         async def card_images(turn_id: str, urls: list[str]) -> list[dict[str, Any] | None]:
             return await chat_images.card_pictures(turn_id, urls, netguard_fetch) if chat_images.root is not None else [None] * len(urls)
         return goal_book.tools(current_turn.get, replies, lambda gid: schedules.list(gid), link_schedule, on_goal=touched,
-                               card_images=card_images)
+                               card_images=card_images,
+                               product_of=lambda pid: workers.products.get(pid) if workers is not None else None)
 
     followups = Followups(store, home=home, stream_fn=counted("followup"), model=lambda: journal_model(), key_args=lambda p: key_args(p),
                           deliver=deliver_followup, wake=lambda: proactive.window_at()[:2], next_wake=proactive.next_awake,
@@ -3330,7 +3427,7 @@ def create_app(
                           pending_approvals=lambda: [a for a in pending_approvals.values() if a.get("kind") != "human_check"],
                           login_state=lambda n: "gone" if not (c := store.credential(n)) else "saved" if c.get("secret") or transient.has(n) else "waiting",
                           schedule_next=lambda sid: (schedules.get(sid) or {}).get("next_run_ts"), schedule_since=schedule_since,
-                          retry=retry_expired, user_marks=(HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK),
+                          retry=retry_expired, user_marks=(HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK),
                           tone=lambda: store.profile()["tone"], entries=entries, action_state=action_ledger.state_of)
     followups.notify_block = notify_block
     entries.on_open = followups.entry_requested   # a fill-in card nobody fills is followed up (a login has its own item)
@@ -3376,6 +3473,9 @@ def create_app(
                         language=lambda: store.meta("ui_lang") or "en", tone=lambda: store.profile()["tone"],
                         consent=lambda: consents.required(store.profile(), settings.provider) is None)   # no consent yet: no model call
     app.state.briefing = briefing
+    situation.briefing_at = briefing.due_on   # the send times give the morning briefing its own part of the day (send_times.py)
+    briefing.corrections = correction_check
+    situation.briefing_covers = briefing.covers   # the app's "What Kelo looked at" shows what the briefing reads (situation.looks)
 
     def follow_tz() -> ZoneInfo:
         try:
@@ -3426,7 +3526,7 @@ def create_app(
     if with_react_tool or (with_react_tool is None and not tools_given):
         tools = [*tools, react_tool()]
     if with_tone_tool or (with_tone_tool is None and not tools_given):
-        tools = [*tools, tone_tool(), proactive.ahead_tool(), briefing.tool(), *rechecks.tools(), *offers.tools(),
+        tools = [*tools, tone_tool(), proactive.ahead_tool(), briefing.tool(), *offers.tools(),
                  *first_chat_settings(store, proactive, first_chat)]   # the owner's own settings: no card
     if not tools_given:
         tools = [*tools, *follow_tools(follow_runner)]
@@ -3451,7 +3551,7 @@ def create_app(
     app.include_router(module_router(follow_routes, follow_runner, require_auth))
     if checklist:
         app.include_router(module_router(checklist_routes, checklist, require_auth, lambda: (
-            scheduler._every_last["checklist"] + checklist.period()) if "checklist" in scheduler._every_last else None))
+            situation.next_send(time.time()) if checklist.send_time_items() else None)))
 
     def stream_turn(turn: Turn) -> StreamingResponse:
         """Hand a reply to the page as a stream. A page that goes away stops it (a page that asks again and again, below, does not)."""
@@ -3515,7 +3615,7 @@ def create_app(
         prof = store.profile()
         return "\n\n" + "\n".join(turn_lines(tz_name=tz_name or prof["timezone"], agent_name=prof["agent_name"],
                                               user_name=prof["user_name"], goals=goal_book.for_prompt(), schedules=schedules_for_prompt(),
-                                              tone=prof["tone"]))
+                                              tone=prof["tone"], follow=follow_for_prompt(), watchers=watchers_for_prompt()))
 
     def answers_note(answers: list[AnswerIn] | None) -> str:
         """The values of the quick-reply fields a message answers, checked against the open questions, as a line for the model
@@ -3536,6 +3636,8 @@ def create_app(
                 lines.append(f"{q.get('question') or a.question + 1} = {value} ({q['kind']})")
         return f"[Not from the user: the exact values of the fields they filled in: {'; '.join(lines)}]" if lines else ""
 
+    open_steps: dict[str, str] = {}   # "chat" -> the step a stopped chat reply started and never got a result for (told to the next reply)
+
     async def prepare_talk(body: TalkIn, request: Request | None = None, *, owner: str | None = None, via: str = "", note: str = "",
                            forwarded: bool = False) -> tuple[
             str, str, TurnContext, Callable[[dict[str, Any] | None], None], Callable[[Turn], Turn]]:
@@ -3545,6 +3647,9 @@ def create_app(
         (stored with it and with the reply: "telegram"); `note`: a line for the model only (never stored), channels.CHANNEL_NOTE;
         `forwarded`: a messenger message the owner forwarded, someone else's words (its author is not `owner`, owner_messages.py)."""
         browser_owner.set(owner or str(request.state.device_id or "owner"))   # each phone drives its own browser tab, however many are connected
+        if body.call:   # a spoken message of an in-app call (calls.py): stored as the call's words; the model gets the spoken-reply rules
+            via = via or "call"
+            note = f"{note}\n\n{CALL_NOTE}" if note else CALL_NOTE
         provider, model = resolve_model(None, None)
         offer = activity.open_offer(last_user_id())   # a "Continue" button under the newest message (resume.py)
         held_answer = await hold_asker.answer(last_user_id(), body.text)   # "hand back" / "keep" to the idle question (hold_asks.py), else None
@@ -3585,6 +3690,8 @@ def create_app(
             text = f"{text}\n\n{answer_note(held_answer, hold_asker.last_what)}"
         if entry_note := entries.take_notes():   # a fill-in card the user closed after the reply that asked had ended
             text = f"{text}\n\n{entry_note}"
+        if open_step := open_steps.pop("chat", None):   # the last reply was stopped before this step finished: the request is still open
+            text = f"{text}\n\n[Not from the user: your last reply was stopped before \"{open_step}\" finished; that request is still open.]"
         ctx = TurnContext(tz_name, [{"role": "user", "content": text}], user_id)
         said = ReplyText()   # a line that only led into a tool step is not kept as the answer of a stopped reply (reply_text.py)
         saved = False
@@ -3592,11 +3699,13 @@ def create_app(
         def save() -> None:
             nonlocal saved
             if not saved and said:
-                store.add_message("assistant", collapse_repeat(said.text()), via=via)
+                store.add_message("assistant", collapse_repeat(said.text()), via=via, steps=said.steps_text())
             saved = True
 
         def observe(item: dict[str, Any] | None) -> None:
             if item is None:  # stream ended (finished or client left): keep what was said (reply_text.py)
+                if not said.done and (step := said.unfinished()):
+                    open_steps["chat"] = step   # the next reply is told that this request never ran
                 save()
                 try:
                     after_turn(ctx)
@@ -3748,7 +3857,8 @@ def create_app(
                scheduler=scheduler, schedules=schedules, start_background=start_background, start_turn=start_turn, store=store,
                use_offer=use_offer, worker_handoff=worker_handoff)   # what turn_resume.py reads
     appctx.add(background_folds=background_folds, goal_book=goal_book, goal_queued=goal_queued, journal_model=journal_model,
-               schedule_check_on=schedule_check_on, schedules=schedules, turns=turns, worker_handoff=worker_handoff)   # what turn_goals.py reads
+               schedule_check_on=schedule_check_on, schedules=schedules, turns=turns, worker_handoff=worker_handoff,
+               checklist_send_times=checklist_send_times, tool_scopes=tool_scopes)   # what turn_goals.py reads
     # what turn_workers.py reads
     appctx.add(TurnContext=TurnContext, activity=activity, handoff_lock=handoff_lock, journal_model=journal_model,
                keep_resume=keep_resume, limit_guard=limit_guard, proactive=proactive, reactions=reactions,

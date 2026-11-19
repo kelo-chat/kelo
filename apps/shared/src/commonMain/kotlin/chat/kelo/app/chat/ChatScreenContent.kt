@@ -206,7 +206,7 @@ fun ChatScreenContent(
                         onInput = vm::setInput, onSend = { vm.send(words = words) }, onStop = vm::stop,
                         onAttach = { attachSheet = true },
                         chipText = modelChipText(profile, state.providers, modelList), onChip = { focus.clearFocus(); chooser = true },
-                        fieldModifier = hooks.fieldModifier, mic = hooks.mic,
+                        fieldModifier = hooks.fieldModifier, mic = hooks.mic, voice = hooks.voice,
                         onPickTop = { SlashCommands.matches(state.input).firstOrNull()?.let { vm.setInput(SlashCommands.picked(it)); true } ?: false },
                     )
                 }

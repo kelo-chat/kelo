@@ -85,8 +85,24 @@ class DesktopChat(app: AppContainer) : ViewModelStoreOwner {
     override val viewModelStore: ViewModelStore get() = store
     val vm: ChatViewModel = ViewModelProvider.create(
         store,
-        viewModelFactory { initializer { ChatViewModel(app.sessions, app.store, app.activity, TrayTurnWatch(app, side), object : ChatPlatform { override fun itemSettled(id: String) = app.settleItems(listOf(id)) }) } },
+        viewModelFactory {
+            initializer {
+                ChatViewModel(
+                    app.sessions,
+                    app.store,
+                    app.activity,
+                    TrayTurnWatch(app, side),
+                    object : ChatPlatform { override fun itemSettled(id: String) = app.settleItems(listOf(id)) },
+                    canCall = { app.calls.available.value },
+                )
+            }
+        },
     )[ChatViewModel::class]
 
-    fun close() = store.clear()
+    private val callAttach = app.calls.attach(vm)
+
+    fun close() {
+        callAttach.close()
+        store.clear()
+    }
 }

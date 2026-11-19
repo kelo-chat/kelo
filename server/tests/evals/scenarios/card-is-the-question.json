@@ -1,0 +1,60 @@
+{
+  "name": "card-is-the-question",
+  "about": "A mail the owner asked for is sent through its own card: Kelo does not also ask in chat first (2026-11-18, ask in chat then a card).",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Send a mail to friend@example.test saying I'll be 10 minutes late"
+  ],
+  "model": [
+    [
+      {
+        "tool": "email_send",
+        "args": {
+          "to": "friend@example.test",
+          "subject": "Late",
+          "body": "I'll be 10 minutes late."
+        }
+      }
+    ],
+    [
+      {
+        "text": "Sent."
+      }
+    ]
+  ],
+  "tools": {
+    "email_send": {
+      "real_schema": true,
+      "approval": {},
+      "result": "Sent to friend@example.test."
+    },
+    "quick_replies": {
+      "real_schema": true,
+      "result": "Shown."
+    }
+  },
+  "approve": true,
+  "expect": {
+    "called": [
+      "email_send"
+    ],
+    "approval_asked": true,
+    "calls_max": {
+      "quick_replies": 0
+    }
+  },
+  "live": {
+    "expect": {
+      "called": [
+        "email_send"
+      ],
+      "approval_asked": true,
+      "calls_max": {
+        "quick_replies": 0
+      }
+    },
+    "note": "live: one user turn; if the model asks in chat first, email_send never runs and the scenario fails"
+  }
+}

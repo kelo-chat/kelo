@@ -163,14 +163,16 @@ MODELS = {
         "armed:B", "lastKeptAt:D?", "signedIn:B?", "problems:[BuyProblem]", "remembered:B"]),
     "DryRun": ("A watcher's check without the agent (POST /api/watchers/{id}/dry-run).", [
         "at:D?", "ok:B", "satisfied:B", "value:S?", "detail:S?", "error:S?", "url:S?", "title:S?"]),
+    "LastCheck": ("A watcher's latest check result.", [
+        "at:D?", "detail:S?", "value:S?", "hit:B", "error:S?"]),
     "Watcher": ("A cheap condition check that wakes the agent only when it holds. kind: page | script; mode: text_appears | text_disappears | number_above | number_below | changed | script; state: off | watching | error | done.", [
         "id:L!", "name:S", "kind:S=\"page\"", "url:S?", "mode:S", "match:S?", "selector:S?", "regex:S?", "threshold:D?",
         "useBrowser:B", "code:S?", "note:S?", "everyMinutes:I", "enabled:B", "once:B", "state:S=\"off\"", "description:S",
         "lastValue:S?", "lastCheckedAt:D?", "nextCheckAt:D?", "lastFiredAt:D?", "fireCount:I", "errorCount:I", "lastError:S?",
-        "disabledReason:S?", "dryRun:DryRun?", "canEnable:B", "createdAt:D?", "updatedAt:D?", "createdBy:S=\"user\"",
+        "disabledReason:S?", "dryRun:DryRun?", "lastCheck:LastCheck?", "canEnable:B", "createdAt:D?", "updatedAt:D?", "createdBy:S=\"user\"",
         "buy:BuyReady?"]),
     "WatcherList": ("GET /api/watchers.", ["items:[Watcher]", "limit:I"]),
-    "WatcherEvent": ("GET /api/watchers/{id}/events items.", ["id:L", "at:D", "kind:S", "detail:S?", "value:S?"]),
+    "WatcherEvent": ("GET /api/watchers/{id}/events items.", ["id:L", "at:D", "kind:S", "detail:S?", "value:S?", "count:I=1"]),
     "WatcherEvents": ("GET /api/watchers/{id}/events.", ["items:[WatcherEvent]"]),
     "DryRunAnswer": ("POST /api/watchers/{id}/dry-run.", ["result:DryRun?", "watcher:Watcher?"]),
     # ---- browser tabs ----------------------------------------------------------------------------------------------------------
@@ -320,7 +322,7 @@ MODELS = {
     "FollowPlanTell": ("What Kelo tells: lead offsets (\"-1d\", \"-3h\") and whether a change is told.", ["lead:[S]", "onChange:B=true"]),
     "FollowPlanData": ("The plan of a followed item (only prep and tell are read).", ["prep:[FollowPrep]", "tell:FollowPlanTell?"]),
     "FollowItem": ("GET /api/follow items. state: planned | watching | done | stopped; startsAt: epoch seconds.", [
-        "key:S", "kind:S", "title:S", "startsAt:D", "checks:[FollowCheck]", "prep:[FollowPrep]", "plan:FollowPlanData?", "state:S=\"planned\""]),
+        "key:S", "kind:S", "title:S", "startsAt:D", "allDay:B=false", "checks:[FollowCheck]", "prep:[FollowPrep]", "plan:FollowPlanData?", "state:S=\"planned\""]),
     "FollowItemList": ("GET /api/follow.", ["items:[FollowItem]"]),
     "FollowActionResponse": ("POST /api/follow/{key}/stop and /replan.", ["ok:B", "key:S", "state:S"]),
     "AndroidScreen": ("GET /api/android \"screen\": the device's screen in pixels.", ["width:I", "height:I"]),

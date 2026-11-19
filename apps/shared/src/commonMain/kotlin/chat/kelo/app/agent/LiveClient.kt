@@ -486,6 +486,8 @@ data class TabLite(
     @kotlinx.serialization.SerialName("status_text") val statusText: String = "",
     val viewers: Int = 0,
     @kotlinx.serialization.SerialName("controlled_by") val controlledBy: String? = null,
+    /** The tabs of this task's window (an older server: none) */
+    val tabs: List<LiveTab> = emptyList(),
 )
 
 /** The tab a chat reply works in: this phone's own (its device id), or "owner" when signed in with the access key. */

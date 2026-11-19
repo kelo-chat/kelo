@@ -38,6 +38,7 @@ internal class ChatTurns(
             it.turnKind.value = AgentActivityRules.turnKind(it.turnKind.value, ev)
         }
         host.watch?.event(ev)
+        host.turnEvents.tryEmit(ev)
     }
 
     /**
@@ -79,7 +80,7 @@ internal class ChatTurns(
      */
     fun start(
         text: String, fromComposer: Boolean, tookAttachments: Boolean, answers: List<ReplyAnswer>, secrets: String?,
-        files: List<MessageFile> = emptyList(), autoText: Boolean = false,
+        files: List<MessageFile> = emptyList(), autoText: Boolean = false, call: String? = null,
     ) {
         val api = runCatching { host.api() }.getOrNull() ?: return
         val before = host.state.value
@@ -90,7 +91,7 @@ internal class ChatTurns(
                 attachments = if (tookAttachments) emptyList() else it.attachments,
                 busy = true,
                 phase = Phase(PhaseKind.WAITING, since = host.now()),
-                items = it.items + ChatItem.Msg(bubble, mine = true, text = text, at = host.now(), files = files, autoText = autoText),
+                items = it.items + ChatItem.Msg(bubble, mine = true, text = text, at = host.now(), files = files, autoText = autoText, fromCall = call != null),
             )
         }
         if (fromComposer) draft.cleared()
@@ -105,7 +106,7 @@ internal class ChatTurns(
         var failed = false
         turn = host.scope.launch {
             try {
-                TurnFollower(KeloTurnApi(api)).talk(text, TimeZone.getDefault().id, answers, secrets, files.map { it.path }, autoText) { ev -> apply(ev) }
+                TurnFollower(KeloTurnApi(api, host.canCall)).talk(text, TimeZone.getDefault().id, answers, secrets, files.map { it.path }, autoText, call = call) { ev -> apply(ev) }
                 finished = true
             } catch (e: CancellationException) {
                 throw e
@@ -200,7 +201,7 @@ internal class ChatTurns(
         var finished = false
         turn = host.scope.launch {
             try {
-                TurnFollower(KeloTurnApi(api)).follow(turnId) { ev -> apply(ev) }
+                TurnFollower(KeloTurnApi(api, host.canCall)).follow(turnId) { ev -> apply(ev) }
                 finished = true
             } catch (e: CancellationException) {
                 throw e

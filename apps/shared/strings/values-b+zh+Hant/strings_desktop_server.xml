@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- zh-Hant text for strings_desktop_server.xml (generated from values/strings_desktop_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_server_row">將這台電腦用作 Kelo 伺服器</string>
     <string name="desktop_server_row_hint">在這台電腦上安裝 Kelo 伺服器。Windows 會請您授權管理員權限一次。</string>
@@ -17,7 +17,6 @@
     <string name="desktop_server_update">更新</string>
     <string name="desktop_server_install">安裝</string>
     <string name="desktop_server_unavailable">Windows 版 Kelo 伺服器尚未準備好。</string>
-
     <string name="desktop_server_row_mac">將這台 Mac 用作 Kelo 伺服器</string>
     <string name="desktop_server_row_hint_mac">在這台 Mac 上安裝 Kelo 伺服器。macOS 會要求輸入一次管理員密碼。</string>
     <string name="desktop_server_installed_mac">這台 Mac 上已有 Kelo 伺服器</string>

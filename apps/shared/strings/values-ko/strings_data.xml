@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ko text for strings_data.xml (edit freely, keep the names) -->
+<!-- ko text for strings_data.xml (generated from values/strings_data.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="data_title">내 데이터</string>
     <string name="data_intro">Kelo가 가진 내 정보를 한 벌 받아 두거나, 다른 비서의 기억을 가져오거나, 처음부터 다시 시작해요.</string>

@@ -22,6 +22,22 @@ object DictationWay {
     }
 }
 
+/**
+ * The mic's download ring: while the speech model downloads, the mic icon is a circle that shows progress (the owner's addition
+ * 2026-11-18). null = nothing downloads (the mic is drawn); else [Ring.percent] is the progress, or null when the server gives none
+ * (an indeterminate spinner).
+ */
+object VoiceDownloadRing {
+    data class Ring(val percent: Int?)
+
+    fun of(view: VoiceView?): Ring? {
+        if (view?.state != "downloading") return null
+        val p = view.progress ?: return Ring(null)
+        if (p.total <= 0L) return Ring(null)
+        return Ring(((p.done * 100L) / p.total).toInt().coerceIn(0, 100))
+    }
+}
+
 /** Recording steps: idle → recording → sending → idle; any → idle on cancel. The screen runs the actions it is told. */
 object RecordingSteps {
     const val MAX_MS = 120_000L
@@ -78,9 +94,60 @@ object Wav {
         pcm16le.copyInto(out, 44)
         return out
     }
+
+    /** 16-bit PCM mono WAV bytes → (pcm16le, sampleRate); null if malformed, stereo, or not 16-bit PCM. */
+    fun decode(bytes: ByteArray): Pair<ByteArray, Int>? {
+        if (bytes.size < 44) return null
+        if (bytes[0] != 'R'.code.toByte() || bytes[1] != 'I'.code.toByte() ||
+            bytes[2] != 'F'.code.toByte() || bytes[3] != 'F'.code.toByte() ||
+            bytes[8] != 'W'.code.toByte() || bytes[9] != 'A'.code.toByte() ||
+            bytes[10] != 'V'.code.toByte() || bytes[11] != 'E'.code.toByte()
+        ) return null
+
+        var sampleRate = 0
+        var audioFormat = 0
+        var numChannels = 0
+        var bitsPerSample = 0
+        var pcmData: ByteArray? = null
+
+        var offset = 12
+        while (offset + 8 <= bytes.size) {
+            val chunkId = bytes.decodeToString(offset, offset + 4)
+            val chunkSize = (bytes[offset + 4].toInt() and 0xFF) or
+                ((bytes[offset + 5].toInt() and 0xFF) shl 8) or
+                ((bytes[offset + 6].toInt() and 0xFF) shl 16) or
+                ((bytes[offset + 7].toInt() and 0xFF) shl 24)
+            offset += 8
+            if (chunkSize < 0 || offset + chunkSize > bytes.size) {
+                if (chunkId == "data" && chunkSize > 0 && offset <= bytes.size) {
+                    pcmData = bytes.copyOfRange(offset, bytes.size)
+                }
+                break
+            }
+
+            if (chunkId == "fmt " && chunkSize >= 16) {
+                audioFormat = (bytes[offset].toInt() and 0xFF) or ((bytes[offset + 1].toInt() and 0xFF) shl 8)
+                numChannels = (bytes[offset + 2].toInt() and 0xFF) or ((bytes[offset + 3].toInt() and 0xFF) shl 8)
+                sampleRate = (bytes[offset + 4].toInt() and 0xFF) or
+                    ((bytes[offset + 5].toInt() and 0xFF) shl 8) or
+                    ((bytes[offset + 6].toInt() and 0xFF) shl 16) or
+                    ((bytes[offset + 7].toInt() and 0xFF) shl 24)
+                bitsPerSample = (bytes[offset + 14].toInt() and 0xFF) or ((bytes[offset + 15].toInt() and 0xFF) shl 8)
+            } else if (chunkId == "data") {
+                pcmData = bytes.copyOfRange(offset, offset + chunkSize)
+            }
+
+            offset += chunkSize + (chunkSize and 1)
+        }
+
+        if (audioFormat != 1 || numChannels != 1 || bitsPerSample != 16 || sampleRate <= 0 || pcmData == null) {
+            return null
+        }
+        return Pair(pcmData, sampleRate)
+    }
 }
 
-/** Levels for the sound graph: RMS of a stretch of samples, 0..1 on a square-root curve, and a rolling list of the newest bars. */
+/** Levels for the sound graph: RMS of a stretch of samples, 0..1 on a square-root curve. */
 object SoundBars {
     fun rms(pcm16le: ByteArray, from: Int, to: Int): Float {
         var sum = 0.0
@@ -98,7 +165,6 @@ object SoundBars {
         return sqrt(rms.coerceIn(0f, 1f))
     }
 
-    fun push(bars: List<Float>, level: Float, max: Int = 48): List<Float> = (bars + level.coerceIn(0f, 1f)).takeLast(max)
 }
 
 /** Down-sampling for devices that will not open a 16 kHz line: a box filter over each output sample's input span. */

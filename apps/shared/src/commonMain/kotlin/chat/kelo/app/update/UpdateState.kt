@@ -8,6 +8,7 @@ enum class UpdatePhase { IDLE, DOWNLOADING, VERIFYING, READY, FAILED, MISMATCH }
  * [needsPermission]: the APK is ready but Android does not yet let Kelo hand it to the installer (the user is sent to the setting).
  * [play]: the offer comes from Google Play (no version or size of its own to show; READY means "restart to apply").
  * [required]: the server says this build is too old (`min_app_version`): the required-update screen covers the app.
+ * [storeNewer]: the store itself says a newer build is out, for a store build that has no offer of its own (the Microsoft Store copy).
  */
 data class UpdateState(
     val enabled: Boolean = false,
@@ -26,6 +27,7 @@ data class UpdateState(
     val installNote: String? = null,
     /** The app's own words for a failed download or install (the desktop: where the installer is); null = the general update error. */
     val failureDetail: String? = null,
+    val storeNewer: Boolean = false,
 ) {
     val showBanner: Boolean get() = enabled && !required && UpdateRules.showBanner(offer?.version, bannerSeen)
 }

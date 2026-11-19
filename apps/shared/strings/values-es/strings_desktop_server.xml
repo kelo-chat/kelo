@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- es text for strings_desktop_server.xml (generated from values/strings_desktop_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_server_row">Usar este PC como servidor de Kelo</string>
     <string name="desktop_server_row_hint">Instala el servidor de Kelo en este equipo. Windows pide permiso de administrador una vez.</string>
@@ -17,7 +17,6 @@
     <string name="desktop_server_update">Actualizar</string>
     <string name="desktop_server_install">Instalar</string>
     <string name="desktop_server_unavailable">El servidor de Kelo para Windows aún no está disponible.</string>
-
     <string name="desktop_server_row_mac">Usar este Mac como servidor de Kelo</string>
     <string name="desktop_server_row_hint_mac">Instala el servidor de Kelo en este Mac. macOS pide la contraseña de administrador una vez.</string>
     <string name="desktop_server_installed_mac">El servidor de Kelo está en este Mac</string>

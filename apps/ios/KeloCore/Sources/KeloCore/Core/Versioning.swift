@@ -31,6 +31,8 @@ public enum Versioning {
     public static let channelHeader = "X-Kelo-App-Channel"
     /// On /api/about and /api/profile: the newest released app that works with this server (when newer than this one).
     public static let updateHeader = "X-Kelo-App-Update"
+    /// On /api/about and /api/profile: a newer server release the caller may install (server_updates.offer); nil when none.
+    public static let serverUpdateHeader = "X-Kelo-Server-Update"
     /// 426 `{"code": "app_too_old"}`: the server needs a newer app.
     public static let appTooOldCode = "app_too_old"
 

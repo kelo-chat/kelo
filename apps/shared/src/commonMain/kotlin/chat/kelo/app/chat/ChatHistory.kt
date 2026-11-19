@@ -193,7 +193,8 @@ internal class ChatHistory(private val host: ChatHost, private val sync: ChatSyn
 /** A stored message as a row of the chat. */
 internal fun toChatItem(m: StoredMessage) =
     ChatItem.Msg("m${m.id}", mine = m.role == "user", text = m.content, id = m.id, replies = m.replies, at = (m.createdAt * 1000).toLong(),
-        reaction = m.reaction, briefing = m.briefing, comparison = m.comparison, images = m.images, files = m.attachments, autoText = m.autoText)
+        reaction = m.reaction, briefing = m.briefing, comparison = m.comparison, images = m.images, files = m.attachments, autoText = m.autoText,
+        fromCall = m.via == "call")
 
 /**
  * The rows after the newest page was loaded again while it was on screen (the news check). The shown rows are matched to the stored
@@ -231,16 +232,44 @@ internal fun mergeStoredRows(shown: List<ChatItem>, stored: List<ChatItem>): Lis
     val shownIds = shownMsgs.mapNotNullTo(HashSet()) { it.id }
     val candidates = storedMsgs.indices.filter { storedMsgs[it].id !in shownIds && it !in used }
     var c = candidates.size - 1
-    for (o in shownMsgs.asReversed()) {
-        if (o.id != null) continue
-        if (c < 0) break
-        val i = candidates[c--]
-        if (storedMsgs[i].mine != o.mine) break
-        swap[o.key] = storedMsgs[i].copy(key = o.key)
-        used += i
+    val folded = HashSet<String>()                               // streamed bubbles that one stored reply covers
+    for (run in idLessRuns(shown).asReversed()) {
+        var matched = 0
+        for (o in run.asReversed()) {
+            if (c < 0) break
+            val i = candidates[c]
+            if (storedMsgs[i].mine != o.mine) break
+            c--
+            matched++
+            swap[o.key] = storedMsgs[i].copy(key = o.key)
+            used += i
+        }
+        // a reply split by tool chips is one reply: its earlier streamed bubbles go, the stored text is in the last one
+        if (matched > 0) run.dropLast(matched).forEach { folded += it.key }
     }
     val newest = used.maxOrNull() ?: -1
     val extra = storedMsgs.indices.filter { it !in used && it > newest }.map { storedMsgs[it] }
-    return shown.map { if (it is ChatItem.Msg) swap[it.key] ?: it else it } + extra
+    return shown.mapNotNull { if (it.key in folded) null else if (it is ChatItem.Msg) swap[it.key] ?: it else it } + extra
+}
+
+/**
+ * The id-less assistant (or user) bubbles of one reply, in order: bubbles separated only by tool chips are one run (a live reply
+ * split by a tool chip). Any other row ends a run.
+ */
+private fun idLessRuns(shown: List<ChatItem>): List<List<ChatItem.Msg>> {
+    val runs = ArrayList<MutableList<ChatItem.Msg>>()
+    var open = false   // the last row that is not a tool chip is an id-less bubble
+    for (row in shown) {
+        when {
+            row is ChatItem.Tool -> Unit
+            row is ChatItem.Msg && row.id == null -> {
+                val run = runs.lastOrNull()
+                if (open && run != null && run.last().mine == row.mine) run += row else runs += mutableListOf(row)
+                open = true
+            }
+            else -> open = false
+        }
+    }
+    return runs
 }
 

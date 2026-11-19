@@ -50,4 +50,13 @@ class BriefingSettingsRulesTest {
         assertFalse(BriefingSettingsRules.needsLocation(known, granted = true))
         assertFalse(BriefingSettingsRules.needsLocation(none.copy(sections = mapOf("weather" to false)), granted = false))   // no weather wanted
     }
+
+    @Test fun aFixedTimeIsNeverBeforeTheContactHours() {
+        val b = json.decodeFromString<BriefingSettings>("""{"time_mode": "fixed", "fixed_time": "08:30", "earliest": "08:00"}""")
+        assertEquals("08:00", b.earliest)
+        assertFalse(BriefingSettingsRules.fixedAllowed(b, 7, 59))
+        assertTrue(BriefingSettingsRules.fixedAllowed(b, 8, 0) && BriefingSettingsRules.fixedAllowed(b, 23, 0))
+        val older = json.decodeFromString<BriefingSettings>("""{"time_mode": "fixed"}""")   // an older server: no limit known
+        assertTrue(BriefingSettingsRules.fixedAllowed(older, 5, 0))
+    }
 }

@@ -6,6 +6,21 @@ import KeloCore
 // Models ignore fields the server adds later; a code this app does not know falls into a generic line, never shown raw.
 
 /// A thing the look covers now: a section (kind "section", id = its code) or a connected service or phone item.
+/// A group of "looks" (newer servers): when the things in `covers` are looked at. whenCode: hourly | send | briefing | needed;
+/// times "HH:MM" (send: the send times of the contact window now or next; briefing: its time). Android SituationLook.
+public struct SituationLook: Decodable, Equatable, Sendable {
+    public var whenCode = ""
+    public var times: [String] = []
+    public var covers: [SituationLooked] = []
+    public init(whenCode: String = "", times: [String] = [], covers: [SituationLooked] = []) {
+        self.whenCode = whenCode; self.times = times; self.covers = covers
+    }
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        whenCode = j.str("when"); times = j.strings("times"); covers = j.list("covers")
+    }
+}
+
 public struct SituationLooked: Decodable, Equatable, Sendable {
     public var id = "", name = "", kind = ""
     public var hourly = false
@@ -65,12 +80,16 @@ public struct SituationList: Decodable, Equatable, Sendable {
     public var research = false
     public var keepDays = 90
     public var lookedAt: [SituationLooked] = []
+    /// When each thing is looked at (newer servers); nil from an older server: the page shows lookedAt as before.
+    public var looks: [SituationLook]?
     public var passes: [SituationPass] = []
     public var nextBefore: Int?
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         research = j.bool("research"); keepDays = j.int("keep_days", 90)
-        lookedAt = j.list("looked_at"); passes = j.list("passes"); nextBefore = j.optInt("next_before")
+        lookedAt = j.list("looked_at")
+        looks = j.has("looks") ? j.list("looks") : nil
+        passes = j.list("passes"); nextBefore = j.optInt("next_before")
     }
 }
 
@@ -168,6 +187,27 @@ public enum SituationRules {
 
     /// The covers Kelo reads only when a question needs them.
     public static func onDemand(_ looked: [SituationLooked]) -> [SituationLooked] { looked.filter { !$0.hourly } }
+
+    public enum LookKind: Equatable, Sendable { case hourly, send, briefing, needed, other }
+
+    /// A group's code as a kind; a code this app does not know is .other (left out).
+    public static func lookKind(_ code: String) -> LookKind {
+        switch code.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "hourly": .hourly
+        case "send": .send
+        case "briefing": .briefing
+        case "needed": .needed
+        default: .other
+        }
+    }
+
+    /// The groups the page shows, in the server's order: a kind this app knows, with something in it.
+    public static func shownLooks(_ looks: [SituationLook]) -> [SituationLook] {
+        looks.filter { lookKind($0.whenCode) != .other && !$0.covers.isEmpty }
+    }
+
+    /// A group's times that are times ("HH:MM"), in the server's order.
+    public static func lookTimes(_ look: SituationLook) -> [String] { look.times.filter { NotifySettingsRules.parseTime($0) != nil } }
 
     /// The local day of epoch seconds, or nil when there is no time.
     public static func day(_ seconds: Double, zone: TimeZone = .current) -> LocalDay? {

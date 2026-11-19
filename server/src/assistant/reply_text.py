@@ -19,13 +19,16 @@ buttons, never looks something up for the answer."""
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
+
+from .agent.fence import is_fenced
 
 LEAD_IN_MAX = 160
 BOOKKEEPING = frozenset({
     "react", "quick_replies", "compare_options", "find_tools", "offer_post", "set_tone", "finish_first_chat", "await_reply", "job_progress", "goal_log",
-    "recheck_later", "recheck_result", "read_skill", "search_skills", "vault_status",
+    "read_skill", "search_skills", "vault_status",
 })
 _BREAK = re.compile(r"<message_break\s*/?>")
 _BREAK_END = re.compile(r"<message_break\s*/?>\s*$")
@@ -39,6 +42,17 @@ def is_lead_in(segment: str) -> bool:
     return bool(body) and len(body) <= LEAD_IN_MAX and not _PARAGRAPH.search(body) and not _BREAK.search(body)
 
 
+def _what_came_back(item: dict[str, Any]) -> str:
+    output = str(item.get("output") or "")
+    if item.get("is_error") or output.startswith("Error"):
+        return "error"
+    if is_fenced(output):
+        return "read"
+    if re.search(r"\bdo not\b", output, re.I):   # an instruction to the model was said once, in its own turn: the steps keep the outcome only
+        return "done"
+    return (output.strip().splitlines() or [""])[0][:100] or "done"
+
+
 class ReplyText:
     """Fed every event of a reply (the observe callback of run_turn); `text()` is what the conversation stores."""
 
@@ -48,6 +62,9 @@ class ReplyText:
         self.segments: list[str] = []   # text before each counted tool step (never empty ones)
         self.cur: list[str] = []
         self.done = False
+        self.open: dict[str, str] = {}   # id -> "name arguments" of a tool step that has not returned yet (a stopped reply's unfinished step)
+        self.names: dict[str, str] = {}  # id -> tool name, until its result comes
+        self.steps: list[str] = []       # "name -> what came back" per step, one line for the model (steps_text); never outside text
 
     def feed(self, item: dict[str, Any]) -> None:
         kind = item.get("type")
@@ -57,12 +74,30 @@ class ReplyText:
         elif kind == "tool_started":
             self.cut = len(self.parts)
             if item.get("name") not in BOOKKEEPING:
+                self.names[str(item.get("id") or "")] = str(item.get("name") or "")
+                args = item.get("arguments") or ""
+                args = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False, default=str)
+                self.open[str(item.get("id") or "")] = f"{item.get('name')} {args[:120]}".strip()
                 seg = "".join(self.cur)
                 if seg.strip():
                     self.segments.append(seg)
                 self.cur = []
+        elif kind == "tool_result":
+            self.open.pop(str(item.get("id") or ""), None)
+            name = self.names.pop(str(item.get("id") or ""), "")
+            if name:
+                self.steps.append(f"{name} -> {_what_came_back(item)}")
         elif kind == "done":
             self.done = True
+
+    def steps_text(self) -> str:
+        """The tool steps of this reply in one line ("watch_add -> Watcher #3 saved; email_list -> read"), stored with the message
+        so the next turn's model knows what it did. Outside text is never copied: a fenced result is "read" only."""
+        return "; ".join(self.steps)[:400]
+
+    def unfinished(self) -> str:
+        """The first tool step this reply started and never got a result for ("name arguments"), or "" (a stopped reply's request)."""
+        return next(iter(self.open.values()), "")
 
     def text(self) -> str:
         if not self.done:

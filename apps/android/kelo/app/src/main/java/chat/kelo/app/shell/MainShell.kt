@@ -290,11 +290,13 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
             visible = !chrome.headerHidden, modifier = Modifier.align(Alignment.TopCenter),
             enter = fadeIn(Motion.small(reduce)), exit = fadeOut(Motion.small(reduce)),
         ) {
+            val canCall by container.calls.available.collectAsStateWithLifecycle()
             FloatingHeader(
                 profile, shell,
                 onAgent = { workOpen = true },
                 modifier = Modifier.onSizeChanged { headerH = with(density) { it.height.toDp() } },
                 onSearch = if (route == Routes.CHAT && !sideShown) ({ searchOpen = true }) else null,
+                onCall = if (route == Routes.CHAT && canCall) container.calls::ringFromButton else null,
             )
         }
         AnimatedVisibility(
@@ -364,7 +366,8 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
         // a newer released app that works with the server (X-Kelo-App-Update; store builds too): once per version, never over another banner
         val offeredApp by chat.kelo.app.core.AppVersion.update.collectAsStateWithLifecycle()
         val dismissedApps by container.appNotice.dismissed.collectAsStateWithLifecycle()
-        val noticeVersion = offeredApp?.takeIf { chat.kelo.app.update.AppNoticeRules.show(it, dismissedApps) }
+        // a store build hears of a newer app from its store (the popup above), never from this header alone
+        val noticeVersion = offeredApp?.takeIf { chat.kelo.app.update.AppNoticeRules.action(chat.kelo.app.core.AppVersion.channel) == chat.kelo.app.update.AppNoticeRules.Action.UPDATER && chat.kelo.app.update.AppNoticeRules.show(it, dismissedApps) }
         val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
         val storeNotice = chat.kelo.app.update.AppNoticeRules.action(chat.kelo.app.core.AppVersion.channel) == chat.kelo.app.update.AppNoticeRules.Action.STORE
         if (!popupUp && noticeVersion != null && !(offered != null && update.showBanner) && route != Routes.MY && !workOpen && liveTab == null && !chrome.headerHidden && !modelCard) {
@@ -449,6 +452,22 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
             ServerTooOldScreen(serverSeen, onRetry = { container.sessions.recheckServer(); oldUpdater.probe() }, updater = oldUpdater)
         }
         // the server needs a newer build (min_app_version): this covers everything until the app is updated
+        // the server has a newer release (X-Kelo-Server-Update, see update/ServerNotice.kt): once a day, after the app popup, never over
+        // a full screen; "See the update" opens My -> Server update
+        val serverOffered by chat.kelo.app.core.AppVersion.serverUpdate.collectAsStateWithLifecycle()
+        val serverCovered = popupUp || update.required || serverOld || chat.kelo.app.core.AppVersion.serverTooOld(serverSeen) || keyChanged || locked
+        val onChat = route == Routes.CHAT && !workOpen && liveTab == null
+        androidx.compose.runtime.LaunchedEffect(serverOffered, serverCovered, onChat) {
+            container.serverNotice.consider(serverOffered.takeIf { onChat }, container.updatePopup.lastShownMs(), serverCovered)
+        }
+        val serverOpen by container.serverNotice.open.collectAsStateWithLifecycle()
+        serverOpen?.takeIf { onChat && !serverCovered }?.let { version ->
+            chat.kelo.app.update.ServerNoticeDialog(
+                version,
+                onOpen = { container.serverNotice.close(); liveTab = null; container.myPageRequests.value = MyPage.SERVER_UPDATE; go(Routes.MY) },
+                onLater = { container.serverNotice.close() },
+            )
+        }
         if (update.required) {
             val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
             chat.kelo.app.update.UpdateRequiredScreen(
@@ -456,6 +475,31 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
                 onLeave = { activity?.moveTaskToBack(true) },
             )
         }
+        val callSession by container.calls.session.collectAsStateWithLifecycle()
+        val callMinimized by container.calls.isMinimized.collectAsStateWithLifecycle()
+        if (callSession != null && !callMinimized) {
+            val callUi by callSession!!.ui.collectAsStateWithLifecycle()
+            androidx.activity.compose.BackHandler {
+                if (callUi.phase == chat.kelo.app.call.CallSteps.Phase.RINGING) {
+                    callSession?.decline()
+                } else {
+                    container.calls.minimized(true)
+                }
+            }
+            val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+            androidx.compose.runtime.DisposableEffect(activity) {
+                activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                onDispose {
+                    activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
+        val agentPhoto by container.agentAvatar.image.collectAsStateWithLifecycle()
+        chat.kelo.app.call.CallOverlay(
+            center = container.calls,
+            agentName = profile.agentName.ifBlank { "Kelo" },
+            photo = agentPhoto,
+        )
     }
 }
 

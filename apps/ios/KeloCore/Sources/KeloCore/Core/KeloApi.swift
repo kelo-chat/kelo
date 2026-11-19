@@ -174,6 +174,8 @@ public final class KeloApi: Sendable {
     let channelHeader: String
     /// A newer released app named by an answer of /api/about or /api/profile (`X-Kelo-App-Update`; nil when that answer named none).
     let onAppUpdate: @Sendable (String?) -> Void
+    /// A newer server release the caller may install (`X-Kelo-Server-Update` on /api/about and /api/profile; nil when none).
+    let onServerUpdate: @Sendable (String?) -> Void
     /// Holds this session's upload limits answer (see `uploadLimits`).
     let uploadLimitsBox = UploadLimitsBox()
 
@@ -187,7 +189,8 @@ public final class KeloApi: Sendable {
         onUnauthorized: @escaping @Sendable () -> Void = {},
         onFailure: @escaping @Sendable (ApiError) -> Void = { _ in },
         onServerVersion: @escaping @Sendable (String?) -> Void = { _ in },
-        onAppUpdate: @escaping @Sendable (String?) -> Void = { _ in }
+        onAppUpdate: @escaping @Sendable (String?) -> Void = { _ in },
+        onServerUpdate: @escaping @Sendable (String?) -> Void = { _ in }
     ) {
         var b = baseUrl
         while b.hasSuffix("/") { b.removeLast() }
@@ -198,6 +201,7 @@ public final class KeloApi: Sendable {
         self.appHeader = appHeader
         self.channelHeader = channelHeader
         self.onAppUpdate = onAppUpdate
+        self.onServerUpdate = onServerUpdate
         self.onUnauthorized = onUnauthorized
         self.onFailure = onFailure
         self.onServerVersion = onServerVersion
@@ -206,9 +210,10 @@ public final class KeloApi: Sendable {
     public convenience init(session: Session, transport: HTTPTransport = URLSessionTransport.shared, onUnauthorized: @escaping @Sendable () -> Void = {},
                             onFailure: @escaping @Sendable (ApiError) -> Void = { _ in },
                             onServerVersion: @escaping @Sendable (String?) -> Void = { _ in },
-                            onAppUpdate: @escaping @Sendable (String?) -> Void = { _ in }) {
+                            onAppUpdate: @escaping @Sendable (String?) -> Void = { _ in },
+                            onServerUpdate: @escaping @Sendable (String?) -> Void = { _ in }) {
         self.init(baseUrl: session.serverUrl, token: session.token, transport: transport, onUnauthorized: onUnauthorized,
-                  onFailure: onFailure, onServerVersion: onServerVersion, onAppUpdate: onAppUpdate)
+                  onFailure: onFailure, onServerVersion: onServerVersion, onAppUpdate: onAppUpdate, onServerUpdate: onServerUpdate)
     }
 
     /// The transport's end-to-end layer, when this API talks through one.
@@ -266,6 +271,7 @@ public final class KeloApi: Sendable {
         // a newer app that works with this server: only /api/about and /api/profile say so (no header there = none any more)
         if reply.status == 200, path == "/api/about" || path == "/api/profile" {
             onAppUpdate(AppNoticeRules.clean(reply.headers[Versioning.updateHeader.lowercased()]))
+            onServerUpdate(AppNoticeRules.clean(reply.headers[Versioning.serverUpdateHeader.lowercased()]))
         }
         guard (200...299).contains(reply.status) else { throw failure(reply.status, reply.body) }
         return reply

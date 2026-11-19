@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_location.xml (generated from values/strings_location.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="location_ask_title">Kelo 需要你的位置</string>
     <string name="location_ask_body">要回答這個問題，Kelo 需要知道這支手機現在在哪裡。</string>

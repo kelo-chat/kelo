@@ -3,6 +3,7 @@ package chat.kelo.app.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import chat.kelo.app.Caches
+import chat.kelo.app.call.CallChat
 import chat.kelo.app.core.ApiError
 import chat.kelo.app.core.DraftStore
 import chat.kelo.app.core.Profile
@@ -11,10 +12,14 @@ import chat.kelo.app.core.Shared
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
@@ -36,7 +41,8 @@ class ChatViewModel(
     watch: chat.kelo.app.chat.TurnWatch? = null,
     /** What only the app can do (a steady clock, starting the phone's own work after an approval, the log) */
     platform: ChatPlatform = ChatPlatform.Default,
-) : ViewModel() {
+    canCall: () -> Boolean = { false },
+) : ViewModel(), CallChat {
     /** The newest messages kept from last time: shown at once (no placeholder), then refreshed in place by [reload] */
     private val kept: List<StoredMessage>? = runCatching { sessions.cached(Caches.MESSAGES) }.getOrNull()
 
@@ -54,7 +60,13 @@ class ChatViewModel(
     private val _events = MutableSharedFlow<ChatEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ChatEvent> = _events.asSharedFlow()
 
-    private val host = ChatHost(viewModelScope, sessions, _state, _events, drafts, activity, watch, platform)
+    private val host = ChatHost(viewModelScope, sessions, _state, _events, drafts, activity, watch, platform, canCall)
+    override val turnEvents: SharedFlow<TurnEvent> = host.turnEvents
+
+    override val busy: StateFlow<Boolean> = _state
+        .map { it.busy }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.busy)
     private val draft = ChatDraft(host)
     private val sync = ChatSync(host)
     private val history = ChatHistory(host, sync, kept)
@@ -164,6 +176,15 @@ class ChatViewModel(
      * same status line, events and end as a reply sent from here, without a bubble of the user's own.
      */
     fun followTurn(turnId: String) = turns.followTurn(turnId)
+
+    override fun followFromCall(turnId: String) = turns.followTurn(turnId)
+
+    override fun sendFromCall(text: String, callId: String): Boolean {
+        val s = _state.value
+        if (s.busy || s.secretAsk != null || s.consentAsk != null) return false
+        turns.start(text, fromComposer = false, tookAttachments = false, answers = emptyList(), secrets = null, call = callId)
+        return true
+    }
 
     // ---- the location card (location_request): the screen asks the phone (permission, place) and hands the answer here
     /** The card shows "getting your location" while the screen reads the place. */

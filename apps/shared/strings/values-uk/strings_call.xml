@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Зателефонувати Kelo</string>
+    <string name="call_incoming_line">телефонує вам</string>
+    <string name="call_accept">Відповісти</string>
+    <string name="call_decline">Відхилити</string>
+    <string name="call_connecting">Підключення…</string>
+    <string name="call_listening">Слухає</string>
+    <string name="call_thinking">Думає</string>
+    <string name="call_speaking">Говорить</string>
+    <string name="call_muted">Мікрофон вимкнено</string>
+    <string name="call_mute">Вимкнути мікрофон</string>
+    <string name="call_unmute">Увімкнути мікрофон</string>
+    <string name="call_speaker">Динамік</string>
+    <string name="call_hang_up">Завершити виклик</string>
+    <string name="call_card_waiting">На екрані є інформація для перевірки.</string>
+    <string name="call_card_open">Показати</string>
+    <string name="call_back_to_call">Повернутися до виклику · %1$s</string>
+    <string name="call_offline">Немає зв’язку із сервером Kelo. Повторне підключення…</string>
+    <string name="call_ended_background">Виклик завершено, оскільки ви вийшли з додатка.</string>
+    <string name="call_ended_interrupted">Виклик завершено через інший звуковий сигнал.</string>
+    <string name="call_ended_quiet">Виклик завершено після тривалого мовчання.</string>
+    <string name="call_needs_speech_model">Для дзвінків на сервері Kelo потрібна модель розпізнавання мовлення.</string>
+    <string name="call_mic_denied">Не вдалося розпочати виклик: доступ до мікрофона заборонено.</string>
+    <string name="call_voice_offer">Це природний голос Kelo для викликів. Завантажте голосову модель (%1$s) на сервер Kelo, і з наступного речення Kelo заговорить цим голосом. Без неї Kelo використовуватиме роботоподібний голос пристрою.</string>
+    <string name="call_mark">Виклик</string>
+    <string name="call_voice_offer_title">Завантажити голос Kelo?</string>
+    <string name="call_voice_offer_ok">Завантажити</string>
+    <string name="call_voice_offer_later">Поки що використовувати голос пристрою</string>
+    <string name="call_voice_better">З голосовою моделлю Kelo звучатиме значно природніше.</string>
+    <string name="call_voice_get">Завантажити</string>
+    <string name="call_voice_line_close">Закрити</string>
+    <string name="call_ears_failed">Розпізнавання мовлення на телефоні не чує вас.</string>
+    <string name="voice_speech_title">Голос Kelo</string>
+    <string name="voice_speech_download">Завантажити голосову модель · %1$s</string>
+    <string name="voice_speech_downloading">Завантаження голосової моделі · %1$d%%</string>
+    <string name="voice_speech_remove">Видалити голосову модель</string>
+    <string name="voice_speech_remove_confirm">Видалити голосову модель? Після цього Kelo говоритиме голосом пристрою.</string>
+    <string name="voice_speech_device_note">Без голосової моделі Kelo говорить вбудованим голосом пристрою.</string>
+    <string name="voice_speech_unsupported_lang">Голосова модель ще не підтримує цю мову, тому використовується голос пристрою.</string>
+    <string name="voice_speech_voice_female">Жіночий голос %1$d</string>
+    <string name="voice_speech_voice_male">Чоловічий голос %1$d</string>
+    <string name="voice_speech_listen">Прослухати</string>
+    <string name="voice_speech_stop">Зупинити</string>
+    <string name="voice_speech_speed">Швидкість мовлення</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">Вітаю. Це голос, яким я розмовлятиму.</string>
+</resources>

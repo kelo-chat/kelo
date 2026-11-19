@@ -10,6 +10,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any
 
+from .page_paths import NO_ELEMENT, with_path
+
 PRESS_PAUSE = 0.12      # seconds between two presses (pages animate the press)
 
 class KeypadError(Exception):
@@ -20,17 +22,16 @@ class KeypadError(Exception):
         self.kind, self.pressed = kind, pressed
 
 
-# Marks where the PIN goes in this frame, by STRUCTURE only (docs/no-word-lists.md): no label, placeholder or page word is read.
-# Returns {"mode": "input"|"text"|"protected"|"", "boxes": n}.
-# - "input": data-kelo-pin="0".."n-1" on the PIN box(es): one password input with a PIN's shape (maxlength 4-8, or numeric input mode),
+# Finds where the PIN goes in this frame, by STRUCTURE only (docs/no-word-lists.md): no label, placeholder or page word is read.
+# Returns {"mode": "input"|"text"|"protected"|"", "boxes": n, "paths": [...], "keys": {digit: path}}: CSS paths of the elements (page_paths).
+# - "input": paths[0..n-1] of the PIN box(es): one password input with a PIN's shape (maxlength 4-8, or numeric input mode),
 #   or one password / numeric box per digit (4-8 one-character boxes). Fields that say what they are by autocomplete (a user name, a
 #   card field, a one-time code, an address, the current password of a sign-in) are never taken. More than one candidate group, or a
 #   single field with no PIN shape: not typed ("" = the owner enters it themselves);
-# - "text": data-kelo-key="d0".."d9" on the buttons whose own visible words are exactly one digit, all ten close together;
+# - "text": keys["0".."9"] on the buttons whose own visible words are exactly one digit, all ten close together;
 # - "protected": a keypad whose keys carry no digit text (pictures, empty buttons in a grid of at least three rows), a canvas keypad
 #   next to a password box, a plug-in or embedded object that draws the keypad. The user enters the PIN there (payment_step.PinPad).
-FIND_JS = r"""() => {
-  document.querySelectorAll('[data-kelo-key],[data-kelo-pin]').forEach((e) => { e.removeAttribute('data-kelo-key'); e.removeAttribute('data-kelo-pin'); });
+FIND_JS = with_path(r"""() => {
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
     return r.width >= 8 && r.height >= 8 && c.visibility !== 'hidden' && c.display !== 'none' && parseFloat(c.opacity || '1') > 0.05; };
   const taken = /(^|\s)(username|email|tel[a-z-]*|cc-[a-z-]+|one-time-code|current-password|name|given-name|family-name|street-address|address-[a-z0-9-]+|postal-code|country[a-z-]*|bday[a-z-]*|organization[a-z-]*)(\s|$)/;
@@ -41,10 +42,9 @@ FIND_JS = r"""() => {
   const singles = inputs.filter((e) => e.maxLength === 1 && kind(e) === 'password');   // one masked box per digit (an open row of boxes is a one-time code, not a PIN)
   const shaped = inputs.filter((e) => e.maxLength !== 1 && kind(e) === 'password' && ((e.maxLength >= 4 && e.maxLength <= 8) || numeric(e)));
   if (singles.length >= 4 && singles.length <= 8 && shaped.length === 0) {
-    singles.forEach((e, i) => e.setAttribute('data-kelo-pin', String(i)));
-    return { mode: 'input', boxes: singles.length };
+    return { mode: 'input', boxes: singles.length, paths: singles.map((e) => keloPath(e)) };
   }
-  if (shaped.length === 1 && singles.length < 4) { shaped[0].setAttribute('data-kelo-pin', '0'); return { mode: 'input', boxes: 1 }; }
+  if (shaped.length === 1 && singles.length < 4) return { mode: 'input', boxes: 1, paths: [keloPath(shaped[0])] };
   const clickable = (e) => e.matches('button,[role=button],a,input[type=button],input[type=image],[onclick],[tabindex]') || getComputedStyle(e).cursor === 'pointer';
   const keys = [...document.querySelectorAll('button,[role=button],a,input[type=button],input[type=image],td,li,span,div,img')]
     .filter((e) => shown(e) && clickable(e));
@@ -61,8 +61,9 @@ FIND_JS = r"""() => {
     const w = Math.max(...rs.map((r) => r.right)) - Math.min(...rs.map((r) => r.left));
     const h = Math.max(...rs.map((r) => r.bottom)) - Math.min(...rs.map((r) => r.top));
     if (w <= 900 && h <= 900) {
-      for (const [d, e] of Object.entries(byDigit)) e.setAttribute('data-kelo-key', 'd' + d);
-      return { mode: 'text', boxes: 0 };
+      const keyPaths = {};
+      for (const [d, e] of Object.entries(byDigit)) keyPaths[d] = keloPath(e);
+      return { mode: 'text', boxes: 0, keys: keyPaths };
     }
   }
   // a keypad whose digits are not words: 10+ like-sized clickable keys in 3+ rows without digit words, a canvas next to a password box,
@@ -76,10 +77,7 @@ FIND_JS = r"""() => {
   const plugin = [...document.querySelectorAll('object,embed')].some((e) => shown(e));
   if (grid || canvas || plugin) return { mode: 'protected', boxes: 0 };
   return { mode: '', boxes: 0 };
-}"""
-
-UNMARK_JS = ("() => document.querySelectorAll('[data-kelo-key],[data-kelo-pin]').forEach((e) => { e.removeAttribute('data-kelo-key'); "
-             "e.removeAttribute('data-kelo-pin'); })")
+}""")
 
 
 @dataclass
@@ -110,14 +108,6 @@ async def find(page: Any) -> tuple[Any, dict[str, Any]]:
     return found if found is not None else (None, first)
 
 
-async def unmark(page: Any) -> None:
-    for frame in page.frames:
-        try:
-            await frame.evaluate(UNMARK_JS)
-        except Exception:  # noqa: BLE001
-            pass
-
-
 async def type_pin(page: Any, digits: list[str], *, click: Any = None, typer: Any = None) -> TypedPin:
     """Enter `digits` in the PIN box or on the text keypad of `page` (or one of its frames). `click(locator)` / `typer(locator, ch)`:
     how a key is clicked / a character typed (default: plain Playwright calls). Raises KeypadError; never returns or raises a digit."""
@@ -138,7 +128,7 @@ async def type_pin(page: Any, digits: list[str], *, click: Any = None, typer: An
             if boxes > 1 and boxes != len(digits):
                 raise KeypadError("none", "the page's PIN boxes do not match the saved PIN's length")
             for i, ch in enumerate(digits):
-                box = frame.locator(f'[data-kelo-pin="{i if boxes > 1 else 0}"]').first
+                box = frame.locator(got["paths"][i if boxes > 1 else 0]).first
                 try:
                     if typer is not None:
                         await typer(box, ch)
@@ -154,7 +144,7 @@ async def type_pin(page: Any, digits: list[str], *, click: Any = None, typer: An
                 if frame is None or got.get("mode") != "text":
                     raise KeypadError("protected" if got.get("mode") == "protected" else "gone",
                                       "the keypad changed or went away before the PIN was finished", pressed)
-            target = frame.locator(f'[data-kelo-key="d{d}"]').first
+            target = frame.locator((got.get("keys") or {}).get(d) or NO_ELEMENT).first
             try:
                 if click is not None:
                     await click(target)
@@ -168,5 +158,3 @@ async def type_pin(page: Any, digits: list[str], *, click: Any = None, typer: An
     except KeypadError as e:
         e.pressed = pressed
         raise
-    finally:
-        await unmark(page)

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_desktop_my.xml (generated from values/strings_desktop_my.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_my_open_outside">เปิดในแอปอื่น</string>
 </resources>

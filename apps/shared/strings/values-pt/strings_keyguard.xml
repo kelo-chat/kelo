@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- pt-BR text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">Suas senhas, chaves e cartões abrem com uma única chave. Normalmente o servidor a guarda junto deles. Com isto ativado, só o seu telefone a tem, então quem levar o disco do servidor não consegue abri-los.</string>

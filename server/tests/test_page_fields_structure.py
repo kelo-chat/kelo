@@ -269,7 +269,8 @@ def test_the_browser_page_field_word_lists_are_gone():
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id in scripts for t in node.targets):
             found += 1
-            text = ast.literal_eval(node.value)
+            value = node.value.args[0] if isinstance(node.value, ast.Call) else node.value   # with_path(<script>) wraps a script
+            text = ast.literal_eval(value)
             bad = [c for c in text if ord(c) > 127 and unicodedata.category(c).startswith("L")]
             assert bad == [], (node.targets[0].id, bad[:5])
     assert found == len(scripts)

@@ -85,10 +85,25 @@ def test_pausing_another_job_asks_and_a_job_pausing_itself_does_not():
         current_turn.reset(token)
 
 
-async def test_snoozing_and_stopping_reminders_always_asks():
+async def test_snoozing_and_stopping_reminders_asks_unless_the_owner_asked_in_the_chat():
+    # 2026-11-18 (D1): asked for in the chat it goes ahead; outside text in the run, or a background run, still gets a card
+    from assistant.agent.loop import outside_seen
     f, _, _, _, _ = followups_make()
     tools = {t.name: t for t in f.tools()}
     for name in ("followup_snooze", "followup_cancel"):
-        assert tools[name].requires_approval and tools[name].auto_approve is None
+        assert tools[name].requires_approval and tools[name].auto_approve is not None
+        token, seen_token = current_turn.set({"source": "chat"}), outside_seen.set([False])
+        try:
+            assert tools[name].auto_approve({"item": "x"}) is True
+            outside_seen.set([True])
+            assert tools[name].auto_approve({"item": "x"}) is False
+        finally:
+            outside_seen.reset(seen_token)
+            current_turn.reset(token)
+        token = current_turn.set({"source": "job"})
+        try:
+            assert tools[name].auto_approve({"item": "x"}) is False
+        finally:
+            current_turn.reset(token)
     assert await tools["followup_cancel"].describe({"item": "login-tickets"}) == "Stop Kelo's reminders about login-tickets?"
     assert await tools["followup_snooze"].describe({"item": "login-tickets"}) == "Put off Kelo's reminders about login-tickets?"

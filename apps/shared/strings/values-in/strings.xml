@@ -495,6 +495,16 @@
     <string name="vault_saved_plain">Tersimpan</string>
     <string name="vault_not_entered">Belum diisi</string>
     <string name="vault_last_used">Terakhir dipakai %1$s</string>
+    <string name="vault_browser_title">Browser Kelo</string>
+    <string name="vault_browser_signed_in">Masuk %1$s · terakhir dipakai %2$s</string>
+    <string name="vault_browser_sign_out">Keluarkan browser Kelo dari situs ini</string>
+    <string name="vault_browser_sign_out_confirm">Browser Kelo akan keluar dari %1$s dan cookie serta data situsnya dihapus. Login yang tersimpan tetap ada.</string>
+    <string name="vault_browser_sites_title">Masuk tanpa login yang tersimpan</string>
+    <string name="vault_profiles_title">Profil browser</string>
+    <string name="vault_profile_sites">Masuk di %1$s situs</string>
+    <string name="vault_profile_empty">Belum masuk di mana pun</string>
+    <string name="vault_profile_delete">Hapus profil ini</string>
+    <string name="vault_profile_delete_confirm">Profil %1$s dan semua login yang tersimpan di dalamnya akan dihapus.</string>
     <string name="vault_place">Kunci masuk di %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -929,6 +939,9 @@
     <string name="live_still_yours">Kamu masih mengendalikan. Agenmu menunggu sampai kamu mengembalikannya.</string>
     <string name="live_screen_changed">Layar berubah. Ketuk lagi.</string>
     <string name="live_tab_closed">Tab sudah ditutup, jadi tidak ada lagi yang bisa dilihat. Kalau layar terakhir tersimpan, tampil di bawah.</string>
+    <string name="live_tabs_label">Tab</string>
+    <string name="live_tab_untitled">Tab baru</string>
+    <string name="live_tab_close">Tutup tab</string>
     <string name="live_not_controller">Kamu tidak bisa mengendalikannya sekarang. Ketuk Ambil alih lagi.</string>
     <string name="live_input_failed">Browser tidak bisa melakukan itu.</string>
     <string name="live_state_you">Kamu yang mengendalikan</string>
@@ -954,6 +967,8 @@
     <string name="live_touch_missed">Sentuhan tidak sampai ke halaman</string>
     <string name="live_type_hint">Teks untuk diketik di halaman</string>
     <string name="live_type_send">Ketik</string>
+    <string name="live_keyboard">Keyboard</string>
+    <string name="live_keyboard_desc">Tampilkan atau sembunyikan keyboard untuk halaman</string>
     <string name="live_type_hide">Sembunyikan teks</string>
     <string name="live_type_show">Tampilkan teks</string>
     <string name="live_key_enter">Enter</string>
@@ -1109,7 +1124,6 @@
     <string name="work_now_empty">Tidak ada yang berjalan sekarang.</string>
     <string name="work_asks">Perlu jawabanmu</string>
     <string name="work_asks_empty">Tidak ada pertanyaan yang menunggu.</string>
-
     <string name="offers_title">Kelo bisa lakukan ini sekarang</string>
     <string name="offer_start">Serahkan</string>
     <string name="offer_needs">Butuh: %1$s</string>
@@ -1231,6 +1245,7 @@
     <string name="work_watch_ev_fired">Kondisi terpenuhi</string>
     <string name="work_watch_ev_error">Gagal</string>
     <string name="work_watch_ev_check">Diperiksa</string>
+    <string name="work_watch_ev_count">· Diperiksa %1$d kali</string>
     <string name="work_watch_ev_on">Nyala</string>
     <string name="work_watch_ev_off">Mati</string>
     <string name="work_watch_delete">Hapus pantauan</string>
@@ -1273,14 +1288,17 @@
     <string name="heads_section">Notifikasi kabar baru</string>
     <string name="heads_switch">Kelo memberi tahu lebih dulu</string>
     <string name="heads_about">%1$s, Kelo memeriksa email baru, acara mendatang, dan tenggat, lalu memberi tahu lebih dulu jika ada yang perlu Anda ketahui. Hal yang perlu Anda jawab (persetujuan, pertanyaan) ditanyakan lagi di “%2$s”, apa pun pengaturan ini.</string>
+    <string name="heads_about_send_times">Selama jam pesan, Kelo memeriksa email baru dan layanan yang terhubung setiap jam, lalu langsung memberi tahu hal yang tidak bisa menunggu. Sisanya menunggu waktu kirim; saat itu Kelo juga meninjau percakapan, kalender, tujuan, jadwal, dan memori. Satu kali kirim dihitung sekali di “%1$s”, berapa pun isinya. Setelah jatah hari itu habis, hanya hal yang tidak bisa menunggu yang sampai ke Anda. Hal yang perlu Anda jawab (persetujuan, pertanyaan) ditanyakan lagi di “%2$s”, apa pun pengaturan ini.</string>
     <string name="heads_per_day">Paling banyak per hari</string>
+    <string name="heads_send_times">Waktu kirim: %1$s</string>
     <string name="heads_mail">Periksa juga email baru</string>
     <string name="heads_mail_about">Nonaktif: Kelo tidak membuka kotak surat Anda untuk pemeriksaan ini; acara dan tenggat tetap diperiksa. Ringkasan pagi memilih kotak suratnya sendiri.</string>
     <string name="heads_list_title">Hal yang perlu dipantau</string>
-    <string name="heads_list_about">Opsional. Kelo memeriksanya setiap kali dan hanya memberi tahu jika ada yang perlu perhatianmu.</string>
+    <string name="heads_list_about">Opsional. Saat kamu menambahkannya, Kelo memberi waktu yang pas: pemeriksaan tersendiri jika perlu, jika tidak dilihat bersama pada waktu kirim. Hanya memberi tahu jika ada yang perlu perhatianmu.</string>
     <string name="heads_list_hint">mis. pemberitahuan paket hari ini</string>
     <string name="heads_list_add">Tambah</string>
     <string name="heads_list_remove">Hapus %1$s</string>
+    <string name="heads_list_own">Diperiksa terpisah · %1$s</string>
     <plurals name="heads_times">
         <item quantity="other">%d kali</item>
     </plurals>
@@ -1488,7 +1506,6 @@
     <string name="comparison_recommended">Disarankan</string>
     <string name="comparison_choose">Pilih %1$s</string>
     <string name="comparison_choose_say">Ayo pilih %1$s</string>
-
     <string name="endpoint_add">Tambah titik akhir</string>
     <string name="endpoint_name">Nama</string>
     <string name="endpoint_name_hint">mis. Ollama Rumah</string>

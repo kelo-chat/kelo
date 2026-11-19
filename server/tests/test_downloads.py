@@ -554,3 +554,77 @@ def test_the_cli_accepts_the_mac_server_bundle_platform(monkeypatch):
     monkeypatch.setattr(downloads, "run_publish", lambda a: seen.setdefault("args", a) and 0)
     assert cli.main(["publish-app", "mac-server-bundle", "/x/kelo-server.zip", "--version", "0.10.2"]) == 0
     assert seen["args"].platform == "mac-server-bundle"
+
+
+def test_latest_server_row_has_string_notes_and_notes_i18n(tmp_path):
+    from assistant import release as rel
+
+    server = rel.build_manifest("0.5.0", {c: "sha256:" + f"{i:x}" * 64 for i, c in enumerate(rel.COMPONENTS, start=1)},
+                                date="2026-11-09T00:00:00Z", notes={"en": "Faster replies.", "ko": "답장이 빨라졌어요."})
+    (tmp_path / "manifest.json").write_text(json.dumps({"platforms": {}, "server": server}))
+    latest = Downloads(tmp_path).latest()
+    assert latest["server"]["notes"] == "Faster replies."
+    assert latest["server"]["notes_i18n"] == {"en": "Faster replies.", "ko": "답장이 빨라졌어요."}
+    got = rel.from_latest(latest)
+    assert got.note("ko") == "답장이 빨라졌어요." and got.note("de") == "Faster replies."
+
+
+# ---------------------------------------------------------------------------------------------------------------- store rows (latest.json "store")
+STORE_SIG = "A" * 86 + "=="
+STORE_KEY = "0123456789abcdef"
+
+
+def store_row(**kw) -> dict:
+    return {"channel": "play", "version": "0.10.3", "build": 402600, "date": "2026-11-18", "sig": STORE_SIG, "key": STORE_KEY, **kw}
+
+
+def test_latest_lists_store_rows_and_omits_an_empty_store(tmp_path):
+    row = store_row()
+    (tmp_path / "manifest.json").write_text(json.dumps({"platforms": {}, "store": {"android": {"play": row}}}))
+    assert Downloads(tmp_path).latest()["store"] == {"android": {"play": row}}
+    (tmp_path / "manifest.json").write_text(json.dumps({"platforms": {}, "store": {}}))
+    assert "store" not in Downloads(tmp_path).latest()
+
+
+def test_a_malformed_store_row_is_left_out(tmp_path):
+    good = store_row(channel="appstore", version="0.10.4", build=26111411)
+    bad = {
+        "android": {"play": store_row(version="1.2")},                       # not MAJOR.MINOR.PATCH
+        "desktop": {"msstore": store_row(channel="play")},                    # the channel is not the platform's
+        "mac": {"download": store_row(channel="download")},                   # not an app with a store row
+        "windows": 5,
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps({"platforms": {}, "store": {**bad, "ios": {"appstore": good}}}))
+    assert Downloads(tmp_path).latest()["store"] == {"ios": {"appstore": good}}
+    short_sig = {"android": {"play": store_row(sig="abc")}}                    # a signature of the wrong shape
+    (tmp_path / "manifest.json").write_text(json.dumps({"platforms": {}, "store": short_sig}))
+    assert "store" not in Downloads(tmp_path).latest()
+
+
+def test_publish_app_keeps_store_rows(tmp_path, monkeypatch):
+    volume = tmp_path / "vol"
+    volume.mkdir()
+    (volume / "manifest.json").write_text(json.dumps({"platforms": {}, "store": {"ios": {"appstore": store_row(channel="appstore",
+                                                                                             version="0.10.4", build=26111411)}}}))
+    apk = tmp_path / "kelo-0.1.0.apk"
+    apk.write_bytes(APK)
+    monkeypatch.setattr(downloads, "find_aapt2", lambda: "/sdk/aapt2")
+    Publisher(tmp_path, run=FakeDocker(volume), out=lambda s: None).publish("android", apk, unsigned=True)
+    assert json.loads((volume / "manifest.json").read_text())["store"]["ios"]["appstore"]["version"] == "0.10.4"
+
+
+def test_publish_server_keeps_store_rows(tmp_path):
+    from assistant import release as rel
+    from assistant.app_releases import AppReleases
+    from assistant.downloads import ServerPublisher
+
+    volume = tmp_path / "vol"
+    volume.mkdir()
+    (volume / "manifest.json").write_text(json.dumps({"platforms": {}, "store": {"desktop": {"msstore": store_row(
+        channel="msstore", version="1.0.2", build=100000002)}}}))
+    release = tmp_path / "release.json"
+    release.write_text(json.dumps(rel.build_manifest("0.10.5", {c: "sha256:" + f"{i:x}" * 64 for i, c in enumerate(rel.COMPONENTS, 1)},
+                                                     date="2026-11-18T00:00:00Z")))
+    ServerPublisher(tmp_path, run=FakeDocker(volume), out=lambda s: None).publish_server(release, releases=AppReleases())
+    raw = json.loads((volume / "manifest.json").read_text())
+    assert raw["store"]["desktop"]["msstore"]["version"] == "1.0.2" and raw["server"]["version"] == "0.10.5"

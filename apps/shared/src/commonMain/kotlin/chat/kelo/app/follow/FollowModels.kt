@@ -46,6 +46,7 @@ data class FollowItem(
     val kind: String = "",
     val title: String = "",
     @SerialName("starts_at") val startsAt: Double = 0.0,
+    @SerialName("all_day") val allDay: Boolean = false,   // no time was given: show the day only
     val checks: List<FollowCheck> = emptyList(),
     val prep: List<FollowPrep> = emptyList(),
     val plan: FollowPlanData? = null,
@@ -77,4 +78,8 @@ object FollowCalls {
 
     suspend fun replan(api: KeloApi, key: String): FollowActionResponse =
         api.post<FollowActionResponse>("/api/follow/${KeloApi.segment(key)}/replan")
+
+    /** Takes the item off the list for good (DELETE): it is not put back by the calendar or the look-back. */
+    suspend fun remove(api: KeloApi, key: String): FollowActionResponse =
+        api.delete<FollowActionResponse>("/api/follow/${KeloApi.segment(key)}")
 }

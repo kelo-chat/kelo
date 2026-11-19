@@ -242,7 +242,7 @@ async def test_the_phone_gets_labels_a_browser_card_and_a_purchase_card_over_htt
     fn = scripted([ToolCall("c1", "browser_open", '{"url": "https://shop.example.com/cart"}'), Done("tool_calls")],
                   [ToolCall("c2", "confirm_purchase", json.dumps(ORDER)), Done("tool_calls")],
                   [TextDelta("not paid"), Done("stop")])
-    s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None, payment_specialist=False)   # the events of a purchase card, not the split
+    s = Settings(token=TOKEN, provider="p", model="m", cdp_host=None, payment_specialist=False, browser_worker=False)   # the events of a purchase card, not the split
     async with Running(create_app(s, tools=tools, stream_fn=fn)) as srv, httpx.AsyncClient(base_url=srv.url) as c:
         events = []
         async with c.stream("POST", "/api/chat", json={"messages": [{"role": "user", "content": "buy 2 blue mugs"}]}, headers=AUTH) as r:
@@ -295,11 +295,11 @@ async def test_every_tool_the_app_offers_has_a_label(tmp_path):
 def test_the_prompt_describes_this_apps_purchase_path_and_nothing_site_specific():
     text = (CONTENT / "prompts" / "system.md").read_text(encoding="utf-8")
     section = text.split("**Buying, ordering, booking.**", 1)[1].split("\n\n**", 1)[0]
-    for word in ("browser_open", "checkout_review", "approved", "one message", "wallet_cards", "browser_fill_card"):
+    for word in ("browser_open", "checkout_review", "approved", "choice card", "wallet_cards", "browser_fill_card"):
         assert word in section, word
     keys = text.split("**Logins and keys", 1)[1].split("\n\n**", 1)[0]
     assert "card numbers never go through chat" in keys                   # said once, for every secret, not again per task
-    assert len(section) < 1600                                             # kept short: a long prompt makes some models wander
+    assert len(section) < 2850                                             # 2300 before round 2 shared shopping rule; 1600 before round 1 (card p-shopping-like-reference)
     short = Settings(token=TOKEN).system_prompt
     assert "checkout_review" in short and "approved" in short
 

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Text only the desktop app has (zh-Hant). See values/strings_desktop.xml. -->
+<!-- zh-Hant text for strings_desktop.xml (generated from values/strings_desktop.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pair_step2">複製顯示的連結，貼到下方。</string>
     <string name="desktop_tray_open">開啟 Kelo</string>

@@ -4,6 +4,7 @@ jobs go on, and handing back approves nothing. Fake DevTools session and fake ph
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -56,13 +57,11 @@ async def watch(hub, cdps, meta=None):
 
 # ------------------------------------------------------------------------------------------------ the page follows the screen
 def test_the_screen_size_becomes_a_css_size_with_floors_and_caps():
-    assert viewer_css_size(1080, 2208, 2.625, "mobile") == (411, 841, 2.625)
-    w, h, ratio = viewer_css_size(1080, 2208, 2.625, "desktop")        # 411 css px wide is below the 500 floor: scaled up, same shape
+    w, h, ratio = viewer_css_size(1080, 2208, 2.625)                   # 411 css px wide is below the 500 floor: scaled up, same shape
     assert w == 500 and abs(h / w - 2208 / 1080) < 0.01 and ratio == 2.16
-    assert viewer_css_size(300, 600, 3, "mobile")[0] == 320            # mobile floor
-    w, h, _ = viewer_css_size(6000, 20000, 1, "desktop")
+    w, h, _ = viewer_css_size(6000, 20000, 1)
     assert w <= live_mod.MAX_VIEW_W and h <= live_mod.MAX_VIEW_H and abs(w / h - 0.3) < 0.01
-    assert viewer_css_size(1080, 2000, None, "desktop") is not None    # no density = 1
+    assert viewer_css_size(1080, 2000, None) is not None               # no density = 1
     for bad in ((0, 100, 1), (100, -1, 1), ("a", 1, 1), (True, 1, 1), (100, 100, 0), (float("nan"), 1, 1)):
         assert viewer_css_size(*bad) is None
 
@@ -82,37 +81,7 @@ async def test_a_desktop_view_tab_keeps_its_viewport_while_the_owner_controls_it
     assert out["applied"] and "css_w" not in out
     assert not cdps[0].methods("Emulation.setDeviceMetricsOverride")
     await hub.give_back("owner", "d1")
-    assert not cdps[0].methods("Emulation.clearDeviceMetricsOverride") and "owner" not in hub._fitted
-
-
-async def test_a_phone_view_tab_keeps_its_phone_identity_with_the_owners_size_and_gets_its_screen_back():
-    sess, cdps = session_with()
-    view_cdp = FakeCDP()
-    sess._view_cdp["owner"] = view_cdp
-    hub = LiveHub(sess, reaper=False)
-    await watch(hub, cdps)
-    hub.take("owner", "d1")
-    out = await hub.view("owner", "d1", {"width": 1080, "height": 2208, "density": 2.625})
-    assert (out["css_w"], out["css_h"]) == (411, 841)
-    o = view_cdp.methods("Emulation.setDeviceMetricsOverride")[-1]
-    assert o["mobile"] is True and o["width"] == 411 and not cdps[0].methods("Emulation.setDeviceMetricsOverride")
-    await hub.give_back("owner", "d1")
-    assert view_cdp.methods("Emulation.setDeviceMetricsOverride")[-1]["width"] == 412   # PHONE: the agent's own screen
-
-
-async def test_the_phone_view_is_given_back_when_the_owners_screen_goes_away():
-    clock = Clock()
-    sess, cdps = session_with()
-    view_cdp = FakeCDP()
-    sess._view_cdp["owner"] = view_cdp
-    hub = LiveHub(sess, clock, reaper=False)
-    await watch(hub, cdps)
-    hub.take("owner", "d1", by="handover")   # the grace time is for a hand-over hold (a button hold never times out)
-    await hub.view("owner", "d1", {"width": 1080, "height": 2208, "density": 2.625})
-    assert view_cdp.methods("Emulation.setDeviceMetricsOverride")[-1]["width"] == 411
-    clock.t += live_mod.CONTROL_GRACE + 1
-    await hub.reap()
-    assert sess.controlled_by("owner") is None and view_cdp.methods("Emulation.setDeviceMetricsOverride")[-1]["width"] == 412
+    assert not cdps[0].methods("Emulation.clearDeviceMetricsOverride")
 
 
 # ------------------------------------------------------------------------------------------------ the frame the owner saw
@@ -156,7 +125,7 @@ async def test_the_frame_says_when_a_text_field_has_focus_only_while_the_owner_c
     sess, cdps = session_with(EditCDP)
     hub = LiveHub(sess, reaper=False)
     f = await watch(hub, cdps)
-    assert f.header()["live_v"] == 2 and f.header()["editing"] is False
+    assert f.header()["live_v"] == 3 and f.header()["editing"] is False
     cdps[0].editing = True
     cdps[0].frame(sid=2)
     f = await hub.wait_frame("owner", 1, 1.0)
@@ -186,7 +155,7 @@ async def test_websocket_view_and_acked_input_reply_with_where_it_landed_and_ign
             await recv_until(ws, "status")
             cdps[0].frame(sid=1)
             head = await recv_until(ws, "frame")
-            assert head["live_v"] == 2 and head["editing"] is False
+            assert head["live_v"] == 3 and head["editing"] is False
             await ws.send(json.dumps({"type": "control", "take": True}))
             await recv_until(ws, "status")
             await ws.send(json.dumps({"type": "view", "width": 1080, "height": 2208, "density": 2.625, "extra": {"x": 1}}))
@@ -457,22 +426,33 @@ async def test_in_a_real_browser_the_page_is_as_wide_as_the_owners_screen_and_ge
 
         async def connect():
             return page
-        for view in ("desktop", "mobile"):
-            s = BrowserSession(connect=connect, resolver=PUBLIC)
-            await s.open("https://m.example.com/", view)
-            hub = LiveHub(s, reaper=False)
-            key = browser_owner.get()
-            await hub.join(key, "v")
-            before = await page.evaluate("() => [innerWidth, innerHeight]")
-            hub.take(key, "d")
-            out = await hub.view(key, "d", {"width": 1080, "height": 2000, "density": 1.5})
-            got = await page.evaluate("() => [innerWidth, innerHeight]")
-            await hub.give_back(key, "d")
-            await hub.leave(key, "v")
-            after = await page.evaluate("() => [innerWidth, innerHeight]")
-            if view == "desktop":   # the phone only zooms: the page keeps its desktop viewport
-                assert "css_w" not in out and got == before and after == before, (view, before, got, after)
-            else:                   # 720 css px wide is above the mobile floor: the screen as it is (1080 / 1.5 wide)
-                assert (out["css_w"], out["css_h"]) == (720, 1333) and got[0] == 720 and abs(got[1] - 1333) <= 1, (view, got, out)
-                assert after[0] == 412, (view, before, after)
+        s = BrowserSession(connect=connect, resolver=PUBLIC)
+        await s.open("https://m.example.com/")
+        hub = LiveHub(s, reaper=False)
+        key = browser_owner.get()
+        await hub.join(key, "v")
+        before = await page.evaluate("() => [innerWidth, innerHeight]")
+        hub.take(key, "d")
+        out = await hub.view(key, "d", {"width": 1080, "height": 2000, "density": 1.5})
+        got = await page.evaluate("() => [innerWidth, innerHeight]")
+        await hub.give_back(key, "d")
+        await hub.leave(key, "v")
+        after = await page.evaluate("() => [innerWidth, innerHeight]")
+        # the tab keeps its viewport: the owner's screen only zooms the picture (P8)
+        assert "css_w" not in out and got == before and after == before, (before, got, after)
         await b.close()
+
+
+async def test_tab_events_are_written_down_as_the_tab_and_its_host_only():
+    """C1d: tab opened / switched / closed are journal lines for the agent; the address keeps only its host."""
+    from assistant.tools.takeover import TakeoverJournal, summarize
+    j = TakeoverJournal(None, clock=lambda: 0.0)
+    j.start("owner", SimpleNamespace(url="https://shop.example.com/a?token=1"))
+    j.tab_event("owner", "tab_opened", "t2", "https://shop.example.com/cart?x=1")
+    j.tab_event("owner", "tab_switched", "t1", "https://a.example.org/")
+    j.tab_event("owner", "tab_closed", "t2", "")
+    entries = j.open["owner"].entries
+    assert [e["k"] for e in entries] == ["tab_opened", "tab_switched", "tab_closed"]
+    assert "token" not in str(entries) and "cart" not in str(entries)
+    text = summarize(entries, 120)
+    assert "opened tab t2 (shop.example.com)" in text and "switched to tab t1" in text and "closed tab t2" in text

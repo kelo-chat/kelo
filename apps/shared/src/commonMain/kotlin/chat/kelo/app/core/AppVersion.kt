@@ -34,6 +34,13 @@ object AppVersion {
      */
     val update: StateFlow<String?> = _update.asStateFlow()
 
+    private val _serverUpdate = MutableStateFlow<String?>(null)
+    /**
+     * A newer server release this caller may install (`X-Kelo-Server-Update` on /api/about and /api/profile): its version, or null.
+     * The apps show the server-update notice for it (update/ServerNotice.kt), at most once a day.
+     */
+    val serverUpdate: StateFlow<String?> = _serverUpdate.asStateFlow()
+
     /** What an answer said: [version] like "0.9.0+1", or null when the header was missing (a server older than 0.9.0). */
     data class ServerSeen(val version: String?)
 
@@ -46,7 +53,10 @@ object AppVersion {
         if (res.header(HEADER_LOCAL) == null) {
             observe(res.code, res.header(HEADER_SERVER), res.header("Content-Type"))
             val path = req.url.encodedPath
-            if (res.code == 200 && (path == "/api/about" || path == "/api/profile")) setUpdate(res.header(HEADER_UPDATE))
+            if (res.code == 200 && (path == "/api/about" || path == "/api/profile")) {
+                setUpdate(res.header(HEADER_UPDATE))
+                setServerUpdate(res.header(HEADER_SERVER_UPDATE))
+            }
         }
         res
     }
@@ -63,7 +73,10 @@ object AppVersion {
     /** The answer of /api/about or /api/profile named [version] (or none, which clears an earlier one). */
     fun setUpdate(version: String?) { _update.value = version?.trim()?.takeIf { it.isNotEmpty() } }
 
-    fun reset() { _server.value = null; _update.value = null }
+    /** The answer of /api/about or /api/profile named a newer server release (or none, which clears an earlier one). */
+    fun setServerUpdate(version: String?) { _serverUpdate.value = version?.trim()?.takeIf { it.isNotEmpty() } }
+
+    fun reset() { _server.value = null; _update.value = null; _serverUpdate.value = null }
 
     /** Whether [seen] is older than [min] (both "MAJOR.MINOR.PATCH", a "+build" ignored). A missing version is too old. */
     fun serverTooOld(seen: ServerSeen?, min: String = minServer): Boolean {
@@ -91,6 +104,7 @@ object AppVersion {
     const val HEADER_SERVER = "X-Kelo-Server"
     const val HEADER_CHANNEL = "X-Kelo-App-Channel"
     const val HEADER_UPDATE = "X-Kelo-App-Update"
+    const val HEADER_SERVER_UPDATE = "X-Kelo-Server-Update"
     /** On answers the app's own transport made (a KE2E error), never from the server */
     const val HEADER_LOCAL = "X-Kelo-Local"
 }

@@ -1,14 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- ru text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="deliveries_label">Сколько сообщений в день Kelo пишет первым</string>
-    <string name="deliveries_about">Kelo собирает то, что хочет вам сообщить, в такое число сообщений в день. При 0 он отправляет только то, что не может ждать.</string>
-    <plurals name="deliveries_today">
-        <item quantity="one">Сегодня отправлено %d раз</item>
-        <item quantity="few">Сегодня отправлено %d раза</item>
-        <item quantity="many">Сегодня отправлено %d раз</item>
-        <item quantity="other">Сегодня отправлено %d раза</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="one">Отложен %d пункт</item>
         <item quantity="few">Отложено %d пункта</item>
@@ -19,7 +11,6 @@
     <string name="deliveries_held_about">Kelo приберёг это для следующего сообщения. Перед отправкой он посмотрит ещё раз и уберёт то, что уже не важно.</string>
     <string name="deliveries_held_empty">Сейчас ничего не отложено.</string>
     <string name="deliveries_held_until">Отложено до %1$s</string>
-    <string name="deliveries_why_slots">Ждёт следующего сообщения за день</string>
     <string name="deliveries_why_cap">Недостаточно срочно, чтобы отправлять больше сегодня</string>
     <string name="deliveries_why_reply">Ждёт вашего ответа на последнее сообщение</string>
     <string name="deliveries_why_other">Ждёт более подходящего момента</string>

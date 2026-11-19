@@ -90,6 +90,13 @@ class Release:
     def label(self) -> str:
         return f"{self.version} (build {self.build})"
 
+    def store_row(self) -> dict[str, Any]:
+        """The row latest.json's "store" carries (and release_sign.store_statement signs): what the store row of this release says."""
+        out: dict[str, Any] = {"channel": self.channel, "version": self.version, "build": self.build, "date": self.date}
+        if self.min_server:
+            out["min_server"] = self.min_server
+        return out
+
 
 @dataclass(frozen=True)
 class Problem:
@@ -185,6 +192,13 @@ class AppReleases:
         """The newest released app of a platform, by version, then build."""
         rows = self.entries.get(platform) or []
         return max(rows) if rows else None
+
+    def newest_store(self, platform: str) -> Release | None:
+        """The newest release of a platform in its store channel (by build, then version): the one the store installs."""
+        from .release_sign import STORE_CHANNELS
+
+        rows = [r for r in self.entries.get(platform) or [] if r.channel == STORE_CHANNELS.get(platform)]
+        return max(rows, key=lambda r: (r.build, r.version_key)) if rows else None
 
     def newest_build(self, platform: str) -> Release | None:
         """The released app with the highest build number (builds rise with versions, but the check does not rely on it)."""
@@ -317,10 +331,25 @@ def run_record(args: Any, out: Any = print, path: Path | None = None) -> int:
         return 1
     if not added:
         out(f"{args.platform} {args.version} (build {args.build}) is already recorded in {target}; nothing changed.")
-        return 0
+        return _publish_store_row(args, record, out)     # a store release is still published: a re-run after a failed publish works
     record.save(target)
     out(f"Recorded {args.platform} {args.version} (build {args.build}, {args.channel}) in {target}. Commit it: from now on a minimum app "
         "version may be as high as this release.")
+    return _publish_store_row(args, record, out)
+
+
+def _publish_store_row(args: Any, record: AppReleases, out: Any) -> int:
+    """A store channel's release is also published (signed) to kelo.chat, so every server learns that the store has it. A failure
+    keeps the record: the operator then runs `assistant publish-store` (or passes --no-publish to skip this step)."""
+    from .release_sign import STORE_CHANNELS
+
+    if args.channel not in STORE_CHANNELS.values() or getattr(args, "no_publish", False):
+        return 0
+    from .downloads import run_publish_store
+
+    if run_publish_store(args, Path.cwd(), out=out, record=record) != 0:
+        out("Recorded, but not published to kelo.chat (see above). Run `assistant publish-store` on the operator's computer.")
+        return 1
     return 0
 
 

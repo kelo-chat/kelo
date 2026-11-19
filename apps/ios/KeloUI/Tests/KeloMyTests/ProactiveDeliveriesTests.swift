@@ -3,40 +3,30 @@ import Foundation
 import KeloCore
 @testable import KeloMy
 
-// Android my/ProactiveDeliveriesTest.kt: the delivery count and the held items.
+// Android my/ProactiveDeliveriesTest.kt: the held items.
 @Suite struct ProactiveDeliveriesTests {
     func settings(_ json: String) throws -> ProactiveSettings { try JSON.decode(ProactiveSettings.self, from: try JSON.parse(json)) }
     func held(_ json: String) throws -> HeldList { try JSON.decode(HeldList.self, from: try JSON.parse(json)) }
 
-    @Test func readsTheDeliveryFieldsWhenTheServerSendsThem() throws {
+    @Test func readsTheHeldCountAndIgnoresTheRetiredFields() throws {
         let p = try settings(#"{"enabled": true, "daily_deliveries": 3, "today_deliveries": 1, "held": 4}"#)
-        #expect(p.dailyDeliveries == 3 && p.todayDeliveries == 1 && p.held == 4)
-        #expect(DeliveryRules.hasCount(p) && DeliveryRules.hasHeld(p))
-        // 0 is a real choice (only what cannot wait), not "missing"
-        let zero = try settings(#"{"daily_deliveries": 0, "today_deliveries": 0, "held": 0}"#)
-        #expect(DeliveryRules.hasCount(zero) && DeliveryRules.hasHeld(zero))
-        #expect(zero.dailyDeliveries == 0)
+        #expect(p.held == 4 && DeliveryRules.hasHeld(p) && DeliveryRules.heldCount(p.held) == 4)
+        let zero = try settings(#"{"held": 0}"#)
+        #expect(DeliveryRules.hasHeld(zero) && DeliveryRules.heldCount(zero.held) == nil)   // nothing held: the link is hidden
+        #expect(DeliveryRules.heldCount(nil) == nil)
     }
 
     @Test func anOlderServerWithoutTheFieldsHidesTheRows() throws {
         let p = try settings(#"{"enabled": true, "daily_total": 3}"#)
-        #expect(p.dailyDeliveries == nil && p.todayDeliveries == nil && p.held == nil)
-        #expect(!DeliveryRules.hasCount(p) && !DeliveryRules.hasHeld(p))
-        // a null sent explicitly is the same as absent
-        #expect(!DeliveryRules.hasCount(try settings(#"{"daily_deliveries": null}"#)))
+        #expect(p.held == nil)
+        #expect(!DeliveryRules.hasHeld(p))
+        #expect(!DeliveryRules.hasHeld(try settings(#"{"held": null}"#)))
         // the other settings are read as before
         #expect(p.enabled && p.dailyTotal == 3)
     }
 
-    @Test func theChoiceStaysInsideZeroToTen() {
-        #expect(DeliveryRules.clamp(-1) == 0 && DeliveryRules.clamp(0) == 0)
-        #expect(DeliveryRules.clamp(10) == 10 && DeliveryRules.clamp(11) == 10)
-        #expect(DeliveryRules.clamp(7) == 7)
-        #expect(DeliveryRules.min == 0 && DeliveryRules.max == 10)
-    }
-
     @Test func whyCodesMapToTheirReasonAndAnUnknownOneToTheGeneralText() {
-        #expect(DeliveryRules.why("slots") == .slots)
+        #expect(DeliveryRules.why("slots") == .other)   // retired 2026-11-19: the general text
         #expect(DeliveryRules.why("over_cap") == .overCap)
         #expect(DeliveryRules.why("waiting_for_reply") == .waitingForReply)
         #expect(DeliveryRules.why("") == .other)
@@ -46,10 +36,10 @@ import KeloCore
     @Test func readsHeldItemsAndSurvivesMissingAndExtraFields() throws {
         let list = try held("""
         {"items": [{"key": "mail:1", "source": "mail", "title": "Invoice due", "urgency": "오늘", "message": "The invoice is due today.",
-                    "why": "slots", "held_at": 1762650000.5, "expires_at": 1762680000.0, "future_field": 1}, {"key": "x"}]}
+                    "why": "over_cap", "held_at": 1762650000.5, "expires_at": 1762680000.0, "future_field": 1}, {"key": "x"}]}
         """)
         #expect(list.items.count == 2)
-        #expect(list.items[0].title == "Invoice due" && list.items[0].expiresAt == 1762680000.0 && list.items[0].why == "slots")
+        #expect(list.items[0].title == "Invoice due" && list.items[0].expiresAt == 1762680000.0 && list.items[0].why == "over_cap")
         #expect(list.items[1].title == "" && list.items[1].urgency == nil && list.items[1].expiresAt == 0)
         #expect(try held("{}").items.isEmpty)
     }

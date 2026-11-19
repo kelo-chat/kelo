@@ -109,3 +109,70 @@ def test_a_pass_still_going_shows_as_running_and_a_stopped_one_is_closed(tmp_pat
     from assistant.situation import SituationResearch
     SituationResearch(r.p, run_turn=r.agent.run_turn, tools=lambda: [])
     assert r.sit.store._all("SELECT status FROM situation_passes WHERE id = ?", (st,))[0]["status"] == "failed"
+
+
+def test_the_server_gives_the_look_the_briefings_time(tmp_path):
+    from datetime import date
+
+    from assistant.providers import Done
+    from assistant.server import Settings, create_app
+
+    async def fn(*a, **kw):
+        yield Done("stop")
+
+    app = create_app(Settings(token="t" * 40, provider="p", model="m", cdp_host=None, home_dir=str(tmp_path / "home")), stream_fn=fn)
+    d = date(2026, 11, 20)
+    assert app.state.situation.briefing_at(d) == app.state.briefing.due_on(d)
+
+
+def test_the_page_gets_when_each_thing_is_looked_at(tmp_path):
+    """GET /api/proactive/research "looks" (2026-11-19 schedule): every hour new mail and the connected reads; at each send time the
+    rest of the day; at the briefing its own sections; the rest only when needed. `looked_at` stays as released apps read it."""
+    r = rig(tmp_path, ts(2026, 11, 17, 9, 9))
+    rows = [
+        {"id": "conversation", "name": "", "kind": "section", "hourly": True},
+        {"id": "mail", "name": "", "kind": "section", "hourly": True},
+        {"id": "home", "name": "Home", "kind": "connector", "hourly": True},
+        {"id": "notes", "name": "Notes", "kind": "connector", "hourly": False},
+        {"id": "phone:photos", "name": "Phone · Photos", "kind": "phone", "hourly": True},
+    ]
+    r.sit.looked_at = lambda: [dict(x) for x in rows]
+    r.sit.corrections = object()                                           # the correction check is wired
+    r.sit.briefing_at = lambda d: ts(d.year, d.month, d.day, 7, 0)
+    r.sit.briefing_covers = lambda: ["weather", "calendar", "missed", "corrections"]
+    body = _client(r).get("/api/proactive/research").json()
+    assert body["looked_at"] == rows                                       # released apps read it as before
+    assert [g["when"] for g in body["looks"]] == ["hourly", "send", "briefing", "needed"]
+    looks = {g["when"]: g for g in body["looks"]}
+    assert looks["hourly"] == {"when": "hourly", "times": [], "covers": [
+        {"id": "mail", "name": "", "kind": "section"}, {"id": "home", "name": "Home", "kind": "connector"},
+        {"id": "phone:photos", "name": "Phone · Photos", "kind": "phone"}]}
+    assert [c["id"] for c in looks["send"]["covers"]] == ["conversation", "calendar", "goals", "schedules", "memory", "corrections", "held"]
+    assert looks["send"]["times"] == ["10:45", "14:30", "18:15"]           # 07:00-22:00 in four parts, the first is the briefing's
+    assert looks["briefing"] == {"when": "briefing", "times": ["07:00"], "covers": [
+        {"id": c, "name": "", "kind": "section"} for c in ("weather", "calendar", "missed", "corrections")]}
+    assert looks["needed"] == {"when": "needed", "times": [], "covers": [{"id": "notes", "name": "Notes", "kind": "connector"}]}
+
+
+def test_without_mail_a_briefing_or_reads_those_groups_are_left_out(tmp_path):
+    r = rig(tmp_path, ts(2026, 11, 17, 9, 9))
+    r.p.update(mail_check=False)
+    body = _client(r).get("/api/proactive/research").json()
+    assert [g["when"] for g in body["looks"]] == ["send"]                  # no mail, nothing connected, no briefing
+    assert body["looks"][0]["times"] == ["07:00", "12:00", "17:00"]
+    assert "corrections" not in [c["id"] for c in body["looks"][0]["covers"]]   # no correction check wired
+    r.p.update(research=False)
+    assert _client(r).get("/api/proactive/research").json()["looks"] == []
+
+
+def test_the_server_gives_the_look_what_the_briefing_reads(tmp_path):
+    from assistant.providers import Done
+    from assistant.server import Settings, create_app
+
+    async def fn(*a, **kw):
+        yield Done("stop")
+
+    app = create_app(Settings(token="t" * 40, provider="p", model="m", cdp_host=None, home_dir=str(tmp_path / "home")), stream_fn=fn)
+    got = app.state.situation.briefing_covers()
+    assert got == app.state.briefing.covers()
+    assert [c for c in got if c != "corrections"] == ["weather", "calendar", "missed"]

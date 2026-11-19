@@ -40,7 +40,7 @@ def start_worker_turn(ctx: Any, w: dict[str, Any], transcript: list[dict[str, An
 
 
 async def worker_handoff(ctx: Any, w: dict[str, Any], text: str, head: str, quiet: bool = False, *, again: dict[str, Any] | None = None,
-                         cond: str = "") -> None:
+                         cond: str = "", self_started: bool = False, owner_asked: bool = False) -> None:
     """A job's report reaches the main conversation: stored as a hidden message (GET /api/messages leaves it out) and answered by the
     main agent in a turn of its own, one at a time and after a chat reply that is running.
     `again`: the same turn once more after a restart or a model outage ({"message_id", "note", "from", "restarts"}): the hidden
@@ -95,17 +95,19 @@ async def worker_handoff(ctx: Any, w: dict[str, Any], text: str, head: str, quie
                 said.feed(item)
 
         turn = start_turn(provider, model, ctx.tail, observe, source="handoff", title=w["title"], unattended=True, owner="owner",
-                          context=ctx, cond=cond)
+                          context=ctx, cond=cond, self_started=self_started, owner_asked=owner_asked)
         # a retry of an approval that ran out (followups.py) starts this again: a watcher's hit keeps working for the watcher
         # (`cond`), so what the owner allowed it at setup still covers the step, as it did on the first run
-        turn.rerun = {"kind": "background", "prompt": text[:8000], "title": w["title"], "source": "background",
-                      "owner": f"task:{secrets.token_hex(4)}", "note": BACKGROUND_NOTE,
-                      "saved_as": i18n.t("[Task handed over · {title}]", title=w["title"]), **({"cond": cond} if cond else {})}
+        if not self_started:   # a run Kelo started on its own asks nothing, so there is nothing to try again
+            turn.rerun = {"kind": "background", "prompt": text[:8000], "title": w["title"], "source": "background",
+                          "owner": f"task:{secrets.token_hex(4)}", "note": BACKGROUND_NOTE,
+                          "saved_as": i18n.t("[Task handed over · {title}]", title=w["title"]), **({"cond": cond} if cond else {})}
         turn.note_head = head
         turn.quiet_end = quiet
         activity.link_task(turn.task_id, w["parent_task_id"], w["id"])
         keep_resume(turn, {"kind": "handoff", "message_id": mid, "title": w["title"], "head": head, "quiet": quiet,
-                           "parent_task_id": w["parent_task_id"], "worker_id": w["id"], **({"cond": cond} if cond else {})},
+                           "parent_task_id": w["parent_task_id"], "worker_id": w["id"], **({"cond": cond} if cond else {}),
+                           **({"self_started": True} if self_started else {}), **({"owner_asked": True} if owner_asked else {})},
                     int((again or {}).get("restarts") or 0), (again or {}).get("from"))
         await turn.ended.wait()
         if not stopping[0]:   # the job's work is over (unless it waits for the user): its messages get their emoji

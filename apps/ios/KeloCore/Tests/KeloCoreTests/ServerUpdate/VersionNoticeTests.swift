@@ -161,3 +161,35 @@ import Foundation
         #expect(store.lastShown() == now)
     }
 }
+
+/// The server-update notice (Android update/ServerNoticeTest.kt; apps/shared/test-vectors/server-notice.json, read by every app).
+@Suite struct ServerNoticeVectorTests {
+    static func vectors() throws -> [JSON] {
+        // …/apps/ios/KeloCore/Tests/KeloCoreTests/ServerUpdate/VersionNoticeTests.swift -> the repository root is seven levels up
+        var root = URL(fileURLWithPath: #filePath)
+        for _ in 0..<7 { root.deleteLastPathComponent() }
+        let file = root.appendingPathComponent("apps/shared/test-vectors/server-notice.json")
+        return try JSON.parse(try Data(contentsOf: file)).arrayValue ?? []
+    }
+
+    static func date(_ j: JSON?) -> Date? { j?.doubleValue.map { Date(timeIntervalSince1970: $0 / 1000) } }
+
+    @Test func everyVectorGivesItsAnswer() throws {
+        let cases = try Self.vectors()
+        #expect(cases.count >= 8)
+        for c in cases {
+            let name = c["name"]?.stringValue ?? "?"
+            let got = ServerNoticeRules.show(c["offered"]?.stringValue, lastShown: Self.date(c["last_shown"]),
+                                             appShown: Self.date(c["app_shown"]), now: Self.date(c["now"]) ?? Date(),
+                                             covered: c["covered"]?.boolValue ?? false)
+            #expect(got == (c["show"]?.boolValue ?? false), "\(name)")
+        }
+    }
+
+    @Test func aboutDecodesServerUpdate() throws {
+        let about = try JSONDecoder().decode(About.self, from: Data(#"{"version":"0.10.5","build":"1","server_update":"0.10.6"}"#.utf8))
+        #expect(about.serverUpdate == "0.10.6")
+        let none = try JSONDecoder().decode(About.self, from: Data(#"{"version":"0.10.5","build":"1","server_update":null}"#.utf8))
+        #expect(none.serverUpdate == nil)
+    }
+}

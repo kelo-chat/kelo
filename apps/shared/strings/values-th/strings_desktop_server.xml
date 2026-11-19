@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- th text for strings_desktop_server.xml (generated from values/strings_desktop_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_server_row">ใช้เครื่องนี้เป็นเซิร์ฟเวอร์ Kelo</string>
     <string name="desktop_server_row_hint">ติดตั้งเซิร์ฟเวอร์ Kelo ลงในคอมพิวเตอร์เครื่องนี้ Windows จะขอสิทธิ์ผู้ดูแลระบบหนึ่งครั้ง</string>
@@ -17,7 +17,6 @@
     <string name="desktop_server_update">อัปเดต</string>
     <string name="desktop_server_install">ติดตั้ง</string>
     <string name="desktop_server_unavailable">เซิร์ฟเวอร์ Kelo สำหรับ Windows ยังไม่พร้อมใช้งาน</string>
-
     <string name="desktop_server_row_mac">ใช้ Mac เครื่องนี้เป็นเซิร์ฟเวอร์ Kelo</string>
     <string name="desktop_server_row_hint_mac">ติดตั้งเซิร์ฟเวอร์ Kelo บน Mac เครื่องนี้ macOS จะขอรหัสผ่านผู้ดูแลระบบหนึ่งครั้ง</string>
     <string name="desktop_server_installed_mac">มีเซิร์ฟเวอร์ Kelo อยู่บน Mac เครื่องนี้</string>

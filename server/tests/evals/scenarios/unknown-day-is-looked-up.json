@@ -1,0 +1,98 @@
+{
+  "name": "unknown-day-is-looked-up",
+  "about": "A day the chat gives no fact for ('the day of my trip') is looked up in the owner's records, never borrowed from an earlier answer (2026-11-18).",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "What's the weather today?",
+    "And the day after tomorrow?",
+    "What about on the day of my trip?"
+  ],
+  "model": [
+    [
+      {
+        "tool": "weather",
+        "args": {}
+      }
+    ],
+    [
+      {
+        "text": "Clear and mild."
+      }
+    ],
+    [
+      {
+        "text": "Clear and mild."
+      }
+    ],
+    [
+      {
+        "tool": "calendar_events",
+        "args": {
+          "query": [
+            "trip",
+            "flight"
+          ]
+        }
+      }
+    ],
+    [
+      {
+        "tool": "weather",
+        "args": {
+          "date": "2030-03-15"
+        }
+      }
+    ],
+    [
+      {
+        "text": "Trip day: 2030-03-15. Showers likely."
+      }
+    ]
+  ],
+  "tools": {
+    "weather": {
+      "real_schema": true,
+      "result": "Today: 14 C, clear."
+    },
+    "calendar_events": {
+      "real_schema": true,
+      "result": "2030-03-15 14:55 Flight to Trip City (XX 123)"
+    },
+    "follow_list": {
+      "real_schema": true,
+      "result": "Trip day 2030-03-15, from calendar"
+    },
+    "quick_replies": {
+      "real_schema": true,
+      "result": "Shown."
+    }
+  },
+  "expect": {
+    "called_with": [
+      {
+        "tool": "weather",
+        "args": {
+          "date": "2030-03-15"
+        }
+      }
+    ],
+    "prompt_contains": [
+      "never borrow a value from an unrelated earlier answer"
+    ]
+  },
+  "live": {
+    "expect": {
+      "called_with": [
+        {
+          "tool": "weather",
+          "args": {
+            "date": "2030-03-15"
+          }
+        }
+      ]
+    },
+    "note": "live: only a lookup gives the trip day; a borrowed day-after-tomorrow fails"
+  }
+}

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">비밀번호, 키, 카드는 하나의 열쇠로 열려요. 보통은 서버가 그 열쇠를 함께 보관해요. 이 기능을 켜면 내 폰만 열쇠를 가지고 있어서, 누가 서버 디스크를 가져가도 열 수 없어요.</string>

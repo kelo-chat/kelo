@@ -70,16 +70,16 @@ def make_chat_item(title: str, date: str, time_str: str | None = None, place: st
                    what: str = "", quote: str = "", tz: ZoneInfo | None = None) -> UpcomingItem:
     """Create an upcoming item from chat look-back."""
     zone = tz or ZoneInfo("UTC")
-    if time_str and re.match(r"^\d{1,2}:\d{2}$", time_str.strip()):
-        dt = datetime.strptime(f"{date} {time_str.strip()}", "%Y-%m-%d %H:%M").replace(tzinfo=zone)
-    else:
-        dt = datetime.strptime(date, "%Y-%m-%d").replace(hour=9, minute=0, tzinfo=zone)
-    starts_at = dt.timestamp()
+    timed = bool(time_str and re.match(r"^\d{1,2}:\d{2}$", time_str.strip()))
+    dt = datetime.strptime(f"{date} {time_str.strip()}" if timed else date, "%Y-%m-%d %H:%M" if timed else "%Y-%m-%d").replace(tzinfo=zone)
+    starts_at = dt.timestamp()   # no time given: the start of the day, shown as a whole day (refs["all_day"]), never an invented hour
     slug = re.sub(r"[\W_]+", "-", title.lower()).strip("-")[:40]
     key = f"chat:{date}:{slug}" if slug else f"chat:{date}:{int(starts_at)}"
     refs = {"date": date, "what": what, "quote": quote}
-    if time_str:
-        refs["time"] = time_str
+    if timed:
+        refs["time"] = time_str.strip()
+    else:
+        refs["all_day"] = "true"
     return UpcomingItem(
         key=key,
         kind="other",

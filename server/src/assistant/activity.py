@@ -64,9 +64,10 @@ RESTART_RESULT = N_("Stopped because the server restarted")   # the result of a 
 RULE_KINDS: dict[str, str] = {"browser_click": "browser_action", "browser_type": "browser_action", "browser_login": "login",
                               # a point step: only when its element was read (one Kelo could not read never matches a rule, turn_engine)
                               "browser_click_at": "browser_action", "browser_drag": "browser_action",
-                              "workroom_install": "install"}   # install: one package (its "site" is <name>.pypi|npm.install, workroom.install_site)
+                              "workroom_install": "install",   # install: one package (its "site" is <name>.pypi|npm.install, workroom.install_site)
+                              "web_fetch": "web_read"}         # a read of one public page: remembered per site, like a click (never a send)
 KIND_LABELS = {"browser_action": N_("Clicking and typing on a site"), "login": N_("Typing a saved login"),
-               "install": N_("Installing a program in the work room")}
+               "install": N_("Installing a program in the work room"), "web_read": N_("Reading a web page on a site")}
 NEVER_REMEMBER = ("forget_", "confirm_purchase", "checkout_review", "order_preapprove", "checkout_submit", "purchase_result", "browser_fill_card", "wallet_", "browser_upload", "find_login_code",   # the last two: every time
                   "task_allow")   # the setup question of a conditional task is asked once, never remembered
 

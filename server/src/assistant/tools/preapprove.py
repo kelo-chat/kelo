@@ -116,8 +116,8 @@ def preapprove_tools(pre: Preapprovals, *, schedule_exists: Any = None, tz: Any 
     item = {"type": "object", "properties": {"description": {"type": "string"}, "qty": {"type": "integer"}}, "required": ["description"]}
     return [Tool(
         "order_preapprove",
-        "Ask the owner to approve ONE order now that you will place later in this task or in a scheduled job. Call it only after the owner "
-        "confirmed the order's details in chat. The owner sees one card; it collects permission and buys nothing. It covers one order: "
+        "Ask the owner to approve ONE order now that you will place later in this task or in a scheduled job. Call it once the order's details "
+        "are settled (the owner's request and answers); the card is their approval, so do not ask it in chat too. The owner sees one card; it collects permission and buys nothing. It covers one order: "
         "the items and requirements below, within an all-in maximum (tax and shipping included). For a scheduled job create the schedule "
         "first and pass its id as schedule_id; without it the approval is for this task. If the owner declines, do not ask again.",
         {"type": "object", "properties": {

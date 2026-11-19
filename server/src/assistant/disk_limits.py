@@ -23,6 +23,7 @@ FOLLOW_READING_DAYS = 30            # one check's readings (what a flight or a p
 FOLLOW_CHECK_DAYS = 30              # a finished or stopped check, counted from the end of its window
 FOLLOW_ITEM_DAYS = 60               # an upcoming item (trip, appointment) counted from its end
 FOLLOW_USAGE_MONTHS = 24
+FOLLOW_REMOVED_DAYS = 60             # an item the owner removed from the list, counted from its start (the calendar never lists a past event)
 MEMORY_RUNS_KEEP = 500              # newest passes of the memory pipeline (the claims themselves are never pruned)
 RECHECK_DAYS = 180                  # a closed / stopped / sent recheck
 CORRECTION_DAYS = 365               # a resolved correction of the nightly review
@@ -58,6 +59,7 @@ RULES: tuple[Rule, ...] = (
     Rule("follow readings of removed checks", "follow_readings",
          "DELETE FROM follow_readings WHERE check_id NOT IN (SELECT id FROM follow_checks)"),
     Rule("follow usage months", "follow_usage", "DELETE FROM follow_usage WHERE month < :cut_month", days=FOLLOW_USAGE_MONTHS * 30.5),
+    Rule("follow removed items", "follow_removed", "DELETE FROM follow_removed WHERE starts_at < :cut", days=FOLLOW_REMOVED_DAYS),
     # memory pipeline: the run log only (memory_claims are the owner's memory and stay)
     Rule("memory pass log", "memory_runs",
          "DELETE FROM memory_runs WHERE run_id NOT IN (SELECT run_id FROM memory_runs ORDER BY started_at DESC LIMIT :keep)",

@@ -20,11 +20,12 @@ def last_user_id(ctx: Any) -> int:
     GOAL_MARK = S.GOAL_MARK
     HANDOFF_MARK = S.HANDOFF_MARK
     NEST_SHARE_MARK = getattr(S, "NEST_SHARE_MARK", "")
+    CHECKLIST_MARK = getattr(S, "CHECKLIST_MARK", "")
     RECHECK_MARK = S.RECHECK_MARK
     SCHEDULE_MARK = S.SCHEDULE_MARK
     WATCH_MARK = S.WATCH_MARK
     store = ctx.store
-    marks = tuple(m for m in (HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK) if m)
+    marks = tuple(m for m in (HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK) if m)
     return next((int(r["id"]) for r in store._all("SELECT id, content FROM messages WHERE role = 'user' ORDER BY id DESC LIMIT 50")
                  if not str(r["content"]).startswith(marks)), 0)
 
@@ -183,7 +184,8 @@ def resume_task(ctx: Any, row: dict[str, Any], why: str) -> str:
              "parent_task_id": spec.get("parent_task_id")}
         task = asyncio.ensure_future(worker_handoff(w, "", str(spec.get("head") or ""), bool(spec.get("quiet")),
                                                     again={"message_id": spec["message_id"], "note": note, "from": tid,
-                                                           "restarts": restarts}, cond=str(spec.get("cond") or "")))
+                                                           "restarts": restarts}, cond=str(spec.get("cond") or ""),
+                                                    self_started=bool(spec.get("self_started")), owner_asked=bool(spec.get("owner_asked"))))
         background_folds.add(task)
         task.add_done_callback(background_folds.discard)
         return "resumed"

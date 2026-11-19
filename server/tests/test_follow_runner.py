@@ -1082,3 +1082,29 @@ async def test_the_do_not_tell_rules_are_read_by_the_main_model_and_unknown_mean
     assert await runner(prefs, FakeRules(down=True))._is_suppressed(item) is None       # unknown: the item is not planned or stopped now
     assert await runner(prefs, None)._is_suppressed(item) is None
     assert await runner("# NOTIFY_PREFS.md\n\n## Do not tell me\n\n## Tell me\n", FakeRules("sushi"))._is_suppressed(item) is False   # no rules written
+
+
+@pytest.mark.asyncio
+async def test_a_calendar_item_the_owner_removed_is_not_planned_again_but_a_moved_one_is():
+    clock = FakeClock(1763500000.0)
+    db = sqlite3.connect(":memory:", check_same_thread=False)
+    store = FollowStore(db, clock=clock)
+    event = {"id": "flight-ke123", "title": "Flight KE123 to Tokyo", "start": clock.now + 7200, "end": clock.now + 14400,
+             "where": "Incheon Airport T2"}
+    finder = ItemFinder(calendar=lambda: [dict(event)], tz=ZoneInfo("UTC"))
+    flight_source = ScriptedFlightSource([{"gate": "A11", "status": "on_time"}])
+    runner = FollowRunner(store=store, finder=finder, planner=Planner(sources=[flight_source], clock=clock),
+                          sources=[flight_source], activity=FakeActivity(), jitter=False, clock=clock)
+    await runner.tick()
+    assert store.get_item("cal:flight-ke123") is not None
+
+    store.remove_item("cal:flight-ke123")
+    clock.advance(3600)
+    finder.calendar = lambda: [dict(event)]
+    await runner.tick()
+    assert store.get_item("cal:flight-ke123") is None   # the calendar still shows it: not put back
+
+    event["start"] = event["start"] + 86400                # the event is moved to another day: it is a new thing to follow
+    clock.advance(3600)
+    await runner.tick()
+    assert store.get_item("cal:flight-ke123") is not None

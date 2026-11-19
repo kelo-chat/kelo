@@ -149,12 +149,17 @@ public struct FrameHeader: Equatable, Sendable {
     public var liveV: Int = 0
     /// A text field has focus on the page (the phone's screen); false from an older server.
     public var editing: Bool = false
+    /// live_v 3: what keyboard the focused field fits (secret | number | tel | email | url | search | multiline | text), and an opaque id that
+    /// changes when the focus moves to another field.
+    public var kind = "text"
+    public var field = ""
 
     init(_ o: Lenient) {
         seq = o.int64("seq"); w = o.int("w"); h = o.int("h"); url = o.str("url"); title = o.str("title")
         cssW = o.int("css_w"); cssH = o.int("css_h")
         secure = o.optBool("secure")
         liveV = o.int("live_v"); editing = o.bool("editing")
+        kind = o.str("kind").isEmpty ? "text" : o.str("kind"); field = o.str("field")
     }
 }
 
@@ -166,15 +171,17 @@ public struct InputReply: Equatable, Sendable {
     public var mappedWith: String? = nil
     /// Dropped: the tap was aimed at a picture from before the agent's stopped step's last move (tap again on the new picture).
     public var stale = false
+    /// Which input it answers ("tap", "edit"...); "" when the server did not say.
+    public var input = ""
 
-    public init(ok: Bool = true, busy: Bool = false, x: Double? = nil, y: Double? = nil, mappedWith: String? = nil, stale: Bool = false) {
-        self.ok = ok; self.busy = busy; self.x = x; self.y = y; self.mappedWith = mappedWith; self.stale = stale
+    public init(ok: Bool = true, busy: Bool = false, x: Double? = nil, y: Double? = nil, mappedWith: String? = nil, stale: Bool = false, input: String = "") {
+        self.ok = ok; self.busy = busy; self.x = x; self.y = y; self.mappedWith = mappedWith; self.stale = stale; self.input = input
     }
     init(_ o: Lenient) {
         ok = o.has("ok") ? o.bool("ok") : true; busy = o.bool("busy")
         x = o.has("x") ? o.double("x") : nil; y = o.has("y") ? o.double("y") : nil
         mappedWith = o.optStr("mapped_with")
-        stale = o.bool("stale")
+        stale = o.bool("stale"); input = o.str("input")
     }
     public init(json: JSON) { self.init(Lenient(json)) }
 }
@@ -243,15 +250,23 @@ public struct LiveStatus: Equatable, Sendable {
     public var inWorkBrowser: Bool { browser == "work" }
 }
 
-/// `{"type":"meta","url","title","editing"}`: the tab's address and title and whether a text field has focus, sent while this viewer's
-/// frames are off (the VNC screen shows, so the frame headers that normally carry them do not come). A frame arriving again takes over.
-/// A server from before `editing` leaves it out: false.
+/// `{"type":"meta","url","title","editing","kind","field","live_v"}`: the tab's address and title and whether a text field has focus (and which
+/// kind, which field), sent while this viewer's frames are off (the VNC screen shows, so the frame headers that normally carry them do not
+/// come). A frame arriving again takes over. A server from before `editing` leaves it out: false; before live typing, no kind / field / live_v.
 public struct LiveMeta: Equatable, Sendable {
     public var url: String, title: String
     public var editing: Bool
-    public init(url: String = "", title: String = "", editing: Bool = false) {
-        self.url = url; self.title = title; self.editing = editing
+    public var kind: String, field: String
+    public var liveV: Int
+    public init(url: String = "", title: String = "", editing: Bool = false, kind: String = "text", field: String = "", liveV: Int = 0) {
+        self.url = url; self.title = title; self.editing = editing; self.kind = kind; self.field = field; self.liveV = liveV
     }
+}
+
+/// The focused field as live typing needs it: `kind` picks the keyboard, `field` tells a move to another field.
+public struct Typing: Equatable, Sendable {
+    public var kind: String, field: String
+    public init(kind: String, field: String) { self.kind = kind; self.field = field }
 }
 
 /// What the live page's header shows of the page: a meta line while frames are off, else the newest frame's header.
@@ -268,6 +283,16 @@ public enum LiveHeader {
     /// A text field has focus on the page: the meta line while frames are off (the last frame header is old then and would never say
     /// it), else the frame's own flag. This is what raises the keyboard into the type line.
     public static func editing(meta: LiveMeta?, frame: Bool?) -> Bool { meta?.editing ?? (frame == true) }
+
+    /// The focused field's kind and id (the same source as `editing`), nil when no field has focus.
+    public static func typing(meta: LiveMeta?, frame: FrameHeader?) -> Typing? {
+        if let meta { return meta.editing ? Typing(kind: meta.kind, field: meta.field) : nil }
+        if let frame, frame.editing { return Typing(kind: frame.kind, field: frame.field) }
+        return nil
+    }
+
+    /// The server takes live typing (the `edit` input): live_v 3 or more, in the meta line or the newest frame header. Else the visible type line stays.
+    public static func liveTyping(meta: LiveMeta?, frameLiveV: Int?) -> Bool { (meta?.liveV ?? 0) >= 3 || (frameLiveV ?? 0) >= 3 }
 }
 
 /// Text going between the phone's clipboard and the page's: only when the owner taps, never on its own, never kept past use.
@@ -316,7 +341,10 @@ public enum LiveMessages {
         case "ended": return .ended(reason: o.str("reason"))
         case "error": return .error(code: o.str("code"), forType: o.str("for"))
         case "pong": return .pong
-        case "meta": return .meta(LiveMeta(url: o.str("url"), title: o.str("title"), editing: o.bool("editing")))
+        case "meta":
+            let kind = o.str("kind")
+            return .meta(LiveMeta(url: o.str("url"), title: o.str("title"), editing: o.bool("editing"), kind: kind.isEmpty ? "text" : kind,
+                                  field: o.str("field"), liveV: o.int("live_v")))
         case "input_ok": return .inputReply(InputReply(o))
         default: return .other
         }
@@ -358,6 +386,8 @@ public enum LiveMessages {
 
     public static func text(_ text: String) -> JSON { ["type": "text", "text": .string(text)] }
     public static func key(_ name: String) -> JSON { ["type": "key", "key": .string(name)] }
+    /// The owner's keyboard changes as steps for the page's focused field (live_v 3); see `RemoteTyping`.
+    public static func edit(_ steps: [EditStep]) -> JSON { RemoteTyping.json(steps) }
     /// The Android device's keys: back | home | enter | recents.
     public static func deviceKey(_ name: String) -> JSON { key(name) }
     /// A finger drag on the device's screen, from `from` to `to` in frame pixels, taking `ms` milliseconds.
@@ -410,6 +440,18 @@ public enum LiveRules {
 
     /// Leaving the page while the owner holds the tab by their own press: the page says it stays theirs until they hand it back.
     public static func leaveNotice(_ s: LiveStatus) -> Bool { s.youControl && !s.handoverHold }
+
+    /// The chips show only when the window has more than one tab.
+    public static func showTabs(_ tabs: [LiveTab]) -> Bool { tabs.count > 1 }
+
+    /// Tapping a chip (and closing one) works only while this device holds the tab; otherwise the chips only show where the agent is.
+    public static func tabsTappable(_ s: LiveStatus) -> Bool { s.youControl }
+
+    /// Only a tab that is not the active one has a close mark.
+    public static func tabClosable(_ t: LiveTab, tappable: Bool) -> Bool { tappable && !t.active }
+
+    /// The body of POST /api/browser/sessions/{key}/tabs/{tab}.
+    public static func tabAction(close: Bool) -> JSON { ["action": .string(close ? "close" : "activate")] }
 
     /// The owner holds a tab of the work browser: the line under the paused banner says where the sign-in goes.
     public static func showWorkNote(_ s: LiveStatus) -> Bool { s.youControl && s.inWorkBrowser }

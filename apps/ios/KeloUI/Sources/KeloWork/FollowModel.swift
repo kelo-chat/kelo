@@ -12,6 +12,7 @@ final class FollowModel {
     private(set) var failed = false
     private(set) var stopping: Set<String> = []
     private(set) var replanning: Set<String> = []
+    private(set) var removing: Set<String> = []
     @ObservationIgnored var api: () -> KeloApi?
 
     init(api: @escaping () -> KeloApi?) { self.api = api }
@@ -52,6 +53,16 @@ final class FollowModel {
         if let r = try? await api.post("/api/follow/\(KeloApi.segment(key))/replan", as: FollowActionResponse.self) {
             set(key, state: r.state.isEmpty ? "watching" : r.state)
             await load()
+        }
+    }
+
+    /// DELETE /api/follow/{key} ("목록에서 지우기"): the row leaves the list (the next load reads the server's list again).
+    func remove(_ key: String) async {
+        guard !removing.contains(key), let api = api() else { return }
+        removing.insert(key)
+        defer { removing.remove(key) }
+        if (try? await api.delete("/api/follow/\(KeloApi.segment(key))", as: FollowActionResponse.self)) != nil {
+            items = items.filter { $0.key != key }
         }
     }
 

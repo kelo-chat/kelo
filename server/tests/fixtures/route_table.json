@@ -1037,6 +1037,132 @@
    "methods": [
     "GET"
    ],
+   "name": "get_speech",
+   "path": "/api/voice/speech",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "choose_speech",
+   "path": "/api/voice/speech/model",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "decline_speech",
+   "path": "/api/voice/speech/decline",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "remove_speech",
+   "path": "/api/voice/speech/model",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "PrefsIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "PUT"
+   ],
+   "name": "speech_prefs",
+   "path": "/api/voice/speech/prefs",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "SpeakIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "speak",
+   "path": "/api/voice/speak",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "get_proactive",
    "path": "/api/proactive",
    "path_params": [],
@@ -1282,33 +1408,6 @@
     }
    ],
    "query": [],
-   "response_class": "JSONResponse",
-   "schema": true,
-   "status": null
-  },
-  {
-   "body": [],
-   "deps": [
-    "require_auth"
-   ],
-   "headers": [],
-   "kind": "APIRoute",
-   "methods": [
-    "GET"
-   ],
-   "name": "get_rechecks",
-   "path": "/api/rechecks",
-   "path_params": [],
-   "query": [
-    {
-     "alias": "days",
-     "default": 30,
-     "kind": "Query",
-     "name": "days",
-     "required": false,
-     "type": "int"
-    }
-   ],
    "response_class": "JSONResponse",
    "schema": true,
    "status": null
@@ -1987,6 +2086,33 @@
    "headers": [],
    "kind": "APIRoute",
    "methods": [
+    "DELETE"
+   ],
+   "name": "remove_follow_item",
+   "path": "/api/follow/{key}",
+   "path_params": [
+    {
+     "alias": "key",
+     "default": null,
+     "kind": "Path",
+     "name": "key",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
     "POST"
    ],
    "name": "replan_follow_item",
@@ -2208,6 +2334,42 @@
    "name": "begin_turn",
    "path": "/api/turns",
    "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "AnsweredIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "answered",
+   "path": "/api/calls/{call_id}/answered",
+   "path_params": [
+    {
+     "alias": "call_id",
+     "default": null,
+     "kind": "Path",
+     "name": "call_id",
+     "required": true,
+     "type": "str"
+    }
+   ],
    "query": [],
    "response_class": "JSONResponse",
    "schema": true,
@@ -9840,6 +10002,50 @@
    "status": null
   },
   {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "TabIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "browser_window_tab",
+   "path": "/api/browser/sessions/{key}/tabs/{tab}",
+   "path_params": [
+    {
+     "alias": "key",
+     "default": null,
+     "kind": "Path",
+     "name": "key",
+     "required": true,
+     "type": "str"
+    },
+    {
+     "alias": "tab",
+     "default": null,
+     "kind": "Path",
+     "name": "tab",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
    "body": [],
    "deps": [
     "require_auth"
@@ -9892,6 +10098,140 @@
    "response_class": "JSONResponse",
    "schema": true,
    "status": 201
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_refusal_pauses",
+   "path": "/api/browser/refusal-pauses",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "forget_browser_sign_in",
+   "path": "/api/browser/sign-ins/{site}",
+   "path_params": [
+    {
+     "alias": "site",
+     "default": null,
+     "kind": "Path",
+     "name": "site",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "delete_browser_profile",
+   "path": "/api/browser/profiles/{profile}",
+   "path_params": [
+    {
+     "alias": "profile",
+     "default": null,
+     "kind": "Path",
+     "name": "profile",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "forget_browser_profile_site",
+   "path": "/api/browser/profiles/{profile}/sites/{site}",
+   "path_params": [
+    {
+     "alias": "profile",
+     "default": null,
+     "kind": "Path",
+     "name": "profile",
+     "required": true,
+     "type": "str"
+    },
+    {
+     "alias": "site",
+     "default": null,
+     "kind": "Path",
+     "name": "site",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "clear_refusal_pause",
+   "path": "/api/browser/refusal-pauses/{site}",
+   "path_params": [
+    {
+     "alias": "site",
+     "default": null,
+     "kind": "Path",
+     "name": "site",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
   },
   {
    "body": [],
@@ -12603,6 +12943,132 @@
    "methods": [
     "GET"
    ],
+   "name": "get_speech",
+   "path": "/api/voice/speech",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "choose_speech",
+   "path": "/api/voice/speech/model",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "decline_speech",
+   "path": "/api/voice/speech/decline",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "remove_speech",
+   "path": "/api/voice/speech/model",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "PrefsIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "PUT"
+   ],
+   "name": "speech_prefs",
+   "path": "/api/voice/speech/prefs",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "SpeakIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "speak",
+   "path": "/api/voice/speak",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "get_proactive",
    "path": "/api/proactive",
    "path_params": [],
@@ -12848,33 +13314,6 @@
     }
    ],
    "query": [],
-   "response_class": "JSONResponse",
-   "schema": true,
-   "status": null
-  },
-  {
-   "body": [],
-   "deps": [
-    "require_auth"
-   ],
-   "headers": [],
-   "kind": "APIRoute",
-   "methods": [
-    "GET"
-   ],
-   "name": "get_rechecks",
-   "path": "/api/rechecks",
-   "path_params": [],
-   "query": [
-    {
-     "alias": "days",
-     "default": 30,
-     "kind": "Query",
-     "name": "days",
-     "required": false,
-     "type": "int"
-    }
-   ],
    "response_class": "JSONResponse",
    "schema": true,
    "status": null
@@ -13553,6 +13992,33 @@
    "headers": [],
    "kind": "APIRoute",
    "methods": [
+    "DELETE"
+   ],
+   "name": "remove_follow_item",
+   "path": "/api/follow/{key}",
+   "path_params": [
+    {
+     "alias": "key",
+     "default": null,
+     "kind": "Path",
+     "name": "key",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
     "POST"
    ],
    "name": "replan_follow_item",
@@ -13711,6 +14177,42 @@
    "name": "begin_turn",
    "path": "/api/turns",
    "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "AnsweredIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "answered",
+   "path": "/api/calls/{call_id}/answered",
+   "path_params": [
+    {
+     "alias": "call_id",
+     "default": null,
+     "kind": "Path",
+     "name": "call_id",
+     "required": true,
+     "type": "str"
+    }
+   ],
    "query": [],
    "response_class": "JSONResponse",
    "schema": true,
@@ -21343,6 +21845,50 @@
    "status": null
   },
   {
+   "body": [
+    {
+     "alias": "body",
+     "default": null,
+     "kind": "Body",
+     "name": "body",
+     "required": true,
+     "type": "TabIn"
+    }
+   ],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "POST"
+   ],
+   "name": "browser_window_tab",
+   "path": "/api/browser/sessions/{key}/tabs/{tab}",
+   "path_params": [
+    {
+     "alias": "key",
+     "default": null,
+     "kind": "Path",
+     "name": "key",
+     "required": true,
+     "type": "str"
+    },
+    {
+     "alias": "tab",
+     "default": null,
+     "kind": "Path",
+     "name": "tab",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
    "body": [],
    "deps": [
     "require_auth"
@@ -21395,6 +21941,140 @@
    "response_class": "JSONResponse",
    "schema": true,
    "status": 201
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "get_refusal_pauses",
+   "path": "/api/browser/refusal-pauses",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "forget_browser_sign_in",
+   "path": "/api/browser/sign-ins/{site}",
+   "path_params": [
+    {
+     "alias": "site",
+     "default": null,
+     "kind": "Path",
+     "name": "site",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "delete_browser_profile",
+   "path": "/api/browser/profiles/{profile}",
+   "path_params": [
+    {
+     "alias": "profile",
+     "default": null,
+     "kind": "Path",
+     "name": "profile",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "forget_browser_profile_site",
+   "path": "/api/browser/profiles/{profile}/sites/{site}",
+   "path_params": [
+    {
+     "alias": "profile",
+     "default": null,
+     "kind": "Path",
+     "name": "profile",
+     "required": true,
+     "type": "str"
+    },
+    {
+     "alias": "site",
+     "default": null,
+     "kind": "Path",
+     "name": "site",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "DELETE"
+   ],
+   "name": "clear_refusal_pause",
+   "path": "/api/browser/refusal-pauses/{site}",
+   "path_params": [
+    {
+     "alias": "site",
+     "default": null,
+     "kind": "Path",
+     "name": "site",
+     "required": true,
+     "type": "str"
+    }
+   ],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
   },
   {
    "body": [],

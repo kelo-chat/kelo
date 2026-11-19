@@ -41,12 +41,12 @@ SCENARIO_KEYS = {"name", "about", "profile", "user", "model", "tools", "expect",
 EXPECT_KEYS = {
     "called", "not_called", "approval_asked", "reply_contains", "reply_not_contains", "no_secret_in", "prompt_contains",
     "model_calls", "status", "tool_error", "login_cards", "status_labels", "reply_language",
-    "called_with", "not_called_with", "jobs", "jobs_max", "main_run_has", "main_run_lacks",
+    "called_with", "not_called_with", "jobs", "jobs_max", "main_run_has", "main_run_lacks", "calls_max",
 }
-LIVE_EXPECT_KEYS = {"called", "not_called", "approval_asked", "reply_language", "called_with", "not_called_with", "jobs", "jobs_max",
+LIVE_EXPECT_KEYS = {"called", "not_called", "approval_asked", "reply_language", "called_with", "not_called_with", "jobs", "jobs_max", "calls_max",
                     "main_run_has", "main_run_lacks"}
-SETTINGS_KEYS = {"payment_specialist"}   # the settings a scenario may switch (a kill switch under test)
-TOOL_SPEC_KEYS = {"result", "error", "approval", "untrusted", "source", "description", "parameters", "by", "results", "real_schema", "refuse_selector_containing", "final_pages", "shows_page"}
+SETTINGS_KEYS = {"payment_specialist", "browser_worker"}   # the settings a scenario may switch (kill switches under test)
+TOOL_SPEC_KEYS = {"result", "error", "approval", "untrusted", "source", "description", "parameters", "by", "results", "real_schema", "refuse_selector_containing", "final_pages", "shows_page", "closes_reply"}
 NO_SECRET_PLACES = {"reply", "tool_args", "log"}
 REAL_TOOLS = {"request_login"}   # the real vault tools a scenario may ask for ("real": [...]); see _real_tools
 
@@ -207,7 +207,8 @@ def _fake_tool(name: str, spec: dict[str, Any], outcome: Outcome, real: dict[str
     if spec.get("real_schema") and real and name in real:
         description, params = real[name]
     return Tool(name, description, params, handler, requires_approval=approval is not None,
-                untrusted=bool(spec.get("untrusted", False)), source=spec.get("source", ""), auto_approve=auto)
+                untrusted=bool(spec.get("untrusted", False)), source=spec.get("source", ""), auto_approve=auto,
+                closes_reply=bool(spec.get("closes_reply", False)))   # react, quick_replies: the reply ends with this call (agent/loop.py)
 
 
 class FakePage:
@@ -453,6 +454,14 @@ def check(expect: dict[str, Any], outcome: Outcome) -> list[str]:
     for want in expect.get("not_called_with", []):
         if any(name == want["tool"] and _has_args(args, want.get("args", {})) for name, args in observed):
             bad.append(f"{want['tool']} was called with {want.get('args', {})}")
+    for tool, most in expect.get("calls_max", {}).items():   # 2026-11-18: a second watcher or a second quick_replies for one request
+        # a call that ran is in outcome.calls and again among the calls the model asked for (observed_calls keeps both): count the
+        # larger of the two lists, so one call counts once
+        ran = sum(1 for name, _ in outcome.calls if name == tool)
+        asked = sum(1 for name, _ in observed[len(outcome.calls):] if name == tool)
+        n = max(ran, asked)
+        if n > most:
+            bad.append(f"{tool} was called {n} times, at most {most}")
     for want in expect.get("jobs", []):
         if not any(_has_args(j, want) for j in outcome.jobs):
             bad.append(f"no job like {want} (jobs: {[(j['kind'], j['status']) for j in outcome.jobs]})")

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">تُفتح كلمات المرور والمفاتيح والبطاقات بمفتاح واحد. عادةً يحتفظ الخادم به بجانبها. عند التفعيل يحتفظ به هاتفك وحده، فلا يستطيع من يأخذ قرص الخادم فتحها.</string>

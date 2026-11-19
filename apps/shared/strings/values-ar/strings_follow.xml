@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_follow.xml (generated from values/strings_follow.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="follow_section_title">ما يتابعه Kelo</string>
     <string name="follow_stop">إيقاف المتابعة</string>
@@ -28,4 +29,9 @@
     <string name="follow_summary_prep_general">تحضير %1$s</string>
     <string name="follow_summary_watch_changes">التحقق من التغييرات</string>
     <string name="follow_summary_default">متابعة الموعد</string>
+    <string name="follow_remove">إزالة من القائمة</string>
+    <string name="follow_remove_confirm">هل تريد إزالة هذا العنصر؟</string>
+    <string name="follow_remove_confirm_detail">لن يتابعه Kelo ولن يعيده.</string>
+    <string name="follow_remove_yes">إزالة</string>
+    <string name="follow_stopped_toggle">العناصر المتوقفة (%1$d)</string>
 </resources>

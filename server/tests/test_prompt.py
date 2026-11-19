@@ -33,7 +33,7 @@ def prompt_text():
 
 
 def test_shipped_prompt_is_short_and_names_nothing_from_other_products(prompt_text):
-    assert len(prompt_text.encode("utf-8")) <= 12_250   # 12_000 before the line on delegating phone work (2026-11-16, docs/phone-worker.md)
+    assert len(prompt_text.encode("utf-8")) <= 14_200   # 14_050 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 14_000 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 13_350 before round 2 shared shopping rule; 12_250 before round 1 (2026-11-19, card p-shopping-like-reference); 12_000 before the line on delegating phone work (2026-11-16, docs/phone-worker.md)
     assert not FOREIGN.search(prompt_text), FOREIGN.search(prompt_text)
     assert "{agent_name}" in prompt_text and "~/" not in prompt_text
     assert not (CONTENT / "prompts" / "system.original.md").exists() and not (CONTENT / "prompts" / "CHANGES.md").exists()
@@ -86,7 +86,7 @@ def test_facts_moved_out_of_the_prompt_sit_where_the_model_sees_them():
     sched = {t.name: t.description for t in schedule_tools(None, None)}
     watch = {t.name: t.description for t in watch_tools(None)}
     assert "task_allow" in sched["schedule_create"]                              # the follow-up question, where the job is made
-    assert "watch_dry_run" in watch["watch_add"] and "show the user" in watch["watch_dry_run"] and "dry run" in watch["watch_enable"]
+    assert "start=true" in watch["watch_add"] and "watch_enable" in watch["watch_add"] and "checks once" in watch["watch_enable"]
 
 
 def test_the_short_rules_are_kelos_own_and_cover_the_same_ground():
@@ -115,13 +115,23 @@ def test_builder_fills_in_name_time_model_goals_files_skills_and_learned_rules(t
     assert out.index("## Skills") < out.index("## Learned Preferences") < out.index("## Your Files") < out.index("## This Turn")
 
 
+def test_react_is_the_last_call_and_nothing_is_written_after_it(prompt_text):
+    """The reply is written before the emoji: a model that wrote it again after `react` stored the same text twice (chat-dup, 2026-11-18)."""
+    assert "`react` ends the reply: write nothing after it." in prompt_text
+
+
 def test_the_real_content_loads_and_stays_small():
     b = PromptBuilder.load(CONTENT, None, Skills(CONTENT / "skills"))
     out = b.build(agent_name="Sage", now=NOW)
     assert "You are Sage, a personal agent" in out and "- shopping-and-bookings:" in out and "- work-room:" in out
-    assert len(out) < 14_950, len(out)   # 14_700 before the line on delegating phone work (2026-11-16, docs/phone-worker.md); 14_500 before the line telling the agent to read its help pages (kelo_help) for questions about Kelo itself (2026-11-16, server/content/help); 14_050 before the rule on never promising what nothing will do (2026-11-16, docs/scheduled-runs.md); 13_800 before the lines on showing pictures unasked when looks matter and never giving a path the user cannot open (owner 2026-11-15); 13_100 before the five everyday-life skills joined the skill list (2026-11-15); 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
+    assert len(out) < 16_900, len(out)   # 16_750 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 16_700 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 16_100 before round 2 shared shopping rule; 14_950 before round 1 (2026-11-19, card p-shopping-like-reference); 14_700 before the line on delegating phone work (2026-11-16, docs/phone-worker.md); 14_500 before the line telling the agent to read its help pages (kelo_help) for questions about Kelo itself (2026-11-16, server/content/help); 14_050 before the rule on never promising what nothing will do (2026-11-16, docs/scheduled-runs.md); 13_800 before the lines on showing pictures unasked when looks matter and never giving a path the user cannot open (owner 2026-11-15); 13_100 before the five everyday-life skills joined the skill list (2026-11-15); 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
     # and the clause on answering from the closest data; 12_700 before remembering the browser on the owner's sign-ins (2026-11-10)
     assert not FOREIGN.search(out)
+
+
+def test_a_wrong_earlier_answer_is_said_and_its_advice_revisited(prompt_text):
+    assert "When you find an earlier answer of yours was wrong, or a new fact changes it, tell the user plainly and revisit the advice that rested on it." in prompt_text
+    assert "a re-check" not in prompt_text
 
 
 # ---- through the server
@@ -189,13 +199,14 @@ async def test_the_agents_tools_exist_only_when_files_are_enabled_and_can_write_
                "delegate", "workers_list", "worker_status", "worker_message", "worker_stop", "resume",
                "await_reply", "followup_snooze", "followup_cancel", "action_result",   # (action_result: offered only while a result is unknown, done_once.py)
                "goal_get", "goal_set_facts", "goal_plan", "goal_step_done", "goal_log", "goal_metric_add", "goal_link_schedule",
-               "goal_add_document", "goal_suggest", "quick_replies", "compare_options", "react", "set_tone", "set_owner_settings", "finish_first_chat", "big_event_notice", "briefing", "recheck_later", "recheck_watch", "recheck_stop", "recheck_result", "offer_post",
-               "follow_list", "follow_stop",
+               "goal_add_document", "goal_suggest", "quick_replies", "compare_options", "react", "set_tone", "set_owner_settings", "finish_first_chat", "big_event_notice", "briefing", "offer_post",
+               "follow_list", "follow_stop", "follow_remove",
                "package_entries", "package_entry_add", "package_entry_delete",   # entries of installed Nest packages (nest.py)
                "nest_draft_create", "nest_draft_write", "nest_draft_check", "nest_draft_delete", "nest_draft_from_skill", "nest_share_github",
-               "weather", "my_location", "places_near", "messenger"}   # forecasts without a browser, the phone's last location, places near it
+               "weather", "my_location", "places_near", "messenger",   # forecasts without a browser, the phone's last location, places near it
+               "start_voice_call"}                                       # a call with Kelo in the owner's app (call_tools.py): no files needed
     files = {"read_file", "write_file", "list_files", "read_skill", "search_skills", "extract_document", "generate_image", "save_product_image", "list_product_images", "view_image", "remember", "memory_explain", "forget_plan", "forget_confirm",
-             "propose_skill", "storage_cleanup_list", "storage_cleanup", "show_picture"}
+             "propose_skill", "storage_cleanup_list", "storage_cleanup", "show_picture", "checklist_link"}
     assert every[0] == files | connect
     assert every[1] == connect                                       # connections need no files area
     # tools on demand: the first request shows only the core set (those this server has); the rest load with find_tools
@@ -364,7 +375,7 @@ def test_rules_moved_by_the_prompt_diet_sit_where_they_matter(tmp_path):
     text = (CONTENT / "prompts" / "system.md").read_text(encoding="utf-8")
     assert "remember this browser" not in text and "tell the user in one short sentence to fill it in below" in text
     assert "when the work room is available" in text
-    assert not {"browser_click_at", "browser_drag", "browser_view", "places_near"} & CORE_TOOLS
+    assert not {"browser_click_at", "browser_drag", "places_near"} & CORE_TOOLS
     assert {"browser_login", "browser_look", "browser_open", "weather"} <= CORE_TOOLS
     app = create_app(Settings(token=TOKEN, provider="p", model="m", cdp_host="127.0.0.1", home_dir=str(tmp_path / "home"),
                               content_dir=str(CONTENT)))
@@ -372,8 +383,7 @@ def test_rules_moved_by_the_prompt_diet_sit_where_they_matter(tmp_path):
     assert "(never someone else's), accept an offer to keep this browser signed in or skip verification next time" in desc["browser_login"]
     assert "not saving the password, marketing or cookie consent, a recovery phone or email, or security settings" in desc["browser_login"]
     assert "find_tools" in desc["browser_look"] and "browser_click_at" in desc["browser_look"] and "browser_drag" in desc["browser_look"]
-    view = next(t for t in app.state.tools if t.name == "browser_open").parameters["properties"]["view"]["description"]
-    assert "load browser_view with find_tools" in view
+    assert "view" not in next(t for t in app.state.tools if t.name == "browser_open").parameters["properties"]
 
 
 async def test_slash_new_starts_a_fresh_conversation_for_the_model_and_keeps_the_messages(tmp_path):
@@ -412,3 +422,85 @@ async def test_a_sent_briefing_step_is_a_yes_and_other_text_is_not(tmp_path):
 def test_briefing_steps_are_asked_for_as_the_owners_own_request():
     from assistant.briefing import PROMPT
     assert "the owner's own short request" in PROMPT and "Not a question" in PROMPT
+
+
+def test_the_prompt_states_each_principle_once(prompt_text):
+    # 2026-11-18: the request is the go-ahead, the card is the question, look up what is missing, check before adding, say it once
+    for phrase in ("The user's request is the go-ahead for what it names",
+                   "do not also ask it in chat",
+                   "never borrow a value from an unrelated earlier answer",
+                   "Asked what you or the app did, set up, saved or shows: read that record first",
+                   "change a match instead of adding a twin",
+                   "A step whose result is unknown is checked, never repeated",
+                   "Write the answer once"):
+        assert prompt_text.count(phrase) == 1, phrase
+    for gone in ("When the user answers a question, act on that answer", "**Apps on the Android device.**"):
+        assert gone not in prompt_text, gone
+
+
+def _tool_texts(app):
+    """Every description a model reads for a tool: its own text and every parameter description, nested ones included."""
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "description" and isinstance(v, str):
+                    yield v
+                else:
+                    yield from walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from walk(v)
+    for t in app.state.tools:
+        yield t.name, t.description or "", list(walk(t.parameters))
+
+
+def _test_app(tmp_path):
+    return create_app(Settings(token=TOKEN, provider="p", model="m", cdp_host="127.0.0.1", home_dir=str(tmp_path / "home"),
+                               content_dir=str(CONTENT)))
+
+
+def test_tool_texts_never_ask_to_confirm_what_the_request_covers(tmp_path):
+    # 2026-11-18 (watch double confirm, chat-dup): tool texts said "show the dry run the user saw" and "ask them to confirm",
+    # while the prompt says the request is the go-ahead and the card is the question
+    bad = re.compile(r"show (this|it|the result) to the user before|a dry run the user saw|\(they approve\)|confirmed [^.]* in chat|"
+                     r"(?<!never )ask (the user|them) (to confirm|whether to (turn|switch|start|do))", re.I)   # "never ask them to confirm" is the rule
+    for name, desc, params in _tool_texts(_test_app(tmp_path)):
+        for text in [desc, *params]:
+            assert not bad.search(text), (name, bad.search(text).group(0))
+
+
+def test_tool_texts_are_english_and_name_no_product_in_a_rule(tmp_path):
+    # the model reads these in English; a product name or a Korean trigger word in a rule leaks into unrelated turns
+    for name, desc, params in _tool_texts(_test_app(tmp_path)):
+        if name == "set_tone":
+            continue
+        for text in [desc, *params]:
+            assert not re.search(r"[가-힣]", text), (name, text[:80])
+        if name in ("connector_send", "mcp_call_tool"):
+            assert "Home Assistant" not in desc, name
+
+
+def test_the_core_tool_texts_stay_small(tmp_path):
+    # 2026-11-18: core tool texts (own text + parameter texts) 13_067 bytes before watch-one-step and follow-dates-promise,
+    # 14_234 on main after them, 14_324 with the tool-text pass, 14_533 with the profile argument of delegate and browser_open
+    # (named browser profiles); 15_043 with shopping rules in quick_replies, recheck_later, web_search (2026-11-19, card p-shopping-like-reference)
+    app = _test_app(tmp_path)
+    total = 0
+    for name, desc, params in _tool_texts(app):
+        if name in CORE_TOOLS:
+            total += len(desc.encode("utf-8")) + sum(len(p.encode("utf-8")) for p in params)
+    assert total < 15_200, total
+
+
+def test_the_watchers_line_names_the_ones_on_and_never_their_values_or_addresses():
+    # 2026-11-18 (watch double confirm): a second watcher was added for the one already set up, because the turn did not show it
+    from assistant.prompt import turn_lines, watchers_line
+    rows = [{"id": 4, "name": "Price", "enabled": 1, "every_minutes": 30, "last_value": "69.99 https://shop.example.test/x", "url": "https://shop.example.test/x"},
+            {"id": 3, "name": "Old", "enabled": 0, "every_minutes": 60, "last_value": "secret page text", "url": "https://old.example.test"}]
+    line = watchers_line(rows)
+    assert "Watchers: #4 Price (on, every 30 min)" in line and "(+1 off)" in line and "watch_list" in line
+    assert "69.99" not in line and "shop.example" not in line and "secret" not in line and "Old" not in line
+    assert watchers_line(None) == "" and watchers_line([]) == ""
+    lines = turn_lines(tz_name="UTC", now=NOW, watchers=rows)
+    assert any(ln.startswith("Watchers: #4") for ln in lines)
+    assert not any(ln.startswith("Watchers") for ln in turn_lines(tz_name="UTC", now=NOW, watchers=None))

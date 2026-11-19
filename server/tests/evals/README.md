@@ -44,6 +44,8 @@ that follows the design, to prove fixtures and expectations before a real model 
 - `settings`: a kill switch under test (`payment_specialist`). `live_only`: needs a `live` block.
 - A fake tool with `real_schema: true` shows the model the real tool's description and parameters (read from a throwaway app); `by` + `results`
   pick the result by one argument (`checkout_review`: `status` draft / ready).
+- `calls_max` (`{"tool": n}`): at most n calls of that tool; every call anyone made counts once (also live).
+- `closes_reply: true` on a fake tool: the reply ends with that call, as react and quick_replies do in the app.
 - Expectations: `called_with` / `not_called_with` (`{"tool", "args"}`, an arg value `"*"` = present; every call anyone made counts, a job's too),
   `jobs` (`{"kind", "status"}` each must exist), `jobs_max` (`{"checkout": 1}`), `main_run_has` / `main_run_lacks` (tools the main agent's
   requests offered). All of these are allowed in a `live` block.

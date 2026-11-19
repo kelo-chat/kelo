@@ -6,12 +6,14 @@
   ],
   "ios": [
     {"version": "0.9.0", "build": 26111024, "channel": "appstore", "date": "2026-11-10"},
-    {"version": "0.10.1", "build": 26111411, "channel": "appstore", "date": "2026-11-14"}
+    {"version": "0.10.1", "build": 26111411, "channel": "appstore", "date": "2026-11-14"},
+    {"version": "0.10.5", "build": 26111812, "channel": "appstore", "date": "2026-11-19", "min_server": "0.9.0"}
   ],
   "desktop": [
     {"version": "1.0.3", "build": 100000003, "channel": "download", "date": "2026-11-08"},
     {"version": "1.0.6", "build": 100000006, "channel": "download", "date": "2026-11-09"},
     {"version": "1.0.9", "build": 100000009, "channel": "download", "date": "2026-11-14"},
-    {"version": "1.0.10", "build": 100000010, "channel": "download", "date": "2026-11-16"}
+    {"version": "1.0.10", "build": 100000010, "channel": "download", "date": "2026-11-16"},
+    {"version": "1.0.12", "build": 100000012, "channel": "download", "date": "2026-11-18"}
   ]
 }

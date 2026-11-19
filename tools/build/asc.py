@@ -259,7 +259,8 @@ def main(argv=None):
                 if state == "VALID":
                     # Processed is not released: TestFlight and review do not count. The operator records it when it is live.
                     print(f"When this build is live in the App Store (Ready for Distribution), record it with\n"
-                          f"  assistant release-record ios <version> {a.version} appstore")
+                          f"  assistant release-record ios <version> {a.version} appstore\n"
+                          "(it also publishes the signed store row to kelo.chat; run on the operator's computer)")
                     return 0
                 if state in ("FAILED", "INVALID"):
                     return 2

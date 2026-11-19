@@ -1,7 +1,7 @@
 import Foundation
 import KeloCore
 
-/// One item Kelo is keeping for a later message (GET /api/proactive/held). `why`: slots | over_cap | waiting_for_reply.
+/// One item Kelo is keeping for a later message (GET /api/proactive/held). `why`: over_cap | waiting_for_reply.
 /// Android my/ProactiveDeliveries.kt HeldItem.
 public struct HeldItem: Decodable, Equatable, Sendable {
     public var key = "", source = "", title = "", message = "", why = ""
@@ -31,30 +31,24 @@ public struct HeldList: Decodable, Equatable, Sendable {
     }
 }
 
-/// The delivery count and the held items, apart from the UI (Android my/ProactiveDeliveries.kt DeliveryRules).
+/// The held items, apart from the UI (Android my/ProactiveDeliveries.kt DeliveryRules).
 public enum DeliveryRules {
-    public static let min = 0, max = 10
+    public enum Why: Equatable, Sendable { case overCap, waitingForReply, other }
 
-    public enum Why: Equatable, Sendable { case slots, overCap, waitingForReply, other }
-
-    /// The server's reason code as a case; a code this app does not know (or none) is `.other`.
+    /// The server's reason code as a case; a code this app does not know, an old one ("slots", retired 2026-11-19) or none is `.other`.
     public static func why(_ code: String) -> Why {
         switch code.trimmingCharacters(in: .whitespaces) {
-        case "slots": .slots
         case "over_cap": .overCap
         case "waiting_for_reply": .waitingForReply
         default: .other
         }
     }
 
-    /// The choice kept inside 0...10.
-    public static func clamp(_ n: Int) -> Int { Swift.min(Swift.max(n, min), max) }
-
-    /// Whether the server has the delivery count at all (an older one sends no such field: the rows are hidden).
-    public static func hasCount(_ p: ProactiveSettings) -> Bool { p.dailyDeliveries != nil }
-
     /// Whether the server counts held items (and so has the list).
     public static func hasHeld(_ p: ProactiveSettings) -> Bool { p.held != nil }
+
+    /// The held count the settings show: nil when the server has none or nothing is held (the link is then hidden).
+    public static func heldCount(_ held: Int?) -> Int? { held.flatMap { $0 > 0 ? $0 : nil } }
 
     /// The line over a held item: its title, else the first line of its message.
     public static func heading(_ item: HeldItem) -> String {

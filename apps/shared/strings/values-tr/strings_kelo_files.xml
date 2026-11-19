@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Kelo dosyaları</string>
     <string name="files_about">Kelo\'nun kendisi için not aldıkları: sen kimsin, belleği, notları. Okuyabilir, değiştirebilir ve silebilirsin. Yüklemelerin ve sonuçların kendi sayfaları var.</string>

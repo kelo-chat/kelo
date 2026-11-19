@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">ไฟล์ของ Kelo</string>
     <string name="files_about">สิ่งที่ Kelo จดไว้เอง: คุณเป็นใคร ความทรงจำ และบันทึกของมัน คุณอ่าน แก้ไข และลบได้ ไฟล์ที่อัปโหลดและผลลัพธ์มีหน้าของตัวเอง</string>

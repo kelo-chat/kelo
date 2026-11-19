@@ -12,7 +12,7 @@ SCENARIOS = load_scenarios()
 
 
 def test_every_scenario_file_is_valid():
-    assert len(SCENARIOS) == 12
+    assert len(SCENARIOS) == 18   # 12 before the 2026-11-18 prompt-audit scenarios
     assert {s["name"] for s in SCENARIOS} == {p.stem for p in SCENARIO_DIR.glob("*.json")}
 
 
@@ -300,3 +300,11 @@ async def test_a_job_that_must_ask_a_card_is_answered_by_the_runner_not_left_wai
 
     o = await run_scenario({**sc, "user": sc["user"][:1]}, tmp_path, stream_fn=fake)
     assert [j["status"] for j in o.jobs] == ["needs_input"] and o.approvals
+
+
+def test_calls_max_counts_every_call_of_the_tool():
+    o = outcome(calls=[("watch_add", {}), ("watch_add", {"name": "b"}), ("quick_replies", {})],
+                request_tools=[])
+    assert check({"calls_max": {"watch_add": 2, "quick_replies": 1}}, o) == []
+    assert check({"calls_max": {"watch_add": 1, "quick_replies": 0}}, o) == [
+        "watch_add was called 2 times, at most 1", "quick_replies was called 1 times, at most 0"]

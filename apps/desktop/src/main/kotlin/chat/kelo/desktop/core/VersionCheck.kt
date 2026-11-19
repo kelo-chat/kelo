@@ -15,11 +15,17 @@ object DesktopVersion {
         return "desktop/$version" + (code?.let { "+$it" } ?: "")
     }
 
+    /**
+     * The update channel the server is asked about (X-Kelo-App-Channel): "msstore" for the Microsoft Store package, whose updates come
+     * from the Store; "download" for the installer from kelo.chat/download (the server names a newer app for that channel).
+     */
+    fun channelFor(store: Boolean): String = if (store) "msstore" else "download"
+
     /** Once at start-up (AppContainer): every call to the Kelo server says this release; answers are compared with min_server. */
     fun install() {
         AppVersion.header = header()
         AppVersion.minServer = ReleaseInfo.MIN_SERVER
-        AppVersion.channel = "download"   // the installer from kelo.chat/download (the server names a newer app for that channel)
+        AppVersion.channel = channelFor(DesktopPlatform.isMsix)
     }
 }
 

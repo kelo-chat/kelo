@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- pt text for strings_connector_perms.xml (generated from values/strings_connector_perms.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<!-- pt-BR text for strings_connector_perms.xml (generated from values/strings_connector_perms.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="perm_title">O que a Kelo pode fazer</string>
     <string name="perm_about">Permitir: sem cartão. Perguntar: um cartão a cada vez. Desligado: a Kelo não faz. Pagamentos e cadastros sempre perguntam.</string>

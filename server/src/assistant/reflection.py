@@ -1,8 +1,8 @@
 """Learning the user's preferences: once a night (after the journal) the user's main model reads the day's conversation, the times
 the user seemed to correct the assistant (spotted here in code), the rules learned so far and the start of user.md / MEMORY.md, and
 proposes short preference rules (and, in the same answer, up to GOALS_PER_NIGHT goals the user could take on, grounded in what they
-said; goals.py keeps them as suggestions) and up to 5 "rechecks": things the assistant told the user that may change and that they may act
-on, each backed by a quote of the assistant's own words (recheck.py keeps them). They ride on this one request: no call of its own.
+said; goals.py keeps them as suggestions). They ride on this one request: no call of its own. Corrections of the assistant's own
+earlier answers are not looked for here: corrections.py does that for the morning briefing and the hourly look.
 And up to 3 lessons from the day's finished runs that used tools (skill_lessons.py keeps them as skill proposals for the owner to approve;
 never memory).
 
@@ -195,7 +195,6 @@ class Reflection:
         self.last_use, self.sleep = last_use, sleep      # when the app was last used in the foreground (unix seconds)
         self.lock = asyncio.Lock()
         self.goals: Any = None   # the goal book (goals.py), set by the server: the run may also suggest goals
-        self.rechecks: Any = None   # recheck.RecheckExtractor, set by the server: the same request also asks for rechecks (no call of its own)
         self.offers: Any = None   # offers.OfferExtractor, set by the server: and for offers, grounded in the owner's own words
         self.upcoming: Any = None   # follow/upcoming.UpcomingExtractor, set by the server: and for dated things said in chat (follow items)
         self.lessons: Any = None   # skill_lessons.LessonExtractor, set by the server: and lessons from the day's finished runs that used tools
@@ -329,11 +328,6 @@ class Reflection:
         """The owner's own messages of a run (not the assistant's, not automatic runs): where a rule's quote must be found."""
         return [_clean(m["content"]).replace("<message_break/>", " ") for m in msgs if self.from_user(m)]
 
-    @staticmethod
-    def assistant_words(msgs: list[dict[str, Any]]) -> list[str]:
-        """The assistant's own messages of a run: where the quote of a recheck must be found."""
-        return [_clean(m["content"]).replace("<message_break/>", " ") for m in msgs if m["role"] == "assistant"]
-
     def conversation_text(self, msgs: list[dict[str, Any]], budget: int) -> str:
         tz, lines, used = self.tz(), [], 0
         for m in reversed(msgs):   # the newest that fit
@@ -364,12 +358,10 @@ class Reflection:
         if self.goals is not None:
             taken = "\n".join(f"- {t}" for t in self.goals.taken_titles()) or "(none)"
             parts.append(f"Goals and earlier suggestions (tracked, accepted or declined):\n{clip_tokens(taken, 500)}")
-        system = (PROMPT + (self.rechecks.prompt_part() if self.rechecks is not None else "")
+        system = (PROMPT
                   + (self.offers.prompt_part() if self.offers is not None else "")
                   + (self.upcoming.prompt_part() if self.upcoming is not None else "")
                   + (self.lessons.prompt_part() if self.lessons is not None else ""))
-        if self.rechecks is not None:
-            parts.append(clip_tokens(self.rechecks.known_block(), 500))
         if self.offers is not None and (block := self.offers.known_block()):
             parts.append(clip_tokens(block, 400))
         if self.upcoming is not None:
@@ -473,21 +465,20 @@ class Reflection:
         except Exception as e:  # noqa: BLE001
             return self._record("failed", "model_error", f"{type(e).__name__}: {str(e)[:160]}")
         out = parse_output("".join(parts))
-        if out is None or not any(isinstance(out.get(k), list) for k in ("new", "update", "drop", "goals", "rechecks", "offers", "upcoming", "lessons")):
+        if out is None or not any(isinstance(out.get(k), list) for k in ("new", "update", "drop", "goals", "offers", "upcoming", "upcoming_drop", "lessons")):
             return self._record("failed", "bad_output", "the model did not answer in the expected form; nothing was changed")
         added, updated, dropped = self.apply(out, self.owner_words(msgs))
         suggested = self.apply_goals(out)
-        rechecked = self.rechecks.apply(out, self.assistant_words(msgs)) if self.rechecks is not None else 0
         offered = self.offers.apply(out, self.owner_words(msgs)) if self.offers is not None else 0
-        upcoming = self.upcoming.apply(out, self.owner_words(msgs) + self.assistant_words(msgs)) if self.upcoming is not None else 0
+        upcoming = self.upcoming.apply(out, self.owner_words(msgs)) if self.upcoming is not None else 0   # the owner's words only
         lessons = self.lessons.apply(out, runs) if self.lessons is not None else 0
         self.store.set_meta("reflection:seen_until", repr(msgs[-1]["created_at"]))
         raw = out.get("reasons")
         reasons = [str(r).strip()[:200] for r in (raw if isinstance(raw, list) else [raw]) if r is not None and str(r).strip()]
         summary = (f"{added} new, {updated} updated, {dropped} dropped" + (f", {suggested} goal(s) suggested" if suggested else "")
-                   + (f", {rechecked} recheck(s) kept" if rechecked else "") + (f", {offered} offer(s) made" if offered else "")
+                   + (f", {offered} offer(s) made" if offered else "")
                    + (f", {upcoming} upcoming kept" if upcoming else "") + (f", {lessons} lesson(s) kept" if lessons else ""))
-        return self._record("done", "", "; ".join([summary, *reasons])[:600], bool(added or updated or dropped or suggested or rechecked or offered or upcoming or lessons),
+        return self._record("done", "", "; ".join([summary, *reasons])[:600], bool(added or updated or dropped or suggested or offered or upcoming or lessons),
                             added=added, updated=updated, dropped=dropped, goals=suggested)
 
     async def wait_idle(self) -> bool:

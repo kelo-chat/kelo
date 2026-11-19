@@ -374,7 +374,7 @@ def skill_tools(proposals: SkillProposals, origin: Callable[[], Mapping[str, Any
             {"label": t("Content"), "value": body, "full": True},
         ]
         if outside:
-            lines.append({"label": t("Why it asks"), "value": t("Kelo read outside text (a page, mail or message) before this step, and you did not name {target}.", target=name)})
+            lines.append({"label": t("Why it asks"), "value": t("Kelo read something in a page, mail or message before this step, and you did not name {target}.", target=name)})
         return {
             "outside_text": outside,
             "body": body,

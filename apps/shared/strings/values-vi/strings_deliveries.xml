@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- vi text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="deliveries_label">Số tin nhắn Kelo chủ động gửi mỗi ngày</string>
-    <string name="deliveries_about">Kelo gom những điều muốn báo với bạn vào đúng số tin nhắn này mỗi ngày. Nếu là 0, Kelo chỉ gửi những việc không thể chờ.</string>
-    <plurals name="deliveries_today">
-        <item quantity="other">Hôm nay đã gửi %d lần</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="other">Đang giữ %d mục</item>
     </plurals>
@@ -13,7 +8,6 @@
     <string name="deliveries_held_about">Kelo giữ những mục này cho tin nhắn tiếp theo. Trước khi gửi, Kelo xem lại và bỏ những gì không còn quan trọng.</string>
     <string name="deliveries_held_empty">Hiện không có gì đang được giữ lại.</string>
     <string name="deliveries_held_until">Giữ đến %1$s</string>
-    <string name="deliveries_why_slots">Đang chờ tin nhắn tiếp theo trong ngày</string>
     <string name="deliveries_why_cap">Chưa đủ khẩn cấp để gửi thêm hôm nay</string>
     <string name="deliveries_why_reply">Đang chờ bạn trả lời tin nhắn trước</string>
     <string name="deliveries_why_other">Đang chờ thời điểm thích hợp hơn</string>

@@ -73,12 +73,9 @@ async def rfb_handshake(ws):
 class Setup:
     """The app, one fake browser with two tabs, and a fake X server."""
 
-    def __init__(self, tmp_path, fake=None, with_second_tab=True, mobile=True):
-        """`mobile`: the owner tab shows sites as a phone's browser (the X screen follows the viewer); False is a desktop-view tab."""
+    def __init__(self, tmp_path, fake=None, with_second_tab=True):
         self.tmp_path, self.fake = tmp_path, fake or FakeRfb()
         self.sess, self.cdps = make_session()
-        if mobile:
-            self.sess._view_cdp["owner"] = Phone()
         if with_second_tab:
             self.sess._pages["other"] = FakePage()
 
@@ -102,10 +99,10 @@ class Setup:
 async def test_a_full_relay_sizes_the_screen_drops_a_watchers_input_passes_a_holders_and_puts_the_screen_back(tmp_path):
     async with Setup(tmp_path) as s:
         async with websockets.connect(s.url(t=await ticket(s.http))) as ws:
-            assert json.loads(await asyncio.wait_for(ws.recv(), 3)) == {"type": "vnc", "width": 450, "height": 800}
-            assert await rfb_handshake(ws) == (450, 800)                       # the X screen was sized for this tab
-            assert s.fake.size == (450, 800) and s.vnc.holds("owner")
-            relay = lambda: s.fake.connections[1]   # noqa: E731 - connection 0 was the short one that set the size
+            assert json.loads(await asyncio.wait_for(ws.recv(), 3)) == {"type": "vnc", "width": 1440, "height": 900}
+            assert await rfb_handshake(ws) == (1440, 900)                      # the X screen keeps its desktop size
+            assert s.fake.size == (1440, 900) and s.vnc.holds("owner")
+            relay = lambda: s.fake.connections[1]   # noqa: E731 - connection 0 is the short one that reads the screen size
             await ws.send(POINTER + UPDATE + KEY)                                # a viewer that does not hold the tab
             await until(lambda: len(s.fake.connections) > 1 and [m[0] for m in relay()] == [3])
             assert s.fake.handshakes[1] == b"RFB 003.008\n\x01\x01"
@@ -125,8 +122,8 @@ async def test_a_full_relay_sizes_the_screen_drops_a_watchers_input_passes_a_hol
                 assert sorted(m[0] for m in tail) == [3, 4, 5]
                 assert [m for m in tail if m[0] == 5][0][1] == 0 and [m for m in tail if m[0] == 4][0][1] == 0
             # nothing comes back to the viewer that it did not ask the server for: bytes from the screen arrive untouched
-        await freed(s)   # the last viewer left: back to 1440 x 900
-        assert s.fake.resizes == [(450, 800, 7, 1), (1440, 900, 7, 1)]
+        await freed(s)   # the last viewer left: the screen is as it was
+        assert s.fake.resizes == [] and s.fake.size == (1440, 900)
 
 
 async def test_bytes_from_the_screen_reach_the_viewer_untouched(tmp_path):
@@ -147,7 +144,7 @@ async def test_a_second_tab_gets_busy_and_the_first_keeps_its_screen(tmp_path):
                 assert json.loads(await asyncio.wait_for(second.recv(), 3)) == {"type": "error", "code": "busy"}
                 with pytest.raises(websockets.ConnectionClosed):
                     await second.recv()
-            assert s.vnc.holds("owner") and s.fake.size == (450, 800)
+            assert s.vnc.holds("owner") and s.fake.size == (1440, 900)
         await freed(s)
         async with websockets.connect(s.url("other", t=await ticket(s.http, "other"))) as third:   # free again
             assert json.loads(await third.recv())["type"] == "vnc"
@@ -158,10 +155,10 @@ async def test_two_devices_on_the_same_tab_share_the_screen(tmp_path):
         async with websockets.connect(s.url(t=await ticket(s.http))) as a:
             await a.recv()
             async with websockets.connect(s.url(query="width=1000&height=1000&density=1", t=await ticket(s.http))) as b:
-                assert json.loads(await b.recv()) == {"type": "vnc", "width": 450, "height": 800}   # the first viewer's size stays
+                assert json.loads(await b.recv()) == {"type": "vnc", "width": 1440, "height": 900}   # the screen's size stays
             assert s.vnc.holds("owner")
         await freed(s)
-        assert s.fake.resizes == [(450, 800, 7, 1), (1440, 900, 7, 1)]
+        assert s.fake.resizes == []
 
 
 async def test_without_a_ticket_or_with_a_spent_one_the_answer_is_unauthorized_and_a_close(tmp_path):
@@ -169,14 +166,14 @@ async def test_without_a_ticket_or_with_a_spent_one_the_answer_is_unauthorized_a
         t = await ticket(s.http)
         async with websockets.connect(s.url(t=t)) as ws:
             await ws.recv()
-        await until(lambda: not s.vnc.holds("owner") and len(s.fake.connections) == 3)   # set up, the relay, put back
+        await until(lambda: not s.vnc.holds("owner") and len(s.fake.connections) == 2)   # the size, the relay, put back
         for url in (s.url(t=t), s.url(t="")):   # spent, and none
             async with websockets.connect(url) as ws:
                 assert json.loads(await ws.recv())["code"] == "unauthorized"
                 with pytest.raises(websockets.ConnectionClosed) as closed:
                     await ws.recv()
                 assert closed.value.rcvd.code == 4401
-        assert len(s.fake.connections) == 3 and not s.vnc.holds("owner")   # nothing was set up for the refused ones
+        assert len(s.fake.connections) == 2 and not s.vnc.holds("owner")   # nothing was set up for the refused ones
 
 
 async def test_the_bearer_header_works_instead_of_a_ticket(tmp_path):
@@ -186,7 +183,7 @@ async def test_the_bearer_header_works_instead_of_a_ticket(tmp_path):
 
 
 async def test_a_screen_that_cannot_be_set_up_says_unavailable_and_changes_nothing(tmp_path):
-    fake = FakeRfb(resize_status=1)   # the X server refuses the size
+    fake = FakeRfb(size=(800, 600), resize_status=1)   # narrower than the desktop: put back to the desktop size, and the X server refuses it
     async with Setup(tmp_path, fake) as s:
         async with websockets.connect(s.url(t=await ticket(s.http))) as ws:
             assert json.loads(await asyncio.wait_for(ws.recv(), 3)) == {"type": "error", "code": "unavailable"}
@@ -223,40 +220,16 @@ async def test_a_tab_that_does_not_exist_says_unavailable(tmp_path):
             assert json.loads(await asyncio.wait_for(ws.recv(), 3)) == {"type": "error", "code": "unavailable"}
 
 
-async def test_a_desktop_view_tab_keeps_the_desktop_screen_whatever_the_phone_asks_for(tmp_path):
-    """Owner report 2026-11-17: opening the live view re-laid out a desktop-view tab ~500 px wide (coupang showed its narrow layout).
+async def test_the_screen_keeps_the_desktop_size_whatever_the_viewer_asks_for(tmp_path):
+    """Owner report 2026-11-17: opening the live view re-laid out a tab ~500 px wide (coupang showed its narrow layout).
     The X screen stays 1440 x 900; the app scales the whole picture down and zooms on a pinch."""
-    async with Setup(tmp_path, mobile=False) as s:
-        async with websockets.connect(s.url(t=await ticket(s.http))) as ws:
+    async with Setup(tmp_path) as s:
+        async with websockets.connect(s.url(query="width=450&height=800&density=3", t=await ticket(s.http))) as ws:
             assert json.loads(await asyncio.wait_for(ws.recv(), 3)) == {"type": "vnc", "width": 1440, "height": 900}
             assert await rfb_handshake(ws) == (1440, 900)
-            assert s.fake.resizes == [] and s.sess.view("owner") == "desktop"
+            assert s.fake.resizes == []
         await freed(s)
         assert s.fake.resizes == []          # nothing to put back
-
-
-class Phone:
-    """The DevTools session holding a tab's phone view."""
-
-    def __init__(self):
-        self.sent: list[tuple[str, dict]] = []
-
-    async def send(self, method, params=None):
-        self.sent.append((method, dict(params or {})))
-        return {}
-
-
-async def test_a_phone_view_tab_is_laid_out_with_the_mobile_floor_and_gets_its_phone_back(tmp_path):
-    async with Setup(tmp_path) as s:
-        phone = s.sess._view_cdp["owner"] = Phone()
-        async with websockets.connect(s.url(t=await ticket(s.http))) as ws:
-            assert json.loads(await ws.recv()) == {"type": "vnc", "width": 450, "height": 800}   # 450 is over the mobile floor of 320
-            assert phone.sent[0] == ("Emulation.setDeviceMetricsOverride", {"width": 450, "height": 800, "deviceScaleFactor": 1, "mobile": True,
-                                                                           "screenWidth": 450, "screenHeight": 800})
-            assert phone.sent[1] == ("Emulation.setEmitTouchEventsForMouse", {"enabled": True, "configuration": "mobile"})
-        await freed(s)
-        assert ("Emulation.setEmitTouchEventsForMouse", {"enabled": False}) in phone.sent
-        assert phone.sent[-1][0] == "Emulation.setDeviceMetricsOverride" and phone.sent[-1][1]["width"] == 412   # the phone's own screen again
 
 
 async def test_the_socket_ends_and_the_screen_goes_back_when_the_tab_is_closed(tmp_path):
@@ -293,7 +266,7 @@ async def test_the_route_works_through_ke2e_text_first_then_binary(tmp_path):
         async with websockets.connect(ws_url(s.srv, "/e2e/ws")) as ws:
             await ws.send(sealed.envelope)
             assert json.loads(channel.open(await asyncio.wait_for(ws.recv(), 3)))["s"] == 101
-            assert json.loads(channel.open(await asyncio.wait_for(ws.recv(), 3))) == {"type": "vnc", "width": 450, "height": 800}
+            assert json.loads(channel.open(await asyncio.wait_for(ws.recv(), 3))) == {"type": "vnc", "width": 1440, "height": 900}
             assert channel.open(await asyncio.wait_for(ws.recv(), 3)) == b"RFB 003.008\n"   # binary, as the screen sent it
             await ws.send(channel.seal(b"RFB 003.008\n"))
             assert channel.open(await asyncio.wait_for(ws.recv(), 3)) == b"\x01\x01"

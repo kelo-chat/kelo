@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">Wenn mein Tag beginnt (gelernt)</string>
     <string name="briefing_when_fixed">Zu einer Zeit, die ich wähle</string>
     <string name="briefing_fixed_at">Täglich um %1$s</string>
+    <string name="briefing_fixed_from">Ab %1$s, wenn deine Kontaktzeiten beginnen</string>
     <string name="briefing_offset">Wie lange nach Tagesbeginn</string>
     <string name="briefing_offset_none">Gleich zu Beginn</string>
     <string name="briefing_offset_min">%1$d Min. danach</string>

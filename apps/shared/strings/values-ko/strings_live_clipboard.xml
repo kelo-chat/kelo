@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_live_clipboard.xml (generated from values/strings_live_clipboard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="live_paste">휴대폰에서 붙여넣기</string>
     <string name="live_pasted">붙여넣었어요. 칸에 들어갔는지 확인해 주세요.</string>

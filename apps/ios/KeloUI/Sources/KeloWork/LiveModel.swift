@@ -19,6 +19,9 @@ struct LiveShown {
     var seq: Int64 = 0
     var liveV: Int = 0
     var editing = false
+    /// live_v 3: the focused field's keyboard kind and opaque id.
+    var kind = "text"
+    var field = ""
 }
 
 /// The server's answer to the touch with this id (taps and long presses ask for one).
@@ -50,6 +53,37 @@ final class LiveModel {
     /// A text field has focus on the page and the server says so (live protocol 2): the soft keyboard comes up. While the VNC screen
     /// shows the frames are off, so the meta line carries it (LiveHeader.editing).
     var editing: Bool { LiveHeader.editing(meta: meta, frame: frame?.editing) }
+    /// The server takes live typing (live_v 3): the owner's keys go straight into the page through a hidden capture field, no visible type line.
+    var liveTyping: Bool { !LiveKinds.isDevice(tabId) && LiveHeader.liveTyping(meta: meta, frameLiveV: frame?.liveV) }
+    /// The focused field of the page (kind of keyboard, which field), nil when none has focus.
+    var typing: Typing? {
+        if let meta { return meta.editing ? Typing(kind: meta.kind, field: meta.field) : nil }
+        if let f = frame, f.editing { return Typing(kind: f.kind, field: f.field) }
+        return nil
+    }
+    /// Bumps whenever the capture field must start again from `RemoteTyping.empty` (the page's field is no longer what the app thinks).
+    private(set) var typingResets = 0
+    @ObservationIgnored private var typer: RemoteTypingSender?
+    private func typerOrNew() -> RemoteTypingSender {
+        if let typer { return typer }
+        let t = RemoteTypingSender { [weak self] in self?.sendRaw($0) }
+        typer = t
+        return t
+    }
+    /// The capture field's new state: what changed goes to the page at once (see `RemoteTypingSender`).
+    func typingUpdate(_ t: Typed) { typerOrNew().update(t) }
+    /// The page keeps what the owner saw: a composition still showing is committed.
+    func typingCommit() { typer?.commit() }
+    /// The capture field starts again from empty (no steps); false while composing, then nothing changes.
+    func typingReset() -> Bool { typer?.reset() ?? true }
+    /// Named keys for the page (Enter, Tab, arrows, Backspace from the key bar): what composes is committed first, the keys go as one `edit`,
+    /// and the capture field starts again (the page's caret moved or its text changed behind the buffer's back).
+    func typingKeys(_ names: [String]) {
+        typer?.commit()
+        if !names.isEmpty { sendRaw(LiveMessages.edit(names.prefix(RemoteTyping.maxSteps).map { .key($0) })) }
+        typer?.reset()
+        typingResets += 1
+    }
     /// Text the browser copied, waiting for the owner's tap on the copy chip; nil when there is none. Kept in memory only.
     private(set) var offeredClip: String?
     /// The tab's X screen over VNC (noVNC in a web view): tried first once the page is live and knows its size; the JPEG picture is the
@@ -91,6 +125,17 @@ final class LiveModel {
 
     /// The tab's own row (its title, host and status in the header); nil until read, or when it is gone.
     private(set) var tab: BrowserTab?
+    /// The tabs of this task's window; the chips follow them (read again every few seconds and after a tap).
+    private(set) var tabs: [LiveTab] = []
+
+    func refreshTabs() async {
+        if let l = try? await api.browserTabs(thumbnails: false), let t = l.items.first(where: { $0.id == tabId }), !Task.isCancelled { tabs = t.tabs }
+    }
+
+    func tabAction(_ t: LiveTab, close: Bool) async {
+        try? await api.browserTabAction(tabId, tab: t.id, close: close)
+        await refreshTabs()
+    }
 
     func loadTab() async {
         let found = (try? await api.browserTabs(thumbnails: false))?.items.first { $0.id == tabId }
@@ -110,6 +155,7 @@ final class LiveModel {
 
     /// Off screen: the connection closes. `giveBack` also hands a held tab back to the agent.
     func stop(giveBack: Bool = true) {
+        typer?.commit()
         running = false
         runTask?.cancel(); runTask = nil
         statusTask?.cancel(); statusTask = nil
@@ -194,14 +240,17 @@ final class LiveModel {
                         pointer = p
                     case .meta(let m): meta = m
                     case .ended(let reason): run(machine.ended(reason)); return
-                    case .inputReply(let r): answered(r)
+                    case .inputReply(let r):
+                        if r.input == "edit" {   // an `edit` the page did not take: what it shows is no longer known, the capture field starts again
+                            if r.busy || r.stale || !r.ok { typer?.forceReset(); typingResets += 1 }
+                        } else { answered(r) }
                     case .error(let code, let forType):
                         if (forType == "tap" || forType == "long_press") && !awaiting.isEmpty { awaiting.removeFirst() }   // that touch gets no answer
                         serverError(code)
                     default: break
                     }
                 case .frame(let h, let data):
-                    show(data, seq: h.seq, w: h.w, h: h.h, cssW: h.cssW, cssH: h.cssH, url: h.url, title: h.title, secure: h.secure, liveV: h.liveV, editing: h.editing)
+                    show(data, seq: h.seq, w: h.w, h: h.h, cssW: h.cssW, cssH: h.cssH, url: h.url, title: h.title, secure: h.secure, liveV: h.liveV, editing: h.editing, kind: h.kind, field: h.field)
                 }
             }
             socketOpen = false
@@ -262,7 +311,7 @@ final class LiveModel {
     }
 
     private func show(_ data: Data, seq: Int64, w: Int, h: Int, cssW: Int = 0, cssH: Int = 0, url: String, title: String,
-                      secure: Bool? = nil, liveV: Int? = nil, editing: Bool = false) {
+                      secure: Bool? = nil, liveV: Int? = nil, editing: Bool = false, kind: String = "text", field: String = "") {
         guard let img = PlatformImage(data: data) else { return }
         if seq > 0 { lastSeq = max(lastSeq, seq) }
         meta = nil   // a picture came: its header carries the address and title again
@@ -270,7 +319,7 @@ final class LiveModel {
         // the frame-by-frame path carries no header flags: keep what the WebSocket's newest frame said
         frame = LiveShown(image: img, w: w > 0 ? w : Int(size.width), h: h > 0 ? h : Int(size.height),
                           cssW: cssW, cssH: cssH, url: url, title: title, secure: secure,
-                          seq: seq, liveV: liveV ?? frame?.liveV ?? 0, editing: editing)
+                          seq: seq, liveV: liveV ?? frame?.liveV ?? 0, editing: editing, kind: kind, field: field)
         flushView()
     }
 
@@ -357,6 +406,7 @@ final class LiveModel {
     enum ControlResult: Equatable { case ok, held, gone, failed(String) }
 
     func control(_ take: Bool, handover: Bool = false) async -> ControlResult {
+        if !take { typer?.commit() }   // handing back while a syllable forms: the page keeps it
         controlBusy = true
         defer { controlBusy = false }
         do {
@@ -411,6 +461,7 @@ final class LiveModel {
     /// One input event (tap, scroll, key, text, back…), in order, carrying the number of the frame the owner was looking at
     /// (`frameSeq`, the newest shown when not given) to a server that speaks live protocol 2.
     func send(_ event: JSON, frameSeq: Int64? = nil, touchId: Int? = nil) {
+        if event["type"]?.stringValue != "edit" { typer?.flush() }   // the owner's order on the socket
         sendRaw(LiveMessages.stamp(event, frameSeq: frameSeq ?? frame?.seq, liveV: frame?.liveV ?? 0), touchId: touchId)
     }
 
@@ -453,7 +504,14 @@ final class LiveModel {
     }
 
     /// Typed text, in pieces the server takes. Nothing is kept after this.
-    func type(_ text: String) { LiveMessages.chunks(text).forEach { send(LiveMessages.text($0)) } }
+    func type(_ text: String) {
+        if let t = typer {   // a paste: what composes is committed, then the field starts again
+            t.flush()
+            if !t.reset() { t.commit(); t.reset() }
+            typingResets += 1
+        }
+        LiveMessages.chunks(text).forEach { send(LiveMessages.text($0)) }
+    }
 }
 
 /// Whether the phone is on a costly network (cellular, a hotspot), for the live view's picture quality.

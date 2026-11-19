@@ -29,7 +29,8 @@ class WorkRowsTest {
     @Before fun main() { Dispatchers.setMain(Dispatchers.Default) }
     @After fun stop() { vms.clear(); server?.shutdown(); Dispatchers.resetMain() }
 
-    private fun input(watchers: Loadable<WatcherList>, running: Int): WorkRowsInput {
+    private fun input(watchers: Loadable<WatcherList>, running: Int, followItems: List<chat.kelo.app.follow.FollowItem> = emptyList(),
+                       showStoppedFollow: Boolean = false): WorkRowsInput {
         val s = MyFakeServer { _, _, _ -> null }.also { server = it }
         val sessions = s.sessions()
         val vm = vms.make { AgentViewModel(sessions) }
@@ -40,10 +41,28 @@ class WorkRowsTest {
             followups = Loadable(chat.kelo.app.followup.FollowupList()), followupBusy = emptySet(), entries = Loadable(emptyList()),
             filter = PastFilter.ALL, showPaused = false, onTogglePaused = {}, onFilter = {}, today = LocalDate.of(2026, 11, 13),
             push = {}, onOpenLive = {}, container = { error("not used") },
+            followItems = followItems, showStoppedFollow = showStoppedFollow,
         )
     }
 
     private val watching = Loadable(WatcherList(listOf(Watcher(7, name = "제주 항공권 가격", enabled = true))))
+
+    @Test fun stoppedFollowItemsAreFoldedUnderOneRowUntilOpened() {
+        val live = chat.kelo.app.follow.FollowItem(key = "cal:1", title = "Flight", state = "watching")
+        val stopped = chat.kelo.app.follow.FollowItem(key = "cal:2", title = "Old trip", state = "stopped")
+        val folded = buildWorkRows(input(Loadable(WatcherList()), running = 0, followItems = listOf(live, stopped))).map { it.key }
+        assertTrue("follow:cal:1" in folded, "the live item is listed")
+        assertTrue("follow:cal:2" !in folded, "the stopped item is not listed while folded")
+        assertTrue(SECTION_FOLLOW_STOPPED in folded, "one row says how many are stopped")
+
+        val open = buildWorkRows(input(Loadable(WatcherList()), running = 0, followItems = listOf(live, stopped), showStoppedFollow = true))
+            .map { it.key }
+        assertTrue("follow:cal:2" in open, "opened, the stopped item is listed under the live ones")
+        assertTrue(open.indexOf("follow:cal:2") > open.indexOf("follow:cal:1"), "it comes after the live one")
+
+        val onlyStopped = buildWorkRows(input(Loadable(WatcherList()), running = 0, followItems = listOf(stopped))).map { it.key }
+        assertTrue(SECTION_FOLLOW_STOPPED in onlyStopped, "with no live item the folded row still shows")
+    }
 
     @Test fun theWatchersSectionIsFarBelowTheFoldAndItsIndexIsItsRow() {
         val rows = buildWorkRows(input(watching, running = 40))

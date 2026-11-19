@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .calls import CALL_MARK
+from .checklist import CHECKLIST_MARK
 from .goals import GOAL_MARK
 from .nest_drafts import NEST_SHARE_MARK
 from .recheck import RECHECK_MARK
@@ -24,7 +26,7 @@ from .watchers import WATCH_MARK
 from .workers import HANDOFF_MARK
 
 # user-role rows that are not the user's words (api/conversation.py lists them for GET /api/messages; this is the same list)
-NOT_THE_USERS_WORDS: tuple[str, ...] = (HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK)
+NOT_THE_USERS_WORDS: tuple[str, ...] = (HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK, CALL_MARK)
 
 DEFAULT_LIMIT, MAX_LIMIT = 20, 50
 DEFAULT_AROUND, MAX_AROUND = 10, 50

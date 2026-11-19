@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">รหัสผ่าน คีย์ และบัตรของคุณเปิดด้วยกุญแจดอกเดียว ปกติเซิร์ฟเวอร์จะเก็บกุญแจไว้ข้างกัน เมื่อเปิดใช้ จะมีแค่โทรศัพท์ของคุณที่ถือกุญแจ คนที่เอาดิสก์ของเซิร์ฟเวอร์ไปก็เปิดไม่ได้</string>

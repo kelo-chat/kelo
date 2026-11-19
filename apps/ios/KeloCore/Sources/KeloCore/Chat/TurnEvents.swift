@@ -64,6 +64,8 @@ public enum TurnEvent: Equatable, Sendable {
     /// The first event of a reply to a message that carried files: the stored message's id, its files as the server keeps them (with
     /// thumbnails) and whether the text is the app's own sentence (`autoText`: the bubble shows only the files).
     case userMessage(UserMessage)
+    /// The reply asked the app to show its incoming-call screen (server tools/call_tools.py).
+    case callOffer(callId: String, topic: String)
     case unknown(String)
 
     public struct LocationRequest: Equatable, Sendable {
@@ -372,6 +374,8 @@ public enum TurnEvent: Equatable, Sendable {
         case "secret_request":
             guard let r = SecretRequest.parse(o["request"]) else { return .unknown("secret_request") }
             return .secretRequest(id: o.str("id"), request: r)
+        case "call_offer":
+            return .callOffer(callId: o.str("call_id"), topic: o.str("topic"))
         case let other: return .unknown(other)
         }
     }

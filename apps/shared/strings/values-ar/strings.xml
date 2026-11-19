@@ -496,6 +496,16 @@
     <string name="vault_saved_plain">محفوظ</string>
     <string name="vault_not_entered">لم يُدخل بعد</string>
     <string name="vault_last_used">آخر استخدام %1$s</string>
+    <string name="vault_browser_title">متصفح Kelo</string>
+    <string name="vault_browser_signed_in">مسجَّل الدخول %1$s · آخر استخدام %2$s</string>
+    <string name="vault_browser_sign_out">تسجيل خروج متصفح Kelo من هذا الموقع</string>
+    <string name="vault_browser_sign_out_confirm">سيتم تسجيل خروج متصفح Kelo من %1$s وحذف ملفات تعريف الارتباط وبيانات الموقع. يبقى تسجيل الدخول المحفوظ.</string>
+    <string name="vault_browser_sites_title">مسجَّل دخول بلا تسجيل دخول محفوظ</string>
+    <string name="vault_profiles_title">ملفات المتصفح</string>
+    <string name="vault_profile_sites">مسجَّل الدخول في %1$s مواقع</string>
+    <string name="vault_profile_empty">لم يتم تسجيل الدخول في أي مكان بعد</string>
+    <string name="vault_profile_delete">حذف هذا الملف</string>
+    <string name="vault_profile_delete_confirm">سيتم حذف الملف %1$s وكل تسجيلات الدخول المحفوظة فيه.</string>
     <string name="vault_place">يوضع المفتاح في %1$s</string>
     <string name="vault_place_header_named">الترويسة %1$s</string>
     <string name="vault_place_query_named">الاستعلام %1$s</string>
@@ -986,6 +996,9 @@
     <string name="live_still_yours">أنت ما زلت تتحكم. ينتظر وكيلك حتى تعيد التحكم إليه.</string>
     <string name="live_screen_changed">تغيّرت الشاشة. اضغط مرة أخرى.</string>
     <string name="live_tab_closed">أُغلق التبويب، فلا شيء آخر لعرضه. إن حُفظت آخر شاشة فهي معروضة أدناه.</string>
+    <string name="live_tabs_label">علامات التبويب</string>
+    <string name="live_tab_untitled">علامة تبويب جديدة</string>
+    <string name="live_tab_close">إغلاق علامة التبويب</string>
     <string name="live_not_controller">لا يمكنك التحكم الآن. اضغط «تولَّ التحكم» مجددًا.</string>
     <string name="live_input_failed">تعذّر على المتصفح فعل ذلك.</string>
     <string name="live_state_you">أنت المتحكم</string>
@@ -1016,6 +1029,8 @@
     <string name="live_touch_missed">لم يصل اللمس إلى الصفحة</string>
     <string name="live_type_hint">نص للكتابة في الصفحة</string>
     <string name="live_type_send">اكتب</string>
+    <string name="live_keyboard">لوحة المفاتيح</string>
+    <string name="live_keyboard_desc">إظهار لوحة مفاتيح الصفحة أو إخفاؤها</string>
     <string name="live_type_hide">إخفاء النص</string>
     <string name="live_type_show">إظهار النص</string>
     <string name="live_key_enter">Enter</string>
@@ -1226,7 +1241,6 @@
     <string name="work_now_empty">لا شيء يعمل الآن.</string>
     <string name="work_asks">تحتاج إجابتك</string>
     <string name="work_asks_empty">لا أسئلة بالانتظار.</string>
-
     <string name="offers_title">يمكن لـ Kelo تنفيذ هذا الآن</string>
     <string name="offer_start">تسليم</string>
     <string name="offer_needs">المطلوب: %1$s</string>
@@ -1368,6 +1382,7 @@
     <string name="work_watch_ev_fired">تحقق الشرط</string>
     <string name="work_watch_ev_error">فشل</string>
     <string name="work_watch_ev_check">تم الفحص</string>
+    <string name="work_watch_ev_count">· تم الفحص %1$d مرات</string>
     <string name="work_watch_ev_on">تفعيل</string>
     <string name="work_watch_ev_off">إيقاف</string>
     <string name="work_watch_delete">حذف المراقبة</string>
@@ -1425,14 +1440,17 @@
     <string name="heads_section">تنبيهات المستجدات</string>
     <string name="heads_switch">Kelo يخبرك أولًا</string>
     <string name="heads_about">%1$s، يتحقق Kelo من البريد الجديد والمواعيد القادمة والمواعيد النهائية، ويخبرك أولًا إذا كان هناك ما يجب أن تعرفه. ما عليك الرد عليه (الموافقات، الأسئلة) يُطلب منك مجددًا في «%2$s» بغض النظر عن هذا الإعداد.</string>
+    <string name="heads_about_send_times">خلال أوقات الرسائل، يتحقق Kelo كل ساعة من البريد الجديد والخدمات المتصلة، ويخبرك فورًا بما لا يحتمل الانتظار. أما الباقي فينتظر أوقات الإرسال، وحينها يراجع Kelo أيضًا المحادثات والتقويم والأهداف والجداول والذاكرة. كل إرسال يُحسب مرة واحدة في «%1$s» مهما حمل. وعندما ينفد عدد اليوم، لا يصلك إلا ما لا يحتمل الانتظار. ما عليك الرد عليه (الموافقات، الأسئلة) يُطلب منك مجددًا في «%2$s» بغض النظر عن هذا الإعداد.</string>
     <string name="heads_per_day">الحد الأقصى يوميًا</string>
+    <string name="heads_send_times">أوقات الإرسال: %1$s</string>
     <string name="heads_mail">التحقق من البريد الجديد أيضًا</string>
     <string name="heads_mail_about">متوقف: لا يفتح Kelo صناديق بريدك لهذا الفحص؛ وتستمر متابعة المواعيد والمواعيد النهائية. يحدد ملخص الصباح صناديق بريده بشكل منفصل.</string>
     <string name="heads_list_title">أمور للمتابعة</string>
-    <string name="heads_list_about">اختياري. يراجعها Kelo في كل مرة ولا يخبرك إلا عندما يحتاج أمر ما إلى انتباهك.</string>
+    <string name="heads_list_about">اختياري. عندما تضيف أمرًا، يحدد Kelo الوقت المناسب له: متابعة مستقلة إن احتاج إليها، وإلا نظرة في أوقات الإرسال. لا يخبرك إلا عندما يحتاج أمر ما إلى انتباهك.</string>
     <string name="heads_list_hint">مثال: إشعارات التوصيل اليوم</string>
     <string name="heads_list_add">إضافة</string>
     <string name="heads_list_remove">إزالة %1$s</string>
+    <string name="heads_list_own">يُتابَع على حدة · %1$s</string>
     <plurals name="heads_times">
         <item quantity="zero">%d مرة</item>
         <item quantity="one">مرة واحدة</item>
@@ -1670,7 +1688,6 @@
     <string name="comparison_recommended">موصى به</string>
     <string name="comparison_choose">اختيار %1$s</string>
     <string name="comparison_choose_say">دعنا نختر %1$s</string>
-
     <string name="endpoint_add">إضافة نقطة نهاية</string>
     <string name="endpoint_name">الاسم</string>
     <string name="endpoint_name_hint">مثال: Ollama المنزلي</string>

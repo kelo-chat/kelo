@@ -59,8 +59,9 @@ ARCHIVED_TOOLS = ("browser_", "confirm_purchase", "checkout_review", "checkout_s
 class BrowserExtras:
     def __init__(self, session: BrowserSession, *, home: Any = None, files: Any = None, mail: Any = None, archive: ActionArchive | None = None,
                  notify: Callable[[str, str, int | None, bool], Any] | None = None, timezone: Callable[[], str] | None = None,
-                 locale: str = "", download_dir: str | None = None, clock: Callable[[], float] = time.monotonic,
-                 auto_codes: Callable[[], bool] | None = None, vault_log: Callable[..., Any] | None = None):
+                 locale: str = "", language: Callable[[], str] | None = None, download_dir: str | None = None,
+                 clock: Callable[[], float] = time.monotonic, auto_codes: Callable[[], bool] | None = None,
+                 vault_log: Callable[..., Any] | None = None, profiles: Any = None):
         """`auto_codes`: the owner's "Use codes from my mail automatically" (default on); `vault_log(item, action, detail)`: where a code
         typed without asking is recorded for the owner (never the code itself)."""
         self.session, self.home, self.files, self.mail, self.archive, self.notify = session, home, files, mail, archive, notify
@@ -68,10 +69,12 @@ class BrowserExtras:
         self.wall: Callable[[], float] = time.time           # mail times are wall-clock times
         self.auto_codes = auto_codes or (lambda: True)
         self.vault_log = vault_log
+        self.profiles = profiles   # the store: named browser profiles (brief C2)
         self.code_judge: Any = None   # code_judge.CodeJudge; None = the shared shelf's judge (no judge: no code is typed unasked)
         self.code_wait, self.find_wait, self.code_poll = AUTO_CODE_WAIT_SECONDS, AUTO_CODE_FIND_WAIT_SECONDS, AUTO_CODE_POLL_SECONDS
         session.timezone = timezone or (lambda: "")
         session.locale = locale
+        session.user_language = language or (lambda: "")
         session.downloads = DownloadArea(download_dir or None)
         session.journal = TakeoverJournal(session.cdp_session)
         session.has_mailbox = self.has_mailbox
@@ -175,7 +178,7 @@ class BrowserExtras:
             return
         await emit_ui({"type": "browser_check", "tab": key, "site": host, "vendor": c.vendor, "name": c.name, "kind": c.kind})
         turn = current_turn.get() or {}
-        if self.notify is not None and turn.get("unattended"):
+        if self.notify is not None and turn.get("unattended") and not turn.get("self_started"):
             self.notify(t("A human check is needed"), t("{site} is showing a screen that checks whether you are a person. Open the browser tab and do it yourself.", site=host or t("The site")),
                         turn.get("task_id"), True)
 
@@ -265,6 +268,36 @@ class BrowserExtras:
                                  [(n, mimetypes.guess_type(n)[0] or "application/octet-stream", b) for n, b in got])
             return await shown(out, t("Uploading files"))
 
+        async def tabs_tool(args: dict[str, Any]) -> str:
+            action = str(args.get("action") or "")
+            tab = str(args.get("tab") or "").strip()
+            key = browser_owner.get()
+            try:
+                if action == "list":
+                    rows = await s.window_tabs(key)
+                    if not rows:
+                        return "This task has no browser window yet: open a page first."
+                    lines = [f"{'*' if r['active'] else ' '} {r['id']}: {r['title'] or '(no title)'} | {r['url'] or '(blank)'}"
+                             + (f" (opened from {r['opener']})" if r["opener"] else "") for r in rows]
+                    return "This task's tabs (* = the one you act in):\n" + "\n".join(lines)
+                if action == "switch":
+                    if not tab:
+                        return "error: give the tab id from list"
+                    await s.switch_tab(key, tab)
+                    return await s.snapshot()
+                if action == "new":
+                    await s.new_tab(key)
+                    return "A new empty tab is open in this task's window and it is the one you act in now. Open a page with browser_open."
+                if action == "close":
+                    if not tab:
+                        return "error: give the tab id from list"
+                    await s.close_window_tab(key, tab)
+                    active = next((r["id"] for r in await s.window_tabs(key) if r["active"]), "")
+                    return f"Tab {tab} is closed. This task's tab now: {active or 'none'}."
+            except BrowserPolicyError as e:
+                return f"error: {e}"
+            return "error: action must be list, switch, new or close"
+
         def check_upload(args: dict[str, Any]) -> str | None:
             paths = args.get("files")
             if not isinstance(paths, list) or not paths or len(paths) > 10:
@@ -331,6 +364,45 @@ class BrowserExtras:
             except BrowserPolicyError as e:
                 return f"Error: {e}"
             return await shown(res, t("Clearing site data"))
+
+        async def profiles_tool(args: dict[str, Any]) -> str:
+            if self.profiles is None:
+                return "error: named browser profiles are not available here"
+            action = str(args.get("action") or "")
+            try:
+                if action == "create":
+                    label = str(args.get("label") or "").strip()
+                    if not label:
+                        return "error: give the profile a name (label)"
+                    p = self.profiles.create_browser_profile(label)
+                    return (f"Browser profile {p['id']} ({p['label']}) is made. It is not signed in anywhere yet. Hand a job to it with "
+                            f"delegate(kind=browser, profile={p['id']}); the job signs in there once.")
+                if action == "list":
+                    rows = self.profiles.browser_profiles()
+                    if not rows:
+                        return "No named profiles. Every task uses the default profile (the user's own browser sign-ins)."
+                    return "Named browser profiles:\n" + "\n".join(
+                        f"- {p['id']} · {p['label']} · " + (", ".join(x["site"] for x in p["sites"]) or "not signed in anywhere") for p in rows)
+            except ValueError as e:
+                return f"error: {e}"
+            except Exception as e:  # noqa: BLE001 - a VaultError (locked keychain) is safe to show
+                return f"error: {e}"
+            return "error: action must be list or create"
+
+        def describe_profile_delete(args: dict[str, Any]) -> str:
+            pid = str(args.get("profile") or "")
+            label = next((p["label"] for p in self.profiles.browser_profiles() if p["id"] == pid), pid) if self.profiles is not None else pid
+            return t("Delete the browser profile {label} and every sign-in kept in it.", label=label)
+
+        async def profile_delete(args: dict[str, Any]) -> str:
+            if self.profiles is None:
+                return "error: named browser profiles are not available here"
+            pid = str(args.get("profile") or "").strip()
+            if not any(p["id"] == pid for p in self.profiles.browser_profiles()):
+                return "error: no such profile; browser_profiles lists them"
+            await s.close_profile_windows(pid)
+            self.profiles.delete_browser_profile(pid)
+            return await shown(f"The browser profile {pid} and every sign-in kept in it are deleted.", t("Deleting a browser profile"))
 
         # ---- one-time codes from the user's mail
         def purge_codes() -> None:
@@ -455,6 +527,13 @@ class BrowserExtras:
                  declined="The user did not allow uploading those files. Do not retry; ask what they want instead."),
             Tool("browser_save_pdf", "Save the page of your browser tab as a PDF in the user's library (files/).",
                  obj({"name": {"type": "string"}}, []), save_pdf),
+            Tool("browser_tabs", "This task's browser window and its tabs. list: the tabs with id, title and address (the active one marked). "
+                 "switch: make another tab of this window the one you read and act in. new: open an empty tab in this window and switch to it "
+                 "(then browser_open; for a job's own window). close: close a tab of this window (not the last one). Tabs of other tasks are "
+                 "never listed or reachable.",
+                 obj({"action": {"type": "string", "enum": ["list", "switch", "new", "close"]},
+                      "tab": {"type": "string", "description": "a tab id from list, for switch and close"}}, ["action"]),
+                 tabs_tool, untrusted=True, source="page"),
             Tool("browser_private", "Private browsing for a sensitive one-off visit: on gives this tab a fresh context that keeps nothing; "
                  "off goes back to the normal profile.",
                  obj({"on": {"type": "boolean"},
@@ -469,6 +548,16 @@ class BrowserExtras:
                  obj({"site": {"type": "string", "description": "the site to forget (e.g. example.com)"}}, ["site"]),
                  forget_site, requires_approval=True,
                  declined="The user did not allow clearing that site's data. Nothing was removed. Do not retry; ask them how to go on."),
+            Tool("browser_profiles", "Named browser profiles: a separate set of sign-ins for another account on the same site. Create one only "
+                 "when the user asks for another account; list shows each profile's id, name and the sites it was signed in to (a listed site "
+                 "does not prove the sign-in still works). The default profile is the one every task uses unless a profile is given.",
+                 obj({"action": {"type": "string", "enum": ["list", "create"]},
+                      "label": {"type": "string", "description": "the name, for create"}}, ["action"]),
+                 profiles_tool),
+            Tool("browser_profile_delete", "Delete a named browser profile and every sign-in kept in it. The user sees a card and answers with a button.",
+                 obj({"profile": {"type": "string", "description": "a profile id from browser_profiles"}}, ["profile"]),
+                 profile_delete, requires_approval=True, describe=describe_profile_delete,
+                 declined="The user did not allow deleting that profile. Nothing was removed. Do not retry; ask them how to go on."),
             Tool("find_login_code", "A sign-in page wants a one-time code the site sent by email: finds it in the user's mailbox (last "
                  f"{CODE_MINUTES} minutes) and types it in once the user allows. You never see the code.",
                  obj({"site": {"type": "string", "description": "default: the page's"},

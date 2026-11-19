@@ -91,6 +91,8 @@ data class BriefingSettings(
     /** auto (at the start of the day's hours, or the morning's first app open) | fixed ([fixedTime]) */
     @SerialName("time_mode") val timeMode: String = "auto",
     @SerialName("fixed_time") val fixedTime: String = "07:30",
+    /** The earliest fixed time the server takes (the start of the contact hours); null on an older server. */
+    val earliest: String? = null,
     @SerialName("offset_min") val offsetMin: Int = 0,
     @SerialName("early_open") val earlyOpen: Boolean = true,
     val sections: Map<String, Boolean> = mapOf("weather" to true, "calendar" to true, "missed" to true),
@@ -110,6 +112,13 @@ object BriefingSettingsRules {
     fun offsets(current: Int): List<Int> = (OFFSETS + current.coerceIn(0, 60)).distinct().sorted()
 
     fun sectionOn(b: BriefingSettings, id: String): Boolean = b.sections[id] ?: true
+
+    /** Whether a fixed time may be chosen: never before the start of the contact hours ([BriefingSettings.earliest]); an older
+     *  server without it takes any time. */
+    fun fixedAllowed(b: BriefingSettings, hour: Int, minute: Int): Boolean {
+        val first = b.earliest?.let { NotifySettingsRules.parseTime(it) } ?: return true
+        return hour * 60 + minute >= first.first * 60 + first.second
+    }
 
     /** The PUT body that turns one section on or off. */
     fun sectionBody(id: String, on: Boolean): JsonObject = buildJsonObject { put("sections", buildJsonObject { put(id, on) }) }
@@ -241,9 +250,18 @@ fun BriefingBlock(vm: BriefingSettingsViewModel) {
         val t = rememberTimePickerState(start.first, start.second, is24Hour = chat.kelo.app.agent.uses24Hour())
         AlertDialog(
             onDismissRequest = { picking = false }, containerColor = c.card,
-            text = { TimePicker(t) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TimePicker(t)
+                    b.earliest?.let { e ->
+                        val words = NotifySettingsRules.parseTime(e)?.let { (h, m) -> chat.kelo.app.agent.clockText(h, m) } ?: e
+                        Text(string(Res.string.briefing_fixed_from, words), style = MaterialTheme.typography.bodySmall, color = c.muted)
+                    }
+                }
+            },
             confirmButton = {
-                TextButton(onClick = { put(buildJsonObject { put("fixed_time", NotifySettingsRules.formatTime(t.hour, t.minute)) }); picking = false }) {
+                TextButton(enabled = BriefingSettingsRules.fixedAllowed(b, t.hour, t.minute),
+                    onClick = { put(buildJsonObject { put("fixed_time", NotifySettingsRules.formatTime(t.hour, t.minute)) }); picking = false }) {
                     Text(string(Res.string.ok), color = c.accent)
                 }
             },

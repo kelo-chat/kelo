@@ -8,10 +8,11 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import httpx
+import pytest
 
 from assistant import i18n
 from assistant.briefing import Briefing
@@ -134,14 +135,17 @@ async def test_saturday_and_a_holiday_use_the_weekend_hours_monday_the_weekday_o
     assert b.due_at()[0] == ts(2026, 9, 25, 9, 30)
 
 
-async def test_the_first_open_after_a_nights_rest_brings_it_early(tmp_path):
+async def test_the_first_open_after_a_nights_rest_brings_it_early_but_never_before_the_contact_hours(tmp_path):
     store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 7, 10))
     p.update(wake_start="07:30")
+    b.update(offset_min=30)                                               # due 08:00
     use(store, datetime(2026, 11, 8, tzinfo=SEOUL), "21:00", "23:00")    # last seen 23:00
+    assert not b.early_open_counts(clock.t)                              # 07:10: before the contact hours (owner 2026-11-19)
+    clock.t = ts(2026, 11, 9, 7, 40)
     assert b.early_open_counts(clock.t)
     assert await b.tick(clock.t, early=True) is not None and len(sent) == 1
     assert not b.early_open_counts(clock.t + 60)                          # sent today: no second one
-    clock.t = ts(2026, 11, 9, 7, 30)
+    clock.t = ts(2026, 11, 9, 8, 0)
     assert await b.tick() is None and len(sent) == 1
 
 
@@ -180,14 +184,20 @@ async def test_an_offset_after_the_start_and_early_open_can_be_turned_off(tmp_pa
     assert not b.early_open_counts(clock.t)
 
 
-async def test_a_fixed_time_overrides_the_learned_time_and_the_early_open(tmp_path):
+async def test_a_fixed_time_overrides_the_learned_time_and_the_early_open_and_is_never_before_the_contact_hours(tmp_path):
     store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 6, 50))
     p.update(wake_start="07:30")
-    b.update(time_mode="fixed", fixed_time="06:45")
+    with pytest.raises(ValueError, match="cannot be before the start of the contact hours"):
+        b.update(time_mode="fixed", fixed_time="06:45")
+    assert b.config()["time_mode"] == "auto" and b.public()["earliest"] == "07:30"   # nothing saved
+    b.update(time_mode="fixed", fixed_time="07:45")
     use(store, datetime(2026, 11, 8, tzinfo=SEOUL), "20:00", "22:00")
-    assert b.due_at() == (ts(2026, 11, 9, 6, 45), "fixed") and not b.early_open_counts(ts(2026, 11, 9, 6, 40))
-    assert await b.tick() is not None
-    assert sent[0][2] is False                                           # 06:45 is outside the contact hours: no push
+    assert b.due_at() == (ts(2026, 11, 9, 7, 45), "fixed") and not b.early_open_counts(ts(2026, 11, 9, 7, 40))
+    clock.t = ts(2026, 11, 9, 7, 45)
+    assert await b.tick() is not None and sent[0][2] is True
+    b.update(fixed_time="23:00")                                          # after the contact hours (22:00): allowed, no push
+    clock.t = ts(2026, 11, 10, 23, 0)
+    assert await b.tick() is not None and sent[1][2] is False
 
 
 async def test_the_learned_wake_time_while_the_hours_are_untouched(tmp_path):
@@ -355,8 +365,8 @@ async def test_the_briefing_api(tmp_path):
         assert got["enabled"] is True and got["time_mode"] == "auto" and got["offset_min"] == 0 and got["early_open"] is True
         assert got["weather"]["provider"] == "auto" and got["weather"]["here"] is None and got["weather"]["keys"] == {"kma": False, "weatherapi": False}
         assert (await c.put("/api/briefing", json={"offset_min": 90})).status_code == 422
-        r = (await c.put("/api/briefing", json={"time_mode": "fixed", "fixed_time": "6:45", "sections": {"missed": False}})).json()
-        assert r["fixed_time"] == "06:45" and r["sections"] == {"weather": True, "calendar": True, "missed": False}
+        r = (await c.put("/api/briefing", json={"time_mode": "fixed", "fixed_time": "7:45", "sections": {"missed": False}})).json()
+        assert r["fixed_time"] == "07:45" and r["sections"] == {"weather": True, "calendar": True, "missed": False}
         assert (await c.get("/api/briefing/places", params={"q": "부산"})).status_code in (404, 405)   # no place to choose any more
         assert (await c.put("/api/briefing/home", json={"name": "x", "lat": 1, "lon": 1})).status_code in (404, 405)
         assert (await c.post("/api/briefing/preview")).status_code == 405
@@ -783,3 +793,100 @@ async def test_with_no_forecast_at_all_the_card_still_goes_out_after_three_tries
     assert card is None or card["weather"] is None
     # three tries, and each try asks Open-Meteo's normal route and then its other server (both down here)
     assert waits == [5, 20] and sum("/v1/forecast" in u for u in fake.calls) - forecasts_before == 6
+
+
+class FakeCheck:
+    def __init__(self, found=()):
+        self.found, self.calls, self.recorded = list(found), 0, []
+
+    async def check(self, now):
+        self.calls += 1
+        return list(self.found)
+
+    def record(self, key, outcome, title=""):
+        self.recorded.append((key, outcome))
+
+
+class FakeCorrection:
+    message_id, key, url = 7, "correction:7", "https://www.example.gov/n"
+
+    def line(self):
+        return "Now allowed with a prescription (The authority)"
+
+
+async def test_the_morning_card_carries_corrections_and_records_them_told(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 7, 0))
+    b.corrections = FakeCheck([FakeCorrection()])
+    card = await b.tick()
+    assert card is not None and card["corrections"][0]["key"] == "correction:7"
+    assert {"text": "Now allowed with a prescription (The authority)", "refs": []} in card["connections"]
+    assert "Now allowed with a prescription" in sent[0][1] and b.corrections.recorded == [("correction:7", "told")]
+
+
+async def test_get_one_now_and_the_preview_never_run_the_check(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 9, 0))
+    b.corrections = FakeCheck([FakeCorrection()])
+    await b.run_now()
+    await b.build(clock.t)
+    assert b.corrections.calls == 0
+
+
+async def test_no_consent_no_check_and_a_failing_check_leaves_the_card(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 7, 0))
+    b.corrections, b.consent = FakeCheck([FakeCorrection()]), (lambda: False)
+    card = await b.tick()
+    assert card is not None and card["corrections"] == [] and b.corrections.calls == 0
+
+    class Broken(FakeCheck):
+        async def check(self, now):
+            raise TimeoutError()
+    store, clock, p, b, sent, m, fake = setup(tmp_path / "2", ts(2026, 11, 9, 7, 0))
+    b.corrections = Broken()
+    card = await b.tick()
+    assert card is not None and card["corrections"] == [] and len(sent) == 1
+
+
+async def test_the_briefing_waits_for_the_contact_hours_whatever_moved(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 6, 0))
+    p.update(wake_start="07:30")
+    b.update(time_mode="fixed", fixed_time="08:00")
+    p.update(wake_start="09:00")                                          # the hours moved later after the time was set
+    assert b.due_at()[0] == ts(2026, 11, 9, 9, 0) and b.public()["earliest"] == "09:00"
+    p.update(weekend_start="06:00", weekend_end="23:00")
+    assert b.public()["earliest"] == "06:00"                              # the earlier of the two windows
+    b.update(fixed_time="06:30")                                          # fine on weekends; on weekdays it waits for 09:00
+    assert b.due_at(ts(2026, 11, 14, 5, 0))[0] == ts(2026, 11, 14, 6, 30) and b.due_at()[0] == ts(2026, 11, 9, 9, 0)
+
+
+async def test_a_learned_start_before_the_contact_hours_waits_for_them(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 5, 0))   # the hours are the untouched default, 07:00
+    today = datetime(2026, 11, 9, tzinfo=SEOUL)
+    for i in range(1, 22):
+        use(store, today - timedelta(days=i), "06:00", "23:00")
+    start, src = b.start_time()
+    assert src == "learned" and start < "07:00"
+    assert b.due_at()[0] == ts(2026, 11, 9, 7, 0)
+
+
+def test_due_on_is_the_days_briefing_time_and_none_while_off(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 7, 0))
+    day = date(2026, 11, 10)
+    assert b.due_on(day) == b.due_at(ts(2026, 11, 10, 12, 0))[0]
+    b.update(time_mode="fixed", fixed_time="12:30")
+    assert b.due_on(day) == ts(2026, 11, 10, 12, 30)
+    b.update(enabled=False)
+    assert b.due_on(day) is None
+
+
+def test_covers_are_what_the_briefing_reads_for_the_looked_at_page(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 7, 0))
+    assert b.covers() == ["weather", "calendar", "missed"]                 # no correction check wired
+    b.corrections = FakeCheck([])
+    assert b.covers() == ["weather", "calendar", "missed", "corrections"]
+    b.consent = lambda: False
+    assert b.covers() == ["weather", "calendar", "missed"]                 # no AI consent yet: the check cannot run
+    b.consent = lambda: True
+    b.update(sections={"weather": False})
+    assert b.covers() == ["calendar", "missed", "corrections"]
+    b.update(enabled=False)
+    assert b.covers() == []

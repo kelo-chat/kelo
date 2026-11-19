@@ -59,6 +59,27 @@ private let followJson = """
         #expect(m2.items.isEmpty && !m2.failed)
     }
 
+    @Test func stoppedItemsFoldUnderTheLiveOnes() throws {
+        let list = try JSONDecoder().decode(FollowItemList.self, from: Data(followJson.utf8))
+        let split = FollowRules.splitStopped(list.items)
+        #expect(split.live.map(\.key) == ["cal:flight-123"])
+        #expect(split.stopped.map(\.key) == ["cal:dinner"])
+        #expect(FollowRules.splitStopped([]).live.isEmpty && FollowRules.splitStopped([]).stopped.isEmpty)
+    }
+
+    @Test func removeCallsDeleteAndDropsTheRow() async {
+        let t = RoutedTransport()
+        var deletes = 0
+        t.on("GET /api/follow", followJson)
+        t.on("DELETE /api/follow/cal:flight-123") { _, _ in deletes += 1; return (200, #"{"ok":true,"key":"cal:flight-123","state":"removed"}"#) }
+        let m = FollowModel(api: { t.api() })
+        await m.load()
+        await m.remove("cal:flight-123")
+        #expect(deletes == 1)
+        #expect(!m.items.contains { $0.key == "cal:flight-123" })
+        #expect(m.removing.isEmpty)
+    }
+
     @Test func stopAndReplanCallTheServerAndReload() async {
         let t = RoutedTransport()
         var posts: [String] = []

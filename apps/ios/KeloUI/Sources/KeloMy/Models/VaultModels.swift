@@ -79,6 +79,37 @@ import KeloShared
     /// The question "also forget its data?" after a login or key was removed that left some data (the vault's page shows it).
     var forget: ForgetAsk?
 
+    /// Signs Kelo's browser out of `site` (cookies and site data go; a saved login stays), then reloads (brief B4).
+    func signOutBrowser(_ site: String) {
+        jobs.run { [self] in
+            do {
+                try await api.request("DELETE", "/api/browser/sign-ins/\(KeloApi.segment(site))")
+                await load()
+            } catch { message = ApiMessage.text(error) }
+        }
+    }
+
+    /// Signs a named browser profile out of `site`, then reloads (brief C2d).
+    func signOutProfileSite(_ profile: String, _ site: String) {
+        jobs.run { [self] in
+            do {
+                try await api.request("DELETE", "/api/browser/profiles/\(KeloApi.segment(profile))/sites/\(KeloApi.segment(site))")
+                await load()
+            } catch { message = ApiMessage.text(error) }
+        }
+    }
+
+    /// Deletes a named browser profile with every sign-in kept in it; `done` runs when it is gone.
+    func deleteProfile(_ profile: String, done: @escaping () -> Void) {
+        jobs.run { [self] in
+            do {
+                try await api.request("DELETE", "/api/browser/profiles/\(KeloApi.segment(profile))")
+                await load()
+                done()
+            } catch { message = ApiMessage.text(error) }
+        }
+    }
+
     /// Removes the login or key; `done` runs when it is gone (the page closes). Data it left is asked about afterwards.
     func remove(_ name: String, done: @escaping () -> Void) {
         let label = item(name)?.label ?? name

@@ -170,6 +170,27 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
 }
 
 @Suite struct NotifySettingsTests {
+    @Test func sendTimesAreReadAndAnOlderServerHasNone() throws {
+        let p = try decode(#"{"enabled": true, "send_times": {"day": "2026-11-17", "times": ["12:00", "16:00", "20:00"], "briefing": "08:00", "next_at": 1}}"#, as: ProactiveSettings.self)
+        #expect(NotifySettingsRules.sendTimes(p) == ["12:00", "16:00", "20:00"])
+        #expect(NotifySettingsRules.sendTimes(try decode(#"{"enabled": true}"#, as: ProactiveSettings.self)).isEmpty)
+        #expect(NotifySettingsRules.sendTimes(try decode(#"{"send_times": {"times": ["09:00", "x"]}}"#, as: ProactiveSettings.self)) == ["09:00"])
+    }
+
+    @Test func anItemWithItsOwnJobSaysSoAndAnOlderServerSaysNothing() throws {
+        let k = try decode(#"{"list": ["A", "B"], "entries": [{"text": "A", "state": "own", "job": {"kind": "schedule", "id": 3, "name": "Before events", "description": "Every 15 minutes", "on": true}}, {"text": "B", "state": "send_times", "job": null}]}"#, as: ChecklistSettings.self)
+        #expect(NotifySettingsRules.ownJob(k, "A") == "Before events")
+        #expect(NotifySettingsRules.ownJob(k, "B") == nil)
+        #expect(NotifySettingsRules.ownJob(try decode(#"{"list": ["A"]}"#, as: ChecklistSettings.self), "A") == nil)
+    }
+
+    @Test func theAboutTextSaysTheSendTimesWhenTheServerHasThem() throws {
+        #expect(NotifySettingsRules.aboutSendTimes(try decode(#"{"enabled": true, "send_times": {"times": ["12:00"]}}"#, as: ProactiveSettings.self)))
+        #expect(NotifySettingsRules.aboutSendTimes(try decode(#"{"send_times": {"times": []}}"#, as: ProactiveSettings.self)))
+        #expect(!NotifySettingsRules.aboutSendTimes(try decode(#"{"enabled": true}"#, as: ProactiveSettings.self)))
+        #expect(!NotifySettingsRules.aboutSendTimes(try decode(#"{"send_times": null}"#, as: ProactiveSettings.self)))
+    }
+
     @Test func settingsRules() {
         #expect(NotifySettingsRules.parseTime("07:30")! == (7, 30))
         #expect(NotifySettingsRules.parseTime("24:00") == nil)

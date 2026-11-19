@@ -18,9 +18,17 @@ A watcher checks one thing every so often without using the AI model and wakes K
 
 For "if it rains, remind me" or "buy it when it is back in stock" Kelo sets up the schedule or watcher, then asks once for a permission card that names the trigger, the action and the limits (the most to spend, how many times, which card, which recipients). Once allowed it happens on its own and you are told right after; anything outside the permission asks.
 
+## Things to keep an eye on
+
+In the app (My → Notifications, under the news alerts) you can keep a short list of things for Kelo to keep an eye on, or ask Kelo in the chat to add one. When you add one, Kelo decides what timing it needs. If it needs its own, Kelo sets up a schedule or a watcher for it and tells you briefly; the list then shows it as checked separately. Everything else is looked at together at your send times. Taking an item off the list also removes the job Kelo made for it.
+
 ## Morning briefing
 
-The morning briefing is built in (weather, today's calendar and what was missed). Ask Kelo to change its time or what it contains; it is not a schedule you need to make.
+The morning briefing is built in (weather, today's calendar, what was missed, and changes to Kelo's own earlier answers). Ask Kelo to change its time or what it contains; it is not a schedule you need to make.
+
+## Kelo tells you first
+
+When "Kelo tells you first" is on, Kelo checks new mail and your connected services every hour in your message hours and tells you at once about anything that cannot wait. Everything else waits for the send times: your message hours split into equal parts, one for each message a day you allow, plus one for the morning briefing while it is on. At a send time Kelo also goes over your conversation, calendar, goals, schedules and watches, memory, changes to its own earlier answers and the messages it kept for later, and tells you what is worth knowing. One send time counts once toward the most a day, however much it carries; urgent news has a small limit of its own. Once the day's sends are used up, Kelo looks no further that day, except for what cannot wait. In the app, My → Notifications shows the day's send times, and "What Kelo looked at" shows what is read when, and each look.
 
 ## Things coming up
 

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- es text for strings_live_clipboard.xml (generated from values/strings_live_clipboard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="live_paste">Pegar desde el móvil</string>
     <string name="live_pasted">Pegado. Revisa el campo.</string>

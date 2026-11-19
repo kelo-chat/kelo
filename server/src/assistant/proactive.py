@@ -14,9 +14,9 @@ One pass (an internal job; every `every_minutes`, default 120, inside wake_start
    and 1 day before; key "ahead:<event>:<days>" in the ledger so a lead time is never told twice; the model writes the message with
    what to prepare, within the same daily limits), schedule runs and watcher hits since the last pass (already told by their own
    notifications: logged as dropped), tracked goals with a date within 3 days (a "deadline" field, or a date in the title or note), and
-   dated lines under "## Commitments" in MEMORY.md within 2 days, and whatever else is in `Proactive.sources` (CandidateSource: today
-   the rechecks, recheck.py, which are told by their own message through the main agent, so they are logged here as already told).
-   Rechecks (config "rechecks", on by default, and "recheck_per_day", 4 research runs a day at most) run on their own tick, not in a pass.
+   dated lines under "## Commitments" in MEMORY.md within 2 days, and whatever else is in `Proactive.sources` (CandidateSource).
+   Corrections of Kelo's own earlier answers (corrections.py) come with the hourly look below while proactive messages are on, and
+   with the morning briefing while it is on; a correction told by one is in this ledger (key "correction:<message id>") and never told again.
    Mail can be switched off as a whole (config "mail_check", on by default): no mailbox is opened, so no new-mail candidates, no spam /
    promotions skim, no change alerts, no cursor moves and no mail line for the calendar cross-check; calendar, checklist and the other
    sources run as before. Turned on again, the first pass moves every mailbox cursor to "now" without candidates (meta
@@ -45,6 +45,9 @@ One pass (an internal job; every `every_minutes`, default 120, inside wake_start
    requests of at most BATCH (nothing is left out).
 4. Per local day at most `daily_regular` (2) 보통 items and `daily_total` (3) 보통 + 오늘 items go out; 지금 items go out at once (at most
    `daily_now`, 3; over that they count as 오늘). What does not fit is dropped until the next day.
+   Since 2026-11-19 these limits count SENDS of the hourly look (one delivery id per pass: every message of one send counts once; an urgent
+   send is one 지금), and the day is the contact-window day (window_day: a window past midnight keeps its evening's day). The candidate pass
+   below (research off) still logs per item.
    The change class (mail flagged "change", urgency stored as 지금, log kind "change") is outside all of that: it goes out at once in the
    pass that finds it (so at most `every_minutes` after the mail arrived; waking hours only, like 지금), is not counted in
    daily_regular / daily_total / daily_now, and is not held back by the unanswered guard nor counted by it (when the guard holds, the
@@ -61,27 +64,30 @@ One pass (an internal job; every `every_minutes`, default 120, inside wake_start
    logged with its reason (GET /api/proactive/log).
 
 Prepare, hold, bundle (docs/proactive.md): the classifier prepares first (what the facts let it work out is said as ready, ending in one
-offer) and gives each kept item a "useful_until". An accepted item that cannot go out now (a daily cap, the unanswered guard, or the
-day's `daily_deliveries` slots, 2: ordinary messages only; 지금 and change alerts never use a slot) is HELD in table proactive_held until
+offer) and gives each kept item a "useful_until". An accepted item that cannot go out now (a daily cap: why "over_cap", or the unanswered guard: why "waiting_for_reply") is HELD in
+table proactive_held until
 its deadline (its own time, else the end of its day, else useful_until, else the end of the next local day; at most 14 days) instead of
 being dropped. A later pass that may talk judges the held items again with the owner's recent chat (stays, is reworded, or is dropped),
 and tells them with the new ones under the same caps; past its deadline an item is missed and logged as dropped. Held items are in the
 ledger (never judged twice), deleted by forget / clear-history / disconnecting their connector. A held item that the sources still list
 takes their current words when it is judged again (a big event's "in 3 days" is "in 2 days" the day it is told).
+There is no daily count of messages (owner 2026-11-19: only "at most N a day", daily_total): every item that fits the caps goes out
+in the pass that accepts it, bundled as in 5, so a day never has more ordinary messages than daily_total.
 
-The checklist (CHECKLIST.md, checklist.py) is part of this: it runs at the same pace, only while this is on, in waking hours and
-while today's daily_total has room; a run that said something counts as one 오늘 message (log source "checklist").
+The checklist (CHECKLIST.md, checklist.py) is part of this and has no pace of its own: an item that needs its own timing has a job of
+its own (made by the agent when the item is added); the others are looked at in each send pass (situation.py). Its manual run
+(POST /api/checklist/run) that said something counts as one 오늘 message (log source "checklist").
 
 Off by default: the user turns it on in the app (PUT /api/proactive {"enabled": true}). All limits are settings.
 
-Research (config "research", on by default; "research_every_minutes", 60): while it is on, the hourly situation pass (situation.py:
-what changed, research with read-only tools, selection, a message written by the main agent) takes the place of the candidate pass
-above (gather / _classify do not run). It reuses this class's mail cursors, ledger, waking hours, unanswered guard, daily caps,
-delivery slots and `deliver`. With "research" off the pass above runs as before. GET /api/proactive/research shows its passes.
+Research (config "research", on by default; "research_every_minutes", 60): while it is on, situation.py takes the place of the candidate pass above (gather / _classify do not run): an hourly watch on the hour
+(new mail and the connected services only; what the model calls urgent goes out at once as one urgent send) and a send pass at each
+of the day's send times (send_times.py: the contact window in equal parts, daily_total plus the morning briefing's part; everything
+else). One pass is one send. With today's daily_total used up there is no send pass for the rest of the day (skip code "cap_used"). It reuses this class's mail cursors, ledger, waking hours, unanswered guard, daily caps and `deliver`. With "research" off the pass above runs as before. GET /api/proactive/research shows its passes.
 
 Guard against talking to nobody (see "the unanswered guard" in the class): nothing runs before the owner's first chat message on this
-server; after `unanswered_limit` (3) proactive messages in a row with no chat message from the owner (checklist runs that said something
-count too) nothing more goes out for `pause_hours` (18); then one may go, and each further unanswered one doubles the next pause, capped
+server; after `unanswered_limit` (3) proactive messages in a row with no chat message from the owner (a manual checklist run that said something
+counts too) nothing more goes out for `pause_hours` (18); then one may go, and each further unanswered one doubles the next pause, capped
 at `pause_max_days` (7): at most one per that many days. Any chat message from the owner resets all of it; opening the app does not.
 Watchers, schedule/job results, approvals, a running task's questions and reminders are the owner's own requests and never held back.
 Contact hours follow the owner (active_hours.py): once a day the owner's active window is learned from their chat messages and app use
@@ -103,10 +109,12 @@ up (model_limits.py) the pass is skipped quietly (reason_code "model_limit"): no
 
 PROACTIVE API (also next to serialize() in server.py):
 GET  /api/proactive        {"enabled", "ahead_days": [7, 1], "wake_start": "HH:MM", "wake_end": "HH:MM", "every_minutes", "daily_regular", "daily_total",
-                            "daily_now", "daily_change", "spam_skim", "calendar_check", "change_alerts", "mail_check" (the last four: true = on, the default), "rechecks" (true; recheck.py), "recheck_per_day" (4; 0..20), "offers" (true; offers.py: the ready-to-run cards),
-                            "timezone", "prefs_file": "NOTIFY_PREFS.md", "today": {"보통": n, "오늘": n, "지금": n} (change alerts not
-                            counted), "today_changes": n,
+                            "daily_now", "daily_change", "spam_skim", "calendar_check", "change_alerts", "mail_check" (the last four: true = on, the default), "offers" (true; offers.py: the ready-to-run cards),
+                            "timezone", "prefs_file": "NOTIFY_PREFS.md", "today": {"보통": n, "오늘": n, "지금": n} (sends of the contact-window day;
+                            change alerts not counted), "today_changes": n,
                             "unanswered_limit", "pause_hours", "pause_max_days",
+                            "send_times": {"day", "times": ["HH:MM"], "briefing": "HH:MM"|null, "next_at": unix|null}|null (research on:
+                            the proactive send times of the contact window now or next; situation.py, send_times.py)
                             "last_pass": {"at", "status": done|nothing_new|skipped|failed, "reason", "reason_code", "candidates", "sent",
                                           "dropped", "backoff_level", "next_allowed_at"|null}|null,
                             "awake": bool (inside waking hours now),
@@ -122,22 +130,22 @@ GET  /api/proactive        {"enabled", "ahead_days": [7, 1], "wake_start": "HH:M
                             from the hours in effect; computed, no model)}
 PUT  /api/proactive        any of enabled, wake_start, wake_end, weekend_start, weekend_end ("" for both: weekends follow weekdays
                            again), every_minutes (30..1440), daily_regular (0..10), daily_total (0..20),
-                           daily_now (0..10), daily_change (0..50), recheck_per_day (0..20), rechecks (boolean), offers (boolean), spam_skim, calendar_check, change_alerts, mail_check (booleans: the owner can switch a part
-                           off; mail_check false = the 2-hourly check does not read mail at all, only calendar, checklist and the other sources;
+                           daily_now (0..10), daily_change (0..50), offers (boolean), spam_skim, calendar_check, change_alerts, mail_check (booleans: the owner can switch a part
+                           off; mail_check false = no look reads mail at all (the hourly watch, the send passes, the candidate pass with research off), only the other sources;
                            turned on again it starts from "now", no old mail is alerted; the morning briefing is not affected),
                            unanswered_limit (1..10), pause_hours (1..168), pause_max_days (1..30), auto_hours,
                            ahead_days (lead times for big events: up to 4 whole days 1..14, [] = off; the agent's big_event_notice tool)
                            -> the same as GET (a changed wake_start / wake_end makes hours_source "manual"); 422 {"detail"} for a bad value
-GET  /api/proactive/log?limit=50&before=<id>   {"items": [{"id", "key", "source": mail|calendar|schedule|watcher|goal|memory|checklist|situation, "title",
+GET  /api/proactive/log?limit=50&before=<id>   {"items": [{"id", "key", "source": mail|calendar|schedule|watcher|goal|memory|checklist|situation|correction, "title",
                             "urgency": 보통|오늘|지금|null, "status": sent|dropped, "reason", "message", "decided_at", "expires_at",
                             "task_id"|null, "kind": ""|change}] newest first, "next_before": id|null}
 POST /api/proactive/hours/{id}/accept   the suggested contact hours become the setting of its day type (source "learned") -> as GET
 POST /api/proactive/hours/{id}/keep     keep the current hours; no new suggestion for 14 days -> the same as GET; 404 unknown id
 POST /api/proactive/hours/learned/{weekday|weekend}/apply   that day type's learned window becomes its hours ("learned") -> as GET;
                            404 when there is none that differs
-GET  /api/proactive/held   {"items": [{"key", "source", "title", "urgency", "message", "why": over_cap|waiting_for_reply|slots, "held_at",
-                            "expires_at"}]} held items inside their deadline; GET /api/proactive also has "daily_deliveries" (2; 0..10, also PUT),
-                            "today_deliveries" and "held" (count)
+GET  /api/proactive/held   {"items": [{"key", "source", "title", "urgency", "message", "why": over_cap|waiting_for_reply, "held_at",
+                            "expires_at"}]} held items inside their deadline; GET /api/proactive also has "held" (count). Retired
+                            2026-11-19: "daily_deliveries" (GET no longer has it, nor "today_deliveries"; PUT accepts and ignores it)
 POST /api/proactive/run    one pass now (outside waking hours too) -> last_pass; 409 when it is off or a pass is running
 """
 
@@ -167,23 +175,25 @@ from .model_limits import limit_of
 from .prompt import tone_line
 from .i18n import N_, t
 from .providers import ChatRequest, TextDelta
+from .tools.connect_tools import asked_in_chat
+
 from .reflection import parse_output
 
 log = logging.getLogger("uvicorn.error")
 
 URGENCIES = ("보통", "오늘", "지금")
 DEFAULTS: dict[str, Any] = {"enabled": False, "wake_start": "07:00", "wake_end": "22:00", "every_minutes": 120, "daily_regular": 2,
-                            "daily_total": 3, "daily_now": 3, "daily_deliveries": 2, "unanswered_limit": 3, "pause_hours": 18, "pause_max_days": 7,
+                            "daily_total": 3, "daily_now": 3, "unanswered_limit": 3, "pause_hours": 18, "pause_max_days": 7,
                             "auto_hours": False, "hours_source": "default", "weekend_start": "", "weekend_end": "",
                             "weekend_source": "default", "ahead_days": [7, 1], "daily_change": 10, "spam_skim": True,
-                            "calendar_check": True, "change_alerts": True, "mail_check": True, "rechecks": True, "recheck_per_day": 4, "offers": True,
+                            "calendar_check": True, "change_alerts": True, "mail_check": True, "offers": True,
                             "research": True, "research_every_minutes": 60}
 HOURS_SOURCES = ("default", "manual", "learned")   # where the contact hours (wake_start..wake_end) came from
 # per day type: the config keys of its window and where it came from (weekend "" = not set: weekends follow the weekday window)
 WINDOW_KEYS = {WEEKDAY: ("wake_start", "wake_end", "hours_source"), WEEKEND: ("weekend_start", "weekend_end", "weekend_source")}
 SUGGESTION_KEYS = {WEEKDAY: ("hours_suggestion", "hours_kept_at"), WEEKEND: ("weekend_suggestion", "weekend_kept_at")}
-LIMITS = {"every_minutes": (30, 1440), "daily_regular": (0, 10), "daily_total": (0, 20), "daily_now": (0, 10), "daily_change": (0, 50), "daily_deliveries": (0, 10),
-          "unanswered_limit": (1, 10), "pause_hours": (1, 168), "pause_max_days": (1, 30), "recheck_per_day": (0, 20),
+LIMITS = {"every_minutes": (30, 1440), "daily_regular": (0, 10), "daily_total": (0, 20), "daily_now": (0, 10), "daily_change": (0, 50),
+          "unanswered_limit": (1, 10), "pause_hours": (1, 168), "pause_max_days": (1, 30),
           "research_every_minutes": (15, 1440)}
 AHEAD_LEADS_MAX = 4           # ahead_days: at most this many lead times, each 1..big_events.AHEAD_DAYS days before
 MAX_LEVEL = 32                 # the backoff level stops growing here (the pause is long capped well before)
@@ -198,6 +208,7 @@ SKIP_REASONS = {
     "waiting_for_reply": N_("Waiting for your reply to the earlier messages"),
     "no_model": N_("No model is set"),
     "nothing_new": N_("Nothing new to look at"),
+    "cap_used": N_("Today's messages are all sent"),
     "model_limit": N_("The AI model's usage limit is used up"),
 }
 NOW_WINDOW = 3 * 3600          # 지금 needs something that starts or closes within this many seconds
@@ -275,7 +286,7 @@ Judge only from the facts shown and the user's recent chat below."""
 @dataclass
 class Candidate:
     key: str
-    source: str                      # mail | calendar | schedule | watcher | goal | memory
+    source: str                      # mail | calendar | schedule | watcher | goal | memory | situation | correction
     title: str
     detail: str = ""
     due: float | None = None         # a concrete time (unix seconds) it starts / closes, when known
@@ -293,7 +304,7 @@ class Candidate:
 
 class CandidateSource(Protocol):
     """Where a pass gets more candidates from: `Proactive.sources` lists them and gather() asks each one. (Mail, calendar, schedules,
-    watchers, goals and commitments are gathered inline above and are not moved here.) The first user is recheck.RecheckSource."""
+    watchers, goals and commitments are gathered inline above and are not moved here.)"""
 
     def candidates(self, now: float) -> list[Candidate]: ...
 
@@ -407,6 +418,10 @@ class Proactive:
             store._db.executescript(SCHEMA)
             if "kind" not in {r[1] for r in store._db.execute("PRAGMA table_info(proactive_log)")}:   # a log from before change alerts
                 store._db.execute("ALTER TABLE proactive_log ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
+            if "delivery" not in {r[1] for r in store._db.execute("PRAGMA table_info(proactive_log)")}:   # one send counts once (2026-11-19)
+                store._db.execute("ALTER TABLE proactive_log ADD COLUMN delivery TEXT NOT NULL DEFAULT ''")
+            # the delivery slots are gone (owner 2026-11-19: only the daily cap counts): an item held for a slot waits like one over the cap
+            store._db.execute("UPDATE proactive_held SET why = 'over_cap' WHERE why = 'slots'")
             store._db.commit()
         self.sources: list[CandidateSource] = []           # more candidate sources, asked by gather() (see CandidateSource)
         self.notify_block: Any = None                      # notify_block.NotifyBlock (set by the server)
@@ -437,7 +452,7 @@ class Proactive:
         for k, v in changes.items():
             if v is None or k not in DEFAULTS:
                 continue
-            if k in ("enabled", "auto_hours", "spam_skim", "calendar_check", "change_alerts", "mail_check", "rechecks", "offers", "research"):
+            if k in ("enabled", "auto_hours", "spam_skim", "calendar_check", "change_alerts", "mail_check", "offers", "research"):
                 if k == "mail_check" and bool(v) and not cfg[k]:   # mail is back on: the first pass starts every mailbox at "now" (no backlog)
                     self.store.set_meta(MAIL_RESUME, str(self.clock()))
                 elif k == "mail_check" and not bool(v):
@@ -521,6 +536,19 @@ class Proactive:
             if w.timestamp() > ts:
                 return w.timestamp()
         return ts + 86400
+
+    def window_day(self, ts: float | None = None) -> str:
+        """The day ("YYYY-MM-DD") whose contact window `ts` belongs to (owner 2026-11-19: the daily count is the contact-window day's):
+        a window past midnight keeps its evening's day; outside a window, the calendar day."""
+        ts = self.clock() if ts is None else ts
+        tz = self.tz()
+        d = datetime.fromtimestamp(ts, tz).date()
+        prev = d - timedelta(days=1)
+        start, end, _src = self.window(day_type(prev, self.country()))
+        a, b = _minutes(start), _minutes(end)
+        length = (b - a) % (24 * 60) or 24 * 60
+        prev_end = datetime(prev.year, prev.month, prev.day, a // 60, a % 60, tzinfo=tz) + timedelta(minutes=length)
+        return (prev if ts < prev_end.timestamp() else d).isoformat()
 
     def wake_start_today(self, ts: float | None = None) -> float:
         """Today's (local) start of the contact hours as unix seconds, by today's day type (yesterday's start when still before it)."""
@@ -636,19 +664,25 @@ class Proactive:
         self.store.set_meta("proactive:state", json.dumps({**self.state(), **kw}, ensure_ascii=False))
 
     def today_counts(self) -> dict[str, int]:
-        day = _day(self.clock(), self.tz())
-        rows = self.store._all("SELECT urgency, COUNT(*) AS n FROM proactive_log WHERE status = 'sent' AND kind != 'change' AND day = ? "
-                               "GROUP BY urgency", (day,))
-        out = {u: 0 for u in URGENCIES}
+        """Sends today by level (owner 2026-11-19: one send counts once, however many messages or items it carried). The rows of one
+        delivery count once: 지금 when urgent, else 오늘 when any of them is 오늘, else 보통. Rows without a delivery (the candidate pass
+        with research off, the checklist) count one each. "Today" is the contact-window day (window_day); change alerts are not counted."""
+        rows = self.store._all("SELECT urgency, COALESCE(NULLIF(delivery, ''), 'row:' || id) AS d FROM proactive_log WHERE status = 'sent' "
+                               "AND kind != 'change' AND day = ?", (self.window_day(),))
+        levels: dict[str, set[str]] = {}
         for r in rows:
-            if r["urgency"] in out:
-                out[r["urgency"]] = r["n"]
+            levels.setdefault(r["d"], set()).add(r["urgency"])
+        out = {u: 0 for u in URGENCIES}
+        for got in levels.values():
+            level = next((u for u in ("지금", "오늘", "보통") if u in got), None)
+            if level:
+                out[level] += 1
         return out
 
     def today_changes(self) -> int:
         """Change alerts (mail about a changed flight, booking or a security alert) sent today: told at once, outside every daily limit
         except their own daily_change."""
-        day = _day(self.clock(), self.tz())
+        day = self.window_day()
         return int(self.store._all("SELECT COUNT(*) AS n FROM proactive_log WHERE status = 'sent' AND kind = 'change' AND day = ?", (day,))[0]["n"])
 
     def room_today(self) -> bool:
@@ -757,8 +791,9 @@ class Proactive:
         start, end, kind = self.window_at(now)
         country = self.country()
         return {**cfg, "weekend_start": wk_start, "weekend_end": wk_end, "weekend_source": wk_src,
-                "timezone": self.tz().key, "prefs_file": NOTIFY_PREFS, "today": self.today_counts(), "today_changes": self.today_changes(), "today_deliveries": self.today_deliveries(),
+                "timezone": self.tz().key, "prefs_file": NOTIFY_PREFS, "today": self.today_counts(), "today_changes": self.today_changes(),
                 "held": len(self.held(now)),
+                "send_times": self.situation.send_times_view(now) if self.situation is not None and cfg["research"] else None,
                 "last_pass": self.state().get("last_pass"), "awake": self.awake(), "guard": g,
                 "hours_suggestion": self.hours_suggestion(), "weekend_suggestion": self.suggestion(WEEKEND),
                 "day_type": kind, "today_start": start, "today_end": end, "holiday_country": country,
@@ -797,15 +832,6 @@ class Proactive:
                     or self.store._all("SELECT 1 FROM proactive_held WHERE key = ? AND expires_at > ? LIMIT 1", (key, now)))
 
     # ------------------------------------------------------------------ held items (docs/proactive.md, 2)
-    def today_deliveries(self) -> int:
-        """Ordinary messages sent today (the delivery slots used): a message is one task id; an urgent one (a 지금 or change item in it)
-        is not an ordinary delivery."""
-        day = _day(self.clock(), self.tz())
-        return int(self.store._all(
-            "SELECT COUNT(DISTINCT COALESCE(task_id, -id)) AS n FROM proactive_log WHERE status = 'sent' AND day = ? AND kind != 'change' "
-            "AND urgency != '지금' AND (task_id IS NULL OR task_id NOT IN (SELECT task_id FROM proactive_log WHERE status = 'sent' AND day = ? "
-            "AND task_id IS NOT NULL AND (kind = 'change' OR urgency = '지금')))", (day, day))[0]["n"])
-
     def held(self, now: float | None = None) -> list[dict[str, Any]]:
         """Items kept for a later delivery, still inside their deadline (the soonest deadline first)."""
         now = self.clock() if now is None else now
@@ -873,12 +899,12 @@ class Proactive:
         return "\n".join(reversed(lines[:HELD_CHAT_LINES]))
 
     def _record(self, c: Candidate, status: str, reason: str, *, urgency: str | None = None, message: str = "", keep: float,
-                task_id: int | None = None, kind: str = "") -> None:
+                task_id: int | None = None, kind: str = "", delivery: str = "") -> None:
         now = self.clock()
         lid = int(self.store._run("INSERT INTO proactive_log(key, source, title, urgency, status, reason, message, decided_at, expires_at, day, "
-                                  "task_id, kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                                  "task_id, kind, delivery) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                                   (c.key, c.source, c.title[:200], urgency, status, reason[:300], message[:1000], now, now + keep,
-                                   _day(now, self.tz()), task_id, kind)).lastrowid or 0)
+                                   self.window_day(now), task_id, kind, delivery)).lastrowid or 0)
         self.store._run("DELETE FROM proactive_log WHERE id <= ? - ?", (lid, KEEP_LOG))
 
     def prefs(self) -> str:
@@ -1104,11 +1130,12 @@ class Proactive:
         return Tool("big_event_notice",
                     "Read or change how many days before a big event (a trip, flight, stay or several-day event in the calendar) you "
                     "mention it first, with what to prepare, when the user asks. Default 7 days and 1 day before; [] turns it off. "
-                    "The user approves a change; reading the setting needs no approval.",
+                    "Asked in this chat a change goes ahead; otherwise the user approves it on a card. Reading the setting needs no approval.",
                     {"type": "object", "properties": {"days": {"type": "array", "items": {"type": "integer", "minimum": 1,
                                                                                             "maximum": big_events.AHEAD_DAYS},
                                                                "description": "days before, e.g. [7, 1]; leave out to read the setting"}}},
-                    big_event_notice, requires_approval=True, auto_approve=lambda a: a.get("days") is None, describe=describe_change)
+                    big_event_notice, requires_approval=True, auto_approve=lambda a: a.get("days") is None or asked_in_chat(),
+                    describe=describe_change)
 
     # ------------------------------------------------------------------ running
     async def tick(self) -> dict[str, Any] | None:
@@ -1149,14 +1176,15 @@ class Proactive:
             return None
         return await self.run(guarded=True)
 
-    async def run(self, *, guarded: bool = False, held: str = "") -> dict[str, Any]:
+    async def run(self, *, guarded: bool = False, held: str = "", look: str = "send") -> dict[str, Any]:
         """One pass. `guarded` (the internal job): the unanswered guard limits how many go out. A pass the owner starts by hand
-        (POST /api/proactive/run) is not held back, but what it sends still counts as unanswered."""
+        (POST /api/proactive/run) is not held back, but what it sends still counts as unanswered. `look` (research on): "watch" is the
+        hourly watch, "send" the send pass (situation.py)."""
         if self.lock.locked():
             return self._skip("already_running", force=True)
         async with self.lock:
             try:
-                out = await self._run(guarded, held)
+                out = await self._run(guarded, held, look)
                 if held and not out["sent"] and out["status"] in ("done", "nothing_new"):   # nothing got through: still "held back" to the app
                     out = {**out, "status": "skipped", "reason": t(SKIP_REASONS[held]), "reason_code": held}
                     self._save_state(last_pass=out)
@@ -1175,10 +1203,10 @@ class Proactive:
         self._save_state(last_pass=out, last_pass_at=out["at"])
         return out
 
-    async def _run(self, guarded: bool = False, held: str = "") -> dict[str, Any]:
+    async def _run(self, guarded: bool = False, held: str = "", look: str = "send") -> dict[str, Any]:
         now, tz, cfg = self.clock(), self.tz(), self.config()
         if cfg["research"] and self.situation is not None:   # situation.py: gather what changed, research, choose; reuses this class's ledger, guard and delivery
-            return await self.situation.run_pass()
+            return await (self.situation.run_watch() if look == "watch" else self.situation.run_pass())
         since = float(self.state().get("last_pass_at") or now - 86400)
         self.expire_held(now)
         released = [] if held else self._release(now)   # held items are told only by a pass that may talk (not the change-alerts-only one)
@@ -1277,21 +1305,7 @@ class Proactive:
                 counts[urgency] += 1
                 counted += 1
             sent += 1
-        groups = group_outbox(outbox)
-        ordinary = [g for g in groups if not any(o.change or o.urgency == "지금" for o in g.items)]
-        slots = max(0, int(cfg["daily_deliveries"]) - self.today_deliveries())
-        if len(ordinary) > slots:   # more ordinary messages than today's slots: the lowest levels wait for the next delivery
-            ordinary.sort(key=lambda g: min(rank.get(o.urgency, 9) for o in g.items))
-            for g in ordinary[slots:]:
-                groups.remove(g)
-                for o in g.items:
-                    sent -= 1
-                    if self._hold(o.c, o.d, o.urgency, o.reason, o.message, "slots", now, tz):
-                        kept += 1
-                    else:
-                        dropped += 1
-                        if o.c.held_until is not None:
-                            settled.add(o.c.key)
+        groups = group_outbox(outbox)   # one message per group: no daily count of messages, only the caps above (owner 2026-11-19)
         failure: BaseException | None = None
         for g in groups:   # one message per group; a group that fails to go out is not logged and keeps the cursors where they are
             try:
@@ -1561,13 +1575,11 @@ class ProactiveIn(BaseModel):
     weekend_end: str | None = None
     ahead_days: list[int] | None = None
     daily_change: int | None = None
-    daily_deliveries: int | None = None
+    daily_deliveries: int | None = None   # retired 2026-11-19: released apps (iPhone 0.10.5, desktop 1.0.12) may still send it; accepted, ignored
     spam_skim: bool | None = None
     calendar_check: bool | None = None
     change_alerts: bool | None = None
     mail_check: bool | None = None
-    rechecks: bool | None = None
-    recheck_per_day: int | None = None
     offers: bool | None = None
     research: bool | None = None
     research_every_minutes: int | None = None

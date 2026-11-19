@@ -1,0 +1,70 @@
+{
+  "name": "no-twin-on-a-follow-up",
+  "about": "A second question about a watch that is already set up does not add a second watcher; the steps of the earlier reply reach the model (2026-11-18).",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Tell me when https://shop.example.test/item/1 is back in stock, check every hour",
+    "Is it on?"
+  ],
+  "model": [
+    [
+      {
+        "tool": "watch_add",
+        "args": {
+          "name": "Stock",
+          "url": "https://shop.example.test/item/1",
+          "every_minutes": 60,
+          "start": true
+        }
+      }
+    ],
+    [
+      {
+        "text": "Yes, it is on: it checks every hour."
+      }
+    ],
+    [
+      {
+        "tool": "watch_list",
+        "args": {}
+      }
+    ],
+    [
+      {
+        "text": "Yes, watcher #1 is on."
+      }
+    ]
+  ],
+  "tools": {
+    "watch_add": {
+      "real_schema": true,
+      "result": "Watcher #1 'Stock' saved. It is ON now: it checks every 60 minutes."
+    },
+    "watch_list": {
+      "real_schema": true,
+      "result": "- #1 'Stock': on, checked every 60 min"
+    },
+    "quick_replies": {
+      "real_schema": true,
+      "result": "Shown."
+    }
+  },
+  "expect": {
+    "calls_max": {
+      "watch_add": 1
+    },
+    "prompt_contains": [
+      "steps of this reply: watch_add"
+    ]
+  },
+  "live": {
+    "expect": {
+      "calls_max": {
+        "watch_add": 1
+      }
+    },
+    "note": "live: the question about the watch is answered without a second watch_add"
+  }
+}

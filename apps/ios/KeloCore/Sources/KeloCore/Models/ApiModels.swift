@@ -146,12 +146,15 @@ public struct About: Codable, Equatable, Hashable, Sendable {
     public var version: String
     public var build: String
     public var appUpdate: String?
+    /// A newer server release this caller may install (`server_update`; nil = none).
+    public var serverUpdate: String?
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         version = j.str("version", "")
         build = j.str("build", "")
         appUpdate = j.optStr("app_update")
+        serverUpdate = j.optStr("server_update")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -159,6 +162,7 @@ public struct About: Codable, Equatable, Hashable, Sendable {
         try c.encode(version, forKey: AnyKey("version"))
         try c.encode(build, forKey: AnyKey("build"))
         try c.encodeIfPresent(appUpdate, forKey: AnyKey("app_update"))
+        try c.encodeIfPresent(serverUpdate, forKey: AnyKey("server_update"))
     }
 }
 
@@ -190,6 +194,16 @@ public struct StoredMessage: Codable, Equatable, Hashable, Sendable {
     public var content: String
     public var createdAt: Double
     public var images: [ChatImage]
+    public var via: String
+
+    public init(id: Int64 = 0, role: String = "", content: String = "", createdAt: Double = 0, images: [ChatImage] = [], via: String = "") {
+        self.id = id
+        self.role = role
+        self.content = content
+        self.createdAt = createdAt
+        self.images = images
+        self.via = via
+    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -198,6 +212,7 @@ public struct StoredMessage: Codable, Equatable, Hashable, Sendable {
         content = j.str("content", "")
         createdAt = j.double("created_at", 0)
         images = j.list("images", of: ChatImage.self)
+        via = j.str("via", "")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -207,6 +222,7 @@ public struct StoredMessage: Codable, Equatable, Hashable, Sendable {
         try c.encode(content, forKey: AnyKey("content"))
         try c.encode(createdAt, forKey: AnyKey("created_at"))
         try c.encode(images, forKey: AnyKey("images"))
+        if !via.isEmpty { try c.encode(via, forKey: AnyKey("via")) }
     }
 }
 
@@ -1821,6 +1837,8 @@ public struct BriefingSettings: Codable, Equatable, Hashable, Sendable {
     public var enabled: Bool
     public var timeMode: String
     public var fixedTime: String
+    /// The earliest fixed time the server takes (the start of the contact hours); nil from an older server.
+    public var earliest: String?
     public var offsetMin: Int
     public var earlyOpen: Bool
     public var sections: [String: Bool]
@@ -1828,10 +1846,11 @@ public struct BriefingSettings: Codable, Equatable, Hashable, Sendable {
     public var nextAt: Double?
     public var weather: BriefingWeatherSettings
 
-    public init(enabled: Bool = true, timeMode: String = "auto", fixedTime: String = "07:30", offsetMin: Int = 0, earlyOpen: Bool = true, sections: [String: Bool] = [:], quietDays: String = "short", nextAt: Double? = nil, weather: BriefingWeatherSettings = BriefingWeatherSettings()) {
+    public init(enabled: Bool = true, timeMode: String = "auto", fixedTime: String = "07:30", earliest: String? = nil, offsetMin: Int = 0, earlyOpen: Bool = true, sections: [String: Bool] = [:], quietDays: String = "short", nextAt: Double? = nil, weather: BriefingWeatherSettings = BriefingWeatherSettings()) {
         self.enabled = enabled
         self.timeMode = timeMode
         self.fixedTime = fixedTime
+        self.earliest = earliest
         self.offsetMin = offsetMin
         self.earlyOpen = earlyOpen
         self.sections = sections
@@ -1845,6 +1864,7 @@ public struct BriefingSettings: Codable, Equatable, Hashable, Sendable {
         enabled = j.bool("enabled", true)
         timeMode = j.str("time_mode", "auto")
         fixedTime = j.str("fixed_time", "07:30")
+        earliest = j.optStr("earliest")
         offsetMin = j.int("offset_min", 0)
         earlyOpen = j.bool("early_open", true)
         sections = j.decode("sections", as: [String: Bool].self) ?? [:]
@@ -1858,6 +1878,7 @@ public struct BriefingSettings: Codable, Equatable, Hashable, Sendable {
         try c.encode(enabled, forKey: AnyKey("enabled"))
         try c.encode(timeMode, forKey: AnyKey("time_mode"))
         try c.encode(fixedTime, forKey: AnyKey("fixed_time"))
+        try c.encodeIfPresent(earliest, forKey: AnyKey("earliest"))
         try c.encode(offsetMin, forKey: AnyKey("offset_min"))
         try c.encode(earlyOpen, forKey: AnyKey("early_open"))
         try c.encode(sections, forKey: AnyKey("sections"))
@@ -2394,6 +2415,17 @@ public struct DryRun: Codable, Equatable, Hashable, Sendable {
     public var url: String?
     public var title: String?
 
+    public init(at: Double? = nil, ok: Bool = false, satisfied: Bool = false, value: String? = nil, detail: String? = nil, error: String? = nil, url: String? = nil, title: String? = nil) {
+        self.at = at
+        self.ok = ok
+        self.satisfied = satisfied
+        self.value = value
+        self.detail = detail
+        self.error = error
+        self.url = url
+        self.title = title
+    }
+
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         at = j.optDouble("at")
@@ -2416,6 +2448,41 @@ public struct DryRun: Codable, Equatable, Hashable, Sendable {
         try c.encodeIfPresent(error, forKey: AnyKey("error"))
         try c.encodeIfPresent(url, forKey: AnyKey("url"))
         try c.encodeIfPresent(title, forKey: AnyKey("title"))
+    }
+}
+
+/// A watcher's latest check result.
+public struct LastCheck: Codable, Equatable, Hashable, Sendable {
+    public var at: Double?
+    public var detail: String?
+    public var value: String?
+    public var hit: Bool
+    public var error: String?
+
+    public init(at: Double? = nil, detail: String? = nil, value: String? = nil, hit: Bool = false, error: String? = nil) {
+        self.at = at
+        self.detail = detail
+        self.value = value
+        self.hit = hit
+        self.error = error
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        at = j.optDouble("at")
+        detail = j.optStr("detail")
+        value = j.optStr("value")
+        hit = j.bool("hit", false)
+        error = j.optStr("error")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encodeIfPresent(at, forKey: AnyKey("at"))
+        try c.encodeIfPresent(detail, forKey: AnyKey("detail"))
+        try c.encodeIfPresent(value, forKey: AnyKey("value"))
+        try c.encode(hit, forKey: AnyKey("hit"))
+        try c.encodeIfPresent(error, forKey: AnyKey("error"))
     }
 }
 
@@ -2447,13 +2514,14 @@ public struct Watcher: Codable, Equatable, Hashable, Sendable {
     public var lastError: String?
     public var disabledReason: String?
     public var dryRun: DryRun?
+    public var lastCheck: LastCheck?
     public var canEnable: Bool
     public var createdAt: Double?
     public var updatedAt: Double?
     public var createdBy: String
     public var buy: BuyReady?
 
-    public init(id: Int64, name: String = "", kind: String = "page", url: String? = nil, mode: String = "", match: String? = nil, selector: String? = nil, regex: String? = nil, threshold: Double? = nil, useBrowser: Bool = false, code: String? = nil, note: String? = nil, everyMinutes: Int = 0, enabled: Bool = false, once: Bool = false, state: String = "off", description: String = "", lastValue: String? = nil, lastCheckedAt: Double? = nil, nextCheckAt: Double? = nil, lastFiredAt: Double? = nil, fireCount: Int = 0, errorCount: Int = 0, lastError: String? = nil, disabledReason: String? = nil, dryRun: DryRun? = nil, canEnable: Bool = false, createdAt: Double? = nil, updatedAt: Double? = nil, createdBy: String = "user", buy: BuyReady? = nil) {
+    public init(id: Int64, name: String = "", kind: String = "page", url: String? = nil, mode: String = "", match: String? = nil, selector: String? = nil, regex: String? = nil, threshold: Double? = nil, useBrowser: Bool = false, code: String? = nil, note: String? = nil, everyMinutes: Int = 0, enabled: Bool = false, once: Bool = false, state: String = "off", description: String = "", lastValue: String? = nil, lastCheckedAt: Double? = nil, nextCheckAt: Double? = nil, lastFiredAt: Double? = nil, fireCount: Int = 0, errorCount: Int = 0, lastError: String? = nil, disabledReason: String? = nil, dryRun: DryRun? = nil, lastCheck: LastCheck? = nil, canEnable: Bool = false, createdAt: Double? = nil, updatedAt: Double? = nil, createdBy: String = "user", buy: BuyReady? = nil) {
         self.id = id
         self.name = name
         self.kind = kind
@@ -2480,6 +2548,7 @@ public struct Watcher: Codable, Equatable, Hashable, Sendable {
         self.lastError = lastError
         self.disabledReason = disabledReason
         self.dryRun = dryRun
+        self.lastCheck = lastCheck
         self.canEnable = canEnable
         self.createdAt = createdAt
         self.updatedAt = updatedAt
@@ -2515,6 +2584,7 @@ public struct Watcher: Codable, Equatable, Hashable, Sendable {
         lastError = j.optStr("last_error")
         disabledReason = j.optStr("disabled_reason")
         dryRun = j.decode("dry_run", as: DryRun.self)
+        lastCheck = j.decode("last_check", as: LastCheck.self)
         canEnable = j.bool("can_enable", false)
         createdAt = j.optDouble("created_at")
         updatedAt = j.optDouble("updated_at")
@@ -2550,6 +2620,7 @@ public struct Watcher: Codable, Equatable, Hashable, Sendable {
         try c.encodeIfPresent(lastError, forKey: AnyKey("last_error"))
         try c.encodeIfPresent(disabledReason, forKey: AnyKey("disabled_reason"))
         try c.encodeIfPresent(dryRun, forKey: AnyKey("dry_run"))
+        try c.encodeIfPresent(lastCheck, forKey: AnyKey("last_check"))
         try c.encode(canEnable, forKey: AnyKey("can_enable"))
         try c.encodeIfPresent(createdAt, forKey: AnyKey("created_at"))
         try c.encodeIfPresent(updatedAt, forKey: AnyKey("updated_at"))
@@ -2588,6 +2659,16 @@ public struct WatcherEvent: Codable, Equatable, Hashable, Sendable {
     public var kind: String
     public var detail: String?
     public var value: String?
+    public var count: Int
+
+    public init(id: Int64 = 0, at: Double = 0, kind: String = "", detail: String? = nil, value: String? = nil, count: Int = 1) {
+        self.id = id
+        self.at = at
+        self.kind = kind
+        self.detail = detail
+        self.value = value
+        self.count = count
+    }
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -2596,6 +2677,7 @@ public struct WatcherEvent: Codable, Equatable, Hashable, Sendable {
         kind = j.str("kind", "")
         detail = j.optStr("detail")
         value = j.optStr("value")
+        count = j.int("count", 1)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2605,6 +2687,7 @@ public struct WatcherEvent: Codable, Equatable, Hashable, Sendable {
         try c.encode(kind, forKey: AnyKey("kind"))
         try c.encodeIfPresent(detail, forKey: AnyKey("detail"))
         try c.encodeIfPresent(value, forKey: AnyKey("value"))
+        try c.encode(count, forKey: AnyKey("count"))
     }
 }
 
@@ -2663,8 +2746,10 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
     public var endedAt: Double?
     /// "work" for a tab of Kelo's work browser (scheduled and background jobs), "main" or "" (an older server) for the owner's own browser.
     public var browser: String
+    /// The tabs of this task's window (an older server: none).
+    public var tabs: [LiveTab]
 
-    public init(id: String, label: String = "", kind: String = "", title: String = "", url: String = "", host: String = "", source: String = "", status: String = "idle", statusText: String = "", lastActivity: Double? = nil, taskId: Int64? = nil, controller: String = "agent", controlledBy: String? = nil, viewers: Int = 0, thumbnail: String? = nil, thumbnailWidth: Int = 0, thumbnailHeight: Int = 0, endedAt: Double? = nil, browser: String = "") {
+    public init(id: String, label: String = "", kind: String = "", title: String = "", url: String = "", host: String = "", source: String = "", status: String = "idle", statusText: String = "", lastActivity: Double? = nil, taskId: Int64? = nil, controller: String = "agent", controlledBy: String? = nil, viewers: Int = 0, thumbnail: String? = nil, thumbnailWidth: Int = 0, thumbnailHeight: Int = 0, endedAt: Double? = nil, browser: String = "", tabs: [LiveTab] = []) {
         self.id = id
         self.label = label
         self.kind = kind
@@ -2684,6 +2769,7 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
         self.thumbnailHeight = thumbnailHeight
         self.endedAt = endedAt
         self.browser = browser
+        self.tabs = tabs
     }
 
     public init(from decoder: Decoder) throws {
@@ -2707,6 +2793,7 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
         thumbnailHeight = j.int("thumbnail_height", 0)
         endedAt = j.optDouble("ended_at")
         browser = j.str("browser", "")
+        tabs = j.list("tabs", of: LiveTab.self)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2730,6 +2817,35 @@ public struct BrowserTab: Codable, Equatable, Hashable, Sendable {
         try c.encode(thumbnailHeight, forKey: AnyKey("thumbnail_height"))
         try c.encodeIfPresent(endedAt, forKey: AnyKey("ended_at"))
         try c.encode(browser, forKey: AnyKey("browser"))
+        try c.encode(tabs, forKey: AnyKey("tabs"))
+    }
+}
+
+/// One tab of a task's window (GET /api/browser/sessions items carry them as "tabs").
+public struct LiveTab: Codable, Equatable, Hashable, Sendable {
+    public var id: String
+    public var title: String
+    public var url: String
+    public var active: Bool
+
+    public init(id: String = "", title: String = "", url: String = "", active: Bool = false) {
+        self.id = id; self.title = title; self.url = url; self.active = active
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        id = j.str("id", "")
+        title = j.str("title", "")
+        url = j.str("url", "")
+        active = j.bool("active", false)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(id, forKey: AnyKey("id"))
+        try c.encode(title, forKey: AnyKey("title"))
+        try c.encode(url, forKey: AnyKey("url"))
+        try c.encode(active, forKey: AnyKey("active"))
     }
 }
 
@@ -4231,6 +4347,65 @@ public struct Placement: Codable, Equatable, Hashable, Sendable {
 }
 
 /// GET /api/vault items (never a secret). kind: login | email | api.
+/// A site Kelo's browser holds a sign-in for (GET /api/vault: `browser` of a login, `browser_sites`): how, when and last used. No cookies.
+public struct BrowserSignIn: Codable, Equatable, Hashable, Sendable {
+    public var site: String
+    public var how: String
+    public var signedAt: Double?
+    public var lastUsed: Double?
+
+    public init(site: String = "", how: String = "", signedAt: Double? = nil, lastUsed: Double? = nil) {
+        self.site = site
+        self.how = how
+        self.signedAt = signedAt
+        self.lastUsed = lastUsed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        site = j.str("site", "")
+        how = j.str("how", "")
+        signedAt = j.optDouble("signed_at")
+        lastUsed = j.optDouble("last_used")
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(site, forKey: AnyKey("site"))
+        try c.encode(how, forKey: AnyKey("how"))
+        try c.encodeIfPresent(signedAt, forKey: AnyKey("signed_at"))
+        try c.encodeIfPresent(lastUsed, forKey: AnyKey("last_used"))
+    }
+}
+
+/// A named browser profile (brief C2d): its id, its name and the sites it is signed in to. Never a cookie or a value.
+public struct BrowserProfile: Codable, Equatable, Hashable, Sendable {
+    public var id: String
+    public var label: String
+    public var createdAt: Double?
+    public var sites: [BrowserSignIn]
+
+    public init(id: String = "", label: String = "", createdAt: Double? = nil, sites: [BrowserSignIn] = []) {
+        self.id = id; self.label = label; self.createdAt = createdAt; self.sites = sites
+    }
+
+    public init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        id = j.str("id", "")
+        label = j.str("label", "")
+        createdAt = j.optDouble("created_at")
+        sites = j.list("sites", of: BrowserSignIn.self)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyKey.self)
+        try c.encode(id, forKey: AnyKey("id"))
+        try c.encode(label, forKey: AnyKey("label"))
+        try c.encodeIfPresent(createdAt, forKey: AnyKey("created_at"))
+        try c.encode(sites, forKey: AnyKey("sites"))
+    }
+}
+
 public struct VaultEntry: Codable, Equatable, Hashable, Sendable {
     public var name: String
     public var label: String
@@ -4246,8 +4421,10 @@ public struct VaultEntry: Codable, Equatable, Hashable, Sendable {
     public var lastResultAt: Double?
     public var lastResultDetail: String
     public var scheduleGrants: [ScheduleGrant]
+    public var browser: BrowserSignIn?
 
-    public init(name: String, label: String = "", kind: String = "", hosts: [String] = [], endpoint: String = "", hasSecret: Bool = false, autoAllow: Bool = false, lastUsed: Double? = nil, usernameHint: String? = nil, placement: Placement = Placement(), lastResult: String? = nil, lastResultAt: Double? = nil, lastResultDetail: String = "", scheduleGrants: [ScheduleGrant] = []) {
+    public init(name: String, label: String = "", kind: String = "", hosts: [String] = [], endpoint: String = "", hasSecret: Bool = false, autoAllow: Bool = false, lastUsed: Double? = nil, usernameHint: String? = nil, placement: Placement = Placement(), lastResult: String? = nil, lastResultAt: Double? = nil, lastResultDetail: String = "", scheduleGrants: [ScheduleGrant] = [], browser: BrowserSignIn? = nil) {
+        self.browser = browser
         self.name = name
         self.label = label
         self.kind = kind
@@ -4280,6 +4457,7 @@ public struct VaultEntry: Codable, Equatable, Hashable, Sendable {
         lastResultAt = j.optDouble("last_result_at")
         lastResultDetail = j.str("last_result_detail", "")
         scheduleGrants = j.list("schedule_grants", of: ScheduleGrant.self)
+        browser = j.decode("browser", as: BrowserSignIn.self)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -4298,6 +4476,7 @@ public struct VaultEntry: Codable, Equatable, Hashable, Sendable {
         try c.encodeIfPresent(lastResultAt, forKey: AnyKey("last_result_at"))
         try c.encode(lastResultDetail, forKey: AnyKey("last_result_detail"))
         try c.encode(scheduleGrants, forKey: AnyKey("schedule_grants"))
+        try c.encodeIfPresent(browser, forKey: AnyKey("browser"))
     }
 }
 
@@ -4309,6 +4488,8 @@ public struct VaultState: Codable, Equatable, Hashable, Sendable {
     public var pending: [VaultEntry]
     public var enteredOnce: [String]
     public var verifying: [String]
+    public var browserSites: [BrowserSignIn]
+    public var browserProfiles: [BrowserProfile]
 
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -4318,6 +4499,8 @@ public struct VaultState: Codable, Equatable, Hashable, Sendable {
         pending = j.list("pending", of: VaultEntry.self)
         enteredOnce = j.strings("entered_once")
         verifying = j.strings("verifying")
+        browserSites = j.list("browser_sites", of: BrowserSignIn.self)
+        browserProfiles = j.list("browser_profiles", of: BrowserProfile.self)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -4328,6 +4511,8 @@ public struct VaultState: Codable, Equatable, Hashable, Sendable {
         try c.encode(pending, forKey: AnyKey("pending"))
         try c.encode(enteredOnce, forKey: AnyKey("entered_once"))
         try c.encode(verifying, forKey: AnyKey("verifying"))
+        try c.encode(browserSites, forKey: AnyKey("browser_sites"))
+        try c.encode(browserProfiles, forKey: AnyKey("browser_profiles"))
     }
 }
 
@@ -5438,16 +5623,18 @@ public struct FollowItem: Codable, Equatable, Hashable, Sendable {
     public var kind: String
     public var title: String
     public var startsAt: Double
+    public var allDay: Bool
     public var checks: [FollowCheck]
     public var prep: [FollowPrep]
     public var plan: FollowPlanData?
     public var state: String
 
-    public init(key: String = "", kind: String = "", title: String = "", startsAt: Double = 0, checks: [FollowCheck] = [], prep: [FollowPrep] = [], plan: FollowPlanData? = nil, state: String = "planned") {
+    public init(key: String = "", kind: String = "", title: String = "", startsAt: Double = 0, allDay: Bool = false, checks: [FollowCheck] = [], prep: [FollowPrep] = [], plan: FollowPlanData? = nil, state: String = "planned") {
         self.key = key
         self.kind = kind
         self.title = title
         self.startsAt = startsAt
+        self.allDay = allDay
         self.checks = checks
         self.prep = prep
         self.plan = plan
@@ -5460,6 +5647,7 @@ public struct FollowItem: Codable, Equatable, Hashable, Sendable {
         kind = j.str("kind", "")
         title = j.str("title", "")
         startsAt = j.double("starts_at", 0)
+        allDay = j.bool("all_day", false)
         checks = j.list("checks", of: FollowCheck.self)
         prep = j.list("prep", of: FollowPrep.self)
         plan = j.decode("plan", as: FollowPlanData.self)
@@ -5472,6 +5660,7 @@ public struct FollowItem: Codable, Equatable, Hashable, Sendable {
         try c.encode(kind, forKey: AnyKey("kind"))
         try c.encode(title, forKey: AnyKey("title"))
         try c.encode(startsAt, forKey: AnyKey("starts_at"))
+        try c.encode(allDay, forKey: AnyKey("all_day"))
         try c.encode(checks, forKey: AnyKey("checks"))
         try c.encode(prep, forKey: AnyKey("prep"))
         try c.encodeIfPresent(plan, forKey: AnyKey("plan"))

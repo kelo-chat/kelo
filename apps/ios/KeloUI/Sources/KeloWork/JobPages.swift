@@ -257,10 +257,10 @@ struct WatcherPage: View {
                     if w.once { FactRow(label: L(R.string.work_watch_once), value: L(R.string.work_watch_once_yes)) }
                     if let n = w.note, !n.isEmpty { FactRow(label: L(R.string.work_watch_note), value: n) }
                 }
-                if let d = w.dryRun {
+                if let d = watchLastResult(w) {
                     PanelLabel(L(R.string.work_watch_last_check))
                     Panel {
-                        Text(firstNonEmpty(d.detail, d.error, d.value)).font(KeloFont.body).foregroundStyle(d.ok ? c.ink : c.danger)
+                        Text(d.text).font(KeloFont.body).foregroundStyle(d.isError ? c.danger : c.ink)
                             .fixedSize(horizontal: false, vertical: true)
                         if let at = d.at { Text(WorkText.dayClock(at)).font(KeloFont.label).foregroundStyle(c.muted) }
                     }
@@ -282,6 +282,9 @@ struct WatcherPage: View {
                                         Text(WorkText.watchEvent(e.kind)).font(.system(.caption2, weight: .semibold))
                                             .foregroundStyle(e.kind == "fired" ? c.success : e.kind == "error" ? c.danger : c.muted)
                                         Text(e.at > 0 ? WorkText.dayClock(e.at) : "").font(KeloFont.label).foregroundStyle(c.muted)
+                                        if e.kind == "checked" && e.count > 1 {
+                                            Text(L(R.string.work_watch_ev_count, e.count)).font(KeloFont.label).foregroundStyle(c.muted)
+                                        }
                                     }
                                     let line = (e.detail ?? "").isEmpty ? (e.value ?? "") : e.detail!
                                     if !line.isEmpty { Text(line).font(KeloFont.small).foregroundStyle(c.ink).lineLimit(4) }
@@ -484,4 +487,35 @@ extension WorkModel {
         guard let api = api() else { return false }
         do { try await api.revokeScheduleGrant(g); Haptics.success(); return true } catch { Haptics.warning(); return false }
     }
+}
+
+public struct WatchLastResult: Equatable, Sendable {
+    public var text: String
+    public var at: Double?
+    public var isError: Bool
+
+    public init(text: String, at: Double?, isError: Bool) {
+        self.text = text
+        self.at = at
+        self.isError = isError
+    }
+}
+
+public func watchLastResult(dryRun: DryRun?, lastCheck: LastCheck?) -> WatchLastResult? {
+    let dryAt = dryRun?.at ?? -.infinity
+    let checkAt = lastCheck?.at ?? -.infinity
+    if let check = lastCheck, checkAt >= dryAt {
+        let text = [check.detail, check.error, check.value].compactMap { $0 }.first { !$0.isEmpty } ?? ""
+        let isError = !(check.error ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return WatchLastResult(text: text, at: check.at, isError: isError)
+    } else if let dry = dryRun {
+        let text = [dry.detail, dry.error, dry.value].compactMap { $0 }.first { !$0.isEmpty } ?? ""
+        let isError = !dry.ok || !(dry.error ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return WatchLastResult(text: text, at: dry.at, isError: isError)
+    }
+    return nil
+}
+
+public func watchLastResult(_ w: Watcher) -> WatchLastResult? {
+    watchLastResult(dryRun: w.dryRun, lastCheck: w.lastCheck)
 }

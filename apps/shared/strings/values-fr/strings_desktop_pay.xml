@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- fr text for strings_desktop_pay.xml (generated from values/strings_desktop_pay.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pin_allow_note">Si tu autorises, ton téléphone demandera s\'il doit envoyer le code de paiement enregistré pour ce site. Confirme-le là-bas.</string>
     <string name="desktop_pin_need_body">Ouvre l\'app Kelo sur ton téléphone pour envoyer une fois le code « %1$s » pour le paiement sur %2$s (%3$s).</string>

@@ -45,6 +45,28 @@ public struct VoiceView: Codable, Equatable, Sendable {
         case state, declined, recommended, model, progress, error, models, runtime
         case maxSeconds = "max_seconds"
     }
+
+    public init(
+        state: String,
+        declined: Bool? = nil,
+        recommended: VoiceModelView? = nil,
+        model: VoiceModelView? = nil,
+        progress: Progress? = nil,
+        error: String? = nil,
+        models: [VoiceModelView]? = nil,
+        maxSeconds: Int? = nil,
+        runtime: String? = nil
+    ) {
+        self.state = state
+        self.declined = declined
+        self.recommended = recommended
+        self.model = model
+        self.progress = progress
+        self.error = error
+        self.models = models
+        self.maxSeconds = maxSeconds
+        self.runtime = runtime
+    }
 }
 
 /// Which way the mic works right now (the same table as Android's DictationWay).
@@ -97,9 +119,56 @@ public enum Wav {
         out.append(pcm16le)
         return out
     }
+
+    public static func decode(_ bytes: Data) -> (pcm16le: Data, sampleRate: Int)? {
+        if bytes.count < 44 { return nil }
+        guard bytes[0] == 0x52, bytes[1] == 0x49, bytes[2] == 0x46, bytes[3] == 0x46, // "RIFF"
+              bytes[8] == 0x57, bytes[9] == 0x41, bytes[10] == 0x56, bytes[11] == 0x45 else { return nil } // "WAVE"
+
+        var sampleRate = 0
+        var audioFormat = 0
+        var numChannels = 0
+        var bitsPerSample = 0
+        var pcmData: Data? = nil
+
+        var offset = 12
+        while offset + 8 <= bytes.count {
+            let chunkId = String(decoding: bytes[offset..<offset + 4], as: UTF8.self)
+            let chunkSize = Int(bytes[offset + 4]) |
+                (Int(bytes[offset + 5]) << 8) |
+                (Int(bytes[offset + 6]) << 16) |
+                (Int(bytes[offset + 7]) << 24)
+            offset += 8
+            if chunkSize < 0 || offset + chunkSize > bytes.count {
+                if chunkId == "data" && chunkSize > 0 && offset <= bytes.count {
+                    pcmData = bytes.subdata(in: offset..<bytes.count)
+                }
+                break
+            }
+
+            if chunkId == "fmt " && chunkSize >= 16 {
+                audioFormat = Int(bytes[offset]) | (Int(bytes[offset + 1]) << 8)
+                numChannels = Int(bytes[offset + 2]) | (Int(bytes[offset + 3]) << 8)
+                sampleRate = Int(bytes[offset + 4]) |
+                    (Int(bytes[offset + 5]) << 8) |
+                    (Int(bytes[offset + 6]) << 16) |
+                    (Int(bytes[offset + 7]) << 24)
+                bitsPerSample = Int(bytes[offset + 14]) | (Int(bytes[offset + 15]) << 8)
+            } else if chunkId == "data" {
+                pcmData = bytes.subdata(in: offset..<offset + chunkSize)
+            }
+
+            offset += chunkSize + (chunkSize & 1)
+        }
+
+        if audioFormat != 1 || numChannels != 1 || bitsPerSample != 16 || sampleRate <= 0 || pcmData == nil {
+            return nil
+        }
+        return (pcm16le: pcmData!, sampleRate: sampleRate)
+    }
 }
 
-/// Levels for the sound graph: RMS of 16-bit samples in [from, to) bytes, 0...1 on a square-root curve; push keeps the newest.
+/// Levels for the sound graph: RMS of 16-bit samples in [from, to) bytes, 0...1 on a square-root curve.
 public enum SoundBars {
     public static func rms(_ pcm16le: Data, from: Int, to: Int) -> Float {
         let start = max(0, from) & ~1
@@ -117,9 +186,17 @@ public enum SoundBars {
         let mean = sqrt(sum / Double(max(n, 1))) / 32_768.0
         return Float(min(1, max(0, sqrt(mean))))
     }
+}
 
-    public static func push(_ bars: [Float], _ level: Float, max count: Int = 48) -> [Float] {
-        Array((bars + [min(1, max(0, level))]).suffix(count))
+/// The mic's download ring: while the speech model downloads, the mic is a circle with the progress (the owner's addition 2026-11-18).
+/// nil = nothing downloads; else percent is the progress, or nil when the server gives none (a spinner). Mirror of Kotlin VoiceDownloadRing.
+public enum VoiceDownloadRing {
+    public struct Ring: Equatable, Sendable { public let percent: Int? }
+
+    public static func of(_ view: VoiceView?) -> Ring? {
+        guard view?.state == "downloading" else { return nil }
+        guard let p = view?.progress, p.total > 0 else { return Ring(percent: nil) }
+        return Ring(percent: min(100, max(0, Int(p.done * 100 / p.total))))
     }
 }
 

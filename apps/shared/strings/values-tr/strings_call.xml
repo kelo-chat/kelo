@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Kelo\'yu ara</string>
+    <string name="call_incoming_line">seni arıyor</string>
+    <string name="call_accept">Yanıtla</string>
+    <string name="call_decline">Reddet</string>
+    <string name="call_connecting">Bağlanıyor…</string>
+    <string name="call_listening">Dinliyor</string>
+    <string name="call_thinking">Düşünüyor</string>
+    <string name="call_speaking">Konuşuyor</string>
+    <string name="call_muted">Sessize alındı</string>
+    <string name="call_mute">Sessize al</string>
+    <string name="call_unmute">Sesi aç</string>
+    <string name="call_speaker">Hoparlör</string>
+    <string name="call_hang_up">Aramayı sonlandır</string>
+    <string name="call_card_waiting">Ekranda kontrol edilmesi gereken bir şey var.</string>
+    <string name="call_card_open">Göster</string>
+    <string name="call_back_to_call">Aramaya dön · %1$s</string>
+    <string name="call_offline">Kelo sunucusuna ulaşılamıyor. Yeniden bağlanıyor…</string>
+    <string name="call_ended_background">Uygulamadan çıktığınız için arama sonlandırıldı.</string>
+    <string name="call_ended_interrupted">Başka bir ses araya girdiği için arama sonlandırıldı.</string>
+    <string name="call_ended_quiet">Uzun süre ses gelmediği için arama sonlandırıldı.</string>
+    <string name="call_needs_speech_model">Konuşmak için Kelo sunucusunda konuşma tanıma modeli bulunmalıdır.</string>
+    <string name="call_mic_denied">Arama başlatılamadı: mikrofon izni verilmedi.</string>
+    <string name="call_voice_offer">Bu, Kelo\'nun aramalar için doğal sesidir. Ses modelini (%1$s) bir kez Kelo sunucunuza indirin, Kelo bir sonraki cümleden itibaren bu sesle konuşacaktır. İndirmezseniz cihazın robotik sesi kullanılır.</string>
+    <string name="call_mark">Arama</string>
+    <string name="call_voice_offer_title">Kelo\'nun sesi indirilsin mi?</string>
+    <string name="call_voice_offer_ok">İndir</string>
+    <string name="call_voice_offer_later">Şimdilik cihaz sesini kullan</string>
+    <string name="call_voice_better">Ses modeliyle Kelo çok daha doğal bir sesle konuşur.</string>
+    <string name="call_voice_get">İndir</string>
+    <string name="call_voice_line_close">Kapat</string>
+    <string name="call_ears_failed">Telefonun ses tanıma özelliği sizi duymuyor.</string>
+    <string name="voice_speech_title">Kelo\'nun sesi</string>
+    <string name="voice_speech_download">Ses modelini indir · %1$s</string>
+    <string name="voice_speech_downloading">Ses modeli indiriliyor · %1$d%%</string>
+    <string name="voice_speech_remove">Ses modelini sil</string>
+    <string name="voice_speech_remove_confirm">Ses modeli silinsin mi? Sonrasında Kelo bu cihazın sesiyle konuşacaktır.</string>
+    <string name="voice_speech_device_note">Ses modeli olmadan Kelo bu cihazın yerleşik sesiyle konuşur.</string>
+    <string name="voice_speech_unsupported_lang">Ses modeli henüz bu dili desteklemiyor, cihazın sesi kullanılıyor.</string>
+    <string name="voice_speech_voice_female">Kadın sesi %1$d</string>
+    <string name="voice_speech_voice_male">Erkek sesi %1$d</string>
+    <string name="voice_speech_listen">Dinle</string>
+    <string name="voice_speech_stop">Durdur</string>
+    <string name="voice_speech_speed">Konuşma hızı</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">Merhaba. Bu sesle konuşacağım.</string>
+</resources>

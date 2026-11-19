@@ -109,6 +109,14 @@ class Release:
         return {"version": self.version, "channel": self.channel, "date": self.date, "notes": self.note(lang),
                 "min_app": dict(self.min_app)}
 
+    def to_public_json(self) -> dict[str, Any]:
+        """The row latest.json carries: "notes" as one English string (apps that predate notes_i18n read it), every language in
+        "notes_i18n". to_json() (the state volume's manifest) keeps "notes" as the {lang: text} object."""
+        out = self.to_json()
+        out["notes"] = self.note("en")
+        out["notes_i18n"] = dict(sorted(self.notes.items()))
+        return out
+
     def to_json(self) -> dict[str, Any]:
         return {"schema": SCHEMA, "version": self.version, "channel": self.channel, "date": self.date, "registry": self.registry,
                 "images": {c: {"repo": i.repo, "digest": i.digest} for c, i in sorted(self.images.items())},
@@ -179,7 +187,9 @@ def parse(raw: Any, registry: str = DEFAULT_REGISTRY) -> Release:
     if not isinstance(min_app, dict) or any(k not in ("android", "ios", "desktop") or not (isinstance(v, str) and APP_VERSION.fullmatch(v))
                                             for k, v in min_app.items()):
         raise ReleaseError("the release's minimum app versions are not readable")
-    notes = raw.get("notes") or {}
+    # the languages come from "notes_i18n" when it is there (latest.json's public row: "notes" is then one English string, which
+    # apps that predate notes_i18n read); otherwise from "notes" (a string = English, or a {lang: text} object)
+    notes = raw.get("notes_i18n") if isinstance(raw.get("notes_i18n"), dict) else (raw.get("notes") or {})
     if isinstance(notes, str):
         notes = {"en": notes}
     if not isinstance(notes, dict) or any(not (isinstance(k, str) and re.fullmatch(r"[a-z]{2,3}(-[A-Za-z]{2,4})?", k)) or not isinstance(v, str)

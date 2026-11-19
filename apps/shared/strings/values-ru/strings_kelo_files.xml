@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ru text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Файлы Kelo</string>
     <string name="files_about">То, что Kelo записывает для себя: кто вы, его память, заметки. Их можно читать, менять и удалять. У загрузок и результатов есть свои страницы.</string>

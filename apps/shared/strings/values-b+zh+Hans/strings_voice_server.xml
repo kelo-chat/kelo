@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hans text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">要把 %1$s 语音识别模型下载到你的 Kelo 服务器上吗？不下载的话，使用手机自带的语音识别。</string>
     <string name="voice_server_downloading">正在下载语音模型 · %1$d%%</string>
     <string name="voice_server_ready">你的 Kelo 服务器现在能听懂你说话了。</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">无法连接 Kelo 服务器，没能转换成文字。</string>
     <string name="voice_server_busy">Kelo 服务器正在处理另一段录音，请稍后再试。</string>
     <string name="voice_server_too_long">录音太长了，请控制在 2 分钟以内。</string>
-    <string name="voice_page_title">语音输入</string>
+    <string name="voice_page_title">语音</string>
     <string name="voice_page_intro">你的声音会在 Kelo 服务器上转换成文字，文字放进输入框。不会自动发送。</string>
     <string name="voice_model_in_use">正在使用的语音模型</string>
     <string name="voice_state_off">手机自带的语音识别</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Kelo 服务器的语音模型暂不支持这种语言，所以使用手机自带的语音识别。</string>
     <string name="voice_model_size">大小 %1$s · 使用时内存 %2$s</string>
     <string name="voice_runtime_missing">请再运行一次 Kelo 服务器安装程序以启用此功能。</string>
+    <string name="voice_send_now">发送所说内容</string>
+    <string name="voice_elapsed">录音时长 %1$s</string>
 </resources>

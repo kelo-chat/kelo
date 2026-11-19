@@ -210,3 +210,9 @@ def test_a_version_with_no_images_or_no_version_form_is_refused_in_one_line():
         with pytest.raises(rel.ReleaseError, match="not a release version"):
             rel.by_version(bad, "ghcr.io/kelo-chat", d)
         assert d.calls == []                                                 # nothing was pulled for it
+
+
+def test_parse_reads_notes_i18n_before_notes():
+    got = rel.parse({**manifest(), "notes": "Plain", "notes_i18n": {"en": "E", "ko": "K"}})
+    assert got.notes == {"en": "E", "ko": "K"}
+    assert rel.parse({**manifest(), "notes": "Plain"}).notes == {"en": "Plain"}

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 데스크톱 앱에만 있는 문구 (한국어). 서버를 설치한 컴퓨터를 "내 컴퓨터"라고 부르지 않아요. -->
+<!-- ko text for strings_desktop.xml (generated from values/strings_desktop.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pair_step2">나온 링크를 복사해서 아래에 붙여 넣어요.</string>
     <string name="desktop_tray_open">Kelo 열기</string>

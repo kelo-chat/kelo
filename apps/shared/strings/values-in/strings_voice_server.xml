@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">Unduh model pengenalan suara %1$s ke server Kelo Anda? Jika tidak, pengenalan suara bawaan ponsel yang dipakai.</string>
     <string name="voice_server_downloading">Mengunduh model suara · %1$d%%</string>
     <string name="voice_server_ready">Server Kelo Anda sekarang sudah memahami suara Anda.</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">Server Kelo Anda tidak bisa dihubungi untuk mengubah suara menjadi teks.</string>
     <string name="voice_server_busy">Server Kelo Anda sedang memproses rekaman lain. Coba lagi sebentar lagi.</string>
     <string name="voice_server_too_long">Rekaman terlalu panjang. Bicaralah di bawah 2 menit.</string>
-    <string name="voice_page_title">Input suara</string>
+    <string name="voice_page_title">Suara</string>
     <string name="voice_page_intro">Suara Anda diubah menjadi teks di server Kelo, lalu teksnya masuk ke kolom. Tidak ada yang terkirim otomatis.</string>
     <string name="voice_model_in_use">Model suara yang dipakai</string>
     <string name="voice_state_off">Pengenalan suara bawaan ponsel</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Model suara di server Kelo belum mengenali bahasa ini, jadi pengenalan suara bawaan ponsel yang dipakai.</string>
     <string name="voice_model_size">Ukuran %1$s · memori saat dipakai %2$s</string>
     <string name="voice_runtime_missing">Jalankan lagi penginstal server Kelo untuk memakai ini.</string>
+    <string name="voice_send_now">Kirim yang Anda ucapkan</string>
+    <string name="voice_elapsed">Waktu rekaman %1$s</string>
 </resources>

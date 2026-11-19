@@ -1,4 +1,4 @@
-"""The owner's tap in "take control" lands where the owner tapped and fires what a finger tap fires on a phone, for the shapes a
+"""The owner's tap in "take control" lands where the owner tapped and fires what a tap fires, for the shapes a
 mobile shop pop-up uses (2026-11-16: a pop-up's close button on a phone shop page could not be tapped). Local pages only, real
 Chromium (skipped without Playwright's browser). Each case taps the way the app does: a point of the frame picture."""
 
@@ -66,7 +66,7 @@ async def ctx():
     humanize.configure(reset=True)
 
 
-async def tap_close(ctx, shape, view, meta="phone", ratio=None):
+async def tap_close(ctx, shape, meta="phone", ratio=None):
     ctx.state.update(page=shape, meta=meta)
     page = await ctx.new_page()
 
@@ -74,7 +74,7 @@ async def tap_close(ctx, shape, view, meta="phone", ratio=None):
         return page
     s = BrowserSession(connect=connect, resolver=PUBLIC)
     s.overlay_pause = 0.05
-    await s.open(HOST + "/", view)
+    await s.open(HOST + "/")
     await asyncio.sleep(0.4)
     hub = LiveHub(s, reaper=False)
     key = browser_owner.get()
@@ -107,20 +107,18 @@ async def tap_close(ctx, shape, view, meta="phone", ratio=None):
         await hub.leave(key, "viewer")
 
 
-@pytest.mark.parametrize("view", ["mobile", "desktop"])
 @pytest.mark.parametrize("shape", ["click", "layer", "scrolled", "frame"])
-async def test_a_tap_on_a_click_handler_fires_click(ctx, shape, view):
-    got, out = await tap_close(ctx, shape, view)
+async def test_a_tap_on_a_click_handler_fires_click(ctx, shape):
+    got, out = await tap_close(ctx, shape)
     assert got == ["click"], (got, out)
 
 
-@pytest.mark.parametrize("view", ["mobile", "desktop"])
-async def test_a_tap_on_a_pointerup_handler_fires_it(ctx, view):
-    got, out = await tap_close(ctx, "pointerup", view)
+async def test_a_tap_on_a_pointerup_handler_fires_it(ctx):
+    got, out = await tap_close(ctx, "pointerup")
     assert got == ["pointerup"], out
 
 
 @pytest.mark.parametrize("shape", ["click", "scrolled", "frame"])
 async def test_a_tap_on_a_page_without_a_viewport_meta_lands_where_the_owner_tapped(ctx, shape):
-    got, out = await tap_close(ctx, shape, "mobile", meta="no-meta")
+    got, out = await tap_close(ctx, shape, meta="no-meta")
     assert got == ["click"], (got, out)

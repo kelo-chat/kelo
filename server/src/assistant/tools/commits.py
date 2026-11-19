@@ -28,8 +28,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .page_paths import with_path
+
 # Read from the page for one element (Playwright `locator.evaluate`): what the user would see and what the element would do.
-TARGET_JS = r"""(el) => {
+TARGET_JS = with_path(r"""(el) => {
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim().slice(0, 160);
   const act = el.closest('button, a[href], [role=button], [role=link], [role=tab], [role=menuitem], [role=option], input, select, textarea, summary, label') || el;
   const tag = act.tagName.toLowerCase();
@@ -86,7 +88,9 @@ TARGET_JS = r"""(el) => {
     }
   };
   for (const c of code.slice()) resolveFns(c, 1);
-  try { window.__keloJudgeTarget = act; } catch (e) {}
+  // the element is read again by DevTools through this CSS path (never a page global); empty when the path does not find it alone
+  const judgePath = keloPath(act);
+  const judgeHits = judgePath ? document.querySelectorAll(judgePath) : [];
   const formTarget = form ? (form.getAttribute('target') || '') : '';
   return {
     structure_read: true, handler_src: code.join('\n;\n').slice(0, 12000),
@@ -99,8 +103,9 @@ TARGET_JS = r"""(el) => {
     name: (act.getAttribute('name') || '').toLowerCase(),
     submits, search_form: search, form_personal: personal, form_message: message, form_text: texts, secure_form: secure, signup_form: signup,
     url: location.href, title: clean(document.title),
+    judge_path: judgeHits.length === 1 && judgeHits[0] === act ? judgePath : '',
   };
-}"""
+}""")
 
 LONG_LINK = 25   # a link with more words than this is a result, an article or a product card: following it only looks
 

@@ -1,4 +1,4 @@
-"""Live view feels quicker while the owner holds the tab: 30 frames a second while held, a 500 CSS px floor for the desktop view, a sharp
+"""Live view feels quicker while the owner holds the tab: 30 frames a second while held, a 500 CSS px floor for the page, a sharp
 picture a quarter second after the owner's last input, and a short pause between a tap's move and its press. Fake DevTools session."""
 
 import asyncio
@@ -17,11 +17,10 @@ def frame_bytes() -> str:
     return base64.b64encode(jpeg(720, 450)).decode()
 
 
-def test_the_desktop_floor_is_500_css_px_not_800():
-    w, h, ratio = viewer_css_size(1080, 2208, 2.625, "desktop")   # 411 css px wide
+def test_the_floor_is_500_css_px_not_800():
+    w, h, ratio = viewer_css_size(1080, 2208, 2.625)   # 411 css px wide
     assert w == 500 and ratio == 2.16 and abs(h / w - 2208 / 1080) < 0.01
-    assert viewer_css_size(1080, 2208, 2.625, "mobile")[0] == 411   # the mobile floor (320) does not bite here
-    assert viewer_css_size(300, 600, 3, "mobile")[0] == 320
+    assert viewer_css_size(300, 600, 3)[0] == 500   # a narrower screen is scaled up to the floor
 
 
 async def test_rate_is_30_while_held_and_the_asked_fps_while_only_watched():

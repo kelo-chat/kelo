@@ -509,6 +509,16 @@
     <string name="vault_join">%1$s · %2$s</string>
     <string name="vault_not_entered">아직 입력하지 않았어요</string>
     <string name="vault_last_used">마지막 사용 %1$s</string>
+    <string name="vault_browser_title">Kelo 브라우저</string>
+    <string name="vault_browser_signed_in">%1$s 로그인 · 마지막 사용 %2$s</string>
+    <string name="vault_browser_sign_out">Kelo 브라우저에서 이 사이트 로그아웃</string>
+    <string name="vault_browser_sign_out_confirm">Kelo 브라우저가 %1$s에서 로그아웃되고 쿠키와 사이트 데이터가 지워집니다. 저장된 로그인은 그대로 남습니다.</string>
+    <string name="vault_browser_sites_title">저장된 로그인 없이 로그인된 사이트</string>
+    <string name="vault_profiles_title">브라우저 프로필</string>
+    <string name="vault_profile_sites">%1$s개 사이트에 로그인</string>
+    <string name="vault_profile_empty">아직 로그인한 사이트 없음</string>
+    <string name="vault_profile_delete">이 프로필 삭제</string>
+    <string name="vault_profile_delete_confirm">%1$s 프로필과 그 안의 로그인이 모두 삭제됩니다.</string>
     <string name="vault_place">키 위치 %1$s</string>
     <string name="vault_place_header_named">헤더 %1$s</string>
     <string name="vault_place_query_named">쿼리 %1$s</string>
@@ -954,6 +964,9 @@
     <string name="live_still_yours">아직 직접 조작 중이에요. 돌려주기를 누를 때까지 에이전트는 기다려요.</string>
     <string name="live_screen_changed">화면이 바뀌었어요. 다시 눌러 주세요.</string>
     <string name="live_tab_closed">탭이 닫혀서 더는 볼 수 없어요. 마지막 화면이 남아 있으면 아래에 보여 드려요.</string>
+    <string name="live_tabs_label">탭</string>
+    <string name="live_tab_untitled">새 탭</string>
+    <string name="live_tab_close">탭 닫기</string>
     <string name="live_not_controller">지금은 조작할 수 없어요. 다시 직접 조작을 눌러 주세요.</string>
     <string name="live_input_failed">브라우저가 그 동작을 하지 못했어요.</string>
     <string name="live_state_you">내가 조작 중</string>
@@ -979,6 +992,8 @@
     <string name="live_touch_missed">터치가 전달되지 않았어요</string>
     <string name="live_type_hint">페이지에 입력할 내용</string>
     <string name="live_type_send">입력하기</string>
+    <string name="live_keyboard">키보드</string>
+    <string name="live_keyboard_desc">페이지에 입력할 키보드 열기·닫기</string>
     <string name="live_type_hide">입력 내용 가리기</string>
     <string name="live_type_show">입력 내용 보이기</string>
     <string name="live_key_enter">Enter</string>
@@ -1140,7 +1155,6 @@
     <string name="work_now_empty">지금 진행 중인 작업은 없어요.</string>
     <string name="work_asks">답이 필요해요</string>
     <string name="work_asks_empty">기다리고 있는 질문이 없어요.</string>
-
     <string name="offers_title">Kelo가 바로 할 수 있는 일</string>
     <string name="offer_start">맡기기</string>
     <string name="offer_needs">필요한 것: %1$s</string>
@@ -1262,6 +1276,7 @@
     <string name="work_watch_ev_fired">조건 맞음</string>
     <string name="work_watch_ev_error">실패</string>
     <string name="work_watch_ev_check">확인</string>
+    <string name="work_watch_ev_count">· %1$d번 확인</string>
     <string name="work_watch_ev_on">켬</string>
     <string name="work_watch_ev_off">끔</string>
     <string name="work_watch_delete">지켜보기 지우기</string>
@@ -1305,14 +1320,17 @@
     <string name="heads_section">새 소식 알림</string>
     <string name="heads_switch">Kelo가 먼저 알려주기</string>
     <string name="heads_about">%1$s 새 메일, 다가오는 일정, 마감을 살펴보고 알아야 할 게 있으면 먼저 알려 줘요. 내가 답해야 하는 일(승인, 질문)은 이 설정과 상관없이 ‘%2$s’로 따로 알려 줘요.</string>
+    <string name="heads_about_send_times">알림 시간에는 매시간 새 메일과 연결한 서비스를 살펴보고, 기다릴 수 없는 일은 바로 알려 줘요. 나머지는 보내는 시간에 대화, 일정, 목표, 예약 작업, 메모리와 함께 살펴보고 알려 줘요. 한 번 보낼 때 소식이 여러 개여도 ‘%1$s’에서는 한 번으로 쳐요. 다 채운 날에는 기다릴 수 없는 일만 알려 줘요. 내가 답해야 하는 일(승인, 질문)은 이 설정과 상관없이 ‘%2$s’로 따로 알려 줘요.</string>
     <string name="heads_per_day">하루 최대</string>
+    <string name="heads_send_times">보내는 시간: %1$s</string>
     <string name="heads_mail">새 메일도 살펴보기</string>
     <string name="heads_mail_about">끄면 이 확인에서는 메일함을 열지 않아요. 일정과 마감은 그대로 살펴봐요. 아침 브리핑의 메일함은 브리핑에서 따로 정해요.</string>
     <string name="heads_list_title">챙겨볼 것</string>
-    <string name="heads_list_about">선택 사항이에요. 매번 함께 살펴보고 챙길 일이 있을 때만 알려 줘요.</string>
+    <string name="heads_list_about">선택 사항이에요. 추가하면 Kelo가 알맞은 때를 정해요. 따로 시간을 맞춰야 하면 따로 확인하고, 아니면 보내는 시간에 함께 살펴봐요. 챙길 일이 있을 때만 알려 줘요.</string>
     <string name="heads_list_hint">예: 오늘 들어온 택배 알림</string>
     <string name="heads_list_add">추가</string>
     <string name="heads_list_remove">%1$s 지우기</string>
+    <string name="heads_list_own">따로 확인 중 · %1$s</string>
     <plurals name="heads_times">
         <item quantity="other">%d번</item>
     </plurals>
@@ -1522,7 +1540,6 @@
     <string name="comparison_recommended">추천</string>
     <string name="comparison_choose">%1$s 선택</string>
     <string name="comparison_choose_say">%1$s 선택할게</string>
-
     <string name="endpoint_add">엔드포인트 추가</string>
     <string name="endpoint_name">이름</string>
     <string name="endpoint_name_hint">예: 집 Ollama</string>

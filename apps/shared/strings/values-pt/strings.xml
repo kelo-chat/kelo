@@ -494,6 +494,16 @@
     <string name="vault_saved_plain">Salvo</string>
     <string name="vault_not_entered">Ainda não digitado</string>
     <string name="vault_last_used">Último uso %1$s</string>
+    <string name="vault_browser_title">Navegador do Kelo</string>
+    <string name="vault_browser_signed_in">Conectado %1$s · último uso %2$s</string>
+    <string name="vault_browser_sign_out">Desconectar o navegador do Kelo deste site</string>
+    <string name="vault_browser_sign_out_confirm">O navegador do Kelo será desconectado de %1$s e os cookies e dados do site removidos. Um login salvo continua.</string>
+    <string name="vault_browser_sites_title">Conectado sem login salvo</string>
+    <string name="vault_profiles_title">Perfis do navegador</string>
+    <string name="vault_profile_sites">Conectado em %1$s sites</string>
+    <string name="vault_profile_empty">Ainda não conectado em lugar nenhum</string>
+    <string name="vault_profile_delete">Excluir este perfil</string>
+    <string name="vault_profile_delete_confirm">O perfil %1$s e todos os logins guardados nele serão excluídos.</string>
     <string name="vault_place">A chave vai em %1$s</string>
     <string name="vault_place_header_named">Cabeçalho %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -950,6 +960,9 @@
     <string name="live_still_yours">Você ainda está no controle. Seu agente espera até você devolver.</string>
     <string name="live_screen_changed">A tela mudou. Toque de novo.</string>
     <string name="live_tab_closed">A aba foi fechada, então não há mais nada para ver. Se a última tela foi salva, ela aparece abaixo.</string>
+    <string name="live_tabs_label">Abas</string>
+    <string name="live_tab_untitled">Nova aba</string>
+    <string name="live_tab_close">Fechar aba</string>
     <string name="live_not_controller">Você não pode controlar agora. Toque em Assumir controle de novo.</string>
     <string name="live_input_failed">O navegador não conseguiu fazer isso.</string>
     <string name="live_state_you">Você está no controle</string>
@@ -977,6 +990,8 @@
     <string name="live_touch_missed">O toque não chegou à página</string>
     <string name="live_type_hint">Texto para digitar na página</string>
     <string name="live_type_send">Digitar</string>
+    <string name="live_keyboard">Teclado</string>
+    <string name="live_keyboard_desc">Mostrar ou ocultar o teclado da página</string>
     <string name="live_type_hide">Ocultar texto</string>
     <string name="live_type_show">Mostrar texto</string>
     <string name="live_key_enter">Enter</string>
@@ -1154,7 +1169,6 @@
     <string name="work_now_empty">Nada rodando agora.</string>
     <string name="work_asks">Precisa da sua resposta</string>
     <string name="work_asks_empty">Nenhuma pergunta esperando.</string>
-
     <string name="offers_title">Kelo pode fazer isso agora</string>
     <string name="offer_start">Delegar</string>
     <string name="offer_needs">Precisa de: %1$s</string>
@@ -1284,6 +1298,7 @@
     <string name="work_watch_ev_fired">Condição atendida</string>
     <string name="work_watch_ev_error">Falhou</string>
     <string name="work_watch_ev_check">Verificado</string>
+    <string name="work_watch_ev_count">· Verificado %1$d vezes</string>
     <string name="work_watch_ev_on">Ligado</string>
     <string name="work_watch_ev_off">Desligado</string>
     <string name="work_watch_delete">Excluir monitoramento</string>
@@ -1332,14 +1347,17 @@
     <string name="heads_section">Avisos de novidades</string>
     <string name="heads_switch">Kelo avisa primeiro</string>
     <string name="heads_about">%1$s, o Kelo verifica e-mails novos, próximos eventos e prazos, e avisa primeiro quando há algo que você deve saber. O que você precisa responder (aprovações, perguntas) é perguntado de novo em “%2$s”, seja qual for esta configuração.</string>
+    <string name="heads_about_send_times">No horário de mensagens, o Kelo verifica a cada hora os e-mails novos e os serviços conectados, e avisa na hora o que não pode esperar. O resto espera os horários de envio; então o Kelo também revisa conversas, agenda, metas, tarefas agendadas e memória. Cada envio conta uma vez só em “%1$s”, não importa quanto traga. Quando os do dia acabam, só chega a você o que não pode esperar. O que você precisa responder (aprovações, perguntas) é perguntado de novo em “%2$s”, seja qual for esta configuração.</string>
     <string name="heads_per_day">No máximo por dia</string>
+    <string name="heads_send_times">Horários de envio: %1$s</string>
     <string name="heads_mail">Verificar também e-mails novos</string>
     <string name="heads_mail_about">Desativado: o Kelo não abre suas caixas de correio para esta verificação; os eventos e prazos continuam sendo verificados. O resumo da manhã escolhe suas próprias caixas de correio.</string>
     <string name="heads_list_title">Coisas para acompanhar</string>
-    <string name="heads_list_about">Opcional. O Kelo olha isso toda vez e só avisa quando algo precisa da sua atenção.</string>
+    <string name="heads_list_about">Opcional. Quando você adiciona um, o Kelo dá a ele o momento certo: uma verificação própria se precisar, senão uma olhada nos seus horários de envio. Só avisa quando algo precisa da sua atenção.</string>
     <string name="heads_list_hint">ex.: avisos de entrega de hoje</string>
     <string name="heads_list_add">Adicionar</string>
     <string name="heads_list_remove">Remover %1$s</string>
+    <string name="heads_list_own">Verificado à parte · %1$s</string>
     <plurals name="heads_times">
         <item quantity="one">%d vez</item>
         <item quantity="many">%d vezes</item>
@@ -1559,7 +1577,6 @@
     <string name="comparison_recommended">Recomendado</string>
     <string name="comparison_choose">Escolher %1$s</string>
     <string name="comparison_choose_say">Vamos de %1$s</string>
-
     <string name="endpoint_add">Adicionar endpoint</string>
     <string name="endpoint_name">Nome</string>
     <string name="endpoint_name_hint">ex.: Ollama de casa</string>

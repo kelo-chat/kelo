@@ -5,7 +5,11 @@ voice-io volume and answers three routes:
 
     GET  /health                                  -> {"ok", "loaded": model id | null, "busy"}
     POST /transcribe  (X-Kelo-Voice-Model, X-Kelo-Voice-Lang; body = PCM16 mono 16 kHz) -> {"text", "lang", "segments", "took_ms"}
+    POST /speak       (X-Kelo-Speech-Voice/-Speed/-Lang/-Steps; body = UTF-8 text) -> raw PCM16 mono at the model's rate
     POST /unload                                  -> {"ok": true}
+
+Kelo's own voice (Supertonic 3, call mode) is loaded from /voice-models/supertonic-3/ the same way, by its own Speaker with its own
+lock, so a transcription and a spoken sentence may run side by side. The text of a sentence is never logged.
 
 Models are read from /voice-models/<id>/ (read-only mount) and only when ready.json lists their files. One model is kept loaded
 and dropped after VOICE_IDLE_SECONDS without use. Audio is never written anywhere: it lives in memory for one call.
@@ -41,7 +45,17 @@ TAG = re.compile(r"<\|[^|>]*\|>")
 MODEL_FILES: dict[str, tuple[str, ...]] = {
     "sensevoice-small": ("model.int8.onnx", "tokens.txt"),
     "parakeet-tdt-v3": ("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"),
+    "supertonic-3": ("duration_predictor.int8.onnx", "text_encoder.int8.onnx", "vector_estimator.int8.onnx", "vocoder.int8.onnx",
+                     "tts.json", "unicode_indexer.bin", "voice.bin"),
 }
+
+SPEECH_ID = "supertonic-3"
+# A copy of voice_models.SPEAK_LANGS: this program must not import `assistant`. A test checks the two are equal.
+SPEAK_LANGS = ("en", "ko", "ja", "ar", "bg", "cs", "da", "de", "el", "es", "et", "fi", "fr", "hi", "hr", "hu", "id",
+               "it", "lt", "lv", "nl", "pl", "pt", "ro", "ru", "sk", "sl", "sv", "tr", "uk", "vi")
+MAX_SPEAK_BYTES = 4000              # UTF-8 bytes; the server limits to 1000 characters
+SPEAK_THREADS_DEFAULT = 2
+SPEAK_STEPS_DEFAULT = 8
 
 
 def clean_text(raw: str) -> str:
@@ -83,6 +97,76 @@ def ready_or_raise(root: Path, model_id: str) -> Path:
         if name not in listed or not (folder / name).is_file():
             raise RuntimeError("model not ready")
     return folder
+
+
+def make_tts(folder: Path, threads: int) -> Any:
+    """Supertonic 3 through sherpa-onnx. Returns an adapter with generate(text, sid, speed, lang, steps) -> (samples, rate)."""
+    import sherpa_onnx  # imported here so tests can run without the native library
+    m = sherpa_onnx.OfflineTtsSupertonicModelConfig(
+        str(folder / "duration_predictor.int8.onnx"), str(folder / "text_encoder.int8.onnx"),
+        str(folder / "vector_estimator.int8.onnx"), str(folder / "vocoder.int8.onnx"), str(folder / "tts.json"),
+        str(folder / "unicode_indexer.bin"), str(folder / "voice.bin"))
+    tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(model=sherpa_onnx.OfflineTtsModelConfig(supertonic=m, num_threads=threads)))
+    return _SherpaSpeech(tts, sherpa_onnx)
+
+
+class _SherpaSpeech:
+    def __init__(self, tts: Any, sherpa_onnx: Any):
+        self.tts = tts
+        self.sherpa_onnx = sherpa_onnx
+
+    def generate(self, text: str, sid: int, speed: float, lang: str, steps: int) -> tuple[Any, int]:
+        g = self.sherpa_onnx.GenerationConfig()
+        g.sid = sid
+        g.speed = speed
+        g.num_steps = steps
+        g.extra = {"lang": lang}
+        audio = self.tts.generate(text, g)
+        return audio.samples, int(audio.sample_rate)
+
+
+def to_pcm16(samples: Any) -> bytes:
+    """Float samples in [-1, 1] -> PCM16 little endian, mono. Values outside the range are clipped, never wrapped."""
+    import numpy as np
+    a = np.clip(np.asarray(samples, dtype=np.float64), -1.0, 1.0)
+    return np.rint(a * 32767.0).astype("<i2").tobytes()
+
+
+class Speaker:
+    """Loads Supertonic once (from /voice-models/supertonic-3, ready.json required), speaks one text at a time, drops the model after
+    idle_seconds like Engine. Its own lock: a transcription and a sentence may run side by side."""
+
+    def __init__(self, root: Path, threads: int, idle_seconds: float, tts_factory: Callable[[Path, int], Any] = make_tts,
+                 now: Callable[[], float] = time.monotonic):
+        self.root = root
+        self.threads = threads
+        self.tts_factory = tts_factory
+        self.idle = IdleClock(idle_seconds, now)
+        self.loaded = False
+        self.lock = asyncio.Lock()
+        self._tts: Any = None
+
+    def unload(self) -> None:
+        self._tts = None
+        self.loaded = False
+
+    def _speak(self, text: str, sid: int, speed: float, lang: str, steps: int) -> tuple[bytes, int]:
+        if self._tts is None:
+            folder = ready_or_raise(self.root, SPEECH_ID)
+            self._tts = self.tts_factory(folder, self.threads)
+            self.loaded = True
+        samples, rate = self._tts.generate(text, sid, speed, lang, steps)
+        return to_pcm16(samples), rate
+
+    async def speak(self, text: str, sid: int, speed: float, lang: str, steps: int) -> tuple[bytes, int, int]:
+        async with self.lock:
+            self.idle.touch()
+            started = time.monotonic()
+            pcm, rate = await asyncio.to_thread(self._speak, text, sid, speed, lang, steps)
+            self.idle.touch()
+            took = int((time.monotonic() - started) * 1000)
+            log.info("speech: chars=%d sid=%d took_ms=%d", len(text), sid, took)   # never the text
+            return pcm, rate, took
 
 
 class IdleClock:
@@ -243,7 +327,37 @@ def _reply(writer: asyncio.StreamWriter, status: int, obj: dict[str, Any]) -> No
                  f"Connection: close\r\n\r\n".encode() + body)
 
 
-def make_handler(engine: Engine) -> Callable[[asyncio.StreamReader, asyncio.StreamWriter], Any]:
+def _reply_bytes(writer: asyncio.StreamWriter, status: int, body: bytes, headers: dict[str, str]) -> None:
+    text = {200: "OK", 400: "Bad Request", 409: "Conflict"}.get(status, "")
+    extra = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
+    writer.write(f"HTTP/1.1 {status} {text}\r\n{extra}Content-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body)
+
+
+class SpeakArgsError(ValueError):
+    pass
+
+
+def parse_speak(headers: dict[str, str], body: bytes | None) -> tuple[str, int, float, str, int]:
+    """The arguments of POST /speak, checked: (text, voice, speed, lang, steps). Anything off raises SpeakArgsError."""
+    try:
+        voice = int(headers.get("x-kelo-speech-voice", ""))
+        speed = float(headers.get("x-kelo-speech-speed", ""))
+        steps = int(headers.get("x-kelo-speech-steps") or SPEAK_STEPS_DEFAULT)
+    except ValueError as e:
+        raise SpeakArgsError from e
+    lang = headers.get("x-kelo-speech-lang", "")
+    if not 0 <= voice <= 9 or not 0.5 <= speed <= 2.0 or not 1 <= steps <= 16 or lang not in SPEAK_LANGS:
+        raise SpeakArgsError
+    if body is None or not 1 <= len(body) <= MAX_SPEAK_BYTES:
+        raise SpeakArgsError
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise SpeakArgsError from e
+    return text, voice, speed, lang, steps
+
+
+def make_handler(engine: Engine, speaker: "Speaker | None" = None) -> Callable[[asyncio.StreamReader, asyncio.StreamWriter], Any]:
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             req = await _read_request(reader)
@@ -251,11 +365,31 @@ def make_handler(engine: Engine) -> Callable[[asyncio.StreamReader, asyncio.Stre
                 return
             method, path, headers, body = req
             if method == "GET" and path == "/health":
-                _reply(writer, 200, {"ok": True, "loaded": engine.loaded_id, "busy": engine.lock.locked()})
+                _reply(writer, 200, {"ok": True, "loaded": engine.loaded_id, "busy": engine.lock.locked(),
+                                     "speaking": bool(speaker and speaker.lock.locked()),
+                                     "speech_loaded": bool(speaker and speaker.loaded)})
             elif method == "POST" and path == "/unload":
                 if not engine.lock.locked():
                     engine.unload()
+                if speaker is not None and not speaker.lock.locked():
+                    speaker.unload()
                 _reply(writer, 200, {"ok": True})
+            elif method == "POST" and path == "/speak":
+                try:
+                    text, voice, speed, lang, steps = parse_speak(headers, body)
+                except SpeakArgsError:
+                    _reply(writer, 400, {"code": "voice_speech_args"})
+                else:
+                    if speaker is None:
+                        _reply(writer, 409, {"code": "voice_speech_not_ready"})
+                    else:
+                        try:
+                            pcm, rate, took = await speaker.speak(text, voice, speed, lang, steps)
+                        except RuntimeError:
+                            _reply(writer, 409, {"code": "voice_speech_not_ready"})
+                        else:
+                            _reply_bytes(writer, 200, pcm, {"Content-Type": "application/octet-stream",
+                                                            "X-Kelo-Speech-Rate": str(rate), "X-Kelo-Took-Ms": str(took)})
             elif method == "POST" and path == "/transcribe":
                 if body is None or len(body) > MAX_PCM_BYTES:
                     _reply(writer, 413, {"code": "voice_too_long"})
@@ -285,15 +419,33 @@ def make_handler(engine: Engine) -> Callable[[asyncio.StreamReader, asyncio.Stre
     return handle
 
 
-async def serve(socket_path: str, root: Path, idle_seconds: float, threads: int, silero_path: str) -> None:
+def unload_idle(engine: Engine, speaker: "Speaker | None") -> None:
+    """Drops each loaded model that has been idle long enough and is not running now."""
+    if engine.loaded_id and not engine.lock.locked() and engine.idle.expired():
+        engine.unload()
+        log.info("voice: model unloaded after idle time")
+    if speaker is not None and speaker.loaded and not speaker.lock.locked() and speaker.idle.expired():
+        speaker.unload()
+        log.info("speech: model unloaded after idle time")
+
+
+async def idle_watch_all(engine: Engine, speaker: "Speaker | None", every: float = 30.0) -> None:
+    while True:
+        await asyncio.sleep(every)
+        unload_idle(engine, speaker)
+
+
+async def serve(socket_path: str, root: Path, idle_seconds: float, threads: int, silero_path: str,
+                speak_threads: int = SPEAK_THREADS_DEFAULT) -> None:
     engine = Engine(root, silero_path, threads, idle_seconds)
+    speaker = Speaker(root, speak_threads, idle_seconds)
     try:
         os.unlink(socket_path)
     except FileNotFoundError:
         pass
-    server = await asyncio.start_unix_server(make_handler(engine), path=socket_path)
+    server = await asyncio.start_unix_server(make_handler(engine, speaker), path=socket_path)
     os.chmod(socket_path, 0o660)
-    asyncio.get_running_loop().create_task(engine.idle_watch())
+    asyncio.get_running_loop().create_task(idle_watch_all(engine, speaker))
     log.info("voice service listening on %s", socket_path)
     async with server:
         await server.serve_forever()
@@ -306,7 +458,8 @@ def main() -> None:
     idle = float(os.environ.get("VOICE_IDLE_SECONDS", "600"))
     threads = int(os.environ.get("VOICE_THREADS") or min(4, os.cpu_count() or 2))
     silero = os.environ.get("VOICE_SILERO", "/opt/voice/silero_vad.onnx")
-    asyncio.run(serve(socket_path, root, idle, threads, silero))
+    speak_threads = int(os.environ.get("VOICE_SPEAK_THREADS") or min(SPEAK_THREADS_DEFAULT, os.cpu_count() or 2))
+    asyncio.run(serve(socket_path, root, idle, threads, silero, speak_threads))
 
 
 if __name__ == "__main__":

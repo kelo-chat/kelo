@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ja text for strings_ai_consent.xml (edit freely, keep the names) -->
+<!-- ja text for strings_ai_consent.xml (generated from values/strings_ai_consent.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="ai_consent_title">最初のメッセージの前に</string>
     <string name="ai_consent_body">Kelo は返事を作るために、メッセージとそれに必要なもの（添付したファイル、つないだサービスから得た結果）を、あなたが選んだ AI サービスに送ります。</string>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_live.xml (generated from values/strings_live.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- iPhone only (Android does not read these): the Live Activity of a running reply on the lock screen and in the Dynamic Island. -->
     <string name="live_working">Kelo يعمل الآن</string>
     <string name="live_waiting">بانتظار موافقتك</string>
     <string name="live_done">تم</string>

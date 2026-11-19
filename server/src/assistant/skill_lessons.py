@@ -2,7 +2,7 @@
 
 A run that used tools (a chat reply or a background job) may have learned how to do a task on a site or with a tool: "this site logs
 out often; sign in again before checkout". Such lessons are looked for ONLY in the nightly look-back (reflection.py): the same request
-and answer that already returns rules, goals and rechecks carries a "lessons" list (LessonExtractor). No model call is made per run.
+and answer that already returns rules and goals carries a "lessons" list (LessonExtractor). No model call is made per run.
 
 What the night sees: the day's finished runs that used tools, as short summaries (the task, its tool steps with whether each worked,
 the start of its answer). The answer of a run that read outside text (a page, mail, file) is fenced and the run is marked. Tool

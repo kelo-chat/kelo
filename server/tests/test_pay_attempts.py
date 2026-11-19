@@ -75,7 +75,6 @@ async def test_a_second_submit_a_ready_review_and_a_reload_are_refused_while_the
     assert "may already have gone through" in out or "already submitted" in out
     tools = {t.name: t for t in browser_tools(session)}
     assert "may already have gone through" in (await tools["browser_open"].hold({"url": "https://shop.example.com/done"}))
-    assert "may already have gone through" in (await tools["browser_view"].hold({"view": "mobile"}))
     assert await page.evaluate("window.bought || 0") == 1
     tok = CHECKING.set(True)                     # the later check's own run may read and open the tab
     try:

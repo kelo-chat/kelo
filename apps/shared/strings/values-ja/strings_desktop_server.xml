@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- ja text for strings_desktop_server.xml (generated from values/strings_desktop_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_server_row">このPCをKeloサーバーとして使う</string>
     <string name="desktop_server_row_hint">このコンピューターにKeloサーバーをインストールします。Windowsが管理者の許可を一度求めます。</string>
@@ -17,7 +17,6 @@
     <string name="desktop_server_update">更新</string>
     <string name="desktop_server_install">インストール</string>
     <string name="desktop_server_unavailable">Windows用のKeloサーバーはまだ準備中です。</string>
-
     <string name="desktop_server_row_mac">このMacをKeloサーバーとして使う</string>
     <string name="desktop_server_row_hint_mac">このMacにKeloサーバーをインストールします。macOSが管理者パスワードを一度だけ尋ねます。</string>
     <string name="desktop_server_installed_mac">このMacにKeloサーバーがあります</string>

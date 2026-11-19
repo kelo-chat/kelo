@@ -122,6 +122,7 @@
     "note": "Live only (the scripted tier skips it). Fixture shop = canned page texts; the browser, search and payment tools are fakes. The app itself starts the checkout job when a page read is a final checkout step (the fixture marks its final pages), so no delegate call is expected from the model."
   },
   "settings": {
-    "payment_specialist": true
+    "payment_specialist": true,
+    "browser_worker": false
   }
 }

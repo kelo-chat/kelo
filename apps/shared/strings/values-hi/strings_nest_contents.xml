@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_nest_contents.xml (generated from values/strings_nest_contents.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="nest_contents_open">इंस्टॉल होने वाली हर चीज़ देखें</string>
     <string name="nest_contents_title">क्या इंस्टॉल होगा</string>

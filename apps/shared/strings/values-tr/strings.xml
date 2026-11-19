@@ -493,6 +493,16 @@
     <string name="vault_saved_plain">Kaydedildi</string>
     <string name="vault_not_entered">Henüz girilmedi</string>
     <string name="vault_last_used">Son kullanım: %1$s</string>
+    <string name="vault_browser_title">Kelo tarayıcısı</string>
+    <string name="vault_browser_signed_in">Oturum açık %1$s · son kullanım %2$s</string>
+    <string name="vault_browser_sign_out">Kelo tarayıcısını bu siteden çıkış yaptır</string>
+    <string name="vault_browser_sign_out_confirm">Kelo tarayıcısı %1$s üzerinden çıkış yapacak ve çerezleri ile site verileri silinecek. Kayıtlı giriş bilgisi kalır.</string>
+    <string name="vault_browser_sites_title">Kayıtlı giriş olmadan oturum açıldı</string>
+    <string name="vault_profiles_title">Tarayıcı profilleri</string>
+    <string name="vault_profile_sites">%1$s sitede oturum açık</string>
+    <string name="vault_profile_empty">Henüz hiçbir yerde oturum açılmadı</string>
+    <string name="vault_profile_delete">Bu profili sil</string>
+    <string name="vault_profile_delete_confirm">%1$s profili ve içinde saklanan tüm girişler silinecek.</string>
     <string name="vault_place">Anahtarın yeri: %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Sorgu %1$s</string>
@@ -938,6 +948,9 @@
     <string name="live_still_yours">Hâlâ siz kontrol ediyorsunuz. Siz geri verene kadar ajan bekler.</string>
     <string name="live_screen_changed">Ekran değişti. Yeniden dokunun.</string>
     <string name="live_tab_closed">Sekme kapatıldı, görülecek başka bir şey yok. Son ekran kaydedildiyse aşağıda gösteriliyor.</string>
+    <string name="live_tabs_label">Sekmeler</string>
+    <string name="live_tab_untitled">Yeni sekme</string>
+    <string name="live_tab_close">Sekmeyi kapat</string>
     <string name="live_not_controller">Şu anda kontrol edemezsin. Kontrolü al\'a tekrar dokun.</string>
     <string name="live_input_failed">Tarayıcı bunu yapamadı.</string>
     <string name="live_state_you">Kontrol sende</string>
@@ -964,6 +977,8 @@
     <string name="live_touch_missed">Dokunuş sayfaya ulaşmadı</string>
     <string name="live_type_hint">Sayfaya yazılacak metin</string>
     <string name="live_type_send">Yaz</string>
+    <string name="live_keyboard">Klavye</string>
+    <string name="live_keyboard_desc">Sayfa için klavyeyi göster veya gizle</string>
     <string name="live_type_hide">Metni gizle</string>
     <string name="live_type_show">Metni göster</string>
     <string name="live_key_enter">Enter</string>
@@ -1130,7 +1145,6 @@
     <string name="work_now_empty">Şu anda çalışan bir şey yok.</string>
     <string name="work_asks">Yanıtını bekleyenler</string>
     <string name="work_asks_empty">Bekleyen soru yok.</string>
-
     <string name="offers_title">Kelo bunu hemen yapabilir</string>
     <string name="offer_start">Devret</string>
     <string name="offer_needs">Gerekenler: %1$s</string>
@@ -1256,6 +1270,7 @@
     <string name="work_watch_ev_fired">Koşul sağlandı</string>
     <string name="work_watch_ev_error">Başarısız</string>
     <string name="work_watch_ev_check">Kontrol edildi</string>
+    <string name="work_watch_ev_count">· %1$d kez kontrol edildi</string>
     <string name="work_watch_ev_on">Açıldı</string>
     <string name="work_watch_ev_off">Kapatıldı</string>
     <string name="work_watch_delete">İzleyiciyi sil</string>
@@ -1301,14 +1316,17 @@
     <string name="heads_section">Yeni gelişme bildirimleri</string>
     <string name="heads_switch">Kelo önce haber verir</string>
     <string name="heads_about">Kelo %1$s yeni e-postalara, yaklaşan etkinliklere ve son tarihlere bakar; bilmeniz gereken bir şey varsa önce size haber verir. Yanıtlamanız gerekenler (onaylar, sorular) bu ayardan bağımsız olarak “%2$s” altında yeniden sorulur.</string>
+    <string name="heads_about_send_times">Mesaj saatlerinizde Kelo her saat yeni e-postalara ve bağlı hizmetlerinize bakar; bekleyemeyecek bir şey varsa hemen haber verir. Gerisi gönderim saatlerini bekler; o zaman Kelo sohbetlere, takvime, hedeflere, programlara ve belleğe de bakar. Bir gönderim, içinde ne kadar şey olursa olsun “%1$s” içinde bir kez sayılır. Günün hakkı dolunca yalnızca bekleyemeyecek şeyler size ulaşır. Yanıtlamanız gerekenler (onaylar, sorular) bu ayardan bağımsız olarak “%2$s” altında yeniden sorulur.</string>
     <string name="heads_per_day">Günde en fazla</string>
+    <string name="heads_send_times">Gönderim saatleri: %1$s</string>
     <string name="heads_mail">Yeni e-postalara da bak</string>
     <string name="heads_mail_about">Kapalı: Kelo bu kontrol için posta kutularınızı açmaz; etkinlikler ve son tarihler kontrol edilmeye devam eder. Sabah özeti kendi posta kutularını ayrıca belirler.</string>
     <string name="heads_list_title">Göz kulak olunacaklar</string>
-    <string name="heads_list_about">İsteğe bağlı. Kelo bunlara her seferinde bakar ve yalnızca dikkat gerektiren bir şey olduğunda haber verir.</string>
+    <string name="heads_list_about">İsteğe bağlı. Bir şey eklediğinde Kelo ona uygun zamanı verir: gerekiyorsa ayrı bir kontrol, değilse gönderim saatlerinde bir bakış. Yalnızca dikkat gerektiren bir şey olduğunda haber verir.</string>
     <string name="heads_list_hint">ör. bugün gelen kargo bildirimleri</string>
     <string name="heads_list_add">Ekle</string>
     <string name="heads_list_remove">%1$s öğesini kaldır</string>
+    <string name="heads_list_own">Ayrıca kontrol ediliyor · %1$s</string>
     <plurals name="heads_times">
         <item quantity="one">%d kez</item>
         <item quantity="other">%d kez</item>
@@ -1523,7 +1541,6 @@
     <string name="comparison_recommended">Önerilen</string>
     <string name="comparison_choose">%1$s seç</string>
     <string name="comparison_choose_say">%1$s ile devam edelim</string>
-
     <string name="endpoint_add">Uç nokta ekle</string>
     <string name="endpoint_name">Ad</string>
     <string name="endpoint_name_hint">ör. Ev Ollama</string>

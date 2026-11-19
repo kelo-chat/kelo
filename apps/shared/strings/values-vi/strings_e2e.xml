@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">Hãy kết nối lại điện thoại này</string>
     <string name="e2e_key_changed_body">Khóa mã hóa của máy chủ Kelo đã thay đổi, nên điện thoại này không thể kiểm tra đó có thật là máy chủ của bạn. Hãy quét mã QR kết nối mới từ Của tôi → Thiết bị của tôi trên thiết bị khác, hoặc từ máy chủ.</string>

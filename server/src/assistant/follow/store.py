@@ -55,6 +55,12 @@ CREATE TABLE IF NOT EXISTS follow_readings (
     detail TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_follow_readings_check ON follow_readings(check_id, at);
+CREATE TABLE IF NOT EXISTS follow_removed (
+    key TEXT NOT NULL,
+    starts_at REAL NOT NULL,
+    removed_at REAL NOT NULL,
+    PRIMARY KEY (key, starts_at)
+);
 CREATE TABLE IF NOT EXISTS follow_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,
@@ -177,6 +183,25 @@ class FollowStore:
             self._run("DELETE FROM follow_readings WHERE check_id = ?", (ch["id"],))
         self._run("DELETE FROM follow_checks WHERE item_key = ?", (key,))
         self._run("DELETE FROM follow_items WHERE key = ?", (key,))
+
+    def remove_item(self, key: str) -> bool:
+        """The owner takes the item off the list for good: it and its checks go, and its keys (and its aliases') are tombstoned so
+        the calendar and the nightly look-back do not put it back. Returns False for an unknown key."""
+        it = self.get_item(key)
+        if it is None:
+            return False
+        now = self.clock()
+        for k in [key, *it.get("aliases", [])]:
+            self._run("INSERT OR REPLACE INTO follow_removed(key, starts_at, removed_at) VALUES(?, ?, ?)",
+                      (k, float(it["starts_at"]), now))
+        self.delete_item(key)
+        return True
+
+    def is_removed(self, key: str, starts_at: float) -> bool:
+        """True when the owner removed this key for this start time. A calendar event that moved (another start time) is new again;
+        a start within ten minutes is the same thing (the same tolerance as items.same_thing)."""
+        row = self._one("SELECT 1 AS hit FROM follow_removed WHERE key = ? AND ABS(starts_at - ?) <= 600", (key, float(starts_at)))
+        return row is not None
 
     def _history(self, key: str) -> int:
         row = self._one("SELECT (SELECT COUNT(*) FROM follow_checks WHERE item_key = ?) + "

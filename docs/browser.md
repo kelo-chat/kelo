@@ -6,7 +6,7 @@ explains how that browser is fenced off from your home network, how it is set up
 
 > Who drives the browser (2026-11-17): the chat does not click or type on websites. The tools below that act on a page (click, type, drag,
 > upload, login, look, human check, ...) belong to a background job of kind browser (`delegate`); the chat keeps `browser_open`, `browser_read`,
-> `browser_view`, the download tools, `browser_site_state` and `browser_forget_site`. Switch `ASSISTANT_BROWSER_WORKER=0` gives the chat every
+> the download tools, `browser_site_state` and `browser_forget_site`. Switch `ASSISTANT_BROWSER_WORKER=0` gives the chat every
 > tool again; see [browser-workers.md](browser-workers.md).
 
 > Browsing can also go out through your own VPN or proxy (Connectors → Network): see [vpn.md](vpn.md). The LAN block below stays in force.
@@ -53,7 +53,7 @@ Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
   component updates, metrics, feedback, sign-in and sync off; password manager and leak detection off (the vault handles logins);
   address/card autofill off; spelling service, translate, search suggestions, media router (LAN cast discovery) off; notifications
   set to **ask** (`DefaultNotificationsSetting: 3`: a site's permission reads "default", like a normal Chrome; nobody answers the
-  prompt, so no site is ever granted); location, sensors, USB/serial/Bluetooth/HID and local fonts denied by default; PDFs open in the browser (`AlwaysOpenPdfExternally:
+  prompt, so no site is ever granted); location and sensors and local fonts set to **ask** (stock Chrome; nobody answers, so nothing is granted); USB/serial/Bluetooth/HID denied (a grant could expose the host's devices); PDFs open in the browser (`AlwaysOpenPdfExternally:
   false`) and nothing asks for a download folder; Google update/variations/autofill/optimization hosts blocked (also refused by the proxy).
   Check it at `chrome://policy` in a tab.
 - **Language and time zone**: `BROWSER_LANG` (default `ko-KR`) sets `--lang` and `--accept-lang` (`ko-KR,ko,en-US,en`): what sites see in
@@ -66,32 +66,69 @@ Windows) and on Linux, and all containers keep `cap_drop: [ALL]`.
   - `BROWSER=chrome` (this server): **real Google Chrome stable**, installed from Google's signed apt repository
     (`dl.google.com/linux/chrome/deb`). Google publishes it for **linux/amd64 and, since mid-2026, linux/arm64** (Apple-silicon Docker
     Desktop runs arm64), checked 2026-11-08: both architectures carry `google-chrome-stable` 157.0.8103.38. Nothing about its identity is
-    changed; it simply is Chrome. The managed policy is installed to `/etc/opt/chrome/policies/managed/` (verified in `chrome://policy`
+    changed: it states Linux, as it does on any Linux desktop (the stated OS is the machine's own, see "Identity" below). The managed policy is installed to `/etc/opt/chrome/policies/managed/` (verified in `chrome://policy`
     and by `ERR_BLOCKED_BY_ADMINISTRATOR` on a blocklisted host). Built on the user's own machine; never publish an image built this way.
     On an architecture Google does not build for, the image falls back to Chromium (next point) instead of failing.
   - `BROWSER=chromium` (the redistributable default, or the fallback): Debian's Chromium, same engine, presented as the **matching
-    Google Chrome release**. The entrypoint passes `--user-agent` (Chrome's reduced Linux string, `Mozilla/5.0 (X11; Linux x86_64)
-    AppleWebKit/537.36 (KHTML, like Gecko) Chrome/<major>.0.0.0 Safari/537.36`, the same on x86_64 and arm64, no "Chromium"), and
+    Google Chrome release**. The entrypoint passes `--user-agent` (Google Chrome's reduced Linux string, `Mozilla/5.0 (X11; Linux x86_64)
+    AppleWebKit/537.36 (KHTML, like Gecko) Chrome/<major>.0.0.0 Safari/537.36`, no "Chromium"), and
     `assistant/browser_identity.py` runs next to the browser: one DevTools connection that auto-attaches (flattened, paused until set) to
     every page, popup, new tab, cross-site iframe, dedicated/shared/service worker and worklet, and applies
     `Emulation.setUserAgentOverride` (`Network.` for workers) with `userAgentMetadata`: brands `Google Chrome` / `Chromium` / Chrome's
     GREASE brand in Chrome's own seeded order and version (e.g. M156 `"Not:A-Brand";v="8", "Chromium";v="156", "Google Chrome";v="156"`,
-    M157 `"Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157"`), the full version list, platform `Linux`, empty platform
-    version and model, the machine's architecture/bitness (`arm`/`x86`, `64`), not mobile, `Desktop`. So `navigator.userAgent`,
+    M157 `"Not-A.Brand";v="99", "Google Chrome";v="157", "Chromium";v="157"`), the full version list, platform `Linux` (no platform
+    version), the machine's architecture/bitness (`arm`/`x86`, `64`), not mobile, `Desktop`. (With the Chrome OS switch on, see "Identity"
+    below, the platform is `Chrome OS` with that milestone's platform version from `CHROME_OS_PLATFORM_VERSIONS`.) So `navigator.userAgent`,
     `navigator.userAgentData` (incl. `getHighEntropyValues`) and the `User-Agent` / `Sec-CH-UA*` request headers all say the same Chrome.
     Known gap: a DevTools client that creates a tab *directly at a URL* (`Target.createTarget` with a URL) sends that first request with
     Chromium's own brand list (the UA string is still right); Kelo never opens tabs that way (Playwright opens `about:blank` first).
   - Both: headful on a 1440×900 screen (Xvnc, kiosk window), no "Headless" anywhere, `navigator.webdriver` `false` (Chrome only sets it with
     `--enable-automation`/headless, which are not used), language and time zone are the user's own (below).
-- **WebGL and notifications (2026-11-15)**: the browser has a WebGL context like a desktop Chrome without a GPU: the entrypoint passes
-  `--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist` (software GL, the renderer string is SwiftShader's).
-  Notifications are "ask" by policy, so a site reads `default`/`prompt` and never `denied`. These are generic, for every site; no site
-  is named anywhere. Measured on the image (Chromium 156, arm64): WebGL 1 and WebGL 2 both give a context; the unmasked renderer is
-  `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device …), SwiftShader driver)`. A blank `about:blank` tab still reads "denied" (an opaque
-  origin); a real site reads "default". Before the change: no WebGL context at all, "denied" everywhere.
-- **What is deliberately not done**: no canvas, audio, font, screen or timing noise, no WebGL value faked, no hiding of DevTools, no other fingerprint
-  forging. The only goal is that the browser's identity is consistently "Chrome" everywhere a site can look; consistency matters more than
-  tricks, and the browser stays honest about everything else (it is a Linux desktop Chrome, which is what it really is).
+- **Identity (2026-11-18; one view since 2026-11-19, `assistant/browser_devices.py`)**: a site can read many values about the browser, and
+  every one has to agree with every other. The browser has **one view, the desktop one**: no mobile (phone) view, no phone device emulation,
+  no phone identity anywhere (owner decision 2026-11-19). `browser_open` takes no `view`, and there is no tool to switch a view.
+  - **Desktop = the truth, stated as the machine's own OS (Linux).** Google Chrome on this server's own CPU (`x86_64` or `arm64`): the
+    User-Agent and the client hints say Linux, as they do on any Linux desktop, so nothing the browser states is overridden. The CPU, the
+    language, the time zone, the GPU and the rest are the machine's own. No script runs in a tab.
+    **Chrome OS switch (off).** `browser_identity.STATED_OS = "chromeos"` states a Chromebook instead: the User-Agent `X11; CrOS x86_64
+    14541.0.0`, client hints platform `Chrome OS` with the platform version of the milestone (`CHROME_OS_PLATFORM_VERSIONS`), and a
+    milestone with no row keeps Linux. It was tried on 2026-11-18 because some sites were thought to refuse desktop Linux by name. A
+    check on 2026-11-19 (the reference agent's Coupang chat, kelo-agents reviews of 2026-11-19) found that a signed-out Linux Chrome on a server is refused by
+    Coupang, and a signed-in Google Chrome that states Linux passes: sign-in decides, not the stated OS. So Linux is stated again. The
+    switch stays for a site that does depend on it. `navigator.platform` is
+    `Linux x86_64` in both cases, which Chrome OS reports too. Two engine settings make the truth look like an ordinary desktop: the entrypoint declares a mouse
+    (`--blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2`, so `(pointer: fine)` and
+    `(hover: hover)` hold), and `LANGUAGE` is set from `BROWSER_LANG` (`ko-KR` -> `ko_KR:ko`), so Chrome's own locale (Intl) matches the
+    language the pages are given. Location asks (`DefaultGeolocationSetting` 3), like notifications: nobody answers, so nothing is granted.
+    WebGL is SwiftShader's (software GL in the container): the renderer name, the parameters and the rendered output all say so. A GPU
+    name that is not theirs is not faked (the desktop's GPU name is then the truth, not a claim). Where the host has a real GPU render node
+    (`/dev/dri/renderD*`), the installer passes it in (`tools/gpu_override.py` writes `compose.override.yml`: the device and its
+    render group for `browser` and `work-browser`; no node, no file; a file of the owner's own is never touched) and the browser
+    entrypoint then drops the SwiftShader flags, so Chrome uses the host's driver and its real name. A Mac has no such node.
+    The installer's hook is not run on a live stack from this card. A permission the browser denies (serial, USB, HID) reads
+    `denied` in `navigator.permissions` where a stock Chrome says `prompt`: a small, chosen difference.
+  - **Input is the mouse, as a person's.** A click, a type and a look use the mouse (`Input.dispatchMouseEvent`); an element out of view is
+    brought into view with the wheel (`humanize.bring_into_view`) before the covered check. Nothing scrolls the page by script first.
+  - **The covered check does not scroll.** `COVERED_JS` only reads the element's centre; the element is brought into view first, as
+    above.
+  - **The frames and workers of a tab** (`assistant/tools/child_targets.py`) keep the tab's language: a cross-site frame and a dedicated,
+    shared or service worker of a tab in another language get the browser's own identity with that tab's Accept-Language and locale; a
+    child of a tab without a language is only resumed.
+  - **The work browser's frames and workers** are covered like the main browser's: its own DevTools connection (`work_connected`, started
+    on each new connection of the work browser).
+  - Chromium builds (`BROWSER=chromium`, below) keep `browser_identity.py`: the same desktop identity, with the real CPU architecture.
+  - **Refusals (2026-11-18, card p-browser-chromeos).** A site that refuses the browser is not tried again for 6 hours (per registrable
+    site, for the whole server; the browser says when it may try again). Nothing is retried automatically, and no script of a site is
+    blocked or changed to get past a refusal. The pauses are kept in memory (a server restart
+    clears them). The owner lists them with `GET /api/browser/refusal-pauses` and clears one with `DELETE /api/browser/refusal-pauses/{site}`;
+    there is no settings screen for them yet.
+- **Notifications (2026-11-15)**: "ask" by policy, so a site reads `default` and never `denied`. Generic, for every site; no site is named.
+- **Not done yet (open, from the 2026-11-18 card)**: the live identity check (`tools/identity_check.py`) is not written or run; the
+  per-user language and time zone (the app's own setting) are not in; the take-over size still uses the
+  owner's screen at dpr 1; the data-kelo-* marks in the page are not removed; no WebGL per-site experiment has been run.
+- **What is deliberately not done**: no canvas, audio, font, screen or timing noise; no desktop GPU name faked; no hiding of DevTools; no
+  other fingerprint forging; no evasion (no solver, no cookie-less contexts). The browser stays honest about everything it is: a Chrome
+  presenting as the Linux desktop it runs on.
 - **How it was checked** (2026-11-08, linux/arm64, local test page and a tiny local HTTP server inside the container, no external sites):
   the existing tab, a new tab, a `window.open` popup, a cross-site iframe, a dedicated worker and a service worker all reported the same
   `navigator.userAgent`, brands and high-entropy values, and every request carried the matching `User-Agent`, `Sec-CH-UA`,
@@ -156,12 +193,32 @@ owner's chat tabs and the purchase sign-in stay in the main browser.
 
 - Which tabs: every tab whose key starts with `schedule:` or `task:` (schedules, watchers and their site tabs, the checklist, Work-page
   tasks and jobs handed off from a chat). Chat tabs (`owner`, a device id) and `buy:` tabs stay in the main browser (`work_browser.work_tab`).
-- Each work tab has a context of its own in the work browser. Opening it copies every cookie of the main browser into that context (the
-  sign-in copy, one way, in memory). A site's local storage is copied when the tab first opens that site, from a main-browser page that is
-  already open; with none open, only the cookies are there.
-- When the work tab closes, the cookies of the sites the job signed in to are copied back to the main browser (the sign-in carry-back):
-  a site signed in by the vault login, or by the owner's own hands on that tab. Not copied back while a main-browser tab shows that site.
-  Cookies the job changed on other sites never reach the main browser.
+- Each work tab has a context of its own in the work browser, and it starts empty. A site's sign-in (its cookies, and the keys of its local
+  storage) is copied in from the owner's browser right before the tab's first document request to that site, once per site and tab
+  (`SEED_PER_SITE`; the hook is a context route plus a DevTools `Fetch` pause, so a redirect to another host is seeded too). A copy that
+  fails is said on the tab's next reading, and the page then loads without it. Only the sites a task goes to are copied, never the whole jar.
+- When the work tab closes, what it changed on every site it touched goes back to the owner's browser, value by value: a changed or new
+  cookie or storage key is written only where the owner's browser still holds the value the tab started from (compare-and-set). A value the
+  owner changed meanwhile is kept; a deletion is never written back, so a job that signs out never signs the owner out. Two tabs on one site:
+  the first to close wins. The log has counts only (written, left), never a value.
+- Research jobs (`kind: research`) browse signed out: their tab starts empty, nothing is copied in and nothing is written back.
+- The owner's browser is set to restore the last session (`session.restore_on_startup = 1` in its profile, written by `entrypoint.sh`; the
+  saved tabs are dropped so none reopen), because Chrome keeps a session cookie ("stay signed in" off) only when it restores the last
+  session. The work browser never has it (it starts empty at every start). The live restart test
+  (`test_a_session_cookie_survives_a_restart_with_the_preference` in `test_work_seed_live.py`) is `xfail` while it fails with the
+  Chromium used for tests; whether the container's Google Chrome keeps the cookie is still to be checked on a real install.
+- A refusal of a signed-out browser leads to sign-in: when a site refuses and Kelo holds no sign-in for it, the pause note says so and a
+  15-minute sign-in pass opens (a saved login, then the owner's card, then take-over). A pass ends with its outcome; a site the owner signs
+  in to by hand ends its pause.
+- Kelo's browser sign-ins are listed in the Keychain (sites and times only, no cookie or value): `browser_sign_ins` rows written when a saved
+  login succeeds, when the owner signs in by hand during a take-over, and touched (at most every 10 minutes) when the browser goes to a
+  signed-in site. The owner can sign the browser out of a site there (`DELETE /api/browser/sign-ins/{site}`); a saved login stays.
+- Forced differences from the reference model, in one list:
+  **F1** one always-on owner browser; its profile is the store (no second copy on disk). **F2** compare-and-set write-back, no whole-unit
+  replacement, deletions not written. **F3** no lease wait: the store is the owner's live browser. **F4** cookies and local storage only
+  (no IndexedDB or file-system storage over stock Chrome). **F5** delegated chat jobs run in the work browser, not on the owner's screen.
+  **F6** a tool plus notes (`browser_login`) instead of a separate login agent. **F7** a named profile is sealed units in Kelo's database,
+  not a Chrome profile folder.
 - Nothing is kept: the work browser starts with an empty profile folder (`BROWSER_EPHEMERAL=1`), and its work contexts are closed with their
   tabs. A restart of the work browser or of the server ends its contexts; a resumed job opens a new work tab with a fresh copy.
 - No fallback: when the work browser does not answer, a work tab's step fails with a note saying so, and the job reports itself blocked.
@@ -177,6 +234,41 @@ owner's chat tabs and the purchase sign-in stay in the main browser.
   `WORK_BROWSER_CDP_PORT` (default 9225).
 - Known limit: a site that rotates its sign-in token on every use may sign the main browser out after a job used the copied cookie. The
   next chat on that site signs in again (the vault fills it in).
+
+## Task windows and tabs
+
+The chat has no web work (owner decision 2026-11-19): every piece of web work is a browser job, and a job has one window. A task key
+(`task:<job>`, `schedule:<id>`, a chat key for the tools the owner asks for) owns a window with its own tabs (`tools/task_window.py`):
+
+- A page the job's page opens (a link with a new window, `window.open`) is a new tab of the same window and becomes the active one.
+  Closing the active tab goes back to the tab that opened it (with a note), or to the last tab left. Closing the task closes all of its tabs.
+- `browser_tabs(action, tab?)`: `list`, `switch`, `new`, `close`. A page reading starts with `[tab t2 of 3: <title>]` when the window has more
+  than one tab. The last tab cannot be closed (it closes with the task). `new` is offered for work, private and profile windows; in the owner's
+  main browser Chrome opens the new tab in a window of its own (live check, headless), so it is not offered there.
+- Take-over, the VNC screen and the live picture show only the task's window. Switching a tab brings it to the front on the screen that
+  holds it and the live picture follows at once. While the owner holds the window, tab opens, switches and closes are written to the take-over
+  journal (tab id and host only). A page the owner opens by hand (Ctrl+T, a link, Ctrl+N) joins the held window; one nobody holds is closed.
+- The live view shows the window's tabs as one row of chips under the top bar (title cut to one line, the active one selected). While this
+  device holds the window a tap switches and a small mark closes a tab (`POST /api/browser/sessions/{key}/tabs/{tab}`, `{"action":
+  "activate" | "close"}`, only the holder; the last tab answers 409). While watching, the chips only show where the agent is.
+- Opening the same site twice for one request: a chat that already has a running job on a site continues that job (`worker_message`),
+  it does not open the site again.
+
+## Browser profiles
+
+The default profile is the owner's own browser: every task uses it unless a profile is given. A **named profile** is another account on the
+same site: a set of **site units** (cookies and local storage of one site) sealed in the server database with the vault's sealer
+(`browser_profiles`, `browser_profile_units`; a locked Keychain means no named profile can be opened, and the step says so).
+
+- A window is opened in one profile for its whole life. Its context starts empty and gets each site's unit right before the site's first
+  document request, like the default profile; at close what changed goes back to the unit with the same compare-and-set rule. The
+  owner's browser is never read for a profile window. A chat tab with a profile gets a context of its own in the main browser; a job's
+  tab uses the work browser. Buy tabs never take a profile; research jobs and private tabs ignore it.
+- Made only when the owner asks: `browser_profiles(action: list | create, label?)` in the chat, `browser_profile_delete(profile)` with a card;
+  `delegate(kind: browser, profile)` and `browser_open(url, profile)` (a window not open yet) use one. A resumed job opens in its profile again.
+- Keychain: a "Browser profiles" card lists each profile with the sites it is signed in to (never a cookie or a value); a profile's page
+  signs it out of a site (`DELETE /api/browser/profiles/{id}/sites/{site}`) or deletes it (`DELETE /api/browser/profiles/{id}`). There is
+  no create button: profiles are made by asking Kelo.
 
 ## Looking things up without the browser
 

@@ -495,6 +495,16 @@
     <string name="vault_saved_plain">已保存</string>
     <string name="vault_not_entered">尚未输入</string>
     <string name="vault_last_used">上次使用 %1$s</string>
+    <string name="vault_browser_title">Kelo 浏览器</string>
+    <string name="vault_browser_signed_in">%1$s 已登录 · 上次使用 %2$s</string>
+    <string name="vault_browser_sign_out">让 Kelo 浏览器退出此网站</string>
+    <string name="vault_browser_sign_out_confirm">Kelo 浏览器将退出 %1$s，并删除其 Cookie 和网站数据。已保存的登录保留。</string>
+    <string name="vault_browser_sites_title">未保存登录而已登录</string>
+    <string name="vault_profiles_title">浏览器配置文件</string>
+    <string name="vault_profile_sites">已登录 %1$s 个网站</string>
+    <string name="vault_profile_empty">尚未登录任何网站</string>
+    <string name="vault_profile_delete">删除此配置文件</string>
+    <string name="vault_profile_delete_confirm">配置文件 %1$s 及其中保存的所有登录将被删除。</string>
     <string name="vault_place">密钥放在 %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -930,6 +940,9 @@
     <string name="live_still_yours">您还在直接操作。您交还之前，智能体会一直等待。</string>
     <string name="live_screen_changed">画面已变化，请再点一次。</string>
     <string name="live_tab_closed">标签页已关闭，没有更多可看的内容。如果保存了最后的画面，会显示在下方。</string>
+    <string name="live_tabs_label">标签页</string>
+    <string name="live_tab_untitled">新标签页</string>
+    <string name="live_tab_close">关闭标签页</string>
     <string name="live_not_controller">你现在无法操控。请再次点按“接管”。</string>
     <string name="live_input_failed">浏览器无法执行该操作。</string>
     <string name="live_state_you">由你操控中</string>
@@ -955,6 +968,8 @@
     <string name="live_touch_missed">这次触摸没有传到页面</string>
     <string name="live_type_hint">要在页面上输入的文字</string>
     <string name="live_type_send">输入</string>
+    <string name="live_keyboard">键盘</string>
+    <string name="live_keyboard_desc">显示或隐藏网页键盘</string>
     <string name="live_type_hide">隐藏文字</string>
     <string name="live_type_show">显示文字</string>
     <string name="live_key_enter">Enter</string>
@@ -1110,7 +1125,6 @@
     <string name="work_now_empty">现在没有正在运行的任务。</string>
     <string name="work_asks">需要你回答</string>
     <string name="work_asks_empty">没有待回答的问题。</string>
-
     <string name="offers_title">Kelo 现在可以做的事</string>
     <string name="offer_start">交给它</string>
     <string name="offer_needs">需要：%1$s</string>
@@ -1232,6 +1246,7 @@
     <string name="work_watch_ev_fired">条件已满足</string>
     <string name="work_watch_ev_error">失败</string>
     <string name="work_watch_ev_check">已检查</string>
+    <string name="work_watch_ev_count">· 已检查 %1$d 次</string>
     <string name="work_watch_ev_on">已开启</string>
     <string name="work_watch_ev_off">已关闭</string>
     <string name="work_watch_delete">删除监测</string>
@@ -1274,14 +1289,17 @@
     <string name="heads_section">新消息提醒</string>
     <string name="heads_switch">让 Kelo 主动告诉你</string>
     <string name="heads_about">%1$s查看一次新邮件、即将到来的日程和截止日期，有你该知道的事就先告诉你。需要你回应的事（批准、问题）不受此设置影响，会在“%2$s”中另行提醒。</string>
+    <string name="heads_about_send_times">在提醒时间内，Kelo 每小时查看新邮件和已连接的服务，等不了的事会马上告诉你。其余的等到发送时间，那时 Kelo 还会一并查看对话、日历、目标、日程和记忆。一次发送不论带了多少内容，在“%1$s”里都只算一次。当天的次数用完后，只会告诉你等不了的事。需要你回应的事（批准、问题）不受此设置影响，会在“%2$s”中另行提醒。</string>
     <string name="heads_per_day">每天最多</string>
+    <string name="heads_send_times">发送时间：%1$s</string>
     <string name="heads_mail">同时查看新邮件</string>
     <string name="heads_mail_about">关闭后，此检查不会打开你的邮箱；日程和截止日期仍会照常检查。早间简报读取的邮箱在简报中单独设置。</string>
     <string name="heads_list_title">要留意的事</string>
-    <string name="heads_list_about">可选。Kelo 每次都会看一下，只有需要你留意时才告诉你。</string>
+    <string name="heads_list_about">可选。添加后 Kelo 会为它安排合适的时间：需要单独时间的会单独查看，其余的在发送时间一起查看。只有需要你留意时才告诉你。</string>
     <string name="heads_list_hint">例如：今天收到的快递通知</string>
     <string name="heads_list_add">添加</string>
     <string name="heads_list_remove">删除%1$s</string>
+    <string name="heads_list_own">单独查看中 · %1$s</string>
     <plurals name="heads_times">
         <item quantity="other">%d次</item>
     </plurals>
@@ -1489,7 +1507,6 @@
     <string name="comparison_recommended">推荐</string>
     <string name="comparison_choose">选择 %1$s</string>
     <string name="comparison_choose_say">就选 %1$s 吧</string>
-
     <string name="endpoint_add">添加端点</string>
     <string name="endpoint_name">名称</string>
     <string name="endpoint_name_hint">例如：家中 Ollama</string>

@@ -556,6 +556,14 @@ setup_updater() {
 # Without a terminal, the first install pulls the official images before Kelo starts (the updater's settings come with the pull).
 # If the pull fails, the images are built here instead, as before, with a warning. Only the Claude / agy containers are built
 # when the official images are used (their CLIs are never published).
+host_gpu() {   # a real GPU render node on this Linux host goes into the browser containers (tools/gpu_override.py); none -> nothing
+  [ -f "$KELO_HOME/tools/gpu_override.py" ] || return 0
+  local py
+  py="$(command -v python3 || true)"
+  [ -n "$py" ] || return 0
+  "$py" "$KELO_HOME/tools/gpu_override.py" "$KELO_HOME" >>"$LOG" 2>&1 || warn "$(say "Could not check the GPU for the browser (see the log)." "브라우저용 GPU를 확인하지 못했습니다 (로그 참고).")"
+}
+
 pull_first_install() {
   local pull_args=(--no-start --pull-release) pulled=0
   if [ -z "$KELO_VERSION" ]; then pulled=1
@@ -566,6 +574,7 @@ pull_first_install() {
   fi
   if [ "$pulled" = 1 ] && STEP_SOFT=1 run_updater_setup "$(say "Downloading the official Kelo images and checking their signatures" \
                                        "공식 Kelo 이미지를 내려받고 서명을 확인하는 중")" "${pull_args[@]}"; then
+    host_gpu
     if [ "$START" = 1 ]; then
       step "$(say "Starting Kelo" "Kelo 시작 중")" env BUILDKIT_PROGRESS=plain docker compose up -d --remove-orphans
     fi
@@ -576,6 +585,7 @@ pull_first_install() {
       warn "$(say "Could not get the official images${why:+: $why}. Building them here instead." \
                   "공식 이미지를 받지 못했습니다${why:+: $why}. 이 서버에서 직접 빌드합니다.")"
     fi
+    host_gpu
     if [ "$START" = 1 ]; then
       step "$(say "Building and starting Kelo (the first time takes a few minutes)" "Kelo를 빌드하고 시작하는 중 (처음에는 몇 분 걸립니다)")" \
         env BUILDKIT_PROGRESS=plain docker compose up -d --build --remove-orphans
@@ -794,6 +804,7 @@ main() {
     if [ "$FROM_RELEASE" = 1 ]; then
       pull_first_install
     elif [ "$START" = 1 ]; then
+      host_gpu
       step "$(say "Building and starting Kelo (the first time takes a few minutes)" "Kelo를 빌드하고 시작하는 중 (처음에는 몇 분 걸립니다)")" \
         env BUILDKIT_PROGRESS=plain docker compose up -d --build --remove-orphans
     fi

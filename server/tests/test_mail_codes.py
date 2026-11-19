@@ -157,8 +157,8 @@ class CodeLoginPage(Page):
                          body="Enter the verification code we sent to your email. Welcome nahyun.kim@example.com")
 
     async def evaluate(self, js, arg=None):
-        if "data-kelo-otp" in js:
-            return {"boxes": 1} if "boxes" in js else None
+        if "(sel) =>" in js:
+            return {"boxes": 1, "paths": ["#otp-0"]} if "boxes" in js else None
         return await super().evaluate(js)
 
 
@@ -187,7 +187,7 @@ async def test_a_code_from_the_sites_own_mail_is_typed_without_asking_and_never_
     caplog.set_level(logging.DEBUG)
     st, page, session, extras, tools, box = login_setup(tmp_path, [fresh()])
     out = await tools["browser_login"].handler({"name": "example"})
-    assert out.startswith("[sign-in result: verification_pending") and page.filled[-1] == ('[data-kelo-otp="0"]', CODE)
+    assert out.startswith("[sign-in result: verification_pending") and page.filled[-1] == ("#otp-0", CODE)
     assert "typed the sign-in code from no-reply@example.com mail" in out and "From example.com" in out
     assert CODE not in out and "A verification step is open (codes" not in out
     row = st.vault_log(1)[0]
@@ -212,7 +212,7 @@ async def test_find_login_code_types_without_a_card_during_the_agents_own_sign_i
     await tools["browser_login"].handler({"name": "example"})                                              # no mail yet: asked
     box.msgs = [fresh()]                                                                                     # it arrives
     out, card, extra = await run_code_tool(tools["find_login_code"], {"site": "example.com"})
-    assert card is None and extra is None and "without asking" in out and page.filled[-1] == ('[data-kelo-otp="0"]', CODE)
+    assert card is None and extra is None and "without asking" in out and page.filled[-1] == ("#otp-0", CODE)
 
 
 async def test_a_wrong_sender_or_another_site_is_never_typed_unasked(tmp_path):

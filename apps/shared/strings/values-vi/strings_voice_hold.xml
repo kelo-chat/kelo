@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- vi text for strings_voice_hold.xml (edit freely, keep the names) -->
+<!-- vi text for strings_voice_hold.xml (generated from values/strings_voice_hold.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="voice_hold_label">Nhấn giữ để nói</string>
     <string name="voice_hold_hint">Thả ra để xong, trượt ra ngoài để hủy</string>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- th text for strings_data.xml (edit freely, keep the names) -->
+<!-- th text for strings_data.xml (generated from values/strings_data.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="data_title">ข้อมูลของคุณ</string>
     <string name="data_intro">ดาวน์โหลดสำเนาสิ่งที่ Kelo เก็บเกี่ยวกับคุณ นำความทรงจำจากผู้ช่วยอื่นมา หรือเริ่มใหม่ตั้งแต่ต้น</string>

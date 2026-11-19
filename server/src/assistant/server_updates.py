@@ -44,6 +44,7 @@ from pydantic import BaseModel, ConfigDict
 
 from . import i18n
 from .i18n import t
+from .release import VERSION as RELEASE_VERSION
 from .release import newer
 
 CHECK_HOURS = 6
@@ -58,6 +59,7 @@ META_NOTED = "server_update:noted_job"
 META_SEEN = "server_update:seen_version"
 META_NIGHT = "server_update:auto_night"
 META_AUTO_JOB = "server_update:auto_job"
+OFFER_FRESH = 1800       # seconds: an older updater answer means the updater has stopped answering (no offer)
 
 
 class UpdaterDown(Exception):
@@ -183,11 +185,29 @@ class ServerUpdates:
     async def status(self) -> dict[str, Any]:
         return self.public(await self.raw())
 
+    def offer(self) -> str | None:
+        """The newer server release the apps may tell the owner about, from the updater's last answer (no network call): None unless
+        that answer is fresh (OFFER_FRESH), this copy runs release images (mode registry), its release is newer than this server's
+        version.json, no job runs, and automatic updates are off (the server then updates itself and tells the owner afterwards)."""
+        when, body = self._last
+        if not body or self.clock() - when > OFFER_FRESH or body.get("mode") != "registry" or self.auto():
+            return None
+        job = body.get("job") if isinstance(body.get("job"), dict) else {}
+        latest = (body.get("latest") or {}).get("version") if isinstance(body.get("latest"), dict) else None
+        mine = self.version() or ""
+        if job.get("state") == "running" or not body.get("update_available") or not isinstance(latest, str):
+            return None
+        if not (RELEASE_VERSION.fullmatch(latest) and RELEASE_VERSION.fullmatch(mine)) or not newer(latest, mine):
+            return None
+        return latest
+
     async def check(self) -> dict[str, Any]:
         try:
             code, body = await self.client.call("POST", "/check")
         except UpdaterDown:
             return self.public(None)
+        if code == 200:
+            self._last = (self.clock(), body)                 # a check is reflected at once (offer, the apps' header)
         return self.public(body if code == 200 else await self.raw())
 
     async def start(self, action: str, *, auto: bool = False) -> tuple[int, dict[str, Any]]:
@@ -231,7 +251,9 @@ class ServerUpdates:
         if now - float(raw.get("checked_at") or 0) >= CHECK_HOURS * 3600:
             try:
                 code, body = await self.client.call("POST", "/check")
-                raw = body if code == 200 else raw
+                if code == 200:
+                    raw = body
+                    self._last = (self.clock(), body)
             except UpdaterDown:
                 return done
         latest = (raw.get("latest") or {}).get("version")

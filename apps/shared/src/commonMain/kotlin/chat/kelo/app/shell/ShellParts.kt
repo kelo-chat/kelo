@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -62,7 +64,14 @@ private val BADGE_CREAM = Color(0xFFFFF3D6)
  * something waits for the owner. Tapping it opens the agent's page. On the desktop the line also shows under the name.
  */
 @Composable
-fun FloatingHeader(profile: Profile, ui: ShellUiState, onAgent: () -> Unit, modifier: Modifier = Modifier, onSearch: (() -> Unit)? = null) {
+fun FloatingHeader(
+    profile: Profile,
+    ui: ShellUiState,
+    onAgent: () -> Unit,
+    modifier: Modifier = Modifier,
+    onSearch: (() -> Unit)? = null,
+    onCall: (() -> Unit)? = null,
+) {
     val c = Kelo.colors
     val reduce = LocalReduceMotion.current
     val photo by LocalAppServices.current.agentAvatar.image.collectAsStateWithLifecycle()
@@ -75,9 +84,8 @@ fun FloatingHeader(profile: Profile, ui: ShellUiState, onAgent: () -> Unit, modi
     val secondLine = formFactor(phone = false, desktop = true)
     val second = if (secondLine) offlineWords ?: line else null
     // nothing behind the picture and the name: the page shows through everywhere else
-    // with the search button the header spans the page (the button sits at its end, the pill stays centred); without it the desktop
-    // header wraps the pill, as before
-    Box(modifier.then(if (onSearch != null) Modifier.fillMaxWidth() else formFactor(Modifier.fillMaxWidth(), Modifier))) {
+    // with the search button or call button the header spans the page; without it the desktop header wraps the pill
+    Box(modifier.then(if (onSearch != null || onCall != null) Modifier.fillMaxWidth() else formFactor(Modifier.fillMaxWidth(), Modifier))) {
         Column(
             Modifier.align(Alignment.TopCenter).then(formFactor(Modifier.fillMaxWidth(), Modifier)).statusBarsPadding().padding(top = 6.dp, bottom = formFactor(6.dp, 0.dp)),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -120,13 +128,27 @@ fun FloatingHeader(profile: Profile, ui: ShellUiState, onAgent: () -> Unit, modi
                 }
             }
         }
-        // the chat's search (on the chat tab only): a magnifier at the end of the header, under the status bar
-        if (onSearch != null) {
-            androidx.compose.material3.IconButton(
-                onClick = onSearch,
-                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 6.dp, end = 6.dp).pointerHoverIcon(PointerIcon.Hand),
+        if (onSearch != null || onCall != null) {
+            Row(
+                modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 6.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                androidx.compose.material3.Icon(KeloIcons.Search, contentDescription = string(Res.string.chat_search_open), tint = c.ink)
+                if (onCall != null) {
+                    androidx.compose.material3.IconButton(
+                        onClick = onCall,
+                        modifier = Modifier.testTag("chat.call").pointerHoverIcon(PointerIcon.Hand),
+                    ) {
+                        androidx.compose.material3.Icon(KeloIcons.Handset, contentDescription = string(Res.string.call_button), tint = c.ink)
+                    }
+                }
+                if (onSearch != null) {
+                    androidx.compose.material3.IconButton(
+                        onClick = onSearch,
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+                    ) {
+                        androidx.compose.material3.Icon(KeloIcons.Search, contentDescription = string(Res.string.chat_search_open), tint = c.ink)
+                    }
+                }
             }
         }
     }

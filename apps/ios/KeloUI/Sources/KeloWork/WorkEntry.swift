@@ -143,6 +143,7 @@ struct WorkTimeline: View {
     @Environment(AppModel.self) private var app
     @State private var filter: PastFilter = .all
     @State private var showPaused = false
+    @State private var showStoppedFollow = false
     @State private var openFollow: String?
     @Environment(\.kelo) private var c
 
@@ -191,12 +192,21 @@ struct WorkTimeline: View {
         }
     }
 
-    /// Kelo가 챙기는 일: hidden while nothing is followed.
+    /// Kelo가 챙기는 일: hidden while nothing is followed. The stopped ones are folded under one row (Android WorkRows).
     @ViewBuilder
     private var followSection: some View {
-        SectionTitle(L(R.string.follow_section_title), count: followModel.items.count).id("sec:follow")
-        ForEach(followModel.items, id: \.key) { item in
+        let split = FollowRules.splitStopped(followModel.items)
+        SectionTitle(L(R.string.follow_section_title), count: split.live.count).id("sec:follow")
+        ForEach(split.live, id: \.key) { item in
             FollowItemRow(item: item) { openFollow = item.key }
+        }
+        if !split.stopped.isEmpty {
+            FollowStoppedToggle(count: split.stopped.count, open: showStoppedFollow) { showStoppedFollow.toggle() }
+            if showStoppedFollow {
+                ForEach(split.stopped, id: \.key) { item in
+                    FollowItemRow(item: item) { openFollow = item.key }
+                }
+            }
         }
     }
 
@@ -314,7 +324,8 @@ struct WorkTimeline: View {
                         item: item,
                         onClose: { openFollow = nil },
                         onStop: { let k = item.key; Task { await followModel.stop(k) } },
-                        onReplan: { let k = item.key; Task { await followModel.replan(k) } }
+                        onReplan: { let k = item.key; Task { await followModel.replan(k) } },
+                        onRemove: { let k = item.key; Task { await followModel.remove(k) } }
                     )
                 }
             }

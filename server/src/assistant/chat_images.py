@@ -125,7 +125,7 @@ def browser_grab(session: Any) -> GrabFn:
                 box = await el.bounding_box()
                 if box:
                     crop = (box["x"], box["y"], box["width"], box["height"])
-            shoot = getattr(session, "shoot", None)   # the phone view keeps its screen (BrowserSession.shoot)
+            shoot = getattr(session, "shoot", None)   # a picture of the viewport (BrowserSession.shoot)
             raw = await (shoot(page, type="png", timeout=8_000) if shoot else page.screenshot(type="png", timeout=8_000))
         except Exception as e:  # noqa: BLE001 - the words go back to the agent
             return None, 0, 0, f"the screenshot failed: {str(e)[:160]}"

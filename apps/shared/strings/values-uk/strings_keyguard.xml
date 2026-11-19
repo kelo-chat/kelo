@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">Ваші паролі, ключі та картки відкриваються одним ключем. Зазвичай сервер зберігає його поруч із ними. Якщо ввімкнути це, ключ буде лише у вашого телефона, тож той, хто забере диск сервера, не зможе їх відкрити.</string>

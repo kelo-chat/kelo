@@ -113,3 +113,53 @@ def test_sensevoice_hint_values_are_valid_sherpa_values():
 def test_unsupported_language_has_no_model_and_no_hint(lang):
     assert vm.model_for(lang) is None
     assert vm.language_hint(lang) is None
+
+
+# ---- Kelo's voice (text to speech): the speech-out catalogue, kept apart from the speech-to-text CATALOG
+
+SUPER = "supertonic-3"
+
+
+def test_speech_model_is_pinned_and_sized_as_checked():
+    model = vm.SPEECH_OUT[SUPER]
+    assert model.kind == "supertonic" and model.license_name == "BigScience OpenRAIL-M"
+    assert model.size_bytes == 145_296_838
+    assert {f.name: f.size for f in model.files} == {
+        "duration_predictor.int8.onnx": 3_700_147,
+        "text_encoder.int8.onnx": 36_416_150,
+        "vector_estimator.int8.onnx": 78_400_833,
+        "vocoder.int8.onnx": 25_991_073,
+        "tts.json": 8_253,
+        "unicode_indexer.bin": 262_144,
+        "voice.bin": 517_168,
+        "LICENSE": 1_070,
+    }
+    for f in model.files:
+        assert "/resolve/cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4/" in f.url, f.url
+        assert "/main/" not in f.url and f.url.endswith("/" + f.name)
+        assert HEX64.match(f.sha256), f.name
+    assert "3cadd1ee6394adea1bd021217a0e650ede09a323" in model.license_url
+
+
+def test_stt_catalog_unchanged_and_all_has_both_lists():
+    assert set(vm.CATALOG) == {SENSE, PARAKEET}
+    assert set(vm.ALL) == {SENSE, PARAKEET, SUPER}
+
+
+@pytest.mark.parametrize(
+    "tag, lang",
+    [("en-US", "en"), ("pt-BR", "pt"), ("ko", "ko"), ("ko-KR", "ko"), ("zh-Hans", None), ("zh-Hant", None),
+     ("th", None), ("xx", None), ("", None)],
+)
+def test_speak_lang(tag, lang):
+    assert vm.speak_lang(tag) == lang
+
+
+def test_voices_order_female_then_male():
+    assert len(vm.VOICES) == 10
+    assert [v for v in vm.VOICES if v[1] == "female"] == [(i, "female", i + 1) for i in range(5)]
+    assert [v for v in vm.VOICES if v[1] == "male"] == [(i, "male", i - 4) for i in range(5, 10)]
+
+
+def test_speak_langs_are_the_thirty_one_checked_languages():
+    assert len(vm.SPEAK_LANGS) == 31 and "zh" not in vm.SPEAK_LANGS and "th" not in vm.SPEAK_LANGS

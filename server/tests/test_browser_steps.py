@@ -7,10 +7,8 @@ import pytest
 from assistant.agent import Tool, ToolResult, run_agent
 from assistant.agent.loop import ToolStopped
 from assistant.providers import Done, TextDelta, ToolCall
-from assistant.tools import browser as browser_mod
 from assistant.tools import live as live_mod
-from assistant.tools.browser import (STEP_SECONDS, TOOK_OVER_NOTE, BrowserControlled, BrowserSession, browser_owner, browser_tools,
-                                     cdp_send, point_tools)
+from assistant.tools.browser import STEP_SECONDS, TOOK_OVER_NOTE, BrowserControlled, BrowserSession, browser_owner, browser_tools, point_tools
 from assistant.tools.live import LiveHub, map_point
 
 from test_browser_live import META, FakeCDP, FakePage, make_session, settle
@@ -96,39 +94,10 @@ async def test_the_step_clock_stands_still_while_a_hand_over_waits():
 
 
 # 2
-async def test_a_click_whose_navigation_never_answers_goes_on_and_never_waits_for_unroute():
+async def test_a_navigation_that_never_answers_after_a_click_is_stopped_and_the_page_is_read_as_it_is():
     sess, cdps = make_session()
-    sess._view_cdp["owner"] = FakeCDP()
-    sess._mobile_id["owner"] = {"userAgent": "Mobile"}
-    unrouted = asyncio.Event()
-
-    class Ctx:
-        async def route(self, pattern, handler):
-            self.handler = handler
-
-        async def unroute(self, pattern, handler):
-            unrouted.set()
-            await asyncio.sleep(3600)   # Playwright: does not return while a routed navigation has no answer
-
-    ctx = Ctx()
-    page = FakePage()
-    page.context = ctx
     token = browser_owner.set("owner")
     try:
-        release = await sess._phone_windows("owner", page)
-        assert release is not None
-        before = asyncio.get_running_loop().time()
-        release()   # does not wait
-        assert asyncio.get_running_loop().time() - before < 0.1
-        await settle()
-        assert unrouted.is_set() and len(sess._background) == 1   # removed in the background
-        passed = []
-
-        class Route:
-            async def fallback(self, **kw):
-                passed.append(kw)
-        await ctx.handler(Route(), object())
-        assert passed == [{}]   # the released route only passes requests on
         # a navigation that does not answer after the click: stopped, page read as it is, with a note
         class TimeoutError(Exception):   # the driver's own name
             pass
@@ -142,37 +111,6 @@ async def test_a_click_whose_navigation_never_answers_goes_on_and_never_waits_fo
         assert rescued == ["owner"] and "still loading" in sess._notes["owner"][0]
     finally:
         browser_owner.reset(token)
-        for f in list(sess._background):
-            f.cancel()
-
-
-# 3
-async def test_a_touch_that_gets_no_answer_gives_up_in_time_lifts_the_finger_and_falls_back_to_the_mouse(monkeypatch):
-    monkeypatch.setattr(browser_mod, "CDP_SECONDS", 0.2)
-    sess, _ = make_session()
-    base = FakeCDP()
-    sess._view_cdp["owner"] = Hang(base, hang=("Input.dispatchTouchEvent",))
-
-    class Loc:
-        first = property(lambda self: self)
-
-        async def scroll_into_view_if_needed(self, **kw):
-            pass
-
-        async def bounding_box(self, **kw):
-            return {"x": 10, "y": 20, "width": 40, "height": 20}
-
-    class Owner:
-        def locator(self, sel):
-            return Loc()
-
-    start = asyncio.get_running_loop().time()
-    assert await sess._tap(Owner(), "#go", "owner") is False
-    assert asyncio.get_running_loop().time() - start < 2
-    kinds = [p["type"] for m, p in base.sent if m == "Input.dispatchTouchEvent"]
-    assert kinds[0] == "touchStart"
-    with pytest.raises(asyncio.TimeoutError):
-        await cdp_send(Hang(base), "Input.insertText", {"text": "x"}, 0.05)
 
 
 # 4
@@ -226,19 +164,18 @@ async def test_the_interrupt_cleans_up_the_page_before_the_owners_first_input():
 
 
 # 5
-async def test_the_owners_tap_on_a_blocked_page_is_answered_busy_in_time_with_touch_id_2(monkeypatch):
+async def test_the_owners_tap_on_a_blocked_page_is_answered_busy_in_time(monkeypatch):
     monkeypatch.setattr(live_mod, "INPUT_SECONDS", 0.3)
     sess, cdps = make_session()
-    sess._view_cdp["owner"] = object()   # the phone view (view() == "mobile")
     hub = LiveHub(sess, reaper=False)
     await hub.join("owner", "a")
     cdps[0].frame()
     await hub.wait_frame("owner", 0, 1.0)
     hub.take("owner", "1")
-    # a normal tap first: touch id 2
+    # a normal tap first: a mouse press at the point (the one view is the desktop)
     await hub.input("owner", "1", {"type": "tap", "x": 10, "y": 10})
-    starts = [p for p in cdps[0].methods("Input.dispatchTouchEvent") if p["type"] == "touchStart"]
-    assert starts[0]["touchPoints"][0]["id"] == live_mod.OWNER_TOUCH_ID == 2
+    assert [p for p in cdps[0].methods("Input.dispatchMouseEvent") if p["type"] == "mousePressed"]
+    assert not cdps[0].methods("Input.dispatchTouchEvent")
     hub.casts["owner"].cdp = hang = Hang(cdps[0])
     start = asyncio.get_running_loop().time()
     out = await hub.input("owner", "1", {"type": "tap", "x": 10, "y": 10})

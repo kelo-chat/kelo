@@ -19,9 +19,10 @@ data class UpdateCandidate(val version: String, val notes: String, val source: U
  * The popup that tells, at the start of the app and when it comes back after an hour away, that a newer app is out: at most once a
  * day (owner decision 2026-11-16). Whatever the answer (Update without really updating, Later, closed), the next showing is no earlier
  * than 24 hours after this one, until the app runs the new version. Where the news comes from follows the build: a store build (Play,
- * App Store, Store) takes it from the server's `app_update` ([chat.kelo.app.core.AppVersion.update]) and its action opens the store
- * page; a file build (sideload, desktop installer) takes it from the signed latest.json offer ([UpdateState.offer]) and its action is
- * the app's own updater.
+ * App Store, Store) asks its store first: the news is there only when the store itself offers a newer build ([UpdateState.offer], from
+ * Google Play for the Play build; [UpdateState.storeNewer] for the Microsoft Store copy), and the version it names comes from the server's `app_update` ([chat.kelo.app.core.AppVersion.update],
+ * which drops a version whose signed store row needs a newer server). Its action opens the store page. A file build (sideload, desktop
+ * installer) takes it from the signed latest.json offer ([UpdateState.offer]) and its action is the app's own updater.
  */
 object UpdatePopupRules {
     enum class Source { STORE, UPDATER }
@@ -36,7 +37,7 @@ object UpdatePopupRules {
         val running = state.running
         val v = serverVersion?.trim().orEmpty()
         val serverNewer = v.isNotEmpty() && (running.isBlank() || UpdateRules.newer(v, running))
-        if (store) return if (serverNewer) UpdateCandidate(v, "", Source.STORE) else null
+        if (store) return if (serverNewer && (state.offer != null || state.storeNewer)) UpdateCandidate(v, "", Source.STORE) else null
         state.offer?.let { r ->
             // the offer already passed UpdateRules.offer (newer than this build) and the release signature
             return UpdateCandidate(r.version, r.notes.trim().take(NOTES_MAX), Source.UPDATER)
@@ -72,6 +73,9 @@ class UpdatePopup(private val load: () -> String?, private val save: (String) ->
         _open.value = candidate
         return true
     }
+
+    /** When the popup last showed on this device (null: never); read-only, for the other notices that must wait for it. */
+    fun lastShownMs(): Long? = lastShown
 
     /** Whatever the answer: the popup goes away and stays away for 24 hours. */
     fun close() { _open.value = null; _armed.value = false }

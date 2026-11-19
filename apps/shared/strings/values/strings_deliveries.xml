@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Heads-up settings: how many messages Kelo starts a day, how many went out today, and the items it keeps for a later message (docs/proactive.md, Bundling) -->
+<!-- Heads-up settings: the items Kelo keeps for a later message ("N items held", the held list and why each waits; docs/proactive.md) -->
 <resources>
-    <string name="deliveries_label">Messages Kelo starts each day</string>
-    <string name="deliveries_about">Kelo gathers what it wants to tell you into this many messages a day. At 0 it sends only what cannot wait.</string>
-    <plurals name="deliveries_today">
-        <item quantity="one">Sent %d time today</item>
-        <item quantity="other">Sent %d times today</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="one">%d item held</item>
         <item quantity="other">%d items held</item>
@@ -16,7 +10,6 @@
     <string name="deliveries_held_about">Kelo keeps these for its next message. It looks at them again before sending and drops what no longer matters.</string>
     <string name="deliveries_held_empty">Nothing is held right now.</string>
     <string name="deliveries_held_until">Held until %1$s</string>
-    <string name="deliveries_why_slots">Waiting for the next message of the day</string>
     <string name="deliveries_why_cap">Not urgent enough to send more today</string>
     <string name="deliveries_why_reply">Waiting for your answer to the last message</string>
     <string name="deliveries_why_other">Waiting for a better time</string>

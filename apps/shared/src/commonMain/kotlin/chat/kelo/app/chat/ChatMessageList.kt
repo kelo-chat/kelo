@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import chat.kelo.app.ui.icons.KeloIcons
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -87,6 +89,23 @@ fun Messages(
     val rows = remember(state.items, state.secrets) { ChatReducer.foldTools(ChatReducer.withPending(state.items, state.secrets)) }.asReversed()
     // the messages that start a new stretch (first shown, a new day, or TimeLabels.GAP_MINUTES after the one before) get a time line
     val timed = remember(state.items) { TimeLabels.labelled(state.items, java.time.ZoneId.systemDefault()) }
+    val callMarks = remember(state.items) {
+        val marks = mutableSetOf<String>()
+        var inCall = false
+        for (item in state.items) {
+            if (item is ChatItem.Msg) {
+                if (item.fromCall) {
+                    if (!inCall) {
+                        marks.add(item.key)
+                        inCall = true
+                    }
+                } else {
+                    inCall = false
+                }
+            }
+        }
+        marks
+    }
     val timeLabeler = rememberTimeLabeler()
     val top = headerHeight()
     val scope = rememberCoroutineScope()
@@ -302,6 +321,7 @@ fun Messages(
                     when (item) {
                         is ChatItem.Msg -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             if (item.key in timed) TimeLine(timeLabeler.label(item.at))
+                            if (item.key in callMarks) CallMark()
                             if (item.mine) {
                                 // the files sent with it (pictures as thumbnails, files as chips); the app's own sentence is not shown
                                 if (item.files.isNotEmpty()) UserFiles(item.files, Modifier.fillMaxWidth().padding(start = 48.dp))
@@ -310,7 +330,7 @@ fun Messages(
                                     MessageFileRules.shownText(item.text, item.files, item.autoText) { lineWord.replace("\u0000", it) }
                                 }
                                 if (shown.isNotEmpty() || item.files.isEmpty()) BubbleMenu(actions, item.text, { a -> onAction(item, item.text, a) }) {
-                                    UserBubble(shown, item.reaction, actions) { a -> onAction(item, item.text, a) }
+                                    UserBubble(shown, item.reaction, actions, fromCall = item.fromCall) { a -> onAction(item, item.text, a) }
                                 }
                             }
                             else if (item.briefing != null) {
@@ -343,7 +363,7 @@ fun Messages(
                             } else {
                                 if (item.text.isNotEmpty() || item.images.isEmpty()) {
                                     BubbleMenu(actions, item.text, { a -> onAction(item, item.text, a) }) {
-                                        AssistantBubbles(item.text, streaming = state.busy && item.key == streamingKey, actions) { text, a -> onAction(item, text, a) }
+                                        AssistantBubbles(item.text, streaming = state.busy && item.key == streamingKey, actions, fromCall = item.fromCall) { text, a -> onAction(item, text, a) }
                                     }
                                 }
                                 item.images.forEach { img -> ChatPicture(img) }
@@ -447,6 +467,29 @@ private fun BubbleMenu(actions: List<MsgAction>, text: String, onAction: (MsgAct
         label to { if (a == MsgAction.COPY) clipboard.setText(AnnotatedString(text)) else onAction(a) }
     }
     MessageContextArea(items, content)
+}
+
+/** The small mark above the first bubble of each run of call messages. */
+@Composable
+fun CallMark(modifier: Modifier = Modifier) {
+    val c = Kelo.colors
+    Row(
+        modifier = modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.Icon(
+            KeloIcons.Handset,
+            contentDescription = null,
+            tint = c.muted,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            string(Res.string.call_mark),
+            style = MaterialTheme.typography.labelSmall,
+            color = c.muted,
+        )
+    }
 }
 
 /** How strong the highlight of a message opened from a search is at its start (it fades to nothing). */

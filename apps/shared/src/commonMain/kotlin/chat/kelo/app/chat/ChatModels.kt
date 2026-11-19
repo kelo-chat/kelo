@@ -24,6 +24,8 @@ data class StoredMessage(
     val attachments: List<MessageFile> = emptyList(),
     /** The text is the app's own "read these" sentence: the bubble shows only [attachments] */
     @SerialName("auto_text") val autoText: Boolean = false,
+    /** Which path the message arrived through ("call" for voice call messages) */
+    val via: String = "",
 )
 
 /**

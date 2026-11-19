@@ -149,5 +149,5 @@ async def test_the_checklist_run_is_given_the_owners_rules_and_not_the_agents_no
     ch = Checklist(store, home, start, clock=lambda: 1_800_000_000.0, waking=lambda _t: True, switch=lambda: True, room=lambda: True,
                    pace=lambda: 1800.0, on_said=lambda _text: None)
     ch.update(text="# CHECKLIST.md\n\n- 새 메일 중 급한 것\n")
-    await ch.tick()
+    await ch.run()
     assert seen and "lunch menus" in seen[0] and "agent note" not in seen[0]

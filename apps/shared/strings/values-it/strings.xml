@@ -494,6 +494,16 @@
     <string name="vault_saved_plain">Salvato</string>
     <string name="vault_not_entered">Non ancora inserito</string>
     <string name="vault_last_used">Ultimo uso %1$s</string>
+    <string name="vault_browser_title">Browser di Kelo</string>
+    <string name="vault_browser_signed_in">Accesso %1$s · ultimo uso %2$s</string>
+    <string name="vault_browser_sign_out">Disconnetti il browser di Kelo da questo sito</string>
+    <string name="vault_browser_sign_out_confirm">Il browser di Kelo sarà disconnesso da %1$s e cookie e dati del sito verranno eliminati. Un accesso salvato resta.</string>
+    <string name="vault_browser_sites_title">Accesso senza un login salvato</string>
+    <string name="vault_profiles_title">Profili del browser</string>
+    <string name="vault_profile_sites">Accesso a %1$s siti</string>
+    <string name="vault_profile_empty">Nessun accesso ancora</string>
+    <string name="vault_profile_delete">Elimina questo profilo</string>
+    <string name="vault_profile_delete_confirm">Il profilo %1$s e tutti gli accessi conservati al suo interno saranno eliminati.</string>
     <string name="vault_place">La chiave va in %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -950,6 +960,9 @@
     <string name="live_still_yours">Lo stai ancora controllando tu. L\'agente aspetta finché non lo restituisci.</string>
     <string name="live_screen_changed">La schermata è cambiata. Tocca di nuovo.</string>
     <string name="live_tab_closed">La scheda è stata chiusa, quindi non c\'è altro da vedere. Se l\'ultima schermata è stata salvata, appare qui sotto.</string>
+    <string name="live_tabs_label">Schede</string>
+    <string name="live_tab_untitled">Nuova scheda</string>
+    <string name="live_tab_close">Chiudi scheda</string>
     <string name="live_not_controller">Al momento non puoi controllarla. Tocca di nuovo Prendi il controllo.</string>
     <string name="live_input_failed">Il browser non è riuscito a farlo.</string>
     <string name="live_state_you">Il controllo è tuo</string>
@@ -977,6 +990,8 @@
     <string name="live_touch_missed">Il tocco non è arrivato alla pagina</string>
     <string name="live_type_hint">Testo da scrivere nella pagina</string>
     <string name="live_type_send">Scrivi</string>
+    <string name="live_keyboard">Tastiera</string>
+    <string name="live_keyboard_desc">Mostra o nascondi la tastiera per la pagina</string>
     <string name="live_type_hide">Nascondi testo</string>
     <string name="live_type_show">Mostra testo</string>
     <string name="live_key_enter">Invio</string>
@@ -1154,7 +1169,6 @@
     <string name="work_now_empty">Al momento non è in corso nulla.</string>
     <string name="work_asks">Serve la tua risposta</string>
     <string name="work_asks_empty">Nessuna domanda in attesa.</string>
-
     <string name="offers_title">Kelo può farlo adesso</string>
     <string name="offer_start">Affida</string>
     <string name="offer_needs">Richiede: %1$s</string>
@@ -1284,6 +1298,7 @@
     <string name="work_watch_ev_fired">Condizione soddisfatta</string>
     <string name="work_watch_ev_error">Non riuscito</string>
     <string name="work_watch_ev_check">Controllato</string>
+    <string name="work_watch_ev_count">· Controllato %1$d volte</string>
     <string name="work_watch_ev_on">Attivato</string>
     <string name="work_watch_ev_off">Disattivato</string>
     <string name="work_watch_delete">Elimina monitoraggio</string>
@@ -1332,14 +1347,17 @@
     <string name="heads_section">Avvisi di novità</string>
     <string name="heads_switch">Kelo ti avvisa per primo</string>
     <string name="heads_about">%1$s Kelo controlla la nuova posta, gli eventi in arrivo e le scadenze, e ti avvisa per primo se c’è qualcosa da sapere. Ciò a cui devi rispondere (approvazioni, domande) ti viene richiesto di nuovo in «%2$s», indipendentemente da questa impostazione.</string>
+    <string name="heads_about_send_times">Negli orari dei messaggi, Kelo controlla ogni ora la nuova posta e i servizi collegati, e ti avvisa subito di ciò che non può aspettare. Il resto aspetta gli orari di invio: allora Kelo guarda anche conversazioni, calendario, obiettivi, programmi e memoria. Un invio conta una volta sola in «%1$s», qualunque cosa contenga. Esauriti quelli del giorno, ti arriva solo ciò che non può aspettare. Ciò a cui devi rispondere (approvazioni, domande) ti viene richiesto di nuovo in «%2$s», indipendentemente da questa impostazione.</string>
     <string name="heads_per_day">Al massimo al giorno</string>
+    <string name="heads_send_times">Orari di invio: %1$s</string>
     <string name="heads_mail">Controlla anche la nuova posta</string>
     <string name="heads_mail_about">Disattivato: Kelo non apre le tue caselle di posta per questo controllo; gli eventi e le scadenze vengono comunque controllati. Il riepilogo del mattino sceglie le proprie caselle.</string>
     <string name="heads_list_title">Cose da tenere d\'occhio</string>
-    <string name="heads_list_about">Facoltativo. Kelo le controlla ogni volta e ti avvisa solo se qualcosa richiede attenzione.</string>
+    <string name="heads_list_about">Facoltativo. Quando ne aggiungi una, Kelo le dà il momento giusto: un controllo a parte se serve, altrimenti uno sguardo ai tuoi orari di invio. Ti avvisa solo se qualcosa richiede attenzione.</string>
     <string name="heads_list_hint">es. avvisi di consegna di oggi</string>
     <string name="heads_list_add">Aggiungi</string>
     <string name="heads_list_remove">Rimuovi %1$s</string>
+    <string name="heads_list_own">Controllato a parte · %1$s</string>
     <plurals name="heads_times">
         <item quantity="one">%d volta</item>
         <item quantity="many">%d volte</item>
@@ -1559,7 +1577,6 @@
     <string name="comparison_recommended">Consigliato</string>
     <string name="comparison_choose">Scegli %1$s</string>
     <string name="comparison_choose_say">Procediamo con %1$s</string>
-
     <string name="endpoint_add">Aggiungi endpoint</string>
     <string name="endpoint_name">Nome</string>
     <string name="endpoint_name_hint">es. Ollama di casa</string>

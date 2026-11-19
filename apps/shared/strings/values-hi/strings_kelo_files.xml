@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Kelo की फ़ाइलें</string>
     <string name="files_about">Kelo अपने लिए जो लिखता है: आप कौन हैं, उसकी याददाश्त, उसके नोट्स। आप इन्हें पढ़, बदल और मिटा सकते हैं। अपलोड और नतीजों के अपने पेज हैं।</string>

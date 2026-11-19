@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">عندما يبدأ يومي (مُتعلَّم)</string>
     <string name="briefing_when_fixed">في وقت أختاره</string>
     <string name="briefing_fixed_at">كل يوم الساعة %1$s</string>
+    <string name="briefing_fixed_from">من %1$s، حين تبدأ ساعات التواصل</string>
     <string name="briefing_offset">بعد بدء اليوم بكم</string>
     <string name="briefing_offset_none">مع البداية مباشرة</string>
     <string name="briefing_offset_min">بعد %1$d دقيقة</string>

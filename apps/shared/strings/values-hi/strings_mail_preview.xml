@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_mail_preview.xml (generated from values/strings_mail_preview.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- The designed mail preview in the approval card (docs/mail-html.md): the card's title, loading, failure and link texts -->
     <string name="mail_preview_title">डिज़ाइन की गई मेल</string>
     <string name="mail_preview_open">बड़ा देखें</string>
     <string name="mail_preview_loading">पूर्वावलोकन लोड हो रहा है…</string>

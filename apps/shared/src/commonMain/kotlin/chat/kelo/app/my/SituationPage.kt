@@ -55,6 +55,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import org.jetbrains.compose.resources.StringResource
 
 /*
  * "What Kelo looked at": the hourly look's passes, what it read and what it did with each item (GET /api/proactive/research).
@@ -64,6 +65,17 @@ import kotlinx.serialization.Serializable
 /** A thing the look covers now: a section (kind "section", id = its code) or a connected service or phone item. [hourly]: read every hour. */
 @Serializable
 data class SituationLooked(val id: String = "", val name: String = "", val kind: String = "", val hourly: Boolean = false)
+
+/**
+ * A group of [SituationList.looks] (newer servers): when the things in [covers] are looked at. [whenCode] hourly | send | briefing |
+ * needed; [times] "HH:MM" (send: the send times of the contact window now or next; briefing: its time).
+ */
+@Serializable
+data class SituationLook(
+    @SerialName("when") val whenCode: String = "",
+    val times: List<String> = emptyList(),
+    val covers: List<SituationLooked> = emptyList(),
+)
 
 /** What one pass read from one source: [state] new | changed | same | not_due | off | failed | timeout | skipped. */
 @Serializable
@@ -88,6 +100,8 @@ data class SituationList(
     val research: Boolean = false,
     @SerialName("keep_days") val keepDays: Int = 90,
     @SerialName("looked_at") val lookedAt: List<SituationLooked> = emptyList(),
+    /** When each thing is looked at (newer servers); null from an older server: the page shows [lookedAt] as before. */
+    val looks: List<SituationLook>? = null,
     val passes: List<SituationPass> = emptyList(),
     @SerialName("next_before") val nextBefore: Long? = null,
 )
@@ -168,6 +182,24 @@ object SituationRules {
     /** Index in [SECTIONS] for a section, after every section for anything else (a stable sort keeps the server's order). */
     fun sectionRank(looked: SituationLooked): Int =
         if (looked.kind.trim() == "section") SECTIONS.indexOf(looked.id.trim()).let { if (it < 0) SECTIONS.size else it } else SECTIONS.size
+
+    enum class LookKind { HOURLY, SEND, BRIEFING, NEEDED, OTHER }
+
+    /** A group's code as a kind; a code this app does not know is [LookKind.OTHER] (left out). */
+    fun lookKind(code: String): LookKind = when (code.trim()) {
+        "hourly" -> LookKind.HOURLY
+        "send" -> LookKind.SEND
+        "briefing" -> LookKind.BRIEFING
+        "needed" -> LookKind.NEEDED
+        else -> LookKind.OTHER
+    }
+
+    /** The groups the page shows, in the server's order: a kind this app knows, with something in it. */
+    fun shownLooks(looks: List<SituationLook>): List<SituationLook> =
+        looks.filter { lookKind(it.whenCode) != LookKind.OTHER && it.covers.isNotEmpty() }
+
+    /** A group's times that are times ("HH:MM"), in the server's order. */
+    fun lookTimes(look: SituationLook): List<String> = look.times.filter { NotifySettingsRules.parseTime(it) != null }
 
     /** The local day of an epoch-seconds time, or null when there is no time. */
     fun dayOf(seconds: Double, zone: ZoneId = ZoneId.systemDefault()): LocalDate? =
@@ -267,7 +299,7 @@ internal fun SituationRow(onClick: () -> Unit) {
     }
 }
 
-/** The page: what Kelo looks at every hour, then its passes by day. Tapping a pass opens its detail. */
+/** The page: when Kelo looks at what, then its passes by day. Tapping a pass opens its detail. */
 @Composable
 fun SituationPage(onBack: () -> Unit) {
     val sessions = LocalAppServices.current.sessions
@@ -282,16 +314,21 @@ fun SituationPage(onBack: () -> Unit) {
             ui.missing -> MutedText(string(Res.string.notify_page_unavailable), small = true)
             list == null -> SkeletonRows(3)
             else -> {
-                val hourly = SituationRules.hourly(list.lookedAt)
-                val onDemand = SituationRules.onDemand(list.lookedAt)
-                if (hourly.isNotEmpty()) {
-                    SectionLabel(string(Res.string.situation_hourly_head))
-                    NameList(hourly.map { lookedName(it) })
-                }
-                if (onDemand.isNotEmpty()) {
-                    SectionLabel(string(Res.string.situation_read_when_needed_head))
-                    MutedText(string(Res.string.situation_read_when_needed_about), small = true, modifier = Modifier.padding(horizontal = 16.dp))
-                    NameList(onDemand.map { lookedName(it) })
+                val looks = list.looks
+                if (looks != null) {
+                    SituationRules.shownLooks(looks).forEach { LookGroup(it) }
+                } else {   // an older server: what it covers, as before
+                    val hourly = SituationRules.hourly(list.lookedAt)
+                    val onDemand = SituationRules.onDemand(list.lookedAt)
+                    if (hourly.isNotEmpty()) {
+                        SectionLabel(string(Res.string.situation_hourly_head))
+                        NameList(hourly.map { lookedName(it) })
+                    }
+                    if (onDemand.isNotEmpty()) {
+                        SectionLabel(string(Res.string.situation_read_when_needed_head))
+                        MutedText(string(Res.string.situation_read_when_needed_about), small = true, modifier = Modifier.padding(horizontal = 16.dp))
+                        NameList(onDemand.map { lookedName(it) })
+                    }
                 }
                 if (list.passes.isEmpty()) {
                     EmptyNote(string(Res.string.situation_empty))
@@ -392,18 +429,23 @@ private fun lookedName(looked: SituationLooked): String =
 private fun sourceName(source: SituationSource): String =
     if (SituationRules.isSection(source)) sectionName(source.id) else source.name.ifBlank { string(Res.string.situation_section_other) }
 
+/** The words of a section code (an unknown code is "Other"): the look's own sections and the briefing's. */
+internal fun sectionRes(code: String): StringResource = when (code.trim()) {
+    "conversation" -> Res.string.situation_section_conversation
+    "mail" -> Res.string.situation_section_mail
+    "calendar" -> Res.string.situation_section_calendar
+    "goals" -> Res.string.situation_section_goals
+    "schedules" -> Res.string.situation_section_schedules
+    "memory" -> Res.string.situation_section_memory
+    "corrections" -> Res.string.situation_section_corrections
+    "held" -> Res.string.deliveries_held_title
+    "weather" -> Res.string.briefing_weather
+    "missed" -> Res.string.briefing_missed
+    else -> Res.string.situation_section_other
+}
+
 @Composable
-private fun sectionName(code: String): String = string(
-    when (code.trim()) {
-        "conversation" -> Res.string.situation_section_conversation
-        "mail" -> Res.string.situation_section_mail
-        "calendar" -> Res.string.situation_section_calendar
-        "goals" -> Res.string.situation_section_goals
-        "schedules" -> Res.string.situation_section_schedules
-        "memory" -> Res.string.situation_section_memory
-        else -> Res.string.situation_section_other
-    },
-)
+private fun sectionName(code: String): String = string(sectionRes(code))
 
 /** One list of names in a bordered group (the covers of the hourly look, or the sources of a detail group). */
 @Composable
@@ -417,6 +459,31 @@ internal fun NameList(names: List<String>) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp))
         }
     }
+}
+
+/** One group of the page: its heading, its times and a note where it has them, then what is looked at (iPhone LookGroup). */
+@Composable
+internal fun LookGroup(look: SituationLook) {
+    val times = SituationRules.lookTimes(look).map { timeWords(it) }.joinToString(" · ")
+    val pad = Modifier.padding(horizontal = 16.dp)
+    when (SituationRules.lookKind(look.whenCode)) {
+        SituationRules.LookKind.HOURLY -> SectionLabel(string(Res.string.situation_hourly_head))
+        SituationRules.LookKind.SEND -> {
+            SectionLabel(string(Res.string.situation_send_head))
+            if (times.isNotEmpty()) MutedText(string(Res.string.heads_send_times, times), small = true, modifier = pad)
+            MutedText(string(Res.string.situation_send_about), small = true, modifier = pad)
+        }
+        SituationRules.LookKind.BRIEFING -> {
+            SectionLabel(string(Res.string.situation_briefing_head))
+            if (times.isNotEmpty()) MutedText(string(Res.string.situation_briefing_time, times), small = true, modifier = pad)
+        }
+        SituationRules.LookKind.NEEDED -> {
+            SectionLabel(string(Res.string.situation_read_when_needed_head))
+            MutedText(string(Res.string.situation_read_when_needed_about), small = true, modifier = pad)
+        }
+        SituationRules.LookKind.OTHER -> return
+    }
+    NameList(look.covers.map { lookedName(it) })
 }
 
 @Composable

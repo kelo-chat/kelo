@@ -5,106 +5,72 @@ import Speech
 import AVFoundation
 #endif
 
-/// The mic, left of 보내기 (Android voice/MicButton.kt): spoken words go into the field, recognised by the phone's own speech
-/// recognition (on the device when it can). Needs NSMicrophoneUsageDescription and NSSpeechRecognitionUsageDescription in the app's
-/// Info.plist. While it listens the header's character listens too. On a Mac build it is not shown.
+#if os(iOS)
+/// The mic, left of 보내기 (Android voice/MicButton.kt): spoken words go into the field, from the Kelo server's speech model or from the
+/// phone's own recognition (on the device when it can). While it listens the composer is the recording bar (ComposerVoice.swift), so the
+/// mic shows only when nothing records, and while a finger holds it (the hold keeps the composer). Needs NSMicrophoneUsageDescription
+/// and NSSpeechRecognitionUsageDescription in the app's Info.plist. On a Mac build it is not shown.
 struct MicButton: View {
-    @Binding var text: String
+    let voice: ComposerVoiceModel
 
     var body: some View {
-        #if os(iOS)
-        VoiceMicSwitch(text: $text)
-        #else
-        EmptyView()
-        #endif
+        VoiceMicSwitch(voice: voice)
     }
 }
 
-#if os(iOS)
 /// Picks the way from the server's voice view (DictationWay, the same table as Android): the Kelo server's speech model, or the
 /// phone's own recognizer. The first tap while the model is only offered asks 확인 / 취소 once (the tap goes on with the phone's
 /// recognizer; 취소 keeps it and the offer stays in My → 음성 입력).
 private struct VoiceMicSwitch: View {
-    @Binding var text: String
-    @Environment(AppModel.self) private var app
-    @State private var view: VoiceView?
-    @State private var dictation: ServerDictationModel?
+    let voice: ComposerVoiceModel
     @State private var asking = false
 
     var body: some View {
-        let way = DictationWay.pick(view, phoneRecognizer: true)
+        let way = DictationWay.pick(voice.view, phoneRecognizer: true)
         Group {
-            if way == .server, let dictation {
-                ServerMicButton(model: dictation)
+            if let ring = VoiceDownloadRing.of(voice.view) {
+                // the speech model downloads: the mic is a circle with the progress (a spinner when the server gives no number)
+                VoiceDownloadRingView(percent: ring.percent, label: L(R.string.voice_server_downloading, voice.view?.progress.map { Int(($0.done * 100) / max($0.total, 1)) } ?? 0))
+            } else if way == .server {
+                ServerMicButton(voice: voice)
             } else {
-                IOSMicButton(text: $text)
+                IOSMicButton(voice: voice)
                     .simultaneousGesture(TapGesture().onEnded {
                         if way == .offerThenPhone { asking = true }
                     })
             }
         }
-        .task { await refresh() }
-        .alert(L(R.string.voice_denied_title), isPresented: Binding(get: { dictation?.denied ?? false }, set: { dictation?.denied = $0 })) {
+        .task { await voice.refresh() }
+        .alert(L(R.string.voice_denied_title), isPresented: Binding(get: { voice.phoneDenied || voice.server.denied }, set: { if !$0 { voice.phoneDenied = false; voice.server.denied = false } })) {
             Button(L(R.string.open_settings)) { DeviceInfo.openAppSettings() }
             Button(L(R.string.close), role: .cancel) {}
         } message: { Text(L(R.string.voice_denied_body)) }
+        .alert(voice.phoneProblem ?? "", isPresented: Binding(get: { voice.phoneProblem != nil }, set: { if !$0 { voice.phoneProblem = nil } })) {
+            Button(L(R.string.close), role: .cancel) {}
+        }
         .alert(offerTitle, isPresented: $asking) {
-            Button(L(R.string.ok)) { answer(choose: true) }
-            Button(L(R.string.cancel), role: .cancel) { answer(choose: false) }
+            Button(L(R.string.ok)) { voice.answer(choose: true) }
+            Button(L(R.string.cancel), role: .cancel) { voice.answer(choose: false) }
         }
     }
 
     private var offerTitle: String {
-        L(R.string.voice_server_offer_body, view?.recommended?.name ?? "")
-    }
-
-    private func refresh() async {
-        if dictation == nil {
-            let model = ServerDictationModel(api: { app.api })
-            model.onText = { words in text = SpeechMerge.merge(SpeechMerge.anchor(text), spoken: words) }
-            dictation = model
-        }
-        while !Task.isCancelled {
-            guard let api = app.api else { view = nil; return }
-            if let fresh = try? await VoiceAPI.view(api, lang: appLanguageCode()) { view = fresh }
-            guard view?.state == "downloading" else { return }
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-        }
-    }
-
-    private func answer(choose: Bool) {
-        guard let api = app.api, let recommended = view?.recommended else { return }
-        Task {
-            if choose {
-                view = try? await VoiceAPI.choose(api, id: recommended.id)
-            } else {
-                view = try? await VoiceAPI.decline(api)
-            }
-        }
+        L(R.string.voice_server_offer_body, voice.view?.recommended?.name ?? "")
     }
 }
-#endif
 
-#if os(iOS)
+/// The phone's own recognizer as the mic: a tap starts, a hold dictates while the finger is down (HoldToTalk). Its state lives in the
+/// composer's voice model, so the bar keeps going when this button leaves the screen.
 private struct IOSMicButton: View {
-    @Binding var text: String
-    @Environment(AppModel.self) private var app
+    let voice: ComposerVoiceModel
     @Environment(\.kelo) private var c
-    @State private var speech = SpeechInput()
-    @State private var denied = false
-    @State private var problem: String?
     @State private var phase: HoldToTalk.Phase = .idle
     @State private var holdTimer: Task<Void, Never>?
-    /// What the field held when listening began, and whether the words still coming in are wanted (a slide off the button drops them).
-    @State private var anchor: SpeechMerge.Anchor?
-    @State private var run = DictationRun()
 
     private static let size: CGFloat = 40
 
-    /// One listening run: `dropped` once it was cancelled, so words that still arrive are ignored.
-    final class DictationRun { var dropped = false }
-
     var body: some View {
+        let speech = voice.speech
         ZStack {
             if speech.listening {
                 Circle().stroke((phase == .holdingAway ? c.dangerInk : c.accent).opacity(0.35), lineWidth: 3).scaleEffect(1 + speech.level * 0.35)
@@ -153,18 +119,11 @@ private struct IOSMicButton: View {
                     .accessibilityHidden(true)
             }
         }
-        .alert(L(R.string.voice_denied_title), isPresented: $denied) {
-            Button(L(R.string.open_settings)) { DeviceInfo.openAppSettings() }
-            Button(L(R.string.close), role: .cancel) {}
-        } message: { Text(L(R.string.voice_denied_body)) }
-        .alert(problem ?? "", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
-            Button(L(R.string.close), role: .cancel) {}
+        .onDisappear {
+            // the mic left the screen under a held finger: the hold ends and what was said goes into the field
+            holdTimer?.cancel(); holdTimer = nil
+            if phase.isHeld { voice.held = false; voice.finish(.field); phase = .idle }
         }
-        .onChange(of: speech.listening) { _, on in
-            app.activity.listening = on
-            if !on && phase.isHeld { phase = .idle }
-        }
-        .onDisappear { holdTimer?.cancel(); cancelDictation(); app.activity.listening = false }
     }
 
     private func apply(_ event: HoldToTalk.Event) {
@@ -172,54 +131,30 @@ private struct IOSMicButton: View {
         phase = step.phase
         switch step.action {
         case .tap: tap()
-        case .start: begin()
-        case .finish: speech.stop()
-        case .cancel: cancelDictation()
+        case .start:
+            voice.held = true
+            begin()
+        case .finish:
+            voice.held = false
+            voice.finish(.field)
+        case .cancel:
+            voice.held = false
+            voice.discard()
         case .none: break
         }
     }
 
     private func tap() {
-        if speech.listening { speech.stop(); return }
+        if voice.speech.listening { voice.finish(.field); return }
         begin()
     }
 
     private func begin() {
-        Task {
-            switch await SpeechInput.authorize() {
-            case .ok:
-                // the permission question may have taken the finger away: listening then goes on as after a tap
-                if !phase.isHeld { phase = .idle }
-                start()
-            case .denied: phase = .idle; denied = true
-            case .unavailable: phase = .idle; problem = L(R.string.voice_unavailable)
-            }
+        voice.phoneStart { started in
+            // the permission question may have taken the finger away: listening then goes on as after a tap
+            if !started { voice.held = false }
+            if !started || !phase.isHeld { phase = .idle }
         }
-    }
-
-    private func start() {
-        let thisRun = DictationRun()
-        run = thisRun
-        let a = SpeechMerge.anchor(text)
-        anchor = a
-        speech.start(language: appLanguageCode(), onWords: { words in
-            guard !thisRun.dropped else { return }
-            text = SpeechMerge.merge(a, spoken: words)
-        }, onEnd: { err in
-            problem = thisRun.dropped ? nil : err
-            anchor = nil
-            app.activity.listening = false
-        })
-        app.activity.listening = speech.listening
-    }
-
-    /// Sliding off the held mic: listening ends, what was heard is dropped and the field goes back to what it was.
-    private func cancelDictation() {
-        guard speech.listening || anchor != nil else { return }
-        run.dropped = true
-        if let a = anchor { text = SpeechMerge.merge(a, spoken: "") }
-        anchor = nil
-        speech.stop()
     }
 }
 

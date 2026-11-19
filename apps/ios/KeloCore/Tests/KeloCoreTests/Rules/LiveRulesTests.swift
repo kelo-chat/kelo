@@ -350,7 +350,7 @@ import Testing
 
     @Test func aStaleInputAnswerIsDroppedAndSaysSo() {
         let stale = LiveMessages.parse(#"{"type":"input_ok","input":"tap","ok":false,"busy":false,"stale":true}"#)
-        #expect(stale == .inputReply(InputReply(ok: false, stale: true)))
+        #expect(stale == .inputReply(InputReply(ok: false, stale: true, input: "tap")))
     }
 }
 

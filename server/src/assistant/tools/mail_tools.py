@@ -25,6 +25,11 @@ TRASH_ONE = N_("1 message in {folder}")
 TRASH_MANY = N_("{count} messages in {folder}")
 TRASH_SEARCH = N_("Search: {query}")
 TRASH_UNREAD = N_("unread only")
+# the approval card's words for the actions that stay in the mailbox (no count: they are never held; trash has its own, with the count)
+MAIL_WORDS = {"read": N_("Mark messages in {folder} as read"), "unread": N_("Mark messages in {folder} as unread"),
+              "flag": N_("Flag messages in {folder}"), "unflag": N_("Unflag messages in {folder}"),
+              "archive": N_("Archive messages in {folder}"), "move": N_("Move messages in {folder}"),
+              "trash": N_("Move messages in {folder} to the trash")}
 DONE_WORDS = {"read": "Marked {n} as read", "unread": "Marked {n} as unread", "flag": "Flagged {n}", "unflag": "Unflagged {n}",
               "archive": "Archived {n}", "move": "Moved {n}", "trash": "Moved {n}"}
 STATE_WORDS = {"read": "read", "unread": "unread", "flag": "flagged", "unflag": "unflagged", "archive": "archived"}
@@ -196,12 +201,13 @@ def mail_tools(mail: Mail) -> list[Tool]:
     async def update_describe(args: dict[str, Any]) -> str:
         plan = trash_batches.get(current_call.get())
         folder = str(args.get("folder") or "INBOX")
-        if plan is None:
-            return t(TRASH_MANY, count="?", folder=folder)
-        n = len(plan["uids"])
-        line = t(TRASH_ONE, folder=plan["folder"]) if n == 1 else t(TRASH_MANY, count=f"{n:,}", folder=plan["folder"])
-        if plan["subjects"]:
-            line += ": " + " · ".join(plan["subjects"])
+        if plan is None:   # not held (another action, or no batch found yet): the action's own words, no count
+            line = t(MAIL_WORDS.get(_action(args), MAIL_WORDS["trash"]), folder=folder)
+        else:
+            n = len(plan["uids"])
+            line = t(TRASH_ONE, folder=plan["folder"]) if n == 1 else t(TRASH_MANY, count=f"{n:,}", folder=plan["folder"])
+            if plan["subjects"]:
+                line += ": " + " · ".join(plan["subjects"])
         if args.get("query"):
             line += " · " + t(TRASH_SEARCH, query=str(args["query"])[:80])
         if args.get("unread"):
@@ -230,7 +236,7 @@ def mail_tools(mail: Mail) -> list[Tool]:
     account = {"type": "string", "description": "which connected mailbox when there are several: " + ("gmail, naver, outlook ... "
                                                  "(the names an error lists)")}
     return [
-        Tool("email_list", "List messages in one of the user's connected mailboxes (Gmail, Outlook, Naver, Daum, iCloud, Yahoo ...), newest first.",
+        Tool("email_list", "List messages in one of the user's connected mailboxes, newest first.",
              {"type": "object", "properties": {"account": account, "folder": {"type": "string"},
                                                "query": {"type": "string", "description": "the mailbox's own search syntax if it has one, else words"},
                                                "limit": {"type": "integer"}, "unread": {"type": "boolean"}}},

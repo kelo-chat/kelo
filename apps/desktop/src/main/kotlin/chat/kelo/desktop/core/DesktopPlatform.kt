@@ -37,9 +37,12 @@ object DesktopPlatform {
      * whether it starts at sign-in (the package's startup task, switched in Settings → Apps → Startup).
      */
     val isMsix: Boolean by lazy {
-        os == Os.WINDOWS && (System.getProperty("compose.application.resources.dir").orEmpty().contains("WindowsApps", ignoreCase = true) ||
-            System.getProperty("java.home").orEmpty().contains("WindowsApps", ignoreCase = true))
+        inStoreFolder(os, System.getProperty("compose.application.resources.dir"), System.getProperty("java.home"))
     }
+
+    /** Whether one of the app's own folders ([resources], [javaHome]) lies under WindowsApps: only on Windows, only for a Store package. */
+    fun inStoreFolder(os: Os, resources: String?, javaHome: String?): Boolean = os == Os.WINDOWS &&
+        listOf(resources, javaHome).any { it.orEmpty().contains("WindowsApps", ignoreCase = true) }
 
     /** The launcher the installer made (Kelo.exe / Kelo.app), for starting at sign-in; null when run from Gradle. */
     val launcher: File? by lazy {

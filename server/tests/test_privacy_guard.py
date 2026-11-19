@@ -349,3 +349,41 @@ async def test_the_gate_asks_the_model_ahead_and_a_model_that_is_down_makes_a_ca
     assert len(asked) == 1 and asked[0].detail.endswith("door or access code") and asked[0].force
     ran, asked = await _gate_run(None, "email_send", ("email_send", {"account": "mail-gmail", "to": ["bob@x.org"], "body": "table 7788"}), "allow")
     assert asked == [] and len(ran) == 1
+
+
+# ---- a saved login named after the site is the site's own login: opening that site is no send of it (Coupang, 2026-11-18)
+class LoginStore:
+    def __init__(self, items):
+        self.items = items
+
+    def credentials(self):
+        return self.items
+
+
+def login_guard(items):
+    return PrivacyGuard(home=FakeHome(), store=LoginStore(items), wallet=FakeWallet(), shipping=FakeShipping())
+
+
+def test_a_login_named_after_the_site_does_not_make_opening_that_site_a_card():
+    g = login_guard([{"name": "coupang", "kind": "login", "hosts": ["coupang.com"], "has_value": True}])
+    assert g.check_url("browser_open", {"url": "https://www.coupang.com/"}) is None
+    assert g.check_url("browser_open", {"url": "https://www.coupang.com/np/search?component=&q=%EC%A0%80%EC%9E%90%EA%B7%B9"}) is None
+    assert g.check_url("web_fetch", {"url": "https://m.coupang.com/vp/products/1"}) is None
+
+
+def test_a_login_name_in_the_address_of_another_site_is_still_a_vault_hit():
+    g = login_guard([{"name": "coupang", "kind": "login", "hosts": ["coupang.com"], "has_value": True}])
+    hit = g.check_url("browser_open", {"url": "https://other.com/?x=coupang"})
+    assert hit is not None and list(hit.categories) == ["vault"]
+    assert list(g.check_url("browser_open", {"url": "https://other.com/coupang/login"}).categories) == ["vault"]
+
+
+def test_a_login_without_hosts_is_the_site_of_its_name():
+    g = login_guard([{"name": "naver", "kind": "login", "hosts": [], "has_value": True}])
+    assert g.check_url("browser_open", {"url": "https://www.naver.com/"}) is None
+    assert list(g.check_url("browser_open", {"url": "https://other.com/?x=naver"}).categories) == ["vault"]
+
+
+def test_the_name_of_a_login_still_counts_in_a_message_text():
+    g = login_guard([{"name": "coupang", "kind": "login", "hosts": ["coupang.com"], "has_value": True}])
+    assert "vault" in g.scan("my coupang login is the one")

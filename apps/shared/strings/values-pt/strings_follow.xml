@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- pt-BR text for strings_follow.xml (generated from values/strings_follow.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="follow_section_title">Do que o Kelo cuida</string>
     <string name="follow_stop">Parar de acompanhar</string>
@@ -28,4 +29,9 @@
     <string name="follow_summary_prep_general">Preparar %1$s</string>
     <string name="follow_summary_watch_changes">Verificar alterações</string>
     <string name="follow_summary_default">Cuidar do compromisso</string>
+    <string name="follow_remove">Remover da lista</string>
+    <string name="follow_remove_confirm">Remover este item?</string>
+    <string name="follow_remove_confirm_detail">O Kelo não vai mais acompanhá-lo nem trazê-lo de volta.</string>
+    <string name="follow_remove_yes">Remover</string>
+    <string name="follow_stopped_toggle">Itens parados (%1$d)</string>
 </resources>

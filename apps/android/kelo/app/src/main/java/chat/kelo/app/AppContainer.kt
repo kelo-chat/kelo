@@ -88,6 +88,11 @@ class AppContainer(context: Context) : AppServices {
         load = { appContext.getSharedPreferences("kelo_update", android.content.Context.MODE_PRIVATE).getString("popup_until", null) },
         save = { appContext.getSharedPreferences("kelo_update", android.content.Context.MODE_PRIVATE).edit().putString("popup_until", it).apply() },
     )
+    /** The "Kelo server update available" notice (X-Kelo-Server-Update): at most once a day; its last showing stays on this phone */
+    val serverNotice = chat.kelo.app.update.ServerNotice(
+        load = { appContext.getSharedPreferences("kelo_update", android.content.Context.MODE_PRIVATE).getString("server_notice_shown", null) },
+        save = { appContext.getSharedPreferences("kelo_update", android.content.Context.MODE_PRIVATE).edit().putString("server_notice_shown", it).apply() },
+    )
 
     // ---- what the My and wallet pages need from the phone (shared interfaces in chat.kelo.app.platform / wallet)
     /** The activity on screen, for the services below that open a picker, ask for a permission or run the owner's check */
@@ -109,6 +114,33 @@ class AppContainer(context: Context) : AppServices {
     override val cardScanner: chat.kelo.app.wallet.CardScanner = chat.kelo.app.wallet.AndroidCardScanner()
     /** What was typed on the card pages, kept in memory while the lock that comes with leaving the app is on (never saved) */
     override val walletPlaces = chat.kelo.app.wallet.WalletPlaces((appContext as KeloApp).appScope, android.os.SystemClock::elapsedRealtime)
+
+    val sttModel: chat.kelo.app.voice.VoiceModel by lazy {
+        chat.kelo.app.voice.VoiceModel({ sessions.api.value }, (appContext as KeloApp).appScope) {
+            chat.kelo.app.my.NoticesRules.language(language.current, language.systemShownCode)
+        }
+    }
+    val speechModel: chat.kelo.app.call.SpeechModel by lazy {
+        chat.kelo.app.call.SpeechModel({ sessions.api.value }, (appContext as KeloApp).appScope)
+    }
+
+    val calls: chat.kelo.app.call.CallCenter by lazy {
+        chat.kelo.app.call.CallCenter(
+            scope = (appContext as KeloApp).appScope,
+            api = { sessions.api.value?.let { chat.kelo.app.voice.VoiceApi(it) } },
+            stt = sttModel,
+            speech = speechModel,
+            audio = { chat.kelo.app.voice.AndroidCallAudio(appContext) },
+            phoneListener = {
+                if (android.speech.SpeechRecognizer.isRecognitionAvailable(appContext)) chat.kelo.app.voice.CallPhoneListener(appContext) else null
+            },
+            device = { chat.kelo.app.voice.AndroidSpeechEngine(appContext) },
+            appLang = { chat.kelo.app.my.NoticesRules.language(language.current, language.systemShownCode) },
+            hasMic = { appContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE) },
+        )
+    }
+
+    override val callAudio: (() -> chat.kelo.app.call.platform.CallAudio)? = { chat.kelo.app.voice.AndroidCallAudio(appContext) }
 
     companion object {
         const val CACHE_KEY_ALIAS = "chat.kelo.app.cache.v1"

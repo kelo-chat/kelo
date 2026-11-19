@@ -16,6 +16,9 @@ for base in . apps; do   # before and after the apps/ move (2026-11-14)
 done
 rm -rf docs/open-source-drafts tools/release/desktop_mirror.py
 rm -f ./*-todo.md ./PROGRESS.md   # worker notes that slipped into a commit never go public
+# the prompts export stays in the private repo only (owner 2026-11-19): the folder, its generator and its test
+rm -rf prompts tools/prompts; rm -f server/tests/test_prompts_export.py
+sed -i.bak '/^├── prompts\//d' docs/repo-layout.md && rm -f docs/repo-layout.md.bak
 # the native (no Docker) macOS / Windows server was never published and was removed from main on 2026-11-18 (tag archive/native-server-2026-11-17); these lines keep older commits clean
 for base in src server/src; do
   rm -rf $base/assistant/hosting/macos $base/assistant/hosting/windows

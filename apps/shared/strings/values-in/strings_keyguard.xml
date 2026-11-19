@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">Kata sandi, kunci, dan kartu Anda dibuka dengan satu kunci. Biasanya server menyimpannya di dekat semuanya. Jika ini aktif, hanya ponsel Anda yang memegangnya, jadi orang yang membawa disk server tidak bisa membukanya.</string>

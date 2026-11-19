@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- pl text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">Połącz ten telefon ponownie</string>
     <string name="e2e_key_changed_body">Klucz szyfrowania Twojego serwera Kelo się zmienił, więc ten telefon nie może sprawdzić, czy to naprawdę Twój serwer. Zeskanuj nowy kod QR połączenia w Moje → Moje urządzenia na innym urządzeniu albo na komputerze z serwerem.</string>

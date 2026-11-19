@@ -91,6 +91,7 @@ def warm_enabled() -> bool:
 CHECK_CHARS = 80
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n|<message_break\s*/?>")
 _MESSAGE_BREAK = re.compile(r"<message_break\s*/?>")
+_STEPS_NOTE = re.compile(r"\n\n\[Not from the user: steps of this reply: .*\]\Z", re.S)   # compaction.py _with_steps: not the reply's own text
 
 
 def _same(a: Any, b: Any) -> bool:
@@ -185,7 +186,7 @@ def _parting(prev: list[dict[str, Any]] | None, incoming: list[dict[str, Any]], 
     for m in gap:
         role = m.get("role") if isinstance(m, dict) else None
         if role == "assistant" and not m.get("tool_calls"):
-            if not _written_by(m.get("content"), wrote):
+            if not _written_by(_STEPS_NOTE.sub("", str(m.get("content") or "")), wrote):   # the tool steps note is not the reply's text
                 return None, "reply in history differs from what the session wrote"
             answered = True
         elif role == "assistant":

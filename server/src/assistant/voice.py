@@ -44,6 +44,7 @@ class VoiceClientProtocol(Protocol):
     async def health(self) -> dict[str, Any]: ...
     async def transcribe(self, model_id: str, lang: str | None, pcm16: bytes, timeout_s: float) -> dict[str, Any]: ...
     async def unload(self) -> None: ...
+    async def speak(self, text: str, voice: int, speed: float, lang: str, steps: int, timeout_s: float) -> tuple[bytes, int]: ...
 
 
 def clean_text(raw: str) -> tuple[str, str]:
@@ -258,3 +259,12 @@ class SocketVoiceClient:
     async def unload(self) -> None:
         async with self._client(5.0) as c:
             await c.post("/unload")
+
+    async def speak(self, text: str, voice: int, speed: float, lang: str, steps: int, timeout_s: float) -> tuple[bytes, int]:
+        """Kelo's voice: the text as UTF-8 in, raw PCM16 mono out (voice_service.py POST /speak); the rate comes in a header."""
+        headers = {"X-Kelo-Speech-Voice": str(voice), "X-Kelo-Speech-Speed": str(speed), "X-Kelo-Speech-Lang": lang,
+                   "X-Kelo-Speech-Steps": str(steps), "Content-Type": "text/plain; charset=utf-8"}
+        async with self._client(timeout_s) as c:
+            r = await c.post("/speak", content=text.encode("utf-8"), headers=headers)
+            r.raise_for_status()
+            return r.content, int(r.headers["X-Kelo-Speech-Rate"])

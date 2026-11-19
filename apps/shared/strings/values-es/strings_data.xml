@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- es text for strings_data.xml (edit freely, keep the names) -->
+<!-- es text for strings_data.xml (generated from values/strings_data.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="data_title">Tus datos</string>
     <string name="data_intro">Descarga una copia de lo que Kelo guarda sobre ti, trae recuerdos de otro asistente o empieza de cero.</string>

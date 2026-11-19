@@ -57,6 +57,14 @@ class UpdateRulesTest {
         assertEquals("1.0.2", UpdateRules.parse(latest, "mac", keys)!!.version)                        // the mac row stands on its own
     }
 
+    @Test fun aServerRowWithObjectNotesNeverHidesTheAndroidRow() {
+        // the live latest.json had "server".notes as {lang: text}; decoding the whole file then failed and no APK saw any update
+        val server = """"server": {"version": "0.10.5", "notes": {"en": "x", "ko": "y"}, "images": {}}"""
+        val store = """"store": {"android": {"play": {"channel": "play", "version": "0.10.3", "build": 1, "date": "2026-11-18"}}}"""
+        val body = "{$server, $store, ${latest.removePrefix("{")}"
+        assertEquals("0.1.402322", UpdateRules.parse(body, keys = keys)?.version)
+    }
+
     @Test fun anOfferIsOnlyANewerBuild() {
         val r = UpdateRules.parse(latest, keys = keys)
         assertEquals("0.1.402322", UpdateRules.offer(r, "0.1.400000")?.version)

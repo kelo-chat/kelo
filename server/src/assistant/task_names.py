@@ -50,13 +50,14 @@ def clean_name(text: str) -> str:
 
 
 def hidden_marks() -> tuple[str, ...]:
+    from .checklist import CHECKLIST_MARK
     from .goals import GOAL_MARK
     from .nest_drafts import NEST_SHARE_MARK
     from .recheck import RECHECK_MARK
     from .schedules import SCHEDULE_MARK
     from .watchers import WATCH_MARK
     from .workers import HANDOFF_MARK
-    return (HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK)
+    return (HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK)
 
 
 class TaskNamer:

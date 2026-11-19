@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">Tải mô hình nhận dạng giọng nói %1$s về máy chủ Kelo của bạn? Nếu không, điện thoại sẽ dùng nhận dạng giọng nói có sẵn của nó.</string>
     <string name="voice_server_downloading">Đang tải mô hình giọng nói · %1$d%%</string>
     <string name="voice_server_ready">Máy chủ Kelo của bạn đã nghe được giọng nói của bạn.</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">Không kết nối được tới máy chủ Kelo để chuyển thành văn bản.</string>
     <string name="voice_server_busy">Máy chủ Kelo đang xử lý một bản ghi khác. Thử lại sau ít phút.</string>
     <string name="voice_server_too_long">Bản ghi quá dài. Vui lòng nói dưới 2 phút.</string>
-    <string name="voice_page_title">Nhập bằng giọng nói</string>
+    <string name="voice_page_title">Giọng nói</string>
     <string name="voice_page_intro">Giọng nói của bạn được chuyển thành văn bản trên máy chủ Kelo, rồi văn bản được đưa vào ô nhập. Không có gì tự gửi đi.</string>
     <string name="voice_model_in_use">Mô hình giọng nói đang dùng</string>
     <string name="voice_state_off">Nhận dạng giọng nói của điện thoại</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Mô hình giọng nói trên máy chủ Kelo chưa hỗ trợ ngôn ngữ này nên dùng nhận dạng giọng nói của điện thoại.</string>
     <string name="voice_model_size">Dung lượng %1$s · bộ nhớ khi dùng %2$s</string>
     <string name="voice_runtime_missing">Chạy lại trình cài đặt máy chủ Kelo một lần nữa để dùng tính năng này.</string>
+    <string name="voice_send_now">Gửi những gì bạn nói</string>
+    <string name="voice_elapsed">Thời gian ghi %1$s</string>
 </resources>

@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">一日が始まるとき（学習した時間）</string>
     <string name="briefing_when_fixed">決めた時間に</string>
     <string name="briefing_fixed_at">毎日 %1$s</string>
+    <string name="briefing_fixed_from">連絡してよい時間が始まる %1$s から選べます</string>
     <string name="briefing_offset">一日が始まってからいつ受け取るか</string>
     <string name="briefing_offset_none">始まってすぐ</string>
     <string name="briefing_offset_min">%1$d 分後</string>

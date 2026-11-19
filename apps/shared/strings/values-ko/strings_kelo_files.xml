@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ko text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Kelo의 파일</string>
     <string name="files_about">Kelo가 스스로 적어 두는 파일이에요. 나에 대한 내용, 기억, 메모를 보고 고치고 지울 수 있어요. 올린 문서와 결과물은 각자 페이지에 있어요.</string>

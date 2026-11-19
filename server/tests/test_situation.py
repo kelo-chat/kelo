@@ -4,13 +4,14 @@ tool role, proposals (dedupe, told / dropped refused), selection limits, expiry.
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
 
 import pytest
-from situation_fake import ACTING, READS, DeviceSource, FakeMail, Rig, app_tools, label_of, mail, ts
+from situation_fake import ACTING, READS, SEOUL, DeviceSource, FakeMail, Rig, app_tools, label_of, mail, ts
 
 from assistant import tool_roles
 from assistant.effects import TOOL_FAMILY
-from assistant.situation import MAX_SELECTED, Section
+from assistant.situation import MAX_SELECTED, SEND_ATTEMPT, Section
 
 
 def rig(tmp_path, t=None, **kw) -> Rig:
@@ -26,30 +27,10 @@ async def propose(r: Rig, key="k1", **kw):
 
 
 # ---------------------------------------------------------------------------------------------------------------- timing
-async def test_the_pass_runs_at_minute_9_of_each_hour_inside_waking_hours_and_once_at_wake_start(tmp_path):
-    r = rig(tmp_path, ts(2026, 11, 17, 9, 9))
-    assert (await r.p.tick())["status"] == "done"                           # due at 09:09 (the first pass researches)
-    r.advance(20 * 60)
-    assert await r.p.tick() is None                                         # 09:29: not due
-    r.clock.t = ts(2026, 11, 17, 10, 8)
-    assert await r.p.tick() is None                                         # 10:08: the 09:09 slot is done, 10:09 not yet
-    r.clock.t = ts(2026, 11, 17, 10, 9)
-    assert await r.p.tick() is not None                                     # 10:09
-    r.clock.t = ts(2026, 11, 17, 22, 9)
-    assert await r.p.tick() is None and r.p.state()["last_pass"]["reason_code"] == "outside_waking_hours"   # asleep
-    assert r.sit.due(ts(2026, 11, 18, 6, 59)) is True                       # the slot at 06:09 is due, but not awake yet
-    r.clock.t = ts(2026, 11, 18, 6, 59)
-    assert await r.p.tick() is None
-    r.clock.t = ts(2026, 11, 18, 7, 0)
-    assert await r.p.tick() is not None                                     # the wake-start pass
-    assert r.sit.slot_start(ts(2026, 11, 17, 9, 8)) == ts(2026, 11, 17, 8, 9)
-    assert r.sit.slot_start(ts(2026, 11, 17, 0, 5)) == ts(2026, 11, 16, 23, 9)
-
-
 async def test_the_pace_is_a_setting(tmp_path):
     r = rig(tmp_path)
     r.p.update(research_every_minutes=120)
-    assert r.sit.slot_start(ts(2026, 11, 17, 11, 20)) == ts(2026, 11, 17, 10, 9)
+    assert r.sit.slot_start(ts(2026, 11, 17, 11, 20)) == ts(2026, 11, 17, 10, 0)
     for bad in (5, 5000):
         with pytest.raises(ValueError):
             r.p.update(research_every_minutes=bad)
@@ -335,6 +316,18 @@ def test_the_delivery_estimate_names_the_next_opening(tmp_path):
     assert "a message could go out now" in r.sit.estimate(r.clock.t)
 
 
+def test_the_hourly_look_has_no_daily_count_of_messages_only_the_caps(tmp_path):
+    from assistant.proactive import SENT_KEEP, Candidate
+    r = rig(tmp_path, ts(2026, 11, 17, 10, 0))
+    r.say("user", "hi", r.clock.t - 60)
+    r.p.update(daily_regular=10, daily_total=20)
+    for i in range(5):                                                      # five ordinary messages told today already
+        r.p._record(Candidate(key=f"situation:x{i}", source="situation", title="x"), "sent", "r", urgency="보통", keep=SENT_KEEP, task_id=i + 1)
+    assert r.sit.blocked("regular", r.clock.t) == "" and r.sit.blocked("today", r.clock.t) == ""
+    r.p.update(daily_regular=5, daily_total=5)
+    assert r.sit.blocked("regular", r.clock.t) == "over_cap"
+
+
 def test_pack_fingerprint_ignores_the_clock_and_the_split():
     from assistant.situation import Pack
     a, b = Pack(), Pack()
@@ -457,3 +450,212 @@ def test_the_prompts_come_from_the_content_dir_the_server_image_sets(tmp_path, m
     assert (situation.prompts_dir() / "situation_research.md").read_text(encoding="utf-8") == "from the image"
     monkeypatch.delenv("ASSISTANT_CONTENT_DIR")
     assert (situation.prompts_dir() / "situation_research.md").is_file()   # the checkout's own copy
+
+
+def test_the_hourly_prompts_leave_corrections_to_the_check_and_write_them_plainly():
+    from assistant import situation as S
+    research = (S.prompts_dir() / "situation_research.md").read_text(encoding="utf-8")
+    select = (S.prompts_dir() / "situation_select.md").read_text(encoding="utf-8")
+    write = (S.prompts_dir() / "situation_write.md").read_text(encoding="utf-8")
+    assert "arrive as items whose key starts with `correction:`; do not propose them yourself." in research
+    assert "A new development about health or safety can be \"today\"." in select and "think of the facts that would make it wrong" in select
+    assert "corrects something you told the owner earlier" in write and "revisit the advice that rested on it" in write
+
+
+# ---------------------------------------------------------------------------------------------------------------- send times (owner 2026-11-19)
+def owner_day(tmp_path, t, **kw) -> Rig:
+    """The owner's case: contact hours 08:00-24:00, at most 3 a day, the briefing on at 08:00 -> send times 12:00, 16:00, 20:00."""
+    r = Rig(tmp_path, t, **kw)
+    r.p.update(wake_start="08:00", wake_end="00:00")
+    r.sit.briefing_at = lambda day: datetime(day.year, day.month, day.day, 8, 0, tzinfo=SEOUL).timestamp()
+    r.store.set_meta(SEND_ATTEMPT, str(t - 60))   # nothing from before the test is caught up
+    return r
+
+
+def kinds(r: Rig) -> list[str]:
+    return [p["kind"] for p in reversed(r.sit.passes())]   # oldest first
+
+
+def test_the_owners_send_times_are_12_16_and_20_with_the_briefing_at_8(tmp_path):
+    r = owner_day(tmp_path, ts(2026, 11, 17, 13, 0))
+    v = r.sit.send_times_view(r.clock.t)
+    assert v == {"day": "2026-11-17", "times": ["12:00", "16:00", "20:00"], "briefing": "08:00", "next_at": ts(2026, 11, 17, 16, 0)}
+    assert r.p.public()["send_times"] == v
+    r.sit.briefing_at = lambda day: None                                    # the briefing off: 16 h / 3 from the window start
+    assert r.sit.send_times_view(r.clock.t)["times"] == ["08:00", "13:20", "18:40"]
+    r.p.update(research=False)
+    assert r.p.public()["send_times"] is None                               # the old pass has no send times
+
+
+def test_weekends_use_their_own_window(tmp_path):
+    r = owner_day(tmp_path, ts(2026, 11, 21, 11, 0))                        # a Saturday
+    r.p.update(weekend_start="10:00", weekend_end="00:00")                  # 14 h / 4
+    r.sit.briefing_at = lambda day: datetime(day.year, day.month, day.day, 10, 0, tzinfo=SEOUL).timestamp()
+    v = r.sit.send_times_view(r.clock.t)
+    assert v["day"] == "2026-11-21" and v["times"] == ["13:30", "17:00", "20:30"] and v["briefing"] == "10:00"
+
+
+def test_after_the_window_the_view_shows_the_next_day(tmp_path):
+    r = owner_day(tmp_path, ts(2026, 11, 18, 2, 0))                         # 02:00: the 17th's window ended at 24:00
+    assert r.sit.send_times_view(r.clock.t)["day"] == "2026-11-18"
+
+
+async def test_a_watch_on_the_hour_and_a_full_look_at_each_send_time(tmp_path):
+    r = owner_day(tmp_path, ts(2026, 11, 17, 7, 30))
+    assert await r.p.tick() is None                                         # before the window
+    for h, m in ((8, 0), (9, 0), (12, 0), (13, 0), (16, 0), (20, 0), (23, 0)):
+        r.clock.t = ts(2026, 11, 17, h, m)
+        assert await r.p.tick() is not None, (h, m)
+        r.clock.t += 20 * 60
+        assert await r.p.tick() is None, (h, m)                             # nothing more in that hour
+    assert kinds(r) == ["watch", "watch", "send", "watch", "send", "send", "watch"]
+    assert r.sit.slot_start(ts(2026, 11, 17, 9, 8)) == ts(2026, 11, 17, 9, 0)
+
+
+async def test_a_missed_send_time_is_caught_up_once_and_never_past_the_next_one(tmp_path):
+    r = owner_day(tmp_path, ts(2026, 11, 17, 11, 0))
+    r.clock.t = ts(2026, 11, 17, 12, 40)                                    # the server was off at 12:00
+    await r.p.tick()
+    r.clock.t = ts(2026, 11, 17, 21, 10)                                    # off again from 13:00: 16:00 is gone, 20:00 is caught up
+    await r.p.tick()
+    r.clock.t = ts(2026, 11, 18, 7, 0)
+    assert await r.p.tick() is None                                         # the next morning, before the window: nothing from yesterday
+    assert kinds(r) == ["send", "send"]
+
+
+async def test_with_the_days_sends_used_no_more_full_look_but_the_watch_goes_on(tmp_path):
+    from assistant.proactive import SENT_KEEP, Candidate
+    r = owner_day(tmp_path, ts(2026, 11, 17, 11, 59))
+    for i in range(3):                                                      # daily_total 3 used: three sends
+        r.p._record(Candidate(key=f"situation:x{i}", source="situation", title="x"), "sent", "r", urgency="보통" if i else "오늘",
+                    keep=SENT_KEEP, task_id=i + 1, delivery=f"situation:{i + 100}")
+    r.clock.t = ts(2026, 11, 17, 12, 0)
+    await r.p.tick()
+    assert kinds(r) == ["watch"] and r.agent.count() == 0                   # no research, no correction check, no selection
+    r.clock.t = ts(2026, 11, 17, 12, 30)
+    assert await r.p.tick() is None
+    assert r.sit.send_times_view(r.clock.t)["next_at"] == ts(2026, 11, 18, 12, 0)   # today's are used up: tomorrow's first
+    r.sit.briefing_at = lambda day: None                                    # send times 08:00, 13:20, 18:40
+    r.clock.t = ts(2026, 11, 17, 13, 0)
+    await r.p.tick()                                                        # the 13:00 watch
+    r.clock.t = ts(2026, 11, 17, 13, 20)
+    assert await r.p.tick() is None and r.p.state()["last_pass"]["reason_code"] == "cap_used"
+
+
+async def test_the_watch_reads_only_new_mail_and_outside_changes_and_is_silent_without_them(tmp_path):
+    class OutsideSource(DeviceSource):
+        outside = True
+    r = owner_day(tmp_path, ts(2026, 11, 17, 9, 0), mail_box=FakeMail([mail("1", "Invoice due")]))
+    r.sit.sources.append(OutsideSource(["Front door: open"]))
+    r.sit.sources.append(DeviceSource(["Desktop PC: on"]))                 # not an outside change: send times only
+    r.store.add_goal("영어 공부", "study", "매일 30분")
+    r.say("user", "우유 사야 해", r.clock.t - 600)
+    r.agent.on("situation", lambda tools, user: "")
+    await r.p.tick()
+    call = r.agent.calls[-1]
+    assert "Invoice due" in call["user"] and "Front door: open" in call["user"] and "Next send time: 2026-11-17 12:00" in call["user"]
+    for gone in ("## Conversation", "## Goals", "## Schedules", "## Memory", "## Dropped", "Desktop PC: on", "우유"):
+        assert gone not in call["user"], gone
+    assert "propose_help" in call["tools"] and "record_owner_preference" not in call["tools"] and "web_search" in call["tools"]
+    assert not set(call["tools"]) & set(ACTING)                             # read-only tools only
+    r.clock.t = ts(2026, 11, 17, 10, 0)
+    r.say("user", "그리고 빵도", r.clock.t - 60)                             # a chat message is not the watch's news
+    await r.p.tick()
+    assert r.agent.count("situation") == 1 and kinds(r) == ["watch", "watch"] and r.sit.passes()[0]["status"] == "no_change"
+
+
+async def test_what_the_model_finds_urgent_goes_out_at_once_as_one_urgent_send_and_the_rest_waits(tmp_path):
+    box = FakeMail([mail("1", "오늘 14:00 미팅 취소"), mail("2", "오늘 15:00 장소 변경"), mail("3", "다음 주 일정 문의")])
+    r = owner_day(tmp_path, ts(2026, 11, 17, 13, 0), mail_box=box)
+
+    async def watch(tools, user):
+        h = tools["propose_help"].handler
+        await h({"key": "cancel", "title": "14:00 미팅 취소", "prepared": "취소됨.", "urgent": True, "evidence": [label_of(user, "미팅 취소")]})
+        await h({"key": "place", "title": "15:00 장소 변경", "prepared": "바뀜.", "urgent": True, "evidence": [label_of(user, "장소 변경")]})
+        await h({"key": "ask", "title": "다음 주 일정 문의", "prepared": "답장이 필요함.", "evidence": [label_of(user, "일정 문의")]})
+    r.agent.on("situation", watch)
+    r.agent.on("situation_write", lambda tools, user: "14시 미팅이 취소됐고 15시 장소가 바뀌었어요.")
+    await r.p.tick()
+    assert [s["urgency"] for s in r.sent] == ["지금"]                         # the two urgent items: one message
+    assert r.p.today_counts() == {"보통": 0, "오늘": 0, "지금": 1}            # one urgent send, outside daily_total
+    assert r.agent.count("situation_select") == 0 and r.agent.count("situation_write") == 1   # no selection in a watch
+    assert [i["key"] for i in r.items("prepared")] == ["ask"] and sorted(i["key"] for i in r.items("told")) == ["cancel", "place"]
+    r.clock.t = ts(2026, 11, 17, 16, 0)                                     # the next send time: the rest is chosen there
+    r.agent.on("situation", lambda tools, user: "")
+    r.agent.on("situation_select", lambda tools, user: tools["select_help"].handler({"items": ["ask"], "priority": "regular", "handoff": "Answer it."}))
+    r.agent.on("situation_write", lambda tools, user: "다음 주 일정 문의가 왔어요.")
+    await r.p.tick()
+    assert [s["urgency"] for s in r.sent] == ["지금", "보통"] and kinds(r) == ["watch", "send"]
+    assert r.p.today_counts() == {"보통": 1, "오늘": 0, "지금": 1}
+
+
+async def test_over_daily_now_an_urgent_send_counts_as_today_and_waits_when_the_day_is_full(tmp_path):
+    from assistant.proactive import SENT_KEEP, Candidate
+    box = FakeMail([mail("1", "미팅 취소")])
+    r = owner_day(tmp_path, ts(2026, 11, 17, 13, 0), mail_box=box)
+    r.p.update(daily_now=0)
+    r.agent.on("situation", lambda tools, user: tools["propose_help"].handler({"key": "c", "title": "취소", "prepared": "p", "urgent": True,
+                                                                               "evidence": [label_of(user, "미팅 취소")]}))
+    r.agent.on("situation_write", lambda tools, user: "취소됐어요.")
+    await r.p.tick()
+    assert [s["urgency"] for s in r.sent] == ["오늘"]                          # over daily_now (0): an ordinary send
+    assert r.p.today_counts() == {"보통": 0, "오늘": 1, "지금": 0}
+    for i in range(2):                                                      # the day's daily_total (3) is now used
+        r.p._record(Candidate(key=f"situation:x{i}", source="situation", title="x"), "sent", "r", urgency="보통", keep=SENT_KEEP,
+                    task_id=9 + i, delivery=f"situation:{i + 100}")
+    box.items = [mail("2", "미팅 취소 둘")]
+    r.clock.t = ts(2026, 11, 17, 14, 0)
+    r.agent.on("situation", lambda tools, user: tools["propose_help"].handler({"key": "c2", "title": "취소 둘", "prepared": "p", "urgent": True,
+                                                                               "evidence": [label_of(user, "취소 둘")]}))
+    await r.p.tick()
+    assert len(r.sent) == 1 and r.items("prepared")[0]["reason"] == "waiting: over_cap"   # never past the caps
+
+
+async def test_the_correction_check_runs_only_at_send_times(tmp_path):
+    class Check:
+        calls = 0
+
+        async def check(self, now):
+            Check.calls += 1
+            return []
+
+        def owns(self, key):
+            return False
+    r = owner_day(tmp_path, ts(2026, 11, 17, 11, 0), mail_box=FakeMail([mail("1", "Hello")]))
+    r.sit.corrections = Check()
+    await r.p.tick()                                                        # 11:00 watch: new mail, a research turn, no check
+    assert r.agent.count("situation") == 1 and Check.calls == 0
+    r.clock.t = ts(2026, 11, 17, 12, 0)
+    await r.p.tick()                                                        # 12:00: a send time
+    assert kinds(r) == ["watch", "send"] and Check.calls == 1
+
+
+def test_the_watch_prompt_leaves_urgent_to_judgment_and_the_rest_waits():
+    from assistant import situation as S
+    text = (S.prompts_dir() / "situation_watch.md").read_text(encoding="utf-8")
+    assert "only when waiting until the next send time would cost the owner" in text and "Wording alone" in text
+    assert "Everything else waits for the next send time" in text and "act_by" not in text
+
+
+# ---------------------------------------------------------------------------------------------------------------- the checklist (owner 2026-11-19)
+async def test_the_send_time_look_reads_the_checklist_in_a_pass_that_runs_and_an_unchanged_pack_makes_no_model_call(tmp_path):
+    from assistant.checklist import Checklist, JobKind
+    r = rig(tmp_path)
+    ck = Checklist(r.store, r.home, None)
+    ck.jobs = {"schedule": JobKind(get=lambda i: {"name": "Own", "description": "", "on": True} if i == 1 else None, remove=lambda i: True)}
+    r.sit.checklist = ck
+    ck.update(items=["Look over A", "Look over B"])
+    ck.link("Look over B", "schedule:1")
+    r.agent.on("situation", lambda tools, user: "nothing to propose")
+    assert (await r.p.run())["status"] == "done" and r.agent.count("situation") == 1
+    call = r.agent.calls[-1]
+    assert "Checklist: what the owner asked Kelo to keep an eye on" in call["user"]
+    assert "Look over A" in call["user"] and "Look over B" not in call["user"]       # it has a job of its own
+    assert "checklist section" in call["system"]                                      # the research prompt says what to do with it
+    r.advance(3600)
+    assert (await r.p.run())["status"] == "nothing_new" and r.agent.count("situation") == 1   # the same pack: no change, no model call (owner 2026-11-19)
+    ck.update(items=[])
+    r.advance(3600)
+    assert (await r.p.run())["status"] == "done" and r.agent.count("situation") == 2  # the section went: a change
+    r.advance(3600)
+    assert (await r.p.run())["status"] == "nothing_new" and r.agent.count("situation") == 2   # nothing listed, nothing new: no model call

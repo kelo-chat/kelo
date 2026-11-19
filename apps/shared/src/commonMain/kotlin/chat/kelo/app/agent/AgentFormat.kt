@@ -37,6 +37,10 @@ fun dayText(date: LocalDate): String = pattern(appLocale(), "MMMdEEE").format(da
 @Composable
 fun fullDayText(date: LocalDate): String = pattern(appLocale(), "yMMMdEEE").format(date)
 
+/** "11월 8일 (일)" from epoch seconds (an item with no time of day) */
+@Composable
+fun dayOnlyText(seconds: Double): String = dayText(zoned(seconds).toLocalDate())
+
 /** "11월 8일 (일) 오전 9:00" */
 @Composable
 fun dayClockText(seconds: Double): String {

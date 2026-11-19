@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_desktop_pay.xml (generated from values/strings_desktop_pay.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pin_allow_note">允許後，手機會詢問是否傳送為此網站儲存的付款密碼。請在手機上確認。</string>
     <string name="desktop_pin_need_body">開啟手機上的 Kelo App，將付款密碼「%1$s」傳送一次，用於 %2$s 的付款（%3$s）。</string>

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_desktop_pay.xml (generated from values/strings_desktop_pay.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pin_allow_note">ถ้าอนุญาต โทรศัพท์จะถามว่าจะส่ง PIN ชำระเงินที่บันทึกไว้สำหรับเว็บไซต์นี้หรือไม่ ยืนยันที่โทรศัพท์</string>
     <string name="desktop_pin_need_body">เปิดแอป Kelo บนโทรศัพท์เพื่อส่ง PIN “%1$s” หนึ่งครั้งสำหรับการชำระเงินที่ %2$s (%3$s)</string>

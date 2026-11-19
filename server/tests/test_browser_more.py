@@ -352,10 +352,8 @@ class FormPage(CheckPage):
     async def evaluate(self, js, arg=None):
         if "kelo_check" in js:
             return self.probe_value
-        if "data-kelo-otp" in js and "boxes" in js:
-            return {"boxes": self.boxes}
-        if "data-kelo-otp" in js:
-            return None
+        if "(sel) =>" in js:                                   # the one-time-code boxes: their CSS paths
+            return {"boxes": self.boxes, "paths": [f"#otp-{i}" for i in range(self.boxes)]}
         return self.body
 
 
@@ -786,7 +784,7 @@ async def test_find_login_code_shows_the_code_only_to_the_user_and_types_it_afte
     assert card == f"이 코드를 입력할까요? {code_mask('482913')} — 보낸 곳 Example <no-reply@example.com>" and "482913" not in card
     assert extra["detail"] == "이 코드를 입력할까요? 482913 — 보낸 곳 Example <no-reply@example.com>" and extra["login_code"]["code"] == "482913"
     assert "Found the code (6 digits)" in out and "482913" not in out and "[code hidden]" in out
-    assert page.filled == [('[data-kelo-otp="0"]', "482913")] and page.pressed
+    assert page.filled == [("#otp-0", "482913")] and page.pressed
     assert t.approval_extra("ap1", {}) == {}                                                     # nothing is kept after it was typed
 
 

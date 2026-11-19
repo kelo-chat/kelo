@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hans text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">你的密码、密钥和卡片用同一把钥匙打开。通常服务器会把钥匙和它们放在一起。开启后只有你的手机持有钥匙，即使有人拿走服务器的硬盘也打不开。</string>

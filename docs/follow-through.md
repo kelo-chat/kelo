@@ -10,7 +10,7 @@ Status (2026-11-16):
 
 ## Why
 
-Today Kelo notices things (the proactive pass reads mail and the calendar every two hours and says "this is coming up"), but it does
+Today Kelo notices things (the hourly look reads new mail every hour and the calendar at its send times and says "this is coming up"), but it does
 not look after them. Between the notice and the event nothing is watched: a gate that moves, a train that is late, a parcel that is
 stuck, rain on the day of a picnic, a booking the restaurant changed. And when Kelo sees something it could prepare (check in, confirm a
 booking, gather the documents a trip needs) it only suggests it.

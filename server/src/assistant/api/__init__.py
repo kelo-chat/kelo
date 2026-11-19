@@ -12,6 +12,7 @@ Included in this order:
     security        what the injection watch saw (GET /api/security/injections)
     actions         what Kelo sent, changed or deleted, and whether it is known to have gone through (GET /api/actions)
     chat            AI consent, /api/chat, /api/talk, /api/turns (start)
+    calls           a call with Kelo answered in the app (POST /api/calls/{id}/answered; calls.py)
     nest            Kelo Nest screens on this server
     turns           follow or stop a reply
     profile         the owner's profile and language
@@ -59,7 +60,7 @@ def module_router(register: Callable[..., None], *args: Any, **kw: Any) -> APIRo
 
 
 # The routers, in the order their routes are registered (order matters for overlapping paths; server/tests/test_route_table.py pins it).
-ROUTERS = ("chat", "nest", "turns", "profile", "conversation", "goals", "files", "about", "connectors", "mail_calendar", "providers",
+ROUTERS = ("chat", "calls", "nest", "turns", "profile", "conversation", "goals", "files", "about", "connectors", "mail_calendar", "providers",
            "connections", "operator", "vault", "devices", "e2e_keys", "keyguard", "push", "resources", "models_usage", "wallet",
            "approvals", "agent_screen", "schedules", "browser", "journal", "skills", "reflection", "reviews", "notifications", "notices", "site", "forget", "data")
 

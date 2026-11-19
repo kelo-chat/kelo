@@ -48,6 +48,8 @@ from .i18n import N_, t
 from .google_calendar import parse_when, when_text
 from .mail import PROVIDERS as MAIL
 from .proactive import ARRIVALS_TIMEOUT, MAIL_ACCOUNT_TIMEOUT
+from .tools.connect_tools import asked_in_chat
+
 
 log = logging.getLogger("uvicorn.error")
 
@@ -330,11 +332,11 @@ class Sources:
 
         when = "YYYY-MM-DD or YYYY-MM-DDTHH:MM, the user's time zone"
         return Tool("calendar_events",
-                    "The user's events from every calendar they connected, in one list: the phone's calendar, Google, Outlook, iCloud, Yahoo, "
-                    "Naver, other CalDAV calendars and calendar connectors from Nest, following their choice of which calendars Kelo reads. Use it for questions like "
-                    "\"what's on tomorrow\" (default: the next 7 days; at most 2 months, or 18 months with query). To find an event, search "
-                    "once: put every spelling, language variant and code (city, airport) in query, matched as OR. Read only; to change an "
-                    "event use the tools of its own calendar.",
+                    "The user's events from every calendar they connected (the phone's and each connected account or package), in one list, "
+                    "following their choice of which calendars Kelo reads. Use it for what is on a day and to find the day of something the "
+                    "user names (default: the next 7 days; at most 2 months, or 18 months with query). To find an event, search once: put "
+                    "every spelling, language variant and short code of its name in query, matched as OR. Read only; to change an event use "
+                    "the tools of its own calendar.",
                     {"type": "object", "properties": {"start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
                                                       "query": {"type": "array", "items": {"type": "string"},
                                                                 "description": "words in titles or places; an event matching any one is shown"}}},
@@ -424,8 +426,8 @@ class Sources:
         return Tool("briefing_sources",
                     "Switch connected calendars and mailboxes on or off for what Kelo reads by itself (the morning briefing, heads-ups, the "
                     "calendar_events tool). All are on unless the user switched one off. Use it for 'leave my work mail out' (off) or "
-                    "'put it back' (on). The user approves each switch; show needs no approval. Call action=show first when you do not "
-                    "know the accounts; afterwards confirm in one short line, naming the accounts.",
+                    "'put it back' (on). Asked in this chat a switch goes ahead; otherwise the user approves each one on a card; show needs no approval. Call action=show first when you do not "
+                    "know the accounts; afterwards say in one short line what changed, naming the accounts.",
                     {"type": "object", "properties": {
                         "action": {"type": "string", "enum": ["show", "on", "off"],
                                    "description": "show: list the accounts and their switches; on / off: switch these accounts"},
@@ -433,7 +435,7 @@ class Sources:
                                  "description": "calendar or mail when the user named only one; both when they meant both; optional when "
                                                 "the accounts are all of one kind"},
                         "accounts": acct}, "required": ["action"]},
-                    briefing_sources, requires_approval=True, auto_approve=lambda a: not switches(a), describe=describe)
+                    briefing_sources, requires_approval=True, auto_approve=lambda a: not switches(a) or asked_in_chat(), describe=describe)
 
 
 class SelectedMail:

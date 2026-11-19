@@ -132,4 +132,49 @@ class DesktopVncSessionTest {
         s.toPage(cat(serverStart(4, 4), ints(3, 0, 0, 0, 0, 0, 0, 2), "hi".toByteArray()))
         assertEquals(emptyList(), offered)
     }
+
+    // ---- live typing: the capture field takes the typing, the screen keeps only shortcuts
+
+    private fun held(): DesktopVncSession { val s = session(); s.setHolding(true); sent.clear(); return s }
+
+    @Test fun aPrintableKeyWithLiveTypingSendsNoKeyEventToThePage() {
+        val s = held()
+        val down = HashSet<Long>()
+        assertEquals(false, routedKey(true, false, Key.A, false, false, false, 'a'.code, true, false, down, s, {}))
+        assertEquals(false, routedKey(false, true, Key.A, false, false, false, 'a'.code, true, false, down, s, {}))
+        assertEquals(false, routedKey(true, false, Key.Enter, false, false, false, 0, true, false, down, s, {}))
+        assertEquals(0, sent.size)
+    }
+
+    @Test fun aShortcutStillGoesToThePageAndItsKeyUpFollows() {
+        val s = held()
+        val down = HashSet<Long>()
+        assertEquals(true, routedKey(true, false, Key.A, true, false, false, 'a'.code, true, false, down, s, {}))
+        assertTrue(sent.isNotEmpty())
+        val n = sent.size
+        assertEquals(true, routedKey(false, true, Key.A, true, false, false, 'a'.code, true, false, down, s, {}))
+        assertTrue(sent.size > n)
+        assertEquals(false, routedKey(false, true, Key.B, false, false, false, 'b'.code, true, false, down, s, {}))   // a key that was never sent down
+        assertTrue(down.isEmpty())
+    }
+
+    @Test fun aFunctionKeyGoesToThePageAndThePasteShortcutIsThePaste() {
+        val s = held()
+        val down = HashSet<Long>()
+        assertEquals(true, routedKey(true, false, Key.F5, false, false, false, 0, true, false, down, s, {}))
+        assertTrue(sent.isNotEmpty())
+        sent.clear()
+        var pasted = 0
+        assertEquals(true, routedKey(true, false, Key.V, true, false, false, 'v'.code, true, false, down, s, { pasted++ }))
+        assertEquals(true, routedKey(true, false, Key.V, false, true, false, 'v'.code, true, true, down, s, { pasted++ }))   // ⌘V on macOS
+        assertEquals(2, pasted)
+        assertEquals(0, sent.size)
+    }
+
+    @Test fun notHoldingTheKeysAreLeftAlone() {
+        val s = session()
+        sent.clear()
+        assertEquals(false, routedKey(true, false, Key.A, true, false, false, 'a'.code, false, false, HashSet(), s, {}))
+        assertEquals(0, sent.size)
+    }
 }

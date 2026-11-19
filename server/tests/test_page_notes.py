@@ -340,3 +340,12 @@ async def test_a_target_under_a_layer_that_cannot_be_closed_answers_at_once_with
     start = time.monotonic()
     out = plain(await s.click("#under"))
     assert time.monotonic() - start < 8 and "is covered by" in out and "take over the browser" in out
+
+
+async def test_an_overlay_close_leaves_no_mark_in_the_page_and_is_a_trusted_press(ctx):   # addendum 9
+    s, page = await session_on(ctx)
+    await page.add_init_script("document.addEventListener('click', (e) => { window.trusted = e.isTrusted; }, true)")
+    out = plain(await s.open("https://shop.example.com/dismiss"))
+    assert "A pop-up window covered the page" in out and await page.evaluate("() => window.shut === 1")
+    assert await page.evaluate("() => document.querySelectorAll('[data-kelo-close]').length") == 0
+    assert await page.evaluate("() => window.trusted") is True   # a real mouse press, not a JavaScript click

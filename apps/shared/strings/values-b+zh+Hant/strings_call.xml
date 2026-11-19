@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hant text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">與Kelo通話</string>
+    <string name="call_incoming_line">來電</string>
+    <string name="call_accept">接聽</string>
+    <string name="call_decline">拒絕</string>
+    <string name="call_connecting">正在連線…</string>
+    <string name="call_listening">正在聆聽</string>
+    <string name="call_thinking">正在思考</string>
+    <string name="call_speaking">正在說話</string>
+    <string name="call_muted">已靜音</string>
+    <string name="call_mute">靜音</string>
+    <string name="call_unmute">解除靜音</string>
+    <string name="call_speaker">揚聲器</string>
+    <string name="call_hang_up">掛斷通話</string>
+    <string name="call_card_waiting">螢幕上有需要確認的內容。</string>
+    <string name="call_card_open">查看</string>
+    <string name="call_back_to_call">返回通話 · %1$s</string>
+    <string name="call_offline">無法連線到Kelo伺服器。正在重新連線…</string>
+    <string name="call_ended_background">因離開應用程式，通話已結束。</string>
+    <string name="call_ended_interrupted">因其他聲音插進來，通話已結束。</string>
+    <string name="call_ended_quiet">因長時間無發聲，通話已結束。</string>
+    <string name="call_needs_speech_model">若要通話，Kelo伺服器需安裝語音辨識模型。</string>
+    <string name="call_mic_denied">未允許使用麥克風，無法開始通話。</string>
+    <string name="call_voice_offer">這是通話時Kelo使用的自然聲音。將聲音模型（%1$s）下載到Kelo伺服器後，下一句話開始即可使用此聲音。若未下載，將使用此裝置內建的機械聲音。</string>
+    <string name="call_mark">通話</string>
+    <string name="call_voice_offer_title">要下載Kelo的聲音模型嗎？</string>
+    <string name="call_voice_offer_ok">下載</string>
+    <string name="call_voice_offer_later">先使用裝置聲音</string>
+    <string name="call_voice_better">下載聲音模型後，Kelo會以更自然清晰的聲音說話。</string>
+    <string name="call_voice_get">下載</string>
+    <string name="call_voice_line_close">關閉</string>
+    <string name="call_ears_failed">手機語音辨識無法聽清您的聲音。</string>
+    <string name="voice_speech_title">Kelo聲音</string>
+    <string name="voice_speech_download">下載聲音模型 · %1$s</string>
+    <string name="voice_speech_downloading">正在下載聲音模型 · %1$d%%</string>
+    <string name="voice_speech_remove">刪除聲音模型</string>
+    <string name="voice_speech_remove_confirm">確定要刪除聲音模型嗎？之後將使用此裝置的內建聲音說話。</string>
+    <string name="voice_speech_device_note">若無聲音模型，將使用此裝置的內建聲音說話。</string>
+    <string name="voice_speech_unsupported_lang">聲音模型尚未支援此語言，將使用此裝置的內建聲音說話。</string>
+    <string name="voice_speech_voice_female">女性聲音 %1$d</string>
+    <string name="voice_speech_voice_male">男性聲音 %1$d</string>
+    <string name="voice_speech_listen">試聽</string>
+    <string name="voice_speech_stop">停止</string>
+    <string name="voice_speech_speed">說話速度</string>
+    <string name="voice_speech_speed_value">%1$s倍</string>
+    <string name="voice_speech_sample">您好。我將用這個聲音與您交談。</string>
+</resources>

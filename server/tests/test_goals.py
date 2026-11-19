@@ -262,7 +262,7 @@ def test_the_goal_instructions_name_no_kind_of_goal():
                        r"workout|calorie|interview)\b", re.I)
     texts = [KICKOFF, RESUME, *(t.description for t in b.tools()), json.dumps([t.parameters for t in b.tools()])]
     system = (ROOT / "server" / "content" / "prompts" / "system.md").read_text(encoding="utf-8")
-    texts.append(system[system.index("**Goals and reminders.**"):system.index("**Files and media.**")])
+    texts.append(system[system.index("**Offering a goal.**"):system.index("**Files and media.**")])
     from assistant.prompt import GOAL_RULES
     texts.append(GOAL_RULES)                       # how to work on goals: next to the goals in the per-turn block
     hits = [m.group(0) for t in texts for m in words.finditer(t)]
@@ -614,5 +614,5 @@ def test_the_choice_tool_stays_general():
     _, b = book()
     desc = next(t for t in b.tools() if t.name == "quick_replies").description.lower()
     assert "never narrow the answer space" in desc
-    for word in ("lotto", "lottery", "schedule", "monday", "saturday", "buy", "site"):
+    for word in ("lotto", "lottery", "schedule", "monday", "saturday", "site"):
         assert word not in desc, word

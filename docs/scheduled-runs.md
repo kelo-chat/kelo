@@ -8,7 +8,7 @@ need nothing new because the chat message and the notification are the same ones
 - A scheduled run's working part must not be able to message the owner. A separate closing part decides ONE outcome: nothing to tell,
   or tell, with the text.
 - The assistant may say it will tell or do something later only when something real exists that will do it (a schedule, a watcher, a
-  background job, a re-check). No word, phrase or site lists: the rule is enforced by structure (the turn's tool calls) and by the
+  background job). No word, phrase or site lists: the rule is enforced by structure (the turn's tool calls) and by the
   owner's main model reading the reply (`docs/no-word-lists.md`, one model for every purpose).
 
 ## What was taken over from the studied reference agent (evidence: the schedules evidence note in the owner's reviews folder, section ids)
@@ -77,7 +77,7 @@ failed or was skipped, say it is nothing when it is nothing (`NO_REPLY` still me
    it up. No promise to catch something "the moment it happens" (checks run on a schedule).
 2. Code, after an attended chat or api reply (`turn_engine.check_promise`, `scheduled_runs.PromiseJudge`):
    - tools declared `keeps_promise` are `schedule_create`, `schedule_update`, `watch_add`, `watch_enable`, `watch_update`,
-     `recheck_later`, `delegate`. A reply with a SUCCESSFUL call of one of them (no error, approval not declined) is backed: no check.
+     `delegate`. A reply with a SUCCESSFUL call of one of them (no error, approval not declined) is backed: no check.
    - Otherwise one short request to the owner's main model reads the reply (last 3000 characters) and answers
      `{"promises_later": bool, "what": "..."}`: true only when the assistant says it will itself tell, remind, check, watch or do
      something later or when something happens, without being asked again. Work done in the reply, offers and questions that wait for
@@ -107,6 +107,26 @@ No new table or column. The working report stays in `tasks.answer`; the outcome 
 `tests/test_scheduled_runs.py`: strict parsing; the report fallback; the guard after a failed or skipped step; evidence from events;
 nothing / tell through the whole app; the working phase is not offered owner tools; a promise gets one correction; a reply that made
 the schedule is not checked. Older tests that read "the last model request of a run" now skip the closing request.
+
+## Runs Kelo starts on its own
+
+Nobody asked for these runs and nobody can answer them, so the owner hears only their result, through the path each kind already has.
+A step that would need the owner's OK is skipped (the run is told: "it needs the owner's OK, and nobody can answer during this run"); no
+card, no push, no announcement line, no progress notice, no hand-over, no follow-up. A run the owner started keeps its cards and asks
+for its own decisions.
+
+| run kind (task source) | who started it | what reaches the owner |
+|---|---|---|
+| correction check (`recheck`, corrections.py) | Kelo | nothing itself; its corrections reach the owner through the briefing card or the hourly look |
+| hourly situation look (`situation`, `situation_select`, `situation_write`) | Kelo | only what Proactive delivers |
+| checklist pass (`checklist`) | Kelo | only its answer, or nothing |
+| later order check (`order_check`) | Kelo | only its result notices |
+| scheduled job, background task, job, watcher | the owner | as before: cards, the closing message |
+
+A self-started run may read a link its own search or page gave, as written (data_trail `given_link`); a link it composed counts as a send
+and is skipped. An expired card of an owner's run tells the run "nobody answered" (not "declined"), and a follow-up question opens only
+when the run can be started again (a job, a schedule, a background task). A reply that passes the work to a running job
+(`worker_message`) keeps its promise: the job's report comes back by itself.
 
 ## Not done, and why
 

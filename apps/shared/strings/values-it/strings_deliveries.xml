@@ -1,13 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- it text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="deliveries_label">Messaggi che Kelo inizia ogni giorno</string>
-    <string name="deliveries_about">Kelo raccoglie ciò che vuole dirti in questo numero di messaggi al giorno. Con 0 invia solo ciò che non può aspettare.</string>
-    <plurals name="deliveries_today">
-        <item quantity="one">Inviato %d volta oggi</item>
-        <item quantity="many">Inviato %d di volte oggi</item>
-        <item quantity="other">Inviato %d volte oggi</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="one">%d elemento in attesa</item>
         <item quantity="many">%d di elementi in attesa</item>
@@ -17,7 +10,6 @@
     <string name="deliveries_held_about">Kelo tiene questi elementi per il prossimo messaggio. Li ricontrolla prima di inviarli e scarta ciò che non conta più.</string>
     <string name="deliveries_held_empty">Al momento non c\'è nulla in attesa.</string>
     <string name="deliveries_held_until">In attesa fino a %1$s</string>
-    <string name="deliveries_why_slots">In attesa del prossimo messaggio del giorno</string>
     <string name="deliveries_why_cap">Non abbastanza urgente per inviarne altri oggi</string>
     <string name="deliveries_why_reply">In attesa della tua risposta all\'ultimo messaggio</string>
     <string name="deliveries_why_other">In attesa di un momento migliore</string>

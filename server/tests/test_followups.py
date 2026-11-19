@@ -585,10 +585,8 @@ async def test_retry_hands_the_run_its_note_and_closes_the_item():
     with pytest.raises(RetryError, match="running right now"):
         await f.retry(busy)
     assert f.get(busy)["status"] == "open"                         # still open: the user can try again later
-    bare = f.approval_expired({**CARD, "approval_id": "ap6", "task_id": 41}, None)
-    assert [a["kind"] for a in f.get(bare)["actions"]] == ["snooze", "drop"]
-    with pytest.raises(RetryError):
-        await f.retry(bare)
+    assert f.approval_expired({**CARD, "approval_id": "ap6", "task_id": 41}, None) is None   # nothing could start it again: no question about it
+    assert not [r for r in f.items() if r.get("ref") == "ap6"] if hasattr(f, "items") else True
     login = f.awaiting_reply("seat", None, None)
     with pytest.raises(RetryError):
         await f.retry(login)
@@ -752,3 +750,10 @@ def test_await_reply_closes_the_reply_once_its_question_is_written():
     f, *_ = make()
     tools = {t.name: t for t in f.tools(lambda: {"task_id": 2})}
     assert tools["await_reply"].closes_reply and not tools["await_reply"].ends_turn
+
+
+async def test_an_expired_card_with_nothing_to_start_again_opens_no_follow_up(tmp_path):
+    f, store, clock, sent, _ = make()
+    assert f.approval_expired({**CARD, "approval_id": "ap7", "task_id": 42}, None) is None
+    assert await f.tick() == 0
+    assert sent == []

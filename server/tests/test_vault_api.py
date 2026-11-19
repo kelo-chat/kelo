@@ -179,3 +179,44 @@ def test_asking_again_makes_a_request_fresh_again_but_a_stored_login_keeps_its_d
     assert st._all("SELECT created_at FROM credentials")[0]["created_at"] == 1000
     assert st.purge_drafts(2_000_000_000) == 0 and st.credential("github")["has_secret"]
 
+
+
+async def test_the_keychain_shows_kelos_browser_sign_ins_per_login_and_the_ones_without_a_login(tmp_path):
+    async with Running(app_for(tmp_path)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await c.post("/api/vault/logins", json={"site": "github.com", "name": "github"})
+        await c.put("/api/vault/github/login", json={"username": USER, "password": PASSWORD})
+        from assistant.store import Store
+        st = Store(tmp_path / "s.db")                      # the server's own database file (the sign-in rows the browser wrote)
+        st.note_browser_sign_in("github.com", "login")
+        st.note_browser_sign_in("example.com", "owner")
+        v = (await c.get("/api/vault")).json()
+        assert v["items"][0]["browser"]["how"] == "login" and v["items"][0]["browser"]["site"] == "github.com" and v["items"][0]["browser"]["signed_at"] > 0
+        assert [s["site"] for s in v["browser_sites"]] == ["example.com"] and v["browser_sites"][0]["how"] == "owner"
+        nothing_secret(json.dumps(v))
+        r = await c.delete("/api/browser/sign-ins/example.com")
+        assert r.status_code == 200 and r.json() == {"ok": True}
+        assert (await c.get("/api/vault")).json()["browser_sites"] == []
+
+
+async def test_the_keychain_lists_named_browser_profiles_and_the_owner_signs_out_and_deletes_them(tmp_path):
+    async with Running(app_for(tmp_path)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        from assistant.store import Store
+        st = Store(tmp_path / "s.db")
+        assert (await c.get("/api/vault")).json()["browser_profiles"] == []
+        pid = st.create_browser_profile("Second account")["id"]
+        st.save_browser_unit(pid, "example.com", {"cookies": [{"name": "sid", "value": "SECRET-VALUE", "domain": ".example.com", "path": "/"}], "storage": {}})
+        st.note_browser_sign_in("example.com", "login", profile=pid)
+        v = (await c.get("/api/vault")).json()
+        p = v["browser_profiles"][0]
+        assert p["id"] == pid and p["label"] == "Second account" and p["created_at"] > 0
+        assert [s["site"] for s in p["sites"]] == ["example.com"] and p["sites"][0]["how"] == "login"
+        nothing_secret(json.dumps(v))
+        assert "SECRET-VALUE" not in json.dumps(v)
+        assert [s["site"] for s in v["browser_sites"]] == []                           # the default profile's list is not mixed with it
+        r = await c.delete(f"/api/browser/profiles/{pid}/sites/example.com")
+        assert r.status_code == 200 and r.json() == {"ok": True}
+        assert (await c.get("/api/vault")).json()["browser_profiles"][0]["sites"] == []
+        assert st.browser_unit(pid, "example.com") == {"cookies": [], "storage": {}}
+        assert (await c.delete(f"/api/browser/profiles/{pid}")).json() == {"ok": True}
+        assert (await c.get("/api/vault")).json()["browser_profiles"] == []
+        assert (await c.delete(f"/api/browser/profiles/{pid}")).status_code == 404

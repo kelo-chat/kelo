@@ -1,4 +1,4 @@
-"""Goals and turns (goals.py has the goal book): the agent starts on a new goal, the goals a turn works on, a schedule handed to the agent to check, a schedule linked to a goal. Moved out of server.create_app (2026-11-10); each function takes the app context first."""
+"""Goals and turns (goals.py has the goal book): the agent starts on a new goal, the goals a turn works on, a schedule handed to the agent to check, checklist items handed to the agent for their timing, a schedule linked to a goal. Moved out of server.create_app (2026-11-10); each function takes the app context first."""
 
 from __future__ import annotations
 
@@ -39,6 +39,7 @@ def goals_of_turn(ctx: Any, source: str, text: str) -> set[int]:
     GOAL_MARK = S.GOAL_MARK
     HANDOFF_MARK = S.HANDOFF_MARK
     NEST_SHARE_MARK = getattr(S, "NEST_SHARE_MARK", "")
+    CHECKLIST_MARK = getattr(S, "CHECKLIST_MARK", "")
     RECHECK_MARK = S.RECHECK_MARK
     SCHEDULE_MARK = S.SCHEDULE_MARK
     WATCH_MARK = S.WATCH_MARK
@@ -47,7 +48,7 @@ def goals_of_turn(ctx: Any, source: str, text: str) -> set[int]:
     if text.startswith(GOAL_MARK):
         m = re.search(r"goal_id (\d+)", text) or re.search(r"#(\d+)", text)   # the kickoff / resume names it as "goal_id N"
         return {int(m.group(1))} if m else set()
-    marks = tuple(m for m in (HANDOFF_MARK, WATCH_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK) if m)
+    marks = tuple(m for m in (HANDOFF_MARK, WATCH_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK) if m)
     if source in ("chat", "api") and not text.startswith(marks):
         return goal_book.answering()
     return set()
@@ -90,3 +91,24 @@ def link_schedule(ctx: Any, goal_id: int, schedule_id: int) -> str:
     except ScheduleError as e:
         return f"Error: {e}"
     return f"Schedule #{schedule_id} now serves goal #{goal_id}."
+
+
+def start_checklist_setup(ctx: Any, items: list[str], *, owner_asked: bool, added: bool | None = None) -> bool:
+    """Checklist items go to the main agent, which gives each the timing it needs (checklist.py SETUP): a job of its own made with its
+    tools, or the send times. owner_asked: the owner added them in the app, so Kelo's own settings it makes for them go ahead like a
+    chat request (connect_tools.asked_in_chat). `added`: the items were just added (the setup text says so; default: as owner_asked).
+    False: nothing to hand over, or no model."""
+    S = _server()   # read at each call (tests tune some of these on assistant.server)
+    asyncio = S.asyncio
+    i18n = S.i18n
+    setup_text = S.checklist_setup_text
+    if not items or ctx.journal_model() is None:
+        return False
+    ctx.tool_scopes.add("chat", ["checklist_link"])   # the hand-off shows the tool it must call, without a search first
+    title = i18n.t("Things to keep an eye on")
+    task = asyncio.ensure_future(ctx.worker_handoff({"id": "", "title": title, "parent_task_id": None},
+                                                    setup_text(items, ctx.checklist_send_times(), added=owner_asked if added is None else added), title,
+                                                    owner_asked=owner_asked))
+    ctx.background_folds.add(task)
+    task.add_done_callback(ctx.background_folds.discard)
+    return True

@@ -43,6 +43,8 @@ public final class AppModel {
     public let secretCardWait = SecretCardWait()
     /// The wallet's forms and key for the chat and the Keychain (set by the shell; nil in previews and tests).
     @ObservationIgnored public var wallet: WalletHook?
+    /// Call center for in-app voice calls (set by KeloChat).
+    @ObservationIgnored public var callCenterHolder: AnyObject?
     @ObservationIgnored public let cache: ScreenCache
     @ObservationIgnored private let store: SessionStore
     @ObservationIgnored private let transport: HTTPTransport
@@ -60,11 +62,21 @@ public final class AppModel {
     public private(set) var serverTooOld: String?
     /// A newer released app that works with this server (`X-Kelo-App-Update` on /api/about and /api/profile; docs/version-notices.md part 3).
     public private(set) var appUpdate: String?
+    /// A newer server release this caller may install (`X-Kelo-Server-Update` on /api/about and /api/profile; nil = none).
+    public private(set) var serverUpdate: String?
+    /// When the server-update notice was last answered on this phone.
+    public private(set) var serverNoticeShownAt: Date?
     /// The versions whose banner was closed or used on this phone.
     public private(set) var dismissedAppNotices: Set<String>
     /// When the update popup was last answered on this phone.
     public private(set) var popupShownAt: Date?
     @ObservationIgnored private let noticeStore: AppNoticeStore
+    /// The App Store's answer about the newest version; nil for a build that is not an App Store build (no lookup).
+    @ObservationIgnored private let storeLookup: AppStoreLookup?
+    /// This build's version (CFBundleShortVersionString unless a test names one).
+    @ObservationIgnored private let runningVersion: String?
+    /// The newest version the App Store names for this device's storefront (nil: not asked yet or not answered).
+    public private(set) var storeVersion: String?
     @ObservationIgnored private var leftAt: Date?
     /// The server's KE2E key changed (409 e2e_key_changed): this phone must be paired again.
     public private(set) var pairAgain = false
@@ -89,10 +101,15 @@ public final class AppModel {
 
     public init(store: SessionStore = KeychainSessionStore(), prefs: Prefs = .shared, strings: Strings? = nil,
                 transport: HTTPTransport = URLSessionTransport.shared, cache: ScreenCache = ScreenCache(), strictE2E: Bool? = nil,
-                noticeStore: AppNoticeStore = .defaults) {
+                noticeStore: AppNoticeStore = .defaults,
+                storeLookup: AppStoreLookup? = Versioning.currentChannel == "appstore" ? .live : nil, runningVersion: String? = nil) {
         self.noticeStore = noticeStore
+        self.storeLookup = storeLookup
+        self.runningVersion = runningVersion
+        self.storeVersion = noticeStore.lastStoreLookup()?.version
         self.dismissedAppNotices = noticeStore.dismissed()
         self.popupShownAt = noticeStore.lastShown()
+        self.serverNoticeShownAt = noticeStore.lastServerShown()
         self.store = store
         self.prefs = prefs
         self.strings = strings ?? Strings.shared
@@ -178,6 +195,7 @@ public final class AppModel {
         serverTooOld = nil
         appTooOld = false
         appUpdate = nil
+        serverUpdate = nil
         profileState = .signedOut
         nest = nil
         activity.reset()
@@ -204,6 +222,8 @@ public final class AppModel {
             Task { @MainActor in self?.serverVersion(v) }
         }, onAppUpdate: { [weak self] v in
             Task { @MainActor in if self?.appUpdate != v { self?.appUpdate = v } }
+        }, onServerUpdate: { [weak self] v in
+            Task { @MainActor in if self?.serverUpdate != v { self?.serverUpdate = v } }
         })
         cache.use(server: s.serverUrl)
         if let api { nest = NestModel(api: api) }
@@ -257,16 +277,45 @@ public final class AppModel {
     }
 
     /// The newer app to tell about now (once per version, never one that was dismissed here), or nil.
-    public var appNotice: String? { AppNoticeRules.show(appUpdate, dismissed: dismissedAppNotices) ? appUpdate : nil }
+    public var appNotice: String? { AppNoticeRules.show(gatedAppUpdate, dismissed: dismissedAppNotices) ? gatedAppUpdate : nil }
+
+    /// An App Store build hears of a newer app only when the App Store itself names a newer version (`storeVersion`); the server's
+    /// answer names the version and drops one its min_server rules out. Other builds: the server's answer alone.
+    private var gatedAppUpdate: String? { storeLookup == nil || storeSaysNewer ? appUpdate : nil }
+    private var storeSaysNewer: Bool {
+        guard let v = storeVersion, let running = runningVersion ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else { return false }
+        return AppStoreVersionRules.newer(v, than: running)
+    }
+
+    /// Asks the App Store for its newest version at most every six hours (AppStoreVersionRules); a failed ask keeps the last answer.
+    public func checkStore(now: Date = Date()) async {
+        guard let storeLookup else { return }
+        let last = noticeStore.lastStoreLookup()
+        guard AppStoreVersionRules.due(lastCheck: last?.checked, now: now) else { return }
+        let answer = await storeLookup.version()
+        if let answer { storeVersion = answer }
+        noticeStore.storeLookup(checked: now, version: answer ?? last?.version)
+    }
 
     /// The newer app to ask about in a popup now: named by the server and not asked in the last 24 hours (`now` is read at each
     /// redraw of the shell).
     public func appPopup(now: Date = Date()) -> String? {
-        AppNoticeRules.popup(appUpdate, lastShown: popupShownAt, now: now) ? appUpdate : nil
+        AppNoticeRules.popup(gatedAppUpdate, lastShown: popupShownAt, now: now) ? gatedAppUpdate : nil
     }
 
     /// The popup was answered (Update, Later or anything else): it waits 24 hours.
     public func popupAnswered(now: Date = Date()) { noticeStore.shown(now: now); popupShownAt = now }
+
+    /// The server-update notice to show now (once a day, an hour clear of the app popup, never over a full-screen notice), or nil.
+    /// The app popup is decided first: while it is due, this waits.
+    public func serverPopup(now: Date = Date()) -> String? {
+        let covered = appTooOld || pairAgain || serverTooOld != nil || locked || appPopup(now: now) != nil
+        return ServerNoticeRules.show(serverUpdate, lastShown: serverNoticeShownAt, appShown: popupShownAt, now: now, covered: covered)
+            ? serverUpdate : nil
+    }
+
+    /// The server-update notice was answered (See the update, Later or anything else): it waits 24 hours.
+    public func serverPopupAnswered(now: Date = Date()) { noticeStore.serverShown(now: now); serverNoticeShownAt = now }
 
     /// The app went to the background / came back: after more than an hour away the server is asked again, so a newer app is found.
     public func appLeft(now: Date = Date()) { leftAt = now }

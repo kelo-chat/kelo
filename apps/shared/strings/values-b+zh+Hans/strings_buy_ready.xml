@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- zh-Hans text for strings_buy_ready.xml -->
+<!-- zh-Hans text for strings_buy_ready.xml (generated from values/strings_buy_ready.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="buy_ready_title">立即购买</string>
     <string name="buy_ready_short">立即购买已就绪</string>

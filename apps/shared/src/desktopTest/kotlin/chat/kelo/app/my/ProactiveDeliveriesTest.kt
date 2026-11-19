@@ -25,8 +25,6 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import java.io.File
 import java.time.ZoneId
 import java.util.Locale
@@ -39,7 +37,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/** The delivery count and the held items: the model's mapping (fields present or absent, why codes, the 0..10 bound) and the rows at 320 and 412 dp. */
+/** The held items: the model's mapping (the held count present or absent, why codes) and the rows at 320 and 412 dp. */
 @OptIn(ExperimentalCoroutinesApi::class, ExperimentalTestApi::class)
 class ProactiveDeliveriesTest {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false; coerceInputValues = true }
@@ -53,42 +51,26 @@ class ProactiveDeliveriesTest {
 
     // ---- the mapping
 
-    @Test fun readsTheDeliveryFieldsWhenTheServerSendsThem() {
+    @Test fun readsTheHeldCountAndIgnoresTheRetiredFields() {
         val p = json.decodeFromString<ProactiveSettings>("""{"enabled": true, "daily_deliveries": 3, "today_deliveries": 1, "held": 4}""")
-        assertEquals(3, p.dailyDeliveries)
-        assertEquals(1, p.todayDeliveries)
         assertEquals(4, p.held)
-        assertTrue(DeliveryRules.hasCount(p))
         assertTrue(DeliveryRules.hasHeld(p))
-        // 0 is a real choice (only what cannot wait), not "missing"
-        val zero = json.decodeFromString<ProactiveSettings>("""{"daily_deliveries": 0, "today_deliveries": 0, "held": 0}""")
-        assertTrue(DeliveryRules.hasCount(zero))
-        assertEquals(0, zero.dailyDeliveries)
+        assertEquals(4, DeliveryRules.heldCount(p.held))
+        val zero = json.decodeFromString<ProactiveSettings>("""{"held": 0}""")
+        assertTrue(DeliveryRules.hasHeld(zero))
+        assertNull(DeliveryRules.heldCount(zero.held))        // nothing held: the link is hidden
+        assertNull(DeliveryRules.heldCount(null))
     }
 
     @Test fun anOlderServerWithoutTheFieldsHidesTheRows() {
         val p = json.decodeFromString<ProactiveSettings>("""{"enabled": true, "daily_total": 3}""")
-        assertNull(p.dailyDeliveries)
-        assertNull(p.todayDeliveries)
         assertNull(p.held)
-        assertFalse(DeliveryRules.hasCount(p))
         assertFalse(DeliveryRules.hasHeld(p))
-        // a null the server sends explicitly is the same as absent
-        assertFalse(DeliveryRules.hasCount(json.decodeFromString<ProactiveSettings>("""{"daily_deliveries": null}""")))
-    }
-
-    @Test fun theChoiceStaysInsideZeroToTen() {
-        assertEquals(0, DeliveryRules.clamp(-1))
-        assertEquals(0, DeliveryRules.clamp(0))
-        assertEquals(10, DeliveryRules.clamp(10))
-        assertEquals(10, DeliveryRules.clamp(11))
-        assertEquals(7, DeliveryRules.clamp(7))
-        assertEquals(0, DeliveryRules.MIN)
-        assertEquals(10, DeliveryRules.MAX)
+        assertFalse(DeliveryRules.hasHeld(json.decodeFromString<ProactiveSettings>("""{"held": null}""")))
     }
 
     @Test fun whyCodesMapToTheirReasonAndAnUnknownOneToTheGeneralText() {
-        assertEquals(DeliveryRules.Why.SLOTS, DeliveryRules.why("slots"))
+        assertEquals(DeliveryRules.Why.OTHER, DeliveryRules.why("slots"))   // retired 2026-11-19: the general text
         assertEquals(DeliveryRules.Why.OVER_CAP, DeliveryRules.why("over_cap"))
         assertEquals(DeliveryRules.Why.WAITING_FOR_REPLY, DeliveryRules.why("waiting_for_reply"))
         assertEquals(DeliveryRules.Why.OTHER, DeliveryRules.why(""))
@@ -98,13 +80,13 @@ class ProactiveDeliveriesTest {
     @Test fun readsHeldItemsAndSurvivesMissingAndExtraFields() {
         val list = json.decodeFromString<HeldList>(
             """{"items": [{"key": "mail:1", "source": "mail", "title": "Invoice due", "urgency": "오늘", "message": "The invoice is due today.",
-            "why": "slots", "held_at": 1762650000.5, "expires_at": 1762680000.0, "future_field": 1}, {"key": "x"}]}""",
+            "why": "over_cap", "held_at": 1762650000.5, "expires_at": 1762680000.0, "future_field": 1}, {"key": "x"}]}""",
         )
         assertEquals(2, list.items.size)
         val a = list.items[0]
         assertEquals("Invoice due", a.title)
         assertEquals(1762680000.0, a.expiresAt, 0.0)
-        assertEquals("slots", a.why)
+        assertEquals("over_cap", a.why)
         val b = list.items[1]
         assertEquals("", b.title)
         assertNull(b.urgency)
@@ -159,22 +141,6 @@ class ProactiveDeliveriesTest {
         assertEquals("boom", vm.state.value.error)
     }
 
-    @Test fun theChoiceIsSavedWithPutProactive() {
-        var body = ""
-        val s = serve { m, p, b ->
-            when {
-                m == "PUT" && p == "/api/proactive" -> { body = b; ok("""{"enabled": true, "daily_deliveries": 4, "today_deliveries": 0, "held": 0}""") }
-                m == "GET" && p == "/api/proactive" -> ok("""{"enabled": true, "daily_deliveries": 2}""")
-                else -> null
-            }
-        }
-        val vm = vms.make { NotifySettingsViewModel(s.sessions()) }
-        until("loaded") { vm.state.value.proactive != null }
-        vm.putProactive(buildJsonObject { put("daily_deliveries", DeliveryRules.clamp(4)) })
-        until("saved") { vm.state.value.proactive?.dailyDeliveries == 4 }
-        assertTrue(body.contains("\"daily_deliveries\":4"))
-    }
-
     // ---- the rows at narrow widths, in Korean and English
 
     private val longWord = "Donaudampfschifffahrtsgesellschaftskapitänsmützenhersteller"
@@ -192,20 +158,18 @@ class ProactiveDeliveriesTest {
         }
     }
 
-    private val settings = ProactiveSettings(enabled = true, dailyDeliveries = 2, todayDeliveries = 1, held = 3)
     private val held = listOf(
-        HeldItem("a", "mail", "Invoice due", "오늘", "The invoice is due today. Pay it before 5, or the late fee applies and the account is blocked.", "slots", 0.0, 1794744000.0),
+        HeldItem("a", "mail", "Invoice due", "오늘", "The invoice is due today. Pay it before 5, or the late fee applies and the account is blocked.", "over_cap", 0.0, 1794744000.0),
         HeldItem("b", "calendar", longWord, "보통", "$japanese $longWord", "over_cap", 0.0, 1794000000.0),
         HeldItem("c", "memory", "", null, "No title, only words", "waiting_for_reply", 0.0, 1794000000.0),
         HeldItem("d", "memory", "Odd", null, "Something new", "a_code_this_app_does_not_know", 0.0, 0.0),
     )
 
-    @Test fun theDeliveryRowsFitInKorean() = check("settings", Locale.KOREAN) { DeliveriesBlock(settings, onChange = {}, onOpenHeld = {}) }
+    @Test fun theSentAndHeldLineFitsInKorean() = check("settings", Locale.KOREAN) { SentHeldLine(3, 2, onOpenHeld = {}) }
 
-    @Test fun theDeliveryRowsFitInEnglish() = check("settings", Locale.ENGLISH) { DeliveriesBlock(settings, onChange = {}, onOpenHeld = {}) }
+    @Test fun theSentAndHeldLineFitsInEnglish() = check("settings", Locale.ENGLISH) { SentHeldLine(3, 2, onOpenHeld = {}) }
 
-    @Test fun theDeliveryRowsFitInGermanWithLargeCounts() =
-        check("settings-big", Locale.GERMAN) { DeliveriesBlock(settings.copy(dailyDeliveries = 10, todayDeliveries = 10, held = 12), onChange = {}, onOpenHeld = {}) }
+    @Test fun theSentAndHeldLineFitsInGermanWithLargeCounts() = check("settings-big", Locale.GERMAN) { SentHeldLine(20, 12, onOpenHeld = {}) }
 
     @Test fun theHeldItemsFitInKorean() = check("held", Locale.KOREAN) { held.forEach { HeldRow(it) } }
 

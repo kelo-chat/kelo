@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Kelo anrufen</string>
+    <string name="call_incoming_line">ruft an</string>
+    <string name="call_accept">Annehmen</string>
+    <string name="call_decline">Ablehnen</string>
+    <string name="call_connecting">Verbinden…</string>
+    <string name="call_listening">Hört zu</string>
+    <string name="call_thinking">Denkt nach</string>
+    <string name="call_speaking">Spricht</string>
+    <string name="call_muted">Stummgeschaltet</string>
+    <string name="call_mute">Stummschalten</string>
+    <string name="call_unmute">Stummschaltung aufheben</string>
+    <string name="call_speaker">Lautsprecher</string>
+    <string name="call_hang_up">Anruf beenden</string>
+    <string name="call_card_waiting">Auf dem Bildschirm gibt es etwas zu prüfen.</string>
+    <string name="call_card_open">Anzeigen</string>
+    <string name="call_back_to_call">Zurück zum Anruf · %1$s</string>
+    <string name="call_offline">Kelo-Server nicht erreichbar. Erneuter Verbindungsaufbau…</string>
+    <string name="call_ended_background">Anruf beendet, da die App verlassen wurde.</string>
+    <string name="call_ended_interrupted">Anruf beendet, da ein anderer Ton unterbrochen hat.</string>
+    <string name="call_ended_quiet">Anruf nach längerer Stille beendet.</string>
+    <string name="call_needs_speech_model">Für Anrufe benötigt der Kelo-Server das Spracherkennungsmodell.</string>
+    <string name="call_mic_denied">Anruf konnte nicht gestartet werden: Mikrofonzugriff nicht erlaubt.</string>
+    <string name="call_voice_offer">Dies ist Kelos natürliche Stimme für Anrufe. Lade das Sprachmodell (%1$s) einmal auf deinen Kelo-Server herunter, und Kelo spricht ab dem nächsten Satz damit. Ohne das Modell spricht Kelo mit der Roboterstimme dieses Geräts.</string>
+    <string name="call_mark">Anruf</string>
+    <string name="call_voice_offer_title">Kelos eigene Stimme herunterladen?</string>
+    <string name="call_voice_offer_ok">Laden</string>
+    <string name="call_voice_offer_later">Vorerst Gerätestimme nutzen</string>
+    <string name="call_voice_better">Mit dem Sprachmodell spricht Kelo mit einer viel natürlicheren Stimme.</string>
+    <string name="call_voice_get">Laden</string>
+    <string name="call_voice_line_close">Schließen</string>
+    <string name="call_ears_failed">Die Spracherkennung des Telefons hört dich nicht.</string>
+    <string name="voice_speech_title">Kelos Stimme</string>
+    <string name="voice_speech_download">Sprachmodell herunterladen · %1$s</string>
+    <string name="voice_speech_downloading">Sprachmodell wird heruntergeladen · %1$d%%</string>
+    <string name="voice_speech_remove">Sprachmodell entfernen</string>
+    <string name="voice_speech_remove_confirm">Sprachmodell entfernen? Kelo spricht danach mit der Gerätestimme.</string>
+    <string name="voice_speech_device_note">Ohne das Sprachmodell spricht Kelo mit der integrierten Stimme dieses Geräts.</string>
+    <string name="voice_speech_unsupported_lang">Das Sprachmodell unterstützt diese Sprache noch nicht; es wird die Gerätestimme verwendet.</string>
+    <string name="voice_speech_voice_female">Weibliche Stimme %1$d</string>
+    <string name="voice_speech_voice_male">Männliche Stimme %1$d</string>
+    <string name="voice_speech_listen">Anhören</string>
+    <string name="voice_speech_stop">Stopp</string>
+    <string name="voice_speech_speed">Sprechgeschwindigkeit</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">Hallo. Das ist die Stimme, mit der ich sprechen werde.</string>
+</resources>

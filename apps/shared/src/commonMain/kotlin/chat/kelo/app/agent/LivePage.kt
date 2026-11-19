@@ -51,6 +51,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -133,7 +134,8 @@ fun LiveTabPage(
 ) {
     // the page's view models (the live connection) live exactly as long as the page: they are cleared when it leaves
     val owner = rememberPageViewModelStoreOwner(tabId)
-    CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+    val remoteKeyboard = remember(tabId) { RemoteKeyboardFocus() }
+    CompositionLocalProvider(LocalViewModelStoreOwner provides owner, LocalRemoteKeyboard provides remoteKeyboard) {
         LiveTabContent(tabId, tab, onBack, onCloseTab, takeControl, onDone, fallback)
     }
 }
@@ -198,6 +200,16 @@ private fun LiveTabContent(
         ClipboardRules.pasteText(clipboard.getText()?.text)?.let { client.type(it); notice = Res.string.live_pasted }
     }
 
+    // the tabs of this task's window: the chips follow what the server says every few seconds (a switch or a close shows at once after)
+    var tabs by remember(tabId) { mutableStateOf(tab?.tabs.orEmpty()) }
+    LaunchedEffect(tabId, state.mode == LiveMode.ENDED) {
+        while (state.mode != LiveMode.ENDED) {
+            runCatching { api.get<BrowserTabsLite>("/api/browser/sessions?thumbnails=false") }.onSuccess { l ->
+                l.items.firstOrNull { it.id == tabId }?.let { tabs = it.tabs }
+            }
+            delay(3_000)
+        }
+    }
     val controlling = state.status.youControl
     // the live view is always capturable (owner decision): no secure window here, see LiveRules.guardScreen
     // opened to solve a human check: take the tab over once, as soon as the first picture is there and nobody else holds it
@@ -221,6 +233,10 @@ private fun LiveTabContent(
     }
     val header = frame?.header
     val meta by client.meta.collectAsStateWithLifecycle()
+    var keyboardOpen by remember { mutableStateOf(false) }   // the owner opened the keyboard by hand (the keyboard key)
+    val liveTyping = !LiveKinds.isDevice(tabId) && LiveHeader.liveTyping(meta, header)   // the server takes live typing: no visible type line
+    val remoteKeyboard = LocalRemoteKeyboard.current
+    SideEffect { remoteKeyboard?.on = controlling && liveTyping }
     val device = LiveKinds.isDevice(tabId)   // the Android device: a portrait screen, Back / Home / Recents, no tab to close
     val title = if (device) tab?.title?.ifBlank { null } ?: string(Res.string.chat_phone_title)   // the phone's own name when the server says it
         else LiveHeader.title(meta, header) ?: tab?.title?.ifBlank { null } ?: tab?.host?.ifBlank { null } ?: string(Res.string.agent_tab_browser)
@@ -229,6 +245,12 @@ private fun LiveTabContent(
     Column(Modifier.fillMaxSize().background(c.bg).safeDrawingPadding()) {
         LiveTop(title, host, leave, onCloseTab.takeIf { !device && !controlling && state.mode != LiveMode.ENDED })
         if (state.mode != LiveMode.ENDED) LiveStrip(state, tab)
+        if (LiveRules.showTabs(tabs)) {
+            val tappable = LiveRules.tabsTappable(state.status)
+            LiveTabChips(tabs, tappable,
+                onActivate = { t -> scope.launch { runCatching { api.post<kotlinx.serialization.json.JsonElement>("/api/browser/sessions/$tabId/tabs/${t.id}", LiveRules.tabAction(false)) } } },
+                onClose = { t -> scope.launch { runCatching { api.post<kotlinx.serialization.json.JsonElement>("/api/browser/sessions/$tabId/tabs/${t.id}", LiveRules.tabAction(true)) } } })
+        }
         if (controlling) ControlBanner(busy = state.controlBusy) {
             scope.launch { client.control(false) }
         }
@@ -259,7 +281,7 @@ private fun LiveTabContent(
             }
         }
         // the desktop's VNC screen: the keys go to the page while the owner holds it; composed text (Korean, Japanese, Chinese) goes in the line below
-        if (pointer && controlling && vncHost != null && VncRules.showsVnc(vncState)) Text(
+        if (pointer && controlling && !liveTyping && vncHost != null && VncRules.showsVnc(vncState)) Text(
             string(Res.string.desktop_live_type_hint), style = MaterialTheme.typography.bodySmall, color = c.muted,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
         )
@@ -280,7 +302,12 @@ private fun LiveTabContent(
                     notice = ClipboardRules.words(pointer).copied
                 }
             }
-            ControlBar(client, device, editing = LiveHeader.editing(meta, header), canPaste = vncHost != null, desktop = pointer, keysGoToScreen = pointer && VncRules.showsVnc(vncState), onNotice = { notice = it })
+            ControlBar(
+                client, device, editing = LiveHeader.editing(meta, header), canPaste = vncHost != null, desktop = pointer,
+                keysGoToScreen = pointer && VncRules.showsVnc(vncState), onNotice = { notice = it },
+                typing = LiveHeader.typing(meta, header), liveTyping = liveTyping,
+                keyboardOpen = keyboardOpen, onKeyboardOpen = { keyboardOpen = it },
+            )
         }
         else if (state.mode != LiveMode.ENDED) {
             val other = state.status.someoneElse
@@ -300,6 +327,39 @@ private fun LiveTabContent(
                             }
                         }
                     },
+                )
+            }
+        }
+    }
+}
+
+/** One row of chips under the top bar: the task's tabs. Tappable only while this device holds the tab; the active one is selected. */
+@Composable
+private fun LiveTabChips(tabs: List<LiveTab>, tappable: Boolean, onActivate: (LiveTab) -> Unit, onClose: (LiveTab) -> Unit) {
+    val c = Kelo.colors
+    val untitled = string(Res.string.live_tab_untitled)
+    val closeLabel = string(Res.string.live_tab_close)
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically,
+    ) {
+        tabs.forEach { t ->
+            val shape = RoundedCornerShape(16.dp)
+            Row(
+                Modifier.widthIn(max = 180.dp).clip(shape)
+                    .background(if (t.active) c.ink else c.card)
+                    .let { if (tappable && !t.active) it.clickable { onActivate(t) } else it }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    t.title.ifBlank { untitled }, style = MaterialTheme.typography.bodySmall,
+                    color = if (t.active) c.bg else c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (LiveRules.tabClosable(t, tappable)) Text(
+                    "×", color = c.muted, style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 8.dp).clickable(onClickLabel = closeLabel) { onClose(t) },
                 )
             }
         }
@@ -730,14 +790,17 @@ private fun PageBusyBanner(canReload: Boolean, onReload: () -> Unit, modifier: M
 
 /** Keys, back / forward / reload, and a line to type into the page (nothing typed is kept or logged). */
 @Composable
-private fun ControlBar(client: LiveViewModel, device: Boolean, editing: Boolean, canPaste: Boolean, desktop: Boolean, keysGoToScreen: Boolean, onNotice: (StringResource) -> Unit) {
+private fun ControlBar(
+    client: LiveViewModel, device: Boolean, editing: Boolean, canPaste: Boolean, desktop: Boolean, keysGoToScreen: Boolean, onNotice: (StringResource) -> Unit,
+    typing: Typing?, liveTyping: Boolean, keyboardOpen: Boolean, onKeyboardOpen: (Boolean) -> Unit,
+) {
     val c = Kelo.colors
     // a text field took focus on the page / phone (the server says so): the keyboard comes up, once per focus
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var wasEditing by remember { mutableStateOf(false) }
     LaunchedEffect(editing) {
-        if (EditingRule.focusTypeLine(wasEditing, editing, keysGoToScreen)) { runCatching { focus.requestFocus() }; keyboard?.show() }
+        if (!liveTyping && EditingRule.focusTypeLine(wasEditing, editing, keysGoToScreen)) { runCatching { focus.requestFocus() }; keyboard?.show() }
         wasEditing = editing
     }
     var text by remember { mutableStateOf("") }
@@ -758,9 +821,25 @@ private fun ControlBar(client: LiveViewModel, device: Boolean, editing: Boolean,
             NavKey(KeloIcons.ArrowLeft, Res.string.live_back) { client.send(LiveMessages.nav("back")) }
             NavKey(KeloIcons.ArrowRight, Res.string.live_forward) { client.send(LiveMessages.nav("forward")) }
             NavKey(KeloIcons.Retry, Res.string.live_reload) { client.send(LiveMessages.nav("reload")) }
-            KEY_LABELS.forEach { (key, label, desc) -> TextKey(string(label), string(desc)) { client.send(LiveMessages.key(key)) } }
+            KEY_LABELS.forEach { (key, label, desc) ->
+                TextKey(string(label), string(desc)) { if (liveTyping) client.typingKeys(listOf(key)) else client.send(LiveMessages.key(key)) }
+            }
+            if (liveTyping) {
+                val ime = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                val keyboardWords = string(Res.string.live_keyboard_desc)
+                Box(
+                    Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (ime || keyboardOpen) c.accent.copy(alpha = 0.18f) else c.bubble)
+                        .clickable(role = Role.Button, onClickLabel = keyboardWords) { onKeyboardOpen(!(ime || keyboardOpen)) }.semantics { contentDescription = keyboardWords },
+                    contentAlignment = Alignment.Center,
+                ) { Icon(KeloIcons.Keyboard, contentDescription = null, tint = c.ink, modifier = Modifier.size(20.dp)) }
+                if (canPaste) IconButton(onClick = { paste() }, enabled = clipHasText, modifier = Modifier.size(40.dp)) {
+                    Icon(KeloIcons.Paste, contentDescription = string(ClipboardRules.words(desktop).paste), tint = if (clipHasText) c.ink else c.muted)
+                }
+            }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (liveTyping) {
+            RemoteKeyboard(client, typing, active = true, open = keyboardOpen, onOpenChange = onKeyboardOpen)
+        } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             KeloTextField(
                 text, { text = it }, string(if (device) Res.string.live_phone_type_hint else Res.string.live_type_hint), modifier = Modifier.weight(1f).focusRequester(focus), password = hidden,
                 maxLength = LiveMessages.MAX_TEXT,

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- nl text for strings_buy_ready.xml -->
+<!-- nl text for strings_buy_ready.xml (generated from values/strings_buy_ready.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="buy_ready_title">Klaar om te kopen</string>
     <string name="buy_ready_short">Klaar om direct te kopen</string>

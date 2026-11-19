@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- nl text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="deliveries_label">Berichten die Kelo zelf per dag stuurt</string>
-    <string name="deliveries_about">Kelo bundelt wat het je wil vertellen in zoveel berichten per dag. Bij 0 stuurt het alleen wat niet kan wachten.</string>
-    <plurals name="deliveries_today">
-        <item quantity="one">Vandaag %d keer verstuurd</item>
-        <item quantity="other">Vandaag %d keer verstuurd</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="one">%d item vastgehouden</item>
         <item quantity="other">%d items vastgehouden</item>
@@ -15,7 +9,6 @@
     <string name="deliveries_held_about">Kelo bewaart dit voor het volgende bericht. Voor het versturen kijkt het er nog eens naar en laat het weg wat niet meer telt.</string>
     <string name="deliveries_held_empty">Er wordt nu niets vastgehouden.</string>
     <string name="deliveries_held_until">Vastgehouden tot %1$s</string>
-    <string name="deliveries_why_slots">Wacht op het volgende bericht van de dag</string>
     <string name="deliveries_why_cap">Niet dringend genoeg om vandaag meer te sturen</string>
     <string name="deliveries_why_reply">Wacht op je antwoord op het laatste bericht</string>
     <string name="deliveries_why_other">Wacht op een beter moment</string>

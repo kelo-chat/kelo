@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_desktop_pay.xml (generated from values/strings_desktop_pay.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pin_allow_note">İzin verirsen telefonun, bu site için kayıtlı ödeme PIN\'ini gönderip göndermeyeceğini sorar. Orada onayla.</string>
     <string name="desktop_pin_need_body">%2$s ödemesi (%3$s) için “%1$s” PIN\'ini bir kez göndermek üzere telefonundaki Kelo uygulamasını aç.</string>

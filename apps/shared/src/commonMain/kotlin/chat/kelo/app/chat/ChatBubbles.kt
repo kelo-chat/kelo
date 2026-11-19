@@ -18,6 +18,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.ui.theme.Kelo
@@ -48,13 +50,17 @@ private fun bubbleCap(): Modifier =
  * that hangs below.
  */
 @Composable
-fun UserBubble(text: String, reaction: String, actions: List<MsgAction>, onAction: (MsgAction) -> Unit) {
+fun UserBubble(text: String, reaction: String, actions: List<MsgAction>, fromCall: Boolean = false, onAction: (MsgAction) -> Unit) {
+    val callMark = if (fromCall) string(Res.string.call_mark) else null
+    val desc = if (callMark != null) "$text, $callMark" else null
     Row(Modifier.fillMaxWidth().padding(start = 48.dp), horizontalArrangement = Arrangement.End) {
         BubbleWithReaction(reaction) {
             ActionBubble(actions, copyText = { text }, shape = BubbleShape, fromEnd = true, onAction = onAction) {
                 JoinedText(
                     AnnotatedString(text), color = Kelo.colors.ink, style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.then(bubbleCap()).clip(BubbleShape).background(Kelo.colors.mine).padding(horizontal = 15.dp, vertical = 11.dp),
+                    modifier = Modifier.then(bubbleCap()).clip(BubbleShape).background(Kelo.colors.mine)
+                        .then(if (desc != null) Modifier.semantics(mergeDescendants = true) { contentDescription = desc } else Modifier)
+                        .padding(horizontal = 15.dp, vertical = 11.dp),
                 )
             }
         }
@@ -66,7 +72,7 @@ fun UserBubble(text: String, reaction: String, actions: List<MsgAction>, onActio
  * jumping by a chunk at each poll; only the block being written is parsed again as text arrives ([StreamingMarkdown]).
  */
 @Composable
-fun AssistantBubbles(text: String, streaming: Boolean, actions: List<MsgAction>, onAction: (String, MsgAction) -> Unit) {
+fun AssistantBubbles(text: String, streaming: Boolean, actions: List<MsgAction>, fromCall: Boolean = false, onAction: (String, MsgAction) -> Unit) {
     val c = Kelo.colors
     val parser = remember(c) { StreamingMarkdown(MdStyles.of(c)) }
     val bubbles = remember(text, parser) { parser.bubbles(text) }
@@ -74,19 +80,23 @@ fun AssistantBubbles(text: String, streaming: Boolean, actions: List<MsgAction>,
     val plain: (Int) -> String = remember(text) { { i -> Markdown.plain(Markdown.splitBubbles(text).getOrElse(i) { "" }) } }
     val total = remember(bubbles) { bubbles.sumOf { b -> b.sumOf { it.length } } }
     val revealed by rememberRevealed(total, streaming)
+    val callMark = if (fromCall) string(Res.string.call_mark) else null
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         var before = 0
         for ((i, blocks) in bubbles.withIndex()) {
             val visible = revealed - before
             before += blocks.sumOf { it.length }
             if (visible <= 0f) break
+            val desc = if (callMark != null) "${plain(i)}, $callMark" else null
             Row(Modifier.fillMaxWidth().padding(end = 48.dp)) {
                 // no menu while the reply is still being written
                 ActionBubble(if (streaming) emptyList() else actions, copyText = { plain(i) }, shape = BubbleShape, fromEnd = false,
                     onAction = { a -> onAction(plain(i), a) }) {
                     StyledMarkdown(
                         blocks,
-                        Modifier.then(bubbleCap()).clip(BubbleShape).background(c.bubble).padding(horizontal = 15.dp, vertical = 11.dp),
+                        Modifier.then(bubbleCap()).clip(BubbleShape).background(c.bubble)
+                            .then(if (desc != null) Modifier.semantics(mergeDescendants = true) { contentDescription = desc } else Modifier)
+                            .padding(horizontal = 15.dp, vertical = 11.dp),
                         visible = if (revealed >= total) null else visible,
                     )
                 }

@@ -8,11 +8,13 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from .. import voice_models as vm
 from ..voice import MAX_BODY, VoiceError
+from ..voice_speak import STATUS as SPEECH_STATUS
+from ..voice_speak import SpeakError
 from .context import AppContext
 
 STATUS = {"voice_not_ready": 409, "voice_too_long": 413, "voice_format": 415, "voice_busy": 429,
@@ -21,6 +23,18 @@ STATUS = {"voice_not_ready": 409, "voice_too_long": 413, "voice_format": 415, "v
 
 class ModelIn(BaseModel):
     model: str
+
+
+class PrefsIn(BaseModel):
+    voice: int | None = None
+    speed: float | None = None
+
+
+class SpeakIn(BaseModel):
+    text: str
+    lang: str
+    voice: int | None = None
+    speed: float | None = None
 
 
 def router(ctx: AppContext) -> APIRouter:
@@ -65,5 +79,46 @@ def router(ctx: AppContext) -> APIRouter:
             return JSONResponse({"code": e.code}, status_code=STATUS[e.code])
         finally:
             del buf
+
+    # Kelo's own voice (voice_speak.py): the Supertonic 3 model for call mode. ctx.voice_out is read when a route runs, so the
+    # speech-to-text routes above do not need it.
+    @router.get("/api/voice/speech", dependencies=[Depends(require_auth)])
+    async def get_speech(request: Request) -> dict[str, Any]:
+        return await ctx.voice_out.view()
+
+    @router.post("/api/voice/speech/model", dependencies=[Depends(require_auth)])
+    async def choose_speech(request: Request) -> JSONResponse:
+        out = ctx.voice_out
+        await out.choose()
+        view = await out.view()
+        return JSONResponse(view, status_code=202 if view["state"] == "downloading" else 200)
+
+    @router.post("/api/voice/speech/decline", dependencies=[Depends(require_auth)])
+    async def decline_speech(request: Request) -> dict[str, Any]:
+        await ctx.voice_out.decline()
+        return await ctx.voice_out.view()
+
+    @router.delete("/api/voice/speech/model", dependencies=[Depends(require_auth)])
+    async def remove_speech(request: Request) -> dict[str, Any]:
+        await ctx.voice_out.remove()
+        return await ctx.voice_out.view()
+
+    @router.put("/api/voice/speech/prefs", dependencies=[Depends(require_auth)])
+    async def speech_prefs(body: PrefsIn, request: Request) -> Any:
+        out = ctx.voice_out
+        try:
+            out.set_prefs(body.voice, body.speed)
+        except SpeakError as e:
+            return JSONResponse({"code": e.code}, status_code=SPEECH_STATUS[e.code])
+        return await out.view()
+
+    @router.post("/api/voice/speak", dependencies=[Depends(require_auth)])
+    async def speak(body: SpeakIn, request: Request) -> Any:
+        try:
+            wav, info = await ctx.voice_out.speak(body.text, body.lang, body.voice, body.speed)
+        except SpeakError as e:
+            return JSONResponse({"code": e.code}, status_code=SPEECH_STATUS[e.code])
+        return Response(content=wav, media_type="audio/wav",
+                        headers={"X-Kelo-Seconds": str(info["seconds"]), "X-Kelo-Took-Ms": str(info["took_ms"])})
 
     return router

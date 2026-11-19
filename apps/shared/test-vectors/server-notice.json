@@ -1,0 +1,12 @@
+[
+  {"name": "none offered", "offered": null, "last_shown": null, "app_shown": null, "now": 1000000000000, "covered": false, "show": false},
+  {"name": "first time", "offered": "0.10.6", "last_shown": null, "app_shown": null, "now": 1000000000000, "covered": false, "show": true},
+  {"name": "23 h 59 min later", "offered": "0.10.6", "last_shown": 1000000000000, "app_shown": null, "now": 1000086340000, "covered": false, "show": false},
+  {"name": "24 h later", "offered": "0.10.6", "last_shown": 1000000000000, "app_shown": null, "now": 1000086400000, "covered": false, "show": true},
+  {"name": "clock set back", "offered": "0.10.6", "last_shown": 1000000000000, "app_shown": null, "now": 999999999000, "covered": false, "show": true},
+  {"name": "app popup 30 min ago", "offered": "0.10.6", "last_shown": null, "app_shown": 999998200000, "now": 1000000000000, "covered": false, "show": false},
+  {"name": "app popup 59 min ago", "offered": "0.10.6", "last_shown": null, "app_shown": 999996460000, "now": 1000000000000, "covered": false, "show": false},
+  {"name": "app popup 61 min ago", "offered": "0.10.6", "last_shown": null, "app_shown": 999996340000, "now": 1000000000000, "covered": false, "show": true},
+  {"name": "covered by another screen", "offered": "0.10.6", "last_shown": null, "app_shown": null, "now": 1000000000000, "covered": true, "show": false},
+  {"name": "blank offer", "offered": "  ", "last_shown": null, "app_shown": null, "now": 1000000000000, "covered": false, "show": false}
+]

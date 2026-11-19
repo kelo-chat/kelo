@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- fr text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">Reconnectez ce téléphone</string>
     <string name="e2e_key_changed_body">La clé de chiffrement de votre serveur Kelo a changé, ce téléphone ne peut donc pas vérifier qu\'il s\'agit bien de votre serveur. Scannez un nouveau code QR de connexion depuis Moi → Mes appareils sur un autre appareil, ou sur la machine serveur.</string>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- vi text for strings_ai_consent.xml (edit freely, keep the names) -->
+<!-- vi text for strings_ai_consent.xml (generated from values/strings_ai_consent.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="ai_consent_title">Trước tin nhắn đầu tiên</string>
     <string name="ai_consent_body">Để trả lời, Kelo gửi tin nhắn của bạn và những gì cần cho chúng (tệp bạn đính kèm, kết quả từ các dịch vụ đã kết nối) đến dịch vụ AI bạn chọn.</string>

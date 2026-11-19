@@ -5,7 +5,7 @@ import KeloShared
 import KeloTestSupport
 @testable import KeloConnectors
 
-@MainActor private func browser(_ ok: Bool, log: Box? = nil) -> BrowserSignIn {
+@MainActor private func browser(_ ok: Bool, log: Box? = nil) -> KeloConnectors.BrowserSignIn {
     { url in log?.urls.append(url); return ok }
 }
 

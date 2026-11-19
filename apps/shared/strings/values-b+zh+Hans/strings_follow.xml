@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- zh-Hans text for strings_follow.xml (generated from values/strings_follow.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="follow_section_title">Kelo 关照的事项</string>
     <string name="follow_stop">停止关照</string>
@@ -28,4 +29,9 @@
     <string name="follow_summary_prep_general">准备 %1$s</string>
     <string name="follow_summary_watch_changes">确认变更事项</string>
     <string name="follow_summary_default">关照行程</string>
+    <string name="follow_remove">从列表中移除</string>
+    <string name="follow_remove_confirm">要移除这一项吗？</string>
+    <string name="follow_remove_confirm_detail">Kelo 不会再检查它，也不会把它放回来。</string>
+    <string name="follow_remove_yes">移除</string>
+    <string name="follow_stopped_toggle">已停止的项目（%1$d）</string>
 </resources>

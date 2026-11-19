@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_follow.xml (generated from values/strings_follow.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="follow_section_title">Việc Kelo đang chăm sóc</string>
     <string name="follow_stop">Dừng chăm sóc</string>
@@ -28,4 +29,9 @@
     <string name="follow_summary_prep_general">Chuẩn bị %1$s</string>
     <string name="follow_summary_watch_changes">Kiểm tra thay đổi</string>
     <string name="follow_summary_default">Chăm sóc lịch trình</string>
+    <string name="follow_remove">Xóa khỏi danh sách</string>
+    <string name="follow_remove_confirm">Xóa mục này?</string>
+    <string name="follow_remove_confirm_detail">Kelo sẽ không theo dõi hay thêm lại mục này nữa.</string>
+    <string name="follow_remove_yes">Xóa</string>
+    <string name="follow_stopped_toggle">Mục đã dừng (%1$d)</string>
 </resources>

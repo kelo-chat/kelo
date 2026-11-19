@@ -243,7 +243,7 @@ _WHO = {   # who the text came from, by the fence's source word
     "connector": N_("An answer from {origin}"), "mcp": N_("An answer from {origin}"), "phone": N_("A message on your phone"),
     "file": N_("A file ({origin})"), "package": N_("An installed package ({origin})"), "group": N_("A message in {origin}"),
 }
-_WHO_OTHER = N_("Outside text from {origin}")
+_WHO_OTHER = N_("Something Kelo read from {origin}")
 _WHAT = {
     "exfil": N_("send your private details somewhere"),
     "money": N_("spend or send your money"),

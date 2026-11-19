@@ -171,10 +171,13 @@ fun MyScreen(profile: Profile, onProfile: (Profile) -> Unit, onSignedOut: () -> 
     val voiceModel = remember(sessions) {
         VoiceModel({ sessions.api.value }, voiceScope) { NoticesRules.language(services.language.current, services.language.systemShownCode) }
     }
+    val speechModel = remember(sessions) {
+        chat.kelo.app.call.SpeechModel({ sessions.api.value }, voiceScope)
+    }
     val voiceView by voiceModel.view.collectAsStateWithLifecycle()
 
     // fresh numbers every time the home page is shown (see MyOverviewViewModel.refresh)
-    LaunchedEffect(view) { if (view == MyView.HOME) { vm.refresh(); androidVm.load(); notices.load(); voiceModel.refresh(); hooks.onHomeShown() } }
+    LaunchedEffect(view) { if (view == MyView.HOME) { vm.refresh(); androidVm.load(); notices.load(); voiceModel.refresh(); speechModel.refresh(); hooks.onHomeShown() } }
 
     PushHost(
         state = stack,
@@ -196,7 +199,7 @@ fun MyScreen(profile: Profile, onProfile: (Profile) -> Unit, onSignedOut: () -> 
             MyView.WALLET -> WalletPage(back, onSeen = vm::walletSeen)
             MyView.VAULT -> VaultPage(back, onGoModel = { push(MyView.MODEL) }, noLock = vaultNoLock)
             MyView.RESOURCES -> ResourcesPage(back, onCleanup = { push(MyView.CLEANUP) })
-            MyView.VOICE -> VoicePage(voiceModel, back)
+            MyView.VOICE -> VoicePage(voiceModel, speechModel, back)
             MyView.CLEANUP -> CleanupPage(back)
             MyView.DOCUMENTS -> DocumentsPage(back)
             MyView.FILES -> KeloFilesPage(back)

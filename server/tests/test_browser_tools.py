@@ -94,10 +94,9 @@ async def test_long_text_truncated():
 
 async def test_tool_flags_untrusted_and_only_committing_steps_need_approval():
     tools = {t.name: t for t in browser_tools(session_with(FakePage()))}
-    assert set(tools) == {"browser_open", "browser_read", "browser_view", "browser_click", "browser_type"}
+    assert set(tools) == {"browser_open", "browser_read", "browser_click", "browser_type"}
     assert all(t.untrusted for t in tools.values())
     assert not tools["browser_open"].requires_approval and not tools["browser_read"].requires_approval
-    assert not tools["browser_view"].requires_approval   # switching desktop / phone view only looks
     assert tools["browser_click"].requires_approval and tools["browser_type"].requires_approval
     click, type_ = tools["browser_click"].auto_approve, tools["browser_type"].auto_approve
     # the default: looking things up goes through without a card...

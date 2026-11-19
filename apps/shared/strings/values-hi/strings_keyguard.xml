@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">आपके पासवर्ड, कुंजियाँ और कार्ड एक ही कुंजी से खुलते हैं। आम तौर पर सर्वर उसे उनके पास ही रखता है। इसे चालू करने पर कुंजी सिर्फ़ आपके फ़ोन में रहती है, इसलिए सर्वर की डिस्क ले जाने वाला भी उन्हें नहीं खोल सकता।</string>

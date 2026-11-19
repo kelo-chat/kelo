@@ -10,4 +10,7 @@
     <string name="update_popup_title">Ada versi baru (%1$s)</string>
     <string name="update_popup_update">Perbarui</string>
     <string name="update_popup_later">Nanti</string>
+    <string name="server_notice_title">Pembaruan server Kelo tersedia (%1$s)</string>
+    <string name="server_notice_body">Perbarui untuk mendapatkan perbaikan terbaru. Kelo tidak tersedia selama beberapa menit saat server dimulai ulang.</string>
+    <string name="server_notice_open">Lihat pembaruan</string>
 </resources>

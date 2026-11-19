@@ -70,7 +70,7 @@ struct NotifyPage: View {
             else if let p = proactive { headsUp(p) }
             else { SkeletonRows(rows: 2) }
             if proactive?.enabled == true && !model.checklistMissing {
-                if let k = checklist { watchList(k.list) } else { SkeletonRows(rows: 1) }
+                if let k = checklist { watchList(k) } else { SkeletonRows(rows: 1) }
             }
 
             // which calendars and mailboxes the briefing and the heads-ups read: one choice for both, shown whether the briefing is
@@ -110,12 +110,15 @@ struct NotifyPage: View {
         ToggleRow(title, detail: body, isOn: Binding(get: { on }, set: { Haptics.tick(); onToggle($0) }))
     }
 
-    /// 새 소식 알림 (proactive.py): every few hours (the server's own every_minutes) it looks for new things the owner should know. The
-    /// about text says how often, and that what waits for the owner is asked again by the follow-ups (다시 묻기) whatever this is set to.
+    /// 새 소식 알림 (proactive.py, situation.py): every hour new mail and connected services, everything else at the send times. The
+    /// about text says when it looks, and that what waits for the owner is asked again by the follow-ups (다시 묻기) whatever this is set to.
     @ViewBuilder private func headsUp(_ p: ProactiveSettings) -> some View {
         let every = NotifySettingsRules.every(p.everyMinutes)
         let often = every.hours ? P(R.plurals.agent_repeat_every_hours, every.n, every.n) : P(R.plurals.work_every_minutes, every.n, every.n)
-        toggleLine(L(R.string.heads_switch), L(R.string.heads_about, often, L(R.string.followup_settings_title)), on: p.enabled) {
+        let about = NotifySettingsRules.aboutSendTimes(p)
+            ? L(R.string.heads_about_send_times, L(R.string.heads_per_day), L(R.string.followup_settings_title))
+            : L(R.string.heads_about, often, L(R.string.followup_settings_title))   // an older server
+        toggleLine(L(R.string.heads_switch), about, on: p.enabled) {
             model.putProactive(["enabled": .bool($0)])
         }
         if p.enabled {
@@ -123,13 +126,13 @@ struct NotifyPage: View {
                 let caps = NotifySettingsRules.perDay(v, regular: p.dailyRegular, now: p.dailyNow)
                 model.putProactive(["daily_regular": .number(Double(caps.regular)), "daily_total": .number(Double(caps.total)), "daily_now": .number(Double(caps.now))])
             }
-            deliveries(p)
+            sentHeld(p)
+            let times = NotifySettingsRules.sendTimes(p)
+            if !times.isEmpty { MutedText(L(R.string.heads_send_times, times.map(timeWords).joined(separator: " · ")), small: true) }
             if model.situationReady && p.research { situationRow }
             toggleLine(L(R.string.heads_mail), L(R.string.heads_mail_about), on: p.mailCheck) {
                 model.putProactive(["mail_check": .bool($0)])
             }
-            let sent = p.today.values.reduce(0, +)
-            if sent > 0 { MutedText(P(R.plurals.heads_sent_today, sent, sent), small: true) }
         }
     }
 
@@ -144,18 +147,14 @@ struct NotifyPage: View {
         .buttonStyle(.plain)
     }
 
-    /// How many messages a day Kelo starts (0...10, 0 = only what cannot wait) and "오늘 n번 보냄 · 보관 중 m개" (the held part opens the
-    /// list); each row only when the server sends its field (Android my/ProactiveDeliveries.kt DeliveriesBlock).
-    @ViewBuilder private func deliveries(_ p: ProactiveSettings) -> some View {
-        if let count = p.dailyDeliveries {
-            stepper(L(R.string.deliveries_label), value: count, text: String(count), min: DeliveryRules.min, max: DeliveryRules.max) { v in
-                model.putProactive(["daily_deliveries": .number(Double(DeliveryRules.clamp(v)))])
-            }
-            MutedText(L(R.string.deliveries_about), small: true)
-        }
-        if p.todayDeliveries != nil || p.held != nil {
-            let today = p.todayDeliveries.map { Text(P(R.plurals.deliveries_today, $0, $0)).font(KeloFont.small).foregroundStyle(c.muted) }
-            let held = p.held.map { n in
+    /// The line under "하루 최대": "오늘 n번 보냈어요 · 보관 중 m개 ›" (the held part opens the list). Each part only when above 0, the
+    /// separator only when both show, nothing when both are 0 (Android my/ProactiveDeliveries.kt SentHeldLine).
+    @ViewBuilder private func sentHeld(_ p: ProactiveSettings) -> some View {
+        let sent = p.today.values.reduce(0, +)
+        let kept = DeliveryRules.heldCount(p.held)
+        if sent > 0 || kept != nil {
+            let today = (sent > 0 ? sent : nil).map { n in Text(P(R.plurals.heads_sent_today, n, n)).font(KeloFont.small).foregroundStyle(c.muted) }
+            let held = kept.map { n in
                 Button { MyNav(app: app).push(.proactiveHeld) } label: {
                     HStack(spacing: 2) {
                         Text(P(R.plurals.deliveries_held, n, n)).font(KeloFont.small).foregroundStyle(c.accent)
@@ -262,7 +261,8 @@ struct NotifyPage: View {
         }
     }
 
-    @ViewBuilder private func watchList(_ items: [String]) -> some View {
+    @ViewBuilder private func watchList(_ k: ChecklistSettings) -> some View {
+        let items = k.list
         Text(L(R.string.heads_list_title)).font(KeloFont.titleSmall).foregroundStyle(c.muted).padding(.top, 8)
         MutedText(L(R.string.heads_list_about), small: true)
         if !items.isEmpty {
@@ -270,7 +270,13 @@ struct NotifyPage: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { i, item in
                     if i > 0 { Hairline() }
                     HStack {
-                        Text(item).font(KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true).padding(.vertical, 10)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item).font(KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
+                            if let job = NotifySettingsRules.ownJob(k, item) {
+                                MutedText(L(R.string.heads_list_own, job), small: true).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(.vertical, 10)
                         Spacer(minLength: 8)
                         Button { model.putChecklist(items.filter { $0 != item }) } label: { KeloIconView(.close, size: 18, tint: c.muted).frame(width: 40, height: 40) }
                             .buttonStyle(.plain).accessibilityLabel(L(R.string.heads_list_remove, item))

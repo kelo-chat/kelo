@@ -95,8 +95,10 @@ def test_an_unreadable_record_or_a_missing_one_releases_nothing(monkeypatch, tmp
 
 
 # ----------------------------------------------------------------------------------------------------------- release-record
-def args(platform="android", version="0.9.4", build="409200", channel="play", file=None, date="2026-11-14"):
-    return SimpleNamespace(platform=platform, version=version, build=build, channel=channel, file=str(file) if file else None, date=date)
+def args(platform="android", version="0.9.4", build="409200", channel="play", file=None, date="2026-11-14", no_publish=True):
+    # no_publish: a store channel's row is not published from a test (only an operator's computer publishes)
+    return SimpleNamespace(platform=platform, version=version, build=build, channel=channel, file=str(file) if file else None, date=date,
+                           no_publish=no_publish)
 
 
 def test_release_record_appends_and_the_file_stays_one_line_per_release(tmp_path):
@@ -135,7 +137,7 @@ def test_release_record_a_duplicate_is_not_added_twice(tmp_path):
 def test_release_record_is_a_cli_command(tmp_path, capsys):
     f = tmp_path / "apps.json"
     f.write_text(record().dumps())
-    assert cli.main(["release-record", "ios", "1.0.0", "26111024", "appstore", "--date", "2026-11-14", "--file", str(f)]) == 0
+    assert cli.main(["release-record", "ios", "1.0.0", "26111024", "appstore", "--date", "2026-11-14", "--file", str(f), "--no-publish"]) == 0
     assert AppReleases.read(f).latest("ios").build == 26111024
     assert cli.main(["release-record", "ios", "1.0.0", "26111024", "testflight", "--file", str(f)]) == 1
     assert "channel" in capsys.readouterr().out
@@ -222,3 +224,34 @@ async def test_a_misbuilt_image_with_min_app_above_the_record_sends_no_426(tmp_p
         assert (await c.get("/api/profile", headers={**auth, "X-Kelo-App": "ios/0.9.0+1"})).status_code == 426       # 0.9.4 is released for ios
         about = (await c.get("/api/about", headers=auth)).json()
         assert about["min_app_ignored"] == ["android", "desktop"]
+
+
+def test_release_record_store_channel_publishes_the_signed_store_row(tmp_path, monkeypatch):
+    f = tmp_path / "apps.json"
+    f.write_text(record().dumps())
+    calls = []
+    monkeypatch.setattr(downloads, "run_publish_store", lambda a, root=None, **kw: calls.append(kw.get("record")) or 0)
+    out: list[str] = []
+    assert run_record(args(file=f, no_publish=False), out.append) == 0
+    assert len(calls) == 1 and isinstance(calls[0], AppReleases) and calls[0].newest_store("android").version == "0.10.0" and "0.9.4" in calls[0].dumps()
+    assert run_record(args(file=f, no_publish=False), out.append) == 0 and len(calls) == 2            # a re-run (already recorded) publishes again
+
+
+def test_release_record_no_publish_and_download_channel_do_not_publish(tmp_path, monkeypatch):
+    f = tmp_path / "apps.json"
+    f.write_text(record().dumps())
+    calls = []
+    monkeypatch.setattr(downloads, "run_publish_store", lambda a, root=None, **kw: calls.append(a) or 0)
+    out: list[str] = []
+    assert run_record(SimpleNamespace(**{**vars(args(file=f, version="0.9.5")), "no_publish": True}), out.append) == 0
+    assert run_record(args(file=f, version="0.9.6", channel="download", no_publish=False), out.append) == 0
+    assert calls == []
+
+
+def test_release_record_publish_failure_keeps_the_record(tmp_path, monkeypatch):
+    f = tmp_path / "apps.json"
+    f.write_text(record().dumps())
+    monkeypatch.chdir(tmp_path)                                                       # not the operator's computer: no compose.yml
+    out: list[str] = []
+    assert run_record(args(file=f, version="0.10.1", no_publish=False), out.append) == 1
+    assert "0.10.1" in AppReleases.read(f).dumps() and any("assistant publish-store" in line for line in out)

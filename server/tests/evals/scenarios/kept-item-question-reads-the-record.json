@@ -1,0 +1,46 @@
+{
+  "name": "kept-item-question-reads-the-record",
+  "about": "A question about why something is in the owner's list is answered from the list's own record, not from memory of the chat (2026-11-18, 'why the 19th').",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Why is my trip day on the 19th? Just checking."
+  ],
+  "model": [
+    [
+      {
+        "tool": "follow_list",
+        "args": {}
+      }
+    ],
+    [
+      {
+        "text": "It is on the 19th because you told me in chat; the flight on the 29th comes from your calendar."
+      }
+    ]
+  ],
+  "tools": {
+    "follow_list": {
+      "real_schema": true,
+      "result": "Trip day 2030-03-19, from chat (quote: the trip day is the 19th); Flight 2030-03-29 from calendar"
+    },
+    "calendar_events": {
+      "real_schema": true,
+      "result": "2030-03-29 09:00 Flight to Trip City (XX 123)"
+    }
+  },
+  "expect": {
+    "called": [
+      "follow_list"
+    ]
+  },
+  "live": {
+    "expect": {
+      "called": [
+        "follow_list"
+      ]
+    },
+    "note": "live: the record is read before the answer"
+  }
+}

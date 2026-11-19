@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- b+zh+Hans text for strings_connector_perms.xml (generated from values/strings_connector_perms.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<!-- zh-Hans text for strings_connector_perms.xml (generated from values/strings_connector_perms.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="perm_title">Kelo 可以做什么</string>
     <string name="perm_about">允许：不发卡片。询问：每次发送审批卡片。关闭：Kelo 不会执行。付款和注册始终会询问。</string>

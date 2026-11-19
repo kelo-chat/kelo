@@ -47,6 +47,8 @@ class Settings(private val kv: KeyValueStore) {
     val appNotice = chat.kelo.app.update.AppNotice(load = { kv.getString(APP_NOTICE_SEEN) }, save = { kv.putString(APP_NOTICE_SEEN, it) })
     /** The "new version" popup: once per version, "Later" = 3 days; its answers stay on this computer */
     val updatePopup = chat.kelo.app.update.UpdatePopup(load = { kv.getString(POPUP_UNTIL) }, save = { kv.putString(POPUP_UNTIL, it) })
+    /** The "Kelo server update available" notice (X-Kelo-Server-Update): at most once a day; its last showing stays on this computer */
+    val serverNotice = chat.kelo.app.update.ServerNotice(load = { kv.getString(SERVER_NOTICE_SHOWN) }, save = { kv.putString(SERVER_NOTICE_SHOWN, it) })
 
     /** The newest server notification already shown for [server] (null: none yet, so old ones are not replayed). */
     fun lastNote(server: String): Long? = kv.getString(NOTE + hash(server))?.toLongOrNull()
@@ -61,6 +63,7 @@ class Settings(private val kv: KeyValueStore) {
     companion object {
         private const val APP_NOTICE_SEEN = "app.notice.seen"
         private const val POPUP_UNTIL = "update.popup.until"
+        private const val SERVER_NOTICE_SHOWN = "update.server.shown"
         private const val LANGUAGE = "language.pick"
         private const val THEME = "theme"
         private const val NOTIFY = "notifications"
@@ -178,6 +181,31 @@ class AppContainer(
     }
     override val walletPlaces = chat.kelo.app.wallet.WalletPlaces(scope) { System.nanoTime() / 1_000_000 }
     override val secretHandoff = chat.kelo.app.chat.SecretHandoff()
+
+    val sttModel: chat.kelo.app.voice.VoiceModel by lazy {
+        chat.kelo.app.voice.VoiceModel({ sessions.api.value }, scope) {
+            chat.kelo.app.my.NoticesRules.language(language.current, language.systemShownCode)
+        }
+    }
+    val speechModel: chat.kelo.app.call.SpeechModel by lazy {
+        chat.kelo.app.call.SpeechModel({ sessions.api.value }, scope)
+    }
+
+    val calls: chat.kelo.app.call.CallCenter by lazy {
+        chat.kelo.app.call.CallCenter(
+            scope = scope,
+            api = { sessions.api.value?.let { chat.kelo.app.voice.VoiceApi(it) } },
+            stt = sttModel,
+            speech = speechModel,
+            audio = { DesktopCallAudio() },
+            phoneListener = { null },
+            device = { DesktopSpeechEngine.create() },
+            appLang = { chat.kelo.app.my.NoticesRules.language(language.current, language.systemShownCode) },
+            hasMic = { DesktopRecorder().available },
+        )
+    }
+
+    override val callAudio: (() -> chat.kelo.app.call.platform.CallAudio)? = { DesktopCallAudio() }
     /** The app's own update check (core/Updates.kt); tests put one pointed at a mock here */
     var updates: Updater = Updater.forThisApp(dataDir)
     /** "Use this PC as the Kelo server" (Windows only: core/ServerInstall.kt); the page is in pages/ServerInstallPage.kt */

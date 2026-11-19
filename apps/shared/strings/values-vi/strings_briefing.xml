@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">Khi ngày của tôi bắt đầu (đã học)</string>
     <string name="briefing_when_fixed">Vào giờ tôi chọn</string>
     <string name="briefing_fixed_at">Mỗi ngày lúc %1$s</string>
+    <string name="briefing_fixed_from">Từ %1$s, khi giờ liên lạc của bạn bắt đầu</string>
     <string name="briefing_offset">Bao lâu sau khi bắt đầu ngày</string>
     <string name="briefing_offset_none">Ngay khi bắt đầu</string>
     <string name="briefing_offset_min">Sau %1$d phút</string>

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Tệp của Kelo</string>
     <string name="files_about">Những gì Kelo tự ghi lại: bạn là ai, trí nhớ và ghi chú của nó. Bạn có thể đọc, sửa và xóa. Tệp tải lên và kết quả có trang riêng.</string>

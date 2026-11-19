@@ -71,6 +71,14 @@ import KeloShared
         #expect(bare["accuracy"] == nil && bare["name"] == nil && bare["country_code"] == nil)
     }
 
+    @Test func aFixedTimeIsNeverBeforeTheContactHours() throws {
+        let b = try JSON.decode(BriefingSettings.self, from: try JSON.parse(#"{"time_mode": "fixed", "fixed_time": "08:30", "earliest": "08:00"}"#))
+        #expect(b.earliest == "08:00")
+        #expect(!BriefingSettingsRules.fixedAllowed(b, hour: 7, minute: 59))
+        #expect(BriefingSettingsRules.fixedAllowed(b, hour: 8, minute: 0) && BriefingSettingsRules.fixedAllowed(b, hour: 23, minute: 0))
+        #expect(BriefingSettingsRules.fixedAllowed(BriefingSettings(), hour: 5, minute: 0))   // an older server: no limit known
+    }
+
     @Test func theLocationLineShowsOnlyWhileTheWeatherHasNoPlace() throws {
         let none = BriefingSettings()                                  // weather on, no phone sent a location yet
         var known = none

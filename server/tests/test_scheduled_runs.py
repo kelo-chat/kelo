@@ -55,6 +55,9 @@ def test_evidence_is_read_from_the_tool_events():
     assert ok.kept_promise and ok.clean
     ok.feed({"type": "replies", "questions": []})
     assert ok.reached_owner
+    job_msg = Tool("worker_message", "d", {}, None)
+    sr.declare([job_msg])
+    assert job_msg.keeps_promise is True            # the job's report comes back to the owner by itself
 
 
 async def test_the_closer_uses_the_model_and_guards_nothing_after_a_failure():
@@ -86,9 +89,11 @@ async def test_the_closer_uses_the_model_and_guards_nothing_after_a_failure():
 
 
 def test_the_promise_answer_is_strict():
-    assert sr.parse_promise({"promises_later": False}) == ""
-    assert sr.parse_promise({"promises_later": True, "what": " 내일 알려드릴게요 "}) == "내일 알려드릴게요"
-    for bad in ({"promises_later": True}, {"promises_later": "yes", "what": "x"}, {"what": "x"}, None, "x"):
+    assert sr.parse_promise({"promises_later": False, "offer": False, "quote": ""}) == ""
+    assert sr.parse_promise({"promises_later": True, "offer": False, "quote": " I will tell you tomorrow. "}) == "I will tell you tomorrow."
+    assert sr.parse_promise({"promises_later": True, "offer": True, "quote": "I can tell you tomorrow."}) == ""   # an offer is no promise
+    for bad in ({"promises_later": True, "quote": ""}, {"promises_later": True}, {"promises_later": "yes", "quote": "x"}, {"quote": "x"},
+                {"promises_later": True, "offer": "maybe", "quote": "x"}, None, "x"):
         assert sr.parse_promise(bad) is None
 
 
@@ -98,9 +103,9 @@ async def test_the_promise_judge_asks_only_about_a_real_reply(monkeypatch):
 
     async def ask(system, user):
         asked.append(user)
-        return {"promises_later": True, "what": "tell you tomorrow"}
+        return {"promises_later": True, "offer": False, "quote": "I will tell you tomorrow"}
     judge = PromiseJudge(ask)
-    assert await judge.promised("I will tell you tomorrow.") == "tell you tomorrow"
+    assert await judge.promised("I will tell you tomorrow.") == "I will tell you tomorrow"
     assert await judge.promised("") == "" and await judge.promised("NO_REPLY") == "" and len(asked) == 1
 
     async def none(system, user):
@@ -129,7 +134,7 @@ async def test_an_offer_or_a_question_is_never_called_a_promise(monkeypatch, use
 
     async def always_yes(system, text):   # the worst case: a judge that finds a promise in everything
         asked.append(text)
-        return {"promises_later": True, "what": "anything"}
+        return {"promises_later": True, "offer": False, "quote": reply}
     assert await PromiseJudge(always_yes).promised(reply, user) == "" and asked == []   # a reply that ends on a question is not even judged
 
 
@@ -146,14 +151,55 @@ async def test_the_judge_is_shown_what_the_user_wrote_and_what_counts_as_a_promi
 
     async def ask(system, text):
         asked.append((system, json.loads(text)))
-        return {"promises_later": True, "what": "check the price again tomorrow morning"}
+        return {"promises_later": True, "offer": False, "quote": "I will check the price again tomorrow morning and tell you."}
     got = await PromiseJudge(ask).promised("I will check the price again tomorrow morning and tell you.", "what does it cost?")
-    assert got == "check the price again tomorrow morning"                  # a real promise with nothing set up still gets its line
+    assert got == "I will check the price again tomorrow morning and tell you."   # a real promise with nothing set up still gets its line
     system, shown = asked[0]
     assert shown == {"user_message": "what does it cost?", "reply": "I will check the price again tomorrow morning and tell you."}
-    # the prompt: later work or an outside event the reply does not handle now; the three cases of the owner's report as examples
-    assert "LATER" in system and "does not handle now" in system and "user_message" in system
-    assert "Shall I" in system and "keep the tab open" in system and "if it fails I will tell you" in system
+    # the prompt: a later action of the assistant, an offer is not a promise, the quote is copied from the reply
+    assert "later" in system and "offer" in system and "user_message" in system and "exact words" in system
+
+
+async def test_an_offer_is_no_promise_and_a_quote_that_is_not_in_the_reply_is_dropped(monkeypatch):
+    monkeypatch.setattr(sr, "PROMISE_CHECK", True)
+    reply = "The page is open. I can check it again later if you want, and I will also keep the tab open."
+
+    async def offer(system, text):
+        return {"promises_later": True, "offer": True, "quote": "I can check it again later if you want"}
+    assert await PromiseJudge(offer).promised(reply) == ""                  # an offer waiting for the answer: no bubble
+
+    async def made_up(system, text):
+        return {"promises_later": True, "offer": False, "quote": "I will send you a report on Monday"}
+    assert await PromiseJudge(made_up).promised(reply) == ""                # not the reply's own words: nothing is shown
+
+
+async def test_a_source_note_after_the_last_sentence_does_not_hide_a_question(monkeypatch):
+    monkeypatch.setattr(sr, "PROMISE_CHECK", True)
+    asked = []
+
+    async def ask(system, text):
+        asked.append(text)
+        return {"promises_later": True, "offer": False, "quote": "I will tell you tomorrow"}
+    note = "Shall I look again tomorrow?\n(Source: example data service)"
+    assert await PromiseJudge(ask).promised(note) == "" and asked == []     # the question is the last sentence before the note
+    assert sr.ends_with_question("Shall I look again?\n*(data: example.com)*")
+    assert sr.ends_with_question("Shall I look again?\n（출처: 예시）")
+    real = "I will tell you tomorrow.\n(Source: example data service)"
+    assert await PromiseJudge(ask).promised(real) == "I will tell you tomorrow" and len(asked) == 1
+    assert not sr.ends_with_question("I will tell you tomorrow.\n(Source: example data service)")
+
+
+def test_the_promise_line_quotes_the_reply_in_every_language():
+    import json as _json
+    from pathlib import Path
+
+    from assistant import i18n
+    assert "{quote}" in sr.PROMISE_LINE and "{what}" not in sr.PROMISE_LINE
+    assert i18n.t(sr.PROMISE_LINE, lang="ko", quote="나중에 알려 드릴게요").startswith("\"나중에 알려 드릴게요\"")
+    locales = Path(sr.__file__).parent / "locales"
+    for f in locales.glob("*.json"):
+        table = _json.loads(f.read_text(encoding="utf-8"))
+        assert sr.PROMISE_LINE in table and "{quote}" in table[sr.PROMISE_LINE], f.name
 
 
 def test_the_declared_tools_are_flagged():
@@ -261,7 +307,7 @@ async def test_a_chat_reply_that_promises_something_nothing_will_do_gets_one_cor
 
     def script(req, n):
         if judging(req):
-            return say('{"promises_later": true, "what": "내일 알려드릴게요"}')
+            return say('{"promises_later": true, "offer": false, "quote": "내일 알려드릴게요"}')
         return say("내일 알려드릴게요.")
     fn = model(script)
     app = create_app(settings(tmp_path), tools=[], stream_fn=fn)
@@ -279,7 +325,7 @@ async def test_a_chat_reply_that_ends_on_an_offer_gets_no_correction(tmp_path, m
 
     def script(req, n):
         if judging(req):
-            return say('{"promises_later": true, "what": "내일 알려드릴게요"}')   # a judge that would flag it
+            return say('{"promises_later": true, "offer": true, "quote": "내일 알려드릴게요"}')   # a judge that would flag it
         return say("지금은 12,900원이에요. 내일 다시 확인해서 알려드릴까요?")
     fn = model(script)
     app = create_app(settings(tmp_path), tools=[], stream_fn=fn)
@@ -292,6 +338,30 @@ async def test_a_chat_reply_that_ends_on_an_offer_gets_no_correction(tmp_path, m
 
 async def _messages(c, n):
     return len((await c.get("/api/messages")).json()) >= n
+
+
+async def test_a_reply_that_passes_the_work_to_a_running_job_keeps_its_promise(tmp_path, monkeypatch):
+    monkeypatch.setattr(sr, "PROMISE_CHECK", True)
+    sent = []
+
+    async def message(args):
+        sent.append(args)
+        return "sent"
+    tools = [Tool("worker_message", "tell a job", {"type": "object", "properties": {}}, message)]
+
+    def script(req, n):
+        if judging(req):
+            return say('{"promises_later": true, "what": "x"}')
+        if req.messages[-1].get("role") == "tool":
+            return say("끝나면 알려드릴게요.")
+        return call("worker_message")
+    fn = model(script)
+    app = create_app(settings(tmp_path), tools=tools, stream_fn=fn)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await follow(c, (await c.post("/api/turns", json={"text": "그 일 계속해줘"})).json()["id"])
+        await asyncio.sleep(0.3)
+        msgs = (await c.get("/api/messages")).json()
+    assert sent and len(msgs) == 2 and not any(judging(r) for r in fn.calls)
 
 
 async def test_a_reply_that_made_the_schedule_is_not_checked(tmp_path, monkeypatch):

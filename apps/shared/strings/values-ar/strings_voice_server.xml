@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">هل تريد تنزيل نموذج التعرف على الكلام %1$s على خادم Kelo؟ إذا لم تفعل، يُستخدم التعرف على الكلام في هاتفك.</string>
     <string name="voice_server_downloading">جارٍ تنزيل نموذج الكلام · %1$d%%</string>
     <string name="voice_server_ready">خادم Kelo يفهم صوتك الآن.</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">تعذّر الوصول إلى خادم Kelo لتحويل الكلام إلى نص.</string>
     <string name="voice_server_busy">خادم Kelo يعالج تسجيلًا آخر. حاول مرة أخرى بعد قليل.</string>
     <string name="voice_server_too_long">التسجيل طويل جدًا. تحدّث لأقل من دقيقتين.</string>
-    <string name="voice_page_title">الإدخال الصوتي</string>
+    <string name="voice_page_title">الصوت</string>
     <string name="voice_page_intro">يتحوّل صوتك إلى نص على خادم Kelo ويدخل النص إلى الحقل. لا يُرسل شيء تلقائيًا.</string>
     <string name="voice_model_in_use">نموذج الكلام المستخدم</string>
     <string name="voice_state_off">التعرف على الكلام في الهاتف</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">نماذج الكلام في خادم Kelo لا تدعم هذه اللغة بعد، لذلك يُستخدم التعرف على الكلام في هاتفك.</string>
     <string name="voice_model_size">الحجم %1$s · الذاكرة أثناء الاستخدام %2$s</string>
     <string name="voice_runtime_missing">شغّل مثبّت خادم Kelo مرة أخرى لاستخدام هذه الميزة.</string>
+    <string name="voice_send_now">إرسال ما قلته</string>
+    <string name="voice_elapsed">مدة التسجيل %1$s</string>
 </resources>

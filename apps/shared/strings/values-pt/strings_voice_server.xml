@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- pt-BR text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">Baixar o modelo de reconhecimento de voz %1$s para o seu servidor Kelo? Se não baixar, será usado o reconhecimento de voz do seu celular.</string>
     <string name="voice_server_downloading">Baixando o modelo de voz · %1$d%%</string>
     <string name="voice_server_ready">Seu servidor Kelo já entende a sua voz.</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">Não foi possível falar com o seu servidor Kelo para converter em texto.</string>
     <string name="voice_server_busy">Seu servidor Kelo está processando outra gravação. Tente de novo daqui a pouco.</string>
     <string name="voice_server_too_long">A gravação está longa demais. Fale por menos de 2 minutos.</string>
-    <string name="voice_page_title">Entrada por voz</string>
+    <string name="voice_page_title">Voz</string>
     <string name="voice_page_intro">Sua voz é convertida em texto no seu servidor Kelo e o texto vai para o campo. Nada é enviado sozinho.</string>
     <string name="voice_model_in_use">Modelo de voz em uso</string>
     <string name="voice_state_off">Reconhecimento de voz do celular</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Os modelos de voz do seu servidor Kelo ainda não conhecem este idioma, então é usado o reconhecimento de voz do celular.</string>
     <string name="voice_model_size">Tamanho %1$s · memória em uso %2$s</string>
     <string name="voice_runtime_missing">Execute o instalador do servidor Kelo mais uma vez para usar isto.</string>
+    <string name="voice_send_now">Enviar o que você disse</string>
+    <string name="voice_elapsed">Tempo de gravação %1$s</string>
 </resources>

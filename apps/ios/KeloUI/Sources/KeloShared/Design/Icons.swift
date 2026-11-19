@@ -30,6 +30,7 @@ public enum KeloIcon: String, CaseIterable, Sendable {
     case receipt = "doc.plaintext"
     case close = "xmark"
     case copy = "doc.on.doc"
+    case keyboard = "keyboard"
     case share = "square.and.arrow.up"
     case retry = "arrow.clockwise"
     case edit = "pencil"
@@ -72,6 +73,9 @@ public enum KeloIcon: String, CaseIterable, Sendable {
     case mail = "envelope"
     case scan = "camera.viewfinder"
     case dialpad = "circle.grid.3x3"
+    case handset = "phone.fill"
+    case handsetDown = "phone.down.fill"
+    case micOff = "mic.slash"
 }
 
 public extension Image {

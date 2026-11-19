@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Keloと通話</string>
+    <string name="call_incoming_line">から着信</string>
+    <string name="call_accept">応答</string>
+    <string name="call_decline">拒否</string>
+    <string name="call_connecting">接続中…</string>
+    <string name="call_listening">聞いています</string>
+    <string name="call_thinking">考え中</string>
+    <string name="call_speaking">話しています</string>
+    <string name="call_muted">消音中</string>
+    <string name="call_mute">消音</string>
+    <string name="call_unmute">消音解除</string>
+    <string name="call_speaker">スピーカー</string>
+    <string name="call_hang_up">通話を終了</string>
+    <string name="call_card_waiting">画面で確認することがあります。</string>
+    <string name="call_card_open">表示</string>
+    <string name="call_back_to_call">通話に戻る · %1$s</string>
+    <string name="call_offline">Keloサーバーに接続できません。再接続中…</string>
+    <string name="call_ended_background">アプリを離れたため通話を終了しました。</string>
+    <string name="call_ended_interrupted">他の音声が割り込んだため通話を終了しました。</string>
+    <string name="call_ended_quiet">しばらく発声がなかったため通話を終了しました。</string>
+    <string name="call_needs_speech_model">通話するにはKeloサーバーに音声認識モデルが必要です。</string>
+    <string name="call_mic_denied">マイクの使用が許可されていないため通話を開始できませんでした。</string>
+    <string name="call_voice_offer">通話で使用するKeloの自然な声です。Keloサーバーに音声モデル（%1$s）を一度ダウンロードすると、次の文からこの声で話します。ダウンロードしない場合は、この端末の内蔵音声で話します。</string>
+    <string name="call_mark">通話</string>
+    <string name="call_voice_offer_title">Keloの音声モデルをダウンロードしますか？</string>
+    <string name="call_voice_offer_ok">ダウンロード</string>
+    <string name="call_voice_offer_later">端末の音声を使用</string>
+    <string name="call_voice_better">音声モデルをダウンロードすると、Keloがより自然な声で話します。</string>
+    <string name="call_voice_get">ダウンロード</string>
+    <string name="call_voice_line_close">閉じる</string>
+    <string name="call_ears_failed">スマートフォンの音声認識が声を認識できていません。</string>
+    <string name="voice_speech_title">Keloの声</string>
+    <string name="voice_speech_download">音声モデルをダウンロード · %1$s</string>
+    <string name="voice_speech_downloading">音声モデルをダウンロード中 · %1$d%%</string>
+    <string name="voice_speech_remove">音声モデルを削除</string>
+    <string name="voice_speech_remove_confirm">音声モデルを削除しますか？削除後は端末の内蔵音声で話します。</string>
+    <string name="voice_speech_device_note">音声モデルがない場合は端末の内蔵音声で話します。</string>
+    <string name="voice_speech_unsupported_lang">この言語は音声モデルが未対応のため、端末の内蔵音声で話します。</string>
+    <string name="voice_speech_voice_female">女性の声 %1$d</string>
+    <string name="voice_speech_voice_male">男性の声 %1$d</string>
+    <string name="voice_speech_listen">試聴</string>
+    <string name="voice_speech_stop">停止</string>
+    <string name="voice_speech_speed">再生速度</string>
+    <string name="voice_speech_speed_value">%1$s倍</string>
+    <string name="voice_speech_sample">こんにちは。この声でお話しします。</string>
+</resources>

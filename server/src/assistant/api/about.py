@@ -11,6 +11,21 @@ from .. import app_updates
 from .. import version as release_version
 
 
+SERVER_HEADER = "X-Kelo-Server-Update"   # a newer server release the caller may install (server_updates.offer); see server_update_for
+
+
+def server_update_for(ctx: AppContext, request: Request) -> str | None:
+    """ctx.server_updates.offer() for a caller allowed to update this server (the access key, or a signed-in device that is not on a
+    review copy: require_owner's rule), else None. Never raises."""
+    try:
+        st = request.state
+        allowed = getattr(st, "device_id", None) is None or bool(getattr(st, "device_owner", False))
+        su = getattr(ctx, "server_updates", None)
+        return su.offer() if allowed and su is not None else None
+    except Exception:  # noqa: BLE001 - a notice never breaks an answer
+        return None
+
+
 def router(ctx: AppContext) -> APIRouter:
     router = APIRouter()
     require_auth = ctx.require_auth
@@ -36,8 +51,12 @@ def router(ctx: AppContext) -> APIRouter:
         update = await ctx.app_updates.for_header(request.headers.get("x-kelo-app"), request.headers.get(app_updates.CHANNEL_HEADER))
         if update:
             response.headers[app_updates.HEADER] = update
+        # server_update: a newer server release the caller may install (null: none; also X-Kelo-Server-Update; server_updates.offer)
+        server_update = server_update_for(ctx, request)
+        if server_update:
+            response.headers[SERVER_HEADER] = server_update
         return {"version": rel.version, "build": str(rel.build), "min_app": rel.min_app, "min_server": rel.min_server,
                 "min_app_version": dict(settings.min_app_version), "min_app_ignored": list(settings.min_app_ignored), "db": db,
-                "app_update": update}
+                "app_update": update, "server_update": server_update}
 
     return router

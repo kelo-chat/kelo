@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Panggil Kelo</string>
+    <string name="call_incoming_line">memanggil Anda</string>
+    <string name="call_accept">Jawab</string>
+    <string name="call_decline">Tolak</string>
+    <string name="call_connecting">Menghubungkan…</string>
+    <string name="call_listening">Mendengarkan</string>
+    <string name="call_thinking">Berpikir</string>
+    <string name="call_speaking">Berbicara</string>
+    <string name="call_muted">Dibisukan</string>
+    <string name="call_mute">Bisukan</string>
+    <string name="call_unmute">Bunyikan</string>
+    <string name="call_speaker">Speaker</string>
+    <string name="call_hang_up">Akhiri panggilan</string>
+    <string name="call_card_waiting">Ada yang perlu diperiksa di layar.</string>
+    <string name="call_card_open">Lihat</string>
+    <string name="call_back_to_call">Kembali ke panggilan · %1$s</string>
+    <string name="call_offline">Tidak dapat menjangkau server Kelo. Menyambung ulang…</string>
+    <string name="call_ended_background">Panggilan berakhir karena Anda keluar dari aplikasi.</string>
+    <string name="call_ended_interrupted">Panggilan berakhir karena suara lain masuk.</string>
+    <string name="call_ended_quiet">Panggilan berakhir setelah lama hening.</string>
+    <string name="call_needs_speech_model">Untuk menelepon, server Kelo memerlukan model suara.</string>
+    <string name="call_mic_denied">Tidak dapat memulai panggilan: mikrofon tidak diizinkan.</string>
+    <string name="call_voice_offer">Ini adalah suara alami Kelo untuk panggilan. Unduh model suara (%1$s) ke server Kelo Anda sekali, dan Kelo akan berbicara dengannya mulai kalimat berikutnya. Tanpa ini, Kelo menggunakan suara robot bawaan perangkat.</string>
+    <string name="call_mark">Panggilan</string>
+    <string name="call_voice_offer_title">Unduh suara Kelo?</string>
+    <string name="call_voice_offer_ok">Unduh</string>
+    <string name="call_voice_offer_later">Gunakan suara perangkat untuk saat ini</string>
+    <string name="call_voice_better">Dengan model suara, Kelo berbicara dengan suara yang jauh lebih alami.</string>
+    <string name="call_voice_get">Unduh</string>
+    <string name="call_voice_line_close">Tutup</string>
+    <string name="call_ears_failed">Pengenalan suara ponsel tidak mendengar Anda.</string>
+    <string name="voice_speech_title">Suara Kelo</string>
+    <string name="voice_speech_download">Unduh model suara · %1$s</string>
+    <string name="voice_speech_downloading">Mengunduh model suara · %1$d%%</string>
+    <string name="voice_speech_remove">Hapus model suara</string>
+    <string name="voice_speech_remove_confirm">Hapus model suara? Setelah itu Kelo akan berbicara dengan suara perangkat ini.</string>
+    <string name="voice_speech_device_note">Tanpa model suara, Kelo berbicara dengan suara bawaan perangkat ini.</string>
+    <string name="voice_speech_unsupported_lang">Model suara belum mendukung bahasa ini, jadi suara perangkat digunakan.</string>
+    <string name="voice_speech_voice_female">Suara wanita %1$d</string>
+    <string name="voice_speech_voice_male">Suara pria %1$d</string>
+    <string name="voice_speech_listen">Dengarkan</string>
+    <string name="voice_speech_stop">Berhenti</string>
+    <string name="voice_speech_speed">Kecepatan bicara</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">Halo. Ini adalah suara yang akan saya gunakan untuk berbicara.</string>
+</resources>

@@ -113,6 +113,10 @@ extension KeloApi {
 
     // ---- browser tabs ----------------------------------------------------------------------------------------------------------
     public func browserTabs(thumbnails: Bool = true) async throws -> BrowserTabs { try await get("/api/browser/sessions?thumbnails=\(thumbnails)") }
+    /// Switch to or close one tab of a held task window (409: this device does not hold it, or it is the last tab).
+    public func browserTabAction(_ id: String, tab: String, close: Bool) async throws {
+        _ = try await request("POST", "/api/browser/sessions/\(KeloApi.seg(id))/tabs/\(KeloApi.seg(tab))", body: LiveRules.tabAction(close: close))
+    }
     public func closeBrowserTab(_ id: String) async throws { try await request("DELETE", "/api/browser/sessions/\(KeloApi.seg(id))") }
     /// 409: another device holds the tab.
     public func browserControl(_ id: String, take: Bool, handover: Bool = false) async throws -> ControlAnswer {

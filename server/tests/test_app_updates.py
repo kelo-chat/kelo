@@ -139,3 +139,63 @@ async def test_about_and_profile_carry_header_and_field(tmp_path):
         plain = await c.get("/api/about")                                  # an older app: nothing
         assert plain.json()["app_update"] is None and HEADER not in plain.headers
         assert HEADER not in (await c.get("/api/profile")).headers
+
+
+# ---------------------------------------------------------------------------------------------------------------- signed store rows (latest.json "store")
+def store(platform, version, build, channel, min_server=None, sign=True):
+    r = {"channel": channel, "version": version, "build": build, "date": "2026-11-18"}
+    if min_server:
+        r["min_server"] = min_server
+    if sign:
+        r = {**r, "sig": base64.b64encode(KEY.sign(release_sign.store_statement(platform, r))).decode(), "key": KID}
+    return r
+
+
+async def test_a_signed_store_row_offers_a_store_app_the_bundled_record_lacks():
+    rec = records(ios=[entry("0.10.1", 26111411, "appstore")])
+    u = updates(rec, {"store": {"ios": {"appstore": store("ios", "0.10.4", 26111418, "appstore")}}})
+    assert await u.app_update_for("ios", "appstore", "0.10.1", 26111411) == "0.10.4"
+    assert await u.app_update_for("ios", "appstore", "0.10.4", 26111418) is None
+    assert await u.app_update_for("ios", "play", "0.10.1", 26111411) is None           # the channel still decides
+
+
+async def test_an_unsigned_or_badly_signed_store_row_is_ignored():
+    rec = records(ios=[entry("0.10.1", 26111411, "appstore")])
+    unsigned = {"store": {"ios": {"appstore": store("ios", "0.10.4", 26111418, "appstore", sign=False)}}}
+    assert await updates(rec, unsigned).app_update_for("ios", "appstore", "0.10.1", 26111411) is None   # nothing newer without the row
+    tampered = {"store": {"ios": {"appstore": {**store("ios", "0.10.4", 26111418, "appstore"), "build": 26111419}}}}
+    assert await updates(rec, tampered).app_update_for("ios", "appstore", "0.10.1", 26111411) is None
+
+
+async def test_a_desktop_store_build_is_offered_the_msstore_release_only():
+    rec = records(desktop=[entry("1.0.8", 100000008, "msstore")])
+    u = updates(rec, {"store": {"desktop": {"msstore": store("desktop", "1.0.9", 100000009, "msstore")}}})
+    assert await u.app_update_for("desktop", "msstore", "1.0.8", 100000008) == "1.0.9"
+    assert await u.app_update_for("desktop", "msstore", "1.0.9", 100000009) is None
+    assert await u.app_update_for("desktop", "download", "1.0.8", 100000008) is None   # the installer build never gets the store row
+
+
+async def test_store_row_min_server_above_this_server_offers_nothing():
+    rec = records(ios=[entry("0.10.2", 26111412, "appstore")])                           # bundled and newer than the caller
+    latest = {"store": {"ios": {"appstore": store("ios", "0.10.4", 26111418, "appstore", min_server="0.11.0")}}}
+    assert await updates(rec, latest, server="0.10.2").app_update_for("ios", "appstore", "0.10.1", 26111411) is None
+    assert await updates(rec, latest, server="0.11.0").app_update_for("ios", "appstore", "0.10.1", 26111411) == "0.10.4"
+
+
+async def test_list_failure_falls_back_to_the_bundled_record():
+    rec = records(ios=[entry("0.10.2", 26111412, "appstore")])
+    assert await updates(rec, OSError("offline")).app_update_for("ios", "appstore", "0.10.1", 26111411) == "0.10.2"
+
+
+async def test_old_shape_latest_json_still_works():
+    rec = records(ios=[entry("0.10.2", 26111412, "appstore")])
+    assert await updates(rec, {"android": row("android", "0.10.3", 410400)}).app_update_for("ios", "appstore", "0.10.1", 26111411) == "0.10.2"
+
+
+async def test_minimum_app_version_ignores_network_rows():
+    rec = records(ios=[entry("0.10.1", 26111411, "appstore")])
+    before = {p: list(r) for p, r in rec.entries.items()}
+    u = updates(rec, {"store": {"ios": {"appstore": store("ios", "0.10.4", 26111418, "appstore")}}})
+    assert await u.app_update_for("ios", "appstore", "0.10.1", 26111411) == "0.10.4"
+    assert rec.entries == before                                                       # the record itself is untouched
+    assert [p.platform for p in rec.check_min("0.10.4")] == ["android", "ios", "desktop"]   # the minimum rule still sees only the record

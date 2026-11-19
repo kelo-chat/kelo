@@ -467,7 +467,7 @@ async def test_one_search_finds_every_spelling_over_eighteen_months(tmp_path):
     assert (await tool.handler({"start": "2026-11-09", "end": "2028-12-31", "query": ["상해"]})).startswith("error:")    # past 18 months
     assert "give query" in await tool.handler({"start": "2026-11-09", "end": "2027-03-10"})                           # a list: two months
     props = tool.parameters["properties"]["query"]
-    assert props["type"] == "array" and "spelling" in tool.description and "airport" in tool.description
+    assert props["type"] == "array" and "spelling" in tool.description and "short code" in tool.description
 
 
 async def test_google_and_outlook_follow_next_pages_only_when_asked(tmp_path):

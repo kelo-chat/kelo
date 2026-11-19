@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_admin_key.xml (generated from values/strings_admin_key.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="admin_key_add">Показувати також витрати та баланс</string>
     <string name="admin_key_title">Ключ адміністратора для витрат і балансу</string>

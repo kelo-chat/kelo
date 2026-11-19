@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">โทรหา Kelo</string>
+    <string name="call_incoming_line">กำลังโทรหาคุณ</string>
+    <string name="call_accept">รับสาย</string>
+    <string name="call_decline">ปฏิเสธ</string>
+    <string name="call_connecting">กำลังเชื่อมต่อ…</string>
+    <string name="call_listening">กำลังฟัง</string>
+    <string name="call_thinking">กำลังคิด</string>
+    <string name="call_speaking">กำลังพูด</string>
+    <string name="call_muted">ปิดเสียงอยู่</string>
+    <string name="call_mute">ปิดเสียง</string>
+    <string name="call_unmute">เปิดเสียง</string>
+    <string name="call_speaker">ลำโพง</string>
+    <string name="call_hang_up">วางสาย</string>
+    <string name="call_card_waiting">มีสิ่งที่คุณต้องตรวจสอบบนหน้าจอ</string>
+    <string name="call_card_open">ดู</string>
+    <string name="call_back_to_call">กลับไปยังสายที่โทร · %1$s</string>
+    <string name="call_offline">ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ Kelo กำลังเชื่อมต่อใหม่…</string>
+    <string name="call_ended_background">การโทรสิ้นสุดลงเนื่องจากคุณออกจากแอป</string>
+    <string name="call_ended_interrupted">การโทรสิ้นสุดลงเนื่องจากมีเสียงอื่นแทรก</string>
+    <string name="call_ended_quiet">การโทรสิ้นสุดลงหลังจากไม่มีเสียงเป็นเวลานาน</string>
+    <string name="call_needs_speech_model">หากต้องการโทร เซิร์ฟเวอร์ Kelo ต้องมีโมเดลเสียง</string>
+    <string name="call_mic_denied">ไม่สามารถเริ่มการโทรได้เนื่องจากไม่ได้รับอนุญาตให้ใช้ไมโครโฟน</string>
+    <string name="call_voice_offer">นี่คือเสียงที่เป็นธรรมชาติของ Kelo สำหรับการโทร ดาวน์โหลดโมเดลเสียง (%1$s) ไปยังเซิร์ฟเวอร์ Kelo ของคุณเพียงครั้งเดียว แล้ว Kelo จะเริ่มพูดด้วยเสียงนี้จากประโยคถัดไป หากไม่ดาวน์โหลด Kelo จะใช้เสียงหุ่นยนต์ในตัวของอุปกรณ์นี้</string>
+    <string name="call_mark">โทร</string>
+    <string name="call_voice_offer_title">ดาวน์โหลดเสียงของ Kelo หรือไม่</string>
+    <string name="call_voice_offer_ok">ดาวน์โหลด</string>
+    <string name="call_voice_offer_later">ใช้เสียงอุปกรณ์ไปก่อน</string>
+    <string name="call_voice_better">เมื่อมีโมเดลเสียง Kelo จะพูดด้วยเสียงที่เป็นธรรมชาติขึ้นมาก</string>
+    <string name="call_voice_get">ดาวน์โหลด</string>
+    <string name="call_voice_line_close">ปิด</string>
+    <string name="call_ears_failed">การรู้จำเสียงของโทรศัพท์ไม่ได้ยินเสียงของคุณ</string>
+    <string name="voice_speech_title">เสียงของ Kelo</string>
+    <string name="voice_speech_download">ดาวน์โหลดโมเดลเสียง · %1$s</string>
+    <string name="voice_speech_downloading">กำลังดาวน์โหลดโมเดลเสียง · %1$d%%</string>
+    <string name="voice_speech_remove">ลบโมเดลเสียง</string>
+    <string name="voice_speech_remove_confirm">ลบโมเดลเสียงหรือไม่ หลังจากนี้ Kelo จะพูดด้วยเสียงของอุปกรณ์นี้</string>
+    <string name="voice_speech_device_note">หากไม่มีโมเดลเสียง Kelo จะพูดด้วยเสียงในตัวของอุปกรณ์นี้</string>
+    <string name="voice_speech_unsupported_lang">โมเดลเสียงยังไม่รองรับภาษานี้ จึงใช้เสียงของอุปกรณ์แทน</string>
+    <string name="voice_speech_voice_female">เสียงผู้หญิง %1$d</string>
+    <string name="voice_speech_voice_male">เสียงผู้ชาย %1$d</string>
+    <string name="voice_speech_listen">ฟังเสียง</string>
+    <string name="voice_speech_stop">หยุด</string>
+    <string name="voice_speech_speed">ความเร็วในการพูด</string>
+    <string name="voice_speech_speed_value">%1$s เท่า</string>
+    <string name="voice_speech_sample">สวัสดี ฉันจะพูดด้วยเสียงนี้</string>
+</resources>

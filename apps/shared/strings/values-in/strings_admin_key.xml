@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_admin_key.xml (generated from values/strings_admin_key.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="admin_key_add">Lihat pengeluaran dan saldo juga</string>
     <string name="admin_key_title">Kunci admin untuk pengeluaran dan saldo</string>

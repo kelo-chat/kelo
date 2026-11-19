@@ -159,6 +159,8 @@ sealed interface TurnEvent {
     data class PaymentStepChanged(val step: PaymentStep) : TurnEvent
     /** A payment's PIN waits for this phone to release it */
     data class PinNeeded(val need: PinNeed) : TurnEvent
+    /** The agent requests an in-app voice call */
+    data class CallOffer(val callId: String, val topic: String) : TurnEvent
     data class Unknown(val type: String) : TurnEvent
 
     companion object {
@@ -198,6 +200,7 @@ sealed interface TurnEvent {
                 "human_check" -> HumanCheck(s("approval_id"), s("state"), s("site"), s("tab"), CheckInfo.parse(o["check"]))
                 "shipping_form" -> ShippingForm(chat.kelo.app.wallet.ShippingAsk.parse(o))
                 "secret_request" -> chat.kelo.app.chat.vault.SecretRequest.parse(o["request"])?.let { SecretRequested(it) } ?: Unknown(type)
+                "call_offer" -> CallOffer(s("call_id"), s("topic"))
                 "browser" -> Browser(
                     s("id"), s("title"), s("url"), s("host"), s("status"), s("image").takeIf { it.startsWith("data:image/") },
                     int("width"), int("height"), (o["at"] as? JsonPrimitive)?.doubleOrNull ?: 0.0, s("tab"),
@@ -312,7 +315,12 @@ interface TurnApi {
      * [autoText]: the text is the app's own sentence (nothing was typed), so the bubbles show only the files.
      */
     suspend fun start(text: String, timezone: String, answers: List<ReplyAnswer>, secrets: String?, attachments: List<String>, autoText: Boolean): String =
-        start(text, timezone, answers, secrets)
+        start(text, timezone, answers, secrets, attachments, autoText, null)
+    /** The same with [call]: the call id when this turn belongs to an in-app voice call. */
+    suspend fun start(
+        text: String, timezone: String, answers: List<ReplyAnswer>, secrets: String?, attachments: List<String>, autoText: Boolean,
+        call: String?,
+    ): String = start(text, timezone, answers, secrets, attachments, autoText)
     suspend fun poll(id: String, after: Int): TurnPoll
     /** DELETE /api/turns/{id} */
     suspend fun stop(id: String)
@@ -335,7 +343,7 @@ sealed interface SocketEnd {
     data object Unavailable : SocketEnd
 }
 
-class KeloTurnApi(private val api: KeloApi) : TurnApi {
+class KeloTurnApi(private val api: KeloApi, private val canCall: () -> Boolean = { false }) : TurnApi {
     override suspend fun start(text: String, timezone: String): String = start(text, timezone, emptyList())
 
     override suspend fun start(text: String, timezone: String, answers: List<ReplyAnswer>): String = start(text, timezone, answers, null)
@@ -345,6 +353,11 @@ class KeloTurnApi(private val api: KeloApi) : TurnApi {
 
     override suspend fun start(
         text: String, timezone: String, answers: List<ReplyAnswer>, secrets: String?, attachments: List<String>, autoText: Boolean,
+    ): String = start(text, timezone, answers, secrets, attachments, autoText, null)
+
+    override suspend fun start(
+        text: String, timezone: String, answers: List<ReplyAnswer>, secrets: String?, attachments: List<String>, autoText: Boolean,
+        call: String?,
     ): String {
         val answer = api.request("POST", "/api/turns", kotlinx.serialization.json.buildJsonObject {
             if (attachments.isNotEmpty()) {
@@ -359,6 +372,8 @@ class KeloTurnApi(private val api: KeloApi) : TurnApi {
             if (answers.isNotEmpty()) put("answers", kotlinx.serialization.json.JsonArray(answers.map { a ->
                 kotlinx.serialization.json.buildJsonObject { put("question", JsonPrimitive(a.question)); put("value", JsonPrimitive(a.value)) }
             }))
+            if (call != null) put("call", JsonPrimitive(call))
+            put("can_call", JsonPrimitive(canCall()))
         })
         return ((answer as? JsonObject)?.get("id") as? JsonPrimitive)?.content.orEmpty()
     }

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- th text for strings_live_clipboard.xml (generated from values/strings_live_clipboard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="live_paste">วางจากโทรศัพท์</string>
     <string name="live_pasted">วางแล้ว ตรวจดูช่องอีกครั้ง</string>

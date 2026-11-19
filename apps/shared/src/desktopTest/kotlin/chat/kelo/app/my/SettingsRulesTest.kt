@@ -102,4 +102,28 @@ class ResetAndTokenTest {
         assertNull(chat.kelo.app.chat.ProviderLabels.displayName("unknown", list))
         assertEquals(chat.kelo.app.chat.ConsentService.CLAUDE_SUBSCRIPTION, chat.kelo.app.chat.ProviderConsentRules.service("claude-subscription-directsdk-experimental"))
     }
+
+    @Test fun sendTimesAreReadAndAnOlderServerHasNone() {
+        val json = Json { ignoreUnknownKeys = true }
+        val p = json.decodeFromString<ProactiveSettings>("""{"enabled": true, "send_times": {"day": "2026-11-17", "times": ["12:00", "16:00", "20:00"], "briefing": "08:00", "next_at": 1.0}}""")
+        assertEquals(listOf("12:00", "16:00", "20:00"), NotifySettingsRules.sendTimes(p))
+        assertEquals(emptyList<String>(), NotifySettingsRules.sendTimes(json.decodeFromString<ProactiveSettings>("""{"enabled": true}""")))
+        assertEquals(listOf("09:00"), NotifySettingsRules.sendTimes(json.decodeFromString<ProactiveSettings>("""{"send_times": {"times": ["09:00", "x"]}}""")))
+    }
+
+    @Test fun anItemWithItsOwnJobSaysSoAndAnOlderServerSaysNothing() {
+        val json = Json { ignoreUnknownKeys = true }
+        val k = json.decodeFromString<ChecklistSettings>("""{"list": ["A", "B"], "entries": [{"text": "A", "state": "own", "job": {"kind": "schedule", "id": 3, "name": "Before events", "description": "Every 15 minutes", "on": true}}, {"text": "B", "state": "send_times", "job": null}]}""")
+        assertEquals("Before events", NotifySettingsRules.ownJob(k, "A"))
+        assertNull(NotifySettingsRules.ownJob(k, "B"))
+        assertNull(NotifySettingsRules.ownJob(json.decodeFromString<ChecklistSettings>("""{"list": ["A"]}"""), "A"))
+    }
+
+    @Test fun theAboutTextSaysTheSendTimesWhenTheServerHasThem() {
+        val json = Json { ignoreUnknownKeys = true }
+        assertTrue(NotifySettingsRules.aboutSendTimes(json.decodeFromString<ProactiveSettings>("""{"enabled": true, "send_times": {"times": ["12:00"]}}""")))
+        assertTrue(NotifySettingsRules.aboutSendTimes(json.decodeFromString<ProactiveSettings>("""{"send_times": {"times": []}}""")))
+        assertFalse(NotifySettingsRules.aboutSendTimes(json.decodeFromString<ProactiveSettings>("""{"enabled": true}""")))
+        assertFalse(NotifySettingsRules.aboutSendTimes(json.decodeFromString<ProactiveSettings>("""{"send_times": null}""")))
+    }
 }

@@ -287,6 +287,7 @@ enum WorkText {
         case "error": return L(R.string.work_watch_ev_error)
         case "enabled": return L(R.string.work_watch_ev_on)
         case "disabled": return L(R.string.work_watch_ev_off)
+        case "dry_run", "checked": return L(R.string.work_watch_ev_check)
         default: return L(R.string.work_watch_ev_check)
         }
     }

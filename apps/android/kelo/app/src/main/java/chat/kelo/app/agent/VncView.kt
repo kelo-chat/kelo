@@ -88,6 +88,9 @@ private class VncWebBridge(private val relay: VncRelay) : VncSink {
     fun bind(view: WebView) {
         web = view
         view.setBackgroundColor(Color.TRANSPARENT)
+        // the typing goes through the live view's own capture field (RemoteKeyboard): the screen never takes the keyboard's focus from it
+        view.isFocusable = false
+        view.isFocusableInTouchMode = false
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = false

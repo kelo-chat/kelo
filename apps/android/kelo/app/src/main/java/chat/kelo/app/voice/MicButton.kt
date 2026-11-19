@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.PlainTooltip
@@ -77,117 +78,55 @@ import kotlinx.coroutines.launch
 /**
  * The composer's mic: tap to speak, and the words appear in the field at the cursor as they are heard; tap again (or stop
  * speaking) to end. Or hold it: it dictates while the finger is down, letting go keeps the words in the field (nothing is sent) and
- * sliding off the button before letting go cancels ([HoldToTalk]). The ring around it follows how loud it hears. The microphone permission is asked on the first tap; when it is
- * refused, a short explanation offers the app's settings. A phone without speech recognition shows the button greyed, and a tap
- * or long press says why.
+ * sliding off the button before letting go cancels ([HoldToTalk]). While it listens the composer becomes the recording bar, so the
+ * mic is only here for a hold (the composer keeps its look while the finger is down) and when nothing records. The microphone
+ * permission is asked on the first tap; when it is refused, a short explanation offers the app's settings. A phone without speech
+ * recognition shows the button greyed, and a tap or long press says why.
  */
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, modifier: Modifier = Modifier) {
+fun MicButton(voice: AndroidComposerVoice, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val c = Kelo.colors
     val haptics = LocalHaptics.current
     val reduce = LocalReduceMotion.current
-    var anchor by remember { mutableStateOf<SpeechMerge.Anchor?>(null) }
-    var explainDenied by remember { mutableStateOf(false) }
-    var phase by remember { mutableStateOf(HoldToTalk.Phase.IDLE) }
-    val problemText = mapOf(
-        SpeechProblem.NO_MATCH to stringResource(R.string.voice_no_match),
-        SpeechProblem.NETWORK to stringResource(R.string.voice_dictation_offline),
-        SpeechProblem.BUSY to stringResource(R.string.voice_busy),
-        SpeechProblem.OTHER to stringResource(R.string.voice_dictation_failed),
-    )
-    val speech = rememberSpeechInput(
-        onWords = { words, _ ->
-            val a = anchor ?: return@rememberSpeechInput
-            val m = SpeechMerge.merge(a, words)
-            onField(TextFieldValue(m.text, TextRange(m.cursor)))
-        },
-        onEnd = { problem ->
-            anchor = null
-            haptics.confirm()
-            problem?.let { Toast.makeText(context, problemText[it], Toast.LENGTH_SHORT).show() }
-        },
-    )
-    // server voice input: the owner's speech model on the Kelo server (the phone's recognizer stays for the other ways)
     val container = chat.kelo.app.LocalAppContainer.current
     val scope = rememberCoroutineScope()
+    val speech = voice.speech
     val apiNow by container.sessions.api.collectAsState()
-    val voice = remember(container) {
-        VoiceModel({ container.sessions.api.value }, scope) {
-            chat.kelo.app.my.NoticesRules.language(container.language.current, container.language.systemShownCode)
-        }
-    }
-    LaunchedEffect(apiNow) { voice.refresh() }
-    val voiceView by voice.view.collectAsState()
-    val voiceError by voice.error.collectAsState()
+    LaunchedEffect(apiNow) { voice.model.refresh() }
+    val voiceView by voice.model.view.collectAsState()
     val way = DictationWay.pick(voiceView, phoneRecognizer = speech.available)
     val serverWay = way == DictationWay.Way.SERVER
     val offerWay = way == DictationWay.Way.OFFER_THEN_PHONE || way == DictationWay.Way.OFFER_THEN_NONE
     var askOffer by remember { mutableStateOf(false) }
-    val recorder = remember { PhoneRecorder(context) }
-    var serverAnchor by remember { mutableStateOf<VoiceInsert.Anchor?>(null) }
-    val fieldNow by rememberUpdatedState(field)
-    val onFieldNow by rememberUpdatedState(onField)
-    val dictation = remember(recorder) {
-        ServerMicController(
-            recorder, { container.sessions.api.value?.let { VoiceApi(it) } }, scope,
-            onBegin = {
-                val f = fieldNow()
-                val at = f.selection.start.coerceIn(0, f.text.length)
-                val to = f.selection.end.coerceIn(at, f.text.length)
-                serverAnchor = VoiceInsert.Anchor(f.text.substring(0, at), f.text.substring(to))
-            },
-            onText = { words ->
-                serverAnchor?.let { a ->
-                    val m = VoiceInsert.merge(a, words)
-                    onFieldNow(TextFieldValue(m.text, TextRange(m.cursor)))
-                }
-            },
-        )
-    }
-    val dictationPhase by dictation.phase.collectAsState()
-    val dictationProblem by dictation.problem.collectAsState()
-    // a recognition that gave no text: one line (and 다시 하기 when the server could not be reached)
-    dictationProblem?.let { problem ->
-        Popup(alignment = Alignment.TopEnd) { ServerProblemCard(dictation, problem, Modifier.padding(bottom = 8.dp)) }
-    }
-    if (serverWay && dictationPhase != RecordingSteps.Phase.IDLE) {
-        Popup(alignment = Alignment.TopEnd) { ServerRecordingCard(dictation, Modifier.padding(bottom = 8.dp)) }
+    var phase by remember { mutableStateOf(HoldToTalk.Phase.IDLE) }
+    var explainDenied by remember { mutableStateOf(false) }
+    val serverPhase by voice.server.phase.collectAsState()
+    val serverProblem by voice.server.problem.collectAsState()
+    val recordingNow = speech.listening || serverPhase == RecordingSteps.Phase.RECORDING
+    fun begin() {
+        haptics.tick()
+        if (serverWay) voice.server.start() else voice.phone.start()
     }
 
-    fun begin() {
-        if (serverWay) {
-            haptics.tick()
-            dictation.start()
-            return
-        }
-        val f = field()
-        anchor = SpeechMerge.anchor(f.text, f.selection.start, f.selection.end)
-        haptics.tick()
-        speech.start()
+    /** The finger is no longer holding: the hold state ends (also when a recognizer stopped by itself). */
+    fun endHold() {
+        phase = HoldToTalk.Phase.IDLE
+        voice.held = false
     }
+
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         // the permission box takes the touch away: a hold that asked for it ends here, and listening goes on as after a tap
-        phase = HoldToTalk.Phase.IDLE
+        endHold()
         if (granted) begin() else explainDenied = true
     }
-    fun granted(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    // the header's character listens too
-    val activity = chat.kelo.app.LocalAppContainer.current.agentActivity
-    val listeningNow = speech.listening || dictationPhase == RecordingSteps.Phase.RECORDING
-    androidx.compose.runtime.LaunchedEffect(listeningNow) { activity.listening.value = listeningNow }
-    androidx.compose.runtime.DisposableEffect(activity) { onDispose { activity.listening.value = false } }
     val tooltip = rememberTooltipState(isPersistent = false)
     val unavailable = stringResource(R.string.voice_unavailable)
     val downloadingLine = if (voiceView?.state == "downloading") {
         voiceDownloadingLine(voiceView?.progress?.done ?: 0, voiceView?.progress?.total ?: 0)
     } else unavailable
-    val label = stringResource(
-        if (serverWay) { if (dictation.recording) R.string.voice_stop else R.string.voice_start }
-        else if (speech.listening) R.string.voice_stop else R.string.voice_start,
-    )
+    val label = stringResource(if (recordingNow) R.string.voice_stop else R.string.voice_start)
     val listeningState = stringResource(R.string.voice_listening)
 
     val holding = phase == HoldToTalk.Phase.HOLDING || phase == HoldToTalk.Phase.HOLDING_AWAY
@@ -195,17 +134,13 @@ fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, mo
     val holdLabel = stringResource(R.string.voice_hold_label)
     val holdHint = stringResource(R.string.voice_hold_hint)
 
-    /** Sliding off the held mic: listening ends without a result and the field goes back to what it was. */
-    fun cancelDictation() {
-        if (serverWay) {
-            dictation.cancel()
-            return
-        }
-        val a = anchor
-        speech.cancel()
-        anchor = null
-        if (a != null) onField(TextFieldValue(a.before + a.after, TextRange(a.before.length)))
+    // a recognition problem of the server path: one line, and 다시 하기 when the server could not be reached (the bar is gone then)
+    serverProblem?.let { problem ->
+        Popup(alignment = Alignment.TopEnd) { ServerProblemCard(voice.server, problem, Modifier.padding(bottom = 8.dp)) }
     }
+
+    fun granted(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     /** Asks for the microphone when needed, then starts (the permission answer starts it too). */
     fun proceed() {
@@ -220,12 +155,12 @@ fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, mo
                 model = offered,
                 onYes = {
                     askOffer = false
-                    voice.choose(offered.id)
+                    voice.model.choose(offered.id)
                     if (way == DictationWay.Way.OFFER_THEN_PHONE) proceed()
                 },
                 onNo = {
                     askOffer = false
-                    voice.decline()
+                    voice.model.decline()
                     if (way == DictationWay.Way.OFFER_THEN_PHONE) proceed()
                 },
             )
@@ -235,13 +170,12 @@ fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, mo
     val onTap: () -> Unit = {
         when {
             offerWay -> askOffer = true
-            serverWay -> if (dictation.recording) dictation.stop() else proceed()
+            // the bar is up while it listens, so a tap here only comes from a hold's end: it stops
+            recordingNow -> voice.finish(AfterSpeech.FIELD)
+            serverWay -> proceed()
             !speech.available -> scope.launch { tooltip.show() }
-            speech.listening -> speech.stop()
-            way == DictationWay.Way.DOWNLOADING_PHONE || way == DictationWay.Way.DOWNLOADING_NONE -> {
-                // the phone's recognizer keeps working while the model downloads (the tooltip says how far it is)
-                if (way == DictationWay.Way.DOWNLOADING_PHONE) proceed() else scope.launch { tooltip.show() }
-            }
+            // the phone's recognizer keeps working while the model downloads (the tooltip says how far it is)
+            way == DictationWay.Way.DOWNLOADING_NONE -> scope.launch { tooltip.show() }
             else -> proceed()
         }
     }
@@ -259,18 +193,29 @@ fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, mo
         phase = step.phase
         when (step.action) {
             HoldToTalk.Action.TAP -> onTap()
-            HoldToTalk.Action.START -> if (!onHoldStart()) phase = HoldToTalk.Phase.IDLE
-            HoldToTalk.Action.FINISH -> if (serverWay) dictation.stop() else speech.stop()
-            HoldToTalk.Action.CANCEL -> cancelDictation()
+            HoldToTalk.Action.START -> {
+                // the composer keeps its look while the finger is down (the bar is not drawn while held)
+                voice.held = true
+                if (!onHoldStart()) endHold()
+            }
+            HoldToTalk.Action.FINISH -> { voice.held = false; voice.finish(AfterSpeech.FIELD) }
+            HoldToTalk.Action.CANCEL -> { voice.held = false; voice.discard() }
             HoldToTalk.Action.NONE -> {}
         }
     }
     // a hold that ends because the recognizer stopped by itself (a pause, an error) leaves nothing held
-    androidx.compose.runtime.LaunchedEffect(speech.listening) { if (!speech.listening && holding) phase = HoldToTalk.Phase.IDLE }
+    LaunchedEffect(speech.listening) { if (!speech.listening && holding) endHold() }
 
-    // the ring: grows with the sound level while listening, and breathes a little so it is clearly on
-    val level by animateFloatAsState(if (speech.listening) speech.level else 0f, tween(if (reduce) 0 else 120), label = "micLevel")
-    val breath = if (speech.listening && !reduce) {
+    // the ring: grows with the sound level while listening, and breathes a little so it is clearly on. While the server records
+    // during a hold (the bar is not up), the ring follows the newest level of the server's trail.
+    val trailVersion = voice.server.trail.version
+    val ringSource = when {
+        speech.listening -> speech.level
+        serverPhase == RecordingSteps.Phase.RECORDING -> { trailVersion; voice.server.trail.newest }
+        else -> 0f
+    }
+    val level by animateFloatAsState(ringSource, tween(if (reduce) 0 else 120), label = "micLevel")
+    val breath = if (recordingNow && !reduce) {
         rememberInfiniteTransition(label = "micBreath").animateFloat(0f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "b").value
     } else 0f
 
@@ -288,7 +233,7 @@ fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, mo
                     val slack = 24.dp.toPx()
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
-                        applyEvent(HoldToTalk.Event.Down(listening = speech.listening || dictationPhase == RecordingSteps.Phase.RECORDING))
+                        applyEvent(HoldToTalk.Event.Down(listening = recordingNow))
                         // a tap is over before the hold time; moving off the button ends the touch's meaning too
                         val early = withTimeoutOrNull(HoldToTalk.HOLD_MS) {
                             var e: HoldToTalk.Event
@@ -308,14 +253,14 @@ fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, mo
                 .semantics {
                     role = Role.Button
                     contentDescription = if (speech.available) label else unavailable
-                    if (speech.listening) stateDescription = listeningState
+                    if (recordingNow) stateDescription = listeningState
                     // the screen reader's double tap is the tap; its long press does the same (the hold needs a finger that stays down)
                     onClick(label = label) { onTap(); true }
                     onLongClick(label = holdLabel) { if (!speech.available) scope.launch { tooltip.show() } else onTap(); true }
                 },
             contentAlignment = Alignment.Center,
         ) {
-            if (speech.listening) {
+            if (recordingNow) {
                 Box(
                     Modifier
                         .size(40.dp)
@@ -326,12 +271,23 @@ fun MicButton(field: () -> TextFieldValue, onField: (TextFieldValue) -> Unit, mo
                         .background(c.accent.copy(alpha = 0.22f), CircleShape),
                 )
             }
-            Icon(
+            // the speech model downloads to the server: the mic is a circle with the progress (the owner's addition 2026-11-18)
+            val ring = VoiceDownloadRing.of(voiceView)
+            if (ring != null) {
+                val downloadLabel = voiceDownloadingLine(voiceView?.progress?.done ?: 0, voiceView?.progress?.total ?: 0)
+                val percent = ring.percent
+                if (percent != null) {
+                    CircularProgressIndicator(progress = { percent / 100f }, modifier = Modifier.size(22.dp), color = c.accent, strokeWidth = 2.dp)
+                } else {
+                    CircularProgressIndicator(modifier = Modifier.size(22.dp), color = c.accent, strokeWidth = 2.dp)
+                }
+                Box(Modifier.size(22.dp).semantics { contentDescription = downloadLabel })
+            } else Icon(
                 KeloIcons.Mic, contentDescription = null,
                 tint = when {
                     !speech.available -> c.muted.copy(alpha = 0.4f)
                     away -> c.dangerInk
-                    speech.listening -> c.accent
+                    recordingNow -> c.accent
                     else -> c.muted
                 },
             )

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">ملفات Kelo</string>
     <string name="files_about">ما يدوّنه Kelo لنفسه: من أنت، وذاكرته، وملاحظاته. يمكنك قراءتها وتعديلها وحذفها. للملفات المرفوعة والنتائج صفحاتها الخاصة.</string>

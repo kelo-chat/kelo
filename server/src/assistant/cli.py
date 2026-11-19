@@ -452,6 +452,12 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     rec.add_argument("--min-server", help="the oldest server release this app works with (its compiled-in min_server); apps are only offered "
                                           "to servers at or above it")
     rec.add_argument("--file", help="the record to change (default: releases/apps.json of this checkout)")
+    rec.add_argument("--no-publish", action="store_true", help="record only; a store channel's signed row is then published later with "
+                                                               "`assistant publish-store`")
+    rec.add_argument("--sign-key", metavar="PATH", help="the signing key of the store row (default ~/.kelo-release/signing.key)")
+    pubst = sub.add_parser("publish-store", help="operator's server only: publish the newest store release of each app (releases/apps.json) "
+                                                 "signed, in /download/latest.json (also run by release-record)")
+    pubst.add_argument("--sign-key", metavar="PATH", help="the signing key (default ~/.kelo-release/signing.key)")
     ver = sub.add_parser("version", help="this Kelo's release version and build (version.json)")
     ver.add_argument("--json", action="store_true", help="print it as JSON")
     ntc = sub.add_parser("notice", help="operator's server only: manage the operator notices feed (notices.json)")
@@ -506,6 +512,9 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     if args.cmd == "publish-server":
         from .downloads import run_publish_server
         return run_publish_server(args)
+    if args.cmd == "publish-store":
+        from .downloads import run_publish_store
+        return run_publish_store(args)
     if args.cmd == "notice":
         from .notices import run_notice
         return run_notice(args, out=out)

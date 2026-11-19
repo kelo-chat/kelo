@@ -23,11 +23,15 @@ public struct ChatMessage: Codable, Equatable, Sendable {
     public var attachments: [MessageFile]
     /// The text is the app's own sentence (nothing was typed): the bubble shows only the files.
     public var autoText: Bool
+    /// The channel the message arrived by (e.g. "call"); empty string for standard chat.
+    public var via: String
 
     public init(id: Int64, role: String = "", content: String = "", createdAt: Double = 0, replies: ReplySet? = nil, reaction: String = "",
-                briefing: BriefingCard? = nil, comparison: ComparisonCard? = nil, images: [ChatImage] = [], attachments: [MessageFile] = [], autoText: Bool = false) {
+                briefing: BriefingCard? = nil, comparison: ComparisonCard? = nil, images: [ChatImage] = [], attachments: [MessageFile] = [], autoText: Bool = false,
+                via: String = "") {
         self.id = id; self.role = role; self.content = content; self.createdAt = createdAt; self.replies = replies; self.reaction = reaction
         self.briefing = briefing; self.comparison = comparison; self.images = images; self.attachments = attachments; self.autoText = autoText
+        self.via = via
     }
 
     public init(from decoder: Decoder) throws {
@@ -43,6 +47,7 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         images = j.list("images", of: ChatImage.self)
         attachments = MessageFile.parseList(j["attachments"])
         autoText = j.bool("auto_text")
+        via = j.str("via")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -58,6 +63,7 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         if !images.isEmpty { try c.encode(images, forKey: AnyKey("images")) }
         if !attachments.isEmpty { try c.encode(attachments, forKey: AnyKey("attachments")) }
         if autoText { try c.encode(true, forKey: AnyKey("auto_text")) }
+        if !via.isEmpty { try c.encode(via, forKey: AnyKey("via")) }
     }
 
     /// The server sends the list bare; anything without an id is left out.

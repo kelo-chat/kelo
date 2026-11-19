@@ -494,6 +494,16 @@
     <string name="vault_saved_plain">Opgeslagen</string>
     <string name="vault_not_entered">Nog niet ingevuld</string>
     <string name="vault_last_used">Laatst gebruikt %1$s</string>
+    <string name="vault_browser_title">Kelo\'s browser</string>
+    <string name="vault_browser_signed_in">Aangemeld %1$s · laatst gebruikt %2$s</string>
+    <string name="vault_browser_sign_out">Kelo\'s browser uitloggen bij deze site</string>
+    <string name="vault_browser_sign_out_confirm">Kelo\'s browser wordt uitgelogd bij %1$s en de cookies en sitegegevens worden verwijderd. Een opgeslagen login blijft.</string>
+    <string name="vault_browser_sites_title">Aangemeld zonder opgeslagen login</string>
+    <string name="vault_profiles_title">Browserprofielen</string>
+    <string name="vault_profile_sites">Aangemeld bij %1$s sites</string>
+    <string name="vault_profile_empty">Nog nergens aangemeld</string>
+    <string name="vault_profile_delete">Dit profiel verwijderen</string>
+    <string name="vault_profile_delete_confirm">Het profiel %1$s en alle daarin bewaarde logins worden verwijderd.</string>
     <string name="vault_place">Sleutel gaat in %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -939,6 +949,9 @@
     <string name="live_still_yours">Je bedient het nog zelf. Je agent wacht tot je het teruggeeft.</string>
     <string name="live_screen_changed">Het scherm is veranderd. Tik nog eens.</string>
     <string name="live_tab_closed">Het tabblad is gesloten, dus er is niets meer te zien. Als het laatste scherm is bewaard, staat het hieronder.</string>
+    <string name="live_tabs_label">Tabbladen</string>
+    <string name="live_tab_untitled">Nieuw tabblad</string>
+    <string name="live_tab_close">Tabblad sluiten</string>
     <string name="live_not_controller">Je kunt het nu niet bedienen. Tik nog eens op Overnemen.</string>
     <string name="live_input_failed">De browser kon dat niet doen.</string>
     <string name="live_state_you">Jij hebt de besturing</string>
@@ -965,6 +978,8 @@
     <string name="live_touch_missed">De aanraking is niet aangekomen</string>
     <string name="live_type_hint">Tekst om op de pagina te typen</string>
     <string name="live_type_send">Typen</string>
+    <string name="live_keyboard">Toetsenbord</string>
+    <string name="live_keyboard_desc">Toetsenbord voor de pagina tonen of verbergen</string>
     <string name="live_type_hide">Tekst verbergen</string>
     <string name="live_type_show">Tekst tonen</string>
     <string name="live_key_enter">Enter</string>
@@ -1131,7 +1146,6 @@
     <string name="work_now_empty">Er loopt nu niets.</string>
     <string name="work_asks">Wacht op je antwoord</string>
     <string name="work_asks_empty">Geen vragen in de wacht.</string>
-
     <string name="offers_title">Kelo kan dit nu doen</string>
     <string name="offer_start">Overdragen</string>
     <string name="offer_needs">Nodig: %1$s</string>
@@ -1257,6 +1271,7 @@
     <string name="work_watch_ev_fired">Voorwaarde bereikt</string>
     <string name="work_watch_ev_error">Mislukt</string>
     <string name="work_watch_ev_check">Gecontroleerd</string>
+    <string name="work_watch_ev_count">· %1$d keer gecontroleerd</string>
     <string name="work_watch_ev_on">Aan</string>
     <string name="work_watch_ev_off">Uit</string>
     <string name="work_watch_delete">Bewaking verwijderen</string>
@@ -1302,14 +1317,17 @@
     <string name="heads_section">Nieuwsmeldingen</string>
     <string name="heads_switch">Kelo laat het je eerst weten</string>
     <string name="heads_about">%1$s bekijkt Kelo nieuwe mail, komende afspraken en deadlines, en laat het je eerst weten als er iets is wat je moet weten. Waar jij op moet antwoorden (goedkeuringen, vragen) wordt hier los van opnieuw gevraagd onder “%2$s”.</string>
+    <string name="heads_about_send_times">Binnen je berichttijden bekijkt Kelo elk uur nieuwe mail en je gekoppelde diensten, en laat meteen weten wat niet kan wachten. De rest wacht tot de verzendtijden; dan bekijkt Kelo ook gesprekken, agenda, doelen, schema’s en geheugen. Eén verzending telt één keer mee bij “%1$s”, hoeveel er ook in zit. Zijn die van vandaag op, dan krijg je alleen nog wat niet kan wachten. Waar jij op moet antwoorden (goedkeuringen, vragen) wordt hier los van opnieuw gevraagd onder “%2$s”.</string>
     <string name="heads_per_day">Hoogstens per dag</string>
+    <string name="heads_send_times">Verzendtijden: %1$s</string>
     <string name="heads_mail">Ook naar nieuwe mail kijken</string>
     <string name="heads_mail_about">Uit: Kelo opent voor deze controle geen postbussen; afspraken en deadlines worden nog steeds gecontroleerd. Het ochtendoverzicht kiest zijn eigen postbussen.</string>
     <string name="heads_list_title">Om in de gaten te houden</string>
-    <string name="heads_list_about">Optioneel. Kelo kijkt hier elke keer naar en laat alleen iets weten als het je aandacht nodig heeft.</string>
+    <string name="heads_list_about">Optioneel. Als je iets toevoegt, geeft Kelo het het juiste moment: een eigen controle als dat nodig is, anders een blik op je verzendtijden. Je hoort alleen iets als het je aandacht nodig heeft.</string>
     <string name="heads_list_hint">bijv. bezorgmeldingen van vandaag</string>
     <string name="heads_list_add">Toevoegen</string>
     <string name="heads_list_remove">%1$s verwijderen</string>
+    <string name="heads_list_own">Apart gecontroleerd · %1$s</string>
     <plurals name="heads_times">
         <item quantity="one">%d keer</item>
         <item quantity="other">%d keer</item>
@@ -1523,7 +1541,6 @@
     <string name="comparison_recommended">Aanbevolen</string>
     <string name="comparison_choose">Kies %1$s</string>
     <string name="comparison_choose_say">Laten we voor %1$s gaan</string>
-
     <string name="endpoint_add">Eindpunt toevoegen</string>
     <string name="endpoint_name">Naam</string>
     <string name="endpoint_name_hint">bijv. Home Ollama</string>

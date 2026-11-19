@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- uk text for strings_data.xml (edit freely, keep the names) -->
+<!-- uk text for strings_data.xml (generated from values/strings_data.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="data_title">Ваші дані</string>
     <string name="data_intro">Завантажте копію того, що Kelo зберігає про вас, перенесіть спогади з іншого асистента або почніть спочатку.</string>

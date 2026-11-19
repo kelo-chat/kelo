@@ -167,6 +167,9 @@ data class FrameHeader(
     @SerialName("live_v") val liveV: Int = 0,
     /** A text field has focus on the page / phone. */
     val editing: Boolean = false,
+    /** live_v 3: what keyboard the focused field fits (secret | number | tel | email | url | search | multiline | text), and an opaque id that changes when the focus moves to another field. */
+    val kind: String = "text",
+    val field: String = "",
 )
 
 @Serializable
@@ -184,6 +187,15 @@ data class LivePointer(
     val x: Float = 0f,
     val y: Float = 0f,
     val down: Boolean = false,
+)
+
+/** One tab of a task's window: GET /api/browser/sessions items carry them as "tabs". */
+@Serializable
+data class LiveTab(
+    val id: String = "",
+    val title: String = "",
+    val url: String = "",
+    val active: Boolean = false,
 )
 
 /** {"type":"status"}: who controls the tab, what the agent is doing in it, how many are watching. */
@@ -216,12 +228,22 @@ data class LiveStatus(
 }
 
 /**
- * {"type":"meta","url","title","editing"}: the tab's address and title and whether a text field has focus, sent while this viewer's
- * frames are off (the VNC screen shows, so the frame headers that normally carry them do not come). A frame arriving again takes over.
- * A server from before `editing` leaves it out: false.
+ * {"type":"meta","url","title","editing","kind","field","live_v"}: the tab's address and title and whether a text field has focus (and which
+ * kind, which field), sent while this viewer's frames are off (the VNC screen shows, so the frame headers that normally carry them do not
+ * come). A frame arriving again takes over. A server from before `editing` leaves it out: false; before live typing, no kind / field / live_v.
  */
 @Serializable
-data class LiveMeta(val url: String = "", val title: String = "", val editing: Boolean = false)
+data class LiveMeta(
+    val url: String = "",
+    val title: String = "",
+    val editing: Boolean = false,
+    val kind: String = "text",
+    val field: String = "",
+    @SerialName("live_v") val liveV: Int = 0,
+)
+
+/** The focused field as live typing needs it: [kind] picks the keyboard, [field] tells a move to another field. */
+data class Typing(val kind: String, val field: String)
 
 /** What the live page's header shows of the page: the newest word from the server, a meta line while frames are off, else the frame header. */
 object LiveHeader {
@@ -233,6 +255,16 @@ object LiveHeader {
      * it), else the frame header. This is what raises the keyboard into the type line.
      */
     fun editing(meta: LiveMeta?, header: FrameHeader?): Boolean = meta?.editing ?: (header?.editing == true)
+
+    /** The focused field's kind and id (the same source as [editing]), null when no field has focus. */
+    fun typing(meta: LiveMeta?, header: FrameHeader?): Typing? = when {
+        meta != null -> if (meta.editing) Typing(meta.kind, meta.field) else null
+        header?.editing == true -> Typing(header.kind, header.field)
+        else -> null
+    }
+
+    /** The server takes live typing (the `edit` input): live_v 3 or more, in the meta line or the newest frame header. Else the visible type line stays. */
+    fun liveTyping(meta: LiveMeta?, header: FrameHeader?): Boolean = (meta?.liveV ?: 0) >= 3 || (header?.liveV ?: 0) >= 3
 }
 
 /** Text going between the phone's clipboard and the page's: only when the owner taps, never on its own, never kept past use. */
@@ -309,6 +341,9 @@ object LiveMessages {
         put("type", "text"); put("text", text)
         if (frameSeq != null) put("frame_seq", frameSeq)
     }
+
+    /** The owner's keyboard changes as steps for the page's focused field (live_v 3); see [RemoteTyping]. */
+    fun edit(steps: List<Step>): JsonObject = RemoteTyping.json(steps)
 
     fun key(name: String, frameSeq: Long? = null): JsonObject = buildJsonObject {
         put("type", "key"); put("key", name)
@@ -503,6 +538,18 @@ object LiveRules {
     fun giveBackOnLeave(s: LiveStatus): Boolean = s.handoverHold
 
     /** Leaving the page while the owner holds the tab by their own press: the page says it stays theirs until they hand it back. */
+    /** The chips show only when the window has more than one tab. */
+    fun showTabs(tabs: List<LiveTab>): Boolean = tabs.size > 1
+
+    /** Tapping a chip (and closing one) works only while this device holds the tab; otherwise the chips only show where the agent is. */
+    fun tabsTappable(s: LiveStatus): Boolean = s.youControl
+
+    /** Only a tab that is not the active one has a close mark. */
+    fun tabClosable(t: LiveTab, tappable: Boolean): Boolean = tappable && !t.active
+
+    /** The body of POST /api/browser/sessions/{key}/tabs/{tab}. */
+    fun tabAction(close: Boolean): JsonObject = buildJsonObject { put("action", if (close) "close" else "activate") }
+
     fun leaveNotice(s: LiveStatus): Boolean = s.youControl && !s.handoverHold
 
     /** Once only, when asked to, after the first picture came, while nobody holds the tab and no take-over is on its way. */

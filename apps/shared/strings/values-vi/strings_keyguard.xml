@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- vi text for strings_keyguard.xml (generated from values/strings_keyguard.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="keyguard_title">Keyguard</string>
     <string name="keyguard_intro">Mật khẩu, khóa và thẻ của bạn được mở bằng một chìa khóa. Thường thì máy chủ giữ nó ngay cạnh chúng. Khi bật, chỉ điện thoại của bạn giữ chìa khóa, nên ai lấy ổ đĩa của máy chủ cũng không mở được.</string>

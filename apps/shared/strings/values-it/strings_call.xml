@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- it text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">Chiama Kelo</string>
+    <string name="call_incoming_line">ti sta chiamando</string>
+    <string name="call_accept">Rispondi</string>
+    <string name="call_decline">Rifiuta</string>
+    <string name="call_connecting">Connessione in corso…</string>
+    <string name="call_listening">In ascolto</string>
+    <string name="call_thinking">Elaborazione</string>
+    <string name="call_speaking">Sta parlando</string>
+    <string name="call_muted">Disattivato</string>
+    <string name="call_mute">Disattiva audio</string>
+    <string name="call_unmute">Riattiva audio</string>
+    <string name="call_speaker">Altoparlante</string>
+    <string name="call_hang_up">Termina chiamata</string>
+    <string name="call_card_waiting">C\'è qualcosa da verificare sullo schermo.</string>
+    <string name="call_card_open">Mostra</string>
+    <string name="call_back_to_call">Torna alla chiamata · %1$s</string>
+    <string name="call_offline">Impossibile raggiungere il server Kelo. Riconnessione…</string>
+    <string name="call_ended_background">Chiamata terminata perché hai lasciato l\'app.</string>
+    <string name="call_ended_interrupted">Chiamata terminata a causa di un altro suono.</string>
+    <string name="call_ended_quiet">Chiamata terminata dopo un lungo silenzio.</string>
+    <string name="call_needs_speech_model">Per parlare, il server Kelo ha bisogno del modello vocale.</string>
+    <string name="call_mic_denied">Impossibile avviare la chiamata: microfono non autorizzato.</string>
+    <string name="call_voice_offer">Questa è la voce naturale di Kelo per le chiamate. Scarica il modello vocale (%1$s) sul tuo server Kelo e Kelo parlerà con questa voce dalla frase successiva. Senza di esso, Kelo usa la voce robotica di questo dispositivo.</string>
+    <string name="call_mark">Chiamata</string>
+    <string name="call_voice_offer_title">Scaricare la voce di Kelo?</string>
+    <string name="call_voice_offer_ok">Scarica</string>
+    <string name="call_voice_offer_later">Usa per ora la voce del dispositivo</string>
+    <string name="call_voice_better">Con il modello vocale, Kelo parla con una voce molto più naturale.</string>
+    <string name="call_voice_get">Scarica</string>
+    <string name="call_voice_line_close">Chiudi</string>
+    <string name="call_ears_failed">Il riconoscimento vocale del telefono non ti sente.</string>
+    <string name="voice_speech_title">Voce di Kelo</string>
+    <string name="voice_speech_download">Scarica modello vocale · %1$s</string>
+    <string name="voice_speech_downloading">Download del modello vocale · %1$d%%</string>
+    <string name="voice_speech_remove">Rimuovi modello vocale</string>
+    <string name="voice_speech_remove_confirm">Rimuovere il modello vocale? Kelo parlerà con la voce di questo dispositivo.</string>
+    <string name="voice_speech_device_note">Senza il modello vocale, Kelo parla con la voce integrata di questo dispositivo.</string>
+    <string name="voice_speech_unsupported_lang">Il modello vocale non supporta ancora questa lingua; verrà usata la voce del dispositivo.</string>
+    <string name="voice_speech_voice_female">Voce femminile %1$d</string>
+    <string name="voice_speech_voice_male">Voce maschile %1$d</string>
+    <string name="voice_speech_listen">Ascolta</string>
+    <string name="voice_speech_stop">Ferma</string>
+    <string name="voice_speech_speed">Velocità vocale</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">Ciao. Questa è la voce con cui parlerò.</string>
+</resources>

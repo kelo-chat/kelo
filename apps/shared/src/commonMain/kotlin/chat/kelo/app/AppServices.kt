@@ -96,6 +96,9 @@ interface AppServices {
 
     /** Plain http to this computer or the local network is accepted (a debug build, the desktop); a release phone needs https. */
     val allowLocalHttp: Boolean
+
+    /** Audio player / recorder for call mode and voice sample preview (null in tests without audio). */
+    val callAudio: (() -> chat.kelo.app.call.platform.CallAudio)? get() = null
 }
 
 val LocalAppServices = staticCompositionLocalOf<AppServices> { error("no AppServices") }

@@ -7,7 +7,8 @@ What counts as stalled (an "item", one row of the table followups):
             for a login that already has a login item is folded into that item instead of becoming a second one)
   approval  an approval card of an unattended run (payments included) that nobody has answered
   approval_expired
-            such a card ran out unanswered (UNATTENDED_APPROVAL_SECONDS, 30 min, in server.py): the step was skipped. The item offers
+            such a card ran out unanswered (UNATTENDED_APPROVAL_SECONDS, 30 min, in server.py): the step was skipped. Only when the run can
+            be started again (a background job, a schedule or a background task): otherwise no item. The item offers
             to try again ("retry" action, POST /api/followups/{id}/retry): a background job (workers.py) is resumed (or, still running,
             told) to redo the step; a schedule's run or a background task is started again with a note to go on from where it
             stopped. Either way the step asks for approval again: a payment is never approved by trying again. Several cards of one
@@ -108,6 +109,8 @@ from .i18n import N_, t
 from .proactive import in_waking_hours
 from .prompt import tone_line
 from .providers import ChatRequest, TextDelta
+from .tools.connect_tools import asked_in_chat
+
 
 log = logging.getLogger("uvicorn.error")
 
@@ -416,6 +419,8 @@ class Followups:
         if (row := self._find("approval_expired", aid, open_only=False)) is not None:
             return int(row["id"])
         origin = dict(origin) if origin and origin.get("kind") in ("worker", "schedule", "background") else None
+        if origin is None:
+            return None   # nothing could start it again: no question about it
         pay = a.get("payment") or {}
         what = " · ".join(x for x in (str(a.get("label") or ""), str(pay.get("amount_text") or ""), str(a.get("site") or "")) if x)
         what = what or t("Approval")
@@ -910,15 +915,18 @@ class Followups:
                                                    "deadline": {"type": "string", "description": "local date-time when an answer is too late"}},
                   "required": ["topic"]},
                  await_reply, closes_reply=True),
-            Tool("followup_snooze", "Put off Kelo's reminders about something that waits for the user, when they ask. The user approves it.",
+            Tool("followup_snooze", "Put off Kelo's reminders about something that waits for the user, when they ask. Asked in this chat it "
+                 "goes ahead; otherwise the user approves it on a card.",
                  {"type": "object", "properties": {"item": {"type": "string", "description": item_desc},
                                                    "until": {"type": "string", "description": "local date-time or HH:MM"},
                                                    "minutes": {"type": "integer"}},
-                  "required": ["item"]}, followup_snooze, requires_approval=True, describe=describe_snooze),
+                  "required": ["item"]}, followup_snooze, requires_approval=True, describe=describe_snooze,
+                 auto_approve=lambda a: asked_in_chat()),
             Tool("followup_cancel", "Stop Kelo's reminders about something that waits for the user, when they ask (only the reminders). "
-                 "The user approves it.",
+                 "Asked in this chat it goes ahead; otherwise the user approves it on a card.",
                  {"type": "object", "properties": {"item": {"type": "string", "description": item_desc}}, "required": ["item"]},
-                 followup_cancel, requires_approval=True, describe=describe_cancel),
+                 followup_cancel, requires_approval=True, describe=describe_cancel,
+                 auto_approve=lambda a: asked_in_chat()),
         ]
 
 

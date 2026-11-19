@@ -1,11 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- ko text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="deliveries_label">하루에 먼저 보내는 메시지 수</string>
-    <string name="deliveries_about">Kelo가 알려 드릴 것을 모아서 하루에 이만큼의 메시지로 보내요. 0이면 미룰 수 없는 것만 보내요.</string>
-    <plurals name="deliveries_today">
-        <item quantity="other">오늘 %d번 보냄</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="other">보관 중 %d개</item>
     </plurals>
@@ -13,7 +8,6 @@
     <string name="deliveries_held_about">다음 메시지에 담으려고 Kelo가 갖고 있는 것들이에요. 보내기 전에 다시 살펴보고, 더는 중요하지 않은 건 빼요.</string>
     <string name="deliveries_held_empty">지금 보관 중인 게 없어요.</string>
     <string name="deliveries_held_until">%1$s까지 보관</string>
-    <string name="deliveries_why_slots">다음 메시지를 기다리는 중이에요</string>
     <string name="deliveries_why_cap">오늘 더 보낼 만큼 급하지 않아요</string>
     <string name="deliveries_why_reply">지난 메시지에 대한 답을 기다리는 중이에요</string>
     <string name="deliveries_why_other">더 알맞은 때를 기다리는 중이에요</string>

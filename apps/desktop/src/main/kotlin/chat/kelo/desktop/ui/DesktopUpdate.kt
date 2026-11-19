@@ -12,6 +12,7 @@ import chat.kelo.app.update.checkValue
 import chat.kelo.app.res.*
 import chat.kelo.app.ui.text.string
 import chat.kelo.desktop.core.AppContainer
+import chat.kelo.desktop.core.Updater
 import chat.kelo.desktop.core.UpdateState as DesktopUpdateState
 import kotlinx.coroutines.launch
 
@@ -21,8 +22,11 @@ import kotlinx.coroutines.launch
  */
 
 /** The updater's state as the shared screens read it: an opened installer is "ready", a failed download or open is "failed". */
-internal fun DesktopUpdateState.toShared(running: String, bannerSeen: String, required: Boolean, quitNote: String? = null, openFailed: String? = null): UpdateState = UpdateState(
+internal fun DesktopUpdateState.toShared(
+    running: String, bannerSeen: String, required: Boolean, quitNote: String? = null, openFailed: String? = null, storeNewer: Boolean = false,
+): UpdateState = UpdateState(
     enabled = true,
+    storeNewer = storeNewer,
     running = running,
     checking = phase == DesktopUpdateState.Phase.CHECKING,
     checked = phase !in setOf(DesktopUpdateState.Phase.IDLE, DesktopUpdateState.Phase.CHECKING),
@@ -49,9 +53,12 @@ private fun AppContainer.sharedUpdateState(): UpdateState {
     val raw by updates.state.collectAsStateWithLifecycle()
     val seen by settings.dismissedUpdate.collectAsStateWithLifecycle()
     val required by updates.required.collectAsStateWithLifecycle()
+    val storeNewer by updates.storeNewer.collectAsStateWithLifecycle()
     val quitNote = string(Res.string.desktop_update_quit_note)
     val openFailed = string(Res.string.desktop_update_open_failed, raw.path.orEmpty())
-    return remember(raw, seen, required, quitNote, openFailed) { raw.toShared(updates.currentVersion.orEmpty(), seen, required, quitNote, openFailed) }
+    return remember(raw, seen, required, quitNote, openFailed, storeNewer) {
+        raw.toShared(updates.currentVersion.orEmpty(), seen, required, quitNote, openFailed, storeNewer)
+    }
 }
 
 /** The value under My's "업데이트 확인" row. */
@@ -82,11 +89,17 @@ fun AppNoticeHost(app: AppContainer, onOpenMy: () -> Unit, modifier: Modifier = 
     val offered by chat.kelo.app.core.AppVersion.update.collectAsStateWithLifecycle()
     val dismissed by app.settings.appNotice.dismissed.collectAsStateWithLifecycle()
     val s = app.sharedUpdateState()
-    val version = offered?.takeIf { chat.kelo.app.update.AppNoticeRules.show(it, dismissed) } ?: return
+    // the Store copy: only when the Store itself says newer; its action is the Store's updates page (never the installer)
+    val store = app.updates.way == Updater.Way.STORE
+    val version = offered?.takeIf { chat.kelo.app.update.AppNoticeRules.show(it, dismissed) && (!store || s.storeNewer) } ?: return
     if (s.showBanner) return
     chat.kelo.app.update.AppNoticeBanner(
-        version, store = false, modifier = modifier,
-        onAction = { app.settings.appNotice.dismiss(version); if (s.offer != null) app.scope.launch { app.updates.download() }; onOpenMy() },
+        version, store = store, modifier = modifier,
+        onAction = {
+            app.settings.appNotice.dismiss(version)
+            if (store) Updater.openLink(Updater.STORE_UPDATES)
+            else { if (s.offer != null) app.scope.launch { app.updates.download() }; onOpenMy() }
+        },
         onClose = { app.settings.appNotice.dismiss(version) },
     )
 }
@@ -112,8 +125,8 @@ fun UpdateRequiredScreen(app: AppContainer, modifier: Modifier = Modifier) {
 
 /**
  * The "new version" popup (shared rules: once per version, Later = 3 days). Armed at start and when the window comes back after more
- * than an hour; the action is the app's own update (the download starts, My shows it). A store build has no page of ours to open, so
- * it shows no popup (its banner and My stay).
+ * than an hour. A file build's action is the app's own update (the download starts, My shows it); the Microsoft Store copy's action opens
+ * the Store's updates page, and it shows only when the Store itself says newer (UpdatePopupRules.candidate).
  */
 @Composable
 fun updatePopupOpen(app: AppContainer): chat.kelo.app.update.UpdateCandidate? {
@@ -125,8 +138,9 @@ fun updatePopupOpen(app: AppContainer): chat.kelo.app.update.UpdateCandidate? {
 fun UpdatePopupHost(app: AppContainer, onOpenMy: () -> Unit) {
     val s = app.sharedUpdateState()
     val offered by chat.kelo.app.core.AppVersion.update.collectAsStateWithLifecycle()
+    val store = app.updates.way == Updater.Way.STORE
     val candidate = chat.kelo.app.update.UpdatePopupRules.candidate(s, offered, chat.kelo.app.core.AppVersion.channel)
-        ?.takeIf { it.source == chat.kelo.app.update.UpdatePopupRules.Source.UPDATER && !s.required }
+        ?.takeIf { !s.required }
     val focused = androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
     androidx.compose.runtime.LaunchedEffect(focused) {
         if (!focused) app.settings.updatePopup.left()
@@ -136,7 +150,30 @@ fun UpdatePopupHost(app: AppContainer, onOpenMy: () -> Unit) {
     val shown = updatePopupOpen(app) ?: return
     chat.kelo.app.update.UpdatePopupDialog(
         shown,
-        onUpdate = { app.settings.updatePopup.close(); if (s.offer != null) app.scope.launch { app.updates.download() }; onOpenMy() },
+        onUpdate = {
+            app.settings.updatePopup.close()
+            if (store) Updater.openLink(Updater.STORE_UPDATES)
+            else { if (s.offer != null) app.scope.launch { app.updates.download() }; onOpenMy() }
+        },
         onLater = { app.settings.updatePopup.close() },
+    )
+}
+
+/**
+ * The server-update notice (X-Kelo-Server-Update; shared rules in update/ServerNotice.kt): once a day, after the app popup, on the chat
+ * page only, and never over a full screen ([covered]). "See the update" opens My -> Server update.
+ */
+@Composable
+fun ServerNoticeHost(app: AppContainer, covered: Boolean, onChat: Boolean, onOpenServerUpdate: () -> Unit) {
+    val offered by chat.kelo.app.core.AppVersion.serverUpdate.collectAsStateWithLifecycle()
+    val open by app.settings.serverNotice.open.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(offered, covered, onChat) {
+        app.settings.serverNotice.consider(offered.takeIf { onChat }, app.settings.updatePopup.lastShownMs(), covered)
+    }
+    val version = open?.takeIf { onChat && !covered } ?: return
+    chat.kelo.app.update.ServerNoticeDialog(
+        version,
+        onOpen = { app.settings.serverNotice.close(); onOpenServerUpdate() },
+        onLater = { app.settings.serverNotice.close() },
     )
 }

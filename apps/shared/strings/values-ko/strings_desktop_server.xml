@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Desktop-only text of the server install page (Windows: this PC, Mac: this Mac). After a change: python3 apps/android/tools/strings_check.py -->
+<!-- ko text for strings_desktop_server.xml (generated from values/strings_desktop_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_server_row">이 PC를 Kelo 서버로 쓰기</string>
     <string name="desktop_server_row_hint">이 컴퓨터에 Kelo 서버를 설치해요. 관리자 권한을 한 번 물어요.</string>
@@ -17,7 +17,6 @@
     <string name="desktop_server_update">업데이트</string>
     <string name="desktop_server_install">설치</string>
     <string name="desktop_server_unavailable">Windows용 Kelo 서버는 아직 준비 중이에요.</string>
-
     <string name="desktop_server_row_mac">이 Mac을 Kelo 서버로 쓰기</string>
     <string name="desktop_server_row_hint_mac">이 Mac에 Kelo 서버를 설치해요. 관리자 암호를 한 번 물어요.</string>
     <string name="desktop_server_installed_mac">이 Mac에 Kelo 서버가 있어요</string>

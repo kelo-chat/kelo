@@ -6,6 +6,7 @@ these moved out first (2026-11-10). server.py re-exports them.
 from __future__ import annotations
 
 import asyncio
+import re
 import secrets
 import time
 import uuid
@@ -14,9 +15,12 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from . import approval_edit
-from .activity import is_short_reply, task_title
+from .activity import host_of, is_short_reply, rule_kind, task_title
+from .run_asks import RunAsks, purpose_body, purpose_lines
 from .chat_views import view_wanted
 from .injection_watch import current as injection_watch_var
+from .privacy_guard import URL_TOOLS
+from .tools.browser import CHAT_CONTROL_WAIT_SECONDS, hold_patience
 from .reply_paths import ReplyPaths
 from .reply_text import BOOKKEEPING, ReplyText
 from .scheduled_runs import PROMISE_LINE, RunEvidence
@@ -26,6 +30,8 @@ from .schedule_grants import ACK_LINE, APPLIED_TITLE, PROGRESS_NOTICE, PROGRESS_
 SLOW_TOOL_PREFIXES = ("browser_",)
 SLOW_TOOL_NAMES = frozenset({"delegate", "web_search", "web_fetch"})
 ACK_SECONDS = 4.0   # seconds without text before acknowledging slow chat work
+_LEADING_BREAK = re.compile(r"^\s*<message_break\s*/?>")
+_TRAILING_BREAK = re.compile(r"<message_break\s*/?>\s*$")
 PROGRESS_MONITOR_INTERVAL = 10.0   # seconds between progress monitor checks
 
 
@@ -70,6 +76,12 @@ MODEL_STARTED = frozenset({"thinking", "text", "tool_started", "tool_result", "b
                            "secret_request", "human_check", "followup", "draft", "nest_changed"})
 
 
+# Run kinds Kelo starts on its own: nobody asked for this run and nobody can answer it. Such a run never raises a card, a hand-over
+# or a progress notice; a step that needs the owner's OK is skipped and the run goes on with what it has (the owner hears only its
+# result, through the path that kind already has).
+SELF_STARTED = frozenset({"recheck", "situation", "situation_select", "situation_write", "order_check", "checklist"})
+
+
 class Turn:
     """One reply in progress. Everything it emits is kept in order, so a reader whose connection broke (a phone that went to sleep,
     a tunnel that dropped the stream) can ask again from where it stopped instead of losing the reply."""
@@ -82,11 +94,19 @@ class Turn:
         self.touched = time.monotonic()    # the last time a reader asked
         self.finished = 0.0
         self.approvals: set[str] = set()
+        # (tool, site, card line) of the addresses the owner allowed in this reply: a second identical card for the same site is not
+        # asked again in the same reply (Coupang, 2026-11-18: two opens of one site asked twice)
+        self.opened_sites: set[tuple[str, str, str]] = set()
         self._cond = asyncio.Condition()
         self.task_id = 0                   # its record in the task log
         self.title = ""
+        self.why = ""                      # the run's own reason for its cards (its record): one "Why" line, and the push says it
+        self.reason = ""                   # the clause its one line before the first card gives ("Because <reason>, I am going to check ...")
+        self.self_started = False          # Kelo started this run on its own (SELF_STARTED, or the caller says so): no cards, hand-overs or progress notices
+        self.asks = RunAsks()              # what this run was allowed already (a site is not asked again in the run) and whether it said why
         self.source = "chat"               # chat | api | schedule:<id> | background
         self.unattended = False            # nobody is expected to watch: never stopped for want of a reader, approvals wait longer
+        self.can_call = False              # the app this reply writes to can ring a call screen (call_tools.py)
         self.owner = "owner"               # whose browser tab it drives
         self.status_text = ""              # the live line for the agent screen ("Opening a site", ...)
         self.thinking_since: float | None = None   # monotonic time the model began its current reasoning (live_line: a long think)
@@ -120,6 +140,7 @@ class Turn:
         self.picked: set[str] = set()      # ids of the items the owner picked or attached for this message (data_trail.py decision 4)
         self.request = ""                  # the user's words that started it (its last user message's text)
         self.cond = ""                     # the conditional task a watcher's hit started it for ("watcher:<id>"; schedule_grants.py)
+        self.owner_asked = False           # it carries the owner's request from the app (checklist items they added): connect_tools.asked_in_chat
         self.reacted = False               # the end reaction was sent (right before "done", or at the end of a failed reply)
         self.read_pending = False          # 👀 is due once the model starts answering (its first thinking, text or tool event)
         self.log: Any = None               # the turn log that writes its events down (turn_log.py), set by run_turn
@@ -221,7 +242,8 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                effort: str | None = None, fallback: bool = True, *, source: str = "chat", title: str = "",
                unattended: bool = False, owner: str | None = None, context: TurnContext | None = None,
                tools_: list[Tool] | None = None, max_steps: int | None = None, tool_scope: str | None = None, cond: str = "",
-               stream_wrap: Callable[[Any], Any] | None = None) -> Turn:
+               stream_wrap: Callable[[Any], Any] | None = None, why: str = "", reason: str = "", can_call: bool = False,
+               self_started: bool = False, owner_asked: bool = False) -> Turn:
     """Begin a reply in the background. Whoever is watching (a stream, or a phone asking again and again) reads it from the Turn.
     `context`: the stored conversation, built (and compacted when needed) for each model that runs the turn; `messages` is then
     only this turn's own message(s). Without it `messages` is sent as it is.
@@ -312,6 +334,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     TurnContext = ctx.TurnContext
     activity = ctx.activity
     approval_site = ctx.approval_site
+    held_by = getattr(ctx, "held_by", None)   # the owner's hold of a tab (server: the browser or the phone is held by the owner)
     broker = ctx.broker
     chat_images = ctx.chat_images
     compactor = ctx.compactor
@@ -368,17 +391,22 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     sweep()
     turn = Turn()
     turn.source, turn.unattended, turn.owner = source, unattended, owner or browser_owner.get()
+    turn.self_started = bool(self_started or (unattended and source in SELF_STARTED))   # an attended turn never is
+    turn.can_call = can_call   # the app the owner writes from can show a call screen (call_tools.py)
     turn.cond = cond
+    turn.owner_asked = owner_asked
     last_user = next((m.get("content") for m in reversed(messages) if m.get("role") == "user"), "")
     earlier_request, own_title = "", bool(title)
     if not title and isinstance(last_user, str) and is_short_reply(last_user):   # "너가" to "제가 할까요?": name it after the request
-        hidden = tuple(getattr(S, name) for name in ("HANDOFF_MARK", "WATCH_MARK", "GOAL_MARK", "SCHEDULE_MARK", "RECHECK_MARK", "NEST_SHARE_MARK") if hasattr(S, name))
+        hidden = tuple(getattr(S, name) for name in ("HANDOFF_MARK", "WATCH_MARK", "GOAL_MARK", "SCHEDULE_MARK", "RECHECK_MARK", "NEST_SHARE_MARK", "CHECKLIST_MARK") if hasattr(S, name))
         earlier = [str(m.get("content") or "") for m in reversed(store.messages(limit=12)) if m.get("role") == "user"
                    and isinstance(m.get("content"), str) and not str(m.get("content")).startswith(hidden)]
         earlier = [e for e in earlier if e.strip() != last_user.strip()]
         title = task_title(last_user, earlier)
         earlier_request = next((e for e in earlier if not is_short_reply(e)), "")
     turn.title = (title or title_from(last_user if isinstance(last_user, str) else ""))[:80]
+    turn.why = " ".join(why.split())[:200]
+    turn.reason = " ".join(reason.split())[:200]
     # the user's own words for this turn (an order the agent starts without begin_order is read from them: tools/order.py); an offer's
     # run has none: its request is the agent's own wording, and the owner only tapped the card (offers.py)
     turn.request = "" if source == "offer" else (last_user if isinstance(last_user, str) else " ".join(
@@ -461,12 +489,21 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         else:
             chat_views.card(str(item.get("tab") or turn.owner), "browser", item, turn_id=turn.id, worker_id=turn.worker_id or None)
 
-    async def put(item: dict[str, Any]) -> None:
+    ended_on_break = [False]   # the text shown last ended with a <message_break/>
+
+    async def put(item: dict[str, Any], *, keep: bool = True) -> None:
+        """`keep`: False for a line only shown (the ack): it reaches the screen but is never stored as what the reply said."""
         show_view(item)
         if item.get("type") == "text":
             text = reply_paths.feed(str(item.get("text", "")))
             if not text:
                 return
+            if ended_on_break[0]:   # two breaks in a row make an empty line: the second one goes
+                text = _LEADING_BREAK.sub("", text, count=1)
+                if not text:
+                    return
+            if text.strip():
+                ended_on_break[0] = bool(_TRAILING_BREAK.search(text))
             item = {**item, "text": text}
         else:   # anything else comes after the text it follows: a path held back there is said first
             tail = reply_paths.flush()
@@ -474,10 +511,10 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                 for it in repeats.feed({"type": "text", "text": tail}):
                     await deliver(it)
         for it in repeats.feed(item):
-            await deliver(it)
+            await deliver(it, keep)
 
-    async def deliver(item: dict[str, Any]) -> None:
-        if observe:
+    async def deliver(item: dict[str, Any], keep: bool = True) -> None:
+        if observe and keep:
             observe(item)   # what was said is saved as it is said, whether or not anyone is still reading
         try:
             track(item)
@@ -510,6 +547,8 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
 
     async def tell_progress(count: int = 0) -> None:
         """Backlog 66 / long runs: any run still working after 10 minutes sends one progress line in the path it already uses."""
+        if turn.self_started:
+            return   # nobody waits for this run: no progress notice
         if applied:
             followed = not turn.unattended and time.monotonic() - turn.touched < WATCHED_SECONDS
             if not followed:
@@ -661,7 +700,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         try:
             what = await judge.promised(text, user_message)
             if what:
-                store.add_message("assistant", i18n.t(PROMISE_LINE, what=what))
+                store.add_message("assistant", i18n.t(PROMISE_LINE, quote=what))
         except Exception:  # noqa: BLE001 - a check never breaks a reply
             log.exception("promise check failed")
 
@@ -705,6 +744,12 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             activity.log_approval(uuid.uuid4().hex, task_id=turn.task_id, tool=req.name, label=label, site=site, detail=req.detail,
                                   decision="allowed_by_rule", rule_id=rule["id"], unattended=turn.unattended, kind=kind, target=target)
             return True
+        # a site the owner allowed a kind of step on earlier in this same run: not asked again in it (never for a step that cannot be remembered)
+        run_kind, run_host = rule_kind(req.name), host_of(site)
+        if not final_click and not req.force and turn.asks.allowed_before(run_kind, run_host):
+            activity.log_approval(uuid.uuid4().hex, task_id=turn.task_id, tool=req.name, label=label, site=site, detail=req.detail,
+                                  decision="allowed_this_run", unattended=turn.unattended, kind=kind, target=target)
+            return True
         sched_id = int(turn.source[9:]) if turn.source.startswith("schedule:") and turn.source[9:].isdigit() else None
         if not final_click and not req.force and sched_id and activity.matching_schedule_rule(sched_id, req.name, site):
             # "keep allowing in this scheduled job": the same step on the same site in this schedule's runs; never payments
@@ -713,6 +758,9 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             return True
         # a "when X happens, do Y" task the user allowed at setup (task_allow, schedule_grants.py): a message or a change inside
         # its permission goes ahead without a card (logged, and the user is told right after it ran); one outside it asks
+        page_key = (req.name, site, req.detail or "")
+        if req.name in URL_TOOLS and page_key in turn.opened_sites:   # allowed earlier in this reply: no second card for the same site
+            return True
         commit = session.judged(sel) if session is not None and req.name in (*clicks, "browser_type") else ""
         secret = session is not None and req.name == "browser_type" and session.judged_secret(sel)
         # (a card the owner's own setting or the privacy guard asked for is never skipped by a task's permission either)
@@ -725,6 +773,10 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                     what = await page_title() or site
                 covered_calls[(turn.id, req.id)] = (g, label, what)
             return True
+        if turn.self_started:   # nobody started this run and nobody can answer it: the step is skipped, never a card
+            log.info("turn %s (%s): %s on %s skipped, it would need the owner's OK", turn.id, turn.source, req.name, site or "-")
+            req.outcome = "skipped"
+            return False
         approval_id, fut = broker.create()
         turn.approvals.add(approval_id)
         current_approval.set((req.id, approval_id))   # the tool, once allowed, can tell which approval it runs under
@@ -741,10 +793,14 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         if grant_check is not None and grant_check.reason:   # the task has a permission of this kind, but this step is outside it
             extra["lines"] = [{"label": i18n.t("Why it asks"), "value": i18n.t(GRANT_REASONS.get(grant_check.reason, grant_check.reason))},
                               *(extra.get("lines") or arg_lines(req.arguments))][:4]
+        if turn.why:   # the run's own reason, from its record: the card says what it checks and why
+            extra["lines"] = purpose_lines(turn.why, list(extra.get("lines") or arg_lines(req.arguments)))
         urgent, missed = schedule_grants.urgency() if turn.unattended else (False, "")
         if urgent:
             extra.update(urgent=True, missed=missed)
         issued_at = int(time.time())   # the moment the card is asked: a signed payment approval signs this (approval_sign.py)
+        if turn.unattended and (said := turn.asks.announce(turn.reason or turn.title, site or label)):   # one line before the run's first card
+            store.add_message("assistant", said)
         event = {"type": "approval_request", "approval_id": approval_id, "id": req.id, "name": req.name, "arguments": req.arguments,
                  "detail": req.detail or readable_args(req.arguments), "lines": arg_lines(req.arguments), "label": label,
                  "ask": tool_labels.ask(req.name, req.arguments), "site": site, "commit": commit,
@@ -761,13 +817,15 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                                           "source": turn.source, "worker_id": turn.worker_id or None, "title": turn.title}
         activity.log_approval(approval_id, task_id=turn.task_id, tool=req.name, label=label, site=site, detail=req.detail,
                               unattended=turn.unattended, kind=kind, target=target)
+        push_what = notice_body or req.detail or turn.title
+        push_what = purpose_body(turn.why, turn.title, push_what) if not notice_body else push_what
         if turn.unattended and (urgent or extra.get("urgent")):   # time matters: an urgent notice that says what is missed without an answer
             until = datetime.fromtimestamp(time.time() + timeout, sched_zone(store.profile()["timezone"])).strftime("%H:%M")
             body = i18n.t("Answer by {time}, or {missed}", time=until, missed=missed) if missed else i18n.t("Answer by {time}", time=until)
             activity.notify("approval_waiting", notice_title[:120] or i18n.t("Urgent: please confirm {label}", label=label),
-                            f"{body} · {notice_body or req.detail or turn.title}"[:400], task_id=turn.task_id, approval_id=approval_id, urgent=True)
+                            f"{body} · {push_what}"[:400], task_id=turn.task_id, approval_id=approval_id, urgent=True)
         elif turn.unattended:
-            activity.notify("approval_waiting", i18n.t("Please confirm: {label}", label=label), notice_body or req.detail or turn.title,
+            activity.notify("approval_waiting", i18n.t("Please confirm: {label}", label=label), push_what,
                             task_id=turn.task_id, approval_id=approval_id)
         turn.waiting += 1
         activity.set_task_status(turn.task_id, "waiting_approval")
@@ -776,12 +834,17 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         allowed = False
         try:
             allowed = await asyncio.wait_for(fut, timeout)
+            if allowed:
+                turn.asks.allow(run_kind, run_host)   # the same site, the same kind in this run: not asked again
             if not allowed:
                 await stop_grace()
             elif (pending_approvals.get(approval_id) or {}).get("edited"):
                 req.edited = True   # the owner fixed the message: the call re-checks its new text before it runs (agent/loop.py)
+            if allowed and req.name in URL_TOOLS:
+                turn.opened_sites.add(page_key)
             return allowed
         except asyncio.TimeoutError:
+            req.outcome = "expired"   # the run is told nobody answered (not that the user declined)
             activity.answer_approval(approval_id, "expired")
             if turn.unattended:   # nobody answered: the follow-ups offer to try the step again, the first reminder right away
                 try:
@@ -1012,12 +1075,20 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         first_tool_checked = [False]
         first_tool_slow = [False]
 
+        def owner_holds() -> bool:
+            try:
+                return held_by is not None and held_by(turn.owner) is not None
+            except Exception:  # noqa: BLE001 - not knowing whether the owner holds it: no ack either way is worse, so ack
+                return False
+
         async def maybe_ack() -> None:
             if turn.done or not is_chat or not first_pass_model or getattr(turn, "ack_sent", False) or saw_text[0] or not first_tool_slow[0]:
                 return
+            if owner_holds():   # the owner holds this tab: "on it" would be a promise the step cannot keep; the step says it waits
+                return
             if time.monotonic() - start_mono >= ACK_SECONDS:
                 turn.ack_sent = True
-                await put({"type": "text", "text": f"{i18n.t(ACK_LINE)}<message_break/>"})
+                await put({"type": "text", "text": f"{i18n.t(ACK_LINE)}<message_break/>"}, keep=False)
 
         async def ack_timer() -> None:
             try:
@@ -1154,11 +1225,14 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         ui_sink.set(put)   # browser cards and other extra events from tools reach this reply (this task only)
         current_turn.set({"task_id": turn.task_id, "turn_id": turn.id, "source": turn.source, "unattended": turn.unattended,
                           "cond": turn.cond, "request": turn.request, "picked": sorted(turn.picked),
-                          "owner_message": turn.owner_message})
+                          "owner_message": turn.owner_message, "can_call": turn.can_call,
+                          "self_started": turn.self_started, "owner_asked": turn.owner_asked})
         browser_owner.set(turn.owner)
+        # a chat reply's step on a tab the owner holds is told at once (browser tools); a job keeps the long wait
+        hold_patience.set(CHAT_CONTROL_WAIT_SECONDS if turn.source in ("chat", "api") and not turn.unattended and not turn.worker_id else None)
         injection_watch_var.set(watch)
         approval_timeout.set(UNATTENDED_APPROVAL_SECONDS if turn.unattended else APPROVAL_TIMEOUT_SECONDS)
-        handover.set(hand_over)   # a human check on this reply's tab is handed to the user (BrowserSession.snapshot)
+        handover.set(None if turn.self_started else hand_over)   # a human check on this reply's tab is handed to the user (BrowserSession.snapshot)
         entry_context.set((entries, None if turn.unattended else wait_entry))   # fill-in cards: a followed reply waits for the answer
         location_ask.set(None if turn.unattended else ask_location)   # my_location may ask the phone with a card (location.py)
         attempts = [(provider, model)]

@@ -17,6 +17,7 @@ from difflib import SequenceMatcher
 from typing import Any
 
 _BREAK = re.compile(r"<message_break\s*/?>")
+_PARA_BREAK = re.compile(r"\n\s*\n|<message_break\s*/?>")   # a blank line or a bubble break
 SIMILAR = 0.8      # this alike (0..1) counts as the same message said again
 HEAD = 24          # characters of a message's opening that must come back for a repeat
 
@@ -32,7 +33,7 @@ def similar(a: str, b: str) -> float:
 def collapse_repeat(text: str) -> str:
     """The text with a repeat of itself at the end taken off, else unchanged. A repeat: the text's opening comes back at a later
     point and what follows from there is (nearly, SIMILAR) the same as what came before it, as when a model writes its message,
-    calls a tool, and writes it again in slightly different words."""
+    calls a tool, and writes it again in slightly different words. Also a later part that restates the paragraphs before it (restates)."""
     raw = text or ""
     head = norm(raw)[:HEAD]
     if len(norm(raw)) < 2 * HEAD:
@@ -45,7 +46,38 @@ def collapse_repeat(text: str) -> str:
         if first.startswith(head[:HEAD // 2]) and len(second) >= 0.6 * len(first) and similar(first, second) >= SIMILAR:
             return raw[:at].rstrip()
         at = raw.find(probe, at + 1)
+    for brk in _PARA_BREAK.finditer(raw):   # a later part that restates the paragraphs before it, paragraph by paragraph
+        if restates(raw[brk.end():], raw[:brk.start()]):
+            return raw[:brk.start()].rstrip()
     return text
+
+
+def paragraphs(text: str) -> list[str]:
+    """The paragraphs of a reply (blank lines and bubble breaks), each normalized; the empty ones dropped."""
+    return [p for p in (norm(x) for x in _PARA_BREAK.split(text or "")) if p]
+
+
+def _contained(a: str, b: str) -> float:
+    """How much of the shorter of two paragraphs the longer one holds, in the same order (0..1). A short one (under HEAD characters)
+    is compared as a whole, so a generic line does not match inside a long paragraph."""
+    short, long = sorted((a, b), key=len)
+    if len(short) < HEAD:
+        return similar(a, b)
+    blocks = SequenceMatcher(None, short, long, autojunk=False).get_matching_blocks()
+    return sum(block.size for block in blocks) / len(short)
+
+
+def restates(later: str, earlier: str) -> bool:
+    """`later` says again what `earlier` said, paragraph by paragraph: at least half of its characters are in paragraphs that restate an
+    earlier paragraph (SIMILAR), or its first paragraph restates one at 0.6 and its last at SIMILAR. Reworded or with a sentence added is
+    still a restatement; a second part with new words is not."""
+    later_paras, earlier_paras = paragraphs(later), paragraphs(earlier)
+    total = sum(len(p) for p in later_paras)
+    if not later_paras or not earlier_paras or total < 2 * HEAD:
+        return False
+    best = [max(_contained(p, q) for q in earlier_paras) for p in later_paras]
+    same = sum(len(p) for p, b in zip(later_paras, best) if b >= SIMILAR)
+    return same * 2 >= total or (best[0] >= 0.6 and best[-1] >= SIMILAR)
 
 
 class RepeatGuard:

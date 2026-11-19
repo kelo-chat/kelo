@@ -75,11 +75,12 @@ public struct ProactiveSettings: Decodable, Equatable, Sendable {
     public var hoursSource = "default"
     /// The same answer's message hours: weekday and weekend rows, suggestions, learned windows (`ContactHours`).
     public var hours = ContactHours()
-    /// Messages Kelo starts a day (0...10; 0 = only what cannot wait), how many went out today, and how many items it is holding:
-    /// nil from an older server (the rows are then hidden).
-    public var dailyDeliveries: Int?
-    public var todayDeliveries: Int?
+    /// How many items Kelo is keeping for a later message (GET /api/proactive/held): nil from an older server.
     public var held: Int?
+    /// When Kelo may send ("send_times.times", "HH:MM"): empty from an older server or with research off.
+    public var sendTimes: [String] = []
+    /// The server sends "send_times" as an object (newer servers, research on): the about text tells the send-time schedule.
+    public var hasSendTimes = false
     /// The hourly situation look is on ("research"): the "What Kelo looked at" row needs it.
     public var research = false
 
@@ -95,7 +96,9 @@ public struct ProactiveSettings: Decodable, Equatable, Sendable {
         today = (j["today"]?.objectValue ?? [:]).compactMapValues { $0.intValue }
         awake = j.bool("awake")
         autoHours = j.bool("auto_hours"); hoursSource = j.str("hours_source", "default")
-        dailyDeliveries = j.optInt("daily_deliveries"); todayDeliveries = j.optInt("today_deliveries"); held = j.optInt("held")
+        held = j.optInt("held")
+        sendTimes = j.obj("send_times").strings("times")
+        hasSendTimes = j["send_times"]?.objectValue != nil
         research = j.bool("research")
     }
 }
@@ -105,10 +108,21 @@ public struct ChecklistSettings: Decodable, Equatable, Sendable {
     public var text = ""
     public var items = 0
     public var list: [String] = []
+    public var entries: [ChecklistEntry] = []
     public init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
         text = j.str("text"); items = j.int("items"); list = j.strings("list")
+        entries = (j["entries"]?.arrayValue ?? []).compactMap { e in
+            guard e.objectValue != nil else { return nil }
+            let x = Lenient(e)
+            return ChecklistEntry(text: x.str("text"), state: x.str("state"), jobName: x.obj("job").str("name"))
+        }
     }
+}
+
+/// One checklist item and how Kelo looks after it: state "own" (its own job, `jobName`) or "send_times".
+public struct ChecklistEntry: Equatable, Sendable {
+    public var text = "", state = "", jobName = ""
 }
 
 /// One nightly look-back note (GET /api/reflection notes).

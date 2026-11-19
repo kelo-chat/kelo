@@ -106,6 +106,7 @@ private sealed interface VaultView {
     data class Ai(val name: String) : VaultView
     data object AddLogin : VaultView
     data object Log : VaultView
+    data class Profile(val id: String) : VaultView
 }
 
 private fun VaultView.key(): String = when (this) {
@@ -114,6 +115,7 @@ private fun VaultView.key(): String = when (this) {
     is VaultView.Ai -> "ai:$name"
     VaultView.AddLogin -> "addLogin"
     VaultView.Log -> "log"
+    is VaultView.Profile -> "profile:$id"
 }
 
 private fun viewOf(key: String): VaultView = when {
@@ -121,6 +123,7 @@ private fun viewOf(key: String): VaultView = when {
     key.startsWith("ai:") -> VaultView.Ai(key.removePrefix("ai:"))
     key == "addLogin" -> VaultView.AddLogin
     key == "log" -> VaultView.Log
+    key.startsWith("profile:") -> VaultView.Profile(key.removePrefix("profile:"))
     else -> VaultView.List
 }
 
@@ -165,6 +168,9 @@ fun VaultPage(onBack: () -> Unit, onGoModel: () -> Unit, noLock: Boolean = false
     ) { key ->
         when (val view = viewOf(key)) {
             VaultView.Log -> LogPage(vm, onBack = list)
+            is VaultView.Profile -> v.browserProfiles.find { it.id == view.id }?.let { p ->
+                ProfilePage(p, vm, onBack = list)
+            } ?: VaultList(v, providers, noLock, vm, onBack, ::go)
             VaultView.AddLogin -> AddLogin(vm, onBack = list, onDone = { name -> go(VaultView.Item(name)) })
             is VaultView.Ai -> providers.find { it.name == view.name }?.let { p ->
                 AiKeyPage(p, vm, onBack = list, onGoModel = onGoModel)
@@ -201,6 +207,19 @@ private fun VaultList(v: VaultState, providers: List<ProviderDetail>, noLock: Bo
         }
 
         WaitingEntries(vm)
+
+        if (v.browserSites.isNotEmpty()) BrowserSitesCard(v.browserSites, vm)
+        if (v.browserProfiles.isNotEmpty()) {
+            SectionLabel(string(Res.string.vault_profiles_title))
+            MenuGroup {
+                v.browserProfiles.forEach { p ->
+                    row {
+                        MenuRow(KeloIcons.Globe, p.label, onClick = { go(VaultView.Profile(p.id)) },
+                            value = if (p.sites.isEmpty()) string(Res.string.vault_profile_empty) else string(Res.string.vault_profile_sites, p.sites.size.toString()))
+                    }
+                }
+            }
+        }
 
         SectionLabel(string(Res.string.vault_logins))
         MenuGroup { logins.forEach { i -> row { ItemRow(i, KeloIcons.Globe) { go(VaultView.Item(i.name)) } } } }
@@ -318,6 +337,58 @@ private fun ItemRow(i: VaultEntry, icon: androidx.compose.ui.graphics.vector.Ima
     }
 }
 
+/** Sites Kelo's browser is signed in to without a saved login (brief B4): one row per site, each with its sign-out. */
+@Composable
+private fun BrowserSitesCard(sites: List<BrowserSignIn>, vm: VaultViewModel) {
+    val c = Kelo.colors
+    var pending by remember { mutableStateOf<String?>(null) }
+    MyCard {
+        Text(string(Res.string.vault_browser_sites_title), style = MaterialTheme.typography.titleSmall, color = c.ink)
+        sites.forEach { s ->
+            Text(s.site, color = c.ink)
+            MutedText(string(Res.string.vault_browser_signed_in, whenText(s.signedAt), whenText(s.lastUsed)), small = true)
+            LinkButton(string(Res.string.vault_browser_sign_out), onClick = { pending = s.site }, danger = true)
+        }
+    }
+    pending?.let { site ->
+        ConfirmDialog(
+            text = string(Res.string.vault_browser_sign_out_confirm, site), yes = string(Res.string.delete),
+            onDismiss = { pending = null },
+            onYes = { pending = null; vm.signOutBrowser(site) },
+        )
+    }
+}
+
+/** One named browser profile: the sites it is signed in to (each with its sign-out) and deleting it. No create button: Kelo makes one when asked. */
+@Composable
+private fun ProfilePage(p: BrowserProfile, vm: VaultViewModel, onBack: () -> Unit) {
+    var pendingSite by remember { mutableStateOf<String?>(null) }
+    var deleting by remember { mutableStateOf(false) }
+    SubPage(p.label, onBack) {
+        MyCard {
+            if (p.sites.isEmpty()) MutedText(string(Res.string.vault_profile_empty), small = true)
+            p.sites.forEach { s ->
+                Text(s.site, color = Kelo.colors.ink)
+                MutedText(string(Res.string.vault_browser_signed_in, whenText(s.signedAt), whenText(s.lastUsed)), small = true)
+                LinkButton(string(Res.string.vault_browser_sign_out), onClick = { pendingSite = s.site }, danger = true)
+            }
+        }
+        LinkButton(string(Res.string.vault_profile_delete), onClick = { deleting = true }, danger = true)
+    }
+    pendingSite?.let { site ->
+        ConfirmDialog(
+            text = string(Res.string.vault_browser_sign_out_confirm, site), yes = string(Res.string.delete),
+            onDismiss = { pendingSite = null },
+            onYes = { pendingSite = null; vm.signOutProfileSite(p.id, site) },
+        )
+    }
+    if (deleting) ConfirmDialog(
+        text = string(Res.string.vault_profile_delete_confirm, p.label), yes = string(Res.string.delete),
+        onDismiss = { deleting = false },
+        onYes = { deleting = false; vm.deleteProfile(p.id, onBack) },
+    )
+}
+
 /** One login or key: where it can be used, how it last went, how a login is allowed, and replacing or removing it. */
 @Composable
 private fun ItemPage(item: VaultEntry, vm: VaultViewModel, locked: Boolean, verifying: Boolean, onBack: () -> Unit) {
@@ -326,6 +397,7 @@ private fun ItemPage(item: VaultEntry, vm: VaultViewModel, locked: Boolean, veri
     val signedIn = item.signedIn
     var open by rememberSaveable(item.name) { mutableStateOf(!item.hasSecret || bad) }
     var confirm by remember { mutableStateOf(false) }
+    var browserOut by remember { mutableStateOf(false) }
     val c = Kelo.colors
     val onChanged = vm::load
     fun patch(build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) = vm.patchItem(item.name, build)
@@ -379,6 +451,13 @@ private fun ItemPage(item: VaultEntry, vm: VaultViewModel, locked: Boolean, veri
                 LinkButton(string(Res.string.vault_try_again), onClick = { patch { put("clear_result", true) } })
             }
         }
+        item.browser?.let { b ->
+            MyCard {
+                Text(string(Res.string.vault_browser_title), style = MaterialTheme.typography.titleSmall, color = c.ink)
+                MutedText(string(Res.string.vault_browser_signed_in, whenText(b.signedAt), whenText(b.lastUsed)), small = true)
+                LinkButton(string(Res.string.vault_browser_sign_out), onClick = { browserOut = true }, danger = true)
+            }
+        }
         if (item.isLogin) {
             MyCard {
                 Text(string(Res.string.vault_when_login), style = MaterialTheme.typography.titleSmall, color = c.ink)
@@ -418,6 +497,14 @@ private fun ItemPage(item: VaultEntry, vm: VaultViewModel, locked: Boolean, veri
             text = string(Res.string.vault_remove_confirm, item.label), yes = string(Res.string.delete),
             onDismiss = { confirm = false },
             onYes = { vm.deleteItem(item.name, onGone = onBack) },
+        )
+    }
+    if (browserOut) {
+        val site = item.browser?.site.orEmpty()
+        ConfirmDialog(
+            text = string(Res.string.vault_browser_sign_out_confirm, site), yes = string(Res.string.delete),
+            onDismiss = { browserOut = false },
+            onYes = { browserOut = false; vm.signOutBrowser(site) },
         )
     }
 }

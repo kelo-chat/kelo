@@ -51,7 +51,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** One item Kelo is keeping for a later message (GET /api/proactive/held). [why]: slots | over_cap | waiting_for_reply. */
+/** One item Kelo is keeping for a later message (GET /api/proactive/held). [why]: over_cap | waiting_for_reply. */
 @Serializable
 data class HeldItem(
     val key: String = "",
@@ -68,29 +68,22 @@ data class HeldItem(
 @Serializable
 data class HeldList(val items: List<HeldItem> = emptyList())
 
-/** The delivery count and the held items, apart from the UI. */
+/** The held items, apart from the UI. */
 object DeliveryRules {
-    const val MIN = 0
-    const val MAX = 10
+    enum class Why { OVER_CAP, WAITING_FOR_REPLY, OTHER }
 
-    enum class Why { SLOTS, OVER_CAP, WAITING_FOR_REPLY, OTHER }
-
-    /** The server's reason code as a case; a code this app does not know (or none) is [Why.OTHER]. */
+    /** The server's reason code as a case; a code this app does not know, an old one ("slots", retired 2026-11-19) or none is [Why.OTHER]. */
     fun why(code: String): Why = when (code.trim()) {
-        "slots" -> Why.SLOTS
         "over_cap" -> Why.OVER_CAP
         "waiting_for_reply" -> Why.WAITING_FOR_REPLY
         else -> Why.OTHER
     }
 
-    /** The choice kept inside 0..[MAX]. */
-    fun clamp(n: Int): Int = n.coerceIn(MIN, MAX)
-
-    /** Whether the server has the delivery count at all (an older one sends no such field: the rows are hidden). */
-    fun hasCount(p: ProactiveSettings): Boolean = p.dailyDeliveries != null
-
     /** Whether the server counts held items (and so has the list). */
     fun hasHeld(p: ProactiveSettings): Boolean = p.held != null
+
+    /** The held count the settings show: null when the server has none or nothing is held (the link is then hidden). */
+    fun heldCount(held: Int?): Int? = held?.takeIf { it > 0 }
 
     /** The line over a held item: its title, else the first line of its message. */
     fun heading(item: HeldItem): String =
@@ -130,34 +123,25 @@ class ProactiveHeldViewModel(private val sessions: Sessions) : ViewModel() {
 }
 
 /**
- * The rows under "하루에 먼저 보내는 메시지 수": how many messages a day Kelo starts (0..10, 0 = only what cannot wait), and "today n
- * sent · m held" (the held part opens the list). Each row shows only when the server sends its field.
+ * The line under "하루 최대": "오늘 n번 보냈어요 · 보관 중 m개 ›" (the held part opens the list). Each part shows only when it is above 0,
+ * the separator only when both show, and nothing at all when both are 0.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun DeliveriesBlock(p: ProactiveSettings, onChange: (Int) -> Unit, onOpenHeld: () -> Unit) {
+internal fun SentHeldLine(sent: Int, held: Int?, onOpenHeld: () -> Unit) {
     val c = Kelo.colors
-    val count = p.dailyDeliveries
-    if (count != null) {
-        CapStepper(string(Res.string.deliveries_label), count, min = DeliveryRules.MIN, max = DeliveryRules.MAX) { onChange(DeliveryRules.clamp(it)) }
-        MutedText(string(Res.string.deliveries_about), small = true)
-    }
-    val today = p.todayDeliveries
-    val held = p.held
-    if (today != null || held != null) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (today != null) {
-                Text(plural(Res.plurals.deliveries_today, today, today), style = MaterialTheme.typography.bodySmall, color = c.muted)
-            }
-            if (today != null && held != null) Text(string(Res.string.deliveries_separator), style = MaterialTheme.typography.bodySmall, color = c.muted)
-            if (held != null) {
-                Row(
-                    Modifier.clickable(onClick = onOpenHeld), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(plural(Res.plurals.deliveries_held, held, held), style = MaterialTheme.typography.bodySmall, color = c.accent)
-                    Icon(KeloIcons.ChevronRight, contentDescription = null, tint = c.accent, modifier = Modifier.size(14.dp))
-                }
+    val kept = DeliveryRules.heldCount(held)
+    if (sent <= 0 && kept == null) return
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (sent > 0) Text(plural(Res.plurals.heads_sent_today, sent, sent), style = MaterialTheme.typography.bodySmall, color = c.muted)
+        if (sent > 0 && kept != null) Text(string(Res.string.deliveries_separator), style = MaterialTheme.typography.bodySmall, color = c.muted)
+        if (kept != null) {
+            Row(
+                Modifier.clickable(onClick = onOpenHeld), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(plural(Res.plurals.deliveries_held, kept, kept), style = MaterialTheme.typography.bodySmall, color = c.accent)
+                Icon(KeloIcons.ChevronRight, contentDescription = null, tint = c.accent, modifier = Modifier.size(14.dp))
             }
         }
     }
@@ -206,7 +190,6 @@ internal fun HeldRow(item: HeldItem) {
 @Composable
 internal fun whyText(why: DeliveryRules.Why): String = string(
     when (why) {
-        DeliveryRules.Why.SLOTS -> Res.string.deliveries_why_slots
         DeliveryRules.Why.OVER_CAP -> Res.string.deliveries_why_cap
         DeliveryRules.Why.WAITING_FOR_REPLY -> Res.string.deliveries_why_reply
         DeliveryRules.Why.OTHER -> Res.string.deliveries_why_other

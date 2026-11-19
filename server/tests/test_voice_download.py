@@ -1,5 +1,6 @@
 """The speech-model download: verified, resumable, into the models folder. A fake transport serves the bytes; no network."""
 
+import asyncio
 import dataclasses
 import hashlib
 import json
@@ -9,7 +10,7 @@ import httpx
 import pytest
 
 from assistant import voice_models as vm
-from assistant.voice_download import DownloadError, ModelDownloader
+from assistant.voice_download import DownloadError, DownloadJob, ModelDownloader
 
 GOOD = b"kelo-voice-model-bytes-" * 5000          # ~110 KB, enough for several 1 MiB-free chunks in tests
 PUBLIC = [(2, 1, 6, "", ("93.184.216.34", 443))]  # example.com's public address, for the resolver
@@ -209,3 +210,42 @@ async def test_ready_is_false_when_a_size_is_wrong(root):
     await _fetch(dl, model)
     (root / vm.SENSE_ID / "model.onnx").write_bytes(b"short")
     assert dl.ready(model) is False
+
+
+async def test_speech_out_model_is_fetched_into_its_own_folder(root):
+    files = {"voice.bin": GOOD, "tts.json": b"{}"}
+    model = _model(files)
+    model = dataclasses.replace(model, id=vm.SUPERTONIC_ID)
+    dl = ModelDownloader(root, _client(Server(files)), disk_free=lambda p: 10**12, resolver=_resolver)
+    await _fetch(dl, model)
+    ready = json.loads((root / vm.SUPERTONIC_ID / "ready.json").read_text())
+    assert ready["model"] == vm.SUPERTONIC_ID and set(ready["files"]) == set(files)
+    dl.remove(vm.SUPERTONIC_ID)
+    assert not (root / vm.SUPERTONIC_ID).exists()
+
+
+def test_remove_accepts_the_speech_out_id_and_refuses_path_tricks(root):
+    dl = ModelDownloader(root, _client(Server({})), disk_free=lambda p: 10**12, resolver=_resolver)
+    dl.remove(vm.SUPERTONIC_ID)
+    with pytest.raises(ValueError):
+        dl.remove("../x")
+
+
+async def test_download_job_runs_once_reports_errors_and_clears_progress(root):
+    files = {"model.onnx": GOOD}
+    model = _model(files)
+    errors: list[str] = []
+    dl = ModelDownloader(root, _client(lambda r: httpx.Response(500)), disk_free=lambda p: 10**12, resolver=_resolver)
+    job = DownloadJob(dl, errors.append)
+    job.start(model)
+    assert job.running()
+    job.start(model)                      # a second start while running is a no-op
+    while job.running():
+        await asyncio.sleep(0)
+    assert job.error == "http_500" and errors == ["http_500"]
+    assert job.progress is None
+    job.start(model)                      # a new start clears the error
+    assert job.error is None or job.error == "http_500"
+    while job.running():
+        await asyncio.sleep(0)
+    job.cancel()                          # nothing to cancel any more

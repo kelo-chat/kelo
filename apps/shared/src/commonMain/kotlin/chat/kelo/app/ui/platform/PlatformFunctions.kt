@@ -11,6 +11,9 @@ import java.util.Locale
  * Small pure functions whose body differs per platform (the shared screens call these; each app's source set holds the body).
  */
 
+/** The start index of every user-perceived character (grapheme cluster) of [s], in order: a Korean syllable, an emoji with its skin tone... is one. */
+expect fun graphemeStarts(s: String): IntArray
+
 /** The picture in [bytes] (JPEG, PNG, WebP ...) as an image to draw, or null when it cannot be read. */
 expect fun decodeImage(bytes: ByteArray): ImageBitmap?
 

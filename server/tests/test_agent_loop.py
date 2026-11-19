@@ -448,3 +448,23 @@ async def test_a_reply_without_a_tool_call_ends_the_run_whatever_it_says():
                   [TextDelta("첫 리뷰를 올렸어요. 이어서 두 번째 리뷰를 바로 등록할게요."), Done("stop")])
     events = await run([echo_tool()], fn)
     assert len(fn.seen) == 2 and isinstance(events[-1], AgentDone)
+
+
+async def test_a_react_after_the_written_answer_ends_the_reply_and_no_second_pass_restates_it():
+    """2026-11-18 (chat-dup): the model wrote its answer, reacted, and was asked again, so it said the same thing twice.
+    A step whose every successful call closes the reply ends the run."""
+    fn = scripted([TextDelta("Done."), ToolCall("c1", "echo", '{"x":"A"}'), Done("tool_calls")],
+                  [TextDelta("Done again."), Done("stop")])
+    events = await run([echo_tool(closes_reply=True)], fn)
+    assert said(events) == "Done." and len(fn.seen) == 1 and isinstance(events[-1], AgentDone)
+
+
+async def test_a_closing_call_next_to_a_read_does_not_end_the_step_early():
+    async def look(args):
+        return "looked"
+
+    look_tool = Tool("look", "look", {"type": "object"}, look, read_only=True)
+    fn = scripted([TextDelta("Done."), ToolCall("c1", "echo", '{"x":"A"}'), ToolCall("c2", "look", "{}"), Done("tool_calls")],
+                  [TextDelta("Done again."), Done("stop")])
+    await run([echo_tool(closes_reply=True), look_tool], fn)
+    assert len(fn.seen) == 2

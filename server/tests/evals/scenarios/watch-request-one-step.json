@@ -1,0 +1,111 @@
+{
+  "name": "watch-request-one-step",
+  "about": "A watch the owner asked for in one request is set up, checked and turned on in one step: no second question about the same watch (watch double confirm, 2026-11-18).",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Tell me when the price on https://shop.example.test/item/1 drops below 50",
+    "Every 30 minutes"
+  ],
+  "model": [
+    [
+      {
+        "text": "How often should I check?"
+      },
+      {
+        "tool": "quick_replies",
+        "args": {
+          "questions": [
+            {
+              "question": "How often?",
+              "kind": "choice",
+              "choices": [
+                "Every 30 minutes",
+                "Every hour"
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    [
+      {
+        "tool": "watch_add",
+        "args": {
+          "name": "Price",
+          "url": "https://shop.example.test/item/1",
+          "mode": "below",
+          "threshold": 50,
+          "every_minutes": 30,
+          "start": true
+        }
+      }
+    ],
+    [
+      {
+        "text": "It is on: every 30 minutes; now 69.99."
+      }
+    ]
+  ],
+  "tools": {
+    "watch_add": {
+      "real_schema": true,
+      "result": "Watcher #1 'Price' saved. It is ON now: it checks every 30 minutes. Right now the condition is not true: value 69.99"
+    },
+    "watch_enable": {
+      "real_schema": true,
+      "result": "Watcher #1 is on."
+    },
+    "watch_dry_run": {
+      "real_schema": true,
+      "result": "Checked once: value 69.99. Not turned on."
+    },
+    "quick_replies": {
+      "real_schema": true,
+      "result": "Shown.",
+      "closes_reply": true
+    },
+    "web_fetch": {
+      "result": "Price: 69.99",
+      "untrusted": true,
+      "source": "web"
+    }
+  },
+  "expect": {
+    "called_with": [
+      {
+        "tool": "watch_add",
+        "args": {
+          "start": true
+        }
+      }
+    ],
+    "calls_max": {
+      "watch_add": 1,
+      "quick_replies": 1
+    },
+    "approval_asked": false
+  },
+  "live": {
+    "expect": {
+      "called_with": [
+        {
+          "tool": "watch_add",
+          "args": {
+            "start": true
+          }
+        }
+      ],
+      "calls_max": {
+        "watch_add": 1,
+        "quick_replies": 1
+      },
+      "not_called": [
+        "watch_dry_run"
+      ],
+      "approval_asked": false
+    },
+    "note": "live: one watch_add with start, no dry run, no second confirmation"
+  }
+}

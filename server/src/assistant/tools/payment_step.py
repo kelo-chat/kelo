@@ -32,6 +32,7 @@ import io
 import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from ..agent import Tool, current_call, emit_ui
@@ -42,6 +43,7 @@ from ..payment_steps import PaymentSteps
 from ..wallet import site_key
 from . import humanize as human
 from . import keypad
+from .page_paths import with_path
 from .browser import BrowserPolicyError, BrowserSession, browser_owner
 
 POLL_SECONDS = 2.0           # how often the page is looked at while a card waits
@@ -65,11 +67,10 @@ DEFAULT_LINE = {
 MAX_LINES = 40               # numbered text lines the page judge may point at
 
 # The step as the page shows it, in one frame, by STRUCTURE (docs/no-word-lists.md, hc-pagefields): no word of any language is read here.
-# Nothing is typed or clicked; the QR element, the short-code candidates and the clickable controls are only marked
-# (data-kelo-qr, data-kelo-ctl="i"). The page judge (page_judge.py) reads the text for what structure cannot tell: which approval it is,
+# Nothing is typed or clicked, and nothing is written into the page: the QR element and the clickable controls come back as CSS paths
+# (page_paths), the short-code candidates as text. The page judge (page_judge.py) reads the text for what structure cannot tell: which approval it is,
 # which candidate is the code, which control asks for a new one, whether the time ran out.
-STEP_JS = r"""() => {
-  document.querySelectorAll('[data-kelo-qr],[data-kelo-resend],[data-kelo-ctl]').forEach((e) => { e.removeAttribute('data-kelo-qr'); e.removeAttribute('data-kelo-resend'); e.removeAttribute('data-kelo-ctl'); });
+STEP_JS = with_path(r"""() => {
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
     return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none' && parseFloat(c.opacity || '1') > 0.05; };
   const text = (document.body ? document.body.innerText : '').slice(0, 6000);
@@ -96,7 +97,7 @@ STEP_JS = r"""() => {
     const named = /qr/i.test([e.getAttribute('src'), e.getAttribute('alt'), e.getAttribute('class'), e.id, e.getAttribute('aria-label')].join(' '));   // "qr" names a format, not a word of a language
     if (!qr || (named && !qr.named) || (named === qr.named && r.width > qr.w)) qr = { el: e, w: r.width, named };
   }
-  if (qr) { qr.el.setAttribute('data-kelo-qr', '1'); hint = qr.named; }
+  if (qr) hint = qr.named;
   // a countdown by structure (hc-final-a: no class or id word): an ARIA timer or a <time> element, or a leaf element whose whole text is a
   // clock shape (m:ss, mm:ss, h:mm:ss). A shape, not a word: the label around it decides nothing.
   const timers = [];
@@ -112,19 +113,14 @@ STEP_JS = r"""() => {
     timers.push(raw);
   }
   const clickable = [...document.querySelectorAll('button,[role=button],a,input[type=button],input[type=submit]')].filter(shown).slice(0, 16);
-  clickable.forEach((e, i) => e.setAttribute('data-kelo-ctl', String(i)));
   const controls = clickable.map((e) => (e.innerText || e.value || e.getAttribute('aria-label') || '').trim().slice(0, 60));
   const inputs = [...document.querySelectorAll('input')].filter((e) => shown(e) && !e.disabled);
   const otpBox = inputs.some((e) => (e.getAttribute('autocomplete') || '') === 'one-time-code'
     || (['', 'text', 'tel', 'number'].includes((e.getAttribute('type') || '').toLowerCase()) && /numeric|decimal/.test(e.getAttribute('inputmode') || '')
         && e.maxLength >= 5 && e.maxLength <= 8 && !/(^|\s)(cc-[a-z-]+|tel[a-z-]*|postal-code)(\s|$)/.test(e.getAttribute('autocomplete') || '')));
-  return { text, codes: codes.slice(0, 4).map((c) => ({ text: c.text, shown: c.shown })), qr: hint, qr_shape: !!qr, timers: timers.slice(0, 6), controls, otp_box: otpBox };
-}"""
-
-UNMARK_STEP_JS = ("() => document.querySelectorAll('[data-kelo-qr],[data-kelo-resend],[data-kelo-ctl]').forEach((e) => { e.removeAttribute('data-kelo-qr'); "
-                  "e.removeAttribute('data-kelo-resend'); e.removeAttribute('data-kelo-ctl'); })")
-MARK_RESEND_JS = "(i) => { const e = document.querySelector(`[data-kelo-ctl=\"${i}\"]`); if (!e) return false; e.setAttribute('data-kelo-resend', '1'); return true; }"
-
+  return { text, codes: codes.slice(0, 4).map((c) => ({ text: c.text, shown: c.shown })), qr: hint, qr_shape: !!qr, timers: timers.slice(0, 6), controls, otp_box: otpBox,
+           qr_path: qr ? keloPath(qr.el) : '', ctl_paths: clickable.map((e) => keloPath(e)) };
+}""")
 
 def seconds_left(texts: list[str]) -> int | None:
     """The time left that a countdown text shows as minutes:seconds ("02:59"), or None. Units written in words are the page judge's."""
@@ -192,11 +188,10 @@ async def read_step(page: Any, judge: Any = None) -> tuple[dict[str, Any], Any]:
                 elif verdict["kind"] != "app":
                     got["code"] = None   # a code to compare belongs to an approval in another app
                 got["qr"] = bool(got.get("qr") or (verdict["qr"] and got.get("qr_shape")))
-                if verdict["resend"] is not None:
-                    try:
-                        got["resend"] = bool(await frame.evaluate(MARK_RESEND_JS, verdict["resend"]))
-                    except Exception:  # noqa: BLE001
-                        got["resend"] = False
+                ctl = got.get("ctl_paths") or []
+                idx = verdict["resend"]
+                if isinstance(idx, int) and 0 <= idx < len(ctl):   # the control the judge named, by its CSS path
+                    got["resend"], got["resend_path"], got["resend_frame"] = True, ctl[idx], frame
                 if verdict["line"] is not None and verdict["line"] < len(lines):
                     got["line_text"] = lines[verdict["line"]]
                 if verdict["seconds"] is not None and not got.get("timers"):
@@ -210,10 +205,12 @@ async def read_step(page: Any, judge: Any = None) -> tuple[dict[str, Any], Any]:
     return best
 
 
-async def qr_picture(frame: Any) -> str | None:
-    """The QR element cut out of the page, as a small PNG data URL (None when it cannot be taken)."""
+async def qr_picture(frame: Any, path: str = "") -> str | None:
+    """The QR element (its CSS path in the frame) cut out of the page, as a small PNG data URL (None when it cannot be taken)."""
+    if not path:
+        return None
     try:
-        raw = await frame.locator('[data-kelo-qr="1"]').first.screenshot(timeout=4000, scale="css")
+        raw = await frame.locator(path).first.screenshot(timeout=4000, scale="css")
     except Exception:  # noqa: BLE001
         return None
 
@@ -229,8 +226,8 @@ async def qr_picture(frame: Any) -> str | None:
 
 
 # ---------------------------------------------------------------------------------------------------------------- the in-card keypad
-PAD_RECT_JS = r"""() => {
-  const els = [...document.querySelectorAll('[data-kelo-pad]')];
+PAD_RECT_JS = r"""(paths) => {
+  const els = paths.map((p) => document.querySelector(p)).filter((e) => e);
   if (!els.length) return null;
   const rs = els.map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
   if (!rs.length) return null;
@@ -239,9 +236,9 @@ PAD_RECT_JS = r"""() => {
            vw: window.innerWidth, vh: window.innerHeight };
 }"""
 
-# Marks the keypad region (its grid of keys, or its canvas) and the controls around it (data-kelo-near); the page judge picks the erase key.
-MARK_PAD_JS = r"""() => {
-  document.querySelectorAll('[data-kelo-pad],[data-kelo-clear]').forEach((e) => { e.removeAttribute('data-kelo-pad'); e.removeAttribute('data-kelo-clear'); });
+# Finds the keypad region (its grid of keys, or its canvas) and the controls around it; the page judge picks the erase key. Returns CSS
+# paths (page_paths) of both; nothing is written into the page.
+MARK_PAD_JS = with_path(r"""() => {
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
     return r.width >= 8 && r.height >= 8 && c.visibility !== 'hidden' && c.display !== 'none'; };
   const clickable = (e) => e.matches('button,[role=button],a,input[type=button],input[type=image],[onclick],[tabindex]') || getComputedStyle(e).cursor === 'pointer';
@@ -259,19 +256,16 @@ MARK_PAD_JS = r"""() => {
   if (grid) marked = grid;
   else marked = [...document.querySelectorAll('canvas')].filter(shown).slice(0, 1);
   if (!marked.length) return false;
-  marked.forEach((e) => e.setAttribute('data-kelo-pad', '1'));
   // the controls around the pad that are not its keys: the page judge says which of them erases what was entered
   const rs = marked.map((e) => e.getBoundingClientRect());
   const box = { l: Math.min(...rs.map((r) => r.left)) - 80, t: Math.min(...rs.map((r) => r.top)) - 80, r: Math.max(...rs.map((r) => r.right)) + 80, b: Math.max(...rs.map((r) => r.bottom)) + 80 };
-  document.querySelectorAll('[data-kelo-near]').forEach((e) => e.removeAttribute('data-kelo-near'));
   const near = [...document.querySelectorAll('button,[role=button],a,input[type=button],input[type=image],img,span,div,td')].filter((e) => shown(e) && clickable(e)
-    && !marked.includes(e) && !e.closest('[data-kelo-pad]') && !marked.some((m) => e.contains(m))).filter((e) => { const r = e.getBoundingClientRect();
+    && !marked.includes(e) && !marked.some((m) => m.contains(e))).filter((e) => { const r = e.getBoundingClientRect();
       return r.right > box.l && r.left < box.r && r.bottom > box.t && r.top < box.b; }).filter((e, _i, all) => !all.some((o) => o !== e && e.contains(o))).slice(0, 8);
-  near.forEach((e, i) => e.setAttribute('data-kelo-near', String(i)));
   const labels = near.map((e) => (e.innerText || e.value || e.getAttribute('alt') || e.getAttribute('aria-label') || e.getAttribute('title') || '').trim().slice(0, 30));
   marked[0].scrollIntoView({ block: 'center', inline: 'center' });
-  return { ok: true, near: labels };
-}"""
+  return { ok: true, near: labels, pad: marked.map((e) => keloPath(e)), near_paths: near.map((e) => keloPath(e)) };
+}""")
 
 
 class PinPad:
@@ -284,6 +278,7 @@ class PinPad:
         self.session, self.owner, self.site = session, owner, site
         self.taps = 0
         self.has_clear = False
+        self._mark: PadMark | None = None   # where the keypad is (set by mark_pad, found again when the page redraws it)
         self.open = True
         self.held_by: str | None = None
         self.took = False             # the keypad took the tab itself (nobody held it): it gives it back when it closes, and no other hold
@@ -303,29 +298,33 @@ class PinPad:
         try:
             return await self._marked(page)
         except BrowserPolicyError:
-            if not await mark_pad(page, self.session.page_judge):
+            mark = await mark_pad(page, self.session.page_judge)
+            if mark is None:
                 raise
+            self._mark = mark
             return await self._marked(page)
 
     async def _marked(self, page: Any) -> tuple[Any, dict[str, float]]:
-        for frame in [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]:
+        mark = self._mark
+        if mark is None:
+            raise BrowserPolicyError("the keypad is no longer on the page")
+        frame = mark.frame
+        try:
+            r = await frame.evaluate(PAD_RECT_JS, mark.pad)
+        except Exception:  # noqa: BLE001
+            r = None
+        if not r:
+            raise BrowserPolicyError("the keypad is no longer on the page")
+        dx = dy = 0.0
+        if frame is not page.main_frame:
             try:
-                r = await frame.evaluate(PAD_RECT_JS)
+                box = await (await frame.frame_element()).bounding_box()
+                dx, dy = (box or {}).get("x", 0.0), (box or {}).get("y", 0.0)
             except Exception:  # noqa: BLE001
-                continue
-            if not r:
-                continue
-            dx = dy = 0.0
-            if frame is not page.main_frame:
-                try:
-                    box = await (await frame.frame_element()).bounding_box()
-                    dx, dy = (box or {}).get("x", 0.0), (box or {}).get("y", 0.0)
-                except Exception:  # noqa: BLE001
-                    pass
-            x, y = max(0.0, r["x"] + dx - PAD_MARGIN), max(0.0, r["y"] + dy - PAD_MARGIN)
-            w, h = r["w"] + 2 * PAD_MARGIN, r["h"] + 2 * PAD_MARGIN
-            return frame, {"x": x, "y": y, "width": w, "height": h}
-        raise BrowserPolicyError("the keypad is no longer on the page")
+                pass
+        x, y = max(0.0, r["x"] + dx - PAD_MARGIN), max(0.0, r["y"] + dy - PAD_MARGIN)
+        w, h = r["w"] + 2 * PAD_MARGIN, r["h"] + 2 * PAD_MARGIN
+        return frame, {"x": x, "y": y, "width": w, "height": h}
 
     async def present(self) -> bool:
         """The keypad is still on the page (marked again when the page drew it anew after a press)."""
@@ -339,8 +338,12 @@ class PinPad:
         except BrowserPolicyError:
             pass
         _frame, got = await keypad.find(page)
-        if got.get("mode") != "protected" or not await mark_pad(page, self.session.page_judge):
+        if got.get("mode") != "protected":
             return False
+        mark = await mark_pad(page, self.session.page_judge)
+        if mark is None:
+            return False
+        self._mark = mark
         try:
             await self._region(page)
             return True
@@ -353,7 +356,7 @@ class PinPad:
             raise BrowserPolicyError("this keypad is closed")
         page = self._page()
         _frame, r = await self._region(page)
-        raw = await self.session.shoot(page, self.owner, quality=70, clip=r, css_scale=True)   # keeps a phone view's screen
+        raw = await self.session.shoot(page, quality=70, clip=r, css_scale=True)
 
         def shrink(b: bytes) -> tuple[bytes, int, int]:
             from PIL import Image
@@ -388,9 +391,10 @@ class PinPad:
         if not self.open:
             raise BrowserPolicyError("this keypad is closed")
         async with self._lock:
-            page = self._page()
-            for frame in [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]:
-                loc = frame.locator('[data-kelo-clear="1"]')
+            self._page()   # the page must still be the payment's site
+            mark = self._mark
+            if mark is not None and mark.clear:
+                loc = mark.frame.locator(mark.clear)
                 try:
                     if await loc.count():
                         if self.held_by is None:
@@ -402,7 +406,7 @@ class PinPad:
                         self.taps = 0
                         return self.taps
                 except Exception:  # noqa: BLE001
-                    continue
+                    pass
         raise BrowserPolicyError("the page has no clear key")
 
     async def close(self) -> None:
@@ -414,27 +418,35 @@ class PinPad:
                 await self.session.release_control(self.owner)
 
 
-MARK_CLEAR_JS = ("(i) => { const e = document.querySelector(`[data-kelo-near=\"${i}\"]`); if (!e) return false; e.setAttribute('data-kelo-clear', '1'); "
-                 "if (!e.closest('[data-kelo-pad]')) e.setAttribute('data-kelo-pad', '1'); return true; }")
+@dataclass
+class PadMark:
+    """Where the keypad of a protected PIN page is in one frame: the CSS paths of its region and of the page's erase key (or None)."""
+    frame: Any
+    pad: list[str]
+    clear: str | None
 
 
-async def mark_pad(page: Any, judge: Any = None) -> bool:
-    """Marks the protected keypad on the page (or a frame) for the in-card view; True when one was found. With a page judge, the
-    control around the pad that erases the entered digits is marked too (none is marked when it cannot say)."""
+async def mark_pad(page: Any, judge: Any = None) -> PadMark | None:
+    """Finds the protected keypad on the page (or a frame) for the in-card view; None when there is none. With a page judge, the control
+    around the pad that erases the entered digits is named too (None when it cannot say)."""
     for frame in [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]:
         try:
             got = await frame.evaluate(MARK_PAD_JS)
-            if not got:
+            if not got or not isinstance(got, dict):
                 continue
-            near = [str(x) for x in (got.get("near") or [])] if isinstance(got, dict) else []
+            near = [str(x) for x in (got.get("near") or [])]
+            clear = None
+            near_paths = [str(p) for p in (got.get("near_paths") or [])]
             if judge is not None and near:
                 idx = await judge.erase_key(near)
-                if idx is not None:
-                    await frame.evaluate(MARK_CLEAR_JS, idx)
-            return True
+                if idx is not None and 0 <= idx < len(near_paths):
+                    clear = near_paths[idx]
+            pad = [str(p) for p in (got.get("pad") or [])] + ([clear] if clear else [])
+            return PadMark(frame, pad, clear)
         except Exception:  # noqa: BLE001
             continue
-    return False
+    return None
+
 
 
 # ---------------------------------------------------------------------------------------------------------------- the tools
@@ -510,13 +522,6 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
                         await show(final)
                     except Exception:  # noqa: BLE001 - a stopped reply has nobody to show it to
                         pass
-            page = session.raw_page(browser_owner.get())
-            if page is not None:
-                for fr in page.frames:
-                    try:
-                        await fr.evaluate(UNMARK_STEP_JS)
-                    except Exception:  # noqa: BLE001
-                        pass
 
     async def follow(sid: str, ev: dict[str, Any], pad: PinPad | None) -> tuple[str, dict[str, Any]]:
         assert steps is not None
@@ -541,16 +546,16 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
                     page = session.raw_page(browser_owner.get())
                     clicked = False
                     if page is not None:
-                        _read, fr = await read_step(page, session.page_judge)   # marks the control the judge named (data-kelo-resend)
-                        for frame in [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]:
+                        _read, _fr = await read_step(page, session.page_judge)   # the control the judge named (its CSS path)
+                        rpath, rframe = _read.get("resend_path"), _read.get("resend_frame")
+                        if rpath and rframe is not None:
                             try:
-                                loc = frame.locator('[data-kelo-resend="1"]')
+                                loc = rframe.locator(rpath)
                                 if await loc.count():
                                     await loc.first.click(timeout=5000)
                                     clicked = True
-                                    break
                             except Exception:  # noqa: BLE001
-                                continue
+                                pass
                     if not clicked:
                         return "new_code_manual", ans
                     ev = steps.update(sid, state="renewing", code=None, code_shown=None, expires_at=None)
@@ -587,7 +592,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
             if code.get("text") and code.get("text") != ev.get("code"):
                 changes.update(code=code["text"], code_shown=code.get("shown"))
                 if fr is not None and read.get("qr"):
-                    changes["qr"] = await qr_picture(fr)
+                    changes["qr"] = await qr_picture(fr, read.get("qr_path") or "")
             secs = seconds_left(read.get("timers") or [])
             if secs is not None and (ev.get("expires_at") is None or changes.get("code") or state == "renewing"):
                 changes.update(expires_at=int(time.time() + secs), seconds_total=secs)
@@ -672,7 +677,7 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
         if code.get("text"):
             ev.update(code=code["text"], code_shown=code.get("shown"))
         if read.get("qr") and frame is not None:
-            ev["qr"] = await qr_picture(frame)
+            ev["qr"] = await qr_picture(frame, read.get("qr_path") or "")
         secs = seconds_left(read.get("timers") or [])
         if secs is not None:
             ev.update(expires_at=int(time.time() + secs), seconds_total=secs)
@@ -768,28 +773,18 @@ def payment_step_tools(session: BrowserSession | None, steps: PaymentSteps | Non
         if pin is not None and pins is not None:
             pins.log(pin, "pin-handed", f"the keypad on {payment.host} is protected; the user enters the PIN in the card")
         note_path(payment, payment.path or "site_method", "protected")
-        if steps is None or not await mark_pad(page, session.page_judge):
+        mark = await mark_pad(page, session.page_judge) if steps is not None else None
+        if mark is None:
             return ("This PIN keypad is entered by the user. Nothing was typed; do not click its keys. Tell the user to enter their PIN "
                     "on the page (live view), and wait for them to say it is done.")
         pad = PinPad(session, browser_owner.get(), site_key(payment.host))
-        try:
-            pad.has_clear = await _has_clear(page)
-        except Exception:  # noqa: BLE001
-            pad.has_clear = False
+        pad._mark = mark
+        pad.has_clear = mark.clear is not None
         ev = base_event("pin_pad", payment, t(DEFAULT_LINE["pin_pad"]))
         ev.update(can_clear=pad.has_clear, needs_code=False)
         await session.card(t("Waiting for you to enter your payment PIN"), force=True)
         outcome, _ans = await wait_card(ev, payment, pad=pad)
         return await finish(outcome, payment, "pin_pad", path_hint(payment.host))
-
-    async def _has_clear(page: Any) -> bool:
-        for fr in page.frames:
-            try:
-                if await fr.locator('[data-kelo-clear="1"]').count():
-                    return True
-            except Exception:  # noqa: BLE001
-                continue
-        return False
 
     async def pin_pad(args: dict[str, Any]) -> str:
         payment = approved_here()

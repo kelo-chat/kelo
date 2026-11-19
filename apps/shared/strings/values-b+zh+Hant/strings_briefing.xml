@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">一天開始時（學到的時間）</string>
     <string name="briefing_when_fixed">在我選的時間</string>
     <string name="briefing_fixed_at">每天 %1$s</string>
+    <string name="briefing_fixed_from">可從聯絡時段開始的 %1$s 起選擇</string>
     <string name="briefing_offset">一天開始後多久接收</string>
     <string name="briefing_offset_none">一開始就收</string>
     <string name="briefing_offset_min">%1$d 分鐘後</string>

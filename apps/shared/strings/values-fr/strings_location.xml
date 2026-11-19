@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- fr text for strings_location.xml (generated from values/strings_location.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="location_ask_title">Kelo a besoin de votre position</string>
     <string name="location_ask_body">Pour répondre, Kelo doit savoir où se trouve ce téléphone maintenant.</string>

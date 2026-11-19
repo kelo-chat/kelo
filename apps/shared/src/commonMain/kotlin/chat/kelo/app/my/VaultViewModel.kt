@@ -116,6 +116,42 @@ class VaultViewModel(private val sessions: Sessions) : ViewModel() {
         }
     }
 
+    /** Signs Kelo's browser out of [site] (cookies and site data go; a saved login stays), then reloads the Keychain. */
+    fun signOutBrowser(site: String) {
+        viewModelScope.launch {
+            try {
+                sessions.requireApi().delete<JsonElement>("/api/browser/sign-ins/${KeloApi.segment(site)}")
+                load()
+            } catch (e: ApiError) {
+                _state.update { it.copy(itemError = e.detail) }
+            }
+        }
+    }
+
+    /** Signs a named browser profile out of [site], then reloads the Keychain. */
+    fun signOutProfileSite(profile: String, site: String) {
+        viewModelScope.launch {
+            try {
+                sessions.requireApi().delete<JsonElement>("/api/browser/profiles/${KeloApi.segment(profile)}/sites/${KeloApi.segment(site)}")
+                load()
+            } catch (e: ApiError) {
+                _state.update { it.copy(itemError = e.detail) }
+            }
+        }
+    }
+
+    /** Deletes a named browser profile with every sign-in kept in it; [onGone] runs when it is gone. */
+    fun deleteProfile(profile: String, onGone: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                sessions.requireApi().delete<JsonElement>("/api/browser/profiles/${KeloApi.segment(profile)}")
+                load(); onGone()
+            } catch (e: ApiError) {
+                _state.update { it.copy(itemError = e.detail) }
+            }
+        }
+    }
+
     /** Removes a login or key; [onGone] runs when it is removed. */
     fun deleteItem(name: String, onGone: () -> Unit) {
         viewModelScope.launch {

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- es text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">¿Descargar el modelo de voz %1$s en tu servidor de Kelo? Si no lo descargas, se usará el reconocimiento de voz de tu teléfono.</string>
     <string name="voice_server_downloading">Descargando el modelo de voz · %1$d%%</string>
     <string name="voice_server_ready">Tu servidor de Kelo ya entiende tu voz.</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">No se pudo conectar con tu servidor de Kelo para convertir la voz en texto.</string>
     <string name="voice_server_busy">Tu servidor de Kelo está procesando otra grabación. Vuelve a intentarlo en un momento.</string>
     <string name="voice_server_too_long">La grabación es demasiado larga. Mantenla por debajo de 2 minutos.</string>
-    <string name="voice_page_title">Entrada de voz</string>
+    <string name="voice_page_title">Voz</string>
     <string name="voice_page_intro">Tu voz se convierte en texto en tu servidor de Kelo y el texto va al campo. Nada se envía por sí solo.</string>
     <string name="voice_model_in_use">Modelo de voz en uso</string>
     <string name="voice_state_off">Reconocimiento de voz del teléfono</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Los modelos de voz de tu servidor de Kelo aún no reconocen este idioma, así que se usa el reconocimiento de voz del teléfono.</string>
     <string name="voice_model_size">Tamaño %1$s · memoria al usarlo %2$s</string>
     <string name="voice_runtime_missing">Vuelve a ejecutar el instalador del servidor de Kelo para usar esto.</string>
+    <string name="voice_send_now">Enviar lo que dijiste</string>
+    <string name="voice_elapsed">Tiempo de grabación %1$s</string>
 </resources>

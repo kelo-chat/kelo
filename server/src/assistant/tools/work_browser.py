@@ -33,11 +33,23 @@ class WorkBrowserDown(Exception):
     """The work browser is configured but does not answer: the tab fails with DOWN_NOTE, never falls back to the main browser."""
 
 
+# Card p-browser-signin-shared, spike S1 (tests/test_work_seed_live.py): a cookie put into a context before a document request is sent
+# with that request, so a site's sign-in is copied in right before the tab's first document request to that site (True). False keeps
+# the whole-jar copy at open, the reference's own cold-start fallback.
+SEED_PER_SITE = True
+SEED_FAILED_NOTE = ("[Kelo's browser could not load the owner's saved sign-in for this site, so the page may show you signed out, and "
+                    "changes made here may not be kept.]")
+
+
 @dataclass(slots=True)
 class WorkTab:
     context: Any
     signed: set[str] = field(default_factory=set)    # registrable domains the job signed in to (vault login, the owner's hands)
-    stored: set[str] = field(default_factory=set)    # registrable domains whose local storage was already copied in
+    seeded: dict[str, dict[tuple[str, str, str], str]] = field(default_factory=dict)   # site -> (name, domain, path) -> value as copied in
+    seeded_storage: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)  # site -> origin -> {key: value} as copied in
+    touched: set[str] = field(default_factory=set)   # registrable domains the tab went to (the write-back looks at them)
+    signed_out: bool = False                         # research jobs: nothing is copied in, nothing is written back
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)   # one seed at a time: a second request waits for the first's cookies
 
 
 def _cookie(c: dict[str, Any]) -> dict[str, Any]:
@@ -57,18 +69,81 @@ async def _quietly(make: Callable[[], Awaitable[Any]] | None) -> None:
         pass
 
 
+async def seed_tab(wt: WorkTab | None, site: str, cookies: list[dict[str, Any]], storage: dict[str, dict[str, str]]) -> int:
+    """seed_site for any WorkTab (a work-browser tab, or a named profile's own context in the main browser): one site's cookies and local
+    storage into the tab's context, once per site. 0 when there is no tab, it is signed out, or the site is done."""
+    site = registrable(str(site or "").lower())
+    if wt is None or wt.signed_out or not site:
+        return 0
+    async with wt.lock:
+        return await _seed_locked(wt, site, cookies, storage)
+
+
+async def _seed_locked(wt: WorkTab, site: str, cookies: list[dict[str, Any]], storage: dict[str, dict[str, str]]) -> int:
+    n = 0
+    if site not in wt.seeded:
+        wt.seeded[site] = {}
+        mine = [_cookie(c) for c in cookies if c.get("name") and c.get("domain") and _domain_site(str(c["domain"])) == site]
+        try:
+            if mine:
+                await wt.context.add_cookies(mine)
+        except Exception:
+            wt.seeded.pop(site, None)
+            raise
+        for c in mine:
+            wt.seeded[site][(c["name"], c["domain"], c.get("path", ""))] = str(c.get("value", ""))
+        n = len(mine)
+    if site not in wt.seeded_storage:
+        wt.seeded_storage[site] = {origin: dict(items) for origin, items in storage.items() if items}
+        for origin, items in wt.seeded_storage[site].items():
+            pairs = [[str(k), str(v)] for k, v in items.items()]
+            await wt.context.add_init_script(
+                script="(() => { if (location.origin !== %s) return; for (const [k, v] of %s) { try { if (localStorage.getItem(k) === null) "
+                       "localStorage.setItem(k, v); } catch (e) {} } })();" % (_js(origin), _js(pairs)))
+    return n
+
+
+async def collect_changes(wt: WorkTab, read_storage: Callable[[Any, str], Awaitable[dict[str, dict[str, str]]]] | None = None
+                          ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], set[str]]:
+    """What the tab changed on the sites it went to (cookies, storage, sites), for a write-back: a cookie is listed when it is new or its
+    value differs from the copy the tab started with ({"cookie": ..., "seeded": value or None}); a storage key likewise. Deletions are
+    never listed. Nothing for a signed-out tab. The context stays open (the caller closes it)."""
+    sites = set(wt.touched) | set(wt.signed)
+    cookies: list[dict[str, Any]] = []
+    storage: list[dict[str, Any]] = []
+    try:
+        if sites and not wt.signed_out:
+            for c in await wt.context.cookies():
+                site = _domain_site(str(c.get("domain") or ""))
+                if site not in sites:
+                    continue
+                seeded = wt.seeded.get(site, {}).get((c.get("name"), c.get("domain"), c.get("path", "")))
+                if seeded != str(c.get("value", "")):
+                    cookies.append({"cookie": _cookie(c), "seeded": seeded})
+            if read_storage is not None:
+                for site in sites:
+                    now = await read_storage(wt.context, site)
+                    for origin, items in now.items():
+                        before = wt.seeded_storage.get(site, {}).get(origin, {})
+                        for k, v in items.items():
+                            if before.get(k) != v:
+                                storage.append({"site": site, "origin": origin, "key": k, "value": v, "seeded": before.get(k)})
+    except Exception:  # noqa: BLE001 - nothing carried back then
+        cookies, storage = [], []
+    return cookies, storage, sites
+
+
 class WorkBrowser:
     """The work browser's connection and its work tabs' contexts. One connection at a time; every new connection starts a new
     `generation` (the session forgets the work pages of an older one)."""
 
     def __init__(self, host: str, port: int, *, connect: Callable[[], Awaitable[Any]] | None = None,
-                 new_context: Callable[[], Awaitable[Any]] | None = None,
-                 gpu: Callable[[Any], Awaitable[None]] | None = None):
+                 new_context: Callable[[], Awaitable[Any]] | None = None):
         self.host, self.port = host, port
         self._connect = connect                 # -> the Playwright Browser over CDP (default: connect_over_cdp to host:port)
         self._new_context = new_context         # tests only; default: browser.new_context(no_viewport=True, accept_downloads=True)
-        self._gpu = gpu                         # BrowserSession._install_gpu: the same GPU report on every work context
         self.on_new_page: Callable[[str], Awaitable[Any]] | None = None   # set by server.py: VncScreens.work_window_opened
+        self.on_connected: Callable[[str, int], Awaitable[Any]] | None = None   # set by server.py: BrowserSession.work_connected
         self.generation = 0
         self._pw: Any = None
         self._browser: Any = None
@@ -104,34 +179,53 @@ class WorkBrowser:
         for page in list(getattr(default, "pages", None) or [])[1:]:
             await _quietly(page.close)
         self.generation += 1
+        if self.on_connected is not None:
+            try:
+                await self.on_connected(self.host, self.port)   # its frames and workers (their tab's language), its own connection
+            except Exception:  # noqa: BLE001 - the work browser works without it
+                log.warning("work browser: its frames and workers are not covered")
         return True
 
     def tab(self, key: str) -> WorkTab | None:
         return self._tabs.get(key)
 
-    async def open_context(self, key: str, main_cookies: list[dict[str, Any]]) -> Any:
-        """A context of the work browser for this tab, with a copy of the owner's cookies (the sign-in copy). A tab that already has one
-        keeps it. WorkBrowserDown when the work browser does not answer."""
+    async def open_context(self, key: str, main_cookies: list[dict[str, Any]], *, signed_out: bool = False) -> Any:
+        """A context of the work browser for this tab. With SEED_PER_SITE it starts empty and seed_site fills it per site; otherwise it
+        gets a copy of the owner's cookies now (the whole-jar copy). signed_out: nothing is copied, ever. A tab that already has one keeps
+        it. WorkBrowserDown when the work browser does not answer."""
         if not await self.ensure():
             raise WorkBrowserDown(DOWN_NOTE)
         if (wt := self._tabs.get(key)) is not None:
             return wt.context
         ctx = await (self._new_context() if self._new_context is not None else self._browser.new_context(no_viewport=True, accept_downloads=True))
-        if self._gpu is not None:
-            await self._gpu(ctx)
+        wt = WorkTab(context=ctx, signed_out=signed_out)
+        self._tabs[key] = wt
+        if SEED_PER_SITE or signed_out:
+            return ctx
         cookies = [_cookie(c) for c in main_cookies if c.get("name") and c.get("domain")]
         if cookies:
             await ctx.add_cookies(cookies)
-        self._tabs[key] = WorkTab(context=ctx)
+        for c in cookies:
+            wt.seeded.setdefault(_domain_site(c["domain"]), {})[(c["name"], c["domain"], c.get("path", ""))] = str(c.get("value", ""))
         return ctx
+
+    async def seed_site(self, key: str, site: str, cookies: list[dict[str, Any]], storage: dict[str, dict[str, str]]) -> int:
+        """Copies one site's sign-in into this tab's context: its cookies, and its local storage (only keys the page does not have yet,
+        when the page of that origin loads). Once per site and tab; 0 when the tab is unknown, signed out, or the site is done. Returns
+        the number of cookies copied in."""
+        return await seed_tab(self._tabs.get(key), site, cookies, storage)
+
+    def note_touched(self, key: str, site: str) -> None:
+        """The tab went to `site` (a registrable domain): its sign-in is written back when the tab closes (when it was seeded)."""
+        wt = self._tabs.get(key)
+        if wt is not None and site:
+            wt.touched.add(registrable(site.lower()))
 
     async def new_private_context(self) -> Any:
         """A private context in the work browser (private browsing on a work tab: nothing kept after it closes)."""
         if not await self.ensure():
             raise WorkBrowserDown(DOWN_NOTE)
         ctx = await (self._new_context() if self._new_context is not None else self._browser.new_context(no_viewport=True, accept_downloads=True))
-        if self._gpu is not None:
-            await self._gpu(ctx)
         return ctx
 
     def note_signed(self, key: str, site: str) -> None:
@@ -140,38 +234,21 @@ class WorkBrowser:
         if wt is not None and site:
             wt.signed.add(registrable(site.lower()))
 
-    async def copy_storage(self, key: str, state: dict[str, Any]) -> None:
-        """A site's local storage (from the main browser) for this tab's context, once per site: it is set when the page of that origin
-        loads, and only keys the page does not have yet. Cookies are not copied here (open_context did that)."""
-        wt = self._tabs.get(key)
-        site = registrable(str(state.get("host") or "").lower())
-        if wt is None or not site or site in wt.stored:
-            return
-        wt.stored.add(site)
-        for o in state.get("origins") or []:
-            items = [[str(k), str(v)] for k, v in o.get("localStorage") or []]
-            if not items:
-                continue
-            await wt.context.add_init_script(
-                script="(() => { if (location.origin !== %s) return; for (const [k, v] of %s) { try { if (localStorage.getItem(k) === null) "
-                       "localStorage.setItem(k, v); } catch (e) {} } })();" % (_js(o["origin"]), _js(items)))
-
-    async def close(self, key: str) -> tuple[list[dict[str, Any]], set[str]]:
-        """Close this tab's context. Returns (the cookies of the sites the job signed in to, those sites). Reading the cookies may fail;
-        the context is closed in any case."""
+    async def close(self, key: str, read_storage: Callable[[Any, str], Awaitable[dict[str, dict[str, str]]]] | None = None
+                    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], set[str]]:
+        """Close this tab's context. Returns what the job changed on the sites it went to, for the write-back of card A4:
+        (cookies, storage, sites). A cookie is listed when it is new or its value differs from the copy the tab started with
+        ({"cookie": ..., "seeded": value or None}); a storage key likewise ({"site","origin","key","value","seeded"}). Deletions are never
+        listed. `read_storage(context, site)` gives the local storage of the site as the context holds it now. A signed-out tab returns
+        nothing. The context is closed in any case."""
         wt = self._tabs.pop(key, None)
         if wt is None:
-            return [], set()
-        cookies: list[dict[str, Any]] = []
-        sites = set(wt.signed)
+            return [], [], set()
         try:
-            if sites:
-                cookies = [c for c in await wt.context.cookies() if _domain_site(str(c.get("domain") or "")) in sites]
-        except Exception:  # noqa: BLE001 - nothing carried back then
-            cookies = []
+            cookies, storage, sites = await collect_changes(wt, read_storage)
         finally:
             await _quietly(wt.context.close)
-        return [_cookie(c) for c in cookies], sites
+        return cookies, storage, sites
 
     async def forget(self, site: str) -> None:
         """Clear one site's cookies in every open work context (browser_forget_site)."""

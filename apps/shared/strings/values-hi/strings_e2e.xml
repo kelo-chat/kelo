@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- hi text for strings_e2e.xml (generated from values/strings_e2e.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="e2e_key_changed_title">इस फ़ोन को फिर से जोड़ें</string>
     <string name="e2e_key_changed_body">आपके Kelo सर्वर की एन्क्रिप्शन कुंजी बदल गई है, इसलिए यह फ़ोन जाँच नहीं सकता कि यह सच में आपका सर्वर है। किसी दूसरे डिवाइस पर मेरा → मेरे डिवाइस से, या सर्वर कंप्यूटर से नया कनेक्शन QR कोड स्कैन करें।</string>

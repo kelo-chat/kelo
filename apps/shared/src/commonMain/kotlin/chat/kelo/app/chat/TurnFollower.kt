@@ -21,9 +21,11 @@ class TurnFollower(
 ) {
     suspend fun talk(
         text: String, timezone: String, answers: List<ReplyAnswer> = emptyList(), secrets: String? = null,
-        attachments: List<String> = emptyList(), autoText: Boolean = false, onEvent: (TurnEvent) -> Unit,
+        attachments: List<String> = emptyList(), autoText: Boolean = false, call: String? = null,
+        onEvent: (TurnEvent) -> Unit,
     ) {
         val id = when {
+            call != null -> api.start(text, timezone, answers, secrets, attachments, autoText, call)
             attachments.isNotEmpty() -> api.start(text, timezone, answers, secrets, attachments, autoText)   // files kept with the message
             secrets != null -> api.start(text, timezone, answers, secrets)   // the owner sent a held-back message as it is ([SecretGuard])
             answers.isEmpty() -> api.start(text, timezone)

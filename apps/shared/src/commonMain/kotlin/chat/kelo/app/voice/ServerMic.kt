@@ -40,6 +40,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import chat.kelo.app.res.*
@@ -47,58 +49,6 @@ import chat.kelo.app.ui.text.string
 import chat.kelo.app.ui.theme.Kelo
 import chat.kelo.app.ui.theme.LocalReduceMotion
 import chat.kelo.app.ui.text.Text as KeloText
-
-/** The sound graph and the timer while the owner speaks; its stop and ✕ act through [controller]. Shown above the mic. */
-@Composable
-fun ServerRecordingCard(controller: ServerMicController, modifier: Modifier = Modifier) {
-    val c = Kelo.colors
-    val phase by controller.phase.collectAsState()
-    val bars by controller.bars.collectAsState()
-    val elapsed by controller.elapsedMs.collectAsState()
-    val reduce = LocalReduceMotion.current
-    val sending = phase == RecordingSteps.Phase.SENDING
-    val secondsLeft = ((RecordingSteps.MAX_MS - elapsed) / 1000).coerceAtLeast(0)
-    Row(
-        modifier
-            .width(300.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(c.card)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        TextAction(string(Res.string.voice_cancel_recording), c.muted) { controller.cancel() }
-        if (sending) {
-            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = c.accent)
-            KeloText(string(Res.string.voice_transcribing), color = c.ink, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-        } else {
-            Row(
-                Modifier.weight(1f).height(28.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                // the newest level on the right; with reduce-motion a single bar that shows the latest level
-                val shown = if (reduce) listOf(bars.lastOrNull() ?: 0f) else bars
-                shown.forEach { level ->
-                    Box(
-                        Modifier
-                            .width(3.dp)
-                            .height((3 + 25 * level).dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(c.accent),
-                    )
-                }
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                KeloText(formatClock(elapsed), color = c.ink, style = MaterialTheme.typography.bodySmall)
-                if (elapsed >= RecordingSteps.COUNTDOWN_FROM_MS) {
-                    KeloText(string(Res.string.voice_ends_in, secondsLeft), color = c.dangerInk, style = MaterialTheme.typography.labelSmall)
-                }
-            }
-            TextAction(string(Res.string.voice_stop_recording), c.accent) { controller.stop() }
-        }
-    }
-}
 
 /** The one line for a recognition that gave no text (under the composer or in the page). */
 @Composable
@@ -172,39 +122,16 @@ fun formatClock(ms: Long): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServerMicHost(
-    recorder: AudioRecorder,
+    controller: ServerMicController,
     voice: VoiceModel,
-    api: () -> KeloApi?,
-    field: () -> TextFieldValue,
-    onField: (TextFieldValue) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val c = Kelo.colors
     val scope = rememberCoroutineScope()
     val view by voice.view.collectAsState()
-    val fieldNow by rememberUpdatedState(field)
-    val onFieldNow by rememberUpdatedState(onField)
-    var anchor by remember { mutableStateOf<VoiceInsert.Anchor?>(null) }
     var askOffer by remember { mutableStateOf(false) }
-    val controller = remember(recorder, voice) {
-        ServerMicController(
-            recorder, { api()?.let { VoiceApi(it) } }, scope,
-            onBegin = {
-                val f = fieldNow()
-                val at = f.selection.start.coerceIn(0, f.text.length)
-                val to = f.selection.end.coerceIn(at, f.text.length)
-                anchor = VoiceInsert.Anchor(f.text.substring(0, at), f.text.substring(to))
-            },
-            onText = { words ->
-                anchor?.let { a ->
-                    val m = VoiceInsert.merge(a, words)
-                    onFieldNow(TextFieldValue(m.text, TextRange(m.cursor)))
-                }
-            },
-        )
-    }
     val way = DictationWay.pick(view, phoneRecognizer = false)
-    val shown = recorder.available && (way == DictationWay.Way.SERVER || way == DictationWay.Way.OFFER_THEN_NONE || way == DictationWay.Way.DOWNLOADING_NONE)
+    val shown = controller.available && (way == DictationWay.Way.SERVER || way == DictationWay.Way.OFFER_THEN_NONE || way == DictationWay.Way.DOWNLOADING_NONE)
     val phase by controller.phase.collectAsState()
     val problem by controller.problem.collectAsState()
     val tooltip = rememberTooltipState(isPersistent = false)
@@ -218,7 +145,22 @@ fun ServerMicHost(
                 tooltip = { PlainTooltip { KeloText(tip, color = c.ink) } },
                 state = tooltip,
             ) {
-                IconButton(onClick = {
+                val ring = VoiceDownloadRing.of(view)
+                if (ring != null) {
+                    // the speech model downloads: the mic is a circle with the progress (a spinner when the server gives no number)
+                    val label = voiceDownloadingLine(view?.progress?.done ?: 0, view?.progress?.total ?: 0)
+                    Box(
+                        Modifier.size(40.dp).semantics { contentDescription = label },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        val percent = ring.percent
+                        if (percent != null) {
+                            CircularProgressIndicator(progress = { percent / 100f }, modifier = Modifier.size(22.dp), color = c.accent, strokeWidth = 2.dp)
+                        } else {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), color = c.accent, strokeWidth = 2.dp)
+                        }
+                    }
+                } else IconButton(onClick = {
                     when (way) {
                         DictationWay.Way.OFFER_THEN_NONE -> askOffer = true
                         DictationWay.Way.SERVER -> controller.toggle()
@@ -228,9 +170,7 @@ fun ServerMicHost(
                     Icon(KeloIcons.Mic, contentDescription = string(if (recording) Res.string.voice_stop else Res.string.voice_start), tint = if (recording) c.accent else c.muted)
                 }
             }
-            if (phase != RecordingSteps.Phase.IDLE) {
-                Popup(alignment = Alignment.TopEnd) { ServerRecordingCard(controller, Modifier.padding(bottom = 8.dp)) }
-            }
+            // while the owner speaks the composer itself is the recording bar (ComposerVoice); only a problem line shows here
             problem?.let { p ->
                 Popup(alignment = Alignment.TopEnd) { ServerProblemCard(controller, p, Modifier.padding(bottom = 8.dp)) }
             }

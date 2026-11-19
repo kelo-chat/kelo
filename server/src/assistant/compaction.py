@@ -183,6 +183,13 @@ def stamp(created_at: Any, zone: ZoneInfo) -> str:
         return ""
 
 
+def _with_steps(content: str, m: dict[str, Any]) -> str:
+    """An assistant reply's content with its tool steps after it, for the model (the stored text does not change)."""
+    if m.get("role") != "assistant" or not m.get("steps"):
+        return content
+    return f"{content}\n\n[Not from the user: steps of this reply: {m['steps']}]"
+
+
 def _line(m: dict[str, Any], zone: ZoneInfo | None = None) -> str:
     who = "User" if m.get("role") == "user" else "Assistant"
     text = TIME_TAG.sub("", str(m.get("content") or "")).strip()
@@ -222,7 +229,7 @@ class Compactor:
         since = self.store.session_start() if hasattr(self.store, "session_start") else 0   # /new: the conversation starts after it
         rows = self.store.first_messages(HEAD_MESSAGES, before_id=before_id, after_id=since)
         each = HEAD_TOKENS // max(1, len(rows))
-        msgs = [{"role": r["role"], "content": clip_tokens(r["content"], each) if capped else r["content"]} for r in rows]
+        msgs = [{"role": r["role"], "content": _with_steps(clip_tokens(r["content"], each) if capped else r["content"], r)} for r in rows]
         return msgs, (rows[-1]["id"] if rows else since)
 
     def _candidates(self, before_id: int | None) -> tuple[dict[str, Any], int, list[dict[str, Any]]]:
@@ -230,7 +237,7 @@ class Compactor:
         _, head_end = self._head(before_id, False)
         start = max(cur["up_to_message_id"], head_end)
         rows = self.store.messages_after(start, before_id=before_id, limit=FETCH_LIMIT)
-        return cur, start, [{"id": r["id"], "role": r["role"], "content": r["content"]} for r in rows]
+        return cur, start, [{"id": r["id"], "role": r["role"], "content": r["content"], "steps": r.get("steps") or ""} for r in rows]
 
     def assemble(self, window: Window, fixed_tokens: int, before_id: int | None = None) -> Assembled:
         """Head + summary + everything after it when that stays under the threshold; otherwise the head (shortened), the summary and
@@ -250,7 +257,10 @@ class Compactor:
             budget = min(int(window.context * RECENT_SHARE) + sum_tokens, int(window.context * self.target) - request_tokens(head))
             sel = select_history(cands, summary, budget)
             over = True
-        history = [{"role": m["role"], "content": m["content"]} for m in sel.kept]
+        # the tool steps of each reply, for the model only (reply_text.py): what it did, not what the outside said. Kept on every
+        # reply (not only the last few): a note that moved along with the window would change the history each turn and restart
+        # the provider's session (providers/agy_pool.py continuation)
+        history = [{"role": m["role"], "content": _with_steps(m["content"], m)} for m in sel.kept]
         return Assembled([summary_message(sel.summary)] if sel.summary.strip() else [], history, sel.kept, head,
                          fixed_tokens + request_tokens(head) + sel.tokens, over, len(sel.dropped), {"shortened": sel.shortened})
 

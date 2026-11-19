@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">Saat hariku dimulai (dipelajari)</string>
     <string name="briefing_when_fixed">Pada jam yang kupilih</string>
     <string name="briefing_fixed_at">Setiap hari pukul %1$s</string>
+    <string name="briefing_fixed_from">Mulai %1$s, saat jam kontakmu dimulai</string>
     <string name="briefing_offset">Berapa lama setelah hari dimulai</string>
     <string name="briefing_offset_none">Langsung di awal</string>
     <string name="briefing_offset_min">%1$d mnt kemudian</string>

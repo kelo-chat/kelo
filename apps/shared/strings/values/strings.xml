@@ -615,6 +615,16 @@
     <string name="vault_join">%1$s · %2$s</string>
     <string name="vault_not_entered">Not entered yet</string>
     <string name="vault_last_used">Last used %1$s</string>
+    <string name="vault_browser_title">Kelo\'s browser</string>
+    <string name="vault_browser_signed_in">Signed in %1$s · last used %2$s</string>
+    <string name="vault_browser_sign_out">Sign Kelo\'s browser out of this site</string>
+    <string name="vault_browser_sign_out_confirm">Kelo\'s browser will be signed out of %1$s and its cookies and site data removed. A saved login stays.</string>
+    <string name="vault_browser_sites_title">Signed in without a saved login</string>
+    <string name="vault_profiles_title">Browser profiles</string>
+    <string name="vault_profile_sites">Signed in to %1$s sites</string>
+    <string name="vault_profile_empty">Not signed in anywhere yet</string>
+    <string name="vault_profile_delete">Delete this profile</string>
+    <string name="vault_profile_delete_confirm">The profile %1$s and every sign-in kept in it will be deleted.</string>
     <string name="vault_place">Key goes in %1$s</string>
     <string name="vault_place_header_named">Header %1$s</string>
     <string name="vault_place_query_named">Query %1$s</string>
@@ -1103,6 +1113,9 @@
     <string name="live_still_yours">You\'re still in control. Your agent waits until you hand it back.</string>
     <string name="live_screen_changed">The screen changed. Tap again.</string>
     <string name="live_tab_closed">The tab was closed, so there\'s nothing more to see. If the last screen was saved, it\'s shown below.</string>
+    <string name="live_tabs_label">Tabs</string>
+    <string name="live_tab_untitled">New tab</string>
+    <string name="live_tab_close">Close tab</string>
     <string name="live_not_controller">You can\'t control it right now. Tap Take control again.</string>
     <string name="live_input_failed">The browser couldn\'t do that.</string>
     <string name="live_state_you">You\'re in control</string>
@@ -1129,6 +1142,8 @@
     <string name="live_touch_missed">That touch did not get through</string>
     <string name="live_type_hint">Text to type on the page</string>
     <string name="live_type_send">Type</string>
+    <string name="live_keyboard">Keyboard</string>
+    <string name="live_keyboard_desc">Show or hide the keyboard for the page</string>
     <string name="live_type_hide">Hide text</string>
     <string name="live_type_show">Show text</string>
     <string name="live_key_enter">Enter</string>
@@ -1437,6 +1452,7 @@
     <string name="work_watch_ev_fired">Condition met</string>
     <string name="work_watch_ev_error">Failed</string>
     <string name="work_watch_ev_check">Checked</string>
+    <string name="work_watch_ev_count">· Checked %1$d times</string>
     <string name="work_watch_ev_on">On</string>
     <string name="work_watch_ev_off">Off</string>
     <string name="work_watch_delete">Delete watch</string>
@@ -1486,16 +1502,20 @@
     <string name="notify_page_unavailable">Not available on this server yet.</string>
     <string name="heads_section">News alerts</string>
     <string name="heads_switch">Kelo tells you first</string>
-    <!-- %1$s = how often it looks ("Every 2 hours", agent_repeat_every_hours / work_every_minutes), %2$s = the follow-ups section's title (followup_settings_title) -->
+    <!-- older servers (no "send_times"): %1$s = how often it looks ("Every 2 hours", agent_repeat_every_hours / work_every_minutes), %2$s = the follow-ups section's title (followup_settings_title) -->
     <string name="heads_about">%1$s, Kelo looks at new mail, upcoming events and deadlines, and tells you first when there is something you should know. Things you need to answer (approvals, questions) are asked again under “%2$s”, whatever this is set to.</string>
+    <!-- newer servers (GET /api/proactive has "send_times"): %1$s = the daily cap's label (heads_per_day), %2$s = the follow-ups section's title (followup_settings_title) -->
+    <string name="heads_about_send_times">Every hour in your message hours, Kelo checks new mail and your connected services and tells you at once about anything that can’t wait. The rest waits for the send times, when Kelo also goes over your conversations, calendar, goals, schedules and memory. One send counts once toward “%1$s”, however much it brings. Once the day’s are used up, only what can’t wait reaches you. Things you need to answer (approvals, questions) are asked again under “%2$s”, whatever this is set to.</string>
     <string name="heads_per_day">At most per day</string>
+    <string name="heads_send_times">Send times: %1$s</string>
     <string name="heads_mail">Look at new mail too</string>
     <string name="heads_mail_about">Off: Kelo does not open your mailboxes for this check; schedules and deadlines are still checked. The morning briefing chooses its own mailboxes.</string>
     <string name="heads_list_title">Things to keep an eye on</string>
-    <string name="heads_list_about">Optional. Kelo looks at these each time and tells you only when something needs your attention.</string>
+    <string name="heads_list_about">Optional. When you add one, Kelo gives it the timing it needs: its own check if it needs one, otherwise a look at your send times. You hear only when something needs your attention.</string>
     <string name="heads_list_hint">e.g. Delivery notices that came in today</string>
     <string name="heads_list_add">Add</string>
     <string name="heads_list_remove">Remove %1$s</string>
+    <string name="heads_list_own">Checked separately · %1$s</string>
     <plurals name="heads_times">
         <item quantity="one">%d time</item>
         <item quantity="other">%d times</item>

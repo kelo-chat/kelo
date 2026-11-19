@@ -233,6 +233,22 @@ def handover_note(outcome: str, host: str, minutes: int = 0) -> str:
     return f"[The human check on {site} was not solved (the task is stopping). {away}{site} could not be used.]"
 
 
+def signed_out_note(site: str, login: str, *, job: bool, minutes: int) -> str:
+    """What the agent is told when a site refuses a browser that is not signed in to it: the next step is the sign-in (brief B2)."""
+    head = (f"[{site} refused Kelo's browser, and Kelo's browser is not signed in to {site}. Sites often refuse a browser that is not "
+            "signed in, so the next step is to sign in: do not retry the page, switch the view or use another address. ")
+    if login:
+        how = (f"A saved login exists: open {site}'s home page, follow the site's own sign-in link and call browser_login(name={login!r}). ")
+    elif job:
+        how = (f"No login is saved for {site} and nobody can sign in during this job: report that Kelo's browser needs to be signed in "
+               f"to {site} once, and do not use {site} again in this job. ")
+    else:
+        how = (f"No login is saved for {site}: ask the user to save one (request_login) or to sign in once themselves by taking over "
+               "the browser. ")
+    return head + how + (f"For the next {minutes} minutes Kelo's browser loads {site} only to sign in; after the sign-in succeeds, "
+                         "start again from the site's home page.]")
+
+
 def blocked_note(host: str, why: str, *, job: bool | None = None, count: int = 1, second: bool = False) -> str:
     """What the agent is told when a site answers with an access-denied page."""
     site = host or "the site"
@@ -246,21 +262,12 @@ def blocked_note(host: str, why: str, *, job: bool | None = None, count: int = 1
         is_job = bool(job)
 
     if is_job:
-        if count >= 3:
-            return (f"[This site ({site}) is blocking Kelo's browser: it answered {why}. It keeps blocking even after clearing cookies. "
-                    "Do not retry again. Call report(status='blocked', summary=...) without retry_after_min, explaining that the site does not let Kelo's browser in right now. "
-                    "Do not open or click on it again.]")
-        if second or count >= 2:
-            return (f"[This site ({site}) is blocking Kelo's browser: it answered {why}. It keeps blocking after the automatic retry. "
-                    "Do not retry again. Call report(status='needs_input', summary=...) explaining that the site keeps blocking Kelo's browser, "
-                    "and ask the user whether to clear that site's cookies and try again (signing in again will be needed). "
-                    "Do not open or click on it again.]")
-        return (f"[This site ({site}) is blocking Kelo's browser: it answered {why}. Do not retry the same click or search. "
-                "Stop trying on this site and call report(status='blocked', summary=..., retry_after_min=10) so the job will "
-                "automatically retry once after 10 minutes.]")
+        return (f"[This site ({site}) is blocking Kelo's browser: it answered {why}. Stop on this site: do not retry, "
+                f"open another address of it or switch to its mobile site. Call report(status='blocked', reason='site_refused', "
+                f"summary=...) saying what you could not do there; the user can take over the browser to sign in or get past it.]")
 
-    return (f"[This site ({site}) is blocking Kelo's browser: it answered {why}. Do not retry the same click or search. "
-            "Tell the user the site is blocking Kelo's browser right now, and offer to retry in 10 minutes as a background job.]")
+    return (f"[This site ({site}) is blocking Kelo's browser: it answered {why}. Do not retry. "
+            f"Tell the user plainly that it refused Kelo's browser and that they can take over the browser to sign in or get past it.]")
 
 
 def blocked_again_note(host: str) -> str:

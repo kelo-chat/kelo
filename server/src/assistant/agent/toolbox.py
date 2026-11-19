@@ -30,8 +30,9 @@ from .loop import Tool, current_box
 # click (checkout_review and checkout_submit: kept in the core so they can never be skipped for want of loading them) and the start of an order the user asked
 # for (begin_order: the one-card order path), handing off long work (delegate),
 # a background job's final report and progress line, the reaction on the user's message (react), the weather (so a weather question never opens a
-# browser), and find_tools itself. Rare ones load with find_tools (the prompt diet, 2026-11-11): browser_click_at, browser_drag (points of
-# a browser_look picture: canvas, maps, sliders), browser_view (desktop / phone view) and places_near; browser_look names the first two.
+# browser), the list of what Kelo keeps for the owner (follow_list: a question about an item or a date on it), and find_tools itself. Rare ones load with find_tools (the prompt diet, 2026-11-11): browser_click_at, browser_drag (points of
+# a browser_look picture: canvas, maps, sliders) and places_near; browser_look names the first two.
+# start_voice_call (ring the owner's app for a call with Kelo) is core too: a call request must never hinge on find_tools picking it over phone_call.
 CORE_TOOLS: frozenset[str] = frozenset({
     "find_tools", "quick_replies", "await_reply",
     "read_file", "write_file", "list_files", "read_skill",
@@ -39,7 +40,7 @@ CORE_TOOLS: frozenset[str] = frozenset({
     "browser_open", "browser_read", "browser_click", "browser_type", "browser_login", "browser_look",
     "vault_status", "request_login", "connect_service", "add_service_key",
     "begin_order", "checkout_review", "checkout_submit", "delegate", "report", "job_progress", "remember", "react",
-    "weather", "recheck_later", "kelo_help", "read_earlier_messages",
+    "weather", "start_voice_call", "kelo_help", "read_earlier_messages", "follow_list",   # start_voice_call: never hidden behind find_tools (call_tools.py)
     "set_owner_settings", "finish_first_chat",   # shown only during the first conversation (first_chat.py: the gate hides them after)
     "action_result",   # shown only while a step's result is unknown (done_once.py: the gate hides it otherwise)
 })

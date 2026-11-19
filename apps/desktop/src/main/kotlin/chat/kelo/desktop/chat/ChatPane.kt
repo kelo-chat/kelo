@@ -48,7 +48,10 @@ import chat.kelo.app.chat.ChatScreenHooks
 import chat.kelo.app.chat.ChatViewModel
 import chat.kelo.app.LocalAppServices
 import chat.kelo.app.my.NoticesRules
+import chat.kelo.app.voice.ComposerVoice
+import chat.kelo.app.voice.ServerMicController
 import chat.kelo.app.voice.ServerMicHost
+import chat.kelo.app.voice.VoiceApi
 import chat.kelo.app.voice.VoiceModel
 import chat.kelo.desktop.core.DesktopRecorder
 import chat.kelo.app.core.Profile
@@ -108,9 +111,20 @@ fun ChatPane(
     }
     val recorder = remember { DesktopRecorder() }
     LaunchedEffect(sessions) { voice.refresh() }
-    val hooks = remember(model, side, fileLabel, fileHint, onOpenConnector, sessions, voice, recorder) {
+    // the recording: the controller records and transcribes, the composer's voice puts the words where the caret was (and sends on ↑)
+    val composerRef = remember { arrayOfNulls<ComposerVoice>(1) }
+    val dictation = remember(recorder, sessions) {
+        ServerMicController(
+            recorder, { sessions.api.value?.let(::VoiceApi) }, voiceScope,
+            onBegin = { composerRef[0]?.begin() },
+            onText = { words, after -> composerRef[0]?.deliver(words, after) },
+        )
+    }
+    val composerVoice = remember(dictation) { ComposerVoice(listOf(dictation)).also { composerRef[0] = it } }
+    val hooks = remember(model, side, fileLabel, fileHint, onOpenConnector, sessions, voice, recorder, dictation, composerVoice) {
         ChatScreenHooks(
-            mic = { field, setField -> ServerMicHost(recorder, voice, { sessions.api.value }, field, setField) },
+            mic = { _, _ -> ServerMicHost(dictation, voice) },
+            voice = composerVoice,
             addEntries = listOf(AddEntry("file", KeloIcons.File, fileLabel, fileHint) { pickFiles().forEach(model::attachFile) }),
             // Ctrl+V / Cmd+V with a picture on the clipboard: it is attached; text still pastes as text
             fieldModifier = Modifier.onPreviewKeyEvent { e ->

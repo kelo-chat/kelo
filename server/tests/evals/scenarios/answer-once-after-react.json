@@ -1,0 +1,65 @@
+{
+  "name": "answer-once-after-react",
+  "about": "After the answer is written, react is the last call and the reply is not restated (2026-11-18, restated answer).",
+  "profile": {
+    "model": "scripted"
+  },
+  "user": [
+    "Mark all my mail as read"
+  ],
+  "model": [
+    [
+      {
+        "tool": "email_update",
+        "args": {
+          "action": "read"
+        }
+      }
+    ],
+    [
+      {
+        "text": "Marked 12 as read."
+      },
+      {
+        "tool": "react",
+        "args": {
+          "emoji": "✅"
+        }
+      }
+    ],
+    [
+      {
+        "text": "All 12 are read now."
+      }
+    ]
+  ],
+  "tools": {
+    "email_update": {
+      "real_schema": true,
+      "result": "Marked 12 messages read."
+    },
+    "react": {
+      "description": "Put one emoji on the user's message. Call it last, once your answer is written.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "description": "one emoji"
+          }
+        },
+        "required": [
+          "emoji"
+        ]
+      },
+      "result": "✅ goes on the user's message. If your answer is written, stop here: more text would repeat it.",
+      "closes_reply": true
+    }
+  },
+  "expect": {
+    "model_calls": 2,
+    "reply_not_contains": [
+      "All 12 are read now"
+    ]
+  }
+}

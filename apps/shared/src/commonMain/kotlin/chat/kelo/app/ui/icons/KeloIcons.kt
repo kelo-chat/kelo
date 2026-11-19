@@ -6,6 +6,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.graphics.vector.group
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 /**
@@ -43,7 +45,26 @@ object KeloIcons {
             "M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3")
     }
     val File by lazy { stroke("file", "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z", "M14 3v5h5M9 13h6M9 17h6") }
+    val Handset by lazy {
+        stroke("handset", "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z")
+    }
+    val HandsetDown: ImageVector by lazy {
+        ImageVector.Builder("handset-down", 24.dp, 24.dp, 24f, 24f).apply {
+            group(name = "rot", rotate = 135f, pivotX = 12f, pivotY = 12f) {
+                addPath(
+                    pathData = addPathNodes("M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"),
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = 1.8f,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+            }
+        }.build()
+    }
     val Mic by lazy { stroke("mic", rect(9f, 2f, 6f, 12f, 3f), "M5 11a7 7 0 0 0 14 0M12 18v4") }
+    val MicOff by lazy {
+        stroke("mic-off", "M2 2l20 20", "M18.89 13.23A7.12 7.12 0 0 0 19 12v-2", "M5 10v2a7 7 0 0 0 12 5", "M15 9.34V5a3 3 0 0 0-5.68-1.33", "M9 9v3a3 3 0 0 0 5.12 2.12", "M12 19v3")
+    }
     val Spark by lazy { stroke("spark", "m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z") }
     val Check by lazy { stroke("check", "m5 12.5 4.5 4.5L19 7.5") }
     val ArrowDown by lazy { stroke("arrow-down", "M12 5v14M5 12l7 7 7-7") }
@@ -53,7 +74,19 @@ object KeloIcons {
     val Receipt by lazy { stroke("receipt", "M6 3h12v18l-3-2-3 2-3-2-3 2V3Z", "M9 8h6M9 12h6") }
     val Close by lazy { stroke("close", "M6 6l12 12M18 6 6 18") }
 
+    /** A filled square: the stop of the composer and of the recording bar (Kelo's own shape, a rounded square). */
+    val StopFilled: ImageVector by lazy {
+        ImageVector.Builder("stop-filled", 24.dp, 24.dp, 24f, 24f).apply {
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(8f, 7f); lineTo(16f, 7f); quadTo(17f, 7f, 17f, 8f); lineTo(17f, 16f); quadTo(17f, 17f, 16f, 17f)
+                lineTo(8f, 17f); quadTo(7f, 17f, 7f, 16f); lineTo(7f, 8f); quadTo(7f, 7f, 8f, 7f); close()
+            }
+        }.build()
+    }
+
     val Copy by lazy { stroke("copy", rect(9f, 9f, 11f, 11f, 2f), "M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1") }
+    /** A keyboard (shows or hides the keyboard for the page in the live view); Lucide's keyboard */
+    val Keyboard by lazy { stroke("keyboard", rect(2f, 4f, 20f, 16f, 2f), "M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10") }
     val Paste by lazy { stroke("paste", rect(8f, 2f, 8f, 4f, 1f), "M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2") }
     val Share by lazy { stroke("share", "M12 3v12M7 8l5-5 5 5", "M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6") }
     val Speaker by lazy { stroke("speaker", "M11 5 6 9H2v6h4l5 4V5Z", "M15.5 8.5a5 5 0 0 1 0 7", "M19 5a9 9 0 0 1 0 14") }

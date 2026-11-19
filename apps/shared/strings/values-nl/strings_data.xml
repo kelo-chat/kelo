@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- nl text for strings_data.xml (edit freely, keep the names) -->
+<!-- nl text for strings_data.xml (generated from values/strings_data.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="data_title">Jouw gegevens</string>
     <string name="data_intro">Haal een kopie op van wat Kelo over jou bewaart, neem herinneringen mee van een andere assistent of begin opnieuw.</string>

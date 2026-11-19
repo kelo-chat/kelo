@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- tr text for strings_job_retry.xml (generated from values/strings_job_retry.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- A job waiting to try again (work/RetryRules.kt): the chip and the status line. "%1$s" = the time or the date. -->
     <string name="work_job_waiting">Yeniden deneme planlandı</string>
     <string name="work_job_retry_at">Yeniden deneme planlandı · %1$s</string>
     <string name="work_job_retry_tomorrow">Yeniden deneme planlandı · yarın %1$s</string>

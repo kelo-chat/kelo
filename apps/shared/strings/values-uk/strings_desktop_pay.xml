@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- uk text for strings_desktop_pay.xml (generated from values/strings_desktop_pay.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_pin_allow_note">Якщо дозволити, телефон запитає, чи надіслати збережений для цього сайту PIN-код оплати. Підтвердьте це на телефоні.</string>
     <string name="desktop_pin_need_body">Відкрийте застосунок Kelo на телефоні, щоб один раз надіслати PIN «%1$s» для оплати на %2$s (%3$s).</string>

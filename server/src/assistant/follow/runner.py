@@ -443,6 +443,8 @@ class FollowRunner:
             self._found_at = cur_now
             new_items = await self.finder.find(cur_now)
         for it in new_items:
+            if any(self.store.is_removed(k, it.starts_at) for k in [it.key, *it.aliases]):
+                continue   # the owner took it off the list: the calendar still shows it, but it is not put back
             same = self.store.find_same(it)   # the same real-world thing, found through another source or under another key
             if same is not None and same["key"] != it.key:
                 self.store.add_aliases(same["key"], [it.key, *it.aliases])

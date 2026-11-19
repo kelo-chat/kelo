@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The desktop's live view lines for the computer's own VNC screen (paste key, copied notice, typing hint). -->
+<!-- pl text for strings_desktop_live.xml (generated from values/strings_desktop_live.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="desktop_live_paste">Wklej z tego komputera</string>
     <string name="desktop_live_copied">Skopiowano na ten komputer</string>

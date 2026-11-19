@@ -58,6 +58,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import chat.kelo.app.agent.AgentSubPage
 import chat.kelo.app.agent.AgentViewModel
 import chat.kelo.app.agent.BuyReady
+import chat.kelo.app.agent.DryRun
+import chat.kelo.app.agent.LastCheck
 import chat.kelo.app.agent.Watcher
 import chat.kelo.app.agent.WatcherEvent
 import chat.kelo.app.agent.dayClockText
@@ -166,12 +168,12 @@ fun WatcherPage(vm: AgentViewModel, id: Long, onBack: () -> Unit) {
                 if (w.once) Fact(string(Res.string.work_watch_once), string(Res.string.work_watch_once_yes))
                 w.note?.takeIf { it.isNotBlank() }?.let { Fact(string(Res.string.work_watch_note), it) }
             }
-            w.dryRun?.let { d ->
+            watchLastResult(w)?.let { d ->
                 Label(string(Res.string.work_watch_last_check))
                 Panel {
                     Text(
-                        d.detail?.ifBlank { null } ?: d.error?.ifBlank { null } ?: d.value.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium, color = if (d.ok) c.ink else c.danger,
+                        d.text,
+                        style = MaterialTheme.typography.bodyMedium, color = if (d.isError) c.danger else c.ink,
                     )
                     d.at?.let { Text(dayClockText(it), style = MaterialTheme.typography.labelSmall, color = c.muted) }
                 }
@@ -195,6 +197,9 @@ fun WatcherPage(vm: AgentViewModel, id: Long, onBack: () -> Unit) {
                                 Text(eventWord(e.kind), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold,
                                     color = if (e.kind == "fired") c.success else if (e.kind == "error") c.danger else c.muted)
                                 Text(if (e.at > 0) dayClockText(e.at) else "", style = MaterialTheme.typography.labelSmall, color = c.muted)
+                                if (e.kind == "checked" && e.count > 1) {
+                                    Text(string(Res.string.work_watch_ev_count, e.count), style = MaterialTheme.typography.labelSmall, color = c.muted)
+                                }
                             }
                             val line = e.detail?.ifBlank { null } ?: e.value
                             if (!line.isNullOrBlank()) Text(line, style = MaterialTheme.typography.bodySmall, color = c.ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -247,7 +252,7 @@ private fun eventWord(kind: String): String = string(
     when (kind) {
         "fired" -> Res.string.work_watch_ev_fired
         "error" -> Res.string.work_watch_ev_error
-        "dry_run" -> Res.string.work_watch_ev_check
+        "dry_run", "checked" -> Res.string.work_watch_ev_check
         "enabled" -> Res.string.work_watch_ev_on
         "disabled" -> Res.string.work_watch_ev_off
         else -> Res.string.work_watch_ev_check
@@ -432,3 +437,30 @@ fun SwipeToTrash(onSwiped: () -> Unit, content: @Composable () -> Unit) {
         },
     ) { content() }
 }
+
+data class WatchLastResult(
+    val text: String,
+    val at: Double?,
+    val isError: Boolean,
+)
+
+fun watchLastResult(dryRun: DryRun?, lastCheck: LastCheck?): WatchLastResult? {
+    val dryAt = dryRun?.at ?: Double.NEGATIVE_INFINITY
+    val checkAt = lastCheck?.at ?: Double.NEGATIVE_INFINITY
+    return when {
+        lastCheck != null && checkAt >= dryAt -> {
+            val text = lastCheck.detail?.ifBlank { null } ?: lastCheck.error?.ifBlank { null } ?: lastCheck.value.orEmpty()
+            val isError = !lastCheck.error.isNullOrBlank()
+            WatchLastResult(text = text, at = lastCheck.at, isError = isError)
+        }
+        dryRun != null -> {
+            val text = dryRun.detail?.ifBlank { null } ?: dryRun.error?.ifBlank { null } ?: dryRun.value.orEmpty()
+            val isError = !dryRun.ok || !dryRun.error.isNullOrBlank()
+            WatchLastResult(text = text, at = dryRun.at, isError = isError)
+        }
+        else -> null
+    }
+}
+
+fun watchLastResult(w: Watcher): WatchLastResult? = watchLastResult(w.dryRun, w.lastCheck)
+

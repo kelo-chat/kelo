@@ -1,5 +1,5 @@
 """The owner's "do not tell me" rules, read by the main model (docs/no-word-lists.md, hc-rest). The owner's saved NOTIFY_PREFS text
-and the text of an item (a follow-up, a re-check, a follow-through item, a proactive candidate) go to ONE request of the owner's main
+and the text of an item (a follow-up, a follow-through item, a proactive candidate) go to ONE request of the owner's main
 model; strict JSON {"blocked": [true|false, ...]}, one entry per item in the order given. No heading name and no keyword is read in
 code. Asked only when the saved rules hold a line that is not a heading, blank or the unedited template. Cached per rules + item.
 The answer for an item is True (blocked), False, or None (unknown: no model, an error, any other shape): the callers then do not tell

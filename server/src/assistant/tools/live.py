@@ -16,7 +16,8 @@ nothing queues up behind it (at most one frame waits, and it is replaced by a ne
 Control: a device takes a tab (`take`); only that device may send input; it keeps the tab while it has a live-view connection open
 or has sent something in the last `CONTROL_GRACE` seconds, else the tab goes back to the agent. Coordinates come in frame pixels
 (the JPEG the phone shows) and are turned into CSS pixels of the viewport with the frame's own metadata (see `map_point`).
-Typed text is never logged or kept.
+Typed text is never logged or kept. Live typing (LIVE_V 3): the `edit` input turns the owner's keyboard changes (composition, text, Backspace,
+keys) into Input.imeSetComposition / insertText / key events on the tab, so the page shows each keystroke and each syllable as it forms.
 """
 
 from __future__ import annotations
@@ -24,8 +25,10 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import hashlib
 import logging
 import math
+import os
 import secrets
 import time
 from collections.abc import Awaitable, Callable, Iterable
@@ -60,21 +63,28 @@ WATCH_EVERY = 1.0
 SECURE_EVERY = 1.0         # a browser tab is looked at for a password or card field at most this often (Cast.secure is kept between)
 BUSY_NOTE = "the page is not responding"
 POINTER_EVERY = 0.05       # the agent's pointer goes out at most 20 times a second (PointerThrottle); a press or release always at once
-LIVE_V = 2                 # the live protocol version in every frame header (see docs/versioning.md): 2 = `view`, `frame_seq`, `editing`
+LIVE_V = 3                 # the live protocol version in every frame header (see docs/versioning.md): 2 = `view`, `frame_seq`, `editing`;
+                           # 3 = live typing: the `edit` input, `kind` and `field` of the focused field
 RECENT_FRAMES = 8          # frames whose size and metadata are kept, so an input is mapped with the frame the owner was looking at
-FLOOR_DESKTOP, FLOOR_MOBILE = 500, 320   # narrowest page (CSS px) the owner's screen may ask of a tab in each view: narrower is scaled up
+FLOOR_DESKTOP = 500          # narrowest page (CSS px) the owner's screen may ask of a tab: narrower is scaled up
 MAX_VIEW_W, MAX_VIEW_H = 1920, 4000      # widest and tallest page (CSS px) the owner's screen may ask of a tab
 EDITING_EVERY = 0.5        # a controlled tab is looked at for a focused text field at most this often (Cast.editing is kept between)
 SETTLE_AFTER = 0.25        # seconds without input after which the controlled tab gets a sharp picture (see LiveHub._settle)
 SETTLE_QUALITY = 85        # JPEG quality of that sharp picture (the live view itself uses the viewer's quality, 40..80)
 PRESS_AFTER_MOVE = 0.025   # a tap moves the pointer, waits this long, then presses: pages that react to the hover first see the press
-OWNER_TOUCH_ID = 2         # the agent's touches use id 1 (BrowserSession._tap): the user's can never be mistaken for a half-finished one
-
 # key -> (windowsVirtualKeyCode, text it types)
 KEYS: dict[str, tuple[int, str]] = {"Enter": (13, "\r"), "Backspace": (8, ""), "Tab": (9, ""), "Escape": (27, ""),
                                     "ArrowLeft": (37, ""), "ArrowUp": (38, ""), "ArrowRight": (39, ""), "ArrowDown": (40, ""),
                                     "Delete": (46, ""), "Home": (36, ""), "End": (35, ""), "PageUp": (33, ""), "PageDown": (34, "")}
-INPUT_TYPES = ("tap", "long_press", "scroll", "text", "key", "back", "forward", "reload")
+INPUT_TYPES = ("tap", "long_press", "scroll", "text", "key", "back", "forward", "reload", "edit")
+POKE_FIRST, POKE_SECOND = 0.06, 0.25   # looks at the focused field after a pointer release (poke_editing)
+EDITING_KINDS = ("secret", "number", "tel", "email", "url", "search", "multiline", "text")
+EDIT_MAX_STEPS = 64        # steps in one `edit` event
+EDIT_MAX_BACK = 200        # Backspaces in one `back` step
+COMPOSE_MAX = 200          # characters of one composition
+# KELO_LIVE_COMPOSE=0 turns every `compose` step into delete-and-retype (committed text and Backspace), for a site that misbehaves with a
+# real composition (Input.imeSetComposition is marked experimental in the DevTools protocol)
+COMPOSE_ON = os.environ.get("KELO_LIVE_COMPOSE", "1").strip() != "0"
 
 
 class LiveError(Exception):
@@ -99,12 +109,15 @@ class Frame:
     meta: dict[str, Any]
     secure: bool | None = None   # a secret field (password, card, one-time code) shows: None = not said (old frame)
     editing: bool = False        # a text field has focus on the page (the app may raise the keyboard)
+    kind: str = "text"           # what keyboard it fits (see EDITING_JS)
+    field_id: str = ""           # an opaque id of the focused field (8 hex), "" when none
+    live_v: int = LIVE_V         # a phone-device take-over says 2: its typing is the device's own (no `edit` input there)
 
     def header(self) -> dict[str, Any]:
         m = self.meta
         out = {"type": "frame", "seq": self.seq, "w": self.w, "h": self.h, "ts": round(self.ts, 3), "url": self.url, "title": self.title,
-               "bytes": len(self.jpeg), "css_w": m.get("deviceWidth"), "css_h": m.get("deviceHeight"), "live_v": LIVE_V,
-               "editing": self.editing}
+               "bytes": len(self.jpeg), "css_w": m.get("deviceWidth"), "css_h": m.get("deviceHeight"), "live_v": self.live_v,
+               "editing": self.editing, "kind": self.kind, "field": self.field_id}
         if self.secure is not None:
             out["secure"] = self.secure   # new and optional (see LIVE VIEW API in server.py)
         return out
@@ -170,11 +183,11 @@ def jpeg_size(data: bytes) -> tuple[int, int]:
         return 0, 0
 
 
-def viewer_css_size(width: Any, height: Any, density: Any, view: str = "desktop") -> tuple[int, int, float] | None:
+def viewer_css_size(width: Any, height: Any, density: Any) -> tuple[int, int, float] | None:
     """What the owner's screen asks of a tab: (CSS width, CSS height, device pixel ratio) for a live area of `width` x `height` physical
     pixels at `density` (the screen's pixels per CSS pixel), or None when the numbers are not usable. The page is laid out as wide as
     the screen is in CSS pixels (physical / density), so one picture pixel is about one dp and a finger covers a finger-sized target.
-    A screen narrower than the floor of the view (800 CSS px desktop, 320 mobile) is scaled up to it, keeping its shape; one wider or taller
+    A screen narrower than the floor (FLOOR_DESKTOP CSS px) is scaled up to it, keeping its shape; one wider or taller
     than MAX_VIEW_W x MAX_VIEW_H is scaled down. The ratio keeps the picture as sharp as the screen is."""
     def num(v: Any) -> float | None:
         return float(v) if not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v) and v > 0 else None
@@ -184,9 +197,8 @@ def viewer_css_size(width: Any, height: Any, density: Any, view: str = "desktop"
         return None
     d = min(8.0, d)
     cw, ch = w / d, h / d
-    floor = FLOOR_MOBILE if view == "mobile" else FLOOR_DESKTOP
-    if cw < floor:
-        ch, cw = ch * floor / cw, float(floor)
+    if cw < FLOOR_DESKTOP:
+        ch, cw = ch * FLOOR_DESKTOP / cw, float(FLOOR_DESKTOP)
     over = max(cw / MAX_VIEW_W, ch / MAX_VIEW_H, 1.0)
     cw, ch = cw / over, ch / over
     return max(1, round(cw)), max(1, round(ch)), round(w / cw, 3)
@@ -282,6 +294,10 @@ class Cast:
     editing: bool = False         # a text field has focus (looked at only while a device controls the tab)
     editing_at: float | None = None
     editing_busy: bool = False
+    kind: str = "text"            # what keyboard the focused field fits (EDITING_JS), and an opaque id of the field
+    field_id: str = ""
+    editing_wake: asyncio.Event = field(default_factory=asyncio.Event)   # set whenever editing, kind or field change (the meta pump waits on it)
+    composing: str = ""          # the composition the owner's keyboard shows in the page now (memory only, never logged): committed when the hold ends
     settle_task: asyncio.Task[Any] | None = None   # the sharp picture due SETTLE_AFTER the owner's last input (one at a time)
 
 
@@ -306,18 +322,98 @@ SECURE_JS = """(() => {
 })()"""
 
 
-# A focused text field: an input that takes text (not a button, box or slider), a textarea or an editable region.
+# A focused text field: an input that takes text (not a button, box or slider), a textarea or an editable region. Answers
+# {editing, kind, field}: `kind` is what keyboard fits (secret | number | tel | email | url | search | multiline | text) and `field` an
+# opaque description of the field (tag, type, name, id, autocomplete, place) that the server hashes: the app tells a move to another field
+# from it. Never the value. A focused frame of another site cannot be looked into: it counts as a text field (better a keyboard too many
+# than a card form with none). No global, no property on a page object, no change to the page.
 EDITING_JS = """(() => {
+  const no = {editing: false, kind: 'text', field: ''};
+  const rect = (el) => { const r = el.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round).join(','); };
   let el = document.activeElement;
-  while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
-  if (!el) return false;
-  if (el.isContentEditable) return true;
-  if (el.tagName === 'TEXTAREA') return !el.readOnly && !el.disabled;
-  if (el.tagName !== 'INPUT') return false;
+  for (let n = 0; n < 8 && el; n++) {
+    if (el.shadowRoot && el.shadowRoot.activeElement) { el = el.shadowRoot.activeElement; continue; }
+    if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+      let d = null;
+      try { d = el.contentDocument; } catch (e) { d = null; }
+      if (d && d.activeElement) { el = d.activeElement; continue; }
+      if (!d) return {editing: true, kind: 'text', field: 'frame:' + rect(el)};
+    }
+    break;
+  }
+  if (!el) return no;
+  const attr = (n) => (el.getAttribute && el.getAttribute(n) || '').trim().toLowerCase();
   const t = (el.type || 'text').toLowerCase();
-  if (['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'range', 'color', 'hidden'].includes(t)) return false;
-  return !el.readOnly && !el.disabled;
+  let kind = 'text';
+  if (el.isContentEditable) kind = 'multiline';
+  else if (el.tagName === 'TEXTAREA') { if (el.readOnly || el.disabled) return no; kind = 'multiline'; }
+  else if (el.tagName === 'INPUT') {
+    if (['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'range', 'color', 'hidden'].includes(t)) return no;
+    if (el.readOnly || el.disabled) return no;
+    const ac = attr('autocomplete'), im = attr('inputmode');
+    if (t === 'password' || ac.startsWith('cc-') || ac === 'one-time-code') kind = 'secret';
+    else if (t === 'number' || im === 'numeric' || im === 'decimal') kind = 'number';
+    else if (t === 'tel' || im === 'tel') kind = 'tel';
+    else if (t === 'email' || im === 'email') kind = 'email';
+    else if (t === 'url' || im === 'url') kind = 'url';
+    else if (t === 'search' || im === 'search') kind = 'search';
+  } else return no;
+  return {editing: true, kind: kind, field: [el.tagName, t, attr('name'), el.id || '', attr('autocomplete'), rect(el)].join('|')};
 })()"""
+
+
+async def _key(send: Callable[[str, dict[str, Any]], Awaitable[Any]], name: str) -> None:
+    """One named key, pressed and released (Enter types its carriage return)."""
+    code, text = KEYS[name]
+    base = {"key": name, "code": name, "windowsVirtualKeyCode": code, "nativeVirtualKeyCode": code}
+    await send("Input.dispatchKeyEvent", {"type": "keyDown" if text else "rawKeyDown", **base, **({"text": text} if text else {})})
+    await send("Input.dispatchKeyEvent", {"type": "keyUp", **base})
+
+
+def _bad(message: str) -> LiveError:
+    return LiveError(422, "bad_event", message)
+
+
+def _whole(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def parse_edit(ev: dict[str, Any]) -> list[tuple[Any, ...]]:
+    """The steps of an `edit` event, all checked before any runs: ("text", s) ("compose", s, cursor) ("back", n) ("key", name).
+    Never puts typed text into an error message."""
+    raw = ev.get("steps")
+    if not isinstance(raw, list) or not raw or len(raw) > EDIT_MAX_STEPS:
+        raise _bad(f"steps must be a list of 1..{EDIT_MAX_STEPS} steps")
+    out: list[tuple[Any, ...]] = []
+    for st in raw:
+        if not isinstance(st, list) or not st or not isinstance(st[0], str):
+            raise _bad("a step is a list that starts with its name")
+        op = st[0]
+        if op == "text" and len(st) == 2:
+            t = st[1]
+            if not isinstance(t, str) or not 1 <= len(t) <= MAX_TEXT or any(ord(c) < 32 for c in t):
+                raise _bad(f"text must be 1..{MAX_TEXT} characters without control characters")
+            out.append(("text", t))
+        elif op == "compose" and len(st) in (2, 3):
+            t = st[1]
+            if not isinstance(t, str) or len(t) > COMPOSE_MAX or any(ord(c) < 32 for c in t):
+                raise _bad(f"compose must be 0..{COMPOSE_MAX} characters without control characters")
+            n16 = len(t.encode("utf-16-le")) // 2
+            cur = st[2] if len(st) == 3 else n16
+            if not _whole(cur) or not 0 <= cur <= n16:
+                raise _bad("the compose cursor must be inside the text")
+            out.append(("compose", t, cur))
+        elif op == "back" and len(st) == 2:
+            if not _whole(st[1]) or not 1 <= st[1] <= EDIT_MAX_BACK:
+                raise _bad(f"back must be 1..{EDIT_MAX_BACK}")
+            out.append(("back", st[1]))
+        elif op == "key" and len(st) == 2:
+            if st[1] not in KEYS:
+                raise _bad(f"key must be one of: {', '.join(KEYS)}")
+            out.append(("key", st[1]))
+        else:
+            raise _bad("unknown step (text, compose, back or key)")
+    return out
 
 
 class LiveHub:
@@ -340,7 +436,6 @@ class LiveHub:
         self.book: Any = None                                 # hold_asks.HoldBook: the button holds, saved over a restart (set by server.py)
         self.asker: Any = None                                # hold_asks.HoldAsker: the idle question (set by server.py)
         self._hosts: dict[str, str] = {}                      # tab -> the host it was on when taken (named in the question when the page is gone)
-        self._fitted: dict[str, tuple[Any, bool]] = {}        # tab -> (the DevTools session holding the size override, phone view?)
         self._reaper: asyncio.Task[None] | None = None
         self._use_reaper = reaper
         self.listeners: list[Callable[[str], Any]] = []       # tab -> something about it changed (control, end)
@@ -458,6 +553,12 @@ class LiveHub:
         except Exception:  # noqa: BLE001
             await self._end(cast)
 
+    async def tab_switched(self, key: str) -> None:
+        """The active tab of this key changed (take-over): a running picture moves to the new tab at once, not at the next reap."""
+        cast = self.casts.get(key)
+        if cast is not None:
+            await self._follow(cast, self.session.raw_page(key))
+
     async def _seed(self, cast: Cast, started: float) -> None:
         """A still page paints nothing after the start: take one picture so the viewer sees it."""
         await asyncio.sleep(SEED_AFTER)
@@ -547,7 +648,7 @@ class LiveHub:
         self._look_for_editing(cast)
         async with cast.cond:
             cast.seq += 1
-            cast.frame = Frame(cast.seq, data, w, h, time.time(), url, cast.title, meta, secure=cast.secure, editing=cast.editing)
+            cast.frame = Frame(cast.seq, data, w, h, time.time(), url, cast.title, meta, secure=cast.secure, editing=cast.editing, kind=cast.kind, field_id=cast.field_id)
             cast.recent[cast.seq] = (w, h, meta)
             for old in [q for q in cast.recent if q <= cast.seq - RECENT_FRAMES]:
                 cast.recent.pop(old, None)
@@ -578,7 +679,7 @@ class LiveHub:
     def _look_for_editing(self, cast: Cast) -> None:
         """While a device controls the tab: is a text field focused? (the app raises its keyboard on it). At most one look per EDITING_EVERY."""
         if self.session.controlled_by(cast.key) is None:
-            cast.editing = False
+            cast.editing, cast.field_id = False, ""
             return
         now = self.clock()
         if cast.editing_busy or (cast.editing_at is not None and now - cast.editing_at < EDITING_EVERY):
@@ -593,12 +694,56 @@ class LiveHub:
         try:
             r = await asyncio.wait_for(cast.cdp.send("Runtime.evaluate", {"expression": EDITING_JS, "returnByValue": True}), PROBE_SECONDS)
             value = (r.get("result") or {}).get("value")
-            if not r.get("exceptionDetails") and isinstance(value, bool):
-                cast.editing = value
+            if r.get("exceptionDetails"):
+                return
+            if isinstance(value, bool):   # an older answer: only whether
+                look = (value, cast.kind, cast.field_id)
+            elif isinstance(value, dict) and isinstance(value.get("editing"), bool):
+                raw = str(value.get("field") or "")
+                kind = str(value.get("kind") or "text")
+                look = (value["editing"], kind if kind in EDITING_KINDS else "text",
+                        hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:8] if raw else "")
+            else:
+                return
+            if look != (cast.editing, cast.kind, cast.field_id):
+                cast.editing, cast.kind, cast.field_id = look
+                cast.editing_wake.set()
         except Exception:  # noqa: BLE001 - no answer: the last answer stands
             pass
         finally:
             cast.editing_busy = False
+
+    def poke_editing(self, key: str) -> None:
+        """The owner's pointer was released (or tapped) on the tab: pages focus a field on mouseup or click, some a little later, so the
+        focus is looked at again 60 ms and 250 ms from now, and a change wakes the meta pump at once (the 0.5 s poll stays the fallback)."""
+        cast = self.casts.get(key)
+        if cast is None or cast.ended or self.session.controlled_by(key) is None:
+            return
+
+        async def look() -> None:
+            for wait in (POKE_FIRST, POKE_SECOND - POKE_FIRST):
+                await asyncio.sleep(wait)
+                if cast.ended:
+                    return
+                if not cast.editing_busy:
+                    cast.editing_busy, cast.editing_at = True, self.clock()
+                    await self._refresh_editing(cast)
+
+        t = asyncio.ensure_future(look())
+        cast.tasks.add(t)
+        t.add_done_callback(cast.tasks.discard)
+
+    async def editing_changed(self, key: str, timeout: float) -> None:
+        """Wait until the focused field changes (or `timeout`): what lets the meta pump answer a focus move at once."""
+        cast = self.casts.get(key)
+        if cast is None:
+            await asyncio.sleep(timeout)
+            return
+        cast.editing_wake.clear()
+        try:
+            await asyncio.wait_for(cast.editing_wake.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
 
     @staticmethod
     async def _refresh_title(cast: Cast) -> None:
@@ -611,7 +756,7 @@ class LiveHub:
         """Is a text field focused, as of now? For a viewer whose frames are off: the frame path that normally keeps `cast.editing` fresh
         is not what it reads. Looks at most once per EDITING_EVERY (the answer kept between), and only while a device controls the tab."""
         if self.session.controlled_by(cast.key) is None:
-            cast.editing = False
+            cast.editing, cast.field_id = False, ""
             return False
         now = self.clock()
         if not cast.editing_busy and (cast.editing_at is None or now - cast.editing_at >= EDITING_EVERY):
@@ -631,7 +776,8 @@ class LiveHub:
         except Exception:  # noqa: BLE001
             url = ""
         await self._refresh_title(cast)
-        return {"url": url, "title": cast.title, "editing": await self._editing_now(cast)}
+        editing = await self._editing_now(cast)
+        return {"url": url, "title": cast.title, "editing": editing, "kind": cast.kind, "field": cast.field_id, "live_v": LIVE_V}
 
     # ------------------------------------------------------------------ the LiveSource surface (live_source.py)
     def ticket(self, key: str, device: str) -> str:
@@ -872,9 +1018,9 @@ class LiveHub:
         return True
 
     async def _hand_back(self, key: str, reason: str) -> None:
+        await self._commit_composing(key)
         hold = self.holds.get(key)
         moved = bool(hold is not None and hold.inputs)
-        await self.unfit(key)
         self._ended(key)
         await self.session.release_control(key, reason=reason, moved=moved)
         await self._drop_cdp(key)
@@ -900,7 +1046,7 @@ class LiveHub:
         """`{"type": "view", "width", "height", "density"}`: the physical size of the owner's live area and its density, sent when the
         owner starts controlling, on rotation and when the soft keyboard opens or closes. While `device` controls the tab, the tab's
         viewport follows (viewer_css_size); a `view` that comes before the control (or from a device that does not hold it) is
-        remembered and applied when it takes the tab. The agent's own size comes back with the hand-back (`unfit`)."""
+        remembered and applied when it takes the tab."""
         dims = (ev.get("width"), ev.get("height"), ev.get("density"))
         if viewer_css_size(*dims) is None:
             raise LiveError(422, "bad_event", "width, height and density must be positive numbers")
@@ -913,42 +1059,17 @@ class LiveHub:
         return {"ok": True, "applied": True, **(await self.fit(key, device))}
 
     async def fit(self, key: str, device: str) -> dict[str, Any]:
-        """Set the tab's viewport to what `device` last asked (nothing asked: nothing done). Only a phone-view tab follows the owner's
-        screen; a desktop-view tab keeps the viewport it has."""
+        """Set the tab's viewport to what `device` last asked (nothing asked: nothing done). The tab keeps its own viewport and
+        screen: only the picture is scaled for the viewer."""
         dims = self._screens.get((key, device))
         page = self.session.raw_page(key)
-        got = viewer_css_size(*dims, self.session.view(key)) if dims is not None else None
+        got = viewer_css_size(*dims) if dims is not None else None
         if got is None or page is None:
             return {}
         if self.vnc is not None and self.vnc.holds(key):   # the X screen is the size: an override at another pixel ratio would break it
             cw, ch = self.vnc.size_of(key)
             return {"css_w": cw, "css_h": ch}
-        if self.session.view(key) != "mobile":   # a desktop-view tab keeps its desktop viewport: the phone only zooms in on the picture
-            return {}
-        mobile = True
-        cdp = self.session.phone_cdp(key)
-        if cdp is None:   # no phone emulation yet: the tab's own (non-mobile) connection, as before
-            mobile = False
-            cast = self.casts.get(key)
-            cdp = cast.cdp if cast is not None and cast.page is page else await self._cdp_for(key, page)
-        cw, ch, ratio = got
-        await cdp_send(cdp, "Emulation.setDeviceMetricsOverride", {"width": cw, "height": ch, "deviceScaleFactor": ratio, "mobile": mobile,
-                                                                   "screenWidth": cw, "screenHeight": ch}, INPUT_SECONDS)
-        self._fitted[key] = (cdp, mobile)
-        return {"css_w": cw, "css_h": ch}
-
-    async def unfit(self, key: str) -> None:
-        """Give the agent its own viewport back (the phone view's screen, or the browser window's size)."""
-        got = self._fitted.pop(key, None)
-        if got is None:
-            return
-        cdp, mobile = got
-        if mobile:
-            await self.session.keep_view(key)
-            if self.vnc is not None and self.vnc.holds(key):   # the screen still shows this tab: its phone view keeps the screen's size
-                await self.session._quietly(lambda: self.vnc.reapply(key))
-        else:
-            await self.session._quietly(lambda: cdp_send(cdp, "Emulation.clearDeviceMetricsOverride", {}, 3.0))
+        return {}
 
     async def refit(self, key: str) -> None:
         """The tab takes the shape of the holder's screen again (the X screen let go of it): `fit` for the device that holds the tab."""
@@ -1018,19 +1139,7 @@ class LiveHub:
             return num("x"), num("y"), meta, int(num("frame_w", w)) or w, int(num("frame_h", h)) or h
 
         mouse = lambda typ, x, y, **kw: send("Input.dispatchMouseEvent", {"type": typ, "x": x, "y": y, **kw})  # noqa: E731
-        if kind in ("tap", "long_press") and self.session.view(key) == "mobile":
-            # the phone view emulates a touch screen: a phone site may listen to touch only, so the user's tap arrives as a touch
-            # (2026-11-10: taps in "take control" of a phone-view tab clicked nothing). Chrome makes the click out of it, as on a phone.
-            x, y, meta, fw, fh = where()
-            cx, cy = map_point(x, y, fw, fh, meta)
-            point = {"x": cx, "y": cy, "radiusX": 4, "radiusY": 4, "force": 1, "id": OWNER_TOUCH_ID}
-            await send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [point]})
-            if kind == "long_press":
-                hold = num("ms", LONG_PRESS_MS)
-                await asyncio.sleep(min(3000.0, max(300.0, hold)) / 1000)
-            await send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-            out.update(x=cx, y=cy, page=list(page_point(cx, cy, meta)), touch=True)
-        elif kind in ("tap", "long_press"):
+        if kind in ("tap", "long_press"):
             x, y, meta, fw, fh = where()
             cx, cy = map_point(x, y, fw, fh, meta)
             await mouse("mouseMoved", cx, cy)
@@ -1041,6 +1150,7 @@ class LiveHub:
                 await asyncio.sleep(min(3000.0, max(300.0, hold)) / 1000)
             await mouse("mouseReleased", cx, cy, button="left", buttons=0, clickCount=1)
             out.update(x=cx, y=cy, page=list(page_point(cx, cy, meta)))
+            self.poke_editing(key)
         elif kind == "scroll":
             w, h, meta = seen_frame()
             fw, fh = int(num("frame_w", w)) or w, int(num("frame_h", h)) or h
@@ -1059,11 +1169,16 @@ class LiveHub:
             name = str(ev.get("key") or "")
             if name not in KEYS:
                 raise LiveError(422, "bad_event", f"key must be one of: {', '.join(KEYS)}")
-            code, text = KEYS[name]
-            base = {"key": name, "code": name, "windowsVirtualKeyCode": code, "nativeVirtualKeyCode": code}
-            await send("Input.dispatchKeyEvent", {"type": "keyDown" if text else "rawKeyDown", **base, **({"text": text} if text else {})})
-            await send("Input.dispatchKeyEvent", {"type": "keyUp", **base})
+            await _key(send, name)
             out["key"] = name
+        elif kind == "edit":
+            steps = parse_edit(ev)
+            began = time.monotonic()
+            await self._edit(cast, send, steps)
+            log.debug("live edit: %d steps, %.1f ms of DevTools calls", len(steps), (time.monotonic() - began) * 1000)   # never the text
+            if any(st[0] == "key" and st[1] in ("Tab", "Enter") for st in steps):
+                self.poke_editing(key)
+            out["steps"] = len(steps)
         elif kind == "reload":
             await send("Page.reload", {})
         else:   # back / forward
@@ -1075,6 +1190,52 @@ class LiveHub:
             else:
                 out["ok"], out["note"] = False, "nothing to go " + ("back to" if kind == "back" else "forward to")
         return out
+
+    @staticmethod
+    async def _edit(cast: Cast | None, send: Callable[[str, dict[str, Any]], Awaitable[Any]], steps: list[tuple[Any, ...]]) -> None:
+        """Run the steps of one `edit` in order. `cast.composing` follows what the page shows of a composition; a step that fails leaves
+        it unknown (cleared), and the app starts its buffer again."""
+        mem = cast if cast is not None else Cast(key="", page=None, cdp=None, settings={})
+        try:
+            for step in steps:
+                op = step[0]
+                if op == "compose":
+                    text, cursor = step[1], step[2]
+                    if COMPOSE_ON:
+                        await send("Input.imeSetComposition", {"text": text, "selectionStart": cursor, "selectionEnd": cursor})
+                    else:   # delete what the last composition put in the page, type the new one as plain text
+                        for _ in range(len(mem.composing)):
+                            await _key(send, "Backspace")
+                        if text:
+                            await send("Input.insertText", {"text": text})
+                    mem.composing = text
+                elif op == "text":
+                    if not COMPOSE_ON:   # the composition was typed as text: replace it
+                        for _ in range(len(mem.composing)):
+                            await _key(send, "Backspace")
+                    await send("Input.insertText", {"text": step[1]})
+                    mem.composing = ""
+                elif op == "back":
+                    for _ in range(step[1]):
+                        await _key(send, "Backspace")
+                    mem.composing = ""
+                else:   # key
+                    await _key(send, step[1])
+                    mem.composing = ""
+        except BaseException:
+            mem.composing = ""
+            raise
+
+    async def _commit_composing(self, key: str) -> None:
+        """The hold ends while the owner's keyboard shows a half-typed syllable: what was seen stays in the page (best effort)."""
+        cast = self.casts.get(key)
+        if cast is None or not cast.composing:
+            return
+        text, cast.composing = cast.composing, ""
+        if not COMPOSE_ON:
+            return   # it was typed as plain text already
+        cdp = cast.cdp
+        await self.session._quietly(lambda: cdp_send(cdp, "Input.insertText", {"text": text}, INPUT_SECONDS))
 
     # ------------------------------------------------------------------ the agent's pointer
     def _on_pointer(self, page: Any, x: float, y: float, down: bool) -> None:
@@ -1140,13 +1301,12 @@ class LiveHub:
                 if kind == BUTTON and hold is not None:
                     hold.gone = True          # a button hold stays; the owner is asked at once (hold_asks)
                     continue
-                self._fitted.pop(key, None)
                 self._ended(key)
                 await self.session.release_control(key)
             elif hold is not None:
                 hold.gone = False
                 if kind == HANDOVER and not self._conns.get(k) and now - self._seen.get(k, now) > CONTROL_GRACE:
-                    await self.unfit(key)
+                    await self._commit_composing(key)
                     self._ended(key)
                     await self.session.release_control(key, reason="timeout")
                     await self._drop_cdp(key)
@@ -1243,7 +1403,7 @@ META_EVERY = 0.5   # seconds between two looks at the tab's address, title and f
 
 async def pump_meta(hub: Any, key: str, send: Callable[[dict[str, Any]], Awaitable[None]], gate: FrameGate, *, every: float = META_EVERY) -> None:
     """While `gate` (the viewer's frame switch) is off, tell it the tab's address and title, and whether a text field has focus
-    ({"type":"meta","url","title","editing"}), whenever any of them changes: the picture headers that normally carry them are not sent
+    ({"type":"meta","url","title","editing","kind","field","live_v"}), whenever any of them changes: the picture headers that normally carry them are not sent
     then, so its header would show the page it had when the X screen began and its keyboard would never come up. The first look after
     the switch goes off is sent at once. Nothing is sent while the gate is on (the frames carry it)."""
     last: dict[str, Any] | None = None
@@ -1258,6 +1418,14 @@ async def pump_meta(hub: Any, key: str, send: Callable[[dict[str, Any]], Awaitab
             last = meta
             await send({"type": "meta", **meta})
         try:
-            await asyncio.wait_for(gate.changed(seen), every)
+            if hasattr(hub, "editing_changed"):   # a focus move wakes it at once; the gate's own changes too
+                woke = [asyncio.ensure_future(gate.changed(seen)), asyncio.ensure_future(hub.editing_changed(key, every))]
+                try:
+                    await asyncio.wait(woke, return_when=asyncio.FIRST_COMPLETED)
+                finally:
+                    for w in woke:
+                        w.cancel()
+            else:
+                await asyncio.wait_for(gate.changed(seen), every)
         except asyncio.TimeoutError:
             pass

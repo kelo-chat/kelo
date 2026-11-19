@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">जब मेरा दिन शुरू हो (सीखा हुआ)</string>
     <string name="briefing_when_fixed">मेरे चुने समय पर</string>
     <string name="briefing_fixed_at">हर दिन %1$s</string>
+    <string name="briefing_fixed_from">%1$s से, जब आपके संपर्क के घंटे शुरू होते हैं</string>
     <string name="briefing_offset">दिन शुरू होने के कितनी देर बाद</string>
     <string name="briefing_offset_none">शुरू होते ही</string>
     <string name="briefing_offset_min">%1$d मिनट बाद</string>

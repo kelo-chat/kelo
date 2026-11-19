@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- pl text for strings_buy_ready.xml -->
+<!-- pl text for strings_buy_ready.xml (generated from values/strings_buy_ready.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="buy_ready_title">Gotowy do zakupu</string>
     <string name="buy_ready_short">Gotowy do natychmiastowego zakupu</string>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- b+zh+Hant text for strings_ai_consent.xml (edit freely, keep the names) -->
+<!-- zh-Hant text for strings_ai_consent.xml (generated from values/strings_ai_consent.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="ai_consent_title">傳送第一則訊息之前</string>
     <string name="ai_consent_body">為了回答你，Kelo 會把你的訊息以及所需內容（你附加的檔案、已連結服務的結果）傳送到你選擇的 AI 服務。</string>

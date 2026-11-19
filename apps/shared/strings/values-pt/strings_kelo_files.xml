@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- pt-BR text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Arquivos do Kelo</string>
     <string name="files_about">O que o Kelo anota para si: quem você é, sua memória, suas notas. Você pode ler, alterar e apagar. Envios e resultados têm páginas próprias.</string>

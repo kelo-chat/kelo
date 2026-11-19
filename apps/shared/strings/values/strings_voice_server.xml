@@ -14,7 +14,7 @@
     <string name="voice_server_offline">Couldn\'t reach your Kelo server to turn it into text.</string>
     <string name="voice_server_busy">Your Kelo server is busy with another recording. Try again in a moment.</string>
     <string name="voice_server_too_long">That recording is too long. Keep it under 2 minutes.</string>
-    <string name="voice_page_title">Voice input</string>
+    <string name="voice_page_title">Voice</string>
     <string name="voice_page_intro">Your voice is turned into text on your Kelo server and the text goes into the field. Nothing is sent by itself.</string>
     <string name="voice_model_in_use">Speech model in use</string>
     <string name="voice_state_off">Phone\'s own speech recognition</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Kelo\'s server speech models don\'t know this language yet, so your phone\'s own speech recognition is used.</string>
     <string name="voice_model_size">Size %1$s · memory while in use %2$s</string>
     <string name="voice_runtime_missing">Run the Kelo server installer once more to use this.</string>
+    <string name="voice_send_now">Send what you said</string>
+    <string name="voice_elapsed">Recording time %1$s</string>
 </resources>

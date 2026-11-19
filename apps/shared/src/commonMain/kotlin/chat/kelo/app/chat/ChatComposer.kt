@@ -35,6 +35,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.SideEffect
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import chat.kelo.app.voice.ComposerVoice
+import chat.kelo.app.voice.RecordingBar
+import chat.kelo.app.voice.RecordingBarRules
+import chat.kelo.app.voice.VoiceTarget
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -111,6 +121,8 @@ fun Composer(
     mic: (@Composable (field: () -> TextFieldValue, setField: (TextFieldValue) -> Unit) -> Unit)? = null,
     /** The desktop's Enter or Tab while a "/" list shows: picks its top command; true = the key was used */
     onPickTop: (() -> Boolean)? = null,
+    /** The voice of this chat: while a recording runs, the whole composer becomes the recording bar; null = no voice bar */
+    voice: ComposerVoice? = null,
 ) {
     val c = Kelo.colors
     var focused by remember { mutableStateOf(false) }
@@ -118,95 +130,106 @@ fun Composer(
     val border by androidx.compose.animation.animateColorAsState(
         if (focused) c.accent else c.line, Motion.small(LocalReduceMotion.current), label = "composer-border",
     )
+    // a TextFieldState field: the one kind that takes pictures from the keyboard (Gboard's and Samsung's clipboard screenshot above
+    // the keys), from a long-press Paste and from a drop; text put in from outside (수정해서 다시 보내기, a share) puts the cursor
+    // at its end. It is kept above the card, so the recording bar can hide it without losing the text.
+    val state = rememberTextFieldState(input)
+    LaunchedEffect(input) {
+        if (state.text.toString() != input) state.edit { replace(0, length, input); placeCursorAtEnd() }
+    }
+    LaunchedEffect(state) {
+        snapshotFlow { state.text.toString() }.collect { if (it != input) onInput(it) }
+    }
+    // the words of a recording go into this field, and "↑" sends them the way the send button does
+    SideEffect {
+        voice?.target = VoiceTarget(
+            get = { TextFieldValue(state.text.toString(), state.selection) },
+            set = { v -> state.edit { replace(0, length, v.text); selection = v.selection } },
+            send = { text -> onInput(text); if (!busy) onSend() },
+        )
+    }
+    val active = voice?.active()
+    val barOn = active != null && RecordingBarRules.showBar(active.second)
+    val reduce = LocalReduceMotion.current
     Column(
         Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = COMPOSER_TOP, bottom = 10.dp)
             .clip(RoundedCornerShape(24.dp)).background(c.card).border(1.dp, border, RoundedCornerShape(24.dp)),
     ) {
-        // a TextFieldState field: the one kind that takes pictures from the keyboard (Gboard's and Samsung's clipboard screenshot above
-        // the keys), from a long-press Paste and from a drop; text put in from outside (수정해서 다시 보내기, a share) puts the cursor
-        // at its end
-        val state = rememberTextFieldState(input)
-        LaunchedEffect(input) {
-            if (state.text.toString() != input) state.edit { replace(0, length, input); placeCursorAtEnd() }
-        }
-        LaunchedEffect(state) {
-            snapshotFlow { state.text.toString() }.collect { if (it != input) onInput(it) }
-        }
-        val muted = c.muted
-        val placeholder = string(Res.string.chat_input_placeholder)
-        val textStyle = MaterialTheme.typography.bodyLarge.copy(color = c.ink)
-        BasicTextField(
-            state = state,
-            // a little more room above the first line: the "↓" rests on the card's top-end strip and never covers the text
-            modifier = Modifier.padding(top = ChatOverlayRules.fieldTopExtra(16f).dp)
-                .fillMaxWidth().heightIn(min = 48.dp).focusRequester(focusRequester)
-                .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
-                .then(fieldModifier)
-                // the desktop sends with Enter (Shift+Enter is a new line); the phone's Enter is a new line
-                .then(if (desktop) Modifier.onPreviewKeyEvent { e ->
-                    if (e.type == KeyEventType.KeyDown && !e.isShiftPressed &&
-                        (e.key == Key.Tab || e.key == Key.Enter || e.key == Key.NumPadEnter) && onPickTop?.invoke() == true) {
-                        return@onPreviewKeyEvent true
+        AnimatedContent(
+            targetState = barOn,
+            transitionSpec = { fadeIn(Motion.small(reduce)) togetherWith fadeOut(Motion.small(reduce)) using SizeTransform(clip = false) },
+            label = "composer-recording-bar",
+        ) { recording ->
+        if (recording && active != null) {
+            RecordingBar(source = active.first, state = active.second, busy = busy)
+        } else Column {
+            val muted = c.muted
+            val placeholder = string(Res.string.chat_input_placeholder)
+            val textStyle = MaterialTheme.typography.bodyLarge.copy(color = c.ink)
+            BasicTextField(
+                state = state,
+                // a little more room above the first line: the "↓" rests on the card's top-end strip and never covers the text
+                modifier = Modifier.padding(top = ChatOverlayRules.fieldTopExtra(16f).dp)
+                    .fillMaxWidth().heightIn(min = 48.dp).focusRequester(focusRequester)
+                    .onFocusChanged { focused = it.isFocused; onFocus(it.isFocused) }
+                    .then(fieldModifier)
+                    // the desktop sends with Enter (Shift+Enter is a new line); the phone's Enter is a new line
+                    .then(if (desktop) Modifier.onPreviewKeyEvent { e ->
+                        if (e.type == KeyEventType.KeyDown && !e.isShiftPressed &&
+                            (e.key == Key.Tab || e.key == Key.Enter || e.key == Key.NumPadEnter) && onPickTop?.invoke() == true) {
+                            return@onPreviewKeyEvent true
+                        }
+                        if (e.type == KeyEventType.KeyDown && (e.key == Key.Enter || e.key == Key.NumPadEnter) && !e.isShiftPressed) {
+                            if (!busy && canSend) onSend()
+                            true
+                        } else false
+                    } else Modifier),
+                textStyle = textStyle,
+                cursorBrush = SolidColor(c.accent),
+                lineLimits = TextFieldLineLimits.MultiLine(1, 6),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                decorator = { inner ->
+                    Box(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        if (state.text.isEmpty()) Text(placeholder, style = textStyle, color = muted)
+                        inner()
                     }
-                    if (e.type == KeyEventType.KeyDown && (e.key == Key.Enter || e.key == Key.NumPadEnter) && !e.isShiftPressed) {
-                        if (!busy && canSend) onSend()
-                        true
-                    } else false
-                } else Modifier),
-            textStyle = textStyle,
-            cursorBrush = SolidColor(c.accent),
-            lineLimits = TextFieldLineLimits.MultiLine(1, 6),
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-            decorator = { inner ->
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                    if (state.text.isEmpty()) Text(placeholder, style = textStyle, color = muted)
-                    inner()
-                }
-            },
-        )
-        Row(
-            Modifier.fillMaxWidth().padding(start = 4.dp, end = 6.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            IconButton(onClick = onAttach) {
-                Icon(KeloIcons.Plus, contentDescription = string(Res.string.chat_attach), tint = c.muted)
-            }
-            // the shortcut hint only where there is room for it (a narrow window keeps the chip and the button whole)
-            if (desktop) androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                if (maxWidth > 220.dp) Text(string(Res.string.desktop_enter_hint), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 2,
-                    overflow = TextOverflow.Ellipsis)
-            }
-            // the chip takes what is left (ellipsized), so a long model name never squeezes 보내기 on a narrow screen
-            if (desktop) ModelChip(chipText, onChip, Modifier.widthIn(max = 260.dp))
-            else Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { ModelChip(chipText, onChip, Modifier.widthIn(max = 220.dp)) }
-            // the mic, left of 보내기: spoken words go into the field at the cursor
-            mic?.invoke({ TextFieldValue(state.text.toString(), state.selection) }, { v -> state.edit { replace(0, length, v.text); selection = v.selection } })
-            val sendSource = remember { MutableInteractionSource() }
-            IconButton(
-                onClick = if (busy) onStop else onSend,
-                enabled = canSend,
-                interactionSource = sendSource,
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = c.ink, contentColor = c.bg, disabledContainerColor = c.disabledFill, disabledContentColor = c.disabledInk,
-                ),
-                modifier = Modifier.pressShrink(sendSource),
+                },
+            )
+            Row(
+                Modifier.fillMaxWidth().padding(start = 4.dp, end = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Icon(
-                    if (busy) StopIcon else KeloIcons.Send,
-                    contentDescription = string(if (busy) Res.string.chat_stop else Res.string.chat_send),
-                )
+                IconButton(onClick = onAttach) {
+                    Icon(KeloIcons.Plus, contentDescription = string(Res.string.chat_attach), tint = c.muted)
+                }
+                // the shortcut hint only where there is room for it (a narrow window keeps the chip and the button whole)
+                if (desktop) androidx.compose.foundation.layout.BoxWithConstraints(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                    if (maxWidth > 220.dp) Text(string(Res.string.desktop_enter_hint), style = MaterialTheme.typography.labelSmall, color = muted, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis)
+                }
+                // the chip takes what is left (ellipsized), so a long model name never squeezes 보내기 on a narrow screen
+                if (desktop) ModelChip(chipText, onChip, Modifier.widthIn(max = 260.dp))
+                else Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { ModelChip(chipText, onChip, Modifier.widthIn(max = 220.dp)) }
+                // the mic, left of 보내기: spoken words go into the field at the cursor
+                mic?.invoke({ TextFieldValue(state.text.toString(), state.selection) }, { v -> state.edit { replace(0, length, v.text); selection = v.selection } })
+                val sendSource = remember { MutableInteractionSource() }
+                IconButton(
+                    onClick = if (busy) onStop else onSend,
+                    enabled = canSend,
+                    interactionSource = sendSource,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = c.ink, contentColor = c.bg, disabledContainerColor = c.disabledFill, disabledContentColor = c.disabledInk,
+                    ),
+                    modifier = Modifier.pressShrink(sendSource),
+                ) {
+                    Icon(
+                        if (busy) KeloIcons.StopFilled else KeloIcons.Send,
+                        contentDescription = string(if (busy) Res.string.chat_stop else Res.string.chat_send),
+                    )
+                }
             }
+        }
         }
     }
-}
-
-/** A filled square. */
-private val StopIcon: ImageVector by lazy {
-    ImageVector.Builder("stop", 24.dp, 24.dp, 24f, 24f).apply {
-        path(fill = SolidColor(Color.Black)) {
-            moveTo(8f, 7f); lineTo(16f, 7f); quadTo(17f, 7f, 17f, 8f); lineTo(17f, 16f); quadTo(17f, 17f, 16f, 17f)
-            lineTo(8f, 17f); quadTo(7f, 17f, 7f, 16f); lineTo(7f, 8f); quadTo(7f, 7f, 8f, 7f); close()
-        }
-    }.build()
 }

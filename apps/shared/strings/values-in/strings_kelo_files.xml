@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- id text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">File Kelo</string>
     <string name="files_about">Apa yang Kelo catat untuk dirinya sendiri: siapa Anda, ingatannya, catatannya. Anda bisa membaca, mengubah, dan menghapusnya. Unggahan dan hasil punya halaman sendiri.</string>

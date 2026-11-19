@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ar text for strings_call.xml (generated from values/strings_call.xml by tools/strings_sync.py; edit freely, keep the names) -->
+<resources>
+    <string name="call_button">الاتصال بـ Kelo</string>
+    <string name="call_incoming_line">يتصل بك</string>
+    <string name="call_accept">رد</string>
+    <string name="call_decline">رفض</string>
+    <string name="call_connecting">جارٍ الاتصال…</string>
+    <string name="call_listening">يستمع</string>
+    <string name="call_thinking">يفكر</string>
+    <string name="call_speaking">يتحدث</string>
+    <string name="call_muted">مكتوم</string>
+    <string name="call_mute">كتم الصوت</string>
+    <string name="call_unmute">إلغاء كتم الصوت</string>
+    <string name="call_speaker">مكبر الصوت</string>
+    <string name="call_hang_up">إنهاء المكالمة</string>
+    <string name="call_card_waiting">هناك شيء للتحقق منه على الشاشة.</string>
+    <string name="call_card_open">عرض</string>
+    <string name="call_back_to_call">العودة إلى المكالمة · %1$s</string>
+    <string name="call_offline">تعذر الاتصال بخادم Kelo. جارٍ إعادة الاتصال…</string>
+    <string name="call_ended_background">انتهت المكالمة لأنك غادرت التطبيق.</string>
+    <string name="call_ended_interrupted">انتهت المكالمة بسبب مقاطعة صوت آخر.</string>
+    <string name="call_ended_quiet">انتهت المكالمة بعد صمت طويل.</string>
+    <string name="call_needs_speech_model">لإجراء مكالمة، يحتاج خادم Kelo إلى نموذج التعرف على الصوت.</string>
+    <string name="call_mic_denied">تعذر بدء المكالمة: الميكروفون غير مسموح به.</string>
+    <string name="call_voice_offer">هذا صوت Kelo الطبيعي للمكالمات. نزّل نموذج الصوت (%1$s) إلى خادم Kelo مرة واحدة وسيتحدث به Kelo بدءًا من الجملة التالية. بدونه، يستخدم Kelo الصوت الآلي المدمج في هذا الجهاز.</string>
+    <string name="call_mark">مكالمة</string>
+    <string name="call_voice_offer_title">تنزيل صوت Kelo؟</string>
+    <string name="call_voice_offer_ok">تنزيل</string>
+    <string name="call_voice_offer_later">استخدام صوت الجهاز مؤقتًا</string>
+    <string name="call_voice_better">مع نموذج الصوت، سيتحدث Kelo بصوت أكثر طبيعية بكثير.</string>
+    <string name="call_voice_get">تنزيل</string>
+    <string name="call_voice_line_close">إغلاق</string>
+    <string name="call_ears_failed">التعرف على الصوت في الهاتف لا يسمعك.</string>
+    <string name="voice_speech_title">صوت Kelo</string>
+    <string name="voice_speech_download">تنزيل نموذج الصوت · %1$s</string>
+    <string name="voice_speech_downloading">جارٍ تنزيل نموذج الصوت · %1$d%%</string>
+    <string name="voice_speech_remove">إزالة نموذج الصوت</string>
+    <string name="voice_speech_remove_confirm">إزالة نموذج الصوت؟ سيتحدث Kelo بعد ذلك بصوت هذا الجهاز.</string>
+    <string name="voice_speech_device_note">بدون نموذج الصوت، يتحدث Kelo بالصوت المدمج في هذا الجهاز.</string>
+    <string name="voice_speech_unsupported_lang">نموذج الصوت لا يدعم هذه اللغة بعد، لذا يُستخدم صوت الجهاز.</string>
+    <string name="voice_speech_voice_female">صوت أنثوي %1$d</string>
+    <string name="voice_speech_voice_male">صوت ذكوري %1$d</string>
+    <string name="voice_speech_listen">استماع</string>
+    <string name="voice_speech_stop">إيقاف</string>
+    <string name="voice_speech_speed">سرعة التحدث</string>
+    <string name="voice_speech_speed_value">%1$s×</string>
+    <string name="voice_speech_sample">مرحبًا. هذا هو الصوت الذي سأتحدث به.</string>
+</resources>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- in text for strings_data.xml (edit freely, keep the names) -->
+<!-- id text for strings_data.xml (generated from values/strings_data.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="data_title">Data Anda</string>
     <string name="data_intro">Unduh salinan yang disimpan Kelo tentang Anda, bawa kenangan dari asisten lain, atau mulai dari awal.</string>

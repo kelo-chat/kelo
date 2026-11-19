@@ -44,7 +44,7 @@ import Foundation
 
     @Test func theAnswerToAnInputIsParsedAndUnknownFieldsAreIgnored() {
         let r = LiveMessages.parse(#"{"type":"input_ok","input":"tap","ok":true,"x":120.5,"y":40,"busy":false,"mapped_with":"frame","future":{"a":1}}"#)
-        #expect(r == .inputReply(InputReply(ok: true, busy: false, x: 120.5, y: 40, mappedWith: "frame")))
+        #expect(r == .inputReply(InputReply(ok: true, busy: false, x: 120.5, y: 40, mappedWith: "frame", input: "tap")))
         let b = LiveMessages.parse(#"{"type":"input_ok","ok":false,"busy":true,"mapped_with":"latest"}"#)
         #expect(b == .inputReply(InputReply(ok: false, busy: true, mappedWith: "latest")))
         #expect(InputReply(json: ["busy": .bool(true), "ok": .bool(false)]).busy)

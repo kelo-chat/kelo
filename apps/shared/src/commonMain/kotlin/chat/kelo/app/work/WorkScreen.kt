@@ -237,6 +237,7 @@ private fun Timeline(
     var selectedFollow by remember { mutableStateOf<chat.kelo.app.follow.FollowItem?>(null) }
     var filter by rememberSaveable { mutableStateOf(PastFilter.ALL) }
     var showPaused by rememberSaveable { mutableStateOf(false) }
+    var showStoppedFollow by rememberSaveable { mutableStateOf(false) }
     val today = remember { LocalDate.now() }
     val taskItems = tasks.data?.items.orEmpty()
     val workerItems = workers.data?.items.orEmpty()
@@ -294,6 +295,8 @@ private fun Timeline(
                 },
                 followItems = followState.items,
                 onFollowClick = { selectedFollow = it },
+                showStoppedFollow = showStoppedFollow,
+                onToggleStoppedFollow = { showStoppedFollow = !showStoppedFollow },
             ),
         )
     }
@@ -319,6 +322,7 @@ private fun Timeline(
             onDismiss = { selectedFollow = null },
             onStop = { key -> followVm.stop(key) },
             onReplan = { key -> followVm.replan(key) },
+            onRemove = { key -> followVm.remove(key) },
         )
     }
 }

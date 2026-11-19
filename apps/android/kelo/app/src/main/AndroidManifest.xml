@@ -8,6 +8,9 @@
     <!-- voice input in the chat's composer (asked on the first tap of the mic) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- voice call audio routing and call vibration -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- replies, approvals, payments and automatic runs while the app is closed (asked after the first message) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- keeping a reply going for a few minutes after the app is left (ReplyService) -->

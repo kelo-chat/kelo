@@ -43,9 +43,15 @@ CHANGELOG's `## Unreleased` into `## 0.9.1 (build 2, <date>)` under a new empty 
 (`.github/workflows/release-images.yml`) runs `bump.py --check-tag <tag>` and stops when the tag and `version.json` disagree
 (`v0.9.1-beta.1`, the beta channel, is release 0.9.1).
 
+A store release (Google Play, App Store, Microsoft Store) recorded with `assistant release-record` on the operator's computer is also
+published, signed, to kelo.chat (latest.json's `store` object, docs/version-notices.md part 4). `--no-publish` records only; retry with
+`assistant publish-store`.
+
 ## Where the server shows it
 
-- `GET /api/about`: `version`, `build`, `min_app`, `min_server` (plus `min_app_version`, `min_app_ignored` and `db`).
+- `GET /api/about`: `version`, `build`, `min_app`, `min_server` (plus `min_app_version`, `min_app_ignored`, `db`, `app_update` and
+  `server_update`: the newer server release the caller may install, or null).
+- The headers `X-Kelo-App-Update` and `X-Kelo-Server-Update` on /api/about and /api/profile (docs/version-notices.md parts 3 and 5).
 - Every HTTP answer: header `X-Kelo-Server: 0.9.0+1`.
 - The start-up log line `Kelo server 0.9.0 (build 1)`, and `assistant version` (`--json` for scripts).
 - The image: `/app/version.json`, and the label `org.opencontainers.image.version` (a local build gets it from

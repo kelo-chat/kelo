@@ -122,7 +122,7 @@ async def test_the_browser_types_a_held_code_once_after_approval():
     page, t = await browser_tool("https://www.example.com/verify")
     out, card, extra = await run_code_tool(t, {"code_ref": 1})
     assert "482913" not in out and "482913" not in card and extra["login_code"]["code"] == "482913"
-    assert page.filled == [('[data-kelo-otp="0"]', "482913")]
+    assert page.filled == [("#otp-0", "482913")]
     assert SHELF.get(1) is None                                       # single use
     out, _, _ = await run_code_tool(t, {"code_ref": 1})
     assert out.startswith("error: there is no held verification code")

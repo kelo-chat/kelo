@@ -11,6 +11,10 @@ manifest.json: {"platforms": {"android": {"file": "kelo-0.9.0-402500.apk", "vers
 "version" is the name people see (and what older apps compare); "version_code" (when known) is the build number newer apps compare,
 so 0.9.0 with a higher build is offered as an update (Android: versionCode; given as `--version 0.9.0+402500` or read from the APK).
 
+STORE ROWS: latest.json's "store" object holds the newest live store release of each app ({"android": {"play": row}, "ios":
+{"appstore": row}, "desktop": {"msstore": row}}), each row signed with the release key over release_sign.store_statement. The
+publisher writes them (`assistant release-record` for a store channel, `assistant publish-store`) and every writer keeps the section.
+
 SIGNED ROWS: a row may also carry "sig", "key" (key id) and "commit" (the public source commit): the Ed25519 signature the apps check
 (release_sign.py, release_keys.py). latest.json passes the three through; the apps offer nothing whose signature does not check.
 
@@ -38,9 +42,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from . import release_sign
+from . import release, release_sign
 from .hosting import paths
-from .app_releases import AppReleases
+from .app_releases import AppReleases, RecordError
+from .release_sign import STORE_CHANNELS
 
 MANIFEST = "manifest.json"
 # platform -> (file extension, media type, what the site calls it)
@@ -84,6 +89,39 @@ def operator_flag(value: str | None) -> bool | None:
 
 
 # ---------------------------------------------------------------------------------------------------------------- reading
+def _store_entry(platform: str, raw: Any) -> dict[str, Any] | None:
+    """One store row of latest.json, checked for shape (the signature is checked by the readers): None when anything is off.
+    Kept: channel, version, build, date, min_server and, both together, sig and key."""
+    if platform not in STORE_CHANNELS or not isinstance(raw, dict):
+        return None
+    try:
+        release_sign.store_statement(platform, raw)
+    except ValueError:
+        return None
+    out = {k: raw[k] for k in ("channel", "version", "build", "date")}
+    if raw.get("min_server") not in (None, ""):
+        out["min_server"] = raw["min_server"]
+    if "sig" in raw or "key" in raw:
+        sig, key = raw.get("sig"), raw.get("key")
+        if not (isinstance(sig, str) and SIGNATURE.fullmatch(sig) and isinstance(key, str) and KEY_ID.fullmatch(key)):
+            return None
+        out["sig"], out["key"] = sig, key
+    return out
+
+
+def _store_rows(raw: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    """platform -> {channel: row} from a manifest's or latest.json's "store" object; anything malformed is left out."""
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    if not isinstance(raw, dict):
+        return out
+    for platform, channels in raw.items():
+        channel = STORE_CHANNELS.get(platform)
+        row = _store_entry(platform, channels.get(channel)) if channel and isinstance(channels, dict) else None
+        if row:
+            out[platform] = {channel: row}
+    return out
+
+
 def _entry(platform: str, raw: Any) -> dict[str, Any] | None:
     """One manifest row, checked; None when anything about it is off."""
     if platform not in PLATFORMS or not isinstance(raw, dict):
@@ -115,7 +153,9 @@ class Downloads:
     def __init__(self, folder: str | Path | None):
         self.folder = Path(folder) if folder else None
         self._last: tuple[tuple[int, int], dict[str, dict[str, Any]]] | None = None
-        self._server: dict[str, Any] | None = None   # the checked server release of the last good manifest
+        self._server: dict[str, Any] | None = None   # the checked server release of the last good manifest, as to_json()
+        self._server_rel: release.Release | None = None
+        self._store: dict[str, dict[str, dict[str, Any]]] = {}
 
     def manifest(self) -> dict[str, dict[str, Any]]:
         """platform -> checked row. A manifest being rewritten (unreadable for a moment) keeps the last good one."""
@@ -136,7 +176,9 @@ class Downloads:
             return self._last[1] if self._last else {}
         rows = raw.get("platforms") if isinstance(raw, dict) else None
         out = {p: e for p, r in (rows.items() if isinstance(rows, dict) else ()) if (e := _entry(p, r))}
-        self._server = server_entry(raw.get("server") if isinstance(raw, dict) else None)
+        self._server_rel = server_release(raw.get("server") if isinstance(raw, dict) else None)
+        self._server = self._server_rel.to_json() if self._server_rel else None
+        self._store = _store_rows(raw.get("store") if isinstance(raw, dict) else None)
         self._last = (key, out)
         return out
 
@@ -144,6 +186,16 @@ class Downloads:
         """The server release (release.py manifest), checked; None when there is none or it does not pass."""
         self.manifest()
         return self._server
+
+    def store(self) -> dict[str, dict[str, dict[str, Any]]]:
+        """The checked store rows: platform -> {channel: row} (empty when there are none)."""
+        self.manifest()
+        return {p: dict(c) for p, c in self._store.items()}
+
+    def server_release(self) -> release.Release | None:
+        """The same server release as checked by release.parse, or None."""
+        self.manifest()
+        return self._server_rel
 
     def file(self, platform: str, name: str | None = None) -> tuple[Path, dict[str, Any]] | None:
         """(path, row) of the file the manifest names for `platform` (and, when given, only if it is that `name`), or None."""
@@ -182,24 +234,33 @@ class Downloads:
                 out[p] = {"version": row["version"], "size": row["size"], "sha256": row["sha256"], "date": row["date"],
                           "file": row["file"], "url": f"{base}/download/{p}",
                           **{k: row[k] for k in ("version_code", "sig", "key", "commit") if k in row}}
-        server = self.server()
+        server = self.server_release()
         if server:
-            out["server"] = server
+            out["server"] = server.to_public_json()
+        store = self.store()
+        if store:
+            out["store"] = store
         return out
 
 
-def server_entry(raw: Any) -> dict[str, Any] | None:
-    """A server release manifest as latest.json shows it, or None when it does not pass release.parse (against its own registry:
-    each server still checks it against the registry it is configured for)."""
+def server_release(raw: Any) -> release.Release | None:
+    """A server release manifest, checked by release.parse against its own registry (each server still checks it against the
+    registry it is configured for), or None when it does not pass."""
     from .release import DEFAULT_REGISTRY, ReleaseError, parse
 
     if not isinstance(raw, dict):
         return None
     try:
         reg = raw.get("registry") if isinstance(raw.get("registry"), str) else DEFAULT_REGISTRY
-        return parse(raw, reg).to_json()
+        return parse(raw, reg)
     except ReleaseError:
         return None
+
+
+def server_entry(raw: Any) -> dict[str, Any] | None:
+    """A server release manifest as manifest.json keeps it (release.Release.to_json), or None when it does not pass."""
+    got = server_release(raw)
+    return got.to_json() if got else None
 
 
 def human_size(n: int) -> str:
@@ -326,6 +387,12 @@ class Publisher:
                  folder: str = f"{paths.STATE_DIR_IN_DOCKER}/downloads"):
         self.root, self.run, self.out, self.folder = root, run, out, folder.rstrip("/")
         self.server_release: dict[str, Any] | None = None
+        self.store_rows: dict[str, dict[str, dict[str, Any]]] = {}   # kept when apps or the server are published
+
+    def _body(self, rows: dict[str, Any], server: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The manifest as written: the platform rows, the server release and the store rows (every writer keeps all three)."""
+        server = server if server is not None else self.server_release
+        return {"platforms": rows, **({"server": server} if server else {}), **({"store": self.store_rows} if self.store_rows else {})}
 
     def container(self) -> str:
         inst = operator_instance()
@@ -353,6 +420,7 @@ class Publisher:
             return {}
         rows = raw.get("platforms") if isinstance(raw, dict) else None
         self.server_release = server_entry(raw.get("server")) if isinstance(raw, dict) else None   # kept when apps are published
+        self.store_rows = _store_rows(raw.get("store")) if isinstance(raw, dict) else {}           # kept by every writer
         return {p: e for p, r2 in (rows.items() if isinstance(rows, dict) else ()) if (e := _entry(p, r2))}
 
     def _copy_in(self, cid: str, staged: Path) -> None:
@@ -409,7 +477,7 @@ class Publisher:
             meta = scratch / "meta"
             meta.mkdir(mode=0o755)
             meta.chmod(0o755)
-            body = {"platforms": rows, **({"server": self.server_release} if self.server_release else {})}
+            body = self._body(rows)
             (meta / MANIFEST).write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             (meta / MANIFEST).chmod(0o644)
             self._copy_in(cid, meta)
@@ -450,7 +518,7 @@ class Publisher:
             meta = scratch / "meta"
             meta.mkdir(mode=0o755)
             meta.chmod(0o755)
-            body = {"platforms": rows, **({"server": self.server_release} if self.server_release else {})}
+            body = self._body(rows)
             (meta / MANIFEST).write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             (meta / MANIFEST).chmod(0o644)
             self._copy_in(cid, meta)
@@ -486,12 +554,69 @@ class ServerPublisher(Publisher):
             meta = scratch / "meta"
             meta.mkdir(mode=0o755)
             meta.chmod(0o755)
-            body = {"platforms": rows, "server": release.to_json()}
+            body = self._body(rows, release.to_json())
             (meta / MANIFEST).write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             (meta / MANIFEST).chmod(0o644)
             self._copy_in(cid, meta)
         self.out(f"Published server release {release.version} ({release.channel}, {len(release.images)} images from {release.registry}).")
         return release.to_json()
+
+
+class StorePublisher(Publisher):
+    """Publishes the newest store release of each app (releases/apps.json) as a signed row of latest.json's "store" object."""
+
+    def publish_store(self, record: AppReleases, key_path: Path | None, *, base_url: str = "https://kelo.chat") -> dict[str, dict[str, dict[str, Any]]]:
+        if key_path is None:
+            raise PublishError("no signing key: make one with `assistant release-key new` (an unsigned store row is ignored by every "
+                               "server, so nothing is published)")
+        wanted: dict[str, dict[str, dict[str, Any]]] = {}
+        for platform, channel in release_sign.STORE_CHANNELS.items():
+            rel = record.newest_store(platform)
+            if rel is None:
+                continue
+            try:
+                signed = release_sign.sign_store_row(platform, rel.store_row(), key_path, self.root)
+            except (release_sign.SigningKeyError, ValueError) as e:
+                raise PublishError(str(e)) from None
+            if not release_sign.verify_store_row(platform, signed):
+                raise PublishError("this key is not one the servers know: add its public key to release_keys.py and ReleaseKeys.kt first")
+            entry = _store_entry(platform, signed)
+            if entry is None:
+                raise PublishError(f"the {platform} store row does not pass the checks: not published")
+            wanted[platform] = {channel: entry}
+        cid = self.container()
+        with tempfile.TemporaryDirectory(prefix="kelo-store-") as tmp:
+            scratch = Path(tmp)
+            rows = self.current(cid, scratch)
+            self.store_rows = wanted                       # platforms without a store release are left out
+            meta = scratch / "meta"
+            meta.mkdir(mode=0o755)
+            meta.chmod(0o755)
+            (meta / MANIFEST).write_text(json.dumps(self._body(rows), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            (meta / MANIFEST).chmod(0o644)
+            self._copy_in(cid, meta)
+        shown = ", ".join(f"{p} {c[STORE_CHANNELS[p]]['version']} ({STORE_CHANNELS[p]})" for p, c in wanted.items()) or "none"
+        self.out(f"Published store releases: {shown}: {base_url.rstrip('/')}/download/latest.json")
+        return wanted
+
+
+def run_publish_store(args: Any, root: Path | None = None, *, run: Callable[..., Any] = subprocess.run,
+                      out: Callable[[str], None] = print, record: AppReleases | None = None) -> int:
+    """`assistant publish-store`: re-publishes the newest store release of each app from releases/apps.json (signed), on the
+    operator's server only. Also run by release-record for a store channel."""
+    root = (root or Path.cwd()).resolve()
+    public = _operator_public(root, out)
+    if public is None:
+        return 1
+    try:
+        if record is None:
+            record = AppReleases.read(root / "releases" / "apps.json")
+        StorePublisher(root, run=run, out=out).publish_store(record, _key_path(getattr(args, "sign_key", None)),
+                                                            base_url=public or "https://kelo.chat")
+    except (PublishError, RecordError) as e:
+        out(f"error: {e}")
+        return 1
+    return 0
 
 
 def run_publish_server(args: Any, root: Path | None = None, *, run: Callable[..., Any] = subprocess.run,

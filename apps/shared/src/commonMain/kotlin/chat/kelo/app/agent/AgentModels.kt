@@ -195,6 +195,16 @@ data class DryRun(
     val detail: String? = null, val error: String? = null, val url: String? = null, val title: String? = null,
 )
 
+/** A watcher's latest check result. */
+@Serializable
+data class LastCheck(
+    val at: Double? = null,
+    val detail: String? = null,
+    val value: String? = null,
+    val hit: Boolean = false,
+    val error: String? = null,
+)
+
 /** A cheap condition check that wakes the agent only when it holds (GET /api/watchers). state: off | watching | error | done */
 @Serializable
 data class Watcher(
@@ -216,6 +226,7 @@ data class Watcher(
     @SerialName("last_error") val lastError: String? = null,
     @SerialName("disabled_reason") val disabledReason: String? = null,
     @SerialName("dry_run") val dryRun: DryRun? = null,
+    @SerialName("last_check") val lastCheck: LastCheck? = null,
     @SerialName("can_enable") val canEnable: Boolean = false,
     @SerialName("created_by") val createdBy: String = "user",
     val buy: BuyReady? = null,
@@ -238,7 +249,7 @@ data class BuyProblem(val code: String = "", val text: String = "")
 data class WatcherList(val items: List<Watcher> = emptyList(), val limit: Int = 0)
 
 @Serializable
-data class WatcherEvent(val id: Long = 0, val at: Double = 0.0, val kind: String = "", val detail: String? = null, val value: String? = null)
+data class WatcherEvent(val id: Long = 0, val at: Double = 0.0, val kind: String = "", val detail: String? = null, val value: String? = null, val count: Int = 1)
 
 @Serializable
 data class WatcherEvents(val items: List<WatcherEvent> = emptyList())
@@ -270,6 +281,8 @@ data class BrowserTab(
     val source: String = "",
     /** "work" for a tab of Kelo's work browser (scheduled and background jobs), "main" or "" for the owner's own browser (an older server: "") */
     val browser: String = "",
+    /** The tabs of this task's window (an older server: none) */
+    val tabs: List<LiveTab> = emptyList(),
 ) {
     /** A tab of Kelo's work browser, apart from the owner's own tabs. */
     val inWorkBrowser: Boolean get() = browser == "work"

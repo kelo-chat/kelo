@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- tr text for strings_deliveries.xml (generated from values/strings_deliveries.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="deliveries_label">Kelo\'nun günde kendiliğinden başlattığı mesaj sayısı</string>
-    <string name="deliveries_about">Kelo size söylemek istediklerini günde bu sayıda mesajda toplar. 0 olduğunda yalnızca beklemeyecek olanları gönderir.</string>
-    <plurals name="deliveries_today">
-        <item quantity="one">Bugün %d kez gönderildi</item>
-        <item quantity="other">Bugün %d kez gönderildi</item>
-    </plurals>
     <plurals name="deliveries_held">
         <item quantity="one">%d öğe bekletiliyor</item>
         <item quantity="other">%d öğe bekletiliyor</item>
@@ -15,7 +9,6 @@
     <string name="deliveries_held_about">Kelo bunları bir sonraki mesaj için saklıyor. Göndermeden önce tekrar bakar, artık önemli olmayanları çıkarır.</string>
     <string name="deliveries_held_empty">Şu anda bekletilen bir şey yok.</string>
     <string name="deliveries_held_until">%1$s saatine kadar bekletilir</string>
-    <string name="deliveries_why_slots">Günün bir sonraki mesajını bekliyor</string>
     <string name="deliveries_why_cap">Bugün daha fazla göndermek için yeterince acil değil</string>
     <string name="deliveries_why_reply">Son mesaja yanıtınızı bekliyor</string>
     <string name="deliveries_why_other">Daha uygun bir an bekliyor</string>

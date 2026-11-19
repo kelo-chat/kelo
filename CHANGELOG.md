@@ -9,6 +9,25 @@ build's version and date, and copy the app lines into the Play release notes (en
 
 ## Unreleased
 
+## 0.10.6 (build 22, 2026-11-19)
+
+### Added
+- Call mode: talk with Kelo by voice in a call screen inside the app (Android, iPhone, desktop). Kelo answers with a voice from your server after you download it in My → Voice, with 10 voices to choose from; the phone's own voice stays as a fallback.
+- Take control: what you type goes straight into the page as you type it, Korean and other input methods included, with the letters forming in the page itself.
+- Kelo corrects itself: when something it told you that could cost you or put you in an awkward spot turns out to be wrong, it tells you in the morning briefing or with its next message, with the source.
+- "Kelo tells you first" now sends at set times spread over your message hours (shown under the daily limit); each hour it only checks new mail and connected services and tells you at once only what cannot wait.
+- Things to keep an eye on: when you add an item that needs its own timing, Kelo sets up a fitting job for it and shows it next to the item; the rest is looked at with everything else.
+- Sign-ins you make in Kelo's browser are kept and shared with Kelo's own jobs, one browser window per task.
+
+### Changed
+- Shopping: Kelo offers only products it saw on the seller's own page, in a choice card; when a store refuses the browser it says so plainly and checks other sellers of the same item instead.
+- One daily limit: "at most N a day"; the separate "messages a day" setting is gone. "What Kelo looked at" shows what is checked every hour, at the send times and for the morning briefing.
+- Background checks stay quiet unless something needs you; the separate re-check of earlier answers is replaced by the correction check above.
+- The browser no longer switches to a phone view.
+
+### Fixed
+- Small fixes in the apps and the server.
+
 ## 0.10.5 (build 21, 2026-11-18)
 
 ### Added

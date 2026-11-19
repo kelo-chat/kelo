@@ -58,4 +58,31 @@ class ChatMergeTest {
         assertEquals(listOf("stream", "m1"), keys(out))
         assertEquals(listOf("streamed", "the user's"), texts(out))
     }
+
+    private fun tool(key: String) = ChatItem.Tool(key, "t-$key", "email_update", ToolState.OK)
+
+    @Test fun `a reply split by a tool chip is one bubble after reload (the stored row fills the last bubble)`() {
+        // live: text, chip, text  (two id-less bubbles); the server stored one row with the whole reply
+        val shownRows = listOf(shown("u1", true, "q", 1), shown("a2", false, "before the tool", null), tool("t3"), shown("a4", false, "after the tool", null))
+        val storedRows = listOf(stored(1, true, "q"), stored(2, false, "before the tool\n\nafter the tool"))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("u1", "t3", "a4"), keys(out))
+        assertEquals(listOf("q", "before the tool\n\nafter the tool"), texts(out))
+    }
+
+    @Test fun `a turn with two stored rows (a real message break) keeps two bubbles`() {
+        val shownRows = listOf(shown("u1", true, "q", 1), shown("a2", false, "part one", null), tool("t3"), shown("a4", false, "part two", null))
+        val storedRows = listOf(stored(1, true, "q"), stored(2, false, "part one"), stored(3, false, "part two"))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("u1", "a2", "t3", "a4"), keys(out))
+        assertEquals(listOf("q", "part one", "part two"), texts(out))
+    }
+
+    @Test fun `a reply without a tool is matched as before`() {
+        val shownRows = listOf(shown("u1", true, "q", 1), shown("a2", false, "streamed", null))
+        val storedRows = listOf(stored(1, true, "q"), stored(2, false, "the saved reply"))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("u1", "a2"), keys(out))
+        assertEquals(listOf("q", "the saved reply"), texts(out))
+    }
 }

@@ -21,7 +21,8 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from .keyguard import CARDS_INFO, VAULT_INFO, KeyGuard, Locked, is_system_key, load_server_key
 from .keyring_client import PLACEHOLDER
-from .vault import LOG_KEEP, Sealer, VaultError, aad_for, mask_username
+from .i18n import t
+from .vault import KEYCHAIN, LOG_KEEP, Sealer, VaultError, aad_for, mask_username
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS profile (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -130,6 +131,14 @@ CREATE TABLE IF NOT EXISTS schedule_pay_allows (
     id TEXT PRIMARY KEY, schedule_id INTEGER NOT NULL, merchant_origin TEXT NOT NULL, payment_label TEXT NOT NULL DEFAULT '',
     currency TEXT NOT NULL, approval_id TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL,
     UNIQUE(schedule_id, merchant_origin, payment_label, currency));
+CREATE TABLE IF NOT EXISTS browser_sign_ins (
+    profile TEXT NOT NULL DEFAULT '', site TEXT NOT NULL, how TEXT NOT NULL, signed_at REAL NOT NULL, last_used REAL,
+    PRIMARY KEY(profile, site));
+CREATE TABLE IF NOT EXISTS browser_profiles (
+    id TEXT PRIMARY KEY, label TEXT NOT NULL, created_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS browser_profile_units (
+    profile TEXT NOT NULL, site TEXT NOT NULL, unit TEXT NOT NULL, updated_at REAL NOT NULL,
+    PRIMARY KEY(profile, site));
 """
 
 PROFILE_KEYS = ("user_name", "agent_name", "provider", "model", "fallback_provider", "fallback_model", "effort", "timezone",
@@ -208,7 +217,7 @@ class Store:
             if "approval_key" not in {r[1] for r in self._db.execute("PRAGMA table_info(devices)")}:   # before signed payment approvals
                 self._db.execute("ALTER TABLE devices ADD COLUMN approval_key TEXT NOT NULL DEFAULT ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(messages)")}
-            for col in ("reaction", "reaction_hold", "reaction_next", "via", "author"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from; author = owner/forwarded/tapped (owner_messages.py)
+            for col in ("reaction", "reaction_hold", "reaction_next", "via", "author", "steps"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from; author = owner/forwarded/tapped (owner_messages.py); steps = the tool steps of an assistant reply, for the model only (reply_text.py)
                 if col not in have:
                     self._db.execute(f"ALTER TABLE messages ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(usage)")}
@@ -291,11 +300,12 @@ class Store:
         return self.profile()
 
     # ---- conversation (one continuous chat)
-    def add_message(self, role: str, content: str, via: str = "", author: str = "") -> int:
+    def add_message(self, role: str, content: str, via: str = "", author: str = "", steps: str = "") -> int:
         """`via`: the messenger the message came through ("telegram"); "" for the app. `author`: owner, forwarded or tapped for the
-        owner's own user messages (owner_messages.py); "" for everything else, hidden handoff rows included."""
-        return self._run("INSERT INTO messages(role, content, created_at, via, author) VALUES(?,?,?,?,?)",
-                         (role, content, time.time(), via, author)).lastrowid or 0
+        owner's own user messages (owner_messages.py); "" for everything else, hidden handoff rows included. `steps`: the reply's
+        tool steps in one line (reply_text.py), read by the model only; the apps never get it."""
+        return self._run("INSERT INTO messages(role, content, created_at, via, author, steps) VALUES(?,?,?,?,?,?)",
+                         (role, content, time.time(), via, author, steps)).lastrowid or 0
 
     def message_count(self) -> int:
         """How many messages the conversation holds (the owner's and the assistant's)."""
@@ -310,7 +320,7 @@ class Store:
 
     def messages_after(self, after_id: int, *, before_id: int | None = None, limit: int = 2000) -> list[dict[str, Any]]:
         """The newest `limit` messages with after_id < id (< before_id if given), oldest first."""
-        rows = self._all("SELECT id, role, content, created_at, via FROM messages WHERE id > ? AND (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?",
+        rows = self._all("SELECT id, role, content, created_at, via, steps FROM messages WHERE id > ? AND (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?",
                          (after_id, before_id, before_id, limit))
         return rows[::-1]
 
@@ -325,7 +335,7 @@ class Store:
 
     def first_messages(self, n: int, *, before_id: int | None = None, after_id: int = 0) -> list[dict[str, Any]]:
         """The first `n` messages of the conversation (since it was last cleared, or after `after_id`), oldest first."""
-        return self._all("SELECT id, role, content, created_at FROM messages WHERE id > ? AND (? IS NULL OR id < ?) ORDER BY id LIMIT ?",
+        return self._all("SELECT id, role, content, created_at, steps FROM messages WHERE id > ? AND (? IS NULL OR id < ?) ORDER BY id LIMIT ?",
                          (after_id, before_id, before_id, n))
 
     # ---- /new: the model's conversation starts again after this message id (the messages stay, the app still shows them)
@@ -480,6 +490,90 @@ class Store:
         except sqlite3.Error:   # the table is made by SecretRequests; a store without it has no requests
             return ""
         return (rows[0]["username_hint"] if rows else "") or ""
+
+    # Kelo's browser sign-ins: which sites a browser profile is signed in to. Sites only, never a cookie or a value (brief B1).
+    def note_browser_sign_in(self, site: str, how: str, profile: str = "") -> None:
+        """`how` is "login" (a saved login of the vault succeeded) or "owner" (the owner signed in by hand during a take-over)."""
+        now = time.time()
+        self._run("INSERT INTO browser_sign_ins(profile, site, how, signed_at, last_used) VALUES (?, ?, ?, ?, ?) "
+                  "ON CONFLICT(profile, site) DO UPDATE SET how = excluded.how, signed_at = excluded.signed_at, "
+                  "last_used = excluded.last_used", (profile, site, how, now, now))
+
+    def touch_browser_site(self, site: str, profile: str = "") -> None:
+        self._run("UPDATE browser_sign_ins SET last_used = ? WHERE profile = ? AND site = ?", (time.time(), profile, site))
+
+    def browser_sign_ins(self, profile: str | None = None) -> list[dict[str, Any]]:
+        """All rows (profile None), or the rows of one profile ("" = the default profile); each row carries its profile."""
+        if profile is None:
+            rows = self._all("SELECT * FROM browser_sign_ins ORDER BY profile, site")
+        else:
+            rows = self._all("SELECT * FROM browser_sign_ins WHERE profile = ? ORDER BY site", (profile,))
+        return [{"profile": r["profile"], "site": r["site"], "how": r["how"], "signed_at": r["signed_at"], "last_used": r["last_used"]}
+                for r in rows]
+
+    def forget_browser_sign_in(self, site: str, profile: str = "") -> bool:
+        return self._run("DELETE FROM browser_sign_ins WHERE profile = ? AND site = ?", (profile, site)).rowcount > 0
+
+    # Named browser profiles: another account on the same site. A profile is a set of site units, each sealed with the vault's sealer
+    # (the cookies and local storage of one site); the default profile is the owner's own browser and has no row here (brief C2a).
+    def _unit_aad(self, profile: str, site: str) -> str:
+        return f"browser-unit:{profile}:{site}"
+
+    def _unit_unlocked(self) -> None:
+        if self.vault_locked():
+            raise VaultError(f"The user has locked the keychain, so a browser profile cannot be opened right now. Tell them they can unlock it in {t(KEYCHAIN)}.")
+
+    def create_browser_profile(self, label: str) -> dict[str, Any]:
+        label = (label or "").strip()
+        if not 1 <= len(label) <= 40:
+            raise ValueError("a profile name is 1 to 40 characters")
+        if any(p["label"].lower() == label.lower() for p in self.browser_profiles()):
+            raise ValueError("a profile with this name exists")
+        row = {"id": "p_" + secrets.token_hex(4), "label": label, "created_at": time.time()}
+        self._run("INSERT INTO browser_profiles(id, label, created_at) VALUES (?, ?, ?)", (row["id"], label, row["created_at"]))
+        return row
+
+    def browser_profiles(self) -> list[dict[str, Any]]:
+        out = []
+        for r in self._all("SELECT * FROM browser_profiles ORDER BY created_at, id"):
+            sites = [{k: v[k] for k in ("site", "how", "signed_at", "last_used")} for v in self.browser_sign_ins(r["id"])]
+            out.append({"id": r["id"], "label": r["label"], "created_at": r["created_at"], "sites": sites})
+        return out
+
+    def delete_browser_profile(self, profile_id: str) -> bool:
+        self._run("DELETE FROM browser_profile_units WHERE profile = ?", (profile_id,))
+        self._run("DELETE FROM browser_sign_ins WHERE profile = ?", (profile_id,))
+        return self._run("DELETE FROM browser_profiles WHERE id = ?", (profile_id,)).rowcount > 0
+
+    def check_browser_profile(self, profile: str) -> None:
+        """A named profile can be opened: the keychain is not locked and the profile exists (VaultError says why not)."""
+        self._unit_unlocked()
+        if not self._all("SELECT 1 FROM browser_profiles WHERE id = ?", (profile,)):
+            raise VaultError("There is no browser profile with this id: list them with browser_profiles.")
+
+    def browser_unit(self, profile: str, site: str) -> dict[str, Any]:
+        """The cookies and local storage this profile holds for a site; empty when none (or when the sealed row does not open)."""
+        self._unit_unlocked()
+        rows = self._all("SELECT unit FROM browser_profile_units WHERE profile = ? AND site = ?", (profile, site))
+        plain = self._sealer.open(rows[0]["unit"], self._unit_aad(profile, site)) if rows else None
+        if plain is None:
+            return {"cookies": [], "storage": {}}
+        try:
+            unit = json.loads(plain)
+        except ValueError:
+            return {"cookies": [], "storage": {}}
+        return {"cookies": list(unit.get("cookies") or []), "storage": dict(unit.get("storage") or {})}
+
+    def save_browser_unit(self, profile: str, site: str, unit: dict[str, Any]) -> None:
+        self._unit_unlocked()
+        sealed = self._sealer.seal(json.dumps(unit, separators=(",", ":"), ensure_ascii=False), self._unit_aad(profile, site))
+        self._run("INSERT INTO browser_profile_units(profile, site, unit, updated_at) VALUES (?, ?, ?, ?) "
+                  "ON CONFLICT(profile, site) DO UPDATE SET unit = excluded.unit, updated_at = excluded.updated_at",
+                  (profile, site, sealed, time.time()))
+
+    def forget_browser_unit(self, profile: str, site: str) -> bool:
+        self._run("DELETE FROM browser_sign_ins WHERE profile = ? AND site = ?", (profile, site))
+        return self._run("DELETE FROM browser_profile_units WHERE profile = ? AND site = ?", (profile, site)).rowcount > 0
 
     def credentials(self) -> list[dict[str, Any]]:
         """Every item in the vault as the app may show it: what it is for and whether a value is stored, never the value."""

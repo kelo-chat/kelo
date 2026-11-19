@@ -31,6 +31,7 @@
     <string name="briefing_when_auto">เมื่อวันของฉันเริ่ม (จากที่เรียนรู้)</string>
     <string name="briefing_when_fixed">ตามเวลาที่ฉันเลือก</string>
     <string name="briefing_fixed_at">ทุกวันเวลา %1$s</string>
+    <string name="briefing_fixed_from">ตั้งแต่ %1$s ซึ่งเป็นเวลาเริ่มติดต่อ</string>
     <string name="briefing_offset">หลังวันเริ่มนานเท่าไร</string>
     <string name="briefing_offset_none">ทันทีที่เริ่ม</string>
     <string name="briefing_offset_min">อีก %1$d นาที</string>

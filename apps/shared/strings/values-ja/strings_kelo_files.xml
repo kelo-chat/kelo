@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- ja text for strings_kelo_files.xml (generated from values/strings_kelo_files.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
     <string name="files_title">Keloのファイル</string>
     <string name="files_about">Keloが自分のために書き留めているもの：あなたのこと、記憶、メモ。見たり、直したり、消したりできます。アップロードや成果物は、それぞれのページにあります。</string>

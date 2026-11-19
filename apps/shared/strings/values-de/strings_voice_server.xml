@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- de text for strings_voice_server.xml (generated from values/strings_voice_server.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <!-- Server voice input (the speech model on the Kelo server): the first-tap question, the sound-bar recording, the errors, and My -> voice input -->
     <string name="voice_server_offer_body">Soll dein Kelo-Server das Sprachmodell %1$s herunterladen? Wenn nicht, wird die Spracherkennung deines Telefons verwendet.</string>
     <string name="voice_server_downloading">Sprachmodell wird geladen · %1$d%%</string>
     <string name="voice_server_ready">Dein Kelo-Server versteht dich jetzt.</string>
@@ -14,7 +14,7 @@
     <string name="voice_server_offline">Dein Kelo-Server ist nicht erreichbar, daher konnte nichts in Text umgewandelt werden.</string>
     <string name="voice_server_busy">Dein Kelo-Server verarbeitet gerade eine andere Aufnahme. Versuch es gleich noch einmal.</string>
     <string name="voice_server_too_long">Die Aufnahme ist zu lang. Bitte bleib unter 2 Minuten.</string>
-    <string name="voice_page_title">Spracheingabe</string>
+    <string name="voice_page_title">Stimme</string>
     <string name="voice_page_intro">Deine Stimme wird auf deinem Kelo-Server in Text umgewandelt und ins Feld gesetzt. Nichts wird von selbst gesendet.</string>
     <string name="voice_model_in_use">Verwendetes Sprachmodell</string>
     <string name="voice_state_off">Spracherkennung des Telefons</string>
@@ -25,4 +25,6 @@
     <string name="voice_phone_note">Die Sprachmodelle deines Kelo-Servers kennen diese Sprache noch nicht, daher wird die Spracherkennung deines Telefons verwendet.</string>
     <string name="voice_model_size">Größe %1$s · Speicher beim Einsatz %2$s</string>
     <string name="voice_runtime_missing">Führe das Kelo-Server-Installationsprogramm noch einmal aus, um dies zu nutzen.</string>
+    <string name="voice_send_now">Gesagtes senden</string>
+    <string name="voice_elapsed">Aufnahmezeit %1$s</string>
 </resources>

@@ -22,7 +22,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 from urllib.parse import unquote, urlsplit
 
@@ -130,6 +130,24 @@ class Known:
     cards: set[str]
     vault_names: set[str]
     own_emails: set[str]
+    vault_sites: dict[str, set[str]] = field(default_factory=dict)   # vault item name -> the registrable domains of its hosts
+
+
+def site_of(host: str) -> str:
+    """The registrable domain of a host or address ('www.coupang.com' -> 'coupang.com'), or '' when there is none."""
+    from .wallet import site_key   # (wallet imports nothing of this module; imported here as effects.py does)
+    h = str(host or "").strip().casefold().split("/", 1)[0].split(":", 1)[0]
+    return site_key(h) if "." in h else ""
+
+
+def owns_vault_name(name: str, sites: set[str], dest_site: str) -> bool:
+    """A saved login that is the destination site's own: its hosts cover the site; without hosts, its name is the site's name
+    ('naver' or 'Naver login' for naver.com). Such a login is never sent by opening its own site."""
+    if sites:
+        return dest_site in sites
+    label = dest_site.split(".", 1)[0]
+    first = next((w for w in re.split(r"[\W_]+", name) if w), "")
+    return len(label) >= 3 and first == label
 
 
 def _flat(value: Any, out: list[str], depth: int = 0) -> None:
@@ -205,6 +223,7 @@ class PrivacyGuard:
                 name = " ".join(str(c.get("name") or "").split())
                 if len(name) >= 3:
                     k.vault_names.add(name.casefold())   # the NAME only: the value is never opened here
+                    k.vault_sites[name.casefold()] = {site_of(h) for h in (c.get("hosts") or []) if site_of(h)}
         except Exception:  # noqa: BLE001
             log.warning("privacy guard: could not read the vault names")
         if self.own_addresses is not None:
@@ -321,8 +340,9 @@ class PrivacyGuard:
             self._code_said[key] = bool(picked)
 
     # ------------------------------------------------------------------ the check
-    def scan(self, text: str) -> list[str]:
-        """The categories found in `text`, in a fixed order (no values)."""
+    def scan(self, text: str, *, dest_host: str = "", vault_text: str | None = None) -> list[str]:
+        """The categories found in `text`, in a fixed order (no values). `dest_host` (an address's host): a saved login that is that
+        site's own is no hit, and the vault names are looked for in `vault_text` (the address without its host) when given."""
         found: set[str] = set()
         k = self.known()
         folded = fold(text)
@@ -364,8 +384,10 @@ class PrivacyGuard:
             said = self._code_said.get(hashlib.sha256(payload_of(text, spans).encode()).hexdigest())
             if said is None or said:
                 found.add("code")
-        low = text.casefold()
-        if any(re.search(rf"(?<![\w]){re.escape(n)}(?![\w])", low) for n in k.vault_names):
+        low = (text if vault_text is None else vault_text).casefold()
+        dest_site = site_of(dest_host) if dest_host else ""
+        if any(re.search(rf"(?<![\w]){re.escape(n)}(?![\w])", low) for n in k.vault_names
+               if not (dest_site and owns_vault_name(n, k.vault_sites.get(n, set()), dest_site))):
             found.add("vault")
         return [c for c in CATEGORY_LABELS if c in found]
 
@@ -392,15 +414,16 @@ class PrivacyGuard:
         return Hit((), t(LEAK_REFUSAL), False, leak=True)
 
     @staticmethod
-    def _url_parts(url: str) -> tuple[str, str] | None:
-        """(host, the scanned text of the address) or None. The host labels, path, query and fragment may carry the owner's values or
-        the private marker; the scheme, the port and the login do not count."""
+    def _url_parts(url: str) -> tuple[str, str, str] | None:
+        """(host, the scanned text of the address, its path+query+fragment) or None. The host labels, path, query and fragment may carry
+        the owner's values or the private marker; the scheme, the port and the login do not count."""
         try:
             parts = urlsplit(url if "://" in url else "https://" + url)
             host = (parts.hostname or "")[:80]
         except ValueError:
             return None
-        return host, unquote(unquote(" ".join(p for p in (parts.hostname or "", parts.path, parts.query, parts.fragment) if p)))
+        rest = unquote(unquote(" ".join(p for p in (parts.path, parts.query, parts.fragment) if p)))
+        return host, unquote(unquote(" ".join(p for p in (parts.hostname or "", parts.path, parts.query, parts.fragment) if p))), rest
 
     def _url_text(self, tool: Any, args: dict[str, Any]) -> str:
         url = str((args or {}).get("url") or "").strip()
@@ -419,11 +442,13 @@ class PrivacyGuard:
         got = self._url_parts(url)
         if got is None:
             return None
-        host, text = got
+        host, text, rest = got
         whole = unquote(unquote(url))
         if (hit := self._leak(name, host, url + "\n" + whole)) is not None:
             return hit
-        cats = self.scan(text)
+        # the host's own login (a vault item named after the site or holding its host) is no hit for that site: opening a site sends
+        # nothing of its login; the other categories still look at the whole address
+        cats = self.scan(text, dest_host=host, vault_text=rest)
         if not cats:
             return None
         log.info("privacy guard: %s asks (%s)", name, ", ".join(cats))

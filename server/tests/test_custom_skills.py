@@ -370,7 +370,7 @@ async def test_propose_skill_card_shows_full_body_and_outside_text(tmp_path):
         assert extra_out["scrollable"] is True
         assert len(extra_out["lines"]) == 4
         assert extra_out["lines"][3]["label"] == "Why it asks"
-        assert "outside text" in extra_out["lines"][3]["value"]
+        assert "read something in a page" in extra_out["lines"][3]["value"]
     finally:
         outside_seen.reset(tok)
 

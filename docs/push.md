@@ -39,14 +39,16 @@ A copy sends a push for each notification nobody saw arrive:
 
 Each push goes to every phone paired with that copy that registered a token. A device removed from the app gets no more pushes.
 
-## Rechecks
+## Corrections of earlier answers
 
-Kelo looks again, by itself, at what it told you that may change and that you may act on (rules, prices, availability, the result of a
-review, opening times). When a check finds a change that two independent sources (or one official source) support, and Kelo has
-confirmed it a second time itself, the correction arrives as an ordinary Kelo message in the chat and a normal `task_done` push
-(ids only, as above), in your waking hours only. A check that finds nothing, or finds too little to be sure, sends nothing.
-`GET /api/rechecks?days=` lists what is being checked; `PUT /api/proactive` takes `rechecks` (on/off) and `recheck_per_day`
-(research runs a day, default 4). The design is in `server/src/assistant/recheck.py`.
+When Kelo finds that something it told you is wrong or no longer holds, it says so on its own. There is no list or timetable for
+this: one check (`server/src/assistant/corrections.py`) reads Kelo's own answers of the last day and looks again at what, if false,
+could put you in an awkward spot or cause you harm or a loss (never prices, stock or sellers of things to buy), and keeps a
+correction only when an official source, or two independent ones, show it. The morning briefing runs it while the briefing is on
+(the corrections are notes on the card); the hourly look runs it while proactive messages are on (a correction is then an ordinary
+Kelo message and a normal `task_done` push, ids only, in your contact hours, under the same daily limits). A correction told by one
+is never told by the other. What still holds sends nothing. Follow-up checks you ask for ("tell me when this changes") are
+schedules or watchers.
 
 ## Offers
 

@@ -13,14 +13,23 @@ import kotlinx.coroutines.launch
  * The owner's voice input state on this server, shared by the mic and My → 음성 입력. [refresh] reads GET /api/voice; while a model
  * is downloading it reads again every two seconds, so the chip and the page show the percent. A failed call keeps the last view.
  */
-class VoiceModel(
+open class VoiceModel(
     /** The live API client (null while signed out or before the server answered). */
     private val api: () -> KeloApi?,
     private val scope: CoroutineScope,
     private val lang: () -> String,
 ) {
     private val _view = MutableStateFlow<VoiceView?>(null)
-    val view: StateFlow<VoiceView?> = _view.asStateFlow()
+    open val view: StateFlow<VoiceView?> = _view.asStateFlow()
+
+    constructor(
+        api: () -> KeloApi?,
+        scope: CoroutineScope,
+        lang: () -> String,
+        initialView: VoiceView?,
+    ) : this(api, scope, lang) {
+        _view.value = initialView
+    }
 
     private val _error = MutableStateFlow<VoiceProblem?>(null)
     /** The last call that failed (the page shows it as a line), null when the last call worked. */
