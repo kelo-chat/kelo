@@ -73,7 +73,7 @@ MAIL = Effect("send", "gmail", ["lee@x.org"], "hi", "email_send")
 
 def test_the_rule_asks_for_an_unnamed_target_after_outside_text_and_names_it_on_the_card():
     line = RULE.needs_card(MAIL, True, set(), "write to Lee")
-    assert line == "Kelo read something in a page, mail or message before this step, and you did not name lee@x.org."
+    assert line == "Before this step Kelo read text from outside written by others, and you did not name lee@x.org."
     two = RULE.needs_card(Effect("send", "gmail", ["a@x.org", "site:evil.example", "b@x.org", "c@x.org", "d@x.org"], "", "email_send"),
                           True, {"a@x.org"}, "")
     assert "site:" not in two and "evil.example" in two and "+1" in two
@@ -99,10 +99,17 @@ def test_a_target_the_owner_wrote_verbatim_needs_no_card_and_one_only_in_outside
 
 
 def test_a_place_without_its_own_identifier_is_never_named_by_the_owners_words():
-    # no calendar, mailbox or service word decides any more: only the target string itself
+    # the owner's own main calendar is an own place: no card unless text others wrote goes into it (what is written there is later read
+    # as the owner's own data); other calendars and events are named only by a calendar permission
+    from assistant.outside_rule import Derived
     cal = Effect("change", "google_calendar", ["calendar"], "", "gcal_create_event")
-    assert RULE.needs_card(cal, True, set(), "add it to my calendar") is not None      # a generic calendar target: always asks
-    assert RULE.needs_card(cal, True, {"calendar"}, "") is None                         # named by the owner's own calendar id only
+    assert RULE.needs_card(cal, Derived(frozenset(), False), set(), "add it to my calendar") is None
+    assert RULE.needs_card(cal, Derived(frozenset(), True, frozenset({"email"})), set(), "") is not None   # copied from a mail: asks
+    assert RULE.needs_card(cal, True, set(), "add it to my calendar") is not None   # the latch: content cannot be checked there
+    assert RULE.needs_card(cal, True, {"calendar"}, "") is None                       # named by a calendar permission
+    upd = Effect("change", "google_calendar", ["calendar:x@group.example", "event:e1"], "", "gcal_update_event")
+    assert RULE.needs_card(upd, Derived(frozenset({"event:e1"}), False), set(), "") is not None
+    assert RULE.needs_card(upd, True, {"calendar"}, "") is None
     trash = Effect("delete", "gmail", ["connector:gmail"], "", "email_trash")
     assert RULE.needs_card(trash, True, set(), "clean up my inbox") is not None
     assert RULE.needs_card(trash, True, set(), "clean up my gmail") is None            # the connector's name, verbatim
@@ -110,6 +117,34 @@ def test_a_place_without_its_own_identifier_is_never_named_by_the_owners_words()
     assert RULE.needs_card(mcp, True, set(), "post it in Slack") is not None           # "Slack" is not the connector's name
     assert RULE.needs_card(mcp, True, set(), "post it with slack-bot") is None         # the connector's name, verbatim
     assert RULE.needs_card(mcp, True, {"connector:slack-bot"}, "post it") is None      # named whole: covers its tools
+
+
+def test_the_card_names_what_was_read_and_never_shows_the_word_calendar_as_a_target():
+    from assistant.outside_rule import Derived
+    cal = Effect("change", "google_calendar", ["calendar"], "", "gcal_create_event")
+    line = RULE.needs_card(cal, Derived(frozenset(), True, frozenset({"email"})), set(), "")
+    assert line == "Before this step Kelo read a mail written by others. Check that this change is the one you asked for."
+    assert "calendar" not in line.lower().replace("calendar events", "")
+    delete = Effect("delete", "google_calendar", ["calendar", "event:e1"], "", "gcal_delete_event")
+    line = RULE.needs_card(delete, Derived(frozenset({"event:e1"}), False, frozenset({"calendar"})), set(), "")
+    assert line == ("Before this step Kelo read calendar events someone else made written by others. "
+                    "Check that this change is the one you asked for.")
+    mail = Effect("send", "gmail", ["lee@x.org"], "hi", "email_send")
+    line = RULE.needs_card(mail, Derived(frozenset({"lee@x.org"}), True, frozenset({"page", "email"})), set(), "")
+    assert line == "Before this step Kelo read a mail, a web page written by others, and you did not name lee@x.org."
+    assert RULE.needs_card(mail, True, set(), "") == "Before this step Kelo read text from outside written by others, and you did not name lee@x.org."
+    assert "page, mail or message" not in RULE.needs_card(mail, True, set(), "")
+
+
+def test_the_fallback_line_when_the_check_breaks_says_it_could_not_check():
+    from assistant.outside_rule import UNCHECKED_LINE, OutsideReview, OwnerWords, OutsideTextRule
+    class Broken(OwnerWords):
+        def named(self, turn):
+            raise RuntimeError("broken lookup")
+    rev = OutsideReview(OutsideTextRule(), Broken(), seen=lambda: True, turn=lambda: {"source": "chat", "request": "x"})
+    mail = Effect("send", "gmail", ["lee@x.org"], "hi", "email_send")
+    assert rev.line(mail, "email_send", {"to": ["lee@x.org"]}) == "Kelo could not check where this step's details came from, so it asks."
+    assert UNCHECKED_LINE in ("Kelo could not check where this step's details came from, so it asks.",)
 
 
 def test_a_background_run_names_nothing_from_its_own_request():

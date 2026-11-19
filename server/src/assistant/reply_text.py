@@ -26,6 +26,7 @@ from typing import Any
 from .agent.fence import is_fenced
 
 LEAD_IN_MAX = 160
+STEPS_MAX = 400      # the steps line the next turn reads: whole steps only, a picture step always kept (see steps_text)
 BOOKKEEPING = frozenset({
     "react", "quick_replies", "compare_options", "find_tools", "offer_post", "set_tone", "finish_first_chat", "await_reply", "job_progress", "goal_log",
     "read_skill", "search_skills", "vault_status",
@@ -40,6 +41,12 @@ def is_lead_in(segment: str) -> bool:
     body = segment.strip()
     body = re.sub(r"^(?:\s*<message_break\s*/?>)+|(?:<message_break\s*/?>\s*)+$", "", body).strip()
     return bool(body) and len(body) <= LEAD_IN_MAX and not _PARAGRAPH.search(body) and not _BREAK.search(body)
+
+
+def _same(text: str) -> str:
+    """A quote or a segment for comparison: its words, without spaces, the break marks and the final punctuation."""
+    body = _BREAK.sub("", text or "")
+    return re.sub(r"[\s.,!?;:。！？…]+$", "", "".join(body.split())).casefold()
 
 
 def _what_came_back(item: dict[str, Any]) -> str:
@@ -65,6 +72,9 @@ class ReplyText:
         self.open: dict[str, str] = {}   # id -> "name arguments" of a tool step that has not returned yet (a stopped reply's unfinished step)
         self.names: dict[str, str] = {}  # id -> tool name, until its result comes
         self.steps: list[str] = []       # "name -> what came back" per step, one line for the model (steps_text); never outside text
+        self.args: dict[str, str] = {}   # id -> the whole argument text of a tool step, until its result comes (a picture step says how to call it again)
+        self.kept: set[int] = set()      # indexes of steps that steps_text always keeps (a step that showed a picture)
+        self.order: list[dict[str, str]] = []   # the reply in order: {"said": text written before a step} / {"did": the step's line} (timeline)
 
     def feed(self, item: dict[str, Any]) -> None:
         kind = item.get("type")
@@ -78,22 +88,78 @@ class ReplyText:
                 args = item.get("arguments") or ""
                 args = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False, default=str)
                 self.open[str(item.get("id") or "")] = f"{item.get('name')} {args[:120]}".strip()
+                self.args[str(item.get("id") or "")] = args
                 seg = "".join(self.cur)
                 if seg.strip():
                     self.segments.append(seg)
+                    self.order.append({"said": seg})
                 self.cur = []
         elif kind == "tool_result":
-            self.open.pop(str(item.get("id") or ""), None)
-            name = self.names.pop(str(item.get("id") or ""), "")
+            rid = str(item.get("id") or "")
+            self.open.pop(rid, None)
+            name = self.names.pop(rid, "")
+            args = self.args.pop(rid, "")
             if name:
-                self.steps.append(f"{name} -> {_what_came_back(item)}")
+                pictures = 0 if item.get("is_error") else int(item.get("pictures") or 0)
+                if pictures > 0:   # the picture reached the model of this reply only: the next turn is told how to look at it again
+                    a = args if len(args) <= 200 else "with the same arguments"
+                    self.kept.add(len(self.steps))
+                    self.steps.append(f"{name} -> looked at {pictures} picture{'s' if pictures > 1 else ''}; not attached any more: "
+                                      f"to see it again call {name} {a}")
+                else:
+                    self.steps.append(f"{name} -> {_what_came_back(item)}")
+                self.order.append({"did": self.steps[-1]})
         elif kind == "done":
             self.done = True
+            tail = "".join(self.cur)
+            if tail.strip():
+                self.order.append({"said": tail})
 
     def steps_text(self) -> str:
         """The tool steps of this reply in one line ("watch_add -> Watcher #3 saved; email_list -> read"), stored with the message
-        so the next turn's model knows what it did. Outside text is never copied: a fenced result is "read" only."""
-        return "; ".join(self.steps)[:400]
+        so the next turn's model knows what it did. Outside text is never copied: a fenced result is "read" only. A step is never cut:
+        steps are taken in order while the line stays within STEPS_MAX, a step that showed a picture is always taken, and the steps
+        left out are counted at the end ("(+N more steps)")."""
+        out: list[str] = []
+        left = 0
+        for i, step in enumerate(self.steps):
+            if i in self.kept:
+                out.append(step)
+            elif left or len("; ".join([*out, step])) > STEPS_MAX:
+                left += 1
+            else:
+                out.append(step)
+        if left:
+            out.append(f"(+{left} more steps)")
+        return "; ".join(out)
+
+    def timeline(self, limit: int = 1500) -> list[dict[str, str]]:
+        """The end of the reply in order: what it said before each tool step and the step ("did"), as far as `limit` characters go (whole
+        entries). Outside text is never copied: a step's line says "read" for a fenced result."""
+        out: list[dict[str, str]] = []
+        used = 0
+        for entry in reversed(self.order):
+            size = len(next(iter(entry.values())))
+            if used + size > limit:
+                break
+            out.insert(0, entry)
+            used += size
+        return out
+
+    def lead_in_done(self, quote: str) -> bool:
+        """True when `quote` is a lead-in the reply wrote right before a tool step that then worked (no error): the words announced work
+        the same reply did, so they are no promise. Only the text the reply keeps is compared (a lead-in is kept as the first segment)."""
+        want = _same(quote)
+        if not want:
+            return False
+        for i, entry in enumerate(self.order[:-1]):
+            said = entry.get("said")
+            if said is None or not is_lead_in(said) or _same(said) != want:
+                continue
+            did = self.order[i + 1].get("did")
+            if did is not None and " -> error" not in did:
+                return True
+        return False
 
     def unfinished(self) -> str:
         """The first tool step this reply started and never got a result for ("name arguments"), or "" (a stopped reply's request)."""

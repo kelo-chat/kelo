@@ -91,3 +91,14 @@ class CallTimings {
     }
 }
 
+/** What the call screen says when Kelo's voice could not be played as planned (brief call-silent). */
+enum class CallVoiceTrouble { DEVICE_VOICE, NO_VOICE }
+
+/** Short words for a failure in the call log: the kind and status only, never a message (a message can carry the owner's words). */
+object CallLog {
+    fun why(e: Throwable): String = when (e) {
+        is chat.kelo.app.voice.SpeakException -> "SpeakException(${e.problem.name})"
+        is chat.kelo.app.core.ApiError -> "ApiError(${e.status}${e.code?.let { ",$it" } ?: ""})"
+        else -> e::class.simpleName ?: "Exception"
+    }
+}

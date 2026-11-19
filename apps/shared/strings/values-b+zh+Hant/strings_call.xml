@@ -25,6 +25,11 @@
     <string name="call_mic_denied">未允許使用麥克風，無法開始通話。</string>
     <string name="call_voice_offer">這是通話時Kelo使用的自然聲音。將聲音模型（%1$s）下載到Kelo伺服器後，下一句話開始即可使用此聲音。若未下載，將使用此裝置內建的機械聲音。</string>
     <string name="call_mark">通話</string>
+    <plurals name="call_chat_length">
+        <item quantity="other">通話 · %1$d 分鐘</item>
+    </plurals>
+    <string name="call_chat_show">查看通話</string>
+    <string name="call_chat_hide">收起通話</string>
     <string name="call_voice_offer_title">要下載Kelo的聲音模型嗎？</string>
     <string name="call_voice_offer_ok">下載</string>
     <string name="call_voice_offer_later">先使用裝置聲音</string>
@@ -32,6 +37,12 @@
     <string name="call_voice_get">下載</string>
     <string name="call_voice_line_close">關閉</string>
     <string name="call_ears_failed">手機語音辨識無法聽清您的聲音。</string>
+    <string name="call_voice_device">無法載入 Kelo 自己的聲音，正在使用本裝置的語音。</string>
+    <string name="call_voice_none">這台裝置現在無法播放 Kelo 的聲音。回覆在聊天中。</string>
+    <string name="call_minimize">返回聊天</string>
+    <string name="call_keyboard">輸入</string>
+    <string name="call_type_hint">輸入要傳給 Kelo 的訊息</string>
+    <string name="call_type_send">傳送</string>
     <string name="voice_speech_title">Kelo聲音</string>
     <string name="voice_speech_download">下載聲音模型 · %1$s</string>
     <string name="voice_speech_downloading">正在下載聲音模型 · %1$d%%</string>

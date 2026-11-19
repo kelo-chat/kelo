@@ -908,6 +908,7 @@
     <string name="agent_tab_working">Pracuję</string>
     <string name="agent_tab_failed">Utknęło</string>
     <string name="agent_tab_idle">Bezczynna</string>
+    <string name="agent_tab_waiting">Czeka na ciebie</string>
     <string name="agent_tab_picture">Ekran karty</string>
     <string name="agent_tab_no_picture">Nic do pokazania (pusta strona).</string>
     <string name="agent_tab_close">Zamknij kartę</string>

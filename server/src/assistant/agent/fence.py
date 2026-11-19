@@ -242,6 +242,12 @@ def inside(text: str) -> str:
     return m.group(2) if m else text
 
 
+def all_inside(text: str) -> str:
+    """The external data of EVERY fence in a result, joined by newlines (a result can carry several fenced parts: a marked result)."""
+    parts = [m.group(2) for m in _FENCED.finditer(text or "")]
+    return "\n".join(parts) if parts else text
+
+
 def outside(text: str) -> str:
     """A fenced result without its fences' data: the app's own words around them."""
     return _FENCED.sub("", text or "").strip("\n")

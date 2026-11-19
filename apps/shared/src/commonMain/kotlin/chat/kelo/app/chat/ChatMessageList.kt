@@ -86,7 +86,7 @@ fun Messages(
     ReportTopBarScrolled(Routes.CHAT, isScrolled)
     // the open secure entries from the server's list join the rows under the message that asked (a reload, another phone)
     // tool chips of one kind in a row fold into one chip that grows in place (ChatReducer.foldTools)
-    val rows = remember(state.items, state.secrets) { ChatReducer.foldTools(ChatReducer.withPending(state.items, state.secrets)) }.asReversed()
+    val rows = remember(state.items, state.secrets) { CallCards.fold(ChatReducer.foldTools(ChatReducer.withPending(state.items, state.secrets))) }.asReversed()
     // the messages that start a new stretch (first shown, a new day, or TimeLabels.GAP_MINUTES after the one before) get a time line
     val timed = remember(state.items) { TimeLabels.labelled(state.items, java.time.ZoneId.systemDefault()) }
     val callMarks = remember(state.items) {
@@ -94,7 +94,7 @@ fun Messages(
         var inCall = false
         for (item in state.items) {
             if (item is ChatItem.Msg) {
-                if (item.fromCall) {
+                if (item.fromCall && item.callId == null) {
                     if (!inCall) {
                         marks.add(item.key)
                         inCall = true
@@ -106,6 +106,7 @@ fun Messages(
         }
         marks
     }
+    var openCalls by remember { mutableStateOf(emptySet<String>()) }   // the call cards opened (by call id)
     val timeLabeler = rememberTimeLabeler()
     val top = headerHeight()
     val scope = rememberCoroutineScope()
@@ -164,7 +165,8 @@ fun Messages(
     val litAlpha = remember { Animatable(0f) }
     LaunchedEffect(focus, rows.size) {
         val id = focus ?: return@LaunchedEffect
-        val i = rows.indexOfFirst { it is ChatItem.Msg && it.id == id }
+        val i = rows.indexOfFirst { it is ChatItem.Msg && it.id == id || it is ChatItem.CallCard && it.lines.any { l -> l.id == id } }
+        (rows.getOrNull(i) as? ChatItem.CallCard)?.let { openCalls = openCalls + it.callId }   // a search hit in a call opens its card
         if (i >= 0) {
             list.animateScrollToItem(i + if (state.phase != null) 1 else 0)
             focusFlow.value = null
@@ -308,7 +310,7 @@ fun Messages(
             items(rows, key = { it.key }, contentType = { it::class }) { item ->
                 // rows made during this session rise into place; rows from history just appear
                 val fresh = remember(item.key) { vm.takeFresh(item.key) }
-                val isLit = item is ChatItem.Msg && item.id != null && item.id == lit?.first
+                val isLit = (item is ChatItem.Msg && item.id != null && item.id == lit?.first) || (item is ChatItem.CallCard && item.lines.any { it.id != null && it.id == lit?.first })
                 val litColor = c.accent
                 Box(
                     Modifier
@@ -373,6 +375,14 @@ fun Messages(
                                     QuickReplies(r, onSend = { text, answers -> haptics.tick(); vm.send(text, answers = answers) })
                                 }
                             }
+                        }
+                        is ChatItem.CallCard -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val first = item.lines.first()
+                            if (first.key in timed) TimeLine(timeLabeler.label(first.at))
+                            CallCardRow(item, open = item.callId in openCalls, agentName = agentName, onToggle = {
+                                haptics.tick()
+                                openCalls = if (item.callId in openCalls) openCalls - item.callId else openCalls + item.callId
+                            })
                         }
                         is ChatItem.Tool -> ToolChip(item)
                         is ChatItem.Approval -> ApprovalCard(item, onAnswer = { id, ok, rememberSite, rememberRecipient ->

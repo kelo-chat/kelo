@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ..agent import Tool, emit_ui
+from ..agent.fence import data
 from ..android.browser_signin import refusal as browser_refusal
 from ..android.device import DeviceError
 from ..android.signin import APP_HOST, APP_SIGNIN_HOSTS, SignInReader, choose_submit, find_fields, fingerprint, masked
@@ -22,7 +23,7 @@ from ..store import Store
 from ..vault import KEYCHAIN, Transient, VaultError
 from ..workers import current_turn, current_worker
 from .sites import registrable as site_key
-from .browser import BrowserPolicyError, BrowserSession, SignIn, browser_owner
+from .browser import BrowserPolicyError, BrowserSession, LoginOptions, NoSignInForm, SignIn, browser_owner
 
 
 def _when(t: float | None) -> str:
@@ -61,6 +62,28 @@ ASK_CODE = "A verification step is open (codes are never stored)."
 ASK_CODE_NOW = "A verification step is open now (codes are never stored)."
 REMEMBER_NOTE = ("If the site now asks whether to remember this device or keep you signed in, choose the option that keeps the owner "
                  "signed in (it goes on without a card); never choose the 'don't register / not now' option on your own.")
+
+
+def no_form_note(name: str, hosts: list[str], page_host: str, links: list[str]) -> str:
+    """browser_login on a page without a sign-in form: nothing typed; the form is reached by a click on the site's own sign-in link,
+    never by opening an address. `links`: words of the page's links to the login's own hosts (page text, fenced)."""
+    web = [h for h in hosts if not h.startswith("app:")]
+    seen = (f" Links on this page that go to this login's own address ({', '.join(web)}): " + ", ".join(data(w) for w in links) + "."
+            if links else "")
+    return (f"[No sign-in form on this page ({page_host or 'a blank page'}); nothing was typed. Reach the sign-in form like a person: "
+            "find the site's own sign-in link or button on this page by its words (any language) and call "
+            f"browser_login(name={name!r}, via=<its ref from your latest reading>); Kelo clicks it and fills the form it opens.{seen} "
+            "If this page has none, click the site's home link (its logo or home menu), read that page and do the same there. Do not "
+            "open a sign-in address yourself.]")
+
+
+def keep_note(name: str, options: list[tuple[str, str]]) -> str:
+    """browser_login on a form with unticked boxes or switches: nothing typed yet; the agent picks the stay-signed-in one by its words."""
+    listed = "\n".join(f"- `{sel}`: {data(label)}" for sel, label in options)
+    return (f"[The sign-in form shows unticked options; nothing was typed yet:\n{listed}\nCall browser_login(name={name!r}) again now "
+            "with keep=<the selector of the one option whose effect is that this browser stays signed in or remembers this device (any "
+            "wording, any language)>, or keep=\"none\" when no option means that. Never choose one that agrees to terms, marketing or "
+            "newsletters, saves the password, or changes security settings. The second call is part of this sign-in.]")
 
 
 # A sign-in whose verification is still open is not a sign-in: said plainly, so the model never tells the user they are signed in.
@@ -162,6 +185,12 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         head = "The user has LOCKED the keychain: nothing in it can be used until they unlock it.\n" if store.vault_locked() else ""
         if not items:
             return head + "The keychain is empty. Ask the user for a login with request_login, or for a service key with add_service_key."
+        def where(c: dict[str, Any]) -> str:
+            """The login's hosts, and its whole site when a host is only one address of it (a login works on every address of its site)."""
+            hosts = ", ".join(c["hosts"])
+            sites = sorted({site_key(h) for h in c["hosts"] if not h.startswith("app:")} - set(c["hosts"]) - {""})
+            return hosts + (f" (every address of {', '.join(sites)})" if c["kind"] == "login" and sites else "")
+
         lines = []
         for c in items:
             kind = "website login" if c["kind"] == "login" else "service key"
@@ -174,7 +203,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                 if mine:
                     ask += "; signs in without asking in the runs of " + ", ".join(f"{g['scope']} #{g['scope_ref']}" for g in mine)
             seen = f"; last result: {c['last_result']}{' (' + c['last_result_detail'] + ')' if c['last_result_detail'] else ''}" if c["last_result"] else ""
-            lines.append(f"- {c['name']} ({c['label']}): {kind} for {', '.join(c['hosts'])}; {have}; last used {_when(c['last_used'])}{seen}{ask}")
+            lines.append(f"- {c['name']} ({c['label']}): {kind} for {where(c)}; {have}; last used {_when(c['last_used'])}{seen}{ask}")
         return head + "\n".join(lines)
 
     async def request_login(args: dict[str, Any]) -> str:
@@ -188,26 +217,32 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         def long_for(login: str) -> str:
             if host.startswith("app:"):   # an app on the Android device: its sign-in screen and android_login, not a page and browser_login
                 return f"open the sign-in screen of {host[4:]} on the phone (android_open) and call android_login(name={login!r})"
-            return f"open the sign-in page of {host} in the browser and call browser_login(name={login!r})"
-        if host.startswith("app:"):
-            short = f"Open the sign-in screen of the app on the phone (android_open) and call android_login(name={name!r})."
-        else:
-            short = f"Open the sign-in page in the browser and call browser_login(name={name!r})."
-        # a login of the same site or service already asked for (or saved) is that login: no second card (threads.net, then
-        # threads.com after the redirect)
-        if not args.get("name"):
+            return f"get to the sign-in form of {host} by the site's own sign-in link and call browser_login(name={login!r})"
+        def short_for(login: str) -> str:
+            if host.startswith("app:"):
+                return f"Open the sign-in screen of the app on the phone (android_open) and call android_login(name={login!r})."
+            return (f"Get to the site's sign-in form by its own sign-in link (or call browser_login with via=<the ref of that link>) "
+                    f"and call browser_login(name={login!r}).")
+        # A login saved (or asked for) for any address of the same site or service is THE login of the whole site: no second card,
+        # whatever name was asked for (owner 2026-11-19: a second login was asked for three times for one address of a site whose
+        # login was saved). Two accounts on one site only on purpose: another_account=true, with its own name.
+        clash = store.credential(name)   # a service key of that name is a conflict (save_credential below), not a login to reuse
+        if not args.get("another_account") and not (clash and clash.get("kind") != "login"):
             same = [c for c in store.credentials() if c["kind"] == "login" and any(login_site_ok(host, [h]) for h in c["hosts"])]
             if same:
-                name = same[0]["name"]
-                if not same[0]["has_secret"] and host not in same[0]["hosts"]:
-                    host_list = sorted({*same[0]["hosts"], host})
-                    store.save_credential(name, same[0]["label"], host_list, {}, "", kind="login")
-                item = store.credential(name)
-                if item and item["secret"]:
-                    return f"{name} already has a saved login for {host}. {short}"
+                saved = [c for c in same if c["has_secret"]]
+                pick = next((c for c in same if c["name"] == name), None) or (saved[0] if saved else same[0])
+                name = pick["name"]
+                if not pick["has_secret"] and host not in pick["hosts"]:   # nothing sealed yet: its hosts may grow
+                    store.save_credential(name, pick["label"], sorted({*pick["hosts"], host}), {}, "", kind="login")
+                if pick["has_secret"]:
+                    others = [c["name"] for c in saved if c["name"] != name]
+                    more = f" Other saved logins for this site (another account): {', '.join(others)}." if others else ""
+                    site = host if host.startswith("app:") else (site_key(host) or host)
+                    return f"{name} already has a saved login for {site}.{more} {short_for(name)}"
         item = store.credential(name)
         if item and item["secret"] and item.get("kind") == "login":   # a service key of that name is a conflict (save_credential), not a login
-            return f"{name} already has a saved login for {host}. {short}"
+            return f"{name} already has a saved login for {host}. {short_for(name)}"
 
         ctx = entry_context.get()
         entries: SecretRequests = (ctx[0] if ctx else None) or getattr(store, "secret_requests", None) or SecretRequests(store)
@@ -227,7 +262,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                 store.add_vault_log(name, "requested", f"website login for {host}")
                 item = store.credential(name)
                 if item and item["secret"]:
-                    return f"{name} already has a saved login for {host}. {short}"
+                    return f"{name} already has a saved login for {host}. {short_for(name)}"
                 req = entries.create("login", name=name, label=label, hosts=[host],
                                      reason=str(args.get("reason") or "").strip()[:300], username_hint=hint,
                                      turn=turn, worker_id=current_worker.get() or "", owner=browser_owner.get() or "")
@@ -287,13 +322,14 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
              "Never shows a value, user name or password.",
              {"type": "object", "properties": {}}, vault_status, read_only=True),   # names, sites and dates only (no secret values: those are guarded by the data trail's secret check); a label made every search or open of a saved site ask (2026-11-16)
         Tool("request_login", "Ask the user for a website's login when none is saved: a fill-in card (user name, password) appears "
-             "below your message; they fill it there and you never see it. A service from the Connectors list goes through "
-             "connect_service instead.",
+             "below your message; they fill it there and you never see it. A saved login works on every address of its site, so it is "
+             "never asked for again. A service from the Connectors list goes through connect_service instead.",
              {"type": "object", "properties": {"site": {"type": "string", "description": "https address or host of the sign-in page; app:<package> for an app on the Android device"},
                                                "name": {"type": "string", "description": "short slug for this login"},
                                                "label": {"type": "string"},
                                                "reason": {"type": "string", "description": "one short line: why you need it now"},
                                                "username": {"type": "string", "description": "the account name or email the sign-in will use, only when the owner gave it or it is one of the owner's connected account addresses; never guess"},
+                                               "another_account": {"type": "boolean", "description": "true only when the user asked to save a second, different account for a site that already has a saved login; give it its own name"},
                                                "deadline": {"type": "string", "description": "local date-time when the login is too late"}},
               "required": ["site"]},
              request_login),   # no approval card: filling the entry is the user's choice (they can just cancel it)
@@ -314,7 +350,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         item = store.credential(name)
         if not item or item["kind"] != "login":
             store.add_vault_log(name, "denied", f"{tool}: no such login", False)
-            raise VaultError(f"no website login named {name!r}. Logins: {', '.join(c['name'] for c in store.credentials() if c['kind'] == 'login') or 'none'}. "
+            raise VaultError(f"no website login named {name!r}. Logins: {', '.join(f"{c['name']} ({', '.join(c['hosts'])})" for c in store.credentials() if c['kind'] == 'login') or 'none'}. "
                              "Ask for one with request_login.")
         once = transient.peek(name)
         if not item["secret"] and not once:
@@ -517,29 +553,67 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         if step not in ("both", "username", "password"):
             return "error: step must be both, username or password"
         submit = bool(args.get("submit", True))
+        via = str(args.get("via") or "").strip()
+        keep = None if args.get("keep") is None else (str(args.get("keep")).strip() or "none")
         try:
             name = clean_name(str(args.get("name", "")))
+            if keep is not None:
+                session.end_keep_choice(name)   # the choice asked for by the call before is answered now
             item, once, username, password = usable_login(name, "browser_login")
             page = await session.page()
             parts = urlsplit(page.url)
+            came_from = str(page.url or "")
             if parts.scheme != "https" or not login_site_ok(parts.hostname or "", item["hosts"]):
                 store.add_vault_log(name, "denied", f"browser_login: the browser was on {parts.hostname or 'a blank page'}", False)
                 raise VaultError(f"the browser is on {parts.hostname or 'a blank page'}, but this login is only for the site {', '.join(item['hosts'])} "
                                  "(and its other addresses under the same domain) over https. "
-                                 "Open that site's sign-in page first.")
+                                 "Go to that site first (its home page), then use its own sign-in link.")
             store.touch_credential(name)
-            if submit:   # a sign-in the agent itself started on this site, in this task: a code that site mails for it may be typed
-                from ..workers import current_turn
 
-                session.sign_ins[browser_owner.get()] = {"site": site_key(parts.hostname or ""), "at": time.time(),
-                                                         "task": (current_turn.get() or {}).get("task_id")}
-            try:
-                result = await session.fill_login(
-                    username, password, step=step, submit=submit,
+            def mark() -> None:
+                if submit:   # a sign-in the agent itself started on this site, in this task: a code that site mails for it may be typed
+                    from ..workers import current_turn
+
+                    session.sign_ins[browser_owner.get()] = {"site": site_key(parts.hostname or ""), "at": time.time(),
+                                                             "task": (current_turn.get() or {}).get("task_id")}
+
+            async def fill() -> SignIn:
+                return await session.fill_login(
+                    username, password, step=step, submit=submit, ask_options=submit and keep is None, keep=keep,
                     origin_ok=lambda url: urlsplit(url).scheme == "https" and login_site_ok(urlsplit(url).hostname or "", item["hosts"]))
+
+            mark()
+            try:
+                try:
+                    result = await fill()
+                except NoSignInForm:
+                    if not via:
+                        store.add_vault_log(name, "used", f"browser_login on {parts.hostname}: no sign-in form on the page", False)
+                        return no_form_note(name, item["hosts"], parts.hostname or "", await session.sign_in_links(item["hosts"]))
+                    await session.open_sign_in(via)
+                    parts = urlsplit((await session.page()).url)
+                    if parts.scheme != "https" or not login_site_ok(parts.hostname or "", item["hosts"]):
+                        store.add_vault_log(name, "denied", f"browser_login: the sign-in link led to {parts.hostname or 'a blank page'}", False)
+                        raise VaultError(f"the link led to {parts.hostname or 'a blank page'}, which is not the site of this login "
+                                         f"({', '.join(item['hosts'])}); nothing was typed.") from None
+                    mark()
+                    try:
+                        result = await fill()
+                    except NoSignInForm:
+                        store.add_vault_log(name, "used", f"browser_login on {parts.hostname}: no sign-in form after the click", False)
+                        return (f"error: after the click the page ({parts.hostname}) still shows no sign-in form; nothing was typed. Read "
+                                "the page: if it asks something first, do that, then call browser_login again on the page with the form.")
+            except LoginOptions as e:
+                session.wait_keep_choice(name)
+                store.add_vault_log(name, "used", f"browser_login on {parts.hostname}: the form's options were listed, nothing typed", True)
+                return keep_note(name, e.options)
             except BrowserPolicyError as e:
                 store.add_vault_log(name, "used", f"browser_login on {parts.hostname}: failed ({str(e)[:80]})", False)
                 raise
+            back = ""
+            if via and str((await session.page()).url or "").split("#", 1)[0] != came_from.split("#", 1)[0]:
+                back = (f"\n[Before signing in you were on {came_from[:200]}. If the site did not bring you back, get there again through "
+                        "the site's own links.]")
             # logged once the outcome is known: ok only on signed-in evidence (a verification still open is code_needed, not ok)
             store.add_vault_log(name, "used", f"browser_login on {parts.hostname}: {result.outcome}", result.outcome == "success")
             if result.outcome == "success":   # Kelo's browser now holds this site's sign-in (browser_sign_ins.py, the Keychain card)
@@ -563,7 +637,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                     for ask in (ASK_CODE, ASK_CODE_NOW):
                         note = note.replace(ask, "").strip()
                     return (f"[sign-in result: {shown_outcome(result)} — {result.detail}]\n{not_signed_in(result.step)} {note}\n"
-                            f"{typed}").replace("\n\n\n", "\n\n")
+                            f"{typed}{back}").replace("\n\n\n", "\n\n")
                 # a code step and a connected mailbox: find_login_code decides by the mail itself (code_judge, the user's grant for that
                 # site's login), not by a word of the page; an approval step has no code (NO_CODE)
                 if any(c["kind"] == "email" and c["has_secret"] for c in store.credentials()):
@@ -574,7 +648,7 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
                 note = f"{not_signed_in(result.step)} {note}".strip()
             elif submit and result.outcome in ("success", "unknown"):
                 note = f"{note} {REMEMBER_NOTE}".strip()
-            return f"[sign-in result: {shown_outcome(result)} — {result.detail}]\n{note}\n\n{result.text}"
+            return f"[sign-in result: {shown_outcome(result)} — {result.detail}]\n{note}{back}\n\n{result.text}"
         except (NetGuardError, BrowserPolicyError) as e:
             return f"error: {e}"
 
@@ -583,8 +657,16 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         host = await page_host()
         who = f" ({item['username_hint']})" if item and item.get("username_hint") else ""
         label = item["label"] if item else str(args.get("name", ""))
-        line = t("Types the {label}{who} login into the page that is open now ({host}). It is registered for this site only.",
-                 label=label, who=who, host=host or t("a blank page"))
+        via = str(args.get("via") or "").strip()
+        if via and (link := session.ref_label(via)):
+            line = t("Opens the sign-in page through “{link}” on {host}, then types the {label}{who} login there. It is registered for this site only.",
+                     link=link, label=label, who=who, host=host or t("a blank page"))
+        elif via:
+            line = t("Opens the site's sign-in page from {host}, then types the {label}{who} login there. It is registered for this site only.",
+                     label=label, who=who, host=host or t("a blank page"))
+        else:
+            line = t("Types the {label}{who} login into the page that is open now ({host}). It is registered for this site only.",
+                     label=label, who=who, host=host or t("a blank page"))
         order = orders.current() if orders is not None else None
         if order is not None and not order.paid:   # one of at most two cards of the order: say so, so the user knows what comes
             line += " " + t("This is for your order of {what}; the payment is confirmed once more at the end.", what=order.what)
@@ -594,6 +676,8 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         item = item_for(args)
         if not item or item["kind"] != "login" or store.vault_locked():
             return False
+        if args.get("keep") is not None and session.keep_choice_open(item["name"]):
+            return True   # the second call of a sign-in the user just approved: it only adds the stay-signed-in choice (S6)
         # no card when the user allowed this login to sign in on its own, or typed it in a moment ago for this very sign-in
         if item["auto_allow"] or just_entered(store, item["name"]) or transient.has(item["name"]):
             return True
@@ -610,16 +694,20 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
         return False
 
     tools.append(Tool("browser_login", "Type a saved login into the sign-in form of the page you are on and submit it; the user approves "
-                      "unless they allowed that login. When the sign-in form itself offers to keep you signed in or remember this device, "
-                      "call with submit=false, tick that option with browser_click, then submit the form. "
-                      "Works only on the site it was saved for; you never see the values. If the result "
-                      "is failed, do not try again: tell the user. Signed in only when the result says success. On the user's own "
-                      "account (never someone else's), accept an offer to keep this browser signed in or skip verification next time (any "
-                      "wording, any language); not saving the password, marketing or cookie consent, a recovery phone or email, or security "
-                      "settings.",
+                      "unless they allowed that login. No sign-in form on the page: pass via=<the ref of the site's own sign-in link or button on "
+                      "this page>; Kelo clicks it like a person and fills the form it opens (never open a sign-in address yourself). When "
+                      "the form has unticked options, nothing is typed at first: you get them and call again with keep=<the selector "
+                      "of the one that keeps this browser signed in> or keep=\"none\". Works only on the site it was saved for (every "
+                      "address of that site); you never see the values. If the result is failed, do not try again: tell the user. "
+                      "Signed in only when the result says success. On the user's own account (never someone else's), accept an offer "
+                      "to keep this browser signed in or skip verification next time (any wording, any language); not saving the "
+                      "password, marketing or cookie consent, a recovery phone or email, or security settings.",
                       {"type": "object", "properties": {"name": {"type": "string"},
                                                         "step": {"type": "string", "enum": ["both", "username", "password"],
                                                                  "description": "username / password: a form split over two pages"},
-                                                        "submit": {"type": "boolean"}}, "required": ["name"]},
+                                                        "submit": {"type": "boolean"},
+                                                        "via": {"type": "string", "description": "only when the page has no sign-in form: ref (e12) of the site's own sign-in link or button on this page, from your latest reading"},
+                                                        "keep": {"type": "string", "description": "after browser_login listed the form's unticked options: the selector of the one that keeps this browser signed in, or \"none\""}},
+                       "required": ["name"]},
                       browser_login, requires_approval=True, untrusted=True, source="page", auto_approve=auto, describe=describe))
     return tools

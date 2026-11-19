@@ -25,6 +25,7 @@ from ..tools.vnc import CONNECT_SECONDS, ClientFilter, VncError, VncUnavailable
 from ..tools.work_browser import work_tab
 from ..browser_history import history_routes
 from ..server import BACKGROUND_NOTE, ENDED_TABS_KEPT, HELD_STATUS, POLL_WAIT_MAX
+from ..workers import STATUS_HEAD
 from fastapi import APIRouter
 from .context import AppContext
 
@@ -119,12 +120,13 @@ def router(ctx: AppContext) -> APIRouter:
                     thumbs[key] = (time.monotonic(), tab["url"], (image, w, h))
             t = busy.get(key)
             holder = tab.get("controlled_by")
+            waiting = not t and workers.waits_for_owner(key)   # a job that asked the owner and waits for the answer
             items.append({"id": key, "label": tab_label(key), "source": "browser", "browser": tab.get("browser", "main"),
                           "tabs": await session.window_tabs(key),
                           "kind": ("owner" if key == "owner" else "device" if key.isdigit() else key.split(":", 1)[0]),
                           "title": tab["title"], "url": tab["url"], "host": tab["host"],
-                          "status": "working" if t else ("failed" if tab_failed.get(key) else "idle"),
-                          "status_text": i18n.t(HELD_STATUS) if holder else tab["status"],
+                          "status": "working" if t else ("waiting" if waiting else "failed" if tab_failed.get(key) else "idle"),
+                          "status_text": i18n.t(HELD_STATUS) if holder else (i18n.t(STATUS_HEAD["needs_input"]) if waiting else tab["status"]),
                           "controller": "user" if holder else "agent", "controlled_by": holder, "viewers": hub.watching(key) if hub else 0,
                           "last_activity": tab["last_activity"], "task_id": t.task_id if t else owner_tasks.get(key),
                           "thumbnail": image, "thumbnail_width": w, "thumbnail_height": h, "ended_at": None})
@@ -446,8 +448,11 @@ def router(ctx: AppContext) -> APIRouter:
         label = i18n.t(HELD_STATUS) if view["controller"] == "user" else (agent["status"] or "")
         health = live.health(key) if hasattr(live, "health") else {}   # page_busy / stale: the browser's live view only
         in_work = session is not None and getattr(session, "work", None) is not None and work_tab(key)
+        # the page's own pop-up, which is never in the picture (owner report 2026-11-19): what it said and how Kelo answered
+        shown = getattr(session, "page_dialog", None) if getattr(live, "kind", "") == "browser" else None
+        dialog = shown(key) if shown is not None else None
         return {"type": "status", **view, "label": label, "agent": agent, "viewers": live.watching(key), **health,
-                **({"browser": "work"} if in_work else {})}
+                **({"browser": "work"} if in_work else {}), **({"dialog": dialog} if dialog else {})}
 
     def live_error(e: LiveError) -> HTTPException:
         return HTTPException(e.status, e.message)

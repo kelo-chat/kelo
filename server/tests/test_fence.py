@@ -210,10 +210,20 @@ def test_the_work_room_tools_mark_command_output_and_library_files():
 def test_the_browser_page_text_title_and_popups_are_marked():
     import assistant.tools.browser as b
     src = inspect.getsource(b.BrowserSession._snapshot)   # the reading itself (snapshot only adds the tab's header line)
-    assert "Title: {data(title)}" in src and "{data(text)}" in src and "pop-up: {data(m)}" in src
+    assert "Title: {data(title)}" in src and "{data(text)}" in src and "dialog_note(d, " in src
+    import assistant.tools.page_dialogs as pd
+    assert "{data(d.message)}" in inspect.getsource(pd.dialog_note)   # a page's own pop-up words are fenced too (page_dialogs.py)
 
 
 def test_a_followup_reminder_fences_the_items_words():
     import assistant.followups as f
     src = inspect.getsource(f.Followups.compose)
     assert "fence(about" in src
+
+
+def test_all_inside_joins_the_data_of_every_fence_in_a_result():
+    from assistant.agent.fence import all_inside, data, render
+    text = render(f"Own words. {data('first part')}\n{data('second part')}", source="calendar", whole=False)
+    assert all_inside(text) == "first part\nsecond part"
+    assert all_inside(fence("only one", source="web")) == "only one"
+    assert all_inside("no fence at all") == "no fence at all"

@@ -849,6 +849,7 @@
 "agent_tab_working" = "일하는 중";
 "agent_tab_failed" = "막힘";
 "agent_tab_idle" = "쉬는 중";
+"agent_tab_waiting" = "기다리는 중";
 "agent_tab_picture" = "탭 화면";
 "agent_tab_no_picture" = "보여 줄 화면이 없어요 (빈 페이지).";
 "agent_tab_close" = "탭 닫기";
@@ -1601,6 +1602,9 @@
 "call_mic_denied" = "마이크를 쓸 수 없어 통화를 시작하지 못했어요.";
 "call_voice_offer" = "통화할 때 쓰는 Kelo의 자연스러운 목소리예요. 목소리 모델(%1$s)을 Kelo 서버에 한 번 받아 두면 다음 문장부터 이 목소리로 말해요. 받지 않으면 이 기기에 들어 있는 기계 목소리로 말해요.";
 "call_mark" = "통화";
+"call_chat_length##other" = "통화 %1$d분";
+"call_chat_show" = "통화 내용 보기";
+"call_chat_hide" = "통화 내용 접기";
 "call_voice_offer_title" = "Kelo의 목소리를 받을까요?";
 "call_voice_offer_ok" = "받기";
 "call_voice_offer_later" = "기기 목소리로 할게요";
@@ -1608,6 +1612,12 @@
 "call_voice_get" = "받기";
 "call_voice_line_close" = "닫기";
 "call_ears_failed" = "휴대폰 음성 인식이 말을 듣지 못하고 있어요.";
+"call_voice_device" = "Kelo 목소리를 불러오지 못해 이 기기의 목소리로 말해요.";
+"call_voice_none" = "지금 이 기기에서 Kelo의 목소리를 낼 수 없어요. 답은 채팅에서 볼 수 있어요.";
+"call_minimize" = "채팅으로 돌아가기";
+"call_keyboard" = "입력";
+"call_type_hint" = "Kelo에게 보낼 말을 입력하세요";
+"call_type_send" = "보내기";
 "voice_speech_title" = "Kelo 목소리";
 "voice_speech_download" = "목소리 모델 받기 · %1$s";
 "voice_speech_downloading" = "목소리 모델 받는 중 · %1$d%%";

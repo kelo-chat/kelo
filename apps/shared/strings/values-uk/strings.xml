@@ -908,6 +908,7 @@
     <string name="agent_tab_working">Працює</string>
     <string name="agent_tab_failed">Застрягла</string>
     <string name="agent_tab_idle">Без діла</string>
+    <string name="agent_tab_waiting">Чекає на вас</string>
     <string name="agent_tab_picture">Екран вкладки</string>
     <string name="agent_tab_no_picture">Нічого показати (порожня сторінка).</string>
     <string name="agent_tab_close">Закрити вкладку</string>

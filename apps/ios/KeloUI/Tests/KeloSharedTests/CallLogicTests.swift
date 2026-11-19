@@ -46,6 +46,23 @@ import KeloCore
         #expect(run(s(.waiting, busy: true), .firstSentence).0.phase == .speaking)
     }
 
+    @Test func aQuestionThatStopsTheTurnGoesBackToListeningAndWordsAreHeld() {
+        let (waiting, actions) = run(s(.waiting, busy: true), .questionOpened)
+        #expect(waiting.phase == .listening)
+        #expect(waiting.replyBusy)
+        #expect(actions.isEmpty)
+        let (heard, held) = run(waiting, .transcribed("hello"))
+        #expect(heard.phase == .waiting)
+        #expect(held == [.holdText])
+    }
+
+    @Test func theQuestionClosingWhileListeningFreesTheCall() {
+        let (freed, actions) = run(s(.listening, busy: true), .replyEnded)
+        #expect(freed.phase == .listening)
+        #expect(!freed.replyBusy)
+        #expect(actions.isEmpty)
+    }
+
     @Test func queueIdleGoesToWaitingWhileTheReplyRunsElseListening() {
         #expect(run(s(.speaking, busy: true), .queueIdle(replyBusy: true)).0.phase == .waiting)
         #expect(run(s(.speaking), .queueIdle(replyBusy: false)).0.phase == .listening)
@@ -94,12 +111,63 @@ import KeloCore
         #expect(a1 == [.sendText])
     }
 
-    @Test func textDuringAReplyIsHeldAndTheNewestReplacesTheOlder() {
+    @Test func textDuringAReplyIsHeldAndJoinedToTheEarlier() {
         let (h1, a1) = run(s(.transcribing, busy: true), .transcribed("first"))
         #expect(a1 == [.holdText])
         #expect(h1.held == "first")
         let (h2, _) = run(CallSteps.State(phase: .transcribing, held: h1.held, replyBusy: true), .transcribed("second"))
-        #expect(h2.held == "second")
+        #expect(h2.held == "first second")
+    }
+
+    @Test func speechThatGoesOnWhileTheWordsAreTurnedIntoTextJoinsThemIntoOneTurn() {   // owner 2026-11-20
+        var st = CallSteps.State(phase: .listening)
+        func go(_ e: CallSteps.Event) -> [CallSteps.Action] { let (n, a) = CallSteps.step(st, e, bargeIn: true); st = n; return a }
+        _ = go(.speechStarted)
+        #expect(go(.speechEnded(Data())) == [.transcribe])
+        _ = go(.speechStarted); #expect(st.phase == .hearing)
+        #expect(go(.transcribed("나 목소리")).isEmpty); #expect(st.held == "나 목소리")
+        #expect(go(.speechEnded(Data())) == [.transcribe])
+        #expect(go(.transcribed("너무 끊겨")) == [.sendText])
+        #expect(st.sent == CallSteps.Outgoing(text: "나 목소리 너무 끊겨", amend: false))
+        #expect(st.unanswered == "나 목소리 너무 끊겨"); #expect(st.held == nil)
+    }
+
+    @Test func aCoughAfterTheFirstWordsStillSendsThem() {
+        let heard = run(CallSteps.State(phase: .transcribing, inFlight: 1), .speechStarted).0
+        let gathered = run(heard, .transcribed("hi")).0
+        let (sent, a) = run(gathered, .speechDropped)
+        #expect(a == [.sendText]); #expect(sent.sent == CallSteps.Outgoing(text: "hi", amend: false))
+    }
+
+    @Test func talkingAgainBeforeKeloAnswersTakesTheWordsBackAndSendsThemAgainWithTheRest() {
+        let (taking, a1) = run(CallSteps.State(phase: .waiting, unanswered: "나 목소리"), .speechStarted)
+        #expect(a1 == [.takeBack]); #expect(taking.again == "나 목소리"); #expect(taking.unanswered == nil)
+        let freed = run(CallSteps.State(phase: taking.phase, held: nil, replyBusy: true, again: "나 목소리"), .replyEnded).0
+        #expect(freed.replyBusy == false); #expect(freed.again == "나 목소리")
+        let ending = run(freed, .speechEnded(Data())).0
+        let (done, a2) = run(ending, .transcribed("너무 끊겨"))
+        #expect(a2 == [.sendText]); #expect(done.sent == CallSteps.Outgoing(text: "나 목소리 너무 끊겨", amend: true))
+        #expect(run(CallSteps.State(phase: .hearing, again: "나 목소리"), .speechDropped).0.sent == CallSteps.Outgoing(text: "나 목소리", amend: true))
+        #expect(run(CallSteps.State(phase: .hearing, again: "x"), .takeBackRefused).0.again == nil)
+    }
+
+    @Test func onceKeloAnsweredNewWordsWaitForTheNextTurn() {
+        let answered = run(CallSteps.State(phase: .waiting, unanswered: "a"), .answered).0
+        #expect(answered.unanswered == nil)
+        #expect(run(answered, .speechStarted).1.isEmpty)
+    }
+
+    @Test func aReplyThatEndsWhileTheOwnerTalksFreesTheirWords() {   // they were held forever before
+        let (freed, a1) = run(CallSteps.State(phase: .hearing, replyBusy: true), .replyEnded)
+        #expect(freed.replyBusy == false); #expect(a1.isEmpty)
+        let ending = run(freed, .speechEnded(Data())).0
+        #expect(run(ending, .transcribed("x")).1 == [.sendText])
+    }
+
+    @Test func refusedAmendWordsAreHeldAsAnAmend() {
+        let (s1, a1) = run(CallSteps.State(phase: .waiting), .sendRefused("a b", amend: true))
+        #expect(a1 == [.holdText]); #expect(s1.again == "a b")
+        #expect(run(s1, .replyEnded).0.sent == CallSteps.Outgoing(text: "a b", amend: true))
     }
 
     @Test func heldTextIsSentWhenTheReplyEnds() {
@@ -133,6 +201,53 @@ import KeloCore
         let (next, actions) = run(ended, .speechStarted)
         #expect(next == ended)
         #expect(actions.isEmpty)
+    }
+
+    @Test func sendRefusedHoldsWordsUntilTheChatIsFree() {
+        let (s1, a1) = run(s(.waiting, busy: true), .sendRefused("hi"))
+        #expect(s1 == CallSteps.State(phase: .waiting, held: "hi", replyBusy: true))
+        #expect(a1 == [.holdText])
+
+        let (s2, a2) = run(s1, .replyEnded)
+        #expect(s2.phase == .waiting)
+        #expect(s2.held == nil)
+        #expect(a2 == [.sendText])
+    }
+
+    @Test func speakingReplyEndedKeepsSpeakingUntilTheQueueIsIdle() {
+        #expect(run(s(.speaking, busy: true), .replyEnded).0.phase == .speaking)
+    }
+
+    @Test func phoneRetryWaitsDoubleAndStopAtEight() {
+        let waits = [0, 1, 2, 3, 4, 5, 40].map { CallRules.phoneRetryWait(misses: $0) }
+        #expect(waits == [0, 1000, 2000, 4000, 8000, 8000, 8000])
+    }
+
+    @Test func typedWordsGoNowOrWait() {
+        let (s1, a1) = run(s(.listening), .typed("hi"))
+        #expect(s1.phase == .waiting)
+        #expect(a1 == [.sendText])
+        let (s2, a2) = run(s(.speaking), .typed("more"))
+        #expect(s2 == CallSteps.State(phase: .speaking, held: "more", replyBusy: true))
+        #expect(a2 == [.holdText])
+        let (s3, a3) = run(s2, .queueIdle(replyBusy: false))
+        #expect(s3.phase == .waiting)
+        #expect(s3.held == nil)
+        #expect(a3 == [.sendText])
+        #expect(run(s(.ringing), .typed("x")).1.isEmpty)
+    }
+
+    @Test func soundLinePoints() {
+        let flat = [Float](repeating: 0, count: 64)
+        let quiet = CallSoundLineRules.points(levels: flat, n: 0, count: 32, timeSec: 0.5, synthetic: false)
+        #expect(quiet.allSatisfy { $0 == 0 })
+        let loud = [Float](repeating: 1, count: 64)
+        let moving = CallSoundLineRules.points(levels: loud, n: 64, count: 32, timeSec: 0.5, synthetic: false)
+        #expect(moving.count == 32)
+        #expect(moving.contains { abs($0) > 0.3 })
+        #expect(moving.allSatisfy { $0 >= -1 && $0 <= 1 })
+        let device = CallSoundLineRules.points(levels: flat, n: 0, count: 32, timeSec: 0.5, synthetic: true)
+        #expect(device.contains { $0 != 0 })
     }
 }
 
@@ -225,12 +340,71 @@ import KeloCore
         #expect(all("It takes 3.5 hours. U.S. is big.") == ["It takes 3.5 hours.", "U.S. is big."])
     }
 
-    @Test func theFirstPieceIsCutAtACommaAfter80Characters() {
-        let text = String(repeating: "a", count: 30) + ", " + String(repeating: "b", count: 70) + ", then more words follow here without any end"
-        let pieces = all(text)
-        #expect(pieces[0].hasPrefix(String(repeating: "a", count: 30) + ","))
-        #expect(pieces[0].hasSuffix(","))
-        #expect(pieces[0].count > 80)
+    /// The same text one character at a time.
+    private func streamed(_ text: String) -> [String] {
+        let c = SentenceCutter()
+        var out: [String] = []
+        for ch in text { out += c.add(String(ch)) }
+        out += c.finish()
+        return out
+    }
+
+    /// The pieces the cutter gives after each delta, then after the finish.
+    private func steps(_ deltas: String...) -> [[String]] {
+        let c = SentenceCutter()
+        var out: [[String]] = []
+        for d in deltas { out.append(c.add(d)) }
+        out.append(c.finish())
+        return out
+    }
+
+    @Test func theFirstPieceGoesOutAtTheFirstClauseBreakOfAShortPhrase() {   // owner 2026-11-20: start speaking sooner
+        #expect(steps("좋은 질문이", "에요, 내일 오전 ", "회의는 10시에 시작해요. 끝나는 시간은 ", "정해지지 않았어요.")
+            == [[], ["좋은 질문이에요,"], ["내일 오전 회의는 10시에 시작해요."], [], ["끝나는 시간은 정해지지 않았어요."]])
+        #expect(all("Good question, the meeting starts at ten.") == ["Good question,", "the meeting starts at ten."])
+    }
+
+    @Test func oneWordIsNeverTheFirstPiece() {   // "Well," is one word: the opening runs on to the word cut at 32 characters
+        #expect(all("Well, I think the meeting is at ten tomorrow morning in the big room.")
+            == ["Well, I think the meeting is at", "ten tomorrow morning in the big room."])
+    }
+
+    @Test func withNoBreakSoonTheFirstPieceEndsAtAWordAfterAFewWords() {
+        let got = steps("Kelo is a self hosted proactive agent that lives on your own server and ", "keeps working when you are away.")
+        #expect(got[0] == ["Kelo is a self hosted proactive"])
+        #expect(got[1] + got[2] == ["agent that lives on your own server and keeps working when you are away."])
+    }
+
+    @Test func aShortWholeSentenceGoesAtOnceAndTheNextPhraseFollowsQuickly() {
+        #expect(all("네. 지금 확인해 볼게요, 잠시만요.") == ["네.", "지금 확인해 볼게요,", "잠시만요."])
+    }
+
+    @Test func aLongSentenceLaterInTheReplyIsCutAtAClauseBreak() {
+        #expect(all("Here is the plan. First we check the calendar for tomorrow morning, then we book the room on the second floor, and finally we send the invite to everyone.")
+            == ["Here is the plan.", "First we check the calendar for tomorrow morning,",
+                "then we book the room on the second floor, and finally we send the invite to everyone."])
+    }
+
+    @Test func numbersTimesAndAbbreviationsAreNeverCut() {
+        #expect(all("It costs 1,000 won in total, which is fine at 10:30.") == ["It costs 1,000 won in total,", "which is fine at 10:30."])
+    }
+
+    @Test func japaneseWithoutSpacesWaitsForItsMark() {
+        #expect(all("はい、明日の会議は十時からです。") == ["はい、明日の会議は十時からです。"])
+    }
+
+    @Test func aWordCutNeverLandsInsideAWordOrALink() {
+        let pieces = all("Open the page called [the monthly budget overview](https://d.io/b) and check the totals.")
+        #expect(pieces.first == "Open the page called")   // not "…called [the": never inside an open link
+        #expect(pieces.allSatisfy { !$0.contains("[") && !$0.contains("](") })
+    }
+
+    @Test func theNewRulesGiveTheSamePiecesStreamedOneCharacterAtATime() {
+        for text in ["좋은 질문이에요, 내일 오전 회의는 10시에 시작해요. 끝나는 시간은 정해지지 않았어요.",
+                     "Kelo is a self hosted proactive agent that lives on your own server and keeps working when you are away.",
+                     "Here is the plan. First we check the calendar for tomorrow morning, then we book the room on the second floor, and finally we send the invite to everyone."] {
+            #expect(all(text) == streamed(text))
+        }
     }
 
     @Test func aLongRunIsCutAtASpaceWithinTheMax() {
@@ -247,7 +421,7 @@ import KeloCore
     }
 
     @Test func markdownMarksAreSpokenPlain() {
-        #expect(all("Some **bold** and a [link](https://d.io).") == ["Some bold and a link."])
+        #expect(all("A **bold** [link](https://d.io).") == ["A bold link."])
     }
 
     @Test func finishFlushesTheRest() {
@@ -312,11 +486,11 @@ import KeloCore
         return out
     }
 
-    @Test func aToneOf300MsThen700MsOfSilenceEmitsStartedThenEndedWithPreroll() {
+    @Test func aToneOf300MsThenAClearPauseEmitsStartedThenEndedWithPreroll() {
         let gate = SpeechGate()
         var pcm = silence(ms: 400)
         pcm.append(tone(ms: 300))
-        pcm.append(silence(ms: 800))
+        pcm.append(silence(ms: 1100))
         let events = gate.feed(pcm)
         #expect(events.count == 2)
         #expect(events[0] == .started)
@@ -325,6 +499,55 @@ import KeloCore
             return
         }
         #expect(data.count >= 600 * 32)
+    }
+
+    private func cat(_ parts: Data...) -> Data { parts.reduce(into: Data()) { $0.append($1) } }
+
+    @Test func aPauseOf800MsInsideASentenceDoesNotEndIt() {   // owner 2026-11-20: "나 목소리 너무 끊겨"
+        let out = SpeechGate().feed(cat(silence(ms: 400), tone(ms: 600), silence(ms: 800), tone(ms: 700), silence(ms: 1400)))
+        #expect(out.count == 2)
+        #expect(out.first == .started)
+        if out.count == 2, case .ended(let pcm) = out[1] { #expect(pcm.count >= (600 + 800 + 700) * 32) } else { #expect(Bool(false), "the turn ends once") }
+    }
+
+    @Test func theTurnEndsAfterAClearPauseOfOneSecond() {
+        let gate = SpeechGate()
+        #expect(gate.feed(cat(silence(ms: 400), tone(ms: 800), silence(ms: 950))) == [.started])
+        let end = gate.feed(silence(ms: 100))
+        #expect(end.count == 1)
+        if end.count == 1, case .ended = end[0] {} else { #expect(Bool(false), "ends after 1 s of quiet") }
+    }
+
+    @Test func afterALongPauseInsideTheTurnTheEndWaitsLonger() {
+        let gate = SpeechGate()
+        #expect(gate.feed(cat(silence(ms: 400), tone(ms: 600), silence(ms: 900), tone(ms: 600), silence(ms: 1300))) == [.started])
+        let end = gate.feed(silence(ms: 120))   // 900 + 500 = 1400 ms
+        #expect(end.count == 1)
+        if end.count == 1, case .ended = end[0] {} else { #expect(Bool(false), "ends after the longer wait") }
+    }
+
+    @Test func theEndNeverWaitsMoreThan1800Ms() {
+        let gate = SpeechGate()
+        let pcm = cat(silence(ms: 400), tone(ms: 600), silence(ms: 900), tone(ms: 600), silence(ms: 1300), tone(ms: 600), silence(ms: 1700),
+                      tone(ms: 600), silence(ms: 1780))
+        #expect(gate.feed(pcm) == [.started])
+        let end = gate.feed(silence(ms: 20))
+        #expect(end.count == 1)
+        if end.count == 1, case .ended = end[0] {} else { #expect(Bool(false), "never longer than 1.8 s") }
+    }
+
+    @Test func aSoftEndingAfterLoudSpeechIsStillSpeech() {
+        let out = SpeechGate().feed(cat(silence(ms: 400), tone(ms: 600, db: -20), tone(ms: 1100, db: -54), silence(ms: 1100)))
+        #expect(out.count == 2)
+        if out.count == 2, case .ended(let pcm) = out[1] { #expect(pcm.count >= (400 + 1100) * 32) } else { #expect(Bool(false), "one turn") }
+    }
+
+    @Test func singleClicksInTheQuietDoNotKeepTheTurnOpen() {
+        var pcm = cat(silence(ms: 400), tone(ms: 600))
+        for _ in 0..<6 { pcm.append(silence(ms: 180)); pcm.append(tone(ms: 20)) }
+        let out = SpeechGate().feed(cat(pcm, silence(ms: 1000)))
+        #expect(out.count == 2)
+        if out.count == 2, case .ended(let p) = out[1] { #expect(p.count <= (300 + 400 + 1000 + 40) * 32) } else { #expect(Bool(false), "one turn") }
     }
 
     @Test func oneHundredFiftyMsOfToneProducesNothing() {
@@ -340,7 +563,7 @@ import KeloCore
         let gate = SpeechGate()
         var pcm = silence(ms: 300)
         pcm.append(tone(ms: 250))
-        pcm.append(silence(ms: 800))
+        pcm.append(silence(ms: 1100))
         let events = gate.feed(pcm)
         #expect(events.count == 2)
         #expect(events[0] == .started)
@@ -388,7 +611,7 @@ import KeloCore
         let gate2 = SpeechGate()
         var pcm = silence(ms: 400)
         pcm.append(tone(ms: 300))
-        pcm.append(silence(ms: 800))
+        pcm.append(silence(ms: 1100))
 
         var ev1: [SpeechGate.Out] = []
         var i = 0

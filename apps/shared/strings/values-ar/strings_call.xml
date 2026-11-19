@@ -25,6 +25,16 @@
     <string name="call_mic_denied">تعذر بدء المكالمة: الميكروفون غير مسموح به.</string>
     <string name="call_voice_offer">هذا صوت Kelo الطبيعي للمكالمات. نزّل نموذج الصوت (%1$s) إلى خادم Kelo مرة واحدة وسيتحدث به Kelo بدءًا من الجملة التالية. بدونه، يستخدم Kelo الصوت الآلي المدمج في هذا الجهاز.</string>
     <string name="call_mark">مكالمة</string>
+    <plurals name="call_chat_length">
+        <item quantity="zero">مكالمة · %1$d دقيقة</item>
+        <item quantity="one">مكالمة · دقيقة واحدة</item>
+        <item quantity="two">مكالمة · دقيقتان</item>
+        <item quantity="few">مكالمة · %1$d دقائق</item>
+        <item quantity="many">مكالمة · %1$d دقيقة</item>
+        <item quantity="other">مكالمة · %1$d دقيقة</item>
+    </plurals>
+    <string name="call_chat_show">عرض المكالمة</string>
+    <string name="call_chat_hide">إخفاء المكالمة</string>
     <string name="call_voice_offer_title">تنزيل صوت Kelo؟</string>
     <string name="call_voice_offer_ok">تنزيل</string>
     <string name="call_voice_offer_later">استخدام صوت الجهاز مؤقتًا</string>
@@ -32,6 +42,12 @@
     <string name="call_voice_get">تنزيل</string>
     <string name="call_voice_line_close">إغلاق</string>
     <string name="call_ears_failed">التعرف على الصوت في الهاتف لا يسمعك.</string>
+    <string name="call_voice_device">تعذّر تحميل صوت Kelo الخاص، لذلك يتحدث صوت هذا الجهاز.</string>
+    <string name="call_voice_none">لا يستطيع هذا الجهاز تشغيل صوت Kelo الآن. الرد موجود في المحادثة.</string>
+    <string name="call_minimize">العودة إلى المحادثة</string>
+    <string name="call_keyboard">اكتب</string>
+    <string name="call_type_hint">اكتب رسالة إلى Kelo</string>
+    <string name="call_type_send">إرسال</string>
     <string name="voice_speech_title">صوت Kelo</string>
     <string name="voice_speech_download">تنزيل نموذج الصوت · %1$s</string>
     <string name="voice_speech_downloading">جارٍ تنزيل نموذج الصوت · %1$d%%</string>

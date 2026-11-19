@@ -876,6 +876,7 @@
     <string name="agent_tab_working">Bekerja</string>
     <string name="agent_tab_failed">Macet</string>
     <string name="agent_tab_idle">Diam</string>
+    <string name="agent_tab_waiting">Menunggumu</string>
     <string name="agent_tab_picture">Layar tab</string>
     <string name="agent_tab_no_picture">Tidak ada yang ditampilkan (halaman kosong).</string>
     <string name="agent_tab_close">Tutup tab</string>

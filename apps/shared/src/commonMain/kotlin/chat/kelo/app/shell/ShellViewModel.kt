@@ -10,6 +10,7 @@ import chat.kelo.app.chat.BrowserTabsBrief
 import chat.kelo.app.chat.ChatPlatform
 import chat.kelo.app.chat.SleepHours
 import chat.kelo.app.chat.TasksBrief
+import chat.kelo.app.chat.UserNeed
 import chat.kelo.app.chat.TurnKind
 import chat.kelo.app.chat.WorkersBrief
 import chat.kelo.app.core.ApiError
@@ -79,8 +80,8 @@ class ShellViewModel(
 
     // the header's line and the character, recomputed when what they read changes and every second for the clocks (cheer, sleep, night)
     private suspend fun watch() {
-        val flags = combine(activity.offline, activity.status, activity.stuck, activity.listening, activity.following) { offline, status, stuck, listening, following ->
-            Flags(offline, status, stuck, listening, following)
+        val flags = combine(activity.offline, activity.status, activity.need, activity.listening, activity.following) { offline, status, need, listening, following ->
+            Flags(offline, status, need, listening, following)
         }
         val times = combine(activity.turnKind, activity.polledBrowsing, activity.doneAt, activity.activeAt, activity.sleepHours) { kind, browsing, doneAt, activeAt, hours ->
             Times(kind, browsing, doneAt, activeAt, hours)
@@ -93,13 +94,13 @@ class ShellViewModel(
             val idle = AgentActivityRules.idleMs(now, t.activeAt)?.coerceAtMost(AgentActivityRules.SLEEP_AFTER_IDLE_MS)
             val night = AgentActivityRules.nightAt(System.currentTimeMillis(), java.time.ZoneId.systemDefault(), t.hours)
             val mood = AgentActivityRules.mood(
-                AgentActivityRules.MoodInput(f.offline, f.status, f.stuck, f.listening, f.following, t.kind, t.browsing, sinceDone, night, idle),
+                AgentActivityRules.MoodInput(f.offline, f.status, f.need, f.listening, f.following, t.kind, t.browsing, sinceDone, night, idle),
             )
             _state.value = ShellUiState(f.status, AgentActivityRules.shown(f.following, l.first, l.second), mood, WorkBadge.of(f.status))
         }
     }
 
-    private class Flags(val offline: Boolean, val status: AgentStatus?, val stuck: Boolean, val listening: Boolean, val following: Boolean)
+    private class Flags(val offline: Boolean, val status: AgentStatus?, val need: UserNeed, val listening: Boolean, val following: Boolean)
     private class Times(val kind: TurnKind, val browsing: Boolean, val doneAt: Long, val activeAt: Long, val hours: SleepHours?)
 
     // a reply, work, an approval or the microphone starting or ending counts as something happening
@@ -149,7 +150,7 @@ class ShellViewModel(
                     if (before == null || ended || before.unseenTasks != s.unseenTasks || round % STUCK_EVERY == 0) {
                         val newest = runCatching { api.get<TasksBrief>("/api/tasks?limit=1").items.firstOrNull() }.getOrNull()
                         val waiting = runCatching { api.get<WorkersBrief>("/api/workers?status=needs_input&limit=5").items }.getOrDefault(emptyList())
-                        activity.stuck.value = AgentActivityRules.needsUser(newest, waiting, System.currentTimeMillis() / 1000.0)
+                        activity.need.value = AgentActivityRules.needsUser(newest, waiting, System.currentTimeMillis() / 1000.0)
                         if (AgentActivityRules.finished(before, s, newest) && !activity.following.value) activity.doneAt.value = platform.uptimeMs()
                     }
                     before = s

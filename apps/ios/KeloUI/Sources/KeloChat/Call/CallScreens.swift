@@ -183,6 +183,8 @@ public struct InCallView: View {
 
     @Environment(\.kelo) private var c
     @Environment(\.accessibilityReduceMotion) private var reduce
+    @State private var typing = false
+    @State private var typedText = ""
 
     public init(session: CallSession, agentName: String, onMinimize: @escaping () -> Void) {
         self.session = session
@@ -215,45 +217,53 @@ public struct InCallView: View {
             c.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Top header with minimize button
+                // Back minimises to the pill over the chat; the speaker switch sits in this top bar
                 HStack {
                     Button(action: onMinimize) {
-                        HStack(spacing: 4) {
-                            KeloIconView(.chevronDown, size: 16, tint: c.muted)
-                            Text(L(R.string.call_card_open))
-                                .font(.subheadline)
-                                .foregroundColor(c.muted)
-                        }
-                        .padding(8)
+                        KeloIconView(.chevronLeft, size: 20, tint: c.ink)
+                            .frame(width: 44, height: 44)
                     }
-                    .accessibilityLabel(L(R.string.call_card_open))
+                    .accessibilityLabel(L(R.string.call_minimize))
+                    .accessibilityIdentifier("call.minimize")
 
-                    Spacer()
+                    Text(agentName)
+                        .font(.headline)
+                        .foregroundColor(c.ink)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+
+                    Button(action: { session.setSpeaker(!session.ui.speakerOn) }) {
+                        KeloIconView(.speaker, size: 20, tint: session.ui.speakerOn ? c.ink : c.muted)
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel(L(R.string.call_speaker))
+                    .accessibilityAddTraits(session.ui.speakerOn ? .isSelected : [])
+                    .accessibilityIdentifier("call.speaker")
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
+                .padding(.horizontal, 8)
+                .frame(height: 56)
 
-                Spacer()
+                Spacer().frame(height: 8)
 
-                // Avatar 136pt with speaking ring
+                // Mascot 128 pt with the speaking ring; a tap while Kelo speaks stops it
                 ZStack {
                     if session.ui.phase == .speaking && !reduce {
                         let level = Double(session.trail.snapshot().last ?? 0)
                         let ringWidth = 2.0 + level * 6.0
                         Circle()
                             .stroke(c.accent, lineWidth: CGFloat(ringWidth))
-                            .frame(width: 136 + CGFloat(ringWidth), height: 136 + CGFloat(ringWidth))
+                            .frame(width: 128 + CGFloat(ringWidth), height: 128 + CGFloat(ringWidth))
                     }
 
                     Circle()
                         .fill(c.card)
-                        .frame(width: 136, height: 136)
+                        .frame(width: 128, height: 128)
                         .overlay(
                             KeloCharacterView(CallRules.mood(for: session.ui.phase))
-                                .frame(width: 104, height: 104)
+                                .frame(width: 96, height: 96)
                         )
                 }
-                .frame(width: 160, height: 160)
+                .frame(width: 150, height: 150)
                 .contentShape(Circle())
                 .onTapGesture {
                     if session.ui.phase == .speaking {
@@ -261,33 +271,27 @@ public struct InCallView: View {
                     }
                 }
 
-                Spacer().frame(height: 16)
+                Spacer().frame(height: 8)
 
-                Text(agentName)
-                    .font(.title3.weight(.semibold))
+                Text(CallRules.clock(elapsedMs: session.ui.elapsedMs))
+                    .font(.title3.monospacedDigit())
                     .foregroundColor(c.ink)
-                    .lineLimit(1)
-
-                Spacer().frame(height: 4)
-
-                Text(stateLineText)
-                    .font(.subheadline)
-                    .foregroundColor(c.muted)
+                    .accessibilityIdentifier("call.clock")
 
                 Spacer().frame(height: 2)
 
-                Text(CallRules.clock(elapsedMs: session.ui.elapsedMs))
+                Text(stateLineText)
                     .font(.footnote)
-                    .monospacedDigit()
                     .foregroundColor(c.muted)
+                    .accessibilityIdentifier("call.state")
 
-                Spacer().frame(height: 20)
+                Spacer().frame(height: 12)
 
-                // Waveform
-                Waveform(trail: session.trail)
-                    .frame(maxWidth: 280, minHeight: 40, maxHeight: 40)
-                    .padding(.horizontal, 24)
+                CallSoundLine(trail: session.trail, phase: session.ui.phase)
+                    .padding(.horizontal, 16)
+                    .accessibilityIdentifier("call.sound")
 
+                VStack(spacing: 0) {
                 // Offline alert line
                 if session.ui.offline {
                     Spacer().frame(height: 12)
@@ -296,6 +300,25 @@ public struct InCallView: View {
                         .foregroundColor(c.dangerInk)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
+                }
+
+                if session.ui.earsTrouble {
+                    Spacer().frame(height: 8)
+                    Text(L(R.string.call_ears_failed))
+                        .font(.footnote)
+                        .foregroundColor(c.muted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .accessibilityIdentifier("call.earsTrouble")
+                }
+                if let trouble = session.ui.voiceTrouble {
+                    Spacer().frame(height: 8)
+                    Text(L(trouble == .noVoice ? R.string.call_voice_none : R.string.call_voice_device))
+                        .font(.footnote)
+                        .foregroundColor(trouble == .noVoice ? c.dangerInk : c.muted)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .accessibilityIdentifier("call.voiceTrouble")
                 }
 
                 // Voice Line prompt
@@ -346,9 +369,19 @@ public struct InCallView: View {
                     )
                 }
 
-                Spacer()
+                }
+                .padding(.horizontal, 24)
 
-                // Bottom Call Controls
+                CallTranscript(lines: session.lines, agentName: agentName)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifier("call.transcript")
+
+                if typing {
+                    CallTypeBar(text: $typedText, onSend: { session.sendTyped($0) })
+                        .accessibilityIdentifier("call.typeBar")
+                }
+
+                // Bottom: mute, hang up, keyboard
                 HStack(spacing: 28) {
                     CallControl(
                         icon: session.ui.muted ? .micOff : .mic,
@@ -362,17 +395,6 @@ public struct InCallView: View {
                     )
 
                     CallControl(
-                        icon: .speaker,
-                        size: 60,
-                        bg: session.ui.speakerOn ? c.neutralSoft : c.card,
-                        tint: c.ink,
-                        label: L(R.string.call_speaker),
-                        accessibilityTag: "call.speaker",
-                        isToggle: true,
-                        action: { session.setSpeaker(!session.ui.speakerOn) }
-                    )
-
-                    CallControl(
                         icon: .handsetDown,
                         size: 72,
                         bg: c.danger,
@@ -381,9 +403,21 @@ public struct InCallView: View {
                         accessibilityTag: "call.hangup",
                         action: { session.hangUp() }
                     )
+
+                    CallControl(
+                        icon: .keyboard,
+                        size: 60,
+                        bg: typing ? c.ink : c.neutralSoft,
+                        tint: typing ? c.bg : c.ink,
+                        label: L(R.string.call_keyboard),
+                        accessibilityTag: "call.keyboard",
+                        isToggle: true,
+                        action: { typing.toggle() }
+                    )
                 }
                 .padding(.horizontal, 24)
-                .padding(.bottom, 40)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
             }
         }
         .accessibilityIdentifier("call.active")

@@ -7,13 +7,16 @@ import KeloShared
 extension ChatModel {
     func apply(_ ev: TurnEvent) {
         onTurnEvent?(ev)
+        onCallTurnEvent?(turnCall, ev)
+        if turnCall != nil && CallRules.isAnswer(ev) { callQuiet = false }
         if case .paymentStep(let step) = ev { paymentSteps = PaymentStepRules.upsert(paymentSteps, step) }
         if case .pinNeeded(let need) = ev {
             pinNeeds = PinNeedRow.upsert(pinNeeds, need)
             if pinOnAllow.remove(need.slotId) != nil { releasePin(need.slotId) }
         }
         if phase != nil { phase = ChatReducer.phase(phase, ev, now: clock()) }
-        items = ChatReducer.apply(items, ev, newKey: key, now: Int64(Date().timeIntervalSince1970 * 1000))
+        let next = ChatReducer.apply(items, ev, newKey: key, now: Int64(Date().timeIntervalSince1970 * 1000))
+        items = turnCall.map { CallCards.tagNew(before: items, after: next, callId: $0) } ?? next
         switch ev {
         case .error, .stepLimit: onEvent(.error)
         case .paymentAuto: onEvent(.paymentAuto)
@@ -65,26 +68,36 @@ extension ChatModel {
         }
     }
 
-    public func sendFromCall(text: String, callId: String) -> Bool {
+    public func sendFromCall(text: String, callId: String, amend: Bool) -> Bool {
         if busy || secretAsk != nil || consentAsk != nil { return false }
-        start(text, fromComposer: false, tookAttachments: false, answers: [], secrets: nil, files: [], autoText: false, call: callId)
+        start(text, fromComposer: false, tookAttachments: false, answers: [], secrets: nil, files: [], autoText: false, call: callId, amend: amend)
         return true
     }
 
-    public func followFromCall(turnId: String) {
-        followTurn(turnId)
+    /// The owner went on talking before this call turn answered: the turn stops and the owner's bubble of it goes (the call sends the
+    /// words again with the rest, as an amend). False when it is not this call's turn, or anything of the answer came.
+    public func takeBackFromCall(callId: String) -> Bool {
+        guard busy, turnCall == callId, callQuiet, turn != nil else { return false }
+        callQuiet = false
+        if let i = items.lastIndex(where: { $0.asMsg != nil }), let m = items[i].asMsg, m.mine, m.callId == callId { items.remove(at: i) }
+        stop()
+        return true
+    }
+
+    public func followFromCall(turnId: String, callId: String) -> Bool {
+        followTurn(turnId, call: callId)
     }
 
     /// Starts the reply to `text`. `secrets` = `SecretGuard.allow` only when the owner chose "Send as is" on the secret sheet. When
     /// the server holds the message back for a secret (409), its bubble goes again, the composer and the attachments come back as
     /// they were, and `secretAsk` opens the sheet (no error row, no failed reply).
     func start(_ text: String, fromComposer: Bool, tookAttachments: Bool, answers: [ReplyAnswer], secrets: String?,
-               files: [MessageFile] = [], autoText: Bool = false, call: String? = nil) {
+               files: [MessageFile] = [], autoText: Bool = false, call: String? = nil, amend: Bool = false) {
         // a search window on screen: the newest page comes back first, so the reply lands under the newest messages (not in a gap)
         if hasNewer {
             leaveWindow { [weak self] in
                 self?.start(text, fromComposer: fromComposer, tookAttachments: tookAttachments, answers: answers, secrets: secrets,
-                            files: files, autoText: autoText, call: call)
+                            files: files, autoText: autoText, call: call, amend: amend)
             }
             return
         }
@@ -98,16 +111,18 @@ extension ChatModel {
             app.cache.put("draft", "")
         }
         busy = true
+        turnCall = call
+        callQuiet = call != nil
         phase = Phase(.waiting, since: clock())
         let bubble = key()
-        items.append(.msg(.init(key: bubble, mine: true, text: text, at: Int64(Date().timeIntervalSince1970 * 1000), files: files, autoText: autoText, fromCall: call != nil)))
+        items.append(.msg(.init(key: bubble, mine: true, text: text, at: Int64(Date().timeIntervalSince1970 * 1000), files: files, autoText: autoText, fromCall: call != nil, callId: call)))
         onEvent(.sent)
         app.activity.startFollowing()
         let canCallFn = canCall
         turn = Task { [weak self] in
             var finished = false
             do {
-                try await TurnFollower(api: KeloTurnApi(api: api, canCall: canCallFn)).talk(
+                try await TurnFollower(api: KeloTurnApi(api: api, canCall: canCallFn, amend: amend && call != nil)).talk(
                     text: text, timezone: TimeZone.current.identifier, answers: answers,
                     secrets: secrets, attachments: files.map(\.path), autoText: autoText, call: call, onId: { id in
                     await MainActor.run { self?.turnId = id }
@@ -123,6 +138,7 @@ extension ChatModel {
                     self.items.removeAll { $0.key == bubble }
                     if fromComposer { self.input = beforeInput }
                     if tookAttachments { self.attachments = beforeAttachments + self.attachments }
+                    self.onCallQuestion?(self.turnCall)
                     self.secretAsk = SecretAsk(found: held, text: text, answers: answers, fromComposer: fromComposer,
                                                tookAttachments: tookAttachments, composer: fromComposer ? beforeInput : "",
                                                composerSpans: fromComposer ? SecretGuard.composerSpans(beforeInput, held.spans) : [])
@@ -132,6 +148,7 @@ extension ChatModel {
                     self.items.removeAll { $0.key == bubble }
                     if fromComposer { self.input = beforeInput }
                     if tookAttachments { self.attachments = beforeAttachments + self.attachments }
+                    self.onCallQuestion?(self.turnCall)
                     self.consentError = nil
                     self.consentAsk = ConsentAsk(need: need, text: text, answers: answers, fromComposer: fromComposer,
                                                  tookAttachments: tookAttachments, secrets: secrets)
@@ -147,6 +164,8 @@ extension ChatModel {
 
     private func endTurn(finished: Bool) {
         turn = nil
+        turnCall = nil
+        callQuiet = false
         #if canImport(ActivityKit) && os(iOS)
         if liveStarted { ReplyLiveActivity.shared.finished(state: finished ? "done" : (Task.isCancelled ? "stopped" : "failed")) }
         #endif
@@ -173,9 +192,12 @@ extension ChatModel {
 
     /// Follows a reply the server started by itself for this phone (a secure entry saved after the reply that asked had ended): the
     /// same status line, events and end as a reply sent from here, without a bubble of the user's own.
-    public func followTurn(_ turnId: String) {
-        guard !busy, let api = api() else { return }
+    @discardableResult
+    public func followTurn(_ turnId: String, call: String? = nil) -> Bool {
+        guard !busy, let api = api() else { return false }
         busy = true
+        turnCall = call
+        callQuiet = false
         self.turnId = turnId
         phase = Phase(.waiting, since: clock())
         app.activity.startFollowing()
@@ -195,6 +217,7 @@ extension ChatModel {
             }
             self?.endTurn(finished: finished)
         }
+        return true
     }
 
     /// 다시 시도 on a reply or an error: the user's message before it goes again.

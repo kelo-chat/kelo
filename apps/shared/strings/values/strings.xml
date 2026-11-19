@@ -1043,6 +1043,7 @@
     <string name="agent_tab_working">Working</string>
     <string name="agent_tab_failed">Stuck</string>
     <string name="agent_tab_idle">Idle</string>
+    <string name="agent_tab_waiting">Waiting for you</string>
     <string name="agent_tab_picture">Tab screen</string>
     <string name="agent_tab_no_picture">Nothing to show (blank page).</string>
     <string name="agent_tab_close">Close tab</string>

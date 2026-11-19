@@ -22,7 +22,7 @@ public final class ChatModel {
     /// (`ChatReducer.foldTools`).
     public private(set) var rows: [ChatItem] = []
     public internal(set) var loaded = false
-    public internal(set) var busy = false
+    public internal(set) var busy = false { didSet { noteCallBusy() } }
     public internal(set) var phase: Phase?
     public internal(set) var input = ""
     public private(set) var providers: [ModelProvider] = []
@@ -50,9 +50,9 @@ public final class ChatModel {
     /// Questions waiting on the user that no followed reply shows: a background job's approval, a scheduled run's (`ChatAsks`)
     public internal(set) var asks: [ChatAsk] = []
     /// A message the server held back because it holds a key or password (`SecretGuard`): the sheet asks what to do with it
-    public internal(set) var secretAsk: SecretAsk?
+    public internal(set) var secretAsk: SecretAsk? { didSet { noteCallBusy() } }
     /// A message held back until someone agrees that chats go to the AI service (`AiConsent`): the question is on screen
-    public internal(set) var consentAsk: ConsentAsk?
+    public internal(set) var consentAsk: ConsentAsk? { didSet { noteCallBusy() } }
     /// The Agree call is on its way; its error, if it failed
     public internal(set) var consentBusy = false
     public internal(set) var consentError: String?
@@ -79,6 +79,17 @@ public final class ChatModel {
     @ObservationIgnored var onEvent: (ChatEvent) -> Void = { _ in }
     @ObservationIgnored public var onTurnEvent: (@Sendable (TurnEvent) -> Void)? = nil
     @ObservationIgnored public var canCall: @Sendable () -> Bool = { false }
+    /// The call that started the reply being followed (nil: a typed reply, or none); a call speaks only its own turns.
+    @ObservationIgnored public internal(set) var turnCall: String?
+    /// The call's turn has had no answer yet (take-back, `takeBackFromCall`): ends when the first answer comes.
+    @ObservationIgnored public internal(set) var callQuiet = false
+    /// Every applied reply event with the call that started its turn (CallCenter hands a call its own events).
+    @ObservationIgnored public var onCallTurnEvent: ((String?, TurnEvent) -> Void)? = nil
+    /// A secret or consent question stopped the call's turn (no reply follows): the call's id (2026-11-19).
+    @ObservationIgnored public var onCallQuestion: ((String?) -> Void)? = nil
+    /// callBusy changed: a call holds the owner's words until the chat can take them.
+    @ObservationIgnored public var onCallBusyChanged: ((Bool) -> Void)? = nil
+    @ObservationIgnored var lastCallBusy = false
     @ObservationIgnored let uploader: ChatUploader
     @ObservationIgnored let cardSender: ChatCardSender?
     @ObservationIgnored let clock: () -> Double
@@ -144,7 +155,7 @@ public final class ChatModel {
     }
 
     static func rowsOf(_ items: [ChatItem], _ secrets: [SecretRequest]) -> [ChatItem] {
-        ChatReducer.foldTools(ChatReducer.withPending(items, secrets))
+        CallCards.fold(ChatReducer.foldTools(ChatReducer.withPending(items, secrets)))
     }
 
     public func setInput(_ v: String) {
@@ -209,4 +220,15 @@ public final class ChatModel {
 
     /// Text shared from another app goes into the draft.
     public func receive(text: String) { setInput(DraftText.append(input, text)) }
+
+    /// The chat cannot take a call's words now: a reply runs, or a secret or consent question is open.
+    public var callBusy: Bool { busy || secretAsk != nil || consentAsk != nil }
+
+    func noteCallBusy() {
+        let now = callBusy
+        if now != lastCallBusy {
+            lastCallBusy = now
+            onCallBusyChanged?(now)
+        }
+    }
 }

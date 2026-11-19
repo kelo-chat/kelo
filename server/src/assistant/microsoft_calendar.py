@@ -53,7 +53,7 @@ class MicrosoftCalendar:
         query = urlencode({
             "startDateTime": start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "endDateTime": end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "$select": "id,subject,start,end,location,isAllDay,isCancelled",
+            "$select": "id,subject,start,end,location,isAllDay,isCancelled,bodyPreview",
             "$orderby": "start/dateTime",
             "$top": str(MAX_EVENTS if pages <= 1 else PAGE_EVENTS),
         })
@@ -98,6 +98,7 @@ def events_from(rows: list[dict[str, Any]], *, all_day: bool = False) -> list[di
             stop = None
         place = (r.get("location") or {}).get("displayName") or ""
         out.append({"id": f"outlook:{r.get('id', '')}", "title": str(r.get("subject") or "")[:200], "start": when.timestamp(), "where": str(place)[:200],
-                    "all_day": bool(r.get("isAllDay")), **({"end": stop.timestamp()} if stop and stop >= when else {}),
+                    "all_day": bool(r.get("isAllDay")), "notes": str(r.get("bodyPreview") or "")[:500],
+                    **({"end": stop.timestamp()} if stop and stop >= when else {}),
                     **({"day": start[:10]} if r.get("isAllDay") else {})})
     return out

@@ -58,3 +58,9 @@ def test_a_refusal_is_an_error_the_caller_can_skip(tmp_path):
     cal = MicrosoftCalendar(outlook_store(tmp_path), fetcher=fake(status=401))
     with pytest.raises(MicrosoftCalendarError):
         asyncio.run(cal.upcoming())
+
+
+def test_the_body_preview_is_kept_as_the_event_notes_for_search():
+    rows = [{"id": "a5", "subject": "Board", "start": {"dateTime": "2026-11-10T01:30:00.0000000"}, "bodyPreview": "agenda QQ9 " * 100}]
+    got = events_from(rows)
+    assert got[0]["notes"].startswith("agenda QQ9") and len(got[0]["notes"]) == 500

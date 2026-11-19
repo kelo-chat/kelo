@@ -823,6 +823,7 @@
 "agent_tab_working" = "Đang làm";
 "agent_tab_failed" = "Bị kẹt";
 "agent_tab_idle" = "Rảnh";
+"agent_tab_waiting" = "Đang chờ bạn";
 "agent_tab_picture" = "Màn hình tab";
 "agent_tab_no_picture" = "Không có gì để hiển thị (trang trống).";
 "agent_tab_close" = "Đóng tab";
@@ -1566,6 +1567,9 @@
 "call_mic_denied" = "Không thể bắt đầu cuộc gọi: chưa cấp quyền micro.";
 "call_voice_offer" = "Đây là giọng nói tự nhiên của Kelo khi gọi. Tải mô hình giọng nói (%1$s) về máy chủ Kelo một lần và Kelo sẽ nói bằng giọng này từ câu tiếp theo. Nếu không tải, Kelo sẽ dùng giọng nói máy móc của thiết bị này.";
 "call_mark" = "Cuộc gọi";
+"call_chat_length##other" = "Cuộc gọi · %1$d phút";
+"call_chat_show" = "Xem cuộc gọi";
+"call_chat_hide" = "Ẩn cuộc gọi";
 "call_voice_offer_title" = "Tải giọng nói của Kelo?";
 "call_voice_offer_ok" = "Tải về";
 "call_voice_offer_later" = "Tạm thời dùng giọng thiết bị";
@@ -1573,6 +1577,12 @@
 "call_voice_get" = "Tải về";
 "call_voice_line_close" = "Đóng";
 "call_ears_failed" = "Tính năng nhận dạng giọng nói của điện thoại không nghe thấy bạn.";
+"call_voice_device" = "Không tải được giọng của Kelo nên giọng của thiết bị này đang nói.";
+"call_voice_none" = "Thiết bị này hiện không phát được giọng của Kelo. Câu trả lời có trong cuộc trò chuyện.";
+"call_minimize" = "Quay lại cuộc trò chuyện";
+"call_keyboard" = "Nhập";
+"call_type_hint" = "Nhập tin nhắn gửi Kelo";
+"call_type_send" = "Gửi";
 "voice_speech_title" = "Giọng nói Kelo";
 "voice_speech_download" = "Tải mô hình giọng nói · %1$s";
 "voice_speech_downloading" = "Đang tải mô hình giọng nói · %1$d%%";

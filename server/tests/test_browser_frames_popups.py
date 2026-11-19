@@ -13,6 +13,7 @@ from assistant.agent.fence import plain
 from assistant.store import Store
 from assistant.tools import humanize
 from assistant.tools.browser import NO_CHANGE_NOTE, TAB_CLOSED_NOTE
+from assistant.tools.page_dialogs import DIALOG_ONLY_NOTE
 from assistant.tools.sites import registrable, same_site
 
 from fixtures.order_harness import Env
@@ -35,6 +36,9 @@ PAGES = {
 <div id=nums></div>
 <button id=buy onclick="if(confirm('구매하시겠습니까?')){fetch('/buy',{method:'POST'}).then(()=>{document.body.innerHTML='<p>구매 완료 번호 A-1</p>'})}">구매하기</button>""",
 }
+ASK = "https://www.ticketshop.example/ask"
+PAGES[ASK] = ("<h1>Box</h1><button id=box onclick=\"if(confirm('Sign in first. Go to the sign-in page?')){location.href='/signin'}\">"
+              "Box</button><button id=size onclick=\"alert('Pick a size first')\">Add</button>")
 
 
 def test_one_site_is_its_registrable_domain():
@@ -121,3 +125,26 @@ async def test_a_click_that_changes_nothing_says_so_and_an_allowed_one_is_not_as
     assert run.card_tools() == ["browser_click"]          # "Send message" asks once; the same button again (no change) does not
     first = plain(run.result("browser_click", 0).output)
     assert NO_CHANGE_NOTE in first
+
+
+async def test_a_click_whose_only_effect_is_a_cancelled_page_question_says_so_and_counts_as_no_change(ctx):
+    # owner report 2026-11-19: a job clicked the same element five times; each time the page asked to sign in in its own pop-up,
+    # Kelo answered Cancel, the model only read "dismissed", and nothing on the page changed
+    env = await env_on(ctx)
+    run = await env.run([("browser_open", {"url": ASK}), ("browser_click", {"selector": "#box"}), ("browser_click", {"selector": "#box"})])
+    first, second = plain(run.result("browser_click", 0).output), plain(run.result("browser_click", 1).output)
+    assert not run.result("browser_click", 0).is_error and not run.result("browser_click", 1).is_error
+    assert DIALOG_ONLY_NOTE in first and NO_CHANGE_NOTE not in first
+    # the loop fences the page's own words (the question sits between its marker lines), so the words and the answer are checked apart
+    assert "(confirm): " in first and "Sign in first. Go to the sign-in page?" in first and "Kelo answered Cancel for you" in first
+    assert "request_login" in first                                # the chat, no saved login: the usual sign-in path
+    assert DIALOG_ONLY_NOTE in second and "this same pop-up 2 times" in second
+    assert env.session.last_click_changed_nothing("owner") and "/signin" not in env.page.url
+    assert env.session.page_dialog("owner")["text"] == "The page asked: “Sign in first. Go to the sign-in page?” Kelo answered Cancel."
+    # a message with only OK is told, and still counts as a change (the page may have acted), as before
+    run = await env.run([("browser_click", {"selector": "#size"})])
+    out = plain(run.result("browser_click").output)
+    assert "(alert): " in out and "Pick a size first" in out and "It had only OK" in out
+    assert DIALOG_ONLY_NOTE not in out and NO_CHANGE_NOTE not in out
+    assert not env.session.last_click_changed_nothing("owner")
+    assert env.session.page_dialog("owner")["answer"] == "closed"

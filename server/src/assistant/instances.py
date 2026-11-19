@@ -253,6 +253,8 @@ class Instances:
             r = self.run(["docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter", f"reference={repo}:rollback-{name}-*"],
                          cwd=self.root, capture_output=True, text=True)
             tags = (r.stdout or "").split() if r.returncode == 0 else []
+            own = re.compile(rf"rollback-{re.escape(name)}-\d{{8}}-\d{{6}}")       # `rollback-rev-*` also lists copy rev-1's tags
+            tags = [t for t in tags if own.fullmatch(t.rpartition(":")[2])]
             if tags:
                 self.run(["docker", "image", "rm", *tags], cwd=self.root, capture_output=True, text=True)
         shutil.rmtree(self.dir / name)

@@ -834,6 +834,7 @@
 "agent_tab_working" = "काम चल रहा है";
 "agent_tab_failed" = "अटका हुआ";
 "agent_tab_idle" = "खाली";
+"agent_tab_waiting" = "आपका इंतज़ार";
 "agent_tab_picture" = "टैब की स्क्रीन";
 "agent_tab_no_picture" = "दिखाने को कुछ नहीं (खाली पेज)।";
 "agent_tab_close" = "टैब बंद करें";
@@ -1602,6 +1603,10 @@
 "call_mic_denied" = "कॉल शुरू नहीं हो सकी: माइक्रोफ़ोन की अनुमति नहीं है।";
 "call_voice_offer" = "यह कॉल के लिए Kelo की स्वाभाविक आवाज़ है। अपने Kelo सर्वर पर एक बार वॉयस मॉडल (%1$s) डाउनलोड करें, और Kelo अगले वाक्य से इसमें बोलेगा। इसके बिना, Kelo इस डिवाइस की रोबोटिक आवाज़ का उपयोग करता है।";
 "call_mark" = "कॉल";
+"call_chat_length##one" = "कॉल · %1$d मिनट";
+"call_chat_length##other" = "कॉल · %1$d मिनट";
+"call_chat_show" = "कॉल दिखाएँ";
+"call_chat_hide" = "कॉल छिपाएँ";
 "call_voice_offer_title" = "Kelo की आवाज़ डाउनलोड करें?";
 "call_voice_offer_ok" = "डाउनलोड";
 "call_voice_offer_later" = "फ़िलहाल डिवाइस की आवाज़ का उपयोग करें";
@@ -1609,6 +1614,12 @@
 "call_voice_get" = "डाउनलोड";
 "call_voice_line_close" = "बंद करें";
 "call_ears_failed" = "फ़ोन का वाक् पहचान आपको सुन नहीं पा रहा है।";
+"call_voice_device" = "Kelo की अपनी आवाज़ लोड नहीं हुई, इसलिए इस डिवाइस की आवाज़ बोल रही है।";
+"call_voice_none" = "यह डिवाइस अभी Kelo की आवाज़ नहीं चला सकता। जवाब चैट में है।";
+"call_minimize" = "चैट पर वापस जाएँ";
+"call_keyboard" = "लिखें";
+"call_type_hint" = "Kelo के लिए संदेश लिखें";
+"call_type_send" = "भेजें";
 "voice_speech_title" = "Kelo की आवाज़";
 "voice_speech_download" = "वॉयस मॉडल डाउनलोड करें · %1$s";
 "voice_speech_downloading" = "वॉयस मॉडल डाउनलोड हो रहा है · %1$d%%";

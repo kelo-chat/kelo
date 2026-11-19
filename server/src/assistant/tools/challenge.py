@@ -238,7 +238,8 @@ def signed_out_note(site: str, login: str, *, job: bool, minutes: int) -> str:
     head = (f"[{site} refused Kelo's browser, and Kelo's browser is not signed in to {site}. Sites often refuse a browser that is not "
             "signed in, so the next step is to sign in: do not retry the page, switch the view or use another address. ")
     if login:
-        how = (f"A saved login exists: open {site}'s home page, follow the site's own sign-in link and call browser_login(name={login!r}). ")
+        how = (f"A saved login exists: open {site}'s home page, follow the site's own sign-in link and call browser_login(name={login!r}) there "
+               "(or pass that link's ref as via and Kelo clicks it). ")
     elif job:
         how = (f"No login is saved for {site} and nobody can sign in during this job: report that Kelo's browser needs to be signed in "
                f"to {site} once, and do not use {site} again in this job. ")

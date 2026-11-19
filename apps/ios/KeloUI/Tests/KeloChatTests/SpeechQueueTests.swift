@@ -46,7 +46,7 @@ private final class MockSpeechEngine: SpeechEngine, @unchecked Sendable {
                 let pcm = Data(repeating: 0, count: 320)
                 return Wav.encode(pcm16le: pcm, sampleRate: 16_000)
             },
-            device: { device },
+            device: device,
             serverLang: { _ in "ko" },
             appLang: { "ko" },
             onLevel: { _ in },
@@ -77,7 +77,7 @@ private final class MockSpeechEngine: SpeechEngine, @unchecked Sendable {
         let queue = SpeechQueue(
             audio: audio,
             server: { _, _ in nil },
-            device: { device },
+            device: device,
             serverLang: { _ in nil }, // No server language -> device fallback
             appLang: { "ko" },
             onLevel: { _ in },
@@ -105,7 +105,7 @@ private final class MockSpeechEngine: SpeechEngine, @unchecked Sendable {
         let queue = SpeechQueue(
             audio: audio,
             server: { _, _ in nil },
-            device: { device },
+            device: device,
             serverLang: { _ in "ko" },
             appLang: { "ko" },
             onLevel: { _ in },
@@ -118,5 +118,61 @@ private final class MockSpeechEngine: SpeechEngine, @unchecked Sendable {
 
         #expect(audio.stoppedPlayback == true)
         #expect(queue.playing == false)
+    }
+
+    @Test func onePieceWithASlowFetchIsPlayed() async throws {
+        let audio = MockCallAudio()
+        let device = MockSpeechEngine()
+        var events: [SpeechQueue.Event] = []
+        let queue = SpeechQueue(
+            audio: audio,
+            server: { _, _ in
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                return Wav.encode(pcm16le: Data(repeating: 0, count: 320), sampleRate: 16_000)
+            },
+            device: device,
+            serverLang: { _ in "ko" },
+            appLang: { "ko" },
+            onLevel: { _ in },
+            onEvent: { ev in events.append(ev) }
+        )
+        queue.add("안녕하세요.")
+        var attempts = 0
+        while queue.playing && attempts < 150 {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            attempts += 1
+        }
+        #expect(audio.playedPcm.count == 1)
+        #expect(events.contains(.firstPlay))
+        #expect(events.last == .idle)
+    }
+
+    @Test func stopThenAddPlaysOnlyTheNewPiece() async throws {
+        let audio = MockCallAudio()
+        let device = MockSpeechEngine()
+        var events: [SpeechQueue.Event] = []
+        let queue = SpeechQueue(
+            audio: audio,
+            server: { _, _ in
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                return Wav.encode(pcm16le: Data(repeating: 0, count: 320), sampleRate: 16_000)
+            },
+            device: device,
+            serverLang: { _ in "ko" },
+            appLang: { "ko" },
+            onLevel: { _ in },
+            onEvent: { ev in events.append(ev) }
+        )
+        queue.add("지난 문장입니다.")
+        try? await Task.sleep(nanoseconds: 10_000_000)
+        queue.stop()
+        queue.add("새 문장입니다.")
+        var attempts = 0
+        while queue.playing && attempts < 150 {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            attempts += 1
+        }
+        #expect(audio.playedPcm.count == 1)
+        #expect(events.filter { $0 == .idle }.count == 1)
     }
 }

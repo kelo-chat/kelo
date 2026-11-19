@@ -198,6 +198,18 @@ data class LiveTab(
     val active: Boolean = false,
 )
 
+/** `dialog` of a status: the page's own newest pop-up while the tab still shows the address it came from. A native pop-up is never in
+ *  the picture, so the live view shows [text] (the server's line in the owner's language). [answer]: ok | cancel | closed. */
+@Serializable
+data class LiveDialog(
+    val kind: String = "",
+    val message: String = "",
+    val answer: String = "",
+    val count: Int = 1,
+    val at: Double = 0.0,
+    val text: String = "",
+)
+
 /** {"type":"status"}: who controls the tab, what the agent is doing in it, how many are watching. */
 @Serializable
 data class LiveStatus(
@@ -216,6 +228,8 @@ data class LiveStatus(
     @SerialName("holder_away") val holderAway: Boolean = false,
     /** "work" on a tab of Kelo's work browser; "main" or "" (an older server) for the owner's own browser */
     val browser: String = "",
+    /** The page's own newest pop-up (alert, confirm, prompt) and how Kelo answered it; null from an older server or when there is none */
+    val dialog: LiveDialog? = null,
 ) {
     /** Another phone (or the owner's app) holds the tab */
     val someoneElse: Boolean get() = controller == "user" && !youControl
@@ -568,4 +582,7 @@ object LiveRules {
 
     /** The owner holds a tab of the work browser: the line under the paused banner says where the sign-in goes. */
     fun showWorkNote(s: LiveStatus): Boolean = s.youControl && s.inWorkBrowser
+
+    /** The line under the strip about the page's own pop-up (status `dialog`); null when there is none or it is empty. */
+    fun dialogLine(s: LiveStatus): String? = s.dialog?.text?.takeIf { it.isNotBlank() }
 }

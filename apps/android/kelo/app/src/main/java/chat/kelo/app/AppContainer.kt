@@ -124,19 +124,31 @@ class AppContainer(context: Context) : AppServices {
         chat.kelo.app.call.SpeechModel({ sessions.api.value }, (appContext as KeloApp).appScope)
     }
 
+    /** The call's log (logcat tag KeloCall): stages and timings, never the owner's words or Kelo's reply. */
+    private val callLog: (String) -> Unit = { android.util.Log.i("KeloCall", it) }
+
     val calls: chat.kelo.app.call.CallCenter by lazy {
         chat.kelo.app.call.CallCenter(
             scope = (appContext as KeloApp).appScope,
             api = { sessions.api.value?.let { chat.kelo.app.voice.VoiceApi(it) } },
             stt = sttModel,
             speech = speechModel,
-            audio = { chat.kelo.app.voice.AndroidCallAudio(appContext) },
+            audio = { chat.kelo.app.voice.AndroidCallAudio(appContext, callLog) },
             phoneListener = {
                 if (android.speech.SpeechRecognizer.isRecognitionAvailable(appContext)) chat.kelo.app.voice.CallPhoneListener(appContext) else null
             },
-            device = { chat.kelo.app.voice.AndroidSpeechEngine(appContext) },
+            device = {
+                chat.kelo.app.voice.AndroidSpeechEngine(
+                    appContext,
+                    android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+            },
             appLang = { chat.kelo.app.my.NoticesRules.language(language.current, language.systemShownCode) },
             hasMic = { appContext.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE) },
+            log = callLog,
         )
     }
 

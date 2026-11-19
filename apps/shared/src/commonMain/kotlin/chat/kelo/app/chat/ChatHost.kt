@@ -27,6 +27,8 @@ internal class ChatHost(
     val canCall: () -> Boolean = { false },
 ) {
     val turnEvents = MutableSharedFlow<TurnEvent>(extraBufferCapacity = 256)
+    /** Every reply event with the call that started its turn (null: a typed reply); a call speaks only its own (2026-11-19). */
+    val callTurnEvents = MutableSharedFlow<chat.kelo.app.call.CallTurnEvent>(extraBufferCapacity = 256)
     private var seq = 0
     /** Rows made in this session (not loaded from history) that have not risen into view yet */
     val fresh = HashSet<String>()

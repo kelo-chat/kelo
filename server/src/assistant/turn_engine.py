@@ -23,7 +23,7 @@ from .privacy_guard import URL_TOOLS
 from .tools.browser import CHAT_CONTROL_WAIT_SECONDS, hold_patience
 from .reply_paths import ReplyPaths
 from .reply_text import BOOKKEEPING, ReplyText
-from .scheduled_runs import PROMISE_LINE, RunEvidence
+from .scheduled_runs import PROMISE_LINE, RunEvidence, promise_check_needed
 from .tool_roles import for_kind
 from .schedule_grants import ACK_LINE, APPLIED_TITLE, PROGRESS_NOTICE, PROGRESS_TITLE
 
@@ -321,6 +321,13 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
     one_run_tab = S.one_run_tab
     re = S.re
     readable_args = S.readable_args
+
+    def _item_detail(req: ApprovalRequest) -> str:
+        """A request's line on a shared card: its words, without the outside-text reason (that one is shown once, on "Why it asks")."""
+        text = req.detail or readable_args(req.arguments)
+        if req.why and text.startswith(req.why):
+            text = text[len(req.why):].lstrip("\n")
+        return text[:300]
     rule_kind = S.rule_kind
     run_agent = S.run_agent
     sched_zone = S.sched_zone
@@ -685,21 +692,23 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         turn.ended.set()
         promise_judge = getattr(ctx, "promise_judge", None)
         if (promise_judge is not None and turn.source in ("chat", "api") and not turn.unattended and not turn.worker_id
-                and turn.final_status == "done" and not turn.evidence.kept_promise and not stopping[0] and said.text().strip()):
-            asyncio.ensure_future(check_promise(promise_judge, said.text(), turn.request))   # the promise rule (scheduled_runs.py)
+                and turn.final_status == "done" and not turn.evidence.kept_promise and not stopping[0] and said.text().strip()
+                and promise_check_needed(turn.waiting, pending_approvals.values(), turn.id)):
+            asyncio.ensure_future(check_promise(promise_judge, said, turn.request))   # the promise rule (scheduled_runs.py)
         if session is not None and session.has_tab(turn.owner):
             if one_run_tab(turn.owner):
                 asyncio.ensure_future(retire_tab(turn.owner))   # the run is over: keep its last picture, close the tab
             else:
                 session.touch(turn.owner)                      # a chat tab's idle hour counts from the end of its last turn
 
-    async def check_promise(judge: Any, text: str, user_message: str = "") -> None:
+    async def check_promise(judge: Any, said: Any, user_message: str = "") -> None:
         """The reply ended with no schedule, watcher, background job or re-check made in it: if it still promised to tell or do something
         later on its own, one plain line in the chat says nothing will do that and offers to set it up. A reply that ends on a question
-        or an offer is never checked; the judge also sees what the user wrote last."""
+        or an offer is never checked; the judge also sees what the user wrote last and the reply's steps in order. A lead-in the reply
+        followed by the work it announced is no promise (reply_text.lead_in_done)."""
         try:
-            what = await judge.promised(text, user_message)
-            if what:
+            what = await judge.promised(said.text(), user_message, steps=said.timeline())
+            if what and not said.lead_in_done(what):
                 store.add_message("assistant", i18n.t(PROMISE_LINE, quote=what))
         except Exception:  # noqa: BLE001 - a check never breaks a reply
             log.exception("promise check failed")
@@ -730,7 +739,9 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                 log.exception("could not close a card of a stopped reply")
             await turn.emit({**closing, "state": "cancelled"})
 
-    async def approve(req: ApprovalRequest) -> bool:
+    async def settle(req: ApprovalRequest, ctx: dict[str, Any]) -> bool | None:
+        """Everything before a card: the owner's own rules, the task's permission, a step nobody can answer. True / False = settled, no card;
+        None = a card is needed, and `ctx` carries what that card reuses (card, group_card). Runs once per request: it logs and counts."""
         label = tool_labels.label(req.name)
         site = approval_site(req.name, req.arguments)
         kind, target = approval_edit.where_of(req.name, req.arguments, site)   # for the history: what kind of step, and to whom
@@ -777,6 +788,15 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             log.info("turn %s (%s): %s on %s skipped, it would need the owner's OK", turn.id, turn.source, req.name, site or "-")
             req.outcome = "skipped"
             return False
+        ctx.update(label=label, site=site, kind=kind, target=target, commit=commit, final_click=final_click, run_kind=run_kind,
+                   run_host=run_host, sched_id=sched_id, grant_check=grant_check, page_key=page_key)
+        return None
+
+    async def card(req: ApprovalRequest, ctx: dict[str, Any]) -> bool:
+        """The card for one request (settle said it needs one): the owner's answer, or nobody's (skipped, expired)."""
+        label, site, kind, target, commit = ctx["label"], ctx["site"], ctx["kind"], ctx["target"], ctx["commit"]
+        final_click, run_kind, run_host, sched_id = ctx["final_click"], ctx["run_kind"], ctx["run_host"], ctx["sched_id"]
+        grant_check, page_key = ctx["grant_check"], ctx["page_key"]
         approval_id, fut = broker.create()
         turn.approvals.add(approval_id)
         current_approval.set((req.id, approval_id))   # the tool, once allowed, can tell which approval it runs under
@@ -865,6 +885,78 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             if not allowed:
                 deliveries.discard(approval_id)   # a card the phone may already have sent for it is dropped
                 pin_deliveries.discard(approval_id)   # and so is a payment PIN
+
+    async def approve(req: ApprovalRequest) -> bool:
+        ctx: dict[str, Any] = {}
+        settled = await settle(req, ctx)
+        return settled if settled is not None else await card(req, ctx)
+
+    async def approve_many(reqs: list[ApprovalRequest]) -> list[bool]:
+        """Answers for the calls of one step that share a card (Tool.shares_card): each settled as alone; the rest on one card when two or
+        more need it (group_card), on their own card when one does."""
+        ctxs: list[dict[str, Any]] = [{} for _ in reqs]
+        answers: list[bool | None] = [await settle(r, c) for r, c in zip(reqs, ctxs)]
+        left = [i for i, a in enumerate(answers) if a is None]
+        if len(left) == 1:
+            answers[left[0]] = await card(reqs[left[0]], ctxs[left[0]])
+        elif left:
+            for i, answer in zip(left, await group_card([reqs[i] for i in left], [ctxs[i] for i in left])):
+                answers[i] = answer
+        return [bool(a) for a in answers]
+
+    async def group_card(reqs: list[ApprovalRequest], ctxs: list[dict[str, Any]]) -> list[bool]:
+        """ONE card for several requests of one step: one approval id and one wait; the owner's answer applies to all of them. The card
+        lists the changes (lines: at most four, then `items` with every one); the apps that know `steps` answer it as any card."""
+        first, ctx = reqs[0], ctxs[0]
+        approval_id, fut = broker.create()
+        turn.approvals.add(approval_id)
+        timeout = UNATTENDED_APPROVAL_SECONDS if turn.unattended else APPROVAL_TIMEOUT_SECONDS
+        details = [_item_detail(r) for r in reqs]
+        whys = list(dict.fromkeys(r.why for r in reqs if r.why))
+        lines: list[dict[str, str]] = [{"label": i18n.t("Why it asks"), "value": "\n".join(whys)[:300]}] if whys else []
+        for i, d in enumerate(details, 1):
+            if len(lines) < 4:
+                lines.append({"label": str(i), "value": d})
+        issued_at = int(time.time())
+        event: dict[str, Any] = {
+            "type": "approval_request", "approval_id": approval_id, "id": first.id, "name": first.name, "arguments": {},
+            "detail": "\n".join(details)[:300], "lines": lines, "label": ctx["label"], "ask": i18n.t("Allow these {count} changes?", count=len(reqs)),
+            "site": ctx["site"], "commit": "", "can_remember": False, "can_remember_recipient": False, "trail": [],
+            "can_remember_schedule": False, "schedule_id": ctx["sched_id"], "task_id": turn.task_id, "expires_at": int(time.time() + timeout),
+            "issued_at": issued_at, "steps": [{"id": r.id, "name": r.name, "detail": d} for r, d in zip(reqs, details)],
+        }
+        if len(lines) - (1 if whys else 0) < len(details):
+            event["items"] = details   # every change, when the lines above do not show them all
+        pending_approvals[approval_id] = {**event, "turn_id": turn.id, "asked_at": time.time(), "unattended": turn.unattended,
+                                          "source": turn.source, "worker_id": turn.worker_id or None, "title": turn.title}
+        activity.log_approval(approval_id, task_id=turn.task_id, tool=first.name, label=ctx["label"], site=ctx["site"],
+                              detail="\n".join(details), unattended=turn.unattended, kind=ctx["kind"], target=ctx["target"])
+        turn.waiting += 1
+        activity.set_task_status(turn.task_id, "waiting_approval")
+        turn.status_text = i18n.t("Waiting for approval")
+        await put(event)
+        allowed = False
+        try:
+            allowed = bool(await asyncio.wait_for(fut, timeout))
+            if not allowed:
+                await stop_grace()
+            return [allowed] * len(reqs)
+        except asyncio.TimeoutError:
+            for r in reqs:
+                r.outcome = "expired"   # the run is told nobody answered (not that the user declined)
+            activity.answer_approval(approval_id, "expired")
+            return [False] * len(reqs)
+        finally:
+            broker.discard(approval_id)
+            pending_approvals.pop(approval_id, None)
+            activity.answer_approval(approval_id, "cancelled")
+            activity.resolve_approval_notes(approval_id)
+            turn.waiting -= 1
+            if turn.waiting <= 0:
+                activity.set_task_status(turn.task_id, "running")
+            if not allowed:
+                deliveries.discard(approval_id)
+                pin_deliveries.discard(approval_id)
 
     async def hand_over(info: dict[str, Any], gone: Callable[[], Awaitable[bool]]) -> str:
         """A human check on the tab this reply works in: a pending item of kind human_check (the chat's live card, the Work page,
@@ -1101,7 +1193,7 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         if is_chat and first_pass_model and not getattr(turn, "ack_sent", False):
             ack_task = asyncio.create_task(ack_timer())
 
-        agen = run_agent(prov_, model_, thread, turn_tools, approve=approve,
+        agen = run_agent(prov_, model_, thread, turn_tools, approve=approve, approve_many=approve_many,
                          max_steps=max_steps or settings.max_steps, stream_fn=stream_fn,
                          request_extra=effort_args(prov_, model_), measure=measured,
                          context_window=window_for(prov_, model_).context, compact_at=settings.compact_at,

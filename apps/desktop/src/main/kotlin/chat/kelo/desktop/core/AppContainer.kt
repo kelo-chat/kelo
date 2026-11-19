@@ -202,6 +202,7 @@ class AppContainer(
             device = { DesktopSpeechEngine.create() },
             appLang = { chat.kelo.app.my.NoticesRules.language(language.current, language.systemShownCode) },
             hasMic = { DesktopRecorder().available },
+            log = { Log.line("KeloCall $it") },
         )
     }
 

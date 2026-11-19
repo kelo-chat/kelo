@@ -243,6 +243,17 @@ def site_target(value: str) -> str:
     return site_key(_host(value))
 
 
+def _cal_target(calendar: Any) -> str:
+    """The place a calendar change writes to: "calendar" (the account's own main calendar) or "calendar:<id>" (another one)."""
+    cal = str(calendar or "").strip().casefold()
+    return "calendar" if cal in ("", "primary") else f"calendar:{cal}"
+
+
+def _event_text(args: dict[str, Any]) -> str:
+    """The words a calendar change writes: its title, place and note (what others could have written)."""
+    return "\n".join(str(args[k]) for k in ("title", "location", "description") if str(args.get(k) or "").strip())
+
+
 def norm_target(value: str) -> str:
     """One recipient or place in a comparable form: an email (lower case), a phone number (its digits), "site:<domain>",
     "connector:<name>[/<tool>]", "calendar", or a contact name (case-folded)."""
@@ -252,6 +263,8 @@ def norm_target(value: str) -> str:
         return ""
     if low == "calendar":   # the calendar effects name their target so (one place for every calendar connector)
         return "calendar"
+    if low.startswith(("calendar:", "event:")):   # another calendar, or one event of a calendar (a Google calendar id may hold "@")
+        return low
     if low.startswith("site:"):
         return "site:" + site_target(low[5:])
     if low.startswith("connector:"):
@@ -404,14 +417,17 @@ def effect_of(tool: Any, args: dict[str, Any] | None, *, site: str = "", commit:
         return Effect("send", "phone", [norm_target(str(args.get("to") or args.get("number") or ""))], "", name)
     if name in ("gcal_calendars", "gcal_events"):
         return Effect("read", "google_calendar", ["calendar"], "", name)
-    if name in ("gcal_create_event", "gcal_update_event"):
-        return Effect("change", "google_calendar", ["calendar"], "", name)
-    if name == "gcal_delete_event":
-        return Effect("delete", "google_calendar", ["calendar"], "", name)
-    if name in ("phone_calendar_add", "phone_calendar_update"):
-        return Effect("change", "phone", ["calendar"], "", name)
-    if name == "phone_calendar_delete":
-        return Effect("delete", "phone", ["calendar"], "", name)
+    if name in ("gcal_create_event", "gcal_update_event", "gcal_delete_event"):
+        # the calendar it writes to, and the event it changes (an update or a deletion has no text form of its own)
+        cal_target = _cal_target(args.get("calendar"))
+        event = [f"event:{str(args.get('event_id') or '').strip()}"] if name != "gcal_create_event" and args.get("event_id") else []
+        text = "" if name == "gcal_delete_event" else _event_text(args)
+        return Effect("delete" if name == "gcal_delete_event" else "change", "google_calendar", [cal_target, *event], text, name)
+    if name in ("phone_calendar_add", "phone_calendar_update", "phone_calendar_delete"):
+        # the phone writes only to the calendar the owner picked in the app; an update or deletion names its event
+        event = [f"event:{str(args.get('event_id') or '').strip()}"] if name != "phone_calendar_add" and args.get("event_id") is not None else []
+        text = "" if name == "phone_calendar_delete" else _event_text(args)
+        return Effect("delete" if name == "phone_calendar_delete" else "change", "phone", ["calendar", *event], text, name)
     if name in PHONE_READS:
         return Effect("read", "phone", [], "", name)
     if name == "calendar_events":

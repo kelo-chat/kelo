@@ -12,7 +12,10 @@ PUT    /api/phone-calendar   {"device_name"?, "timezone"?, "window_start": unix,
                               "can_write"?: bool, "write_calendar"?: {"id", "name"}}   (writing: only when the user allowed it in the app)
                              -> {"ok", "count", "uploaded_at"}           (413-free: more than MAX_EVENTS are cut, title etc. clipped)
        Event: {"id"?: phone event id, "title", "start": unix, "end": unix, "all_day": bool, "day"?: "YYYY-MM-DD", "last_day"?: "YYYY-MM-DD",
-               "location"?, "calendar"?, "attendees"?: int}
+               "location"?, "calendar"?, "attendees"?: int, "notes"?: str (500), "account"?: str (the account the calendar syncs from),
+               "account_type"?: str ("com.google", "local", ...), "own"?: bool (the owner organizes it on a calendar they own; older apps
+               send none: those events are read as others' text)}
+       Older apps send none of the optional fields; everything works without them.
 DELETE /api/phone-calendar   -> {"ok"}                                   (the feature turned off on this phone: its snapshot is wiped)
 GET    /api/phone-calendar   -> {"shared": bool, "uploaded_at", "count", "window_start", "window_end",
                                  "devices": [{"name", "uploaded_at", "count", "this": bool}]}
@@ -26,9 +29,13 @@ import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+
+from .agent import Ours
+from .agent.fence import data, marked
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .agent import Tool
+from .event_search import matches, no_match_line, query_terms
 from .store import Store
 
 SCHEMA = """
@@ -71,6 +78,11 @@ def clean_event(e: Any) -> dict[str, Any] | None:
     end = end if end is not None and end >= start else start
     out = {"title": str(e.get("title") or "").strip()[:300], "start": start, "end": end, "all_day": bool(e.get("all_day")),
            "location": str(e.get("location") or "").strip()[:300], "calendar": str(e.get("calendar") or "").strip()[:120]}
+    out["own"] = e.get("own") is True   # only an app that says so: the owner's own event (a phone snapshot has no organizer data yet)
+    for key, limit in (("notes", 500), ("account", 120), ("account_type", 80)):
+        value = str(e.get(key) or "").strip()
+        if value:
+            out[key] = value[:limit]
     try:
         out["attendees"] = max(0, min(int(e.get("attendees") or 0), 10_000))
     except (TypeError, ValueError):
@@ -159,17 +171,18 @@ class PhoneCalendars:
                         "can_write": bool(data.get("can_write")), "write_calendar": data.get("write_calendar")})
         return out
 
-    def events(self, start: float, end: float, query: str = "") -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        """(events overlapping [start, end) from every phone, one copy of each, by start time; the snapshots they came from)."""
+    def events(self, start: float, end: float, query: Any = "") -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """(events overlapping [start, end) from every phone, one copy of each, by start time; the snapshots they came from).
+        `query`: words (event_search.query_terms); an event with any of them in its title, place, notes or calendar is kept."""
         snaps = self.snapshots()
-        q = query.strip().lower()
+        terms = query_terms(query)
         seen: set[tuple[str, float]] = set()
         out = []
         for s in snaps:
             for e in s["events"]:
                 if e["end"] < start or e["start"] >= end or (e["end"] == e["start"] and e["start"] < start):
                     continue
-                if q and q not in f"{e['title']} {e['location']} {e['calendar']}".lower():
+                if terms and not matches(terms, e["title"], e["location"], e.get("notes", ""), e["calendar"]):
                     continue
                 key = (e["title"].lower(), e["start"])
                 if key in seen:
@@ -217,9 +230,10 @@ def phone_calendar_tools(cals: PhoneCalendars, timezone_name: Callable[[], str |
             return "error: give start and end as a date (2026-11-08) or a local time (2026-11-08T15:00)"
         if end <= start:
             return "error: end is before start"
-        evs, snaps = cals.events(start.timestamp(), end.timestamp(), str(args.get("query") or ""))
+        terms = query_terms(args.get("query"))
+        evs, snaps = cals.events(start.timestamp(), end.timestamp(), terms)
         if not snaps:
-            return ("The phone calendar is not shared. The user can turn it on in the Kelo app (My → Permissions → Phone calendar); "
+            return Ours("The phone calendar is not shared. The user can turn it on in the Kelo app (My → Permissions → Phone calendar); "
                     "it stays on that phone and is read-only.")
         now = cals.clock()
         lines = []
@@ -233,21 +247,37 @@ def phone_calendar_tools(cals: PhoneCalendars, timezone_name: Callable[[], str |
             stale = " — old, the phone has not sent an update for a while" if now - s["uploaded_at"] > 86400 else ""
             lines.append(f"Snapshot from {s['device_name'] or 'a phone'}, updated {ago(now - s['uploaded_at'])}{covers}{stale}.")
         zone = getattr(tz, "key", "UTC")
+        span = f"between {start.strftime('%Y-%m-%d %H:%M')} and {end.strftime('%Y-%m-%d %H:%M')} ({zone})"
         if not evs:
-            lines.append(f"No events between {start.strftime('%Y-%m-%d %H:%M')} and {end.strftime('%Y-%m-%d %H:%M')} ({zone}).")
-            return "\n".join(lines)
+            if terms:
+                total = len(cals.events(start.timestamp(), end.timestamp())[0])
+                lines.append(no_match_line(terms, span, total))
+            else:
+                lines.append(f"No events {span}.")
+            return Ours("\n".join(lines))
         many = len(snaps) > 1
         lines.append(f"Events ({zone}), {len(evs)}{' (first ' + str(MAX_SHOWN) + ' shown)' if len(evs) > MAX_SHOWN else ''}:")
         for e in evs[:MAX_SHOWN]:
-            extra = "".join([f" · at {e['location']}" if e["location"] else "", f" · {e['attendees']} people" if e["attendees"] else "",
-                             f" · {e['calendar']}" if e["calendar"] else "", f" · on {e['device']}" if many and e["device"] else "",
+            acct = e.get("account", "")
+            shown_cal = e["calendar"] if e["calendar"] and e["calendar"] != acct else ""
+            account = ""
+            if acct and e.get("account_type", "").lower() != "local":
+                account = f" · account {acct}" + (" (Google)" if e.get("account_type") == "com.google" else "")
+            # an event the app did not mark as the owner's own: its title, place and calendar name are others' text (fenced by the loop)
+            title, place, cal_name = (e["title"], e["location"], shown_cal) if e.get("own") else (
+                data(e["title"]) if e["title"] else "", data(e["location"]) if e["location"] else "", data(shown_cal) if shown_cal else "")
+            extra = "".join([f" · at {place}" if e["location"] else "", f" · {e['attendees']} people" if e["attendees"] else "",
+                             f" · {cal_name}" if shown_cal else "", account, f" · on {e['device']}" if many and e["device"] else "",
                              f" · event {e['id']}" if e.get("id") else ""])
-            lines.append(f"- {_when(e, tz)} · {e['title'] or '(no title)'}{extra}")
-        return "\n".join(lines)
+            lines.append(f"- {_when(e, tz)} · {title or '(no title)'}{extra}")
+        text = "\n".join(lines)
+        return text if marked(text) else Ours(text)
 
     when = "YYYY-MM-DD or YYYY-MM-DDTHH:MM, the user's time zone"
     return [Tool("phone_calendar_events", "Read events from the calendar on the user's phone only (a shared snapshot; default: the next 7 days), "
                  "with each event's id (needed to change one) and how fresh the snapshot is. For what is on across all calendars use calendar_events.",
                  {"type": "object", "properties": {"start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
-                                                   "query": {"type": "string", "description": "words in titles, places, calendar names"}}},
+                                                   "query": {"type": "array", "items": {"type": "string"},
+                                                             "description": "words to look for; an event whose title, place, notes or calendar "
+                                                                            "contains any one of them is shown (any case)"}}},
                  phone_calendar_events, read_only=True, untrusted=True, source="calendar", trail="calendar")]

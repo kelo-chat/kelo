@@ -98,7 +98,7 @@ FINDER_NOTE = (" You have no payment tools: you can fill a cart and read a check
                "and the cart or checkout page, each item with its variants and quantity, the quoted total and currency, delivery and contact "
                "choices already made, the limits the user set, and the stage to stop at.")
 CHECKOUT_BRIEF = ("You are the payment specialist. You complete one checkout and nothing else: you cannot search the web or start other jobs. "
-                  "Start on the page given, check the cart against the assignment (items, variants, quantities, total, currency, delivery), "
+                  "Start on the shop's home page named above, click to the cart like a person, check the cart against the assignment (items, variants, quantities, total, currency, delivery), "
                   "fill the delivery and contact fields with your page tools, then pay only through checkout_review (draft, then ready) and "
                   "checkout_submit, and read the shop's own confirmation and call purchase_result. When the cart differs from the "
                   "assignment (another item, a higher price, an extra fee, a sign-up) or a choice is missing, do not guess: report "
@@ -487,6 +487,14 @@ class Workers:
         r = self._row(wid)
         return self.public(r, full=True) if r else None
 
+    def waits_for_owner(self, key: str) -> bool:
+        """A job's tab ("task:<job id>") whose job ended its run asking the owner for something (needs_input): the browser list
+        shows it as "waiting", not as an idle tab (owner report 2026-11-19)."""
+        if not key.startswith("task:w"):
+            return False
+        r = self._row(key[5:])
+        return r is not None and r["status"] == "needs_input"
+
     def kind_of(self, wid: str) -> str:
         """The kind of a job ("browser", "research", ...), "" when there is no such job."""
         r = self._row(wid)
@@ -537,7 +545,11 @@ class Workers:
     def _brief(self, wid: str, task: str, kind: str, url: str, files: list[str], steps: int, minutes: int) -> str:
         lines = [f"[Not from the user: you are a background job ({wid}) the main assistant started for the user. Nobody watches this run "
                  "and nobody reads text you write: work with your tools until the job is finished, then call report. The job:]", task]
-        if url:
+        if url and kind == tool_roles.CHECKOUT_KIND:   # owner answer 2026-11-19 (S7b): the cart address is never opened; the shop's home page is
+            parts = urlsplit(url)
+            lines.append(f"Start at: {parts.scheme}://{parts.netloc}/ (the shop's home page; the cart is reached by clicking the shop's own "
+                         "cart link or button, never by an address you were given)")
+        elif url:
             lines.append(f"Start at: {url}")
         if files:
             lines.append("Files to use (in your files; read them with read_file or extract_document): " + ", ".join(files))
@@ -614,7 +626,7 @@ class Workers:
                 return "Error: url must be a web address (https://...)."
         if kind == tool_roles.CHECKOUT_KIND:
             if not url:
-                return ("Error: a checkout job needs url: the cart or checkout page it starts on. Write the whole assignment in task: the items "
+                return ("Error: a checkout job needs url: the shop's home page (it clicks to the cart itself). Write the whole assignment in task: the items "
                         "with variants and quantities, the quoted total and currency, delivery and contact choices, the limits the user set.")
             if (other := self._open_checkout(host_of(url))) is not None:
                 return (f"Error: checkout job {other} for this shop is still open. A shop gets one checkout window at a time: continue that "
@@ -714,8 +726,8 @@ class Workers:
         if note.strip():
             parts.append(f"Message for you: {note.strip()}")
         if cut is None and r["last_url"] and not self.host.tab_open(r["tab"]):
-            parts.append(f"Your browser tab was closed meanwhile; a new blank tab will open. Continue from the history above: open "
-                         f"{r['last_url']} again if you need it.")
+            parts.append(f"Your browser tab was closed meanwhile; a new blank tab will open. Continue from the history above. Your last page "
+                         f"was {r['last_url']}: if you need it, open that site's home page and get back to it through the site's own links.")
         if cut is None:   # a pick-up's note ends with its own tail (job_cuts.PICKUP_TAIL)
             parts.append("Go on from where you stopped and finish with report.")
         self._update(wid, status="running", wait_on="", report="", error="", finished_at=None, auto_resume=0, keep_tab=0, question_id="",
@@ -1567,11 +1579,11 @@ class Workers:
                  "anything done on a website (you do not click or type on websites yourself), research: reading many sources. The job cannot "
                  "read this chat or your memory: put everything it needs in task, including the "
                  "user's own choices and saved preferences that apply (sizes, colors, options, address; from your memory files). Its report "
-                 "comes back by itself. Only kind checkout can pay: for a purchase, booking or payment use it with url = the cart or "
-                 "checkout page and a self-contained task (items, variants, quantities, total, delivery, limits). Only kind phone drives "
+                 "comes back by itself. Only kind checkout can pay: for a purchase, booking or payment use it with url = the shop's home page "
+                 "and a self-contained task (items, variants, quantities, total, delivery, limits). Only kind phone drives "
                  "the Android device (you have no phone tools): task = app, goal, choices made, limits, where to stop; one at a time.",
                  {"type": "object", "properties": {"task": {"type": "string"}, "kind": {"type": "string", "enum": list(KINDS)},
-                                                   "url": {"type": "string", "description": "where to start"},
+                                                   "url": {"type": "string", "description": "where to start: the site's home page, or the exact address the user gave (the job goes on by clicking)"},
                                                    "files": {"type": "array", "items": {"type": "string"}, "description": "your files to use"},
                                                    "profile": {"type": "string", "description": "a browser_profiles id"},
                                                    "deadline_min": {"type": "integer"}}, "required": ["task"]}, delegate),

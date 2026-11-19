@@ -212,6 +212,20 @@ public struct LiveAgent: Equatable, Sendable {
     }
 }
 
+/// `dialog` of a status: the page's own newest pop-up while the tab still shows the address it came from. A native pop-up is never in
+/// the picture, so the live view shows `text` (the server's line in the owner's language). `answer`: ok | cancel | closed.
+public struct LiveDialog: Equatable, Sendable {
+    public var kind = "", message = "", answer = "", text = ""
+    public var count = 1
+    public var at = 0.0
+
+    public init() {}
+    init(_ o: Lenient) {
+        kind = o.str("kind"); message = o.str("message"); answer = o.str("answer"); text = o.str("text")
+        count = o.int("count", 1); at = o.double("at")
+    }
+}
+
 /// {"type":"status"}: who controls the tab, what the agent is doing in it, how many are watching.
 public struct LiveStatus: Equatable, Sendable {
     public var controller = "agent"
@@ -228,6 +242,8 @@ public struct LiveStatus: Equatable, Sendable {
     public var holderAway = false
     /// "work" on a tab of Kelo's work browser; "main" or "" (an older server) for the owner's own browser.
     public var browser = ""
+    /// The page's own newest pop-up and how Kelo answered it; nil from an older server or when there is none.
+    public var dialog: LiveDialog? = nil
 
     public init() {}
     init(_ o: Lenient) {
@@ -238,6 +254,7 @@ public struct LiveStatus: Equatable, Sendable {
         stale = o.bool("stale")
         hold = o.str("hold"); holderAway = o.bool("holder_away")
         browser = o.str("browser")
+        dialog = o.has("dialog") ? LiveDialog(o.obj("dialog")) : nil
     }
 
     /// Another phone (or the owner's app) holds the tab.
@@ -455,6 +472,12 @@ public enum LiveRules {
 
     /// The owner holds a tab of the work browser: the line under the paused banner says where the sign-in goes.
     public static func showWorkNote(_ s: LiveStatus) -> Bool { s.youControl && s.inWorkBrowser }
+
+    /// The line under the strip about the page's own pop-up (status `dialog`); nil when there is none or it is empty.
+    public static func dialogLine(_ s: LiveStatus) -> String? {
+        guard let text = s.dialog?.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
+    }
 
     public static func autoTake(asked: Bool, done: Bool, hasFrame: Bool, controlling: Bool, someoneElse: Bool, busy: Bool) -> Bool {
         asked && !done && hasFrame && !controlling && !someoneElse && !busy

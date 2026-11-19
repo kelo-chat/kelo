@@ -881,6 +881,7 @@
 "agent_tab_working" = "يعمل";
 "agent_tab_failed" = "عالق";
 "agent_tab_idle" = "خامل";
+"agent_tab_waiting" = "بانتظارك";
 "agent_tab_picture" = "شاشة التبويب";
 "agent_tab_no_picture" = "لا شيء لعرضه (صفحة فارغة).";
 "agent_tab_close" = "إغلاق التبويب";
@@ -1749,6 +1750,14 @@
 "call_mic_denied" = "تعذر بدء المكالمة: الميكروفون غير مسموح به.";
 "call_voice_offer" = "هذا صوت Kelo الطبيعي للمكالمات. نزّل نموذج الصوت (%1$s) إلى خادم Kelo مرة واحدة وسيتحدث به Kelo بدءًا من الجملة التالية. بدونه، يستخدم Kelo الصوت الآلي المدمج في هذا الجهاز.";
 "call_mark" = "مكالمة";
+"call_chat_length##zero" = "مكالمة · %1$d دقيقة";
+"call_chat_length##one" = "مكالمة · دقيقة واحدة";
+"call_chat_length##two" = "مكالمة · دقيقتان";
+"call_chat_length##few" = "مكالمة · %1$d دقائق";
+"call_chat_length##many" = "مكالمة · %1$d دقيقة";
+"call_chat_length##other" = "مكالمة · %1$d دقيقة";
+"call_chat_show" = "عرض المكالمة";
+"call_chat_hide" = "إخفاء المكالمة";
 "call_voice_offer_title" = "تنزيل صوت Kelo؟";
 "call_voice_offer_ok" = "تنزيل";
 "call_voice_offer_later" = "استخدام صوت الجهاز مؤقتًا";
@@ -1756,6 +1765,12 @@
 "call_voice_get" = "تنزيل";
 "call_voice_line_close" = "إغلاق";
 "call_ears_failed" = "التعرف على الصوت في الهاتف لا يسمعك.";
+"call_voice_device" = "تعذّر تحميل صوت Kelo الخاص، لذلك يتحدث صوت هذا الجهاز.";
+"call_voice_none" = "لا يستطيع هذا الجهاز تشغيل صوت Kelo الآن. الرد موجود في المحادثة.";
+"call_minimize" = "العودة إلى المحادثة";
+"call_keyboard" = "اكتب";
+"call_type_hint" = "اكتب رسالة إلى Kelo";
+"call_type_send" = "إرسال";
 "voice_speech_title" = "صوت Kelo";
 "voice_speech_download" = "تنزيل نموذج الصوت · %1$s";
 "voice_speech_downloading" = "جارٍ تنزيل نموذج الصوت · %1$d%%";

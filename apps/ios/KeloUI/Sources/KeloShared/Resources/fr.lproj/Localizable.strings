@@ -846,6 +846,7 @@
 "agent_tab_working" = "Au travail";
 "agent_tab_failed" = "Bloqué";
 "agent_tab_idle" = "Inactif";
+"agent_tab_waiting" = "Vous attend";
 "agent_tab_picture" = "Écran de l’onglet";
 "agent_tab_no_picture" = "Rien à afficher (page vide).";
 "agent_tab_close" = "Fermer l’onglet";
@@ -1640,6 +1641,11 @@
 "call_mic_denied" = "Impossible de démarrer l'appel : le microphone n'est pas autorisé.";
 "call_voice_offer" = "C'est la voix naturelle de Kelo pour les appels. Téléchargez le modèle vocal (%1$s) sur votre serveur Kelo, et Kelo l'utilisera dès la phrase suivante. Sans cela, Kelo utilise la voix robotique de cet appareil.";
 "call_mark" = "Appel";
+"call_chat_length##one" = "Appel · %1$d min";
+"call_chat_length##many" = "Appel · %1$d min";
+"call_chat_length##other" = "Appel · %1$d min";
+"call_chat_show" = "Afficher l'appel";
+"call_chat_hide" = "Masquer l'appel";
 "call_voice_offer_title" = "Télécharger la voix de Kelo ?";
 "call_voice_offer_ok" = "Télécharger";
 "call_voice_offer_later" = "Utiliser la voix de l'appareil";
@@ -1647,6 +1653,12 @@
 "call_voice_get" = "Télécharger";
 "call_voice_line_close" = "Fermer";
 "call_ears_failed" = "La reconnaissance vocale du téléphone ne vous entend pas.";
+"call_voice_device" = "La voix de Kelo n'a pas pu être chargée : c'est la voix de cet appareil qui parle.";
+"call_voice_none" = "Cet appareil ne peut pas lire la voix de Kelo pour le moment. La réponse est dans le chat.";
+"call_minimize" = "Retour au chat";
+"call_keyboard" = "Écrire";
+"call_type_hint" = "Écrivez un message à Kelo";
+"call_type_send" = "Envoyer";
 "voice_speech_title" = "Voix de Kelo";
 "voice_speech_download" = "Télécharger le modèle vocal · %1$s";
 "voice_speech_downloading" = "Téléchargement du modèle vocal · %1$d%%";

@@ -13,16 +13,20 @@ internal class ChatTurns(
 ) {
 
     private var turn: Job? = null
+    /** The call whose turn runs now (null: none), and whether that call turn has had no answer yet */
+    private var turnCall: String? = null
+    private var callQuiet = false   // this call turn has had no answer yet
 
     // ---- a reply
     /** The reply being followed put answer buttons under its message */
     private var repliesCame = false
 
-    private fun apply(ev: TurnEvent) {
+    private fun apply(ev: TurnEvent, call: String?) {
+        if (call != null && chat.kelo.app.call.CallRules.isAnswer(ev)) callQuiet = false
         host.state.update {
             it.copy(
                 phase = if (it.phase == null) null else ChatReducer.phase(it.phase, ev, host.now()),
-                items = ChatReducer.apply(it.items, ev, host.now(), host::key),
+                items = ChatReducer.apply(it.items, ev, host.now(), host::key).let { next -> if (call == null) next else CallCards.tagNew(it.items, next, call) },
             )
         }
         if (ev is TurnEvent.Error || ev is TurnEvent.StepLimit) host.events.tryEmit(ChatEvent.ERROR)
@@ -39,6 +43,7 @@ internal class ChatTurns(
         }
         host.watch?.event(ev)
         host.turnEvents.tryEmit(ev)
+        host.callTurnEvents.tryEmit(chat.kelo.app.call.CallTurnEvent(call, ev))
     }
 
     /**
@@ -80,7 +85,7 @@ internal class ChatTurns(
      */
     fun start(
         text: String, fromComposer: Boolean, tookAttachments: Boolean, answers: List<ReplyAnswer>, secrets: String?,
-        files: List<MessageFile> = emptyList(), autoText: Boolean = false, call: String? = null,
+        files: List<MessageFile> = emptyList(), autoText: Boolean = false, call: String? = null, amend: Boolean = false,
     ) {
         val api = runCatching { host.api() }.getOrNull() ?: return
         val before = host.state.value
@@ -91,7 +96,7 @@ internal class ChatTurns(
                 attachments = if (tookAttachments) emptyList() else it.attachments,
                 busy = true,
                 phase = Phase(PhaseKind.WAITING, since = host.now()),
-                items = it.items + ChatItem.Msg(bubble, mine = true, text = text, at = host.now(), files = files, autoText = autoText, fromCall = call != null),
+                items = it.items + ChatItem.Msg(bubble, mine = true, text = text, at = host.now(), files = files, autoText = autoText, fromCall = call != null, callId = call),
             )
         }
         if (fromComposer) draft.cleared()
@@ -104,15 +109,18 @@ internal class ChatTurns(
         host.watch?.stopWith { stop() }
         var finished = false
         var failed = false
+        turnCall = call
+        callQuiet = call != null
         turn = host.scope.launch {
             try {
-                TurnFollower(KeloTurnApi(api, host.canCall)).talk(text, TimeZone.getDefault().id, answers, secrets, files.map { it.path }, autoText, call = call) { ev -> apply(ev) }
+                TurnFollower(KeloTurnApi(api, host.canCall, amend = amend)).talk(text, TimeZone.getDefault().id, answers, secrets, files.map { it.path }, autoText, call = call) { ev -> apply(ev, call) }
                 finished = true
             } catch (e: CancellationException) {
                 throw e
             } catch (e: ApiError) {
                 val held = if (secrets == null) SecretGuard.of(e) else null
                 if (held != null) {   // nothing was sent to the model or stored: no bubble left behind, the text back where it was
+                    if (call != null) host.callTurnEvents.tryEmit(chat.kelo.app.call.CallTurnEvent(call, chat.kelo.app.chat.TurnEvent.Error(""), questionOpen = true))
                     host.fresh -= bubble
                     host.state.update { st ->
                         st.copy(
@@ -130,6 +138,7 @@ internal class ChatTurns(
                 }
                 val consent = AiConsent.of(e)
                 if (consent != null) {   // nobody agreed yet: nothing was stored or sent; the text goes back and the question opens
+                    if (call != null) host.callTurnEvents.tryEmit(chat.kelo.app.call.CallTurnEvent(call, chat.kelo.app.chat.TurnEvent.Error(""), questionOpen = true))
                     host.fresh -= bubble
                     host.state.update { st ->
                         st.copy(
@@ -161,6 +170,8 @@ internal class ChatTurns(
                     else -> host.watch?.cancelled()
                 }
                 turn = null
+                turnCall = null
+                callQuiet = false
                 host.activity?.turnLine?.value = null
                 host.activity?.turnKind?.value = TurnKind.Thinking
                 host.activity?.following?.value = false
@@ -190,18 +201,20 @@ internal class ChatTurns(
      * Follows a reply the server started by itself for this phone (a secure entry saved after the reply that asked had ended): the
      * same status line, events and end as a reply sent from here, without a bubble of the user's own.
      */
-    fun followTurn(turnId: String) {
-        val api = runCatching { host.api() }.getOrNull() ?: return
-        if (host.state.value.busy) return
+    fun followTurn(turnId: String, call: String? = null): Boolean {
+        val api = runCatching { host.api() }.getOrNull() ?: return false
+        if (host.state.value.busy) return false
         host.state.update { it.copy(busy = true, phase = Phase(PhaseKind.WAITING, since = host.now())) }
         host.activity?.following?.value = true
         host.activity?.turnLine?.value = null
         host.activity?.turnKind?.value = TurnKind.Thinking
         host.stir()
         var finished = false
+        turnCall = call
+        callQuiet = false
         turn = host.scope.launch {
             try {
-                TurnFollower(KeloTurnApi(api, host.canCall)).follow(turnId) { ev -> apply(ev) }
+                TurnFollower(KeloTurnApi(api, host.canCall)).follow(turnId) { ev -> apply(ev, call) }
                 finished = true
             } catch (e: CancellationException) {
                 throw e
@@ -211,6 +224,7 @@ internal class ChatTurns(
                 host.addError(ChatError.Message(e.message ?: e.javaClass.simpleName))
             } finally {
                 turn = null
+                turnCall = null
                 host.activity?.turnLine?.value = null
                 host.activity?.following?.value = false
                 host.stir()
@@ -222,6 +236,21 @@ internal class ChatTurns(
                 sync.refreshSecrets()
             }
         }
+        return true
+    }
+
+    /** The owner went on talking before this call turn answered: the turn stops and the owner's bubble of it goes (the call sends the
+     *  words again with the rest, as an amend). False when it is not this call's turn, or anything of the answer came. */
+    fun takeBack(callId: String): Boolean {
+        if (!host.state.value.busy || turnCall != callId || !callQuiet || turn == null) return false
+        callQuiet = false
+        host.state.update { st ->
+            val i = st.items.indexOfLast { it is ChatItem.Msg }
+            val m = st.items.getOrNull(i) as? ChatItem.Msg
+            if (m != null && m.mine && m.callId == callId) st.copy(items = st.items.filterIndexed { j, _ -> j != i }) else st
+        }
+        stop()
+        return true
     }
 
     /** The Stop button: cancelling the reply tells the server to stop (DELETE /api/turns/{id}). */

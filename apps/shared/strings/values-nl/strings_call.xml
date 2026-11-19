@@ -25,6 +25,12 @@
     <string name="call_mic_denied">Kan oproep niet starten: microfoon is niet toegestaan.</string>
     <string name="call_voice_offer">Dit is Kelo\'s natuurlijke stem voor oproepen. Download het stemmodel (%1$s) eenmalig naar je Kelo-server en Kelo spreekt vanaf de volgende zin hiermee. Zonder model gebruikt Kelo de robotstem van dit apparaat.</string>
     <string name="call_mark">Oproep</string>
+    <plurals name="call_chat_length">
+        <item quantity="one">Oproep · %1$d min</item>
+        <item quantity="other">Oproep · %1$d min</item>
+    </plurals>
+    <string name="call_chat_show">Oproep tonen</string>
+    <string name="call_chat_hide">Oproep verbergen</string>
     <string name="call_voice_offer_title">Kelo\'s stem downloaden?</string>
     <string name="call_voice_offer_ok">Downloaden</string>
     <string name="call_voice_offer_later">Voorlopig apparaatstem gebruiken</string>
@@ -32,6 +38,12 @@
     <string name="call_voice_get">Downloaden</string>
     <string name="call_voice_line_close">Sluiten</string>
     <string name="call_ears_failed">De spraakherkenning van de telefoon hoort je niet.</string>
+    <string name="call_voice_device">De eigen stem van Kelo kon niet worden geladen, dus spreekt de stem van dit apparaat.</string>
+    <string name="call_voice_none">Dit apparaat kan de stem van Kelo nu niet afspelen. Het antwoord staat in de chat.</string>
+    <string name="call_minimize">Terug naar de chat</string>
+    <string name="call_keyboard">Typen</string>
+    <string name="call_type_hint">Typ een bericht aan Kelo</string>
+    <string name="call_type_send">Versturen</string>
     <string name="voice_speech_title">Kelo\'s stem</string>
     <string name="voice_speech_download">Stemmodel downloaden · %1$s</string>
     <string name="voice_speech_downloading">Stemmodel downloaden · %1$d%%</string>

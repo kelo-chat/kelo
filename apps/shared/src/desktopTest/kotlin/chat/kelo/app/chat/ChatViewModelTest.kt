@@ -23,6 +23,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
+import kotlinx.coroutines.launch
 import org.junit.Test
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -42,6 +43,7 @@ class ChatViewModelTest {
     /** answers for PUT /api/uploads/{name}, by name */
     private val uploadAnswers = Collections.synchronizedMap(mutableMapOf<String, MockResponse>())
     private var history = """[]"""
+    @Volatile private var turnMode = "done"   // "quiet": a call turn that answers nothing yet; "talking": it answers at once
     /** GET /api/approvals/pending */
     @Volatile private var pending = """{"items":[]}"""
     private val release = CountDownLatch(1)
@@ -76,7 +78,15 @@ class ChatViewModelTest {
                             """{"detail":{"code":"ai_consent_required","company":"Anthropic","privacy_url":"https://kelo.chat/privacy","version":1}}""")
                     request.method == "POST" && path == "/api/turns" && secretAnswer != null && !bodies[request]!!.contains("\"secrets\":\"allow\"") ->
                         MockResponse().setResponseCode(409).setBody(secretAnswer!!)
+                    request.method == "POST" && path == "/api/turns" && turnMode != "done" -> MockResponse().setBody("""{"id":"tq"}""")
                     request.method == "POST" && path == "/api/turns" -> MockResponse().setBody("""{"id":"t1"}""")
+                    request.method == "GET" && path.startsWith("/api/turns/tq") -> {
+                        Thread.sleep(100)   // a turn that has not answered yet: nothing comes until the test says so
+                        val after = Regex("after=(\\d+)").find(path)?.groupValues?.get(1)?.toInt() ?: 0
+                        if (turnMode == "talking" && after == 0) MockResponse().setBody("""{"events":[{"type":"text","text":"네"}],"next":1,"done":false}""")
+                        else MockResponse().setBody("""{"events":[],"next":$after,"done":false}""")
+                    }
+                    request.method == "DELETE" && path.startsWith("/api/turns/tq") -> MockResponse().setBody("""{"ok":true}""")
                     request.method == "GET" && path.startsWith("/api/turns/t1") ->
                         MockResponse().setBody("""{"events":[{"type":"text","text":"새 답"}],"next":1,"done":true}""")
                     request.method == "GET" && path == "/api/uploads/limits" ->
@@ -390,6 +400,37 @@ class ChatViewModelTest {
 
     private fun turnBodies() = sent("POST", "/api/turns").map { Json.parseToJsonElement(bodies[it]!!).jsonObject }
 
+    @Test fun aCallTurnNothingAnsweredCanBeTakenBackAndIsSentAgainAsAnAmend() {   // owner 2026-11-20
+        turnMode = "quiet"
+        val vm = vm(); vm.reload(); until("history") { vm.state.value.loaded }
+        assertTrue(vm.sendFromCall("나 목소리", "call_7"))
+        until("the turn runs") { vm.state.value.busy && sent("GET", "/api/turns/tq").isNotEmpty() }
+        assertTrue(vm.takeBackFromCall("call_7"))
+        until("stopped") { !vm.state.value.busy }
+        assertTrue(vm.state.value.items.none { it is ChatItem.Msg && it.text == "나 목소리" })
+        until("the server was told") { sent("DELETE", "/api/turns/tq").isNotEmpty() }
+        turnMode = "done"
+        assertTrue(vm.sendFromCall("나 목소리 너무 끊겨", "call_7", amend = true))
+        until("sent") { turnBodies().size == 2 }
+        assertEquals(null, turnBodies()[0]["amend"]); assertEquals("true", turnBodies()[1]["amend"]?.jsonPrimitive?.content)
+    }
+
+    @Test fun anAnsweredOrTypedOrOtherCallsTurnIsNeverTakenBack() {
+        turnMode = "talking"
+        val vm = vm(); vm.reload(); until("history") { vm.state.value.loaded }
+        assertTrue(vm.sendFromCall("hi", "call_8"))
+        until("the answer started") { vm.state.value.items.any { it is ChatItem.Msg && it.text == "네" } }
+        assertFalse(vm.takeBackFromCall("call_8"))
+        vm.stop(); until("stopped") { !vm.state.value.busy }
+        turnMode = "quiet"
+        vm.send("typed"); until("typed runs") { vm.state.value.busy }
+        assertFalse(vm.takeBackFromCall("call_8"))
+        vm.stop(); until("stopped") { !vm.state.value.busy }
+        assertTrue(vm.sendFromCall("hi", "call_8")); until("call runs") { vm.state.value.busy }
+        assertFalse(vm.takeBackFromCall("call_other"))
+        vm.stop(); until("stopped") { !vm.state.value.busy }
+    }
+
     @Test fun aHeldBackMessageLeavesNoBubbleAndComesBackToTheComposer() {
         val typed = "  내 키 🙂 $key 저장해줘 "
         secretAnswer = heldBack(typed.trim())
@@ -458,5 +499,22 @@ class ChatViewModelTest {
         handoff.clear()                                                        // the card form took it
         vm.secretCardSaved("(saved to Keychain: Payment card)")
         assertEquals("카드 (saved to Keychain: Payment card) 로 결제해", vm.state.value.input)
+    }
+
+    @Test fun callTurnEventsCarryTheCallThatStartedTheTurn() {
+        // 2026-11-19: the call could not tell its own reply from a typed one.
+        val vm = vm()
+        vm.reload()
+        until("history") { vm.state.value.loaded }
+        val got = java.util.concurrent.CopyOnWriteArrayList<chat.kelo.app.call.CallTurnEvent>()
+        val watch = kotlinx.coroutines.CoroutineScope(UnconfinedTestDispatcher()).launch { vm.callTurnEvents.collect { got += it } }
+        assertTrue(vm.sendFromCall("통화로 한 말", "call_9"))
+        until("the call's reply") { !vm.state.value.busy && got.any { it.event is TurnEvent.Text } }
+        assertTrue(got.all { it.callId == "call_9" })
+        got.clear()
+        vm.send("입력한 말")
+        until("the typed reply") { !vm.state.value.busy && got.any { it.event is TurnEvent.Text } }
+        assertTrue(got.all { it.callId == null })
+        watch.cancel()
     }
 }

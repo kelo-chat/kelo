@@ -25,6 +25,7 @@ from typing import Any
 from urllib.parse import quote
 
 from .media import kind_of, mime_of
+from .owner_messages import OWNER
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS message_attachments (
@@ -64,6 +65,19 @@ class ChatAttachments:
             out.append({"name": path.name, "path": f"uploads/{path.name}", "kind": kind_of(path.name), "mime": mime_of(path.name),
                         "size": path.stat().st_size})
         return out
+
+    def owner_attached(self, path: str) -> bool:
+        """The upload `path` ("uploads/<name>") is a file the OWNER attached to their own chat message (not one a forward or Kelo's own
+        words carried): what they gave the assistant, not outside text. False when unsure."""
+        try:
+            name = str(path or "").strip().removeprefix("uploads/")
+            if not name or "/" in name:
+                return False
+            rows = self.store._all("SELECT 1 FROM message_attachments a JOIN messages m ON m.id = a.message_id "
+                                   "WHERE a.path = ? AND m.role = 'user' AND m.author = ? LIMIT 1", (f"uploads/{name}", OWNER))
+            return bool(rows)
+        except Exception:  # noqa: BLE001 - unsure: the file counts as outside text
+            return False
 
     def attach(self, message_id: int, items: list[dict[str, Any]], auto_text: bool = False) -> list[dict[str, Any]]:
         for i, it in enumerate(items):

@@ -886,6 +886,7 @@
     <string name="agent_tab_working">Bezig</string>
     <string name="agent_tab_failed">Vast</string>
     <string name="agent_tab_idle">Inactief</string>
+    <string name="agent_tab_waiting">Wacht op jou</string>
     <string name="agent_tab_picture">Tabbladscherm</string>
     <string name="agent_tab_no_picture">Niets te tonen (lege pagina).</string>
     <string name="agent_tab_close">Tabblad sluiten</string>

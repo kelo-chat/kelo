@@ -51,6 +51,7 @@ from .code_shelf import SHELF
 from .data_trail import USES_PARAM, note_item
 from .i18n import t
 from .phone_calendar import _parse, _zone, ago
+from .tools.connect_tools import owner_request
 from .store import Store
 
 SNAPSHOT_KINDS = ("contacts", "messages", "call_log", "health", "dialer")
@@ -984,16 +985,22 @@ def phone_calendar_write_tools(data: PhoneData, cals: Any, timezone_name: Callab
     fields = {"title": {"type": "string"}, "start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
               "all_day": {"type": "boolean"}, "location": {"type": "string"}}
     return [
-        Tool("phone_calendar_add", "Add an event to the calendar on the user's phone; the user approves it. Without end it lasts an hour "
-             "(all-day: a day).",
+        Tool("phone_calendar_add", "Add an event to the calendar on the user's phone. When the user asked for it in the chat it runs at once; "
+             "otherwise the user approves it on a card. Without end it lasts an hour (all-day: a day). For several changes of one request, call "
+             "them together in one step: the user then sees one card.",
              {"type": "object", "properties": {**fields, "notes": {"type": "string"}}, "required": ["title", "start"]},
-             phone_calendar_add, requires_approval=True, describe=describe_add, validate=check_add, approval_extra=add_lines),
-        Tool("phone_calendar_update", "Change an event in the phone calendar, giving only what changes; the user approves it.",
+             phone_calendar_add, requires_approval=True, describe=describe_add, validate=check_add, approval_extra=add_lines,
+             auto_approve=lambda a: owner_request(), shares_card=True),
+        Tool("phone_calendar_update", "Change an event in the phone calendar, giving only what changes. When the user asked for it in the chat it "
+             "runs at once; otherwise the user approves it on a card. For several changes of one request, call them together in one step.",
              {"type": "object", "properties": {"event_id": {"type": "integer", "description": "from phone_calendar_events"}, **fields}, "required": ["event_id"]},
-             phone_calendar_update, requires_approval=True, describe=describe_change, validate=check_change, approval_extra=change_lines),
-        Tool("phone_calendar_delete", "Delete an event from the phone calendar; the user approves it.",
+             phone_calendar_update, requires_approval=True, describe=describe_change, validate=check_change, approval_extra=change_lines,
+             auto_approve=lambda a: owner_request(), shares_card=True),
+        Tool("phone_calendar_delete", "Delete an event from the phone calendar. When the user asked for it in the chat it runs at once; otherwise "
+             "the user approves it on a card. For several deletions of one request, call them together in one step.",
              {"type": "object", "properties": {"event_id": {"type": "integer", "description": "from phone_calendar_events"}}, "required": ["event_id"]},
-             phone_calendar_delete, requires_approval=True, describe=describe_delete, validate=check_delete, approval_extra=delete_lines),
+             phone_calendar_delete, requires_approval=True, describe=describe_delete, validate=check_delete, approval_extra=delete_lines,
+             auto_approve=lambda a: owner_request(), shares_card=True),
     ]
 
 

@@ -366,11 +366,11 @@ async def test_an_upload_names_the_files_and_the_site_and_always_asks(tmp_path):
     t = {x.name: x for x in BrowserExtras(s, home=home, files=files).tools()}["browser_upload"]
     assert t.requires_approval and t.auto_approve is None
     assert rule_kind("browser_upload") == "" and not schedule_rule_ok("browser_upload")      # never remembered, not even per schedule
-    assert t.validate({"selector": "#cv", "files": ["notes/secret.md"]}) is not None
-    assert t.validate({"selector": "#cv", "files": ["../../etc/passwd"]}) is not None
-    assert t.validate({"selector": "#cv", "files": []}) is not None
+    assert await t.validate({"selector": "#cv", "files": ["notes/secret.md"]}) is not None
+    assert await t.validate({"selector": "#cv", "files": ["../../etc/passwd"]}) is not None
+    assert await t.validate({"selector": "#cv", "files": []}) is not None
     args = {"selector": "#cv", "files": [up, "files/portfolio.png"]}
-    assert t.validate(args) is None
+    assert await t.validate(args) is None
     await s.page()
     card = await t.describe(args)
     assert "forms.example.org" in card and "이력서.pdf" in card and "portfolio.png" in card

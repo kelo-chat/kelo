@@ -33,7 +33,7 @@ def prompt_text():
 
 
 def test_shipped_prompt_is_short_and_names_nothing_from_other_products(prompt_text):
-    assert len(prompt_text.encode("utf-8")) <= 14_200   # 14_050 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 14_000 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 13_350 before round 2 shared shopping rule; 12_250 before round 1 (2026-11-19, card p-shopping-like-reference); 12_000 before the line on delegating phone work (2026-11-16, docs/phone-worker.md)
+    assert len(prompt_text.encode("utf-8")) <= 14_400   # 14_200 before the line on saying what a search covered and that an empty search is not proof (2026-11-19, p-calendar-query-photo); 14_050 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 14_000 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 13_350 before round 2 shared shopping rule; 12_250 before round 1 (2026-11-19, card p-shopping-like-reference); 12_000 before the line on delegating phone work (2026-11-16, docs/phone-worker.md)
     assert not FOREIGN.search(prompt_text), FOREIGN.search(prompt_text)
     assert "{agent_name}" in prompt_text and "~/" not in prompt_text
     assert not (CONTENT / "prompts" / "system.original.md").exists() and not (CONTENT / "prompts" / "CHANGES.md").exists()
@@ -124,7 +124,7 @@ def test_the_real_content_loads_and_stays_small():
     b = PromptBuilder.load(CONTENT, None, Skills(CONTENT / "skills"))
     out = b.build(agent_name="Sage", now=NOW)
     assert "You are Sage, a personal agent" in out and "- shopping-and-bookings:" in out and "- work-room:" in out
-    assert len(out) < 16_900, len(out)   # 16_750 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 16_700 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 16_100 before round 2 shared shopping rule; 14_950 before round 1 (2026-11-19, card p-shopping-like-reference); 14_700 before the line on delegating phone work (2026-11-16, docs/phone-worker.md); 14_500 before the line telling the agent to read its help pages (kelo_help) for questions about Kelo itself (2026-11-16, server/content/help); 14_050 before the rule on never promising what nothing will do (2026-11-16, docs/scheduled-runs.md); 13_800 before the lines on showing pictures unasked when looks matter and never giving a path the user cannot open (owner 2026-11-15); 13_100 before the five everyday-life skills joined the skill list (2026-11-15); 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
+    assert len(out) < 17_100, len(out)   # 16_900 before the line on saying what a search covered and that an empty search is not proof (2026-11-19, p-calendar-query-photo); 16_750 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 16_700 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 16_100 before round 2 shared shopping rule; 14_950 before round 1 (2026-11-19, card p-shopping-like-reference); 14_700 before the line on delegating phone work (2026-11-16, docs/phone-worker.md); 14_500 before the line telling the agent to read its help pages (kelo_help) for questions about Kelo itself (2026-11-16, server/content/help); 14_050 before the rule on never promising what nothing will do (2026-11-16, docs/scheduled-runs.md); 13_800 before the lines on showing pictures unasked when looks matter and never giving a path the user cannot open (owner 2026-11-15); 13_100 before the five everyday-life skills joined the skill list (2026-11-15); 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
     # and the clause on answering from the closest data; 12_700 before remembering the browser on the owner's sign-ins (2026-11-10)
     assert not FOREIGN.search(out)
 
@@ -353,7 +353,7 @@ def test_missing_data_is_answered_from_data_on_the_same_thing_never_another():
     """One general clause in the known-vs-inferred line (no task-specific rule): without the exact data, the answer is built from the
     data on the same period, place or item, and data on another time or thing never stands in for it."""
     text = (CONTENT / "prompts" / "system.md").read_text(encoding="utf-8")
-    line = next(x for x in text.splitlines() if "Keep what you know apart from what you infer" in x)
+    line = next(x for x in text.splitlines() if "keep it apart from what you infer" in x)   # 2026-11-19: the known-vs-inferred clause was rewritten
     assert "lacking the exact data, answer from data on the same period, place or item, never another time's or thing's" in line
     assert "give the basis for a claim" in line
     assert "weather" not in text.lower()
@@ -484,12 +484,14 @@ def test_the_core_tool_texts_stay_small(tmp_path):
     # 2026-11-18: core tool texts (own text + parameter texts) 13_067 bytes before watch-one-step and follow-dates-promise,
     # 14_234 on main after them, 14_324 with the tool-text pass, 14_533 with the profile argument of delegate and browser_open
     # (named browser profiles); 15_043 with shopping rules in quick_replies, recheck_later, web_search (2026-11-19, card p-shopping-like-reference)
+    # 15_242 after the three browser cards of 2026-11-19 together (click-first browser_open text, page pop-up notes, stale-ref card
+    # words; each fitted alone, together they passed 15_200)
     app = _test_app(tmp_path)
     total = 0
     for name, desc, params in _tool_texts(app):
         if name in CORE_TOOLS:
             total += len(desc.encode("utf-8")) + sum(len(p.encode("utf-8")) for p in params)
-    assert total < 15_200, total
+    assert total < 15_400, total
 
 
 def test_the_watchers_line_names_the_ones_on_and_never_their_values_or_addresses():

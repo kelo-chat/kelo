@@ -28,8 +28,8 @@ CUT_PAY = ("[The pay press was cut off (the Kelo server or the browser restarted
 
 PICKUP_HEAD = "The {what} restarted while you were working; you are picked up where you stopped."   # what: "Kelo server" | "browser"
 TAB_KEPT = "Your browser tab is still open on the page you were on; read it again (browser_read) before you act."
-TAB_NEW = ("Your browser tab was closed; a new blank tab will open. Open {url} again if you need it (sign-ins are kept); a form you were "
-           "filling may be empty again.")
+TAB_NEW = ("Your browser tab was closed; a new blank tab will open. Your last page was {url}: if you need it, open that site's home page "
+           "and get back to it through the site's own links (sign-ins are kept); a form you were filling may be empty again.")
 TAB_HELD = ("The owner holds your browser tab (they took it over before the restart). Do not act on it; your steps wait until they hand "
             "it back.")
 CHECKS = "Before anything that would repeat them, check these: {items}."

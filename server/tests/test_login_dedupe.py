@@ -66,9 +66,9 @@ def test_the_same_task_replaces_and_unrelated_requests_stay(env):
     st, entries, _ = env
     turn = {"task_id": 7, "turn_id": "t-1"}
     a = entries.create("login", name="a", hosts=["a.example.com"], turn=turn)
-    entries.create("login", name="b", hosts=["b.example.com"], turn={"task_id": 7})
+    entries.create("login", name="b", hosts=["b.example.net"], turn={"task_id": 7})
     assert entries.get(a["id"])["state"] == "replaced"
-    other = entries.create("login", name="c", hosts=["c.example.com"], turn={"task_id": 8, "turn_id": "t-2"})
+    other = entries.create("login", name="c", hosts=["c.example.org"], turn={"task_id": 8, "turn_id": "t-2"})
     assert entries.get(other["id"])["state"] == "open"
     assert open_names(st) == ["b", "c"]
 
@@ -141,9 +141,9 @@ async def test_a_stale_request_of_an_ended_task_expires_after_30_minutes(env):
     st._run("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, status TEXT NOT NULL)")
     st._run("INSERT INTO tasks(id, status) VALUES (1, 'done'), (2, 'running'), (3, 'done')")
     old = entries.create("login", name="old", hosts=["old.example.com"], turn={"task_id": 1})
-    running = entries.create("login", name="running", hosts=["run.example.com"], turn={"task_id": 2})
+    running = entries.create("login", name="running", hosts=["run.example.net"], turn={"task_id": 2})
     clock.now += 1801
-    recent = entries.create("login", name="recent", hosts=["new.example.com"], turn={"task_id": 3})
+    recent = entries.create("login", name="recent", hosts=["new.example.org"], turn={"task_id": 3})
     entries.sweep()
     assert entries.get(old["id"])["state"] == "expired"
     assert entries.get(running["id"])["state"] == "open"
@@ -214,3 +214,13 @@ async def test_the_vault_item_of_a_pending_login_carries_the_prefill(env):
     await tool(st, "request_login").handler({"site": "https://other.example.org/login"})
     item = [c for c in st.credentials() if "other.example.org" in c["hosts"]][0]
     assert item["username_hint"] == ""
+
+
+def test_two_addresses_of_one_site_replace_each_other_and_a_shared_host_does_not(env):
+    st, entries, _ = env
+    a = entries.create("login", name="shop-a", label="A", hosts=["gift.example.com"])
+    entries.create("login", name="shop-b", label="B", hosts=["accounts.example.com"])
+    assert entries.get(a["id"])["state"] == "replaced" and open_names(st) == ["shop-b"]
+    entries.create("login", name="pages-a", label="P", hosts=["me.github.io"])
+    entries.create("login", name="pages-b", label="Q", hosts=["someone.github.io"])
+    assert open_names(st) == ["pages-a", "pages-b", "shop-b"]

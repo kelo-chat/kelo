@@ -573,3 +573,47 @@ async def test_a_research_job_tab_starts_signed_out_and_writes_nothing_back():
     ctx2 = (await in_tab("task:w2", s2.page)).context   # a schedule or a browser job gets the owner's sign-in for a site it goes to
     await in_tab("task:w2", lambda: s2._seed_work_site("task:w2", "shop.example.com"))
     assert ("sid", "s3cret") in {(c["name"], c["value"]) for c in await ctx2.cookies()}
+
+
+async def test_a_job_is_told_once_when_the_owners_browser_holds_nothing_for_the_site():
+    s, main, _ = await main_with_owner([])
+    work_on(s, Browser())
+    await in_tab("task:w1", s.page)
+    await in_tab("task:w1", lambda: s._seed_work_site("task:w1", "shop.example.com"))
+    note = s._seed_note("task:w1", "https://shop.example.com/cart")
+    assert note.startswith("[Not signed in to example.com:") and "holds nothing" in note and "request_login" in note
+    assert s._seed_note("task:w1", "https://www.example.com/") == ""          # once per site and tab
+
+
+async def test_cookies_without_a_sign_in_record_name_the_saved_login():
+    s, main, _ = await main_with_owner([dict(COOKIE)])
+    work_on(s, Browser())
+    s.signed_in_site = lambda site: False
+    s.login_for = lambda site: "shop"
+    await in_tab("task:w1", s.page)
+    await in_tab("task:w1", lambda: s._seed_work_site("task:w1", "shop.example.com"))
+    note = s._seed_note("task:w1", "https://shop.example.com/")
+    assert "no record of a sign-in" in note and "browser_login(name='shop', via=" in note
+    assert COOKIE["name"] not in note and COOKIE["value"] not in note
+
+
+async def test_a_signed_in_site_a_signed_out_tab_and_a_chat_tab_get_no_note():
+    s, main, _ = await main_with_owner([dict(COOKIE)])
+    work_on(s, Browser())
+    s.signed_in_site = lambda site: True
+    await in_tab("task:w1", s.page)
+    await in_tab("task:w1", lambda: s._seed_work_site("task:w1", "shop.example.com"))
+    assert s._seed_note("task:w1", "https://shop.example.com/") == ""
+    s.signed_out_tab = lambda key: key == "task:w2"
+    await in_tab("task:w2", s.page)
+    await in_tab("task:w2", lambda: s._seed_work_site("task:w2", "shop.example.com"))
+    assert s._seed_note("task:w2", "https://shop.example.com/") == ""
+    assert s._seed_note("owner", "https://shop.example.com/") == ""
+
+
+async def test_the_note_comes_with_the_first_reading_of_the_site():
+    s, main, _ = await main_with_owner([])
+    work_on(s, Browser())
+    s._resolver = lambda host, port: [(2, 1, 6, "", ("93.184.216.34", port))]
+    out = await in_tab("task:w1", lambda: s.open("https://shop.example.com/"))
+    assert "[Not signed in to example.com:" in str(out)

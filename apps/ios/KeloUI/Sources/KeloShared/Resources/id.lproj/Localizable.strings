@@ -824,6 +824,7 @@
 "agent_tab_working" = "Bekerja";
 "agent_tab_failed" = "Macet";
 "agent_tab_idle" = "Diam";
+"agent_tab_waiting" = "Menunggumu";
 "agent_tab_picture" = "Layar tab";
 "agent_tab_no_picture" = "Tidak ada yang ditampilkan (halaman kosong).";
 "agent_tab_close" = "Tutup tab";
@@ -1567,6 +1568,9 @@
 "call_mic_denied" = "Tidak dapat memulai panggilan: mikrofon tidak diizinkan.";
 "call_voice_offer" = "Ini adalah suara alami Kelo untuk panggilan. Unduh model suara (%1$s) ke server Kelo Anda sekali, dan Kelo akan berbicara dengannya mulai kalimat berikutnya. Tanpa ini, Kelo menggunakan suara robot bawaan perangkat.";
 "call_mark" = "Panggilan";
+"call_chat_length##other" = "Panggilan · %1$d menit";
+"call_chat_show" = "Tampilkan panggilan";
+"call_chat_hide" = "Sembunyikan panggilan";
 "call_voice_offer_title" = "Unduh suara Kelo?";
 "call_voice_offer_ok" = "Unduh";
 "call_voice_offer_later" = "Gunakan suara perangkat untuk saat ini";
@@ -1574,6 +1578,12 @@
 "call_voice_get" = "Unduh";
 "call_voice_line_close" = "Tutup";
 "call_ears_failed" = "Pengenalan suara ponsel tidak mendengar Anda.";
+"call_voice_device" = "Suara Kelo sendiri tidak termuat, jadi suara perangkat ini yang berbicara.";
+"call_voice_none" = "Perangkat ini tidak dapat memutar suara Kelo sekarang. Balasannya ada di chat.";
+"call_minimize" = "Kembali ke chat";
+"call_keyboard" = "Ketik";
+"call_type_hint" = "Ketik pesan untuk Kelo";
+"call_type_send" = "Kirim";
 "voice_speech_title" = "Suara Kelo";
 "voice_speech_download" = "Unduh model suara · %1$s";
 "voice_speech_downloading" = "Mengunduh model suara · %1$d%%";

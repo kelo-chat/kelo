@@ -885,6 +885,7 @@
     <string name="agent_tab_working">Çalışıyor</string>
     <string name="agent_tab_failed">Takıldı</string>
     <string name="agent_tab_idle">Boşta</string>
+    <string name="agent_tab_waiting">Seni bekliyor</string>
     <string name="agent_tab_picture">Sekme ekranı</string>
     <string name="agent_tab_no_picture">Gösterilecek bir şey yok (boş sayfa).</string>
     <string name="agent_tab_close">Sekmeyi kapat</string>

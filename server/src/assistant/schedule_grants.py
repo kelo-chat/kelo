@@ -216,6 +216,8 @@ def action_of(tool: str, args: dict[str, Any], site: str = "", commit: str = "")
 def _target_ok(want: str, have: set[str]) -> bool:
     if want in have:
         return True
+    if want.startswith(("calendar:", "event:")) and "calendar" in have:   # a grant for the calendars covers every calendar and event
+        return True
     if want.startswith("site:") and any(f"site:{k}" in have for k in site_keys(want[5:])):   # saved under the pre-2026-11-10 rule
         return True
     if want.startswith("connector:") and "/" in want and want.split("/", 1)[0] in have:   # a connector named whole covers its tools

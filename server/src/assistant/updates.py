@@ -2,10 +2,14 @@
 
 An update of one copy (the main one, or `assistant update <name>`; `assistant instance update` does every extra copy) runs:
 
- 1. Preflight: the running server's version and database schema (GET /api/about), and free disk in the copy's data volume
-    (room for one more backup plus the new images). Too little room stops here, before anything changed.
+ 1. Preflight: the running server's version and database schema (GET /api/about), and free disk on the Docker disk for the backups of
+    every copy in this run plus what the build writes (the current size of each image it rebuilds, or what the last builds of those
+    images were measured to use, whichever is more). When it is short, old rollback sets and Kelo's dangling images go first; when it
+    is still short, the update stops here, before anything changed.
  2. Rollback point: the image each of its containers runs (server, browser, egress, work room, Claude/agy sidecars) is tagged
-    `<repo>:rollback-<copy>-<time>` so it cannot be pruned, and written to `instances/<copy>/rollback.json` with its id.
+    `<repo>:rollback-<copy>-<time>` so it cannot be pruned, and written to `instances/<copy>/rollback.json` with its id. The newest two
+    rollback points are kept (rollback.json and its `earlier`); older rollback tags of that copy are removed after every update, good or
+    failed.
  3. Backup, inside the data volume (`/state/.backups/<time>/`, made by the server's own user with umask 077, so it stays exactly as
     private as the live data): a consistent copy of assistant.db made with SQLite's backup API (checked with integrity_check), and
     every other file of the state (home folder, notes, uploads, installed packages, master.key when there is one) as a tar.gz.
@@ -16,10 +20,11 @@ An update of one copy (the main one, or `assistant update <name>`; `assistant in
  5. Any failure after the rollback point rolls back by itself: the copy is held at its previous images (KELO_*_IMAGE in its env
     file), the backup is put back when the database schema changed (the new server migrated it), the copy is restarted and checked
     again, and the message says what failed and what was rolled back. A failed build changes nothing in the copy, and the shared tags
-    go back to what they were, so another copy never picks up a broken build when it restarts.
+    go back to what they were, so another copy never picks up a broken build when it restarts. A run that fails before the restart
+    puts every copy's rollback.json back and removes its own tags and Kelo's dangling images, so it leaves nothing behind.
 
-`assistant rollback [copy]` goes back to the last rollback point on purpose; it is the only way to downgrade. `assistant backups
-[copy]` lists the backups. The next `assistant update` of a held copy clears the hold and brings it to the newest images.
+`assistant rollback [copy]` goes back to the last rollback point on purpose (`--to <id>` goes to the earlier point); it is the only
+way to downgrade. `assistant backups [copy]` lists the backups. The next `assistant update` of a held copy clears the hold and brings it to the newest images.
 
 THE MIGRATION RULE. The schema is upgraded in place at start-up (store.py and the modules that own a table: CREATE TABLE IF NOT
 EXISTS, then ALTER TABLE ADD COLUMN for a missing column). There is no down-migration, and an older server is not guaranteed to work on
@@ -33,10 +38,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from .cli import CLIS, ensure_keyring_token, read_env, remove_env, write_env
 from .instances import IMAGE_VARS, MAIN, Instance, InstanceError, Instances
@@ -44,8 +51,15 @@ from .instances import IMAGE_VARS, MAIN, Instance, InstanceError, Instances
 KEEP_BACKUPS = 3
 HEALTH_TIMEOUT = 180.0
 GiB = 1024 ** 3
-MARGIN_BUILD = 3 * GiB      # free room the new images need on top of the backup (Docker keeps them on the same disk)
-MARGIN_NO_BUILD = GiB // 2
+KEEP_ROLLBACK_SETS = 2      # rollback sets kept per copy: rollback.json's point and one earlier (owner 2026-11-20)
+BUILD_HEADROOM = 2 * GiB    # free room a local build needs besides what build_need() counts: the contexts of builds running at the same
+                            # time (~0.3 GB each), downloads inside a step before the step deletes them, the copies' own writes meanwhile
+MARGIN_NO_BUILD = GiB // 2  # release images are pulled finished: no build
+BUILD_PEAK_FILE = "build-peak.json"   # in instances/: the disk each local build of an image set used (FreeWatch), newest KEEP_PEAKS
+KEEP_PEAKS = 5
+FREE_EVERY = 15.0           # seconds between two looks at the Docker disk's free space while a build runs
+KELO_LABEL = "chat.kelo.image"                         # every Kelo Dockerfile sets it; a container inherits its image's labels
+COMPOSE_PROJECT_LABEL = "com.docker.compose.project"   # every container of a copy has it, build step containers never do
 CLI_VAR = {"claude": "KELO_CLI_CLAUDE_IMAGE", "agy": "KELO_CLI_AGY_IMAGE"}
 
 # Runs inside the copy's server container (its own user, its /state volume) with `python -c HELPER <command> ...`. It only uses the
@@ -161,6 +175,9 @@ elif cmd == "list":
     res = backups()
 elif cmd == "restore":
     res = restore(args[0])
+elif cmd == "free":
+    st = os.statvfs(S)
+    res = {"free": st.f_bavail * st.f_frsize}
 else:
     raise SystemExit("unknown command")
 print(json.dumps(res))
@@ -171,6 +188,7 @@ print(json.dumps(res))
 # Opt-in services built from this checkout (profile -> service). An update builds each one a copy has in COMPOSE_PROFILES: on
 # 2026-11-14 the android bridge was not built, the restart found no image and the update rolled back (and the server was down).
 LOCAL_PROFILE_BUILDS = {"android": "android"}
+LOCAL_PROFILE_IMAGES = {"android": ("KELO_ANDROID_IMAGE", "assistant-android:local")}   # compose.yml: the image each one is built to
 
 class UpdateError(Exception):
     """A step failed; the message says which one and why (never a secret)."""
@@ -207,6 +225,53 @@ def _repo(tag: str) -> str:
     return head if head and "/" not in last else tag
 
 
+class FreeWatch:
+    """The Docker disk's free space while a build runs: `probe()` (free bytes, or None when it cannot tell) is called once at the start,
+    every `every` seconds from a daemon thread, and once at the end. `first` is the first answer, `low` the smallest, `used` is
+    first - low (None when either is unknown). A probe that raises counts as no answer; the watch itself never raises."""
+
+    def __init__(self, probe: Callable[[], int | None], every: float = FREE_EVERY):
+        self.probe, self.every = probe, every
+        self.first: int | None = None
+        self.low: int | None = None
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def _take(self) -> None:
+        try:
+            v = self.probe()
+        except Exception:  # noqa: BLE001 - a look that fails is no answer
+            v = None
+        if v is None:
+            return
+        with self._lock:
+            if self.first is None:
+                self.first = v
+            self.low = v if self.low is None else min(self.low, v)
+
+    def _loop(self) -> None:
+        while not self._stop.wait(self.every):
+            self._take()
+
+    def __enter__(self) -> Self:
+        self._take()
+        self._thread = threading.Thread(target=self._loop, name="kelo-build-free-watch", daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=60)
+        self._take()
+        return False
+
+    @property
+    def used(self) -> int | None:
+        return None if self.first is None or self.low is None else max(0, self.first - self.low)
+
+
 class Updater:
     """`source`: where the new images come from. None = built here from the source files (step 4 above); otherwise an object with
     `prepare(updater, copies, clis)` that puts the new images on the shared tags or raises UpdateError before changing anything
@@ -215,9 +280,11 @@ class Updater:
 
     def __init__(self, m: Instances, *, http: Callable[..., tuple[int, Any]] = _http_get, sleep: Callable[[float], None] = time.sleep,
                  clock: Callable[[], float] = time.time, monotonic: Callable[[], float] = time.monotonic,
-                 health_timeout: float = HEALTH_TIMEOUT, source: Any = None, step: Callable[[str], None] | None = None):
+                 health_timeout: float = HEALTH_TIMEOUT, source: Any = None, step: Callable[[str], None] | None = None,
+                 free_every: float = FREE_EVERY):
         self.m, self.http, self.sleep, self.clock, self.monotonic = m, http, sleep, clock, monotonic
         self.health_timeout = health_timeout
+        self.free_every = free_every
         self.out = m.out
         self.source = source
         self.step = step or (lambda name: None)
@@ -273,7 +340,7 @@ class Updater:
         from .updater_service import incoming_updater_image, shared_updater_image   # the updater's own tags: running, and waiting for the swap
         keep = {self.image_id(self.m.shared_image(v)) for v in IMAGE_VARS} | {self.image_id(shared_updater_image()), self.image_id(incoming_updater_image())}
         for inst in {i.name: i for i in [*insts, *(self.m.load(n) for n in [MAIN, *self.m.names()])]}.values():
-            keep |= {i.get("id") for i in (self.point(inst) or {}).get("images", {}).values()}
+            keep |= {i.get("id") for p in self.points(inst) for i in p.get("images", {}).values()}
             keep |= {self.image_id(read_env(inst.env, v)) for v in IMAGE_VARS if read_env(inst.env, v)}
         c = self._run(["docker", "container", "ls", "-a", "-q", "--no-trunc"])
         ids = (c.stdout or "").split() if c.returncode == 0 else None
@@ -310,6 +377,59 @@ class Updater:
         with os.fdopen(fd, "w") as f:
             json.dump(point, f, indent=1)
         os.replace(tmp, p)
+
+    def points(self, inst: Instance) -> list[dict[str, Any]]:
+        """The copy's rollback points, newest first: rollback.json and its `earlier` list (at most KEEP_ROLLBACK_SETS)."""
+        p = self.point(inst)
+        if not p or not p.get("images"):
+            return []
+        earlier = [e for e in p.get("earlier") or [] if isinstance(e, dict) and e.get("images")]
+        return [p, *earlier][:KEEP_ROLLBACK_SETS]
+
+    @staticmethod
+    def _earlier(prev: dict[str, Any] | None, images: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
+        """The points a new point keeps as `earlier`: the previous point and its earlier ones, minus any with the very same images
+        (that is the same set, not a second one), at most KEEP_ROLLBACK_SETS - 1."""
+        if not prev:
+            return []
+        ids = {v: i["id"] for v, i in images.items()}
+        chain = [{k: v for k, v in prev.items() if k != "earlier"}, *[e for e in prev.get("earlier") or [] if isinstance(e, dict)]]
+        chain = [p for p in chain if p.get("images") and {v: i.get("id") for v, i in p["images"].items()} != ids]
+        return chain[:KEEP_ROLLBACK_SETS - 1]
+
+    def _put_points_back(self, insts: list[Instance], before: dict[str, dict[str, Any] | None]) -> None:
+        """A run that did not change these copies leaves their rollback.json as it found it (none stays none)."""
+        for inst in insts:
+            if inst.name not in before:
+                continue
+            p = before[inst.name]
+            if p:
+                self._save_point(inst, p)
+            else:
+                (self.m.dir / inst.name / "rollback.json").unlink(missing_ok=True)
+
+    def _free(self, insts: list[Instance]) -> int | None:
+        """Free bytes on the Docker disk (statvfs of the first copy's data volume, which lives on it); None when it cannot be read."""
+        try:
+            return int(self.helper(insts[0], "free").get("free"))
+        except Exception:  # noqa: BLE001 - only used for messages and the disk check's second look
+            return None
+
+    def _docker_usage(self) -> str:
+        """'; Docker counts images 40GB (12GB reclaimable), build cache 18GB (18GB reclaimable)', or '' (read only; never raises)."""
+        try:
+            r = self._run(["docker", "system", "df", "--format", "{{.Type}}\t{{.Size}}\t{{.Reclaimable}}"])
+            if r.returncode != 0:
+                return ""
+            parts = []
+            for line in (r.stdout or "").splitlines():
+                kind, _, rest = line.partition("\t")
+                size, _, rec = rest.partition("\t")
+                if kind in ("Images", "Build Cache") and size:
+                    parts.append(f"{kind.lower()} {size} ({rec.split(' ')[0] or '?'} reclaimable)")
+            return "; Docker counts " + ", ".join(parts) if parts else ""
+        except Exception:  # noqa: BLE001
+            return ""
 
     def used_vars(self, inst: Instance) -> list[str]:
         if inst.site_only:   # only the server runs here (instances.py SITE_ONLY_OFF): no CLI or work room image is used
@@ -365,6 +485,73 @@ class Updater:
             return build
         return bool(getattr(self.source, "builds", True))
 
+    def image_size(self, ref: str) -> int | None:
+        """Bytes the image takes (all its layers), or None when it is not on this computer."""
+        r = self._run(["docker", "image", "inspect", "-f", "{{.Size}}", ref])
+        try:
+            return int((r.stdout or "").strip()) if r.returncode == 0 else None
+        except ValueError:
+            return None
+
+    def build_need(self, insts: list[Instance], clis: list[str] | None) -> tuple[int, str]:
+        """Room this run's local build needs on the Docker disk, and the words that say why. The worst case is a build that reuses no
+        layer (a changed base image or early Dockerfile line rebuilds every later layer, without warning): it writes about as much as
+        the images it replaces take now, so this counts the current size of each image build_steps() writes; one not built yet counts
+        as big as the largest. When the last measured builds of the same images used more (build-peak.json), that counts instead.
+        BUILD_HEADROOM on top in both cases."""
+        tags = [t for _, ts in self.build_steps(insts, clis) for t in ts]
+        sizes = [self.image_size(t) for t in tags]
+        guess = max((s for s in sizes if s), default=0) or max(
+            (self.image_size(self.m.shared_image(v)) or 0 for v in IMAGE_VARS), default=0)
+        images = sum(s or guess for s in sizes)
+        peak = self.last_peak(tags)
+        why = (f"room to build {', '.join(_repo(t) for t in tags)} (their images take {_size(images)} now"
+               + (f"; the last such builds used up to {_size(peak)}" if peak else "") + ")")
+        return max(images, peak or 0) + BUILD_HEADROOM, why
+
+    @staticmethod
+    def _peak_key(tags: list[str]) -> str:
+        return ",".join(sorted(set(tags)))
+
+    def _peaks(self) -> dict[str, Any]:
+        try:
+            data = json.loads((self.m.dir / BUILD_PEAK_FILE).read_text())
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def last_peak(self, tags: list[str]) -> int | None:
+        """The most a recent build of exactly these images used (the largest of the newest KEEP_PEAKS), or None."""
+        row = self._peaks().get(self._peak_key(tags))
+        used = [u for u in (row.get("used") if isinstance(row, dict) else None) or [] if isinstance(u, int) and u > 0]
+        return max(used) if used else None
+
+    def _save_peak(self, tags: list[str], used: int | None) -> None:
+        """Remember what a build of these images used (newest KEEP_PEAKS per image set). Never raises."""
+        if not used or not tags:
+            return
+        try:
+            data = self._peaks()
+            key = self._peak_key(tags)
+            row = data.get(key) if isinstance(data.get(key), dict) else {}
+            old = [u for u in row.get("used") or [] if isinstance(u, int) and u > 0]
+            data[key] = {"used": [*old, int(used)][-KEEP_PEAKS:], "at": self.clock()}
+            self.m.dir.mkdir(parents=True, exist_ok=True)
+            p = self.m.dir / BUILD_PEAK_FILE
+            tmp = p.with_suffix(".tmp")
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f, indent=1)
+            os.replace(tmp, p)
+        except (OSError, ValueError, TypeError):
+            pass
+
+    def _free_live(self, inst: Instance) -> int | None:
+        """Free bytes on the Docker disk from the copy's RUNNING server only (exec): a build is never joined by a one-off container."""
+        if "server" not in self.running(inst):
+            return None
+        return int(self.helper(inst, "free").get("free"))
+
     def preflight(self, inst: Instance, *, build: bool) -> dict[str, Any]:
         live = "server" in self.running(inst)
         info: dict[str, Any] = {"running": live, "version": None, "schema": None}
@@ -379,13 +566,34 @@ class Updater:
                 self.out(f"{self._who(inst)}: could not read its version (HTTP {code or 'no answer'}); going on.")
         disk = self.helper(inst, "info")
         info["schema"] = disk.get("schema") or info["schema"]
-        need = int(disk.get("state") or 0) + (MARGIN_BUILD if build else MARGIN_NO_BUILD)
-        if int(disk.get("free") or 0) < need:
-            raise UpdateError(f"not enough free disk for a safe update of {self._who(inst)}: it needs {_size(need)} "
-                              f"(a backup of {_size(disk.get('state'))} plus room for the new images), only {_size(disk.get('free'))} "
-                              "is free. Free some space (for example `docker image prune`) and try again")
-        info.update(free=disk.get("free"), state=disk.get("state"))
+        info.update(free=int(disk.get("free") or 0), state=int(disk.get("state") or 0))
         return info
+
+    def room(self, insts: list[Instance], pre: dict[str, dict[str, Any]], *, build: bool, clis: list[str] | None = None) -> None:
+        """1b. One Docker disk holds every copy's volume and all images, so it must take a backup of EVERY copy in this run plus what the
+        build writes (build_need) or, for release images that are pulled, MARGIN_NO_BUILD. When it does not, old rollback sets (beyond
+        each copy's newest KEEP_ROLLBACK_SETS) and Kelo's dangling images go first, and it says so; when it still does not,
+        UpdateError before anything was tagged, backed up or built."""
+        state = sum(int(pre[i.name].get("state") or 0) for i in insts)
+        extra, why = self.build_need(insts, clis) if build else (MARGIN_NO_BUILD, "room for the new images")
+        need = state + extra
+        free = min(int(pre[i.name].get("free") or 0) for i in insts)
+        if free >= need:
+            return
+        self.out(f"Only {_size(free)} is free on the Docker disk and this update needs {_size(need)}: removing old rollback sets "
+                 f"(each copy keeps its newest {KEEP_ROLLBACK_SETS}) and unused Kelo images first.")
+        self.tidy(insts, why="disk check")
+        now = self._free(insts)
+        free = now if now is not None else free
+        if free >= need:
+            self.out(f"Now {_size(free)} is free; going on.")
+            return
+        raise UpdateError(
+            f"not enough free disk for a safe update of {', '.join(self._who(i) for i in insts)}: it needs {_size(need)} (a backup of "
+            f"{_size(state)} plus {why}), only {_size(free)} is free even after removing old rollback sets and unused "
+            f"Kelo images{self._docker_usage()}. The newest {KEEP_ROLLBACK_SETS} rollback sets of each copy are kept on purpose. To make "
+            "room: `docker system df` shows what uses the disk, and `docker builder prune` removes the build cache (the next build then "
+            "takes longer)")
 
     # ------------------------------------------------------------------ 2. rollback point
     def record(self, inst: Instance, stamp: str) -> dict[str, dict[str, str]]:
@@ -409,22 +617,41 @@ class Updater:
         return b
 
     # ------------------------------------------------------------------ 4. build and health
+    def build_steps(self, insts: list[Instance], clis: list[str] | None) -> list[tuple[list[str], list[str]]]:
+        """This run's local build: each compose build command with the image tags it writes, in order. A full update builds the server,
+        the work room, each opt-in service a copy has on (LOCAL_PROFILE_BUILDS) and the Claude/agy sidecars the copies use, all with
+        Docker's cache: a CLI image's layers are rebuilt when its inputs change, and the CLI itself stays current from the app
+        (providers/cli_update.py), as on release copies. `clis` (`assistant update --cli`) rebuilds just those sidecars from scratch
+        (--pull --no-cache) for the newest CLI in the image."""
+        f = ["docker", "compose", "-f", str(self.m.root / "compose.yml")]
+        steps: list[tuple[list[str], list[str]]] = []
+        if not clis:
+            steps += [([*f, "build", "server"], [self.m.shared_image("KELO_IMAGE")]),
+                      ([*f, "build", "workroom"], [self.m.shared_image("KELO_WORKROOM_IMAGE")])]
+            for prof, service in sorted(LOCAL_PROFILE_BUILDS.items()):   # built with the rest, else the restart finds no image and rolls back
+                if any(prof in [p.strip() for p in read_env(i.env, "COMPOSE_PROFILES").split(",")] for i in insts):
+                    var, default = LOCAL_PROFILE_IMAGES[prof]
+                    steps.append(([*f, "--profile", prof, "build", service], [os.environ.get(var) or default]))
+        wanted = clis or sorted({c for i in insts for c in CLIS if CLI_VAR[c] in self.used_vars(i)}, key=CLIS.index)
+        if wanted:
+            fresh = ["--pull", "--no-cache"] if clis else []
+            steps.append(([*f, *(a for c in wanted for a in ("--profile", c)), "build", *fresh, *(f"{c}-cli" for c in wanted)],
+                          [self.m.shared_image(CLI_VAR[c]) for c in wanted]))
+        return steps
+
     def build(self, insts: list[Instance], clis: list[str] | None) -> None:
         env = {**os.environ, **{v: self.m.shared_image(v) for v in IMAGE_VARS}}   # builds always go to the shared tags, never to a hold
-        f = ["docker", "compose", "-f", str(self.m.root / "compose.yml")]
-        steps: list[list[str]] = [] if clis else [[*f, "build", "server"], [*f, "build", "workroom"]]
-        wanted = clis or sorted({c for i in insts for c in CLIS if CLI_VAR[c] in self.used_vars(i)}, key=CLIS.index)
-        if not clis:                           # an opt-in service built here (not pulled) whose profile a copy has on: built with
-            for prof, service in sorted(LOCAL_PROFILE_BUILDS.items()):   # the rest, else the restart finds no image and rolls back
-                if any(prof in [p.strip() for p in read_env(i.env, "COMPOSE_PROFILES").split(",")] for i in insts):
-                    steps.append([*f, "--profile", prof, "build", service])
-        if wanted:                             # from scratch, so they get the newest claude / agy
-            steps.append([*f, *(a for c in wanted for a in ("--profile", c)), "build", "--pull", "--no-cache", *(f"{c}-cli" for c in wanted)])
-        for cmd in steps:
-            self.out("$ " + " ".join(cmd[3:] if cmd[2] == "-f" else cmd))
-            r = self.m.run(cmd, cwd=self.m.root, env=env)      # the build log streams to the terminal
-            if r.returncode != 0:
-                raise UpdateError(f"building the images failed (exit {r.returncode}); see the build output above")
+        steps = self.build_steps(insts, clis)
+        watch = FreeWatch(lambda: self._free_live(insts[0]), self.free_every)
+        try:
+            with watch:
+                for cmd, _ in steps:
+                    self.out("$ " + " ".join(cmd[3:] if cmd[2] == "-f" else cmd))
+                    r = self.m.run(cmd, cwd=self.m.root, env=env)      # the build log streams to the terminal
+                    if r.returncode != 0:
+                        raise UpdateError(f"building the images failed (exit {r.returncode}); see the build output above")
+        finally:                                    # a failed build is measured too: the next disk check learns from a full disk
+            self._save_peak([t for _, ts in steps for t in ts], watch.used)
 
     def healthy(self, inst: Instance, *, need_db: bool = True) -> str | None:
         """None when the copy works, else what is wrong at the deadline."""
@@ -490,22 +717,89 @@ class Updater:
             if iid and self.image_id(tag) != iid:
                 self._run(["docker", "tag", iid, tag])
 
-    def prune_tags(self, inst: Instance) -> None:
-        """Remove this copy's rollback tags that neither its rollback point nor its hold uses any more."""
-        point = self.point(inst) or {}
-        keep = {i["tag"] for i in point.get("images", {}).values()} | {read_env(inst.env, v) for v in IMAGE_VARS} - {""}
+    def prune_tags(self, inst: Instance) -> list[str]:
+        """Remove this copy's rollback tags except its kept points (rollback.json and its `earlier`) and its hold. Only tags named
+        exactly <repo>:rollback-<copy>-<YYYYmmdd-HHMMSS>: Docker's filter `rollback-rev-*` also lists copy rev-1's tags, which are never
+        touched. By exact tag and never forced: Docker refuses to remove an image a container still uses (running or stopped), and
+        such a tag simply stays. Returns the tags that went."""
+        keep = {img.get("tag") for p in self.points(inst) for img in p.get("images", {}).values()}
+        keep |= {read_env(inst.env, v) for v in IMAGE_VARS}
+        keep -= {"", None}
+        own = re.compile(rf"rollback-{re.escape(inst.name)}-\d{{8}}-\d{{6}}")
+        removed: list[str] = []
         for repo in sorted({_repo(self.m.shared_image(v)) for v in IMAGE_VARS}):
             r = self._run(["docker", "image", "ls", "--format", "{{.Repository}}:{{.Tag}}", "--filter",
                            f"reference={repo}:rollback-{inst.name}-*"])
             for tag in (r.stdout or "").split() if r.returncode == 0 else []:
-                if tag not in keep:
-                    self._run(["docker", "image", "rm", tag])
+                tag_repo, _, label = tag.rpartition(":")
+                if tag in keep or tag_repo != repo or not own.fullmatch(label):
+                    continue
+                if self._run(["docker", "image", "rm", tag]).returncode == 0:
+                    removed.append(tag)
+        return removed
+
+    def containers_now(self) -> set[str] | None:
+        """Every container's full id (running or not), or None when Docker cannot list them."""
+        r = self._run(["docker", "container", "ls", "-a", "-q", "--no-trunc"])
+        return set((r.stdout or "").split()) if r.returncode == 0 else None
+
+    def remove_build_leftovers(self, before: set[str] | None) -> None:
+        """After a failed local build: remove the stopped containers that build left. Docker's classic builder (used when the buildx
+        plugin is missing) runs each Dockerfile step in a container and leaves them all when a step fails (8 containers, ~3 GB on
+        2026-11-20); they also hold the half-built layers, so this runs before the dangling-image prune. A container goes only when it
+        was not in `before` (the list taken right before the build), is created or exited (never running), carries KELO_LABEL and has
+        no COMPOSE_PROJECT_LABEL. By id, never forced. Nothing when `before` is None (could not tell what is new). Never raises."""
+        if before is None:
+            return
+        try:
+            r = self._run(["docker", "container", "ls", "-a", "--no-trunc", "--filter", f"label={KELO_LABEL}",
+                           "--filter", "status=created", "--filter", "status=exited",
+                           "--format", '{{.ID}}\t{{.Label "' + COMPOSE_PROJECT_LABEL + '"}}'])
+            if r.returncode != 0:
+                return
+            ids = []
+            for line in (r.stdout or "").splitlines():
+                cid, _, project = line.partition("\t")
+                if cid.strip() and cid.strip() not in before and not project.strip():
+                    ids.append(cid.strip())
+            if not ids:
+                return
+            gone = self._run(["docker", "container", "rm", *ids]).returncode == 0
+            n = f"{len(ids)} stopped build container{'' if len(ids) == 1 else 's'}"
+            self.out(f"Removed {n} that the failed build left behind (Docker's classic builder leaves them; with the buildx plugin "
+                     "installed Docker builds with BuildKit, which leaves none)." if gone else
+                     f"Could not remove {n} that the failed build left behind; `docker container ls -a` shows them.")
+        except Exception as e:  # noqa: BLE001
+            self.out(f"Removing the failed build's containers was skipped ({type(e).__name__}); this does not change the result.")
 
     def prune_untagged(self) -> None:
         """After a good update: delete Kelo's own image layers nothing points at any more (the image a rebuild or a new release
         replaced, minus the rollback point, which keeps its tag). Only images labelled chat.kelo.image, never the owner's other
         images. Without this every update left several GB behind until the disk filled (owner, 2026-11-15)."""
         self._run(["docker", "image", "prune", "-f", "--filter", "dangling=true", "--filter", "label=chat.kelo.image"])
+
+    def tidy(self, insts: list[Instance], *, why: str, releases: bool = False) -> None:
+        """Cleanup after an update (good or failed), a rollback, or in the disk check: each copy's rollback sets beyond its newest
+        KEEP_ROLLBACK_SETS, old release images (after a good registry update), Kelo's dangling images. Says which sets went and the
+        Docker disk's free space before and after. Never raises: a failed cleanup never changes how the update ended. The build cache is
+        never pruned (shared with every other build on this Docker; see docs/disk-growth.md)."""
+        try:
+            before = self._free(insts)
+            removed = {i.name: self.prune_tags(i) for i in insts}
+            if releases:
+                self.prune_old_releases(insts)
+            self.prune_untagged()
+            after = self._free(insts)
+        except Exception as e:  # noqa: BLE001
+            self.out(f"Cleanup after the {why} was skipped ({type(e).__name__}); this does not change the result.")
+            return
+        for inst in insts:
+            stamps = sorted({t.rpartition(":")[2][-15:] for t in removed.get(inst.name, [])})
+            if stamps:
+                self.out(f"{self._who(inst)}: removed {len(stamps)} old rollback set{'' if len(stamps) == 1 else 's'} "
+                         f"({', '.join(stamps)}); the newest {KEEP_ROLLBACK_SETS} are kept.")
+        if before is not None and after is not None:
+            self.out(f"Cleanup after the {why}: unused Kelo images removed; Docker disk free {_size(before)} -> {_size(after)}.")
 
     # ------------------------------------------------------------------ commands
     def update(self, names: list[str], *, build: bool = True, clis: list[str] | None = None) -> int:
@@ -524,6 +818,7 @@ class Updater:
         self.step("preflight")
         try:                                   # 1. nothing changed yet when this fails
             pre = {i.name: self.preflight(i, build=self.builds_locally(build)) for i in insts}
+            self.room(insts, pre, build=self.builds_locally(build), clis=clis)
         except UpdateError as e:
             self.out(f"Update stopped before changing anything: {e}.")
             self.result["problem"] = str(e)
@@ -531,32 +826,38 @@ class Updater:
         for inst in insts:   # a copy made before the key container existed gets its shared secret before it restarts
             ensure_keyring_token(inst.env)
         shared_before = {v: self.image_id(self.m.shared_image(v)) for v in IMAGE_VARS}
+        before_points = {i.name: self.point(i) for i in insts}
         points: dict[str, dict[str, Any]] = {}
         self.step("backup")
         try:                                   # 2 + 3: tags and backups only; the copies keep running untouched
             for inst in insts:
                 images = self.record(inst, stamp)
+                earlier = self._earlier(before_points[inst.name], images)
                 p = pre[inst.name]
                 meta = {"instance": inst.name, "version": p["version"], "images": {v: i["id"] for v, i in images.items()}}
-                b = self.backup(inst, stamp, "before update", meta)
+                b = self.backup(inst, stamp, "before update", meta, protect=[e["backup"] for e in earlier if e.get("backup")])
                 points[inst.name] = {"id": stamp, "instance": inst.name, "created": self.clock(), "version": p["version"],
-                                     "schema": b.get("schema"), "backup": b.get("id"), "images": images}
+                                     "schema": b.get("schema"), "backup": b.get("id"), "images": images, "earlier": earlier}
                 self._save_point(inst, points[inst.name])
         except UpdateError as e:
+            self._put_points_back([i for i in insts if i.name in points], before_points)
+            self.tidy(insts, why="stopped update")
             self.out(f"Update stopped before changing anything: {e}.")
             self.result["problem"] = str(e)
-            for inst in insts:
-                self.prune_tags(inst)
             return 1
         if build or self.source is not None:
             self.step("build")
+            before_build = self.containers_now() if self.source is None else None      # what existed before a local build
             try:
                 if self.source is not None:
                     self.source.prepare(self, insts, clis)
                 else:
                     self.build(insts, clis)
             except Exception as e:  # noqa: BLE001 - whatever stopped it, the shared tags go back and nothing else changed
+                self.remove_build_leftovers(before_build)                              # before the tidy's dangling prune
                 self._restore_shared(shared_before)
+                self._put_points_back(insts, before_points)
+                self.tidy(insts, why="failed update")
                 why = str(e) if isinstance(e, UpdateError) else f"{type(e).__name__}: {e}"[:300]
                 self.out(f"Update failed: {why}. Nothing was changed: "
                          + ", ".join(self._who(i) for i in insts) + " keep running the version they had.")
@@ -579,12 +880,12 @@ class Updater:
             if problem is None:
                 done.append(inst.name)
                 self.result["updated"] = list(done)
-                self.prune_tags(inst)
                 self.out(f"{self._who(inst)} is updated and healthy. To go back to the previous version: assistant rollback{self._flag(inst)}")
                 continue
-            return self._failed(inst, point, problem, shared_before if not done else None, rest=[i for i in insts if i.name not in done and i is not inst])
-        self.prune_old_releases(insts)
-        self.prune_untagged()
+            rest = [i for i in insts if i.name not in done and i is not inst]
+            self._put_points_back(rest, before_points)        # not restarted: their rollback points stay what they were
+            return self._failed(inst, point, problem, shared_before if not done else None, rest=rest, everyone=insts)
+        self.tidy(insts, why="update", releases=True)
         self.result.update(outcome="done")
         finish = getattr(self.source, "finish", None)
         if finish is not None:                 # e.g. the updater container itself moves to the new release, last
@@ -593,7 +894,7 @@ class Updater:
         return 0
 
     def _failed(self, inst: Instance, point: dict[str, Any], problem: str, shared_before: dict[str, str | None] | None,
-                rest: list[Instance]) -> int:
+                rest: list[Instance], everyone: list[Instance] | None = None) -> int:
         who = self._who(inst)
         self.out(f"Update of {who} failed: {problem}.")
         self.out(f"Rolling {who} back to the images it ran before...")
@@ -607,7 +908,7 @@ class Updater:
             restored, again = False, f"rolling back stopped: {e}"
         except Exception as e:  # noqa: BLE001
             restored, again = False, f"rolling back stopped ({type(e).__name__})"
-        self.prune_tags(inst)
+        self.tidy(everyone or [inst], why="rollback")
         self.result.update(outcome="rolled_back" if again is None else "rollback_failed", data_restored=restored, problem=problem,
                            failed=inst.name, not_updated=[i.name for i in rest])
         data = (f" and its data was restored from the backup taken at {_when(point.get('created'))} (changes made after that are not kept)"
@@ -622,11 +923,15 @@ class Updater:
             self.out("Not updated (they keep running what they had): " + ", ".join(self._who(i) for i in rest) + ".")
         return 1
 
-    def rollback(self, name: str | None, *, yes: bool, ask: Callable[[str], str] | None, keep_data: bool = False) -> int:
+    def rollback(self, name: str | None, *, yes: bool, ask: Callable[[str], str] | None, keep_data: bool = False,
+                 to: str | None = None) -> int:
         inst = self.m.load(name)
-        who, point = self._who(inst), self.point(inst)
-        if not point:
+        who, pts = self._who(inst), self.points(inst)
+        if not pts:
             raise InstanceError(f"{who} has no rollback point yet; `assistant update{self._flag(inst)}` makes one before it changes anything")
+        point = next((p for p in pts if p.get("id") == to), None) if to else pts[0]
+        if point is None:
+            raise InstanceError(f"{who} has no rollback point {to}; `assistant backups{self._flag(inst)}` lists them")
         img = point["images"].get("KELO_IMAGE", {})
         self.out(f"Rollback point of {who}: made {_when(point.get('created'))} before an update; version {point.get('version') or '?'}, "
                  f"image {img.get('id', '?')[7:19]}; backup {point.get('backup') or '(none)'}.")
@@ -644,7 +949,7 @@ class Updater:
         self.step("backup")
         try:
             self.backup(inst, stamp, "before rollback", {"instance": inst.name, "version": None, "images": {}},
-                        protect=[point["backup"]] if point.get("backup") else [])
+                        protect=[p["backup"] for p in pts if p.get("backup")])
             self.step("rollback")
             self.result["changed"] = True
             restored = self._go_back(inst, point, restore_data=not keep_data)
@@ -655,7 +960,7 @@ class Updater:
             self.out(f"Rollback of {who} failed: {e}.")
             self.result.update(outcome="rollback_failed" if self.result["changed"] else "failed", problem=str(e))
             return 1
-        self.prune_tags(inst)
+        self.tidy([inst], why="rollback")
         if problem:
             self.out(f"Rolled {who} back, but it is not healthy: {problem}. Its backups are kept (`assistant backups{self._flag(inst)}`).")
             self.result.update(outcome="rollback_failed", problem=problem)
@@ -670,20 +975,25 @@ class Updater:
     def list_backups(self, name: str | None) -> int:
         inst = self.m.load(name)
         rows = self.helper(inst, "list")
-        point = self.point(inst) or {}
+        pts = self.points(inst)
+        marks = {p.get("backup"): "  <- rollback point" if n == 0 else "  <- earlier rollback point"
+                 for n, p in enumerate(pts) if p.get("backup")}
         who = self._who(inst)
         if not rows:
             self.out(f"{who} has no backups yet; `assistant update{self._flag(inst)}` makes one before it changes anything.")
         else:
-            self.out(f"Backups of {who} (inside its data volume, newest last; the newest {KEEP_BACKUPS} are kept):")
+            self.out(f"Backups of {who} (inside its data volume, newest last; the newest {KEEP_BACKUPS} are kept, plus those of its "
+                     "rollback points):")
             for b in rows:
-                mark = "  <- rollback point" if b.get("id") == point.get("backup") else ""
+                mark = marks.get(b.get("id"), "")
                 self.out(f"  {b.get('id')}  {_when(b.get('created'))}  {_size(b.get('bytes')):>9}  {b.get('label', '')}"
                          f"{'  version ' + str(b['version']) if b.get('version') else ''}{mark}")
-        if point:
+        for p in pts[1:]:
+            self.out(f"Earlier rollback point: {_when(p.get('created'))} (`assistant rollback{self._flag(inst)} --to {p.get('id')}`)")
+        if pts:
             held = read_env(inst.env, "KELO_IMAGE")
-            self.out(f"Rollback point: {_when(point.get('created'))} (`assistant rollback{self._flag(inst)}`)"
-                     + ("; it is held at those images now" if held else ""))
+            self.out(f"Rollback point: {_when(pts[0].get('created'))} (`assistant rollback{self._flag(inst)}`)"
+                     + ("; it is held at a rollback point now" if held else ""))
         return 0
 
 
@@ -714,7 +1024,8 @@ def run_command(args: Any, manager: Instances | None = None, updater: Updater | 
                 return u.update(m.names(), build=not getattr(args, "no_build", False))
             if args.cmd == "rollback":
                 interactive = ask is not None or sys.stdin.isatty()
-                return u.rollback(args.name, yes=args.yes, ask=(ask or input) if interactive else None, keep_data=args.keep_data)
+                return u.rollback(args.name, yes=args.yes, ask=(ask or input) if interactive else None, keep_data=args.keep_data,
+                                  to=getattr(args, "to", None))
             return u.list_backups(args.name)
         finally:
             lock.release()

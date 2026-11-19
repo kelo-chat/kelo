@@ -85,7 +85,7 @@ public final class IOSPhoneListener: PhoneListener, @unchecked Sendable {
                     }
                     self.lock.unlock()
 
-                    self.restartSilenceTimer(finalText: result.bestTranscription.formattedString)
+                    self.restartSilenceTimer(finalText: result.bestTranscription.formattedString, afterMs: CallRules.phoneEndSilenceMs)
                     if result.isFinal {
                         self.finish(result.bestTranscription.formattedString)
                     }
@@ -98,7 +98,7 @@ public final class IOSPhoneListener: PhoneListener, @unchecked Sendable {
             self.task = task
             lock.unlock()
 
-            restartSilenceTimer(finalText: "")
+            restartSilenceTimer(finalText: "", afterMs: CallRules.phoneNoSpeechMs)
         } catch {
             finish(nil)
         }
@@ -110,13 +110,14 @@ public final class IOSPhoneListener: PhoneListener, @unchecked Sendable {
     }
 
     #if os(iOS)
-    private func restartSilenceTimer(finalText: String) {
+    /// Finishes with the text heard so far (or "" when nothing was heard) after [afterMs] of silence.
+    private func restartSilenceTimer(finalText: String, afterMs: Int64) {
         lock.lock()
         silenceTimer?.cancel()
         silenceTimer = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(afterMs) * 1_000_000)
             guard !Task.isCancelled else { return }
-            self?.finish(finalText.isEmpty ? nil : finalText)
+            self?.finish(finalText)
         }
         lock.unlock()
     }
@@ -136,6 +137,11 @@ public final class IOSPhoneListener: PhoneListener, @unchecked Sendable {
     #endif
 
     private func finish(_ text: String?) {
+        end(text, report: true)
+    }
+
+    /// A cancel never reports: the old way called onDone, which started listening again at once (a loop, 2026-11-19).
+    private func end(_ text: String?, report: Bool) {
         let done: (@Sendable (String?) -> Void)? = lock.withLock {
             guard active else { return nil }
             active = false
@@ -154,10 +160,10 @@ public final class IOSPhoneListener: PhoneListener, @unchecked Sendable {
             pendingDone = nil
             return d
         }
-        done?(text)
+        if report { done?(text) }
     }
 
     public func cancel() {
-        finish(nil)
+        end(nil, report: false)
     }
 }

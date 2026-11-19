@@ -43,11 +43,18 @@ public struct PhoneEvent: Equatable, Sendable {
     public var declined = false
     public var cancelled = false
     public var attendees = 0
+    /// the event's notes (what the calendar keeps as its description)
+    public var notes = ""
+    /// the account the calendar syncs from, and its type ("com.google"; "local" for none); empty when the phone does not say
+    public var account = ""
+    public var accountType = ""
 
     public init(id: String, title: String, start: Double, end: Double, allDay: Bool, location: String = "", calendar: String = "",
-                declined: Bool = false, cancelled: Bool = false, attendees: Int = 0) {
+                declined: Bool = false, cancelled: Bool = false, attendees: Int = 0, notes: String = "", account: String = "",
+                accountType: String = "") {
         self.id = id; self.title = title; self.start = start; self.end = end; self.allDay = allDay; self.location = location
         self.calendar = calendar; self.declined = declined; self.cancelled = cancelled; self.attendees = attendees
+        self.notes = notes; self.account = account; self.accountType = accountType
     }
 }
 
@@ -98,6 +105,12 @@ public enum PhoneCalendarRules {
                 if !e.location.trimmingCharacters(in: .whitespaces).isEmpty { o["location"] = .string(String(e.location.prefix(300))) }
                 if !e.calendar.trimmingCharacters(in: .whitespaces).isEmpty { o["calendar"] = .string(String(e.calendar.prefix(120))) }
                 if e.attendees > 0 { o["attendees"] = .number(Double(e.attendees)) }
+                let notes = e.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !notes.isEmpty { o["notes"] = .string(String(notes.prefix(500))) }
+                let account = e.account.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !account.isEmpty { o["account"] = .string(String(account.prefix(120))) }
+                let accountType = e.accountType.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !accountType.isEmpty { o["account_type"] = .string(String(accountType.prefix(80))) }
                 return .object(o)
             }
     }

@@ -99,13 +99,17 @@ case "${ROLE:-}" in
         ( while true; do python -m assistant.browser_identity; sleep 2; done ) &
       fi
     fi
-    # The owner's browser keeps its sign-ins across a restart (card p-browser-signin-shared): a session cookie (a sign-in without "stay
-    # signed in") survives only when Chrome restores the last session, so that preference is set; the tabs it had open are not brought
-    # back (the cookies are what stays). The work browser (BROWSER_EPHEMERAL=1) starts empty and is not touched.
+    # The owner's browser keeps its sign-ins across a restart (cards p-browser-signin-shared, p-signin-gaps): Chrome deletes session
+    # cookies (a sign-in without "stay signed in") at start unless it restores the last session. The preference alone did not do that in
+    # a live check (tests/test_work_seed_live.py); the --restore-last-session switch does, so the browser line passes it. The tabs it had
+    # open are removed first, so none come back (the cookies are what stays). The work browser (BROWSER_EPHEMERAL=1) starts empty and is
+    # not touched.
+    RESTORE_FLAG=""
     if [ "${BROWSER_EPHEMERAL:-0}" != 1 ]; then
       mkdir -p /data/profile/Default
       python -c 'import json, os; p = "/data/profile/Default/Preferences"; d = json.load(open(p)) if os.path.exists(p) else {}; d = d if isinstance(d, dict) else {}; s = d.get("session") if isinstance(d.get("session"), dict) else {}; s["restore_on_startup"] = 1; d["session"] = s; json.dump(d, open(p, "w"))' 2>/dev/null || true
       rm -rf /data/profile/Default/Sessions
+      RESTORE_FLAG="--restore-last-session"
     fi
     # --no-sandbox: Chrome's sandbox needs user namespaces the container does not grant. The
     # container (unprivileged, no capabilities, no host mounts, no network route but the proxy) is the sandbox instead.
@@ -131,7 +135,7 @@ case "${ROLE:-}" in
       $SWIFT_FLAGS \
       --disable-blink-features=AutomationControlled \
       --blink-settings=primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2 \
-      $CACHE_FLAG $PROXY_FLAG $LANG_FLAGS \
+      $CACHE_FLAG $PROXY_FLAG $LANG_FLAGS $RESTORE_FLAG \
       ${UA_FLAG:+"$UA_FLAG"} \
       about:blank
     ;;

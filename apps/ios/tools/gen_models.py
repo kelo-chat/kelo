@@ -51,7 +51,7 @@ MODELS = {
     "AgentStatus": ("GET /api/agent/status, polled every few seconds in the foreground. tone: the profile's (nil = older server).", [
         "busy:B", "status:S?", "taskId:L?", "turnId:S?", "title:S?", "source:S?", "controller:S?", "controlledBy:S?",
         "running:[RunningRun]", "pendingApprovals:I", "openFollowups:I", "agentName:S?", "unseenTasks:I", "unseenNotifications:I",
-        "avatarVersion:L=-1", "secretRequests:I", "secretKinds:{S:L}@secret_request_kinds", "tone:S?", "briefingRev:S?", "locked:B"]),
+        "avatarVersion:L=-1", "secretRequests:I", "secretKinds:{S:L}@secret_request_kinds", "tone:S?", "briefingRev:S?", "locked:B", "lastReplyFailed:B@last_reply_failed"]),
     "TaskBrief": ("GET /api/tasks?limit=1 items, only what tells a finished run from a failed one nobody has looked at.", [
         "id:L", "status:S", "seen:B=true"]),
     "TasksBrief": ("GET /api/tasks?limit=1.", ["items:[TaskBrief]"]),

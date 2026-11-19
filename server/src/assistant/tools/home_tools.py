@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from ..agent import Ours, Tool, ToolOutput
@@ -71,12 +72,24 @@ HOW_TO = ("Call list_files with no path to see what you can read. Documents the 
 CLI_FILES = {"GEMINI.md", "AGENTS.md.orig", "CLAUDE.md"}   # rules files some CLIs load; their content is already in your context
 
 
-def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog: Any = None, library: Deliverables | None = None) -> list[Tool]:
+def _is_upload(raw: str, rel: str) -> bool:
+    return rel.startswith("uploads/") or "/uploads/" in raw.replace("\\", "/")
+
+
+def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog: Any = None, library: Deliverables | None = None,
+               owner_file: Callable[[str], bool] | None = None) -> list[Tool]:
+    """`owner_file(rel)`: True when an upload is a file the owner attached to their own chat message (chat_attachments.owner_attached):
+    its text is given to the run, not outside text (the result is still fenced for the model: a document is data, never instructions)."""
+    def own_upload(args: dict[str, Any]) -> bool:
+        raw = str(args.get("path", ""))
+        rel = home.relativize(raw)
+        return bool(owner_file) and _is_upload(raw, rel) and owner_file(rel)
+
     async def read_file(args: dict[str, Any]) -> str:
         try:
             raw = str(args.get("path", ""))
             rel = home.relativize(raw)
-            is_upload = rel.startswith("uploads/") or "/uploads/" in raw.replace("\\", "/")
+            is_upload = _is_upload(raw, rel)
             if is_upload and is_image(raw):
                 return Ours(f"{raw.rsplit('/', 1)[-1]} is a photo, not a text file: look at it with view_image.")
             if extractor and is_upload:
@@ -164,7 +177,7 @@ def home_tools(home: Home, skills: Skills | None, extractor: Any = None, catalog
     tools = [
         Tool("read_file", "Read one of your files.",
              obj({"path": {"type": "string"}, "offset": {"type": "integer", "description": "line to go on from, for a long file"}}, ["path"]),
-             read_file, read_only=True, untrusted=True, source="file", trail="file"),
+             read_file, read_only=True, untrusted=True, source="file", trail="file", own_data=own_upload),
         Tool("write_file", "Replace one of your own files with new full content; read it first and keep what is still true. Writable: "
              "CHECKLIST.md, notes/ (your notes, not something the user asked for). MEMORY.md, user.md, AGENTS.md, NOTIFY_PREFS.md and memory/ "
              "are kept by the memory pass from the user's own words: use `remember` for those. A text file the user asked for (.csv .txt "

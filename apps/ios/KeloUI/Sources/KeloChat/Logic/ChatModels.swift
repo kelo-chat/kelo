@@ -25,13 +25,15 @@ public struct ChatMessage: Codable, Equatable, Sendable {
     public var autoText: Bool
     /// The channel the message arrived by (e.g. "call"); empty string for standard chat.
     public var via: String
+    /// The in-app call this message belongs to (server "call"); "" on other messages and from older servers.
+    public var callId: String
 
     public init(id: Int64, role: String = "", content: String = "", createdAt: Double = 0, replies: ReplySet? = nil, reaction: String = "",
                 briefing: BriefingCard? = nil, comparison: ComparisonCard? = nil, images: [ChatImage] = [], attachments: [MessageFile] = [], autoText: Bool = false,
-                via: String = "") {
+                via: String = "", callId: String = "") {
         self.id = id; self.role = role; self.content = content; self.createdAt = createdAt; self.replies = replies; self.reaction = reaction
         self.briefing = briefing; self.comparison = comparison; self.images = images; self.attachments = attachments; self.autoText = autoText
-        self.via = via
+        self.via = via; self.callId = callId
     }
 
     public init(from decoder: Decoder) throws {
@@ -48,6 +50,7 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         attachments = MessageFile.parseList(j["attachments"])
         autoText = j.bool("auto_text")
         via = j.str("via")
+        callId = j.str("call")
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -64,6 +67,7 @@ public struct ChatMessage: Codable, Equatable, Sendable {
         if !attachments.isEmpty { try c.encode(attachments, forKey: AnyKey("attachments")) }
         if autoText { try c.encode(true, forKey: AnyKey("auto_text")) }
         if !via.isEmpty { try c.encode(via, forKey: AnyKey("via")) }
+        if !callId.isEmpty { try c.encode(callId, forKey: AnyKey("call")) }
     }
 
     /// The server sends the list bare; anything without an id is left out.

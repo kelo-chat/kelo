@@ -76,11 +76,62 @@ class CallStepsTest {
             run(s(Phase.TRANSCRIBING), Event.Transcribed("hi")).let { it.first.phase to it.second })
     }
 
-    @Test fun `text during a reply is held and the newest replaces the older`() {
+    @Test fun `text during a reply is held and joined to the earlier`() {
         val (h1, a1) = run(s(Phase.TRANSCRIBING, busy = true), Event.Transcribed("first"))
         assertEquals(listOf(Action.HOLD_TEXT), a1); assertEquals("first", h1.held)
         val (h2, _) = run(h1.copy(phase = Phase.TRANSCRIBING), Event.Transcribed("second"))
-        assertEquals("second", h2.held)
+        assertEquals("first second", h2.held)
+    }
+
+    @Test fun `speech that goes on while the words are turned into text joins them into one turn`() {   // owner 2026-11-20
+        var st = State(Phase.LISTENING)
+        fun go(e: Event): List<Action> { val (n, a) = CallSteps.step(st, e, true); st = n; return a }
+        go(Event.SpeechStarted)
+        assertEquals(listOf(Action.TRANSCRIBE), go(Event.SpeechEnded(ByteArray(0))))
+        go(Event.SpeechStarted); assertEquals(Phase.HEARING, st.phase)
+        assertEquals(emptyList<Action>(), go(Event.Transcribed("나 목소리"))); assertEquals("나 목소리", st.held)
+        assertEquals(listOf(Action.TRANSCRIBE), go(Event.SpeechEnded(ByteArray(0))))
+        assertEquals(listOf(Action.SEND_TEXT), go(Event.Transcribed("너무 끊겨")))
+        assertEquals(CallSteps.Outgoing("나 목소리 너무 끊겨", amend = false), st.sent)
+        assertEquals("나 목소리 너무 끊겨", st.unanswered); assertEquals(null, st.held)
+    }
+
+    @Test fun `a cough after the first words still sends them`() {
+        val heard = run(State(Phase.TRANSCRIBING, inFlight = 1), Event.SpeechStarted).first
+        val gathered = run(heard, Event.Transcribed("hi")).first
+        val (sent, a) = run(gathered, Event.SpeechDropped)
+        assertEquals(listOf(Action.SEND_TEXT), a); assertEquals(CallSteps.Outgoing("hi", false), sent.sent)
+    }
+
+    @Test fun `talking again before Kelo answers takes the words back and sends them again with the rest`() {
+        val (taking, a1) = run(State(Phase.WAITING, unanswered = "나 목소리"), Event.SpeechStarted)
+        assertEquals(listOf(Action.TAKE_BACK), a1); assertEquals("나 목소리", taking.again); assertEquals(null, taking.unanswered)
+        val freed = run(taking.copy(replyBusy = true), Event.ReplyEnded).first        // the stopped turn ends while the owner talks
+        assertEquals(false, freed.replyBusy); assertEquals("나 목소리", freed.again)
+        val ending = run(freed, Event.SpeechEnded(ByteArray(0))).first
+        val (done, a2) = run(ending, Event.Transcribed("너무 끊겨"))
+        assertEquals(listOf(Action.SEND_TEXT), a2); assertEquals(CallSteps.Outgoing("나 목소리 너무 끊겨", amend = true), done.sent)
+        assertEquals(CallSteps.Outgoing("나 목소리", amend = true), run(State(Phase.HEARING, again = "나 목소리"), Event.SpeechDropped).first.sent)
+        assertEquals(null, run(State(Phase.HEARING, again = "x"), Event.TakeBackRefused).first.again)
+    }
+
+    @Test fun `once Kelo answered new words wait for the next turn`() {
+        val answered = run(State(Phase.WAITING, unanswered = "a"), Event.Answered).first
+        assertEquals(null, answered.unanswered)
+        assertEquals(emptyList<Action>(), run(answered, Event.SpeechStarted).second)
+    }
+
+    @Test fun `a reply that ends while the owner talks frees their words`() {   // they were held forever before
+        val freed = run(State(Phase.HEARING, replyBusy = true), Event.ReplyEnded)
+        assertEquals(false, freed.first.replyBusy); assertEquals(emptyList<Action>(), freed.second)
+        val ending = run(freed.first, Event.SpeechEnded(ByteArray(0))).first
+        assertEquals(listOf(Action.SEND_TEXT), run(ending, Event.Transcribed("x")).second)
+    }
+
+    @Test fun `refused amend words are held as an amend`() {
+        val (s1, a1) = run(State(Phase.WAITING), Event.SendRefused("a b", amend = true))
+        assertEquals(listOf(Action.HOLD_TEXT), a1); assertEquals("a b", s1.again)
+        assertEquals(CallSteps.Outgoing("a b", amend = true), run(s1, Event.ReplyEnded).first.sent)
     }
 
     @Test fun `held text is sent when the reply ends`() {
@@ -111,5 +162,44 @@ class CallStepsTest {
     @Test fun `an ended call changes nothing`() {
         val ended = State(Phase.ENDED, ended = EndReason.HUNG_UP)
         assertEquals(ended to emptyList<Action>(), run(ended, Event.SpeechStarted))
+    }
+
+    @Test fun `refused words are held until the chat is free`() {
+        // 2026-11-19: sendFromCall refused while a typed reply ran and the owner's words were dropped.
+        val (s1, a1) = CallSteps.step(CallSteps.State(CallSteps.Phase.WAITING), CallSteps.Event.SendRefused("hi"), true)
+        assertEquals(CallSteps.State(CallSteps.Phase.WAITING, held = "hi", replyBusy = true), s1)
+        assertEquals(listOf(CallSteps.Action.HOLD_TEXT), a1)
+        val (s2, a2) = CallSteps.step(s1, CallSteps.Event.ReplyEnded, true)
+        assertEquals(CallSteps.Phase.WAITING, s2.phase)
+        assertEquals(null, s2.held)
+        assertEquals(listOf(CallSteps.Action.SEND_TEXT), a2)
+    }
+
+    @Test fun `typed words go now while listening and wait while Kelo answers`() {
+        val (s1, a1) = CallSteps.step(State(Phase.LISTENING), Event.Typed("hi"), true)
+        assertEquals(Phase.WAITING, s1.phase); assertEquals(listOf(Action.SEND_TEXT), a1)
+        val (s2, a2) = CallSteps.step(State(Phase.SPEAKING), Event.Typed("more"), true)
+        assertEquals(State(Phase.SPEAKING, held = "more", replyBusy = true), s2); assertEquals(listOf(Action.HOLD_TEXT), a2)
+        val (s3, a3) = CallSteps.step(s2, Event.QueueIdle(replyBusy = false), true)
+        assertEquals(Phase.WAITING, s3.phase); assertEquals(null, s3.held); assertEquals(listOf(Action.SEND_TEXT), a3)
+        assertEquals(emptyList<Action>(), CallSteps.step(State(Phase.RINGING), Event.Typed("x"), true).second)
+    }
+
+    @Test fun `a question that stops the turn goes back to listening, and words spoken then are held`() {
+        val waiting = run(s(Phase.WAITING, busy = true), Event.QuestionOpened).first
+        assertEquals(Phase.LISTENING, waiting.phase)
+        assertEquals(true, waiting.replyBusy)
+        val (heard, actions) = run(waiting, Event.Transcribed("hello"))
+        assertEquals(Phase.WAITING, heard.phase)
+        assertEquals("hello", heard.held)
+        assertEquals(listOf(Action.HOLD_TEXT), actions)
+    }
+
+    @Test fun `the question closing while listening frees the call, and held words go out`() {
+        val freed = run(s(Phase.LISTENING, busy = true), Event.ReplyEnded).first
+        assertEquals(Phase.LISTENING, freed.phase)
+        assertEquals(false, freed.replyBusy)
+        val held = run(s(Phase.WAITING, held = "hello", busy = true), Event.ReplyEnded)
+        assertEquals(listOf(Action.SEND_TEXT), held.second)
     }
 }

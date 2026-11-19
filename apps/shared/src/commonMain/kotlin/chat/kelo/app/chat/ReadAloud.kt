@@ -75,6 +75,12 @@ fun appLanguageTag(): String =
 interface SpeechEngine {
     fun speak(text: String, language: String, onDone: () -> Unit)
     fun stop()
+
+    /** Like [speak]; [onDone] says whether the text was spoken (false: the engine could not start, or it failed). */
+    fun speakChecked(text: String, language: String, onDone: (spoke: Boolean) -> Unit) = speak(text, language) { onDone(true) }
+
+    /** Lets go of the engine for good (a call ended). */
+    fun release() {}
 }
 
 /**

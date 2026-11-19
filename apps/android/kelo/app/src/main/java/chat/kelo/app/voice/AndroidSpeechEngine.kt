@@ -1,6 +1,7 @@
 package chat.kelo.app.voice
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -10,11 +11,12 @@ import chat.kelo.app.chat.SpokenText
 import java.util.Locale
 
 /**
- * The phone's own text-to-speech (android.speech.tts.TextToSpeech) for "Read aloud". It binds to the speech service only when a
- * text is first read. Long texts go in pieces ([SpokenText.chunks]); [onDone] runs on the main thread after the last piece, or when
- * the engine fails; [stop] and a new [speak] cut the old text off without calling its [onDone].
+ * The phone's own text-to-speech (android.speech.tts.TextToSpeech) for "Read aloud" and for a call's device voice. It binds to the
+ * speech service only when a text is first read. Long texts go in pieces ([SpokenText.chunks]); [onDone] runs on the main thread after
+ * the last piece, or when the engine fails; [stop] and a new [speak] cut the old text off without calling its [onDone].
+ * [attributes] (a call passes voice communication) are set on the engine when it starts (2026-11-19: the call's voice).
  */
-class AndroidSpeechEngine(private val context: Context) : SpeechEngine {
+class AndroidSpeechEngine(private val context: Context, private val attributes: AudioAttributes? = null) : SpeechEngine {
     private val main = Handler(Looper.getMainLooper())
     private var tts: TextToSpeech? = null
     private var ready = false
@@ -30,6 +32,7 @@ class AndroidSpeechEngine(private val context: Context) : SpeechEngine {
         created = TextToSpeech(context.applicationContext) { status ->
             main.post {
                 if (status == TextToSpeech.SUCCESS && tts === created) {
+                    attributes?.let { a -> runCatching { created?.setAudioAttributes(a) } }
                     ready = true
                     val job2 = waiting; waiting = null; job2?.invoke()
                 } else {
@@ -43,11 +46,13 @@ class AndroidSpeechEngine(private val context: Context) : SpeechEngine {
         tts = created
     }
 
-    override fun speak(text: String, language: String, onDone: () -> Unit) {
+    override fun speak(text: String, language: String, onDone: () -> Unit) = speakChecked(text, language) { onDone() }
+
+    override fun speakChecked(text: String, language: String, onDone: (Boolean) -> Unit) {
         val finished = onDone
         val mine = ++turn
         val pieces = SpokenText.chunks(text)
-        if (pieces.isEmpty()) { finished(); return }
+        if (pieces.isEmpty()) { finished(true); return }
         withEngine(
             job = { engine ->
                 if (mine != turn) return@withEngine
@@ -58,17 +63,17 @@ class AndroidSpeechEngine(private val context: Context) : SpeechEngine {
                 val last = "kelo-$mine-${pieces.lastIndex}"
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {}
-                    override fun onDone(utteranceId: String?) { if (utteranceId == last) main.post { if (mine == turn) finished() } }
+                    override fun onDone(utteranceId: String?) { if (utteranceId == last) main.post { if (mine == turn) finished(true) } }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) { main.post { if (mine == turn) finished() } }
-                    override fun onError(utteranceId: String?, errorCode: Int) { main.post { if (mine == turn) finished() } }
+                    override fun onError(utteranceId: String?) { main.post { if (mine == turn) finished(false) } }
+                    override fun onError(utteranceId: String?, errorCode: Int) { main.post { if (mine == turn) finished(false) } }
                 })
                 pieces.forEachIndexed { i, piece ->
                     val result = engine.speak(piece, if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, null, "kelo-$mine-$i")
-                    if (result != TextToSpeech.SUCCESS && i == 0) { main.post { if (mine == turn) finished() }; return@withEngine }
+                    if (result != TextToSpeech.SUCCESS && i == 0) { main.post { if (mine == turn) finished(false) }; return@withEngine }
                 }
             },
-            failed = { if (mine == turn) finished() },
+            failed = { if (mine == turn) finished(false) },
         )
     }
 
@@ -78,7 +83,9 @@ class AndroidSpeechEngine(private val context: Context) : SpeechEngine {
         runCatching { tts?.stop() }
     }
 
-    /** Lets go of the speech service (the app root is leaving). */
+    override fun release() = shutdown()
+
+    /** Lets go of the speech service (the app root is leaving, or the call ended). */
     fun shutdown() {
         turn++
         waiting = null

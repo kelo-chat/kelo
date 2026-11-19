@@ -13,8 +13,8 @@ no ConnectionService, no VoIP push and no full-screen notification.
    `GET /api/messages` and search leave it out.
 3. The owner speaks. The app detects the end of the speech, sends the clip to the server's speech-to-text model (or, when that is not
    ready, uses the phone's own recognizer), and posts the text to `POST /api/turns` with `call` set to the call id.
-4. The server stores the owner's words and Kelo's reply as normal messages with `via = "call"`, so the chat shows them with the call
-   mark. For that turn only, the model also gets `calls.CALL_NOTE`: the words came from speech, so some may be misheard; the reply is
+4. The server stores the owner's words and Kelo's reply as normal messages with `via = "call"` and the call's id (`GET /api/messages` gives it as `"call"`), and the chat shows each call as one
+   card that opens to its lines (older apps show the lines as bubbles with the call mark). For that turn only, the model also gets `calls.CALL_NOTE`: the words came from speech, so some may be misheard; the reply is
    spoken as it is written, so it should be short, spoken sentences, with numbers written the way they are said, and no lists,
    tables, links, code or Markdown.
 5. Kelo's reply streams back as text, and the app speaks it sentence by sentence (`ReadAloud`/`SpeechQueue`): with Kelo's own voice
@@ -26,6 +26,9 @@ no ConnectionService, no VoIP push and no full-screen notification.
 - `can_call` (on `POST /api/turns`) says that the app can show a call screen. Without it, or for an unattended turn, the tool answers
   with an error and nothing rings. Older apps never send it.
 - Silence for 5 minutes ends the call, so the microphone is not left open.
+- The app ends the owner's turn after a clear pause (1 s, longer for a speaker who pauses inside sentences, at most 1.8 s), and words
+  heard before Kelo answers join one turn: pieces still being turned into text are joined, and when the owner goes on talking before any
+  answer came, the app stops that turn and sends the words again with the rest (`amend`: the server replaces the unanswered message).
 - The call ends by itself when the app leaves the foreground or a phone call or alarm takes the sound (the app says so in the chat).
 - Approvals and other cards during a call show on the screen; Kelo says in a few words that they are there.
 

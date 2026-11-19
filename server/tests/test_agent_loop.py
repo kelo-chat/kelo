@@ -468,3 +468,123 @@ async def test_a_closing_call_next_to_a_read_does_not_end_the_step_early():
                   [TextDelta("Done again."), Done("stop")])
     await run([echo_tool(closes_reply=True), look_tool], fn)
     assert len(fn.seen) == 2
+
+
+# ---------------------------------------------------------------------------------------------------------------- one card per step
+def calendar_tools(ran, **flags):
+    """Calendar-like change tools: a delete and two adds, each asks unless its auto_approve says the owner asked (shares_card)."""
+    def make(name, validate=None):
+        async def handler(args):
+            ran.append((name, args))
+            return f"{name} done"
+        return Tool(name, name, {"type": "object"}, handler, requires_approval=True, shares_card=True, validate=validate, **flags)
+    return [make("gcal_delete_event"), make("gcal_create_event"), make("gcal_create_event")]
+
+
+async def test_several_card_needing_calls_of_one_step_share_one_card_when_the_host_can_show_one():
+    ran, many_calls, single_calls = [], [], []
+    tools = calendar_tools(ran)
+
+    async def approve_many(reqs):
+        many_calls.append([r.name for r in reqs])
+        return [True] * len(reqs)
+
+    async def approve(req):
+        single_calls.append(req.name)
+        return True
+    fn = scripted([ToolCall("d", "gcal_delete_event", '{"event_id":"e1"}'), ToolCall("a", "gcal_create_event", '{"title":"a"}'),
+                   ToolCall("b", "gcal_create_event", '{"title":"b"}'), ToolCall("c", "gcal_create_event", '{"title":"c"}'),
+                   Done("tool_calls")], [TextDelta("ok"), Done("stop")])
+    events = await run(tools, fn, approve=approve, approve_many=approve_many)
+    assert many_calls == [["gcal_delete_event", "gcal_create_event", "gcal_create_event", "gcal_create_event"]]
+    assert single_calls == []
+    assert [r.output for r in events if isinstance(r, ToolResult)] == ["gcal_delete_event done", "gcal_create_event done",
+                                                                       "gcal_create_event done", "gcal_create_event done"]
+    assert len(ran) == 4
+
+
+async def test_one_answer_declines_every_call_on_the_shared_card():
+    ran = []
+    tools = calendar_tools(ran)
+
+    async def approve_many(reqs):
+        return [False] * len(reqs)
+    fn = scripted([ToolCall("d", "gcal_delete_event", '{"event_id":"e1"}'), ToolCall("a", "gcal_create_event", '{"title":"a"}'),
+                   Done("tool_calls")], [TextDelta("ok"), Done("stop")])
+    results = [r for r in await run(tools, fn, approve_many=approve_many) if isinstance(r, ToolResult)]
+    assert ran == [] and all(r.is_error and r.approved is False and "declined" in r.output for r in results)
+
+
+async def test_without_approve_many_each_call_asks_on_its_own_card():
+    ran, asked = [], []
+    tools = calendar_tools(ran)
+
+    async def approve(req):
+        asked.append(req.name)
+        return True
+    fn = scripted([ToolCall("d", "gcal_delete_event", '{"event_id":"e1"}'), ToolCall("a", "gcal_create_event", '{"title":"a"}'),
+                   ToolCall("b", "gcal_create_event", '{"title":"b"}'), ToolCall("c", "gcal_create_event", '{"title":"c"}'),
+                   Done("tool_calls")], [TextDelta("ok"), Done("stop")])
+    await run(tools, fn, approve=approve)
+    assert asked == ["gcal_delete_event", "gcal_create_event", "gcal_create_event", "gcal_create_event"]
+
+
+async def test_a_call_that_fails_its_check_is_not_on_the_card_and_errors_on_its_own():
+    ran, shared = [], []
+
+    def refuse(args):
+        return "the end is before the start" if args.get("title") == "b" else None
+
+    def make(name, validate=None):
+        async def handler(args):
+            ran.append(args)
+            return f"{name} done"
+        return Tool(name, name, {"type": "object"}, handler, requires_approval=True, shares_card=True, validate=validate)
+    tools = [make("gcal_delete_event"), make("gcal_create_event", refuse)]
+
+    async def approve_many(reqs):
+        shared.append([r.arguments for r in reqs])
+        return [True] * len(reqs)
+    fn = scripted([ToolCall("d", "gcal_delete_event", '{"event_id":"e1"}'), ToolCall("a", "gcal_create_event", '{"title":"a"}'),
+                   ToolCall("b", "gcal_create_event", '{"title":"b"}'), Done("tool_calls")], [TextDelta("ok"), Done("stop")])
+    results = [r for r in await run(tools, fn, approve_many=approve_many) if isinstance(r, ToolResult)]
+    assert [len(x) for x in shared] == [2]                      # the delete and the first add only
+    assert results[2].is_error and "the end is before the start" in results[2].output
+    assert [a.get("title") for a in ran if "title" in a] == ["a"]
+
+
+async def test_a_call_the_owner_asked_for_runs_without_any_card():
+    ran = []
+    tools = calendar_tools(ran, auto_approve=lambda args: True)
+
+    async def approve_many(reqs):
+        raise AssertionError("no card may be asked")
+
+    async def approve(req):
+        raise AssertionError("no card may be asked")
+    fn = scripted([ToolCall("d", "gcal_delete_event", '{"event_id":"e1"}'), ToolCall("a", "gcal_create_event", '{"title":"a"}'),
+                   Done("tool_calls")], [TextDelta("ok"), Done("stop")])
+    await run(tools, fn, approve=approve, approve_many=approve_many)
+    assert len(ran) == 2
+
+
+async def test_the_owners_calendar_step_with_outside_text_read_first_gets_no_card_when_it_was_asked_in_the_chat():
+    """The incident (2026-11-20): a photo of the owner's trip schedule, their own events read, then one delete and three adds in one
+    step, all asked for in the owner's chat message: no card at all. Auto-approval is the owner_request rule (connect_tools.py)."""
+    from assistant.tools.connect_tools import owner_request
+    from assistant.workers import current_turn
+    ran, asked = [], []
+    tools = calendar_tools(ran, auto_approve=lambda args: owner_request())
+
+    async def approve_many(reqs):
+        asked.append(reqs)
+        return [True] * len(reqs)
+    token = current_turn.set({"source": "chat", "owner_message": 7, "unattended": False})
+    try:
+        fn = scripted([ToolCall("d", "gcal_delete_event", '{"event_id":"e1"}'), ToolCall("a", "gcal_create_event", '{"title":"a"}'),
+                       ToolCall("b", "gcal_create_event", '{"title":"b"}'), ToolCall("c", "gcal_create_event", '{"title":"c"}'),
+                       Done("tool_calls")], [TextDelta("ok"), Done("stop")])
+        await run(tools, fn, approve_many=approve_many)
+    finally:
+        current_turn.reset(token)
+    assert asked == [] and len(ran) == 4

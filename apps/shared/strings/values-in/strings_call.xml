@@ -25,6 +25,11 @@
     <string name="call_mic_denied">Tidak dapat memulai panggilan: mikrofon tidak diizinkan.</string>
     <string name="call_voice_offer">Ini adalah suara alami Kelo untuk panggilan. Unduh model suara (%1$s) ke server Kelo Anda sekali, dan Kelo akan berbicara dengannya mulai kalimat berikutnya. Tanpa ini, Kelo menggunakan suara robot bawaan perangkat.</string>
     <string name="call_mark">Panggilan</string>
+    <plurals name="call_chat_length">
+        <item quantity="other">Panggilan · %1$d menit</item>
+    </plurals>
+    <string name="call_chat_show">Tampilkan panggilan</string>
+    <string name="call_chat_hide">Sembunyikan panggilan</string>
     <string name="call_voice_offer_title">Unduh suara Kelo?</string>
     <string name="call_voice_offer_ok">Unduh</string>
     <string name="call_voice_offer_later">Gunakan suara perangkat untuk saat ini</string>
@@ -32,6 +37,12 @@
     <string name="call_voice_get">Unduh</string>
     <string name="call_voice_line_close">Tutup</string>
     <string name="call_ears_failed">Pengenalan suara ponsel tidak mendengar Anda.</string>
+    <string name="call_voice_device">Suara Kelo sendiri tidak termuat, jadi suara perangkat ini yang berbicara.</string>
+    <string name="call_voice_none">Perangkat ini tidak dapat memutar suara Kelo sekarang. Balasannya ada di chat.</string>
+    <string name="call_minimize">Kembali ke chat</string>
+    <string name="call_keyboard">Ketik</string>
+    <string name="call_type_hint">Ketik pesan untuk Kelo</string>
+    <string name="call_type_send">Kirim</string>
     <string name="voice_speech_title">Suara Kelo</string>
     <string name="voice_speech_download">Unduh model suara · %1$s</string>
     <string name="voice_speech_downloading">Mengunduh model suara · %1$d%%</string>

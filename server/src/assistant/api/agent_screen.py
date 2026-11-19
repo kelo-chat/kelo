@@ -44,6 +44,7 @@ def router(ctx: AppContext) -> APIRouter:
                              "waiting_approval": t.waiting > 0, "tab": t.owner, "controller": "user" if held_by(t.owner) else "agent"}
                             for t in live],
                 "pending_approvals": len(pending_approvals), "open_followups": followups.open_count(), "unseen_tasks": activity.unseen_tasks(),
+                "last_reply_failed": activity.last_reply_failed(),
                 "secret_requests": entries.open_count(), "secret_request_kinds": entries.open_kinds(), "unseen_notifications": activity.unseen_notifications(), "avatar_version": avatar.version(),
                 "briefing_rev": briefing.revision(),
                 "agent_name": (prof := store.profile())["agent_name"], "tone": prof["tone"],

@@ -69,7 +69,7 @@ public extension TurnApi {
 /// Builds the POST /api/turns body (KeloTurnApi and tests).
 public enum TurnBody {
     public static func of(text: String, timezone: String, answers: [ReplyAnswer] = [], secrets: String? = nil, attachments: [String] = [],
-                          autoText: Bool = false, call: String? = nil, canCall: Bool = false) -> JSON {
+                          autoText: Bool = false, call: String? = nil, canCall: Bool = false, amend: Bool = false) -> JSON {
         // "ai_consent": held back (428) until someone agreed on this server (AiConsent)
         var body: [String: JSON] = ["text": .string(text), "timezone": .string(timezone), "ai_consent": .string(AiConsent.check)]
         if let secrets { body["secrets"] = .string(secrets) }
@@ -81,6 +81,7 @@ public enum TurnBody {
             body["answers"] = .array(answers.map { .object(["question": .number(Double($0.question)), "value": .string($0.value)]) })
         }
         if let call { body["call"] = .string(call) }
+        if amend, call != nil { body["amend"] = .bool(true) }   // replaces the call's unanswered words (server calls.py)
         body["can_call"] = .bool(canCall)
         return .object(body)
     }
@@ -96,10 +97,13 @@ public struct ReplyAnswer: Equatable, Sendable {
 public struct KeloTurnApi: TurnApi {
     public let api: KeloApi
     public let canCall: @Sendable () -> Bool
+    /// The call's words replace its unanswered words (POST /api/turns "amend", with `call`).
+    public let amend: Bool
 
-    public init(api: KeloApi, canCall: @escaping @Sendable () -> Bool = { false }) {
+    public init(api: KeloApi, canCall: @escaping @Sendable () -> Bool = { false }, amend: Bool = false) {
         self.api = api
         self.canCall = canCall
+        self.amend = amend
     }
 
     public func start(text: String, timezone: String) async throws -> String {
@@ -119,7 +123,7 @@ public struct KeloTurnApi: TurnApi {
     }
 
     public func start(text: String, timezone: String, answers: [ReplyAnswer], secrets: String?, attachments: [String], autoText: Bool, call: String?) async throws -> String {
-        let body = TurnBody.of(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText, call: call, canCall: canCall())
+        let body = TurnBody.of(text: text, timezone: timezone, answers: answers, secrets: secrets, attachments: attachments, autoText: autoText, call: call, canCall: canCall(), amend: amend)
         return try await api.request("POST", "/api/turns", body: body)["id"]?.text ?? ""
     }
 

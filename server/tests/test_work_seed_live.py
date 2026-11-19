@@ -49,6 +49,14 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path.startswith("/set"):
+            body = b"set"
+            self.send_response(200)
+            self.send_header("Set-Cookie", "keep=yes; Path=/")             # a session cookie: no Expires, no Max-Age
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self.send_response(404)
             self.send_header("Content-Length", "0")
@@ -181,32 +189,39 @@ async def test_route_hook_and_cdp_fetch_hook_together_seed_a_redirect(server):
             await browser.close()
 
 
-@pytest.mark.xfail(strict=True, reason="card p-browser-signin-shared A5 live result: a session cookie is not kept across a restart "
-                   "even with restore_on_startup=1 (Playwright-launched and raw Chrome for Testing, with and without Default/Sessions "
-                   "removed). Stopped and reported to the coordinator; no other flag was tried.")
-async def test_a_session_cookie_survives_a_restart_with_the_preference(server, tmp_path):
-    """Card A5: with the restore-last-session preference (what docker/entrypoint.sh sets), a session cookie survives a restart of
-    the browser; the saved tabs are dropped (Default/Sessions removed). If this fails, the flags are not changed here: the coordinator
-    is told (card p-browser-signin-shared)."""
-    import json
+async def _restart_keeps(server, profile: Path, args: list[str]) -> bool:
+    """A session cookie set by the site, the full browser closed and started again on the same profile with `args` (the saved tabs
+    removed in between, as docker/entrypoint.sh does): is the cookie still there? `channel="chromium"` is the full browser; the
+    headless shell (`headless=True` alone) has no session restore at all."""
     import shutil
+
+    async with playwright_async.async_playwright() as pw:
+        ctx = await pw.chromium.launch_persistent_context(str(profile), channel="chromium", headless=True, args=args)
+        page = await ctx.new_page()
+        await page.goto(f"http://127.0.0.1:{server}/set")
+        await ctx.close()
+        shutil.rmtree(profile / "Default" / "Sessions", ignore_errors=True)
+        ctx = await pw.chromium.launch_persistent_context(str(profile), channel="chromium", headless=True, args=args)
+        try:
+            return any(c["name"] == "keep" and c["value"] == "yes" for c in await ctx.cookies())
+        finally:
+            await ctx.close()
+
+
+async def test_a_session_cookie_survives_a_restart_with_the_restore_switch(server, tmp_path):
+    """Card p-signin-gaps S1: the owner's browser starts with --restore-last-session (docker/entrypoint.sh), so a sign-in without
+    "stay signed in" survives a restart of the browser container."""
+    assert await _restart_keeps(server, tmp_path / "profile", ["--restore-last-session"])
+
+
+async def test_without_the_restore_switch_a_session_cookie_is_lost(server, tmp_path):
+    """Why the switch is passed: without it Chrome deletes session cookies at start (the profile preference alone did not keep them)."""
+    import json
 
     profile = tmp_path / "profile"
     (profile / "Default").mkdir(parents=True)
     (profile / "Default" / "Preferences").write_text(json.dumps({"session": {"restore_on_startup": 1}}))
-    async with playwright_async.async_playwright() as pw:
-        ctx = await pw.chromium.launch_persistent_context(str(profile), headless=True)
-        page = await ctx.new_page()
-        await page.goto(f"http://127.0.0.1:{server}/echo")
-        await ctx.add_cookies([{"name": "keep", "value": "yes", "domain": "127.0.0.1", "path": "/"}])   # a session cookie (no expiry)
-        await ctx.close()
-        shutil.rmtree(profile / "Default" / "Sessions", ignore_errors=True)
-        ctx = await pw.chromium.launch_persistent_context(str(profile), headless=True)
-        try:
-            names = {c["name"]: c["value"] for c in await ctx.cookies()}
-            assert names.get("keep") == "yes", "the session cookie did not survive the restart"
-        finally:
-            await ctx.close()
+    assert not await _restart_keeps(server, profile, [])
 
 
 @pytest.mark.xfail(strict=True, reason="card p-browser-signin-shared C1c live result: a tab made with Target.createTarget (no newWindow) "

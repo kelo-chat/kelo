@@ -232,4 +232,46 @@ import KeloCore
         #expect(merged.map(\.key) == ["u1", "a2"])
         #expect(merged[1].asMsg?.text == "the saved reply")
     }
+
+    // A card between the parts of one reply (owner report 2026-11-19): the stored row is one bubble, never the first part again.
+
+    private func loginCard(_ key: String) -> ChatItem {
+        .secret(.init(key: key, request: SecretRequest(id: "sr-\(key)", kind: SecretRequest.kindLogin, name: "shop")))
+    }
+
+    @Test func aReplySplitByALoginCardIsOneBubbleAfterReload() {
+        let shown: [ChatItem] = [msg("u1", mine: true, text: "q", id: 1), msg("a2", text: "before the card"), loginCard("s3"),
+                                 msg("a4", text: "after the card")]
+        let stored: [ChatItem] = [msg("s1", mine: true, text: "q", id: 1), msg("s2", text: "before the card\n\nafter the card", id: 2)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.map(\.key) == ["u1", "s3", "a4"])
+        #expect(merged[2].asMsg?.text == "before the card\n\nafter the card")
+        #expect(merged[2].asMsg?.id == 2)
+    }
+
+    @Test func anyRowsBetweenThePartsOfOneReplyLeaveOneBubble() {
+        let shown: [ChatItem] = [msg("u1", mine: true, text: "q", id: 1), msg("a2", text: "one"), loginCard("s3"), msg("a4", text: "two"),
+                                 .notice(key: "n5", .retry), chip("t6"), msg("a7", text: "three")]
+        let stored: [ChatItem] = [msg("s1", mine: true, text: "q", id: 1), msg("s2", text: "one\n\ntwo\n\nthree", id: 2)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.map(\.key) == ["u1", "s3", "n5", "t6", "a7"])
+        #expect(merged.compactMap(\.asMsg?.text) == ["q", "one\n\ntwo\n\nthree"])
+    }
+
+    @Test func twoStoredRowsAroundACardKeepTwoBubbles() {
+        let shown: [ChatItem] = [msg("a2", text: "part one"), loginCard("s3"), msg("a4", text: "part two")]
+        let stored: [ChatItem] = [msg("s2", text: "part one", id: 2), msg("s3m", text: "part two", id: 3)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.map(\.key) == ["a2", "s3", "a4"])
+        #expect(merged.compactMap(\.asMsg?.text) == ["part one", "part two"])
+    }
+
+    @Test func aStoredMessageBetweenTwoStreamedBubblesStillEndsTheReply() {
+        let shown: [ChatItem] = [msg("a1", text: "older streamed"), msg("m5", text: "stored", id: 5), loginCard("s6"),
+                                 msg("a7", text: "newest streamed")]
+        let stored: [ChatItem] = [msg("s5", text: "stored", id: 5), msg("s6m", text: "newest saved", id: 6)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.map(\.key) == ["a1", "m5", "s6", "a7"])
+        #expect(merged.compactMap(\.asMsg?.text) == ["older streamed", "stored", "newest saved"])
+    }
 }

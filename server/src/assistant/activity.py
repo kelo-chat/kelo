@@ -357,6 +357,12 @@ class Activity:
     def unseen_tasks(self) -> int:
         return int(self.store._all("SELECT COUNT(*) AS n FROM tasks WHERE seen = 0 AND status NOT IN ('running', 'waiting_approval', 'waiting_model')")[0]["n"])
 
+    def last_reply_failed(self) -> bool:
+        """The newest chat reply (a task from the chat; a running one counts as newest) ended failed: the apps' character shows the error
+        face until a later reply works. Background tasks do not count."""
+        rows = self.store._all("SELECT status FROM tasks WHERE source = 'chat' ORDER BY id DESC LIMIT 1")
+        return bool(rows) and rows[0]["status"] == "failed"
+
     def mark_tasks_seen(self, up_to: int) -> int:
         n = self.store._run("UPDATE tasks SET seen = 1 WHERE id <= ? AND seen = 0 AND status NOT IN ('running', 'waiting_approval', 'waiting_model')",
                             (up_to,)).rowcount

@@ -875,6 +875,7 @@
     <string name="agent_tab_working">Đang làm</string>
     <string name="agent_tab_failed">Bị kẹt</string>
     <string name="agent_tab_idle">Rảnh</string>
+    <string name="agent_tab_waiting">Đang chờ bạn</string>
     <string name="agent_tab_picture">Màn hình tab</string>
     <string name="agent_tab_no_picture">Không có gì để hiển thị (trang trống).</string>
     <string name="agent_tab_close">Đóng tab</string>

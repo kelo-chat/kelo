@@ -7,6 +7,7 @@ import logging
 from typing import Any
 from fastapi import Depends
 from ..chat_images import chat_image_routes
+from ..calls import with_call
 from ..chat_search import DEFAULT_AROUND, DEFAULT_LIMIT, NOT_THE_USERS_WORDS
 from .. import chat_search
 from ..tools.browser import (
@@ -59,6 +60,7 @@ def router(ctx: AppContext) -> APIRouter:
 
     def decorate(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """The extra fields GET /api/messages puts on each message (replies, comparison, images, attachments, briefing card)."""
+        rows = [with_call(r) for r in rows]
         rows = goal_book.replies_for(rows)   # tap-to-answer buttons on the newest agent messages
         rows = ctx.comparisons.for_messages(rows)   # comparison cards (comparison.py)
         rows = chat_images.for_messages(rows)  # screenshots Kelo showed with a reply (chat_images.py)

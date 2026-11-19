@@ -292,6 +292,28 @@ enum WorkText {
         }
     }
 
+    /// How a browser tab's status shows (Android BrowserPages `tabState`): working, waiting for the owner (a job that asked them
+    /// something), failed, else idle (also any value a newer server adds). `busy`: a step runs now.
+    enum TabState: Equatable { case working, waiting, failed, idle }
+
+    static func tabState(_ status: String?, busy: Bool = false) -> TabState {
+        if busy || status == "working" { return .working }
+        switch status {
+        case "waiting": return .waiting
+        case "failed": return .failed
+        default: return .idle
+        }
+    }
+
+    static func tabWord(_ s: TabState) -> String {
+        switch s {
+        case .working: return L(R.string.agent_tab_working)
+        case .waiting: return L(R.string.agent_tab_waiting)
+        case .failed: return L(R.string.agent_tab_failed)
+        case .idle: return L(R.string.agent_tab_idle)
+        }
+    }
+
     static func tabKind(_ t: BrowserTab) -> String {
         switch t.kind {
         case "owner": return L(R.string.agent_tab_kind_owner)

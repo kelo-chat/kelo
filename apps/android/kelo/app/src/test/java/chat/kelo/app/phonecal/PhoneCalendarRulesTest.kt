@@ -95,4 +95,28 @@ class PhoneCalendarRulesTest {
         assertEquals(ConnectMethod.MAIL, ConnectorList.methodOf(gmail.copy(method = "password")))
         assertEquals(ConnectMethod.MAIL, ConnectorList.methodOf(gmail.copy(method = "")))
     }
+
+    @Test
+    fun theNotesAndTheAccountAreSentClippedAndOnlyWhenSet() {
+        val withAccount = PhoneCalendarRules.clean(
+            listOf(
+                PhoneEvent(
+                    5, "Flight to Testville", ms("2026-11-12T10:00:00+09:00[Asia/Seoul]"), ms("2026-11-12T12:00:00+09:00[Asia/Seoul]"), false,
+                    calendar = "Work", notes = " booking ref QQ9 " + "n".repeat(600), account = "me@example.test", accountType = "com.google",
+                ),
+            ),
+            seoul,
+        ).single()
+        assertTrue(withAccount["notes"]!!.jsonPrimitive.content.startsWith("booking ref QQ9"))
+        assertEquals(500, withAccount["notes"]!!.jsonPrimitive.content.length)
+        assertEquals("me@example.test", withAccount["account"]!!.jsonPrimitive.content)
+        assertEquals("com.google", withAccount["account_type"]!!.jsonPrimitive.content)
+        val plain = PhoneCalendarRules.clean(
+            listOf(PhoneEvent(6, "치과", ms("2026-11-09T15:00:00+09:00[Asia/Seoul]"), ms("2026-11-09T16:00:00+09:00[Asia/Seoul]"), false)),
+            seoul,
+        ).single()
+        assertNull(plain["notes"])
+        assertNull(plain["account"])
+        assertNull(plain["account_type"])
+    }
 }

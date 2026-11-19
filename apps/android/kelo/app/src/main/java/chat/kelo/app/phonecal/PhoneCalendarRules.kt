@@ -23,6 +23,14 @@ data class PhoneEvent(
     /** CalendarContract.Events.STATUS_* (2 = cancelled) */
     val status: Int = 0,
     val attendees: Int = 0,
+    /** CalendarContract.Instances.DESCRIPTION: the event's notes */
+    val notes: String = "",
+    /** the account the calendar syncs from (CalendarContract.Calendars.ACCOUNT_NAME) */
+    val account: String = "",
+    /** CalendarContract.Calendars.ACCOUNT_TYPE ("com.google" for a Google account, "local" for none) */
+    val accountType: String = "",
+    /** CalendarContract.Instances.CALENDAR_ID: which calendar (for its account); not sent */
+    val calendarId: Long = -1L,
 )
 
 /** What is read and sent: the window, which occurrences are left out, and the snapshot body of PUT /api/phone-calendar. */
@@ -68,6 +76,9 @@ object PhoneCalendarRules {
                 if (e.location.isNotBlank()) put("location", e.location.take(300))
                 if (e.calendar.isNotBlank()) put("calendar", e.calendar.take(120))
                 if (e.attendees > 0) put("attendees", e.attendees)
+                if (e.notes.isNotBlank()) put("notes", e.notes.trim().take(500))
+                if (e.account.isNotBlank()) put("account", e.account.trim().take(120))
+                if (e.accountType.isNotBlank()) put("account_type", e.accountType.trim().take(80))
             }
         }
         .toList()

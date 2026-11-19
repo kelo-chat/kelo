@@ -59,7 +59,7 @@ import KeloTestSupport
             receivedEvent = ev
         }
 
-        let sent = model.sendFromCall(text: "Where is my order?", callId: "c_11223344")
+        let sent = model.sendFromCall(text: "Where is my order?", callId: "c_11223344", amend: false)
         #expect(sent == true)
 
         // The user's bubble in items should have fromCall == true
@@ -71,5 +71,68 @@ import KeloTestSupport
         await model.waitForTurn()
         #expect(recordedBody.contains(#""call":"c_11223344""#))
         #expect(receivedEvent != nil)
+    }
+
+    @Test func callTurnEventsCarryTheCallId() async {
+        let t = RouteTransport { _, path, _ in
+            if path == "/api/turns" { return (200, #"{"id":"turn_call_2"}"#) }
+            if path.starts(with: "/api/turns/turn_call_2") {
+                return (200, #"{"events":[{"type":"done"}],"next":1,"done":true}"#)
+            }
+            return (200, "{}")
+        }
+        let defaults = UserDefaults(suiteName: "kelo-call-ids-\(UUID().uuidString)")!
+        let app = AppModel(store: MemorySessionStore(Session(serverUrl: "https://kelo.test", token: "tok")),
+                           prefs: Prefs(defaults: defaults), transport: t, cache: ScreenCache(directory: nil, key: { nil }))
+        let model = ChatModel(app: app)
+        var ids: [String?] = []
+        model.onCallTurnEvent = { id, _ in ids.append(id) }
+
+        #expect(model.sendFromCall(text: "call words", callId: "c_1", amend: false) == true)
+        await model.waitForTurn()
+        #expect(!ids.isEmpty)
+        #expect(ids.allSatisfy { $0 == "c_1" })
+
+        let before = ids.count
+        model.send("typed")
+        await model.waitForTurn()
+        #expect(ids.count > before)
+        #expect(ids[before...].allSatisfy { $0 == nil })
+    }
+
+    @Test func aCallTurnNothingAnsweredCanBeTakenBack() async throws {   // owner 2026-11-20
+        let t = RouteTransport { _, path, _ in
+            if path == "/api/turns" { return (200, #"{"id":"turn_quiet"}"#) }
+            if path.starts(with: "/api/turns/turn_quiet") { return (200, #"{"events":[],"next":0,"done":false}"#) }
+            return (200, "{}")
+        }
+        let defaults = UserDefaults(suiteName: "kelo-call-takeback-\(UUID().uuidString)")!
+        let app = AppModel(store: MemorySessionStore(Session(serverUrl: "https://kelo.test", token: "tok")),
+                           prefs: Prefs(defaults: defaults), transport: t, cache: ScreenCache(directory: nil, key: { nil }))
+        let model = ChatModel(app: app)
+        #expect(model.sendFromCall(text: "나 목소리", callId: "c_7", amend: false) == true)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        #expect(model.takeBackFromCall(callId: "c_7") == true)
+        #expect(model.items.allSatisfy { $0.asMsg?.text != "나 목소리" })
+        await model.waitForTurn()
+        #expect(model.busy == false)
+    }
+
+    @Test func anAnsweredTurnIsNotTakenBack() async throws {
+        let t = RouteTransport { _, path, _ in
+            if path == "/api/turns" { return (200, #"{"id":"turn_answer"}"#) }
+            if path.starts(with: "/api/turns/turn_answer") { return (200, #"{"events":[],"next":0,"done":false}"#) }
+            return (200, "{}")
+        }
+        let defaults = UserDefaults(suiteName: "kelo-call-answered-\(UUID().uuidString)")!
+        let app = AppModel(store: MemorySessionStore(Session(serverUrl: "https://kelo.test", token: "tok")),
+                           prefs: Prefs(defaults: defaults), transport: t, cache: ScreenCache(directory: nil, key: { nil }))
+        let model = ChatModel(app: app)
+        #expect(model.sendFromCall(text: "hi", callId: "c_8", amend: false) == true)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        model.apply(.text("네"))
+        #expect(model.takeBackFromCall(callId: "c_8") == false)
+        model.stop()
+        await model.waitForTurn()
     }
 }

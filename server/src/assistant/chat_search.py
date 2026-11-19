@@ -93,7 +93,7 @@ def around(store: Any, anchor: int, *, n: int = DEFAULT_AROUND) -> list[dict[str
     """`n` visible messages before `anchor`, the anchor itself and `n` after it, oldest first. None when the anchor is unknown or hidden."""
     n = clamp(n, DEFAULT_AROUND, 1, MAX_AROUND)
     visible, vargs = _visible("m")
-    cols = "m.id, m.role, m.content, m.created_at, m.reaction, m.via"
+    cols = "m.id, m.role, m.content, m.created_at, m.reaction, m.via, m.call_id"
     here = store._all(f"SELECT {cols} FROM messages m WHERE m.id = ? AND {visible}", (anchor, *vargs))
     if not here:
         return None

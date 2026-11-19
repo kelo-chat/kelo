@@ -47,6 +47,7 @@ async def test_a_spoken_message_is_stored_as_a_call_and_the_model_gets_the_rules
     reply = [m for m in store.messages() if m["role"] == "assistant"][-1]
     assert user["content"] == "hi" and user["via"] == "call"
     assert reply["via"] == "call"
+    assert user["call_id"] == CALL and reply["call_id"] == CALL
     model_text = last_user_text(sent[0])
     assert C.CALL_NOTE in model_text and model_text.startswith("hi")
     assert C.CALL_NOTE not in user["content"]
@@ -150,3 +151,74 @@ async def test_can_call_reaches_the_running_turn(tmp_path):
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
         await follow(c, (await c.post("/api/turns", json={"text": "hi", "can_call": True})).json()["id"])
     assert seen and seen[0].get("can_call") is True
+
+
+async def test_call_messages_carry_their_call_id_and_typed_ones_none(tmp_path):
+    # owner 2026-11-20: the chat must show one card per call, so each message of a call says which call it belongs to
+    app = create_app(app_settings(tmp_path), tools=[], stream_fn=scripted([TextDelta("네."), Done("stop")], [TextDelta("응."), Done("stop")]))
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await follow(c, (await c.post("/api/turns", json={"text": "여보세요", "call": CALL, "can_call": True})).json()["id"])
+        await follow(c, (await c.post("/api/turns", json={"text": "typed"})).json()["id"])
+        rows = (await c.get("/api/messages")).json()
+        around = (await c.get(f"/api/messages/around?id={rows[0]['id']}")).json()
+    assert [r.get("call") for r in rows] == [CALL, CALL, None, None]
+    assert all("call_id" not in r for r in rows)
+    assert [r.get("call") for r in around] == [CALL, CALL, None, None]
+    store = app.state.appctx.store
+    assert [m["call_id"] for m in store.messages()] == [CALL, CALL, "", ""]
+
+
+async def test_amend_replaces_the_calls_unanswered_words(tmp_path):
+    # owner 2026-11-20 "나 목소리 너무 끊겨": the words were cut; the app takes the fragment back and sends it again with the rest
+    sent: list = []
+    app = create_app(app_settings(tmp_path), tools=[], stream_fn=captured(sent, [TextDelta("네."), Done("stop")]))
+    store = app.state.appctx.store
+    store.add_message("user", "나 목소리", via="call", author="owner", call_id=CALL)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        r = await c.post("/api/turns", json={"text": "나 목소리 너무 끊겨", "call": CALL, "amend": True, "can_call": True})
+        await follow(c, r.json()["id"])
+    users = [m["content"] for m in store.messages() if m["role"] == "user"]
+    assert users == ["나 목소리 너무 끊겨"]
+    assert last_user_text(sent[0]).startswith("나 목소리 너무 끊겨")
+    msgs = sent[0].messages if hasattr(sent[0], "messages") else sent[0]["messages"]
+    assert not [m for m in msgs if m.get("role") == "user" and m.get("content") == "나 목소리"]   # the fragment is gone
+
+
+def test_amend_never_drops_answered_words_another_calls_typed_or_hidden_rows(tmp_path):
+    from assistant.store import Store
+    s = Store(tmp_path / "a.db")
+    s.add_message("user", "hi", via="call", call_id=CALL); s.add_message("assistant", "yes", via="call", call_id=CALL)
+    assert s.drop_unanswered_call_words(CALL) is False                      # answered: the newest row is Kelo's
+    s.add_message("user", "other", via="call", call_id="ffff0000ffff")
+    assert s.drop_unanswered_call_words(CALL) is False                      # another call's words
+    s.add_message("user", "typed")
+    assert s.drop_unanswered_call_words(CALL) is False                      # typed words
+    s.add_message("user", C.answered_text(""), via="call", call_id=CALL)
+    assert s.drop_unanswered_call_words(CALL) is False                      # the hidden start message
+    s.add_message("user", "mine", via="call", call_id=CALL)
+    assert s.drop_unanswered_call_words(CALL) is True
+    assert [m["content"] for m in s.messages()][-1] == C.answered_text("")
+
+
+def test_call_messages_stored_before_call_ids_get_one_id_per_call_once(tmp_path):
+    from assistant.store import CALL_IDS_META, Store, backfill_call_ids
+    s = Store(tmp_path / "b.db")
+    ids = [s.add_message("user", C.answered_text(""), via="call"), s.add_message("assistant", "여보세요", via="call"),
+           s.add_message("user", "응", via="call"), s.add_message("assistant", "네", via="call"),
+           s.add_message("user", "typed"), s.add_message("assistant", "ok"),
+           s.add_message("user", C.answered_text(""), via="call"), s.add_message("assistant", "안녕", via="call")]
+    s._run("DELETE FROM meta WHERE key = ?", (CALL_IDS_META,))
+    assert backfill_call_ids(s._db) is True
+    got = [m["call_id"] for m in s._all("SELECT call_id FROM messages ORDER BY id")]
+    first, second = f"legacy-{ids[0]}", f"legacy-{ids[6]}"
+    assert got == [first, first, first, first, "", "", second, second]
+    assert backfill_call_ids(s._db) is False                                  # once per database
+
+
+def test_the_call_note_answers_what_was_meant_not_how_it_was_written():
+    # owner 2026-11-20: in a call Kelo corrected written form and blamed the owner for a recognition error
+    note = C.CALL_NOTE
+    assert "speech recognition" in note and "heard, not read" in note
+    assert "respond to what they meant to say, never to how it was written down" in note
+    assert "misheard" not in note
+    assert len(note.encode("utf-8")) <= 700

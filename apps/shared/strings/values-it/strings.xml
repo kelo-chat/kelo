@@ -897,6 +897,7 @@
     <string name="agent_tab_working">Al lavoro</string>
     <string name="agent_tab_failed">Bloccata</string>
     <string name="agent_tab_idle">Inattiva</string>
+    <string name="agent_tab_waiting">Aspetta te</string>
     <string name="agent_tab_picture">Schermata della scheda</string>
     <string name="agent_tab_no_picture">Niente da mostrare (pagina vuota).</string>
     <string name="agent_tab_close">Chiudi scheda</string>

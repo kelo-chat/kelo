@@ -897,6 +897,7 @@
     <string name="agent_tab_working">Trabalhando</string>
     <string name="agent_tab_failed">Travada</string>
     <string name="agent_tab_idle">Ociosa</string>
+    <string name="agent_tab_waiting">Esperando você</string>
     <string name="agent_tab_picture">Tela da aba</string>
     <string name="agent_tab_no_picture">Nada para mostrar (página em branco).</string>
     <string name="agent_tab_close">Fechar aba</string>

@@ -856,6 +856,7 @@
 "agent_tab_working" = "Працює";
 "agent_tab_failed" = "Застрягла";
 "agent_tab_idle" = "Без діла";
+"agent_tab_waiting" = "Чекає на вас";
 "agent_tab_picture" = "Екран вкладки";
 "agent_tab_no_picture" = "Нічого показати (порожня сторінка).";
 "agent_tab_close" = "Закрити вкладку";
@@ -1674,6 +1675,12 @@
 "call_mic_denied" = "Не вдалося розпочати виклик: доступ до мікрофона заборонено.";
 "call_voice_offer" = "Це природний голос Kelo для викликів. Завантажте голосову модель (%1$s) на сервер Kelo, і з наступного речення Kelo заговорить цим голосом. Без неї Kelo використовуватиме роботоподібний голос пристрою.";
 "call_mark" = "Виклик";
+"call_chat_length##one" = "Виклик · %1$d хв";
+"call_chat_length##few" = "Виклик · %1$d хв";
+"call_chat_length##many" = "Виклик · %1$d хв";
+"call_chat_length##other" = "Виклик · %1$d хв";
+"call_chat_show" = "Показати виклик";
+"call_chat_hide" = "Сховати виклик";
 "call_voice_offer_title" = "Завантажити голос Kelo?";
 "call_voice_offer_ok" = "Завантажити";
 "call_voice_offer_later" = "Поки що використовувати голос пристрою";
@@ -1681,6 +1688,12 @@
 "call_voice_get" = "Завантажити";
 "call_voice_line_close" = "Закрити";
 "call_ears_failed" = "Розпізнавання мовлення на телефоні не чує вас.";
+"call_voice_device" = "Не вдалося завантажити власний голос Kelo, тому говорить голос цього пристрою.";
+"call_voice_none" = "Цей пристрій зараз не може відтворити голос Kelo. Відповідь є в чаті.";
+"call_minimize" = "Повернутися до чату";
+"call_keyboard" = "Ввести";
+"call_type_hint" = "Напишіть повідомлення для Kelo";
+"call_type_send" = "Надіслати";
 "voice_speech_title" = "Голос Kelo";
 "voice_speech_download" = "Завантажити голосову модель · %1$s";
 "voice_speech_downloading" = "Завантаження голосової моделі · %1$d%%";

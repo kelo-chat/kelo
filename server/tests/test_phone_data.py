@@ -232,3 +232,4 @@ async def test_the_phone_claims_its_tasks_and_reports_over_http(tmp_path):
         assert (await c.post(f"/api/phone/tasks/{task_id}/result", json={"ok": True}, headers=other)).status_code == 404
         assert (await c.post(f"/api/phone/tasks/{task_id}/result", json={"ok": True, "outcome": "sent"}, headers=phone)).json() == {"ok": True}
         assert pd.task(task_id)["state"] == "done"
+

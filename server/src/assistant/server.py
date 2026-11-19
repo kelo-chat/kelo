@@ -388,6 +388,18 @@ class _NoTickets(logging.Filter):
 
 for _name in ("uvicorn.access", "uvicorn.error"):
     logging.getLogger(_name).addFilter(_NoTickets())
+
+
+def _show_browser_logs() -> None:
+    """The browser's own INFO lines (logger assistant.browser: a job tab's per-site sign-in copy, write-backs) in the container log next
+    to uvicorn's. They hold tab keys, sites and counts only, never a cookie name or value (card p-signin-gaps). Once per process."""
+    own = logging.getLogger("assistant.browser")
+    if not any(getattr(h, "_kelo_browser", False) for h in own.handlers):
+        h = logging.StreamHandler()
+        h._kelo_browser = True  # type: ignore[attr-defined]
+        h.setFormatter(logging.Formatter("%(levelname)s:     %(name)s %(message)s"))
+        own.addHandler(h)
+    own.setLevel(logging.INFO)
 APPROVAL_TIMEOUT_SECONDS = 300.0
 UNATTENDED_APPROVAL_SECONDS = 1800.0   # a run nobody watches (a schedule, a background task) waits this long for an approval, then skips the step
                                        # (and a follow-up of kind approval_expired offers to try it again, followups.py)
@@ -531,6 +543,9 @@ class TalkIn(BaseModel):
     picked: list[str] | None = Field(default=None, max_length=50)
     # the in-app call this spoken message belongs to (calls.py): stored with via "call", and the model gets the spoken-reply rules
     call: str | None = Field(default=None, pattern=r"^[A-Za-z0-9-]{8,64}$")
+    # these words replace the call's last words that nothing answered yet (the owner went on talking: the app took them back and
+    # sends them again with the rest, calls.py); only with `call`. Older servers ignore it.
+    amend: bool = False
     # the app sending this can show a call screen (it has call mode and a microphone): call_tools.py may ring it
     can_call: bool = False
 
@@ -586,7 +601,7 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #        a payment went ahead without asking, under the user's auto-pay rules (also listed in /api/wallet/notifications).
 #        A purchase a schedule made under the permission it got at setup also carries "schedule_grant": {"id", "schedule_id", "via"}
 #        (via: the card's label or the payment way); "card" is then left out when no wallet card was used.
-#   {"type": "tool_result", "id", "name", "output", "is_error", "approved", "label", "hidden", "facts"?}
+#   {"type": "tool_result", "id", "name", "output", "is_error", "approved", "label", "hidden", "facts"?, "pictures"? (pictures the model was shown)}
 #   facts (only when the tool gave some, agent/facts.py): connect_service {"already": true} (the service was connected before),
 #   save_found_secret {"saved_key": {"service": name, "hosts": [..]}}
 #   {"type": "browser", "id", "tab", "title", "url", "host", "status", "image", "width", "height", "bytes", "at"}
@@ -674,6 +689,7 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 # GET  /api/agent/status   poll every few seconds: {"busy", "status": live line|null, "task_id", "turn_id", "title", "source",
 #        "controller": "user"|"agent", "controlled_by": device|null, "running": [{"task_id", "turn_id", "title", "status", "source",
 #        "waiting_approval", "tab", "controller"}], "pending_approvals": n, "open_followups": n (FOLLOW-UPS API), "unseen_tasks": n,
+#        "last_reply_failed": bool (the newest chat reply failed: the character's error face until a later reply works),
 #        "unseen_notifications": n, "secret_requests": n (open secure entries), "secret_request_kinds": {"key"|"login"|"card"|
 #        "payment_pin": n} (so the badge can say what waits), "avatar_version": int, "briefing_rev": str, "agent_name", "tone"} (the last two: the profile's, so
 #        a change made in the chat (set_tone) or on another phone shows without reloading the profile; briefing_rev changes when a
@@ -692,6 +708,10 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #        stays open; "edited" is ignored on a deny; payments and every other tool are never editable.
 #        remember is honoured only when the card said can_remember (site) / can_remember_schedule (schedule); otherwise the answer is
 #        an ordinary allow (remembered false).
+#        SHARED CARD (turn_engine.group_card): several changes of one step (calendar changes) come as ONE approval_request with
+#        "steps": [{"id", "name", "detail"}] (the changes in order, the first runs first), "lines" (the "Why it asks" line and one line per
+#        change, at most four) and "items" (every change's line, when not all fit in lines); "arguments" is {}. One answer runs all of them
+#        (approve) or declines all (deny). The apps that do not know "steps" show it as any card.
 # GET  /api/approvals/{id}/mail-preview  the preview of a pending designed mail: {"html" (the sanitized mail in a document with a strict CSP,
 #        nothing loads or runs), "blocks" (the same words for an app without a web view), "cut", "pictures", "links", "bytes"}; 404 when
 #        the card is not a waiting mail; 413 {"code": "too_big"}. Cache-Control: no-store (mail_html.preview; docs/mail-html.md)
@@ -793,7 +813,8 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #   GET/PUT /api/checklist, POST /api/checklist/run; /api/watchers[/{id}[/dry-run|/enable|/events|/buy-check]]; GET/PUT /api/proactive,
 #   GET /api/proactive/log, POST /api/proactive/run. Tasks of the checklist have source "checklist", proactive messages "proactive".
 # BrowserTab: {"id" (owner key: "owner" | device id | "schedule:<id>" | "task:<hex>"), "label", "kind": owner|device|schedule|task,
-#   "title", "url", "host", "status": working|idle|failed, "status_text" ("You are in control" while the user holds it), "last_activity": ts|null,
+#   "title", "url", "host", "status": working|idle|failed|waiting (a job's tab while the job waits for the owner, needs_input; apps
+#   that do not know a value show it as idle), "status_text" ("You are in control" while the user holds it), "last_activity": ts|null,
 #   "task_id": int|null, "controller": "user"|"agent", "controlled_by": device id ("owner" = the master token)|null, "viewers": n,
 #   "thumbnail": data:image/jpeg;base64 (≤ 60 KB, 360 px wide)|null, "thumbnail_width", "thumbnail_height", "ended_at": ts|null}
 #   status "ended": a schedule/task tab whose run is over and that was closed; listed with the picture, title, url, host and status
@@ -846,6 +867,10 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #          did not answer a probe in 3 s); `page_busy` true = `stale`, or the user's last input was not taken by the page in 3 s.
 #          Both go back to false with the next frame.
 #          Browser tabs only, new and optional: `pointer` {"x","y","down"} = where the agent's pointer was last (a new watcher draws it at once).
+#          Browser tabs only, new and optional: `dialog` {"kind": alert|confirm|prompt|beforeunload|"", "message", "answer": ok|cancel|
+#          closed, "count", "at", "text"} = the page's own newest pop-up while the tab still shows the address it came from (60 s at most;
+#          absent otherwise). A native pop-up is never in the frames or on the X screen. `text` is the line to show, in the owner's
+#          language; `count` = the same pop-up in a row on that page. Kelo answers every pop-up at once (docs/browser.md "Page pop-ups").
 #          `live_v` 3 (live typing): `editing` = a text field has focus; `kind` = what keyboard fits it (secret|number|tel|email|url|
 #          search|multiline|text); `field` = an opaque id (8 hex, of the field's tag, type, name, id, autocomplete and place; never its
 #          value) that changes when the focus moves to another field. A phone-device take-over says live_v 2 (its typing is the device's).
@@ -1206,7 +1231,8 @@ def serialize(ev: Any) -> dict[str, Any]:
         case ToolResult():
             return {"type": "tool_result", "id": ev.id, "name": ev.name, "output": ev.output,
                     "is_error": ev.is_error, "approved": ev.approved, "label": tool_labels.label(ev.name), "hidden": tool_labels.hidden(ev.name),
-                    "group": tool_labels.group(ev.name), "done": tool_labels.done(ev.name), **({"facts": ev.facts} if ev.facts else {})}
+                    "group": tool_labels.group(ev.name), "done": tool_labels.done(ev.name), **({"facts": ev.facts} if ev.facts else {}),
+                    **({"pictures": ev.pictures} if ev.pictures else {})}
         case StepLimit():
             return {"type": "step_limit", "steps": ev.steps, "progress": ev.progress}
         case AgentDone():
@@ -1840,7 +1866,8 @@ def create_app(
             tools = [*tools, *cleanup_tools(cleanup)]
         tools = [*tools, *nest.tools(), *nest.draft_tools(current_turn=current_turn.get, emit_fn=emit_ui)]   # the entries installed packages keep on this server (loaded on demand)
         if home:
-            tools = [*tools, *home_tools(home, skills, extract_upload, catalog=lambda: tool_catalog(tools), library=deliverables), extract_tool(home)]
+            tools = [*tools, *home_tools(home, skills, extract_upload, catalog=lambda: tool_catalog(tools), library=deliverables,
+                                                owner_file=chat_attachments.owner_attached), extract_tool(home)]
             if memory_inbox is not None:
                 tools = [*tools, *inbox_tools(memory_inbox, OwnerMessages(store), current_turn.get), *claims_tools(store, tz=lambda: store.profile()["timezone"])]
             if forget is not None:
@@ -2087,7 +2114,8 @@ def create_app(
         OutsideTextRule(is_own=privacy.is_own), OwnerWords(PeopleBook(owner_copies), granted=schedule_grants.covered_targets, recent=owner_recent_words),
         seen=outside_now, turn=lambda: current_turn.get() or {}, ordered_site=lambda: (o.site if (o := orders.current()) else ""),
         derive=lambda targets, text: data_trail_guard.derive(targets, text),
-        given=lambda url: data_trail_guard.given_link(url))   # the precise rule: what of a step comes from outside text (data_trail.py)
+        given=lambda url: data_trail_guard.given_link(url),   # the precise rule: what of a step comes from outside text (data_trail.py)
+        sources=lambda: data_trail_guard.outside_sources())   # what kinds of outside text this run read: the card says so
 
     async def browser_step(tool: str, args: dict[str, Any]) -> tuple[str, str]:
         """(commit kind, site) of a browser click or typing step, for the privacy guard; ("", "") without a browser. A phone app's
@@ -3684,7 +3712,9 @@ def create_app(
             raise HTTPException(422, str(e)) from None
         tapped_wording = tapped is not None or briefing.tapped_step(body.text)   # Kelo's own words sent by a tap (not the owner's)
         author = author_for(tapped=tapped_wording, forwarded=forwarded)
-        user_id = store.add_message("user", body.text, via=via, author=author)
+        if body.call and body.amend:   # the owner went on talking before Kelo answered: their earlier words of this call go (calls.py)
+            store.drop_unanswered_call_words(body.call)
+        user_id = store.add_message("user", body.text, via=via, author=author, call_id=body.call or "")
         first_chat.note_owner_message()   # the first conversation is over by itself after its 30th message
         shown = chat_attachments.attach(user_id, attached, body.auto_text) if attached else []
         if body.secrets == "allow" and await secret_guard.screen(body.text, packages.key_patterns(), judge=secret_judge, chat=True):   # (the judge's answers are cached)
@@ -3719,7 +3749,7 @@ def create_app(
         def save() -> None:
             nonlocal saved
             if not saved and said:
-                store.add_message("assistant", collapse_repeat(said.text()), via=via, steps=said.steps_text())
+                store.add_message("assistant", collapse_repeat(said.text()), via=via, steps=said.steps_text(), call_id=body.call or "")
             saved = True
 
         def observe(item: dict[str, Any] | None) -> None:
@@ -3890,4 +3920,5 @@ def create_app(
 
 
 def app_factory() -> FastAPI:
+    _show_browser_logs()
     return create_app(Settings.from_env())

@@ -886,6 +886,7 @@
     <string name="agent_tab_working">काम चल रहा है</string>
     <string name="agent_tab_failed">अटका हुआ</string>
     <string name="agent_tab_idle">खाली</string>
+    <string name="agent_tab_waiting">आपका इंतज़ार</string>
     <string name="agent_tab_picture">टैब की स्क्रीन</string>
     <string name="agent_tab_no_picture">दिखाने को कुछ नहीं (खाली पेज)।</string>
     <string name="agent_tab_close">टैब बंद करें</string>

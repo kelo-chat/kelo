@@ -287,6 +287,9 @@ class Locator:
     async def focus(self, timeout=None):
         return None
 
+    async def click(self, timeout=None):
+        self.page.clicked.append(self.sel)
+
     async def count(self):
         return int(bool(self.page.state.get("pw"))) if "password" in self.sel else 1
 
@@ -298,14 +301,19 @@ class Locator:
 
 class Page:
     def __init__(self, url="https://github.com/login", found=None, fail=False, after_press=None, body="Welcome nahyun.kim@example.com, password hunter2-Pa$$w0rd!",
-                 state=None, field=None):
+                 state=None, field=None, links=None, options=None):
         self.field = field or {}
+        self.links, self.options, self.clicked = list(links or []), list(options or []), []
         self.url, self.fail, self.after_press, self.body = url, fail, after_press, body
         self.found = {"u": True, "p": True, "p_count": 1, "u_path": "#vault-u", "p_path": "#vault-p", **(found or {})}
         self.state = state or {"pw": False, "text": "Signed in. Logout"}             # what the page shows after Enter
         self.filled, self.pressed, self.untagged, self.goto_calls = [], [], 0, []
 
     async def evaluate(self, js, arg=None):
+        if "hosts.includes" in js:                              # SIGN_IN_LINKS_JS: links of the page to the login's own host
+            return self.links
+        if "role=switch" in js:                                 # OPTIONS_JS: the page's unticked boxes and switches
+            return self.options
         if "kelo_check" in js:                                  # the structure of the page (bot-check reading): from the state after Enter
             return self.state.get("probe")
         if "webkitTextSecurity" in js:                           # the password field's state at the moment of typing (lengths only)
@@ -603,3 +611,137 @@ async def test_a_successful_browser_login_records_the_site_and_a_failed_one_does
     st2 = filled(tmp_path / "second")
     out = await with_browser(st2, Page(url="https://github.com/login", fail=True))["browser_login"].handler({"name": "github"})
     assert not out.startswith("[sign-in result: success") and st2.browser_sign_ins() == []
+
+
+def site_login(tmp_path, hosts=("accounts.example.com",)):
+    st = Store(tmp_path / "a.db", KEY.decode())
+    st.save_credential("shop", "Shop", list(hosts), {}, kind="login")
+    st.set_login("shop", USER, PASSWORD)
+    return st
+
+
+async def test_a_saved_login_of_the_site_answers_a_request_for_another_address_even_with_a_new_name(tmp_path):
+    st = site_login(tmp_path)
+    out = await tool_map(st)["request_login"].handler({"site": "https://gift.example.com/box", "name": "login-gift-example-com"})
+    assert out.startswith("shop already has a saved login for example.com") and "browser_login(name='shop')" in out
+    assert [c["name"] for c in st.credentials()] == ["shop"] and st.credential("shop")["hosts"] == ["accounts.example.com"]
+
+
+async def test_another_account_on_purpose_gets_its_own_card(tmp_path):
+    st = site_login(tmp_path)
+    out = await tool_map(st)["request_login"].handler({"site": "gift.example.com", "name": "shop-work", "another_account": True})
+    assert "fill-in card" in out and st.credential("shop-work")["hosts"] == ["gift.example.com"]
+
+
+async def test_a_shared_host_name_is_not_one_site(tmp_path):
+    st = site_login(tmp_path, hosts=("me.github.io",))
+    out = await tool_map(st)["request_login"].handler({"site": "someone.github.io"})
+    assert "fill-in card" in out
+
+
+async def test_the_status_says_a_login_works_on_its_whole_site(tmp_path):
+    out = await tool_map(site_login(tmp_path))["vault_status"].handler({})
+    assert "website login for accounts.example.com (every address of example.com)" in out
+
+
+async def test_a_wrong_login_name_is_answered_with_the_logins_and_their_sites(tmp_path):
+    st = site_login(tmp_path)
+    got = await with_browser(st, Page(url="https://gift.example.com/"))["browser_login"].handler({"name": "login-gift-example-com"})
+    assert got.startswith("error:") and "shop (accounts.example.com)" in got
+
+
+def off_form():
+    return {"u": False, "p": False}
+
+
+async def test_with_no_form_and_no_via_nothing_is_typed_and_the_way_is_a_click(tmp_path):
+    st = site_login(tmp_path)
+    page = Page(url="https://gift.example.com/error", found=off_form(), links=["Sign in"])
+    out = await with_browser(st, page)["browser_login"].handler({"name": "shop"})
+    assert out.startswith("[No sign-in form on this page (gift.example.com)") and "via=" in out and "Sign in" in out
+    assert "accounts.example.com" in out and page.filled == [] and page.goto_calls == []
+    assert "no sign-in form" in st.vault_log(1)[0]["detail"]
+
+
+async def test_via_clicks_the_sites_link_then_fills_the_form_it_opens(tmp_path):
+    st = site_login(tmp_path)
+    page = Page(url="https://gift.example.com/box", found=off_form())
+    session = session_for(page)
+    tools = tool_map(st, session)
+    clicked = []
+
+    async def open_sign_in(via):
+        clicked.append(via)
+        page.url, page.found = "https://accounts.example.com/login", {"u": True, "p": True, "p_count": 1, "u_path": "#vault-u", "p_path": "#vault-p"}
+        return "[reading]"
+
+    session.open_sign_in = open_sign_in
+    out = await tools["browser_login"].handler({"name": "shop", "via": "e7"})
+    assert clicked == ["e7"] and out.startswith("[sign-in result: success")
+    assert page.filled == [("#vault-u", USER), ("#vault-p", PASSWORD)] and page.goto_calls == []
+    assert "Before signing in you were on https://gift.example.com/box" in out
+
+
+async def test_a_via_that_leads_off_the_site_types_nothing(tmp_path):
+    st = site_login(tmp_path)
+    page = Page(url="https://gift.example.com/box", found=off_form())
+    session = session_for(page)
+    tools = tool_map(st, session)
+
+    async def open_sign_in(via):
+        page.url, page.found = "https://login.example.net/", {"u": True, "p": True, "p_count": 1, "u_path": "#vault-u", "p_path": "#vault-p"}
+        return ""
+
+    session.open_sign_in = open_sign_in
+    out = await tools["browser_login"].handler({"name": "shop", "via": "e7"})
+    assert out.startswith("error:") and "login.example.net" in out and "nothing was typed" in out and page.filled == []
+
+
+async def test_the_card_names_the_link_it_clicks(tmp_path):
+    st = site_login(tmp_path)
+    session = session_for(Page(url="https://gift.example.com/box", found=off_form()))
+    session.ref_label = lambda sel: "Sign in"
+    tools = tool_map(st, session)
+    words = await tools["browser_login"].describe({"name": "shop", "via": "e7"})
+    assert "Opens the sign-in page through “Sign in”" in words and "gift.example.com" in words and PASSWORD not in words
+
+
+OPTS = [{"path": "#keep", "label": "Stay signed in"}, {"path": "#news", "label": "Send me offers"}]
+
+
+async def test_the_forms_options_come_first_and_nothing_is_typed(tmp_path):
+    st = filled(tmp_path)
+    page = Page(url="https://github.com/login", options=OPTS)
+    tool = with_browser(st, page)["browser_login"]
+    out = await tool.handler({"name": "github"})
+    assert "unticked options" in out and "- `#keep`:" in out and "- `#news`:" in out and 'keep="none"' in out
+    assert page.filled == [] and page.pressed == [] and page.clicked == []
+    assert tool.auto_approve({"name": "github", "keep": "#keep"}) is True and tool.auto_approve({"name": "github"}) is False
+
+
+async def test_keep_ticks_only_the_chosen_option_then_signs_in_and_is_used_up(tmp_path):
+    st = filled(tmp_path)
+    page = Page(url="https://github.com/login", options=OPTS)
+    tool = with_browser(st, page)["browser_login"]
+    await tool.handler({"name": "github"})
+    out = await tool.handler({"name": "github", "keep": "#keep"})
+    assert out.startswith("[sign-in result: success") and page.clicked == ["#keep"] and len(page.filled) == 2
+    assert tool.auto_approve({"name": "github", "keep": "#keep"}) is False          # the choice was used
+
+
+async def test_keep_none_ticks_nothing_and_an_unlisted_selector_types_nothing(tmp_path):
+    st = filled(tmp_path)
+    page = Page(url="https://github.com/login", options=OPTS)
+    tool = with_browser(st, page)["browser_login"]
+    await tool.handler({"name": "github"})
+    bad = await tool.handler({"name": "github", "keep": "#other"})
+    assert bad.startswith("error:") and "keep must be one of" in bad and page.filled == []
+    out = await tool.handler({"name": "github", "keep": "none"})
+    assert out.startswith("[sign-in result: success") and page.clicked == []
+
+
+async def test_a_form_without_options_signs_in_at_once(tmp_path):
+    st = filled(tmp_path)
+    page = Page(url="https://github.com/login")
+    out = await with_browser(st, page)["browser_login"].handler({"name": "github"})
+    assert out.startswith("[sign-in result: success") and page.clicked == []

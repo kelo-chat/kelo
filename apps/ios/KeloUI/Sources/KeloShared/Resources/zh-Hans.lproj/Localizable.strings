@@ -825,6 +825,7 @@
 "agent_tab_working" = "处理中";
 "agent_tab_failed" = "卡住了";
 "agent_tab_idle" = "空闲";
+"agent_tab_waiting" = "等你处理";
 "agent_tab_picture" = "标签页画面";
 "agent_tab_no_picture" = "没有可显示的内容（空白页）。";
 "agent_tab_close" = "关闭标签页";
@@ -1568,6 +1569,9 @@
 "call_mic_denied" = "未获得麦克风权限，无法开始通话。";
 "call_voice_offer" = "这是通话时Kelo使用的自然声音。将声音模型（%1$s）下载到Kelo服务器后，下一句话开始即可使用此声音。若不下载，将使用设备内置的机械声音。";
 "call_mark" = "通话";
+"call_chat_length##other" = "通话 · %1$d 分钟";
+"call_chat_show" = "查看通话";
+"call_chat_hide" = "收起通话";
 "call_voice_offer_title" = "是否下载Kelo的声音模型？";
 "call_voice_offer_ok" = "下载";
 "call_voice_offer_later" = "先使用设备声音";
@@ -1575,6 +1579,12 @@
 "call_voice_get" = "下载";
 "call_voice_line_close" = "关闭";
 "call_ears_failed" = "手机语音识别未听清您的声音。";
+"call_voice_device" = "未能加载 Kelo 自己的声音，正在使用本设备的语音。";
+"call_voice_none" = "此设备现在无法播放 Kelo 的声音。回复在聊天中。";
+"call_minimize" = "返回聊天";
+"call_keyboard" = "输入";
+"call_type_hint" = "输入要发给 Kelo 的消息";
+"call_type_send" = "发送";
 "voice_speech_title" = "Kelo声音";
 "voice_speech_download" = "下载声音模型 · %1$s";
 "voice_speech_downloading" = "正在下载声音模型 · %1$d%%";

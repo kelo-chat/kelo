@@ -877,6 +877,7 @@
     <string name="agent_tab_working">处理中</string>
     <string name="agent_tab_failed">卡住了</string>
     <string name="agent_tab_idle">空闲</string>
+    <string name="agent_tab_waiting">等你处理</string>
     <string name="agent_tab_picture">标签页画面</string>
     <string name="agent_tab_no_picture">没有可显示的内容（空白页）。</string>
     <string name="agent_tab_close">关闭标签页</string>

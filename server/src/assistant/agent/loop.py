@@ -24,7 +24,7 @@ import re
 import unicodedata
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from ..compaction import COMPACT_AT, TARGET, ContextOverflow, est_tokens, is_context_error, message_tokens, request_tokens
@@ -38,7 +38,7 @@ MAX_TOOL_OUTPUT_CHARS = 20_000
 log = logging.getLogger("assistant.agent")
 # untrusted results are fenced (fence.py): a random id per call, boundary look-alikes neutralized, the app's own words outside,
 # a size budget per kind of source
-from .fence import UNTRUSTED_NOTICE, data, fence, inside, is_fenced, marked, outside, plain, render  # noqa: E402
+from .fence import UNTRUSTED_NOTICE, all_inside, data, fence, inside, is_fenced, marked, outside, plain, render  # noqa: E402
 from . import facts, found_secrets  # noqa: E402
 from .. import data_trail, injection_watch  # noqa: E402
 
@@ -59,7 +59,7 @@ class Tool:
     # True = no card for this one (the user already allowed it, or it only looks); may be async (e.g. reads the page first)
     auto_approve: Callable[[dict[str, Any]], bool | Awaitable[bool]] | None = None
     describe: Callable[[dict[str, Any]], Awaitable[str]] | None = None    # words for the approval card: where this will really go
-    validate: Callable[[dict[str, Any]], str | None] | None = None        # a reason to refuse the call before any card is shown
+    validate: Callable[[dict[str, Any]], str | None | Awaitable[str | None]] | None = None   # a reason to refuse the call before any card is shown (may be async: e.g. asks the page)
     # what the model is told when the user says no (default below); a function of the arguments when it depends on the call
     declined: str | Callable[[dict[str, Any]], str] = ""
     # extra fields for the app's approval card, given the approval's id (e.g. which wallet card a payment will use)
@@ -92,6 +92,8 @@ class Tool:
     # a successful call makes a later action real (a schedule, a watcher, a background job, a re-check): the reply may then say it will
     # tell or do something later (scheduled_runs.py, the promise rule)
     keeps_promise: bool = False
+    # a call that needs the owner's OK may share one card with the later calls of the same step that also share (approve all or none)
+    shares_card: bool = False
 
     def spec(self) -> dict[str, Any]:
         return {
@@ -192,6 +194,22 @@ class ApprovalRequest:
     editable: bool = True   # False for a second card about a send (after an edit, or a changed send): its text is final
     # set by the app's approve(): "skipped" (nobody can answer this run) | "expired" (nobody answered in time) | "" (answered)
     outcome: str = ""
+    # the other calls that share this card (filled only for a shared card: approve all or none)
+    peers: list["ApprovalRequest"] = field(default_factory=list)
+    # the outside-text reason the gate gave for this card (the card's "Why it asks" line; also at the start of detail)
+    why: str = ""
+
+
+@dataclass(slots=True)
+class Prechecked:
+    """The checks a call went through before its card (see _precheck), and for a call on a shared card its answer (approved, outcome)."""
+    verdict: Any
+    forced: bool
+    allowed_before: bool
+    detail: str
+    frozen: str | None
+    approved: bool | None = None
+    outcome: str = ""
 
 
 SKIPPED_LINE = ("{name} was not run: it needs the owner's OK, and nobody can answer during this run. Do not try it again or another "
@@ -208,6 +226,7 @@ class ToolResult:
     is_error: bool = False
     approved: bool | None = None
     facts: dict[str, Any] = field(default_factory=dict)   # structured facts for the apps (agent/facts.py): never shown to the model
+    pictures: int = 0   # how many pictures the call showed the model (the reply keeps that, so a later turn can open them again)
 
 
 @dataclass(slots=True)
@@ -497,6 +516,7 @@ async def run_agent(
     wrap_up: bool = True,
     gate: Any = None,
     done_once: Any = None,
+    approve_many: Callable[[list[ApprovalRequest]], Awaitable[list[bool]]] | None = None,
     **stream_kwargs: Any,
 ) -> AsyncIterator[AgentEvent]:
     """Run until the model answers without tool calls. `messages` is not mutated.
@@ -515,7 +535,8 @@ async def run_agent(
     ask = a card every time, allow = no card (payments and the like keep their own checks), and a guard hit = a card. `gate.hides(name)`
     leaves a tool out of the list the model is shown when every target of it is off.
     `done_once` (done_once.DoneOnce): a step that sends, changes or deletes is done once. Right after the gate and the card, `begin` checks the
-    ledger (a repeat is not run; the model is told why) and records the attempt; `settle` closes it with what the handler answered or raised."""
+    ledger (a repeat is not run; the model is told why) and records the attempt; `settle` closes it with what the handler answered or raised.
+    `approve_many(requests)`: one answer per request for several calls of one step that share a card (Tool.shares_card): one card, one answer."""
     if images_ok is None:
         from ..providers.vision import supports_images
         images_ok = supports_images(provider)
@@ -774,7 +795,11 @@ async def run_agent(
 
         ending = False   # a tool that ends the turn (ends_turn); a step also ends when every call closes the reply (closes_reply)
         closers: list[bool] = []   # one per call of this step: did it close the reply (react, quick_replies, await_reply)
-        for call in calls:
+        after_results: list[Message] = []   # pictures and notes of this step: they go after ALL its tool results (a tool_use needs its
+        #                                    tool_result right after it; a message between two results breaks the next request, 2026-11-19)
+        shared: dict[str, Prechecked] = {}   # the calls of this step answered on a card shared with an earlier call of the step
+        for call_index, call in enumerate(calls):
+            later = calls[call_index + 1:]
             yield ToolStarted(call.id, call.name, _safe_args(call.arguments))
             call_facts: dict[str, Any] = {}   # what the tool hands to the apps next to its text (facts.py)
             key = (call.name, call.arguments.strip())
@@ -785,7 +810,7 @@ async def run_agent(
                 repeats += 1
                 if repeats >= 3 and not tools_off:  # going in circles: stop offering tools and ask for the answer
                     tools_off = True
-                    history.append({"role": "system", "content": FINISH_NUDGE})
+                    after_results.append({"role": "system", "content": FINISH_NUDGE})
             else:
                 if toolbox is not None and tool_def is not None:
                     if toolbox.is_shown(call.name):
@@ -801,7 +826,8 @@ async def run_agent(
                 active_token = data_trail.active.set(getattr(gate, "trail", None))
                 facts_token = facts.current.set(call_facts)
                 try:
-                    output, is_error, approved, images = await _execute(call, by_name, approve, images_ok, shown_names, gate, done_once)
+                    output, is_error, approved, images = await _execute(call, by_name, approve, images_ok, shown_names, gate, done_once,
+                                                                        later=later, shared=shared, approve_many=approve_many)
                 finally:
                     facts.current.reset(facts_token)
                     data_trail.active.reset(active_token)
@@ -811,13 +837,19 @@ async def run_agent(
                     current_box.reset(box_token)
                     current_call.reset(token)
                 trail = getattr(gate, "trail", None)
+                fenced = is_fenced(output)
+                # the owner's own data or a file the owner attached (tool's own_data): fenced for the model, but not outside text
+                own_read = fenced and tool_def is not None and tool_def.own_data is not None and _own_data(tool_def, call)
                 if trail is not None and tool_def is not None and tool_def.trail and not is_error:   # the result's labels (data_trail.py)
-                    trail.label_result(tool_def, _safe_args(call.arguments), call.id, inside(output) if is_fenced(output) else output,
-                                       trail_items.items, outside=is_fenced(output))
-                if is_fenced(output) and not (tool_def is not None and tool_def.own_data is not None and _own_data(tool_def, call)):
-                    saw_outside[0] = True
+                    trail.label_result(tool_def, _safe_args(call.arguments), call.id, all_inside(output) if fenced else output,
+                                       trail_items.items, outside=fenced and not own_read)
+                if fenced and own_read:
                     if trail is not None:
-                        trail.label_outside(call.id, inside(output))   # the precise outside rule (data_trail.derive) reads these
+                        trail.label_given(call.id, all_inside(output))
+                elif fenced:
+                    saw_outside[0] = True
+                    if trail is not None:   # what kind of text it was (fence source): the card says it (outside_rule.SOURCE_WORDS)
+                        trail.label_outside(call.id, all_inside(output), source=tool_def.source if tool_def is not None else "")
                 if is_error and call.name in by_name and by_name[call.name].read_only:   # a failed look-around: remind what else exists
                     output += others(call.name)
                 if toolbox is not None and tool_def is not None and not is_error:
@@ -842,10 +874,13 @@ async def run_agent(
                 seen: Message = {"role": "user", "content": [
                     {"type": "text", "text": f"[Not from the user: the picture(s) {call.name} returned for the call above.]"},
                     *({"type": "image_url", "image_url": {"url": url}} for url in images)]}
-                history.append(seen)
-                retire_pictures()
+                after_results.append(seen)
             closers.append(bool(tool_def is not None and tool_def.closes_reply and not is_error and not output.startswith("Error")))
-            yield ToolResult(call.id, call.name, output, is_error, approved, {} if is_error else call_facts)
+            yield ToolResult(call.id, call.name, output, is_error, approved, {} if is_error else call_facts, pictures=len(images))
+        if after_results:
+            history.extend(after_results)
+            if any(m.get("role") == "user" for m in after_results):
+                retire_pictures()
         ending = ending or (said and bool(closers) and all(closers))   # 2026-11-18: react alone ends it; react plus a read does not
         if ending:
             yield AgentDone(total_in, total_out, step, new_messages, cache_read, cache_write, reasoning)
@@ -866,8 +901,10 @@ class GateBroken:
 
 async def _execute(call: ToolCall, by_name: dict[str, Tool], approve: ApproveFn,
                    images_ok: bool = False, shown: list[str] | None = None, gate: Any = None,
-                   done_once: Any = None) -> tuple[str, bool, bool | None, list[str]]:
-    out, is_error, approved, result = await _execute_inner(call, by_name, approve, shown, gate, done_once)
+                   done_once: Any = None, *, later: tuple[ToolCall, ...] = (), shared: dict[str, Prechecked] | None = None,
+                   approve_many: Any = None) -> tuple[str, bool, bool | None, list[str]]:
+    out, is_error, approved, result = await _execute_inner(call, by_name, approve, shown, gate, done_once, later=later, shared=shared,
+                                                           approve_many=approve_many)
     if isinstance(result, ToolOutput) and result.images:
         if images_ok:
             return out, is_error, approved, list(result.images)
@@ -876,8 +913,85 @@ async def _execute(call: ToolCall, by_name: dict[str, Tool], approve: ApproveFn,
     return out, is_error, approved, []
 
 
+async def _precheck(call: ToolCall, tool: Tool, args: dict[str, Any], gate: Any) -> tuple[tuple | None, Prechecked | None]:
+    """The checks before any card, in order: the tool's own check (validate), the owner's limits (gate), the auto-approval. Returns
+    (the answer when the call stops here, None) or (None, what the card needs). The same for a call that shares a card with others."""
+    if tool.validate is not None:
+        try:
+            problem = tool.validate(args)
+            if inspect.isawaitable(problem):
+                problem = await problem
+        except Exception as e:  # noqa: BLE001 - a broken check refuses rather than lets through
+            problem = f"{type(e).__name__}"
+        if problem:
+            return (f"Error: {call.name} was not run: {problem}", True, None, None), None
+    verdict = None
+    if gate is not None:   # the owner's limits for this connector and the privacy guard: one place for every kind of run
+        try:
+            verdict = await gate.check(tool, args)
+        except Exception:  # noqa: BLE001 - a broken check never lets the call through unasked: the owner decides on a card
+            log.exception("the permission gate failed for %s; the owner is asked", call.name)
+            verdict = GateBroken()
+        if verdict is not None and verdict.action == "off":
+            return (verdict.message, True, None, None), None
+    frozen = _freeze(call.name, args)   # the send as the gate judged it (prepared_send.py)
+    forced = verdict is not None and verdict.action == "ask"
+    allowed_before = verdict is not None and verdict.action == "allow"
+    if tool.requires_approval and tool.auto_approve is not None and not forced and not allowed_before:
+        try:
+            decided = tool.auto_approve(args)
+            allowed_before = bool(await decided if inspect.isawaitable(decided) else decided)
+        except Exception:  # noqa: BLE001 - when in doubt, ask
+            allowed_before = False
+    detail = ""
+    if (tool.requires_approval or forced) and not allowed_before:
+        if tool.describe is not None:
+            try:
+                detail = str(await tool.describe(args))[:300]
+            except Exception:  # noqa: BLE001 - the card still works without the extra line
+                detail = ""
+        if verdict is not None and verdict.card:   # what goes where, from the privacy guard
+            detail = f"{verdict.card}\n{detail}".strip()[:300]
+    return None, Prechecked(verdict, forced, allowed_before, detail, frozen)
+
+
+async def _share_card(asked: ApprovalRequest, later: tuple[ToolCall, ...], by_name: dict[str, Tool], gate: Any,
+                      shared: dict[str, Prechecked], approve_many: Any) -> list[bool] | None:
+    """One card for this call and the later calls of the step that need one too (Tool.shares_card): the answers, this call's first.
+    A later call that needs no card is not on it (it is checked again when its turn comes); one found on the card is stored in `shared`
+    with its answer. None when no later call needs a card: the caller asks alone, as before."""
+    peers: list[tuple[ToolCall, Prechecked, ApprovalRequest]] = []
+    for peer_call in later:
+        peer_tool = by_name.get(peer_call.name)
+        if peer_tool is None or not peer_tool.shares_card or peer_tool.hold is not None or peer_call.id in shared:
+            continue
+        try:
+            peer_args = json.loads(peer_call.arguments or "{}")
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(peer_args, dict):
+            continue
+        stop, peer_pre = await _precheck(peer_call, peer_tool, peer_args, gate)
+        if stop is not None or peer_pre is None:
+            continue   # refused on its own when its turn comes
+        if not ((peer_tool.requires_approval or peer_pre.forced) and not peer_pre.allowed_before):
+            continue
+        if getattr(peer_pre.verdict, "trail", None):   # a call with offers for the owner's recipients keeps its own card
+            continue
+        peers.append((peer_call, peer_pre, ApprovalRequest(peer_call.id, peer_call.name, peer_args, peer_pre.detail, force=peer_pre.forced,
+                                                           why=str(getattr(peer_pre.verdict, "card", "") or ""))))
+    if not peers:
+        return None
+    asked.peers = [req for _, _, req in peers]
+    answers = await approve_many([asked, *asked.peers])
+    for (peer_call, peer_pre, request), answer in zip(peers, answers[1:]):
+        shared[peer_call.id] = replace(peer_pre, approved=bool(answer), outcome=request.outcome)
+    return answers
+
+
 async def _execute_inner(call: ToolCall, by_name: dict[str, Tool], approve: ApproveFn,
-                         shown: list[str] | None = None, gate: Any = None, done_once: Any = None) -> tuple[str, bool, bool | None, Any]:
+                         shown: list[str] | None = None, gate: Any = None, done_once: Any = None, *, later: tuple[ToolCall, ...] = (),
+                         shared: dict[str, Prechecked] | None = None, approve_many: Any = None) -> tuple[str, bool, bool | None, Any]:
     tool = by_name.get(call.name)
     if tool is None:
         listed = sorted(shown if shown is not None else by_name)
@@ -898,44 +1012,24 @@ async def _execute_inner(call: ToolCall, by_name: dict[str, Tool], approve: Appr
         if held:   # the app's own words; any page text in them is marked and fenced
             return render(str(held), source=tool.source, whole=False), False, None, None
 
-    if tool.validate is not None:
-        try:
-            problem = tool.validate(args)
-        except Exception as e:  # noqa: BLE001 - a broken check refuses rather than lets through
-            problem = f"{type(e).__name__}"
-        if problem:
-            return f"Error: {call.name} was not run: {problem}", True, None, None
-
-    verdict = None
-    if gate is not None:   # the owner's limits for this connector and the privacy guard: one place for every kind of run
-        try:
-            verdict = await gate.check(tool, args)
-        except Exception:  # noqa: BLE001 - a broken check never lets the call through unasked: the owner decides on a card
-            log.exception("the permission gate failed for %s; the owner is asked", call.name)
-            verdict = GateBroken()
-        if verdict is not None and verdict.action == "off":
-            return verdict.message, True, None, None
-    frozen = _freeze(call.name, args)   # the send as the gate judged it (prepared_send.py)
-    forced = verdict is not None and verdict.action == "ask"
+    if shared is not None and call.id in shared:   # answered on a card shared with an earlier call of this step: no second card
+        pre = shared[call.id]
+    else:
+        stop, pre = await _precheck(call, tool, args, gate)
+        if stop is not None:
+            return stop
+    verdict, forced, allowed_before, detail, frozen = pre.verdict, pre.forced, pre.allowed_before, pre.detail, pre.frozen
     approved: bool | None = None
-    allowed_before = verdict is not None and verdict.action == "allow"
-    if tool.requires_approval and tool.auto_approve is not None and not forced and not allowed_before:
-        try:
-            decided = tool.auto_approve(args)
-            allowed_before = bool(await decided if inspect.isawaitable(decided) else decided)
-        except Exception:  # noqa: BLE001 - when in doubt, ask
-            allowed_before = False
     if (tool.requires_approval or forced) and not allowed_before:
-        detail = ""
-        if tool.describe is not None:
-            try:
-                detail = str(await tool.describe(args))[:300]
-            except Exception:  # noqa: BLE001 - the card still works without the extra line
-                detail = ""
-        if verdict is not None and verdict.card:   # what goes where, from the privacy guard
-            detail = f"{verdict.card}\n{detail}".strip()[:300]
-        asked = ApprovalRequest(call.id, call.name, args, detail, force=forced, trail=list(getattr(verdict, "trail", None) or []))
-        approved = await approve(asked)
+        if pre.approved is not None:   # the answer of the shared card (an earlier call of this step asked for it)
+            approved = pre.approved
+            asked = ApprovalRequest(call.id, call.name, args, detail, force=forced, outcome=pre.outcome)
+        else:
+            asked = ApprovalRequest(call.id, call.name, args, detail, force=forced, trail=list(getattr(verdict, "trail", None) or []),
+                                    why=str(getattr(verdict, "card", "") or ""))
+            shares = await _share_card(asked, later, by_name, gate, shared, approve_many) if (
+                tool.shares_card and approve_many is not None and shared is not None and later) else None
+            approved = shares[0] if shares is not None else await approve(asked)
         if not approved:
             if asked.outcome in ("skipped", "expired"):
                 return (SKIPPED_LINE if asked.outcome == "skipped" else EXPIRED_LINE).format(name=call.name), True, False, None
@@ -949,6 +1043,8 @@ async def _execute_inner(call: ToolCall, by_name: dict[str, Tool], approve: Appr
             if tool.validate is not None:
                 try:
                     problem = tool.validate(args)
+                    if inspect.isawaitable(problem):
+                        problem = await problem
                 except Exception as e:  # noqa: BLE001 - a broken check refuses rather than lets through
                     problem = f"{type(e).__name__}"
                 if problem:

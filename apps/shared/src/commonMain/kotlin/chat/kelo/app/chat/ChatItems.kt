@@ -22,6 +22,8 @@ sealed interface ChatItem {
         val autoText: Boolean = false,
         /** Live bubble or stored message arrived from an in-app voice call */
         val fromCall: Boolean = false,
+        /** The call this message belongs to: the chat folds a call into one card ([CallCards]) */
+        val callId: String? = null,
     ) : ChatItem
     /**
      * The reply needs this phone's place (location_request): Share / Not now, or the phone's settings when the owner refused before
@@ -150,6 +152,8 @@ sealed interface ChatItem {
     data class KeySaved(override val key: String, val name: String, val hosts: List<String>) : ChatItem
     data class Notice(override val key: String, val notice: ChatNotice) : ChatItem
     data class Error(override val key: String, val error: ChatError) : ChatItem
+    /** One in-app call's messages folded into one row ([CallCards.fold]): drawn only, never stored. [lines] oldest first, never empty. */
+    data class CallCard(override val key: String, val callId: String, val lines: List<Msg>) : ChatItem
 }
 
 enum class ToolState { RUNNING, OK, ERROR, DENIED }

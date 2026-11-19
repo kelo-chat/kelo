@@ -898,6 +898,7 @@
     <string name="agent_tab_working">Au travail</string>
     <string name="agent_tab_failed">Bloqué</string>
     <string name="agent_tab_idle">Inactif</string>
+    <string name="agent_tab_waiting">Vous attend</string>
     <string name="agent_tab_picture">Écran de l’onglet</string>
     <string name="agent_tab_no_picture">Rien à afficher (page vide).</string>
     <string name="agent_tab_close">Fermer l’onglet</string>

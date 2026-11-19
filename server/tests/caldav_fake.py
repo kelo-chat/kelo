@@ -58,6 +58,7 @@ UID:lunch@test
 DTSTART:20261109T120000
 SUMMARY:Lunch with Mina
 LOCATION:Gangnam station
+DESCRIPTION:Booking ref QQ9
 END:VEVENT
 BEGIN:VEVENT
 UID:call@test

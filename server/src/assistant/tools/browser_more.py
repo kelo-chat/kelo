@@ -37,7 +37,7 @@ from ..deliverables import LibraryFileError
 from ..home import HomeError
 from ..data_trail import USES_PARAM
 from ..i18n import t
-from .browser import BrowserPolicyError, BrowserSession, browser_owner, code_mask, one_run_tab, site_of
+from .browser import BrowserPolicyError, BrowserSession, browser_owner, code_mask, one_run_tab, ref_check, site_of
 from .challenge import CHECK_TRIES, Challenge
 from .downloads import DownloadArea, DownloadError, blocked_name, clean_name
 from .login_code import AUTO_WINDOW_SECONDS, FoundCode, find_code, pick_auto_code
@@ -523,7 +523,7 @@ class BrowserExtras:
                       "files": {"type": "array", "items": {"type": "string"}, "description": "paths under uploads/ or files/"},
                       "uses": USES_PARAM},
                      ["selector", "files"]),
-                 upload, requires_approval=True, untrusted=True, source="page", validate=check_upload, describe=describe_upload,
+                 upload, requires_approval=True, untrusted=True, source="page", validate=ref_check(s, check_upload), describe=describe_upload,
                  declined="The user did not allow uploading those files. Do not retry; ask what they want instead."),
             Tool("browser_save_pdf", "Save the page of your browser tab as a PDF in the user's library (files/).",
                  obj({"name": {"type": "string"}}, []), save_pdf),
@@ -566,7 +566,7 @@ class BrowserExtras:
                                    "mailbox is searched."},
                       "selector": {"type": "string", "description": "the code box, if not found by itself"},
                       "submit": {"type": "boolean", "description": "press Enter after (default true)"}}, []),
-                 code_enter, requires_approval=True, untrusted=True, source="page", hold=code_hold, describe=code_describe, approval_extra=code_extra,
+                 code_enter, requires_approval=True, untrusted=True, source="page", hold=code_hold, validate=ref_check(s), describe=code_describe, approval_extra=code_extra,
                  declined="The user did not want that code typed. Do not retry; ask them how to go on."),
             Tool("browser_look", "A picture of the visible part of your page with a box and its ref (e12) on everything that can be "
                  "clicked or typed into. For a page that is mostly pictures, a canvas or a map, or when a reading gives no ref for what "

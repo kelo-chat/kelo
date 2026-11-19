@@ -104,10 +104,13 @@ object AndroidCallAudioRules {
 /**
  * Android implementation of [CallAudio] for voice calls (brief §6.1).
  */
-class AndroidCallAudio(private val context: Context) : CallAudio {
+class AndroidCallAudio(private val context: Context, private val log: (String) -> Unit = {}) : CallAudio {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val previousAudioMode: Int = audioManager.mode
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    override val micGranted: Boolean
+        get() = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     override var echoCancel: Boolean = runCatching { AcousticEchoCanceler.isAvailable() }.getOrDefault(false)
         private set
@@ -150,6 +153,7 @@ class AndroidCallAudio(private val context: Context) : CallAudio {
     // Audio Focus
     private var focusRequest: AudioFocusRequest? = null
     private val focusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        log("audio focus change=$focusChange")
         if (focusChange == AudioManager.AUDIOFOCUS_LOSS || focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
             onInterrupted?.invoke()
         }
@@ -304,6 +308,7 @@ class AndroidCallAudio(private val context: Context) : CallAudio {
             AudioTrack.MODE_STREAM,
             AudioManager.AUDIO_SESSION_ID_GENERATE
         )
+        if (track.state != AudioTrack.STATE_INITIALIZED) { log("audio track not ready rate=$sampleRate"); runCatching { track.release() }; return@withContext }
         synchronized(playLock) {
             playTrack = track
         }
@@ -327,6 +332,7 @@ class AndroidCallAudio(private val context: Context) : CallAudio {
                     onLevel(level)
                     offset += written
                 } else {
+                    if (!playbackStopped) log("audio write failed code=$written")
                     break
                 }
             }

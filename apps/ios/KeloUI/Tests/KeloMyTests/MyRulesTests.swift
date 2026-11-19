@@ -495,6 +495,18 @@ private func decode<T: Decodable>(_ json: String, as: T.Type = T.self) throws ->
         #expect(snap["events"]?.arrayValue?.count == 2)
     }
 
+    @Test func phoneCalendarSendsNotesAccountAndOrganizerOnlyWhenSet() {
+        let zone = TimeZone(identifier: "Asia/Seoul")!
+        let row = PhoneEvent(id: "9", title: "Flight to Testville", start: 100, end: 200, allDay: false, notes: "  booking QQ9  ",
+                             account: "me@example.test", accountType: "com.google")
+        let out = PhoneCalendarRules.clean([row], zone: zone)[0]
+        #expect(out["notes"]?.stringValue == "booking QQ9")
+        #expect(out["account"]?.stringValue == "me@example.test")
+        #expect(out["account_type"]?.stringValue == "com.google")
+        let plain = PhoneCalendarRules.clean([PhoneEvent(id: "8", title: "Dentist", start: 100, end: 200, allDay: false)], zone: zone)[0]
+        #expect(plain["notes"] == nil && plain["account"] == nil && plain["account_type"] == nil)
+    }
+
     @Test func contactsBody() {
         let rows = [
             ContactRow(name: "Ann", phones: [("010-1234-5678", "mobile"), ("01012345678", "home")], emails: ["a@x", "a@x"], org: "Kelo",

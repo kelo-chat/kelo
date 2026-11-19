@@ -138,5 +138,10 @@ extension ChatModel {
     // ---- scrolling to a message --------------------------------------------------------------------------------------------
 
     /// The row key of the stored message `id`, if it is in the list.
-    public func rowKey(forMessage id: Int64) -> String? { items.first { $0.asMsg?.id == id }?.key }
+    public func rowKey(forMessage id: Int64) -> String? {
+        rows.first { $0.asMsg?.id == id || $0.asCall?.lines.contains { $0.id == id } == true }?.key
+    }
+
+    /// The call whose card holds the stored message `id`, if it is in the list.
+    public func callId(forMessage id: Int64) -> String? { CallCards.cardWith(rows, id: id)?.callId }
 }

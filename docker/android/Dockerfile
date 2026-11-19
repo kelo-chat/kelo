@@ -2,6 +2,9 @@
 #   docker build -f docker/android/Dockerfile docker/android
 FROM python:3.12-slim
 
+# lets updates delete only Kelo's own unused images (updates.prune_untagged) and a failed build's containers (remove_build_leftovers)
+LABEL chat.kelo.image="1"
+
 # adb only (no Android SDK); no recommended packages keeps the image small
 RUN apt-get update \
  && apt-get install -y --no-install-recommends adb \

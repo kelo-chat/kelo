@@ -897,6 +897,7 @@
     <string name="agent_tab_working">Trabajando</string>
     <string name="agent_tab_failed">Atascada</string>
     <string name="agent_tab_idle">Inactiva</string>
+    <string name="agent_tab_waiting">Esperándote</string>
     <string name="agent_tab_picture">Pantalla de la pestaña</string>
     <string name="agent_tab_no_picture">No hay nada que mostrar (página en blanco).</string>
     <string name="agent_tab_close">Cerrar pestaña</string>

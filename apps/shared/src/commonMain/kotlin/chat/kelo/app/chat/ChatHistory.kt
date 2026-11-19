@@ -194,7 +194,7 @@ internal class ChatHistory(private val host: ChatHost, private val sync: ChatSyn
 internal fun toChatItem(m: StoredMessage) =
     ChatItem.Msg("m${m.id}", mine = m.role == "user", text = m.content, id = m.id, replies = m.replies, at = (m.createdAt * 1000).toLong(),
         reaction = m.reaction, briefing = m.briefing, comparison = m.comparison, images = m.images, files = m.attachments, autoText = m.autoText,
-        fromCall = m.via == "call")
+        fromCall = m.via == "call", callId = m.callId?.takeIf { it.isNotEmpty() })
 
 /**
  * The rows after the newest page was loaded again while it was on screen (the news check). The shown rows are matched to the stored
@@ -244,7 +244,7 @@ internal fun mergeStoredRows(shown: List<ChatItem>, stored: List<ChatItem>): Lis
             swap[o.key] = storedMsgs[i].copy(key = o.key)
             used += i
         }
-        // a reply split by tool chips is one reply: its earlier streamed bubbles go, the stored text is in the last one
+        // a reply split by chips or cards is one reply: its earlier streamed bubbles go, the stored text is in the last one
         if (matched > 0) run.dropLast(matched).forEach { folded += it.key }
     }
     val newest = used.maxOrNull() ?: -1
@@ -253,21 +253,22 @@ internal fun mergeStoredRows(shown: List<ChatItem>, stored: List<ChatItem>): Lis
 }
 
 /**
- * The id-less assistant (or user) bubbles of one reply, in order: bubbles separated only by tool chips are one run (a live reply
- * split by a tool chip). Any other row ends a run.
+ * The id-less assistant (or user) bubbles of one reply, in order. Rows that are not messages (tool chips, login and approval cards,
+ * browser cards, notices) sit between the parts of one live reply, so they never end a run (owner report 2026-11-19: a login card
+ * between two parts left the first part on screen next to the stored whole). A message with an id (a stored one: another turn) ends
+ * a run, and a bubble of the other author starts a new one.
  */
 private fun idLessRuns(shown: List<ChatItem>): List<List<ChatItem.Msg>> {
     val runs = ArrayList<MutableList<ChatItem.Msg>>()
-    var open = false   // the last row that is not a tool chip is an id-less bubble
+    var open = false   // the last message row is an id-less bubble
     for (row in shown) {
-        when {
-            row is ChatItem.Tool -> Unit
-            row is ChatItem.Msg && row.id == null -> {
-                val run = runs.lastOrNull()
-                if (open && run != null && run.last().mine == row.mine) run += row else runs += mutableListOf(row)
-                open = true
-            }
-            else -> open = false
+        if (row !is ChatItem.Msg) continue
+        if (row.id == null) {
+            val run = runs.lastOrNull()
+            if (open && run != null && run.last().mine == row.mine) run += row else runs += mutableListOf(row)
+            open = true
+        } else {
+            open = false
         }
     }
     return runs

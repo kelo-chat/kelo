@@ -51,6 +51,12 @@ def norm_hosts(hosts: list[str] | None) -> set[str]:
     return {h.lower().rstrip("/") for h in (hosts or []) if isinstance(h, str)}
 
 
+def site_keys(hosts: list[str] | None) -> set[str]:
+    """The sites (registrable domains, public-suffix aware) of web hosts; app: hosts are left out (they match by all_app_hosts)."""
+    from .tools.sites import registrable
+    return {registrable(h.lower()) for h in (hosts or []) if isinstance(h, str) and not h.lower().startswith("app:")} - {""}
+
+
 def matches_rule1(
     existing_row: dict[str, Any],
     *,
@@ -64,6 +70,7 @@ def matches_rule1(
     """Rule 1: an older open request of the same kind matches when ANY of:
     - same name
     - hosts overlap
+    - logins of the same site (registrable domain)
     - both requests' hosts are all app: hosts
     - same task_id (non-null) or same turn_id (non-empty) [skipped on save covering]
     """
@@ -77,6 +84,8 @@ def matches_rule1(
     ex_hosts = json.loads(existing_row.get("hosts") or "[]")
     new_hosts = list(hosts or [])
     if norm_hosts(ex_hosts) & norm_hosts(new_hosts):
+        return True
+    if kind == "login" and site_keys(ex_hosts) & site_keys(new_hosts):   # one site, one login card (owner 2026-11-19)
         return True
     if all_app_hosts(ex_hosts) and all_app_hosts(new_hosts):
         return True

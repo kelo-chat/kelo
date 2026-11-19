@@ -25,6 +25,12 @@
     <string name="call_mic_denied">Arama başlatılamadı: mikrofon izni verilmedi.</string>
     <string name="call_voice_offer">Bu, Kelo\'nun aramalar için doğal sesidir. Ses modelini (%1$s) bir kez Kelo sunucunuza indirin, Kelo bir sonraki cümleden itibaren bu sesle konuşacaktır. İndirmezseniz cihazın robotik sesi kullanılır.</string>
     <string name="call_mark">Arama</string>
+    <plurals name="call_chat_length">
+        <item quantity="one">Arama · %1$d dk</item>
+        <item quantity="other">Arama · %1$d dk</item>
+    </plurals>
+    <string name="call_chat_show">Aramayı göster</string>
+    <string name="call_chat_hide">Aramayı gizle</string>
     <string name="call_voice_offer_title">Kelo\'nun sesi indirilsin mi?</string>
     <string name="call_voice_offer_ok">İndir</string>
     <string name="call_voice_offer_later">Şimdilik cihaz sesini kullan</string>
@@ -32,6 +38,12 @@
     <string name="call_voice_get">İndir</string>
     <string name="call_voice_line_close">Kapat</string>
     <string name="call_ears_failed">Telefonun ses tanıma özelliği sizi duymuyor.</string>
+    <string name="call_voice_device">Kelo\'nun kendi sesi yüklenemedi, bu yüzden bu cihazın sesi konuşuyor.</string>
+    <string name="call_voice_none">Bu cihaz şu anda Kelo\'nun sesini çalamıyor. Yanıt sohbette.</string>
+    <string name="call_minimize">Sohbete dön</string>
+    <string name="call_keyboard">Yaz</string>
+    <string name="call_type_hint">Kelo\'ya bir mesaj yazın</string>
+    <string name="call_type_send">Gönder</string>
     <string name="voice_speech_title">Kelo\'nun sesi</string>
     <string name="voice_speech_download">Ses modelini indir · %1$s</string>
     <string name="voice_speech_downloading">Ses modeli indiriliyor · %1$d%%</string>

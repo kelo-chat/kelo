@@ -79,4 +79,21 @@ class CallLogicTest {
         assertTrue(CallAvailability.of(stt("offered"), micAvailable = true, phoneRecognizer = false))
         assertFalse(CallAvailability.of(stt("ready"), micAvailable = false, phoneRecognizer = true))
     }
+
+    @Test fun `phone retry waits double from one second and stop at eight`() {
+        assertEquals(listOf(0L, 1_000L, 2_000L, 4_000L, 8_000L, 8_000L, 8_000L), listOf(0, 1, 2, 3, 4, 5, 40).map { CallRules.phoneRetryWait(it) })
+    }
+
+    @Test fun `the sound line follows the newest levels and moves a little for a voice without levels`() {
+        val flat = FloatArray(64)
+        val quiet = CallSoundLineRules.points(flat, 0, 32, timeSec = 0.5f, synthetic = false)
+        assertTrue(quiet.all { it == 0f })
+        val loud = FloatArray(64) { 1f }
+        val moving = CallSoundLineRules.points(loud, 64, 32, timeSec = 0.5f, synthetic = false)
+        assertEquals(32, moving.size)
+        assertTrue(moving.any { kotlin.math.abs(it) > 0.3f })
+        assertTrue(moving.all { it in -1f..1f })
+        val device = CallSoundLineRules.points(flat, 0, 32, timeSec = 0.5f, synthetic = true)
+        assertTrue(device.any { it != 0f })
+    }
 }

@@ -28,7 +28,7 @@ open class SpeechModel(
     private var watching = false
 
     fun refresh() {
-        scope.launch { read() }
+        scope.launch { load() }
     }
 
     fun choose() = act { it.speechChoose() }
@@ -49,7 +49,8 @@ open class SpeechModel(
         }
     }
 
-    private suspend fun read() {
+    /** Reads GET /api/voice/speech now (the call awaits it). */
+    open suspend fun load() {
         val client = api() ?: return
         try {
             _view.value = VoiceApi(client).speechView()

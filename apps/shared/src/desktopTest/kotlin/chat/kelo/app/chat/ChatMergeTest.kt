@@ -85,4 +85,44 @@ class ChatMergeTest {
         assertEquals(listOf("u1", "a2"), keys(out))
         assertEquals(listOf("q", "the saved reply"), texts(out))
     }
+
+    private fun loginCard(key: String) = ChatItem.Secret(key, chat.kelo.app.chat.vault.SecretRequest("sr-$key", kind = "login", name = "shop"))
+
+    @Test fun `a reply split by a login card is one bubble after reload (owner report 2026-11-19)`() {
+        // live: text, the login card, text (two id-less bubbles); the server stored one row with the whole reply
+        val shownRows = listOf(shown("u1", true, "q", 1), shown("a2", false, "before the card", null), loginCard("s3"),
+                               shown("a4", false, "after the card", null))
+        val storedRows = listOf(stored(1, true, "q"), stored(2, false, "before the card\n\nafter the card"))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("u1", "s3", "a4"), keys(out))
+        assertEquals(listOf("q", "before the card\n\nafter the card"), texts(out))
+    }
+
+    @Test fun `any rows between the parts of one reply (cards, notices, chips) leave one bubble`() {
+        val shownRows = listOf(shown("u1", true, "q", 1), shown("a2", false, "one", null), ChatItem.Connect("c3", "Mail"),
+                               shown("a4", false, "two", null), ChatItem.Notice("n5", ChatNotice.Retry), tool("t6"),
+                               shown("a7", false, "three", null))
+        val storedRows = listOf(stored(1, true, "q"), stored(2, false, "one\n\ntwo\n\nthree"))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("u1", "c3", "n5", "t6", "a7"), keys(out))
+        assertEquals(listOf("q", "one\n\ntwo\n\nthree"), texts(out))
+    }
+
+    @Test fun `two stored rows around a card keep two bubbles`() {
+        val shownRows = listOf(shown("a2", false, "part one", null), loginCard("s3"), shown("a4", false, "part two", null))
+        val storedRows = listOf(stored(2, false, "part one"), stored(3, false, "part two"))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("a2", "s3", "a4"), keys(out))
+        assertEquals(listOf("part one", "part two"), texts(out))
+    }
+
+    @Test fun `a stored message between two streamed bubbles still ends the reply`() {
+        // a5 has an id (stored, another turn): the bubble before it is not folded into the newest reply
+        val shownRows = listOf(shown("a1", false, "older streamed", null), shown("m5", false, "stored", 5), loginCard("s6"),
+                               shown("a7", false, "newest streamed", null))
+        val storedRows = listOf(stored(5, false, "stored"), stored(6, false, "newest saved"))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("a1", "m5", "s6", "a7"), keys(out))
+        assertEquals(listOf("older streamed", "stored", "newest saved"), texts(out))
+    }
 }

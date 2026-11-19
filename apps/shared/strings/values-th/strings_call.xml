@@ -25,6 +25,11 @@
     <string name="call_mic_denied">ไม่สามารถเริ่มการโทรได้เนื่องจากไม่ได้รับอนุญาตให้ใช้ไมโครโฟน</string>
     <string name="call_voice_offer">นี่คือเสียงที่เป็นธรรมชาติของ Kelo สำหรับการโทร ดาวน์โหลดโมเดลเสียง (%1$s) ไปยังเซิร์ฟเวอร์ Kelo ของคุณเพียงครั้งเดียว แล้ว Kelo จะเริ่มพูดด้วยเสียงนี้จากประโยคถัดไป หากไม่ดาวน์โหลด Kelo จะใช้เสียงหุ่นยนต์ในตัวของอุปกรณ์นี้</string>
     <string name="call_mark">โทร</string>
+    <plurals name="call_chat_length">
+        <item quantity="other">โทร · %1$d นาที</item>
+    </plurals>
+    <string name="call_chat_show">ดูการโทร</string>
+    <string name="call_chat_hide">ซ่อนการโทร</string>
     <string name="call_voice_offer_title">ดาวน์โหลดเสียงของ Kelo หรือไม่</string>
     <string name="call_voice_offer_ok">ดาวน์โหลด</string>
     <string name="call_voice_offer_later">ใช้เสียงอุปกรณ์ไปก่อน</string>
@@ -32,6 +37,12 @@
     <string name="call_voice_get">ดาวน์โหลด</string>
     <string name="call_voice_line_close">ปิด</string>
     <string name="call_ears_failed">การรู้จำเสียงของโทรศัพท์ไม่ได้ยินเสียงของคุณ</string>
+    <string name="call_voice_device">โหลดเสียงของ Kelo ไม่ได้ จึงใช้เสียงของอุปกรณ์นี้พูดแทน</string>
+    <string name="call_voice_none">ตอนนี้อุปกรณ์นี้เล่นเสียงของ Kelo ไม่ได้ คำตอบอยู่ในแชท</string>
+    <string name="call_minimize">กลับไปที่แชท</string>
+    <string name="call_keyboard">พิมพ์</string>
+    <string name="call_type_hint">พิมพ์ข้อความถึง Kelo</string>
+    <string name="call_type_send">ส่ง</string>
     <string name="voice_speech_title">เสียงของ Kelo</string>
     <string name="voice_speech_download">ดาวน์โหลดโมเดลเสียง · %1$s</string>
     <string name="voice_speech_downloading">กำลังดาวน์โหลดโมเดลเสียง · %1$d%%</string>

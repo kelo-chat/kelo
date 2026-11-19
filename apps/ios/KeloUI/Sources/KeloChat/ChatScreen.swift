@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import KeloCore
 import KeloShared
 
@@ -9,6 +10,8 @@ import KeloShared
 public struct ChatScreen: View {
     @Environment(AppModel.self) private var app
     @State private var model: ChatModel?
+    /// The call hooks on this chat: kept while the screen lives (dropping it undid them at once).
+    @State private var callLink: AnyCancellable?
 
     /// Sends a card stored only on this phone for a payment approval (the wallet's end-to-end key; the shell passes it in).
     let cardSender: ChatCardSender?
@@ -28,7 +31,8 @@ public struct ChatScreen: View {
         }
         .onAppear {
             if model == nil { model = ChatModel(app: app, cardSender: cardSender) }
-            if let model { _ = app.calls.attach(chat: model) }
+            // the link is kept: the call hooks (CallOffer, the call's turns, busy changes) live as long as it does (2026-11-19)
+            if let model, callLink == nil { callLink = app.calls.attach(chat: model) }
         }
         .onChange(of: app.historyCleared) { _, _ in model?.forgetHistory() }
     }
@@ -79,7 +83,7 @@ struct ChatPage: View {
         var inRun = false
         for item in rows {
             if let m = item.asMsg {
-                if m.fromCall {
+                if m.fromCall && m.callId == nil {   // a call with an id is one card (CallCardView), not marked bubbles
                     if !inRun {
                         marks.insert(item.key)
                         inRun = true
@@ -92,6 +96,8 @@ struct ChatPage: View {
         return marks
     }
     @State private var markedEntry: String?
+    /// The call cards opened in the chat (by call id)
+    @State private var openCalls: Set<String> = []
     @State private var offersModel = OffersModel()
     /// 소리 내어 읽기: one message speaks at a time; it stops when this screen is left
     @State private var reader = ReadAloud()
@@ -354,6 +360,7 @@ struct ChatPage: View {
                             ForEach(model.rows) { item in
                                 VStack(alignment: .leading, spacing: 6) {
                                     if timed.contains(item.key), let m = item.asMsg { TimeLine(atMs: m.at) }
+                                    else if let card = item.asCall, let first = card.lines.first, timed.contains(first.key) { TimeLine(atMs: first.at) }
                                     if callMarks.contains(item.key) { CallMark() }
                                     row(item)
                                 }
@@ -472,6 +479,7 @@ struct ChatPage: View {
                 .task(id: model.focusRequest) {
                     guard model.focusRequest > 0, let id = model.focusTarget, let key = model.rowKey(forMessage: id) else { return }
                     stick = false
+                    if let callId = model.callId(forMessage: id) { openCalls.insert(callId) }   // a search hit in a call opens its card
                     proxy.scrollTo(key, anchor: .center)
                     // once more on the next turn of the run loop: the rows above it settle their heights first (as for "↓")
                     DispatchQueue.main.async { proxy.scrollTo(key, anchor: .center) }
@@ -481,11 +489,15 @@ struct ChatPage: View {
                     guard let id = app.router.chatFocus else { return }
                     if let key = model.rowKey(forMessage: id) {
                         // not animated: an animated scroll to a row of this lazy list can keep re-aiming (see "↓" above)
+                        if let callId = model.callId(forMessage: id) { openCalls.insert(callId) }
                         proxy.scrollTo(key, anchor: .center)
                         app.router.chatFocus = nil
                     } else if model.loaded {
                         try? await model.reloadNow()
-                        if let key = model.rowKey(forMessage: id) { proxy.scrollTo(key, anchor: .center) }
+                        if let key = model.rowKey(forMessage: id) {
+                            if let callId = model.callId(forMessage: id) { openCalls.insert(callId) }
+                            proxy.scrollTo(key, anchor: .center)
+                        }
                         app.router.chatFocus = nil
                     }
                 }
@@ -518,6 +530,11 @@ struct ChatPage: View {
     private func row(_ item: ChatItem) -> some View {
         let actions = MessageActions.actions(model.items, key: item.key, busy: model.busy)
         switch item {
+        case .call(let card):
+            CallCardView(card: card, open: openCalls.contains(card.callId), agentName: agentName) {
+                Haptics.tick()
+                if openCalls.contains(card.callId) { openCalls.remove(card.callId) } else { openCalls.insert(card.callId) }
+            }
         case .msg(let m):
             if m.mine {
                 let words = ChatWords.attachmentWords()

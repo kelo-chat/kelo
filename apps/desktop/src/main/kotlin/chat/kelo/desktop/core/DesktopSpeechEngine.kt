@@ -37,13 +37,15 @@ class DesktopSpeechEngine private constructor(private val mac: Boolean) : Speech
         }.getOrDefault("")
     }
 
+    override fun speak(text: String, language: String, onDone: () -> Unit) = speakChecked(text, language) { onDone() }
+
     @Synchronized
-    override fun speak(text: String, language: String, onDone: () -> Unit) {
+    override fun speakChecked(text: String, language: String, onDone: (Boolean) -> Unit) {
         stop()
         val mine = ++turn
         Thread {
-            runCatching { if (mac) sayMac(text, language, mine) else sayWindows(text, language, mine) }
-            java.awt.EventQueue.invokeLater { if (mine == turn) onDone() }
+            val ok = runCatching { if (mac) sayMac(text, language, mine) else sayWindows(text, language, mine) }.getOrDefault(false)
+            java.awt.EventQueue.invokeLater { if (mine == turn) onDone(ok) }
         }.apply { isDaemon = true; name = "kelo-read-aloud" }.start()
     }
 

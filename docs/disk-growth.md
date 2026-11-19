@@ -92,14 +92,73 @@ The storage warning and the cleanup screen cover their size.
 | `<state>/browser-history/` (step pictures of unattended runs) | per browser step of a task or schedule | per tab 300 frames / 60 MB, 14 days, purged only when a run wrote | purge also runs on its own now; and the whole folder is capped at 1 GB, whole tabs oldest first, never one written in the last hour |
 | Work room scratch (`workroom-scratch:/work`) | per job | emptied before and after every job; one job 2 GB (`WORKROOM_DISK`) | none |
 | Work room tools (`workroom-tools:/tools`) | packages the owner approved | the owner's choice; counted in the job cap | none (not removed on its own: the owner installed them) |
-| Update backups `/state/.backups` | per update | newest 2 | none |
+| Update backups `/state/.backups` | per update | newest 3, plus the backups of the kept rollback points | none |
 | Memory pass backups `.memory-passes` | per pass | newest 3 | none |
 | `.backup` (older layouts) | once | newest 1 | none |
 | Container logs | per line | 3 x 10 MB | none |
-| Released images, rollback tags | per update | exact-tag removal, newest rollback point kept | none |
+| Released images, rollback tags | per update | newest two rollback sets per copy (rollback.json + earlier); older ones removed by exact tag after every update, good or failed, after a rollback, and before a build when the disk is short; a tag whose image a container uses stays | none |
 | Generated images (`.tryon/`) and chat pictures | per image the agent made | owner removes (cleanup screen, chat clear) | none: they are the owner's results |
 | Uploads, library, trash | the owner's files | uploads: owner only (old ones offered on the cleanup screen); library trash 30 days | none |
 | Recall index | rebuilt in memory (`:memory:`) | not on disk | none |
+
+## Updates and the Docker disk (2026-11-20)
+
+The incident: during an `assistant update` the Docker disk (79 GB) filled up while the images were built. The deploy failed safely, but
+the failed run left its new rollback set and a half-built server image behind, and older rollback sets had piled up (about 10 GB each for
+the main copy).
+
+Two rollback sets per copy. Each copy keeps its newest rollback point (rollback.json) and one earlier point (`earlier` in the same file).
+`assistant rollback` goes to the newest point, as before; `assistant rollback --to <id>` goes to the earlier one; `assistant backups`
+lists both with the exact command for each. The backups of both points are kept, whatever the newest-3 rule says. The in-app rollback
+still uses the newest point.
+
+What a cleanup removes, and what it never removes: only a copy's own rollback tags, named exactly
+`<repo>:rollback-<copy>-<YYYYmmdd-HHMMSS>` (another copy whose name starts the same way is never touched), and only the tags that are in
+none of its kept points and are not its hold. They go by exact tag, never forced: Docker itself refuses to remove an image that a container
+(running or stopped) still uses, and such a tag simply stays. Kelo's dangling images go only when labelled `chat.kelo.image`. The cleanup
+never runs `image prune -a`, never removes the owner's other images, and never touches the shared `:local` tags.
+
+When it runs: after a good update (every copy), after an update that stopped before changing anything, after a failed build, after a
+failed health check, after `assistant rollback`, and in the disk check before a build. A run that fails before the restart puts every
+copy's rollback.json back as it was and removes the tags it made, so it leaves nothing behind. A failed health check keeps the point the
+copy is held at.
+
+The disk check. One Docker disk holds every copy's data volume and all the images, so before anything is tagged or backed up the update
+needs the SUM of the copies' states plus what the build writes, or plus 0.5 GiB for release images that are pulled. What the build
+writes is the larger of: the current size of each image this run rebuilds (the worst case: a changed base image or Dockerfile line
+makes Docker rebuild every later layer; an image not built yet counts as big as the largest), and the most the last 5 builds of the same
+images were measured to use (`instances/build-peak.json`; during a build the free space is read every 15 seconds from the running
+server, and a failed build is measured too). 2 GiB more on top for build contexts and downloads inside a step. A CLI-only update counts
+only that CLI image. On 2026-11-20 a fixed 8 GiB let a build start with 13 GB free; the build then used ~16 GB. When the free space is
+short, old rollback sets and Kelo's dangling images go first, and the owner is told how much was freed. When it is still short, the update
+stops before changing anything; the message names the images to build, their size, the last measured use, and what Docker reports
+(`docker system df`: images and build cache, with what is reclaimable).
+
+Claude and agy images. A normal update builds them with Docker's cache: their layers are rebuilt when cli.Dockerfile, the Python
+dependencies, the server sources or the pinned agy installer change. The CLI itself stays current from the app (the in-app update
+installs a newer one into the sidecar's volume, and the owner is told when a newer CLI has been out for 3 days), as on copies that run
+release images. `assistant update --cli claude` (or `--cli agy`) rebuilds that image from scratch with `--pull --no-cache`. Until
+2026-11-20 every update did that for both, which was ~11 GB of the build's peak, and `--pull` also moved the base images the server and
+work room start from, so they missed the cache too.
+
+A failed build's containers. Without the buildx plugin, Compose falls back to Docker's classic builder, which runs each Dockerfile step
+in a container and leaves them all when a step fails (8 containers, ~3 GB on 2026-11-20). After a failed build the update removes the
+containers that appeared during that build, are stopped (created or exited), carry the `chat.kelo.image` label and belong to no
+Compose project; by id, never forced, and before the dangling-image cleanup (those containers hold the half-built layers). Nothing else:
+never a running container, never one that existed before the build, never one of a copy. With buildx installed, Docker builds with
+BuildKit, which makes no such containers; superseded layers then sit in the build cache instead (see Build cache below).
+
+Build context. The build context leaves out `apps/` (.dockerignore): no image uses the app sources, and the classic builder unpacks the
+whole context on the Docker disk for each build (1.6 GB each, two at the same moment for the CLI images, before this change).
+
+The cleanup never fails an update. An error in it prints one line and the update keeps the result it had. Each cleanup logs which rollback
+sets went (by their time stamps) and the Docker disk's free space before and after.
+
+Build cache: never pruned automatically. The reasons: the build cache is shared with every other build on the same Docker, and Kelo cannot
+limit its own part of it (cache records carry no project label); the owner's standing rule is no builder or system prune on the Linux host;
+it only costs rebuild time, so it is the owner's choice; most self-hosted copies install from release images and never build, so they grow
+no cache; and Docker's builder has its own garbage collection setting. Instead, the "not enough free disk" message shows the build cache
+size and names `docker builder prune`.
 
 ## Decisions
 

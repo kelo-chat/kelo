@@ -41,6 +41,17 @@ SEED_FAILED_NOTE = ("[Kelo's browser could not load the owner's saved sign-in fo
                     "changes made here may not be kept.]")
 
 
+def seed_signed_out_note(site: str, found: int, login: str) -> str:
+    """What a job's tab is told on its first reading of `site` when the sign-in copy found no sign-in for it in the owner's browser:
+    nothing at all (`found` 0), or cookies but no record of a sign-in there. `login`: a saved login for the site ("" = none)."""
+    why = (f"the owner's browser holds nothing for {site}" if not found else
+           f"{found} cookies were copied from the owner's browser, but there is no record of a sign-in to {site} there")
+    how = (f"sign in with the saved login: click the site's own sign-in link or button, or call browser_login(name={login!r}, "
+           "via=<the ref of that link>)" if login else
+           "no login is saved for it: ask the owner for one (request_login), or as your instructions say for a missing sign-in")
+    return f"[Not signed in to {site}: {why}. If this task needs an account on {site}, {how}. Do not guess sign-in addresses.]"
+
+
 @dataclass(slots=True)
 class WorkTab:
     context: Any
@@ -49,6 +60,8 @@ class WorkTab:
     seeded_storage: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)  # site -> origin -> {key: value} as copied in
     touched: set[str] = field(default_factory=set)   # registrable domains the tab went to (the write-back looks at them)
     signed_out: bool = False                         # research jobs: nothing is copied in, nothing is written back
+    owner_had: dict[str, int] = field(default_factory=dict)   # site -> cookies the owner's browser held for it at the first copy (S3)
+    told: set[str] = field(default_factory=set)               # sites whose "not signed in" note this tab was given (S3)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)   # one seed at a time: a second request waits for the first's cookies
 
 

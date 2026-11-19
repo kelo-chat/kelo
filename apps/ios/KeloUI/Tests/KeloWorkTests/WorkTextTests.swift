@@ -102,4 +102,16 @@ import KeloTestSupport
         #expect(BrowserImage.decode(nil) == nil)
         #expect(BrowserImage.decode("not base64!!") == nil)
     }
+
+    @MainActor @Test func aJobWaitingForTheOwnerShowsWaitingNotIdle() {
+        #expect(WorkText.tabState("waiting") == .waiting)
+        #expect(WorkText.tabState("working") == .working)
+        #expect(WorkText.tabState("failed") == .failed)
+        #expect(WorkText.tabState("idle") == .idle)
+        #expect(WorkText.tabState("something_newer") == .idle)
+        #expect(WorkText.tabState(nil) == .idle)
+        #expect(WorkText.tabState("waiting", busy: true) == .working)
+        withLanguage("en") { #expect(WorkText.tabWord(.waiting) == "Waiting for you") }
+        withLanguage("ko") { #expect(WorkText.tabWord(.waiting) == "기다리는 중") }
+    }
 }

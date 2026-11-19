@@ -39,3 +39,7 @@ android
 ios
 desktop
 server/web/node_modules
+
+# the app sources (Android, iPhone, desktop, shared Kotlin): no image copies them, and Docker's classic builder unpacks the whole
+# context on the Docker disk for every build (1.6 GB per build on 2026-11-20)
+apps

@@ -7,6 +7,12 @@ import KeloShared
 
 /// The platform audio operations for an in-app call (brief §4.7, §6.3).
 public protocol CallAudio: AnyObject, Sendable {
+    /// Whether the microphone permission is granted; a call that starts without it asks for it (requestMic).
+    var micGranted: Bool { get }
+
+    /// Asks for the microphone permission; the answer comes once, on any thread.
+    func requestMic(_ done: @escaping @Sendable (Bool) -> Void)
+
     /// True when the platform cancels Kelo's voice from the microphone (allows barge-in).
     var echoCancel: Bool { get }
 
@@ -39,7 +45,27 @@ public protocol CallAudio: AnyObject, Sendable {
 }
 
 /// The iPhone's audio pipeline for call mode (brief §6.3).
+/// Defaults: a platform without the question (and test fakes) has the permission.
+public extension CallAudio {
+    var micGranted: Bool { true }
+    func requestMic(_ done: @escaping @Sendable (Bool) -> Void) { done(true) }
+}
+
 public final class IOSCallAudio: CallAudio, @unchecked Sendable {
+#if os(iOS)
+    public var micGranted: Bool {
+        AVAudioSession.sharedInstance().recordPermission == .granted
+    }
+
+    public func requestMic(_ done: @escaping @Sendable (Bool) -> Void) {
+        AVAudioSession.sharedInstance().requestRecordPermission { granted in done(granted) }
+    }
+#else
+    public var micGranted: Bool { true }
+
+    public func requestMic(_ done: @escaping @Sendable (Bool) -> Void) { done(true) }
+#endif
+
     public let echoCancel: Bool = true
     public let hasSpeakerSwitch: Bool = true
 

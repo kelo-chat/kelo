@@ -60,6 +60,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,7 +80,6 @@ import chat.kelo.app.ui.text.string
 import chat.kelo.app.ui.theme.Kelo
 import chat.kelo.app.ui.theme.LocalReduceMotion
 import chat.kelo.app.update.UpdateRules
-import chat.kelo.app.voice.Waveform
 
 /**
  * A round call control button with its label underneath.
@@ -318,29 +318,66 @@ fun InCallScreen(
     photo: ImageBitmap? = null,
     audio: CallAudio? = null,
     onOpenCard: (() -> Unit)? = null,
+    onMinimize: () -> Unit = {},
+    typing: Boolean? = null,
+    onTyping: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val c = Kelo.colors
     val ui by session.ui.collectAsStateWithLifecycle()
+    val lines by session.lines.collectAsStateWithLifecycle()
     val mood = CallRules.mood(ui.phase)
+    var typingLocal by remember { mutableStateOf(false) }
+    val isTyping = typing ?: typingLocal
+    val setTyping: (Boolean) -> Unit = { on -> typingLocal = on; onTyping(on) }
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .systemBarsPadding()
-            .padding(horizontal = 24.dp)
             .testTag("call.active"),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.weight(1f))
+        // Back minimises to the pill over the chat; the speaker switch sits in this top bar
+        Row(
+            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onMinimize, modifier = Modifier.testTag("call.minimize")) {
+                Icon(KeloIcons.ChevronLeft, contentDescription = string(Res.string.call_minimize), tint = c.ink)
+            }
+            Text(
+                agentName,
+                style = MaterialTheme.typography.titleMedium,
+                color = c.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
+            )
+            if (audio?.hasSpeakerSwitch == true) {
+                IconButton(
+                    onClick = { session.setSpeaker(!ui.speakerOn) },
+                    modifier = Modifier.testTag("call.speaker").semantics { selected = ui.speakerOn },
+                ) {
+                    Icon(
+                        KeloIcons.Speaker,
+                        contentDescription = string(Res.string.call_speaker),
+                        tint = if (ui.speakerOn) c.ink else c.muted,
+                    )
+                }
+            } else {
+                Spacer(Modifier.size(48.dp))
+            }
+        }
 
-        // Avatar (136.dp, mood = CallRules.mood(phase))
+        Spacer(Modifier.height(8.dp))
+        // Mascot (128.dp, mood = CallRules.mood(phase)); while Kelo speaks its ring grows with the voice; a tap stops it
         val isSpeaking = ui.phase == CallSteps.Phase.SPEAKING
         val ringWidth = if (isSpeaking) (2f + 6f * session.trail.newest.coerceIn(0f, 1f)).dp else 0.dp
-
         Box(
             modifier = Modifier
-                .size(136.dp)
+                .size(128.dp)
                 .shadow(6.dp, CircleShape, ambientColor = c.scrim, spotColor = c.scrim)
                 .clip(CircleShape)
                 .background(c.card)
@@ -349,29 +386,28 @@ fun InCallScreen(
             contentAlignment = Alignment.Center,
         ) {
             if (photo != null) {
-                AgentPicture(agentName, photo, 136)
+                AgentPicture(agentName, photo, 128)
             } else {
                 KeloCharacter(
                     mood,
-                    Modifier.size((136 * 0.92f).dp).offset(
-                        x = (136 * 0.92f * mood.centerShift() / 120f).dp,
+                    Modifier.size((128 * 0.92f).dp).offset(
+                        x = (128 * 0.92f * mood.centerShift() / 120f).dp,
                         y = 3.dp,
                     ),
                 )
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
-            agentName,
-            style = MaterialTheme.typography.headlineSmall,
+            CallRules.clock(ui.elapsedMs),
+            style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
             color = c.ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.testTag("call.clock"),
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(2.dp))
 
-        // Status text line
+        // Status word
         val stateText = when {
             ui.muted -> string(Res.string.call_muted)
             ui.phase == CallSteps.Phase.CONNECTING -> string(Res.string.call_connecting)
@@ -383,103 +419,112 @@ fun InCallScreen(
         }
         Text(
             stateText,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.labelMedium,
             color = c.muted,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            modifier = Modifier.testTag("call.state").semantics { liveRegion = LiveRegionMode.Polite },
         )
 
-        Spacer(Modifier.height(2.dp))
-        Text(
-            CallRules.clock(ui.elapsedMs),
-            style = MaterialTheme.typography.bodySmall,
-            color = c.muted,
-        )
+        Spacer(Modifier.height(12.dp))
+        CallSoundLine(session.trail, ui.phase, Modifier.fillMaxWidth().height(48.dp).padding(horizontal = 16.dp).testTag("call.sound"))
 
-        Spacer(Modifier.height(20.dp))
-        // Waveform
-        val waveActive = ui.phase == CallSteps.Phase.LISTENING || ui.phase == CallSteps.Phase.HEARING || ui.phase == CallSteps.Phase.SPEAKING
-        Waveform(
-            trail = session.trail,
-            active = waveActive,
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .fillMaxWidth()
-                .height(40.dp),
-        )
-
-        if (ui.offline) {
-            Spacer(Modifier.height(12.dp))
-            Text(
-                string(Res.string.call_offline),
-                style = MaterialTheme.typography.bodySmall,
-                color = c.dangerInk,
-                textAlign = TextAlign.Center,
-            )
-        }
-
-        if (ui.voiceLine) {
-            Spacer(Modifier.height(12.dp))
-            val downloadingPercent = ui.voiceDownloadPercent
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(c.neutralSoft)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val voiceText = if (downloadingPercent != null) {
-                    string(Res.string.voice_speech_downloading, downloadingPercent)
-                } else {
-                    string(Res.string.call_voice_better)
-                }
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            if (ui.offline) {
+                Spacer(Modifier.height(8.dp))
                 Text(
-                    voiceText,
+                    string(Res.string.call_offline),
                     style = MaterialTheme.typography.bodySmall,
-                    color = c.ink,
+                    color = c.dangerInk,
+                    textAlign = TextAlign.Center,
                 )
-                if (downloadingPercent == null) {
-                    TextButton(onClick = { session.getBetterVoice() }) {
-                        Text(string(Res.string.call_voice_get), color = c.accent, style = MaterialTheme.typography.labelMedium)
+            }
+            if (ui.earsTrouble) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    string(Res.string.call_ears_failed), style = MaterialTheme.typography.bodySmall, color = c.muted,
+                    textAlign = TextAlign.Center, modifier = Modifier.testTag("call.earsTrouble"),
+                )
+            }
+            ui.voiceTrouble?.let { trouble ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    string(if (trouble == CallVoiceTrouble.NO_VOICE) Res.string.call_voice_none else Res.string.call_voice_device),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (trouble == CallVoiceTrouble.NO_VOICE) c.dangerInk else c.muted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.testTag("call.voiceTrouble"),
+                )
+            }
+            if (ui.voiceLine) {
+                    Spacer(Modifier.height(8.dp))
+                val downloadingPercent = ui.voiceDownloadPercent
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(c.neutralSoft)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val voiceText = if (downloadingPercent != null) {
+                        string(Res.string.voice_speech_downloading, downloadingPercent)
+                    } else {
+                        string(Res.string.call_voice_better)
+                    }
+                    Text(
+                        voiceText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.ink,
+                    )
+                    if (downloadingPercent == null) {
+                        TextButton(onClick = { session.getBetterVoice() }) {
+                            Text(string(Res.string.call_voice_get), color = c.accent, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                    IconButton(
+                        onClick = { session.dismissVoiceLine() },
+                        modifier = Modifier.size(24.dp),
+                    ) {
+                        Icon(
+                            KeloIcons.Close,
+                            contentDescription = string(Res.string.call_voice_line_close),
+                            tint = c.muted,
+                            modifier = Modifier.size(16.dp),
+                        )
                     }
                 }
-                IconButton(
-                    onClick = { session.dismissVoiceLine() },
-                    modifier = Modifier.size(24.dp),
+            }
+
+                if (ui.cardWaiting) {
+                    Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(99.dp))
+                        .background(c.infoSoft)
+                        .padding(start = 14.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        KeloIcons.Close,
-                        contentDescription = string(Res.string.call_voice_line_close),
-                        tint = c.muted,
-                        modifier = Modifier.size(16.dp),
+                    Text(
+                        string(Res.string.call_card_waiting),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.infoInk,
                     )
+                    TextButton(onClick = { onOpenCard?.invoke() }) {
+                        Text(string(Res.string.call_card_open), color = c.infoInk, style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }
 
-        if (ui.cardWaiting) {
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(99.dp))
-                    .background(c.infoSoft)
-                    .padding(start = 14.dp, end = 6.dp, top = 2.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    string(Res.string.call_card_waiting),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.infoInk,
-                )
-                TextButton(onClick = { onOpenCard?.invoke() }) {
-                    Text(string(Res.string.call_card_open), color = c.infoInk, style = MaterialTheme.typography.labelMedium)
-                }
-            }
+        CallTranscript(lines, agentName, photo, Modifier.weight(1f).fillMaxWidth().testTag("call.transcript"))
+        if (isTyping) {
+            CallTypeBar(onSend = { session.sendTyped(it) }, modifier = Modifier.testTag("call.typeBar"))
         }
 
-        Spacer(Modifier.weight(1f))
-
+        Spacer(Modifier.height(12.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
@@ -495,18 +540,6 @@ fun InCallScreen(
                 checked = ui.muted,
                 onClick = { session.setMuted(!ui.muted) },
             )
-            if (audio?.hasSpeakerSwitch == true) {
-                CallControl(
-                    icon = KeloIcons.Speaker,
-                    size = 60.dp,
-                    bg = if (ui.speakerOn) c.ink else c.neutralSoft,
-                    tint = if (ui.speakerOn) c.bg else c.ink,
-                    label = string(Res.string.call_speaker),
-                    tag = "call.speaker",
-                    checked = ui.speakerOn,
-                    onClick = { session.setSpeaker(!ui.speakerOn) },
-                )
-            }
             CallControl(
                 icon = KeloIcons.HandsetDown,
                 size = 72.dp,
@@ -516,9 +549,19 @@ fun InCallScreen(
                 tag = "call.hangup",
                 onClick = { session.hangUp() },
             )
+            CallControl(
+                icon = KeloIcons.Keyboard,
+                size = 60.dp,
+                bg = if (isTyping) c.ink else c.neutralSoft,
+                tint = if (isTyping) c.bg else c.ink,
+                label = string(Res.string.call_keyboard),
+                tag = "call.keyboard",
+                checked = isTyping,
+                onClick = { setTyping(!isTyping) },
+            )
         }
 
-        Spacer(Modifier.height(40.dp))
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -532,6 +575,7 @@ fun CallOverlay(
     photo: ImageBitmap? = null,
     audio: CallAudio? = null,
     onOpenCard: (() -> Unit)? = null,
+    onNeedMicrophone: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val c = Kelo.colors
@@ -540,6 +584,12 @@ fun CallOverlay(
 
     val currentSession = session ?: return
     val ui by currentSession.ui.collectAsStateWithLifecycle()
+    // the call needs the microphone permission: the platform asks for it (a refusal ends the call with its reason)
+    LaunchedEffect(ui.need, ui.phase) {
+        if (ui.phase == CallSteps.Phase.PREPARING && ui.need == CallReadiness.Need.MIC_PERMISSION) onNeedMicrophone?.invoke()
+    }
+    // the words box is open: M and Space go to the field, not to the call's keys
+    var typing by remember { mutableStateOf(false) }
 
     // Handle session end auto-cleanup
     LaunchedEffect(ui.phase, ui.endedReason) {
@@ -612,14 +662,16 @@ fun CallOverlay(
                         } else false
                     }
                     Key.Spacebar -> {
-                        if (ui.phase == CallSteps.Phase.SPEAKING) {
+                        if (!typing && ui.phase == CallSteps.Phase.SPEAKING) {
                             currentSession.stopVoice()
                             true
                         } else false
                     }
                     Key.M -> {
-                        currentSession.setMuted(!ui.muted)
-                        true
+                        if (typing) false else {
+                            currentSession.setMuted(!ui.muted)
+                            true
+                        }
                     }
                     else -> false
                 }
@@ -648,6 +700,9 @@ fun CallOverlay(
                         center.minimized(true)
                         onOpenCard?.invoke()
                     },
+                    onMinimize = { center.minimized(true) },
+                    typing = typing,
+                    onTyping = { typing = it },
                 )
             }
         }

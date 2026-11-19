@@ -25,6 +25,13 @@
     <string name="call_mic_denied">Impossible de démarrer l\'appel : le microphone n\'est pas autorisé.</string>
     <string name="call_voice_offer">C\'est la voix naturelle de Kelo pour les appels. Téléchargez le modèle vocal (%1$s) sur votre serveur Kelo, et Kelo l\'utilisera dès la phrase suivante. Sans cela, Kelo utilise la voix robotique de cet appareil.</string>
     <string name="call_mark">Appel</string>
+    <plurals name="call_chat_length">
+        <item quantity="one">Appel · %1$d min</item>
+        <item quantity="many">Appel · %1$d min</item>
+        <item quantity="other">Appel · %1$d min</item>
+    </plurals>
+    <string name="call_chat_show">Afficher l\'appel</string>
+    <string name="call_chat_hide">Masquer l\'appel</string>
     <string name="call_voice_offer_title">Télécharger la voix de Kelo ?</string>
     <string name="call_voice_offer_ok">Télécharger</string>
     <string name="call_voice_offer_later">Utiliser la voix de l\'appareil</string>
@@ -32,6 +39,12 @@
     <string name="call_voice_get">Télécharger</string>
     <string name="call_voice_line_close">Fermer</string>
     <string name="call_ears_failed">La reconnaissance vocale du téléphone ne vous entend pas.</string>
+    <string name="call_voice_device">La voix de Kelo n\'a pas pu être chargée : c\'est la voix de cet appareil qui parle.</string>
+    <string name="call_voice_none">Cet appareil ne peut pas lire la voix de Kelo pour le moment. La réponse est dans le chat.</string>
+    <string name="call_minimize">Retour au chat</string>
+    <string name="call_keyboard">Écrire</string>
+    <string name="call_type_hint">Écrivez un message à Kelo</string>
+    <string name="call_type_send">Envoyer</string>
     <string name="voice_speech_title">Voix de Kelo</string>
     <string name="voice_speech_download">Télécharger le modèle vocal · %1$s</string>
     <string name="voice_speech_downloading">Téléchargement du modèle vocal · %1$d%%</string>

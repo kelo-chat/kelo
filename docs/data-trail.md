@@ -98,6 +98,39 @@ attribute). Reading such a file (`read_file`) carries them on: an `outside` labe
 label for it), a private label is noted again with its kind, party and title. A filesystem that cannot hold the attribute fails
 closed: the run is marked broken and its outgoing calls ask.
 
+## Own data and given files (2026-11-20)
+The owner's own data is not outside text (decision A). Calendar results say which words are whose: `gcal_events` marks the title and
+place of an event others wrote, and returns the owner's own events as the app's words (`Ours`); the same for `gcal_calendars` (a
+calendar the owner does not own), `phone_calendar_events` (only events the app marks `own: true`, which no released app sends yet) and
+`calendar_events` (an own row is plain; a pair listed once is own only when every copy is). A tool returns `marked` text when some of
+it is others' data; the loop fences only the marked parts and `all_inside` (fence.py) reads every fence of a result. Outside labels
+carry the kind of their text (`label_outside(source=...)`: page, email, calendar ...), which the card names.
+
+A file the owner attached to their own chat message is given (`label_given`, kind "given"): `read_file` of such an upload is fenced for
+the model but is not outside text, so no latch is set. A target written only in it is derived from it (a mail to an address that only
+the attached file names asks); copying its text into a calendar step does not (the owner gave the file for that). The check is the
+owner's message row (`chat_attachments.owner_attached`, author owner); a forwarded or Kelo-written attachment stays outside text.
+
+Calendar changes (B). The owner's main calendar is one place ("calendar"), another calendar is "calendar:<id>", an event is
+"event:<id>" (effects.py); a calendar target never has a text form, so only the rule above decides: an add whose text others wrote asks
+(what is written into the owner's own calendar is later read as their own data, so `OWN_STORES` asks even into an own place); an update or
+delete asks only after text others wrote was read in the run. A calendar change the owner asked for in their chat message runs at once
+(`connect_tools.owner_request`: an owner message or an app request, not unattended, the injection watch not flagged); the outside rule
+still forces a card where it asks. A grant for "calendar" covers every calendar and event (schedule_grants._target_ok).
+
+The card's words (D): "Before this step Kelo read {sources} written by others, and you did not name {target}." when the target has a text
+form; "... Check that this change is the one you asked for." for a calendar or an event; the sources are the kinds of the outside text the
+run read (at most three); the raw word "calendar" is never a target on a card.
+
+Several changes of one step (C). Calendar change tools set `shares_card`. When the calls of one step need a card, the loop checks the later
+calls of that step as well and asks once for all of them (`approve_many`: one approval id, the list of changes in `lines` and `steps`,
+`items` when they do not fit); one answer runs or declines every one. Released apps show the card as before (they read `lines`,
+ignore `steps`). Per-change choice on the card is not built yet.
+
+A lead-in followed by its work is no promise (E). `ReplyText.order` keeps the reply in order (said before each step, the step's line).
+The promise judge is shown that timeline (`in_order`) and a quote that is a lead-in followed by a step that did not fail is dropped
+(`lead_in_done`). No check runs while a card of the reply is still open (`promise_check_needed`).
+
 ## Bound recipients
 Owner decision (board card "bind task permission to the exact recipients", 2026-11-16). Logic taken over from the studied reference
 agent (recipients evidence, preapproval `recipients_and_thread` + the frozen prepared send): an allowance is per recipient, a send is

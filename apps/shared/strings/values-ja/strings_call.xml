@@ -25,6 +25,11 @@
     <string name="call_mic_denied">マイクの使用が許可されていないため通話を開始できませんでした。</string>
     <string name="call_voice_offer">通話で使用するKeloの自然な声です。Keloサーバーに音声モデル（%1$s）を一度ダウンロードすると、次の文からこの声で話します。ダウンロードしない場合は、この端末の内蔵音声で話します。</string>
     <string name="call_mark">通話</string>
+    <plurals name="call_chat_length">
+        <item quantity="other">通話 · %1$d分</item>
+    </plurals>
+    <string name="call_chat_show">通話を表示</string>
+    <string name="call_chat_hide">通話を閉じる</string>
     <string name="call_voice_offer_title">Keloの音声モデルをダウンロードしますか？</string>
     <string name="call_voice_offer_ok">ダウンロード</string>
     <string name="call_voice_offer_later">端末の音声を使用</string>
@@ -32,6 +37,12 @@
     <string name="call_voice_get">ダウンロード</string>
     <string name="call_voice_line_close">閉じる</string>
     <string name="call_ears_failed">スマートフォンの音声認識が声を認識できていません。</string>
+    <string name="call_voice_device">Keloの声を読み込めなかったため、この端末の音声で話しています。</string>
+    <string name="call_voice_none">今はこの端末でKeloの声を再生できません。返事はチャットで見られます。</string>
+    <string name="call_minimize">チャットに戻る</string>
+    <string name="call_keyboard">入力</string>
+    <string name="call_type_hint">Keloへのメッセージを入力</string>
+    <string name="call_type_send">送信</string>
     <string name="voice_speech_title">Keloの声</string>
     <string name="voice_speech_download">音声モデルをダウンロード · %1$s</string>
     <string name="voice_speech_downloading">音声モデルをダウンロード中 · %1$d%%</string>

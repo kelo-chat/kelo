@@ -17,7 +17,7 @@ public final class SpeechModel {
     }
 
     public func refresh() {
-        Task { await read() }
+        Task { await load() }
     }
 
     public func choose() { act { try await VoiceAPI.speechChoose($0) } }
@@ -42,7 +42,8 @@ public final class SpeechModel {
         }
     }
 
-    private func read() async {
+    /// Reads GET /api/voice/speech now (a call awaits this before it chooses its voice).
+    public func load() async {
         guard let client = api() else { return }
         do {
             self.view = try await VoiceAPI.speechView(client)

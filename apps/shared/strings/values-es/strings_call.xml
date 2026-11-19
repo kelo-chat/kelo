@@ -25,6 +25,13 @@
     <string name="call_mic_denied">No se pudo iniciar la llamada: el micrófono no está permitido.</string>
     <string name="call_voice_offer">Esta es la voz natural de Kelo para llamadas. Descarga el modelo de voz (%1$s) en tu servidor Kelo y Kelo hablará con él a partir de la siguiente frase. Si no lo descargas, Kelo usará la voz robótica de este dispositivo.</string>
     <string name="call_mark">Llamada</string>
+    <plurals name="call_chat_length">
+        <item quantity="one">Llamada · %1$d min</item>
+        <item quantity="many">Llamada · %1$d min</item>
+        <item quantity="other">Llamada · %1$d min</item>
+    </plurals>
+    <string name="call_chat_show">Mostrar la llamada</string>
+    <string name="call_chat_hide">Ocultar la llamada</string>
     <string name="call_voice_offer_title">¿Descargar la voz de Kelo?</string>
     <string name="call_voice_offer_ok">Descargar</string>
     <string name="call_voice_offer_later">Usar la voz del dispositivo</string>
@@ -32,6 +39,12 @@
     <string name="call_voice_get">Descargar</string>
     <string name="call_voice_line_close">Cerrar</string>
     <string name="call_ears_failed">El reconocimiento de voz del teléfono no te escucha.</string>
+    <string name="call_voice_device">No se pudo cargar la voz propia de Kelo, así que habla la voz de este dispositivo.</string>
+    <string name="call_voice_none">Este dispositivo no puede reproducir la voz de Kelo ahora. La respuesta está en el chat.</string>
+    <string name="call_minimize">Volver al chat</string>
+    <string name="call_keyboard">Escribir</string>
+    <string name="call_type_hint">Escribe un mensaje para Kelo</string>
+    <string name="call_type_send">Enviar</string>
     <string name="voice_speech_title">Voz de Kelo</string>
     <string name="voice_speech_download">Descargar modelo de voz · %1$s</string>
     <string name="voice_speech_downloading">Descargando modelo de voz · %1$d%%</string>

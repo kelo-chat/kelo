@@ -27,9 +27,11 @@ class CallCenter(
     private val speech: SpeechModel,
     private val audio: () -> CallAudio?,
     private val phoneListener: () -> PhoneListener?,
+    /** Makes the device voice for ONE call (called once per call). */
     private val device: () -> SpeechEngine?,
     private val appLang: () -> String,
     private val clock: () -> Long = { System.currentTimeMillis() },
+    /** The call's log lines (stages and timings, never the owner's words or Kelo's reply). */
     private val log: (String) -> Unit = {},
     private val hasMic: () -> Boolean = { true },
 ) {
@@ -47,6 +49,7 @@ class CallCenter(
 
     fun attach(chat: CallChat): AutoCloseable {
         activeChat = chat
+        stt.refresh(); speech.refresh()   // the call button and the next call read the server's voice models
         val job = scope.launch {
             chat.turnEvents.collect { ev ->
                 if (ev is TurnEvent.CallOffer) {
@@ -73,8 +76,9 @@ class CallCenter(
         if (_session.value != null && _session.value?.ui?.value?.phase != CallSteps.Phase.ENDED) {
             return // Ignore second ring while a call is active
         }
-        val audioInstance = audio() ?: return
+        val audioInstance = audio() ?: run { log("ring: no audio on this device"); return }
         val listener = phoneListener()
+        val engine = device()
         _isMinimized.value = false
 
         val sess = CallSession(
@@ -88,7 +92,7 @@ class CallCenter(
             stt = stt,
             speech = speech,
             phoneListener = listener,
-            device = device,
+            device = engine,
             appLang = appLang,
             clock = clock,
             log = log,
@@ -98,7 +102,7 @@ class CallCenter(
 
     fun minimized(on: Boolean) {
         _isMinimized.value = on
-        _session.value?.setMuted(on)
+        if (CallRules.MUTE_WHEN_MINIMIZED) _session.value?.setMuted(on)
     }
 
     fun clear() {

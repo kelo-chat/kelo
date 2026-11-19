@@ -9,6 +9,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -32,6 +33,7 @@ import chat.kelo.app.ui.icons.KeloIcons
 import chat.kelo.app.ui.theme.Kelo
 import chat.kelo.app.ui.theme.LocalReduceMotion
 import chat.kelo.app.voice.VoiceModel
+import chat.kelo.app.voice.VoiceView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,6 +48,7 @@ import org.junit.Before
 import java.lang.reflect.Proxy
 import javax.crypto.KeyGenerator
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class, ExperimentalCoroutinesApi::class)
@@ -168,9 +171,12 @@ class CallScreensTest {
     }
 
     private class FakeCallChat : CallChat {
-        override fun sendFromCall(text: String, callId: String): Boolean = true
-        override fun followFromCall(turnId: String) {}
+        val sent = mutableListOf<String>()
+        override fun sendFromCall(text: String, callId: String, amend: Boolean): Boolean { sent += text; return true }
+        override fun takeBackFromCall(callId: String): Boolean = false
+        override fun followFromCall(turnId: String, callId: String): Boolean = true
         override val turnEvents = MutableSharedFlow<TurnEvent>(extraBufferCapacity = 16)
+        override val callTurnEvents = MutableSharedFlow<CallTurnEvent>(extraBufferCapacity = 16)
         override val busy: StateFlow<Boolean> = MutableStateFlow(false)
     }
 
@@ -201,7 +207,7 @@ class CallScreensTest {
             stt = VoiceModel({ null }, scope, { "de" }, null),
             speech = SpeechModel({ null }, scope, null),
             phoneListener = null,
-            device = { null },
+            device = null,
             appLang = { "de" },
             clock = { 1000L },
             log = {},
@@ -243,7 +249,7 @@ class CallScreensTest {
             stt = VoiceModel({ null }, scope, { "ko" }, null),
             speech = SpeechModel({ null }, scope, null),
             phoneListener = null,
-            device = { null },
+            device = null,
             appLang = { "ko" },
             clock = { 1000L },
             log = {},
@@ -269,5 +275,82 @@ class CallScreensTest {
         onNodeWithTag("call.active").assertIsDisplayed()
         onNodeWithTag("call.hangup").assertIsDisplayed()
         onNodeWithTag("call.mute").assertIsDisplayed()
+    }
+
+    @Test
+    fun testInCallScreenSaysWhenNoVoiceCanPlay() = runComposeUiTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher())
+        val chat = FakeCallChat()
+        val session = CallSession(
+            callId = "c1", topic = "", fromAgent = false, scope = scope, chat = chat, api = { null }, audio = FakeCallAudio(),
+            stt = VoiceModel({ null }, scope, { "ko" }, VoiceView(state = "ready", runtime = "ready")),
+            speech = SpeechModel({ null }, scope, null), phoneListener = null, device = null, appLang = { "ko" }, clock = { 1000L }, log = {},
+        )
+        session.accept()
+        chat.callTurnEvents.tryEmit(CallTurnEvent("c1", TurnEvent.Text("안녕하세요.")))
+        chat.callTurnEvents.tryEmit(CallTurnEvent("c1", TurnEvent.Done(1, 1, 1)))
+        val services = fakeAppServices()
+        val lifecycleOwner = fakeLifecycleOwner()
+        setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides lifecycleOwner, LocalAppServices provides services, LocalReduceMotion provides true) {
+                Box(Modifier.width(412.dp)) { InCallScreen(session = session, agentName = "Kelo") }
+            }
+        }
+        onNodeWithTag("call.voiceTrouble").assertIsDisplayed()
+    }
+
+    private fun listeningSession(chat: FakeCallChat = FakeCallChat()): CallSession {
+        val scope = CoroutineScope(UnconfinedTestDispatcher())
+        return CallSession(
+            callId = "c1", topic = "", fromAgent = false, scope = scope, chat = chat, api = { null }, audio = FakeCallAudio(),
+            stt = VoiceModel({ null }, scope, { "ko" }, VoiceView(state = "ready", runtime = "ready")),
+            speech = SpeechModel({ null }, scope, null), phoneListener = null, device = null, appLang = { "ko" }, clock = { 1000L }, log = {},
+        ).also { it.accept() }
+    }
+
+    @Test
+    fun testBackMinimizes() = runComposeUiTest {
+        var minimized = false
+        val session = listeningSession()
+        val services = fakeAppServices()
+        val lifecycleOwner = fakeLifecycleOwner()
+        setContent {
+            CompositionLocalProvider(
+                LocalLifecycleOwner provides lifecycleOwner,
+                LocalAppServices provides services,
+                LocalReduceMotion provides true,
+            ) {
+                Box(Modifier.width(412.dp)) {
+                    InCallScreen(session = session, agentName = "Kelo", onMinimize = { minimized = true })
+                }
+            }
+        }
+        onNodeWithTag("call.minimize").performClick()
+        assertTrue(minimized)
+    }
+
+    @Test
+    fun testKeyboardSendsTypedWords() = runComposeUiTest {
+        val chat = FakeCallChat()
+        val session = listeningSession(chat)
+        val services = fakeAppServices()
+        val lifecycleOwner = fakeLifecycleOwner()
+        setContent {
+            CompositionLocalProvider(
+                LocalLifecycleOwner provides lifecycleOwner,
+                LocalAppServices provides services,
+                LocalReduceMotion provides true,
+            ) {
+                Box(Modifier.width(412.dp)) {
+                    InCallScreen(session = session, agentName = "Kelo")
+                }
+            }
+        }
+        onNodeWithTag("call.keyboard").performClick()
+        onNodeWithTag("call.typeField").assertIsDisplayed()
+        onNodeWithTag("call.typeField").performTextInput("메일 왔어?")
+        onNodeWithTag("call.typeSend").performClick()
+        assertEquals(listOf("메일 왔어?"), chat.sent)
+        onNodeWithTag("call.line.mine").assertIsDisplayed()
     }
 }

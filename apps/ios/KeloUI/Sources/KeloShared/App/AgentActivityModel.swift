@@ -27,7 +27,7 @@ public final class AgentActivityModel {
     public var turnKind: TurnKind = .thinking
     public var polledBrowsing = false
     public var offline = false
-    public var stuck = false
+    public var need: UserNeed = .none
     /// Bumped when a screen learns that background work changed under it (the live view found its tab gone): the Work page and the
     /// job page load again at once (Android AgentActivity.workChanged).
     public var workChanged = 0
@@ -55,7 +55,7 @@ public final class AgentActivityModel {
     /// What the header's character shows (`AgentActivityRules.mood`).
     public func mood(now: Double = ProcessInfo.processInfo.systemUptime) -> KeloMood {
         let since = doneAt.map { Int64((now - $0) * 1000) }.flatMap { $0 < AgentActivityRules.doneMs ? $0 : nil }
-        return AgentActivityRules.mood(.init(offline: offline, status: status, stuck: stuck, listening: listening, following: following,
+        return AgentActivityRules.mood(.init(offline: offline, status: status, need: need, listening: listening, following: following,
                                              turnKind: turnKind, polledBrowsing: polledBrowsing, sinceDoneMs: since, night: night,
                                              idleMs: AgentActivityRules.idleMs(now: now, activeAt: activeAt)))
     }
@@ -71,7 +71,7 @@ public final class AgentActivityModel {
 
     public func reset() {
         following = false; turnLine = nil; polledLine = nil; status = nil; turnKind = .thinking
-        polledBrowsing = false; offline = false; stuck = false; listening = false; doneAt = nil
+        polledBrowsing = false; offline = false; need = .none; listening = false; doneAt = nil
         activeAt = nil; sleepHours = nil
     }
 
@@ -132,7 +132,7 @@ public final class AgentActivityModel {
                     if before == nil || ended || before?.unseenTasks != s.unseenTasks || round % stuckEvery == 0 {
                         let newest = (try? await api.get("/api/tasks?limit=1", as: TasksBrief.self))?.items.first
                         let waiting = (try? await api.get("/api/workers?status=needs_input&limit=5", as: WorkersBrief.self))?.items ?? []
-                        stuck = AgentActivityRules.needsUser(newest: newest, waiting: waiting, nowS: nowS)
+                        need = AgentActivityRules.needsUser(newest: newest, waiting: waiting, nowS: nowS)
                         if AgentActivityRules.finished(before: before, now: s, newest: newest) && !following {
                             doneAt = ProcessInfo.processInfo.systemUptime
                         }

@@ -446,9 +446,10 @@ class DataTrail:
             log.exception("could not label the result of %s", getattr(tool, "name", "?"))
             self.broken.add(run)
 
-    def label_outside(self, call_id: str, text: str) -> None:
+    def label_outside(self, call_id: str, text: str, source: str = "") -> None:
         """The label of one outside text (a fenced tool result): its runs and tokens, and every target it names. The id is a hash of the
-        text, so the same text twice in a run is one label. Never raises: a failure marks the run (`derive` then asks for every target)."""
+        text, so the same text twice in a run is one label. `source` says what kind of text it was (fence.SOURCE_LABELS: page, email,
+        calendar ...; "" = web). Never raises: a failure marks the run (`derive` then asks for every target)."""
         run = self.run_id()
         try:
             norm = normalise(text)[:MAX_OUTSIDE_CHARS]
@@ -456,10 +457,32 @@ class DataTrail:
                 return
             lid = hashlib.blake2b((run + "\0" + norm).encode("utf-8", "replace"), digest_size=16).hexdigest()
             fp = Fingerprint(runs_of(norm), tokens_of(norm) | frozenset(named_targets(norm)))
-            self.store.add(run, TrailLabel(lid, "web", call_id, "", "", False, True, self.clock()), fp)
+            self.store.add(run, TrailLabel(lid, source or "web", call_id, "", "", False, True, self.clock()), fp)
         except Exception:  # noqa: BLE001 - fail closed
             log.exception("could not label outside text")
             self.outside_broken.add(run)
+
+    def label_given(self, call_id: str, text: str) -> None:
+        """The label of text the OWNER gave the run (a file they attached to their own message): not outside text, but its words are
+        not the owner's own either, so a target written only there is derived from it (see derive). Never raises: a failure marks the run."""
+        run = self.run_id()
+        try:
+            norm = normalise(text)[:MAX_OUTSIDE_CHARS]
+            if not norm:
+                return
+            lid = hashlib.blake2b(("given\0" + run + "\0" + norm).encode("utf-8", "replace"), digest_size=16).hexdigest()
+            fp = Fingerprint(runs_of(norm), tokens_of(norm) | frozenset(named_targets(norm)))
+            self.store.add(run, TrailLabel(lid, "given", call_id, "", "", False, False, self.clock()), fp)
+        except Exception:  # noqa: BLE001 - fail closed
+            log.exception("could not label given text")
+            self.outside_broken.add(run)
+
+    def outside_sources(self) -> set[str]:
+        """The kinds (outside_rule.SOURCE_WORDS keys) of the outside text this run has read; empty when unsure."""
+        try:
+            return {_source_key(lb.kind) for lb, _ in self.store.labels(self.run_id()) if lb.outside} - {""}
+        except Exception:  # noqa: BLE001 - unsure: the card says "text from outside"
+            return set()
 
     def given_link(self, url: str) -> bool:
         """The whole address, as written, is a link in outside text this run read (a search result, a page): reading it sends nothing the
@@ -473,21 +496,40 @@ class DataTrail:
             return False
 
     def derive(self, targets: list[str], text: str) -> Derived | None:
-        """What of a step comes from the run's outside text (docs/data-trail.md, "T3 as built"). None: no outside text in this run."""
+        """What of a step comes from the run's outside text (docs/data-trail.md, "T3 as built"). None: no outside text in this run.
+        A target written in a file the owner attached counts as derived too (not written by the owner); the content is checked against
+        the outside text only (copying an attached file's text into a step is what the owner gave it for)."""
         run = self.run_id()
         every = Derived(frozenset(x for x in targets if x), True)
         try:
             if run in self.outside_broken:
                 return every
-            outs = [(lb, fp) for lb, fp in self.store.labels(run) if lb.outside]
-            if not outs:
+            labels = self.store.labels(run)
+            outs = [(lb, fp) for lb, fp in labels if lb.outside]
+            given = [(lb, fp) for lb, fp in labels if lb.kind == "given"]
+            if not outs and not given:
                 return None
             words = self.own_words()
             owner_runs, owner_toks = runs_of(words), tokens_of(words) | frozenset(named_targets(words))
-            found = {x for x in targets if x and (not _comparable(x) or any(x in fp.tokens for _, fp in outs))}
+            found: set[str] = set()
+            kinds: set[str] = set()
+            for x in targets:
+                if not x:
+                    continue
+                if not _comparable(x):   # no text form: derived whenever outside text came before
+                    if outs:
+                        found.add(x)
+                        kinds |= {_source_key(lb.kind) for lb, _ in outs}
+                    continue
+                hit = [lb for lb, fp in outs + given if x in fp.tokens]
+                if hit:
+                    found.add(x)
+                    kinds |= {_source_key(lb.kind) if lb.outside else "file" for lb in hit}   # an attached file is "a file"
             out = outgoing_fingerprint(text) if text.strip() else Fingerprint()
-            content = bool(out) and any(is_in(Fingerprint(fp.runs - owner_runs, fp.tokens - owner_toks), out) for _, fp in outs)
-            return Derived(frozenset(found), content)
+            matched = [lb for lb, fp in outs if out and is_in(Fingerprint(fp.runs - owner_runs, fp.tokens - owner_toks), out)]
+            content = bool(matched)
+            kinds |= {_source_key(lb.kind) for lb in matched}
+            return Derived(frozenset(found), content, frozenset(k for k in kinds if k))
         except Exception:  # noqa: BLE001 - fail closed
             log.exception("the data trail could not tell where a step comes from; the owner is asked")
             return every
@@ -664,8 +706,20 @@ def granted_whole(dest: str, granted: set[str]) -> bool:
 
 def _comparable(target: str) -> bool:
     """A target with a text form an outside text can be searched for: an address, a handle, a number's digits, "site:<domain>". Others
-    ("connector:<name>", "calendar", an app, a contact's name) cannot be told from outside text, so they count as coming from it."""
+    ("connector:<name>", "calendar", "calendar:<id>", "event:<id>", an app, a contact's name) cannot be told from outside text, so they
+    count as coming from it. A calendar id can contain "@", so the calendar and event targets are checked first."""
+    if target.startswith(("calendar:", "event:")):
+        return False
     return "@" in target or target.isdigit() or target.startswith("site:")
+
+
+# the kinds of outside text, as the card's words know them (outside_rule.SOURCE_WORDS); a tool's own data kind maps to its source
+SOURCE_KEYS = {"mail": "email", "email": "email", "page": "page", "web": "web", "file": "file", "memory": "file", "connector": "connector",
+               "mcp": "mcp", "package": "package", "phone": "phone", "contacts": "phone", "messages": "phone", "calendar": "calendar"}
+
+
+def _source_key(kind: str) -> str:
+    return SOURCE_KEYS.get(str(kind or "").split(":", 1)[0], "")
 
 
 TITLE_ARGS = ("url", "path", "query", "q", "name", "id", "to", "subject")   # arguments that say what a call was about (a tool's schema, not words)

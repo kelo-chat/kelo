@@ -63,7 +63,7 @@ class CheckoutHandover:
                 "it checks the cart itself and a difference comes back to you as a question. Tell the user it is underway.]")
 
     def brief(self, probe: Probe, host: str, request: str) -> str:
-        lines = [f"Shop: {host}", f"Checkout page: {probe.url}"]
+        lines = [f"Shop: {host}", f"Checkout page (reach it by clicking from the shop's home page; do not open this address): {probe.url}"]
         if probe.totals:
             lines.append("Total shown: " + "; ".join(probe.totals[:3]) + (f" (currency {probe.currency})" if probe.currency else ""))
         if probe.text.strip():

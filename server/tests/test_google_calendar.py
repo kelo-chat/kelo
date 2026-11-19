@@ -7,6 +7,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
+from assistant.agent import Ours
+from assistant.agent.fence import marked, plain, split
 from assistant.google_calendar import GoogleCalendar, calendar_tools, parse_when, when_text
 from assistant.google_web import GoogleWeb
 from assistant.store import Store
@@ -158,17 +160,17 @@ async def connected(tmp_path, scope=CAL_SCOPE):
 
 async def test_the_agent_reads_events_in_the_users_time_zone_and_skips_declined_ones(tmp_path):
     g, st, cal, tools = await connected(tmp_path)
-    out = await tools["gcal_events"].handler({"start": "2026-11-09", "end": "2026-11-10"})
+    out = plain(await tools["gcal_events"].handler({"start": "2026-11-09", "end": "2026-11-10"}))   # the marks are the fence's, not text
     assert "2026-11-09 15:00–16:00 · 치과 · at 강남역" in out
     assert "2026-11-09 19:00–20:00 · Dinner · 2 people · Family" in out          # 10:00 UTC shown in Seoul time
     assert "2026-11-10, all day · Weekly · repeats" in out
     assert "Declined" not in out and "Asia/Seoul" in out
-    assert "Holidays" in await tools["gcal_calendars"].handler({})
+    assert "Holidays" in plain(await tools["gcal_calendars"].handler({}))
     # an hour later the token is renewed (here: this server holds the secret) and saved
     data = json.loads(st.credential("google-calendar")["secret"])
     data["oauth"]["expires_at"] = time.time() - 1
     st.set_credential_secret("google-calendar", json.dumps(data))
-    assert "치과" in await tools["gcal_events"].handler({"start": "2026-11-09", "end": "2026-11-09"})
+    assert "치과" in plain(await tools["gcal_events"].handler({"start": "2026-11-09", "end": "2026-11-09"}))
     assert g.api[-1][2] == "Bearer ya29.cal2" and g.calls[-1]["grant_type"] == ["refresh_token"]
     assert json.loads(st.credential("google-calendar")["secret"])["oauth"]["refresh_token"] == "1//cal"
 
@@ -222,3 +224,52 @@ def test_times_are_read_in_the_users_zone():
     assert dt.isoformat() == "2026-11-08T09:30:00+09:00" and not date_only
     assert parse_when("2026-11-08", tz, end_of_day=True)[0].isoformat() == "2026-11-09T00:00:00+09:00"
     assert when_text(dt, dt.replace(hour=11, minute=0), False) == "2026-11-08 09:30–11:00"
+
+
+async def test_a_search_finds_any_word_in_title_place_notes_or_guests_and_says_when_nothing_is_left(tmp_path):
+    g, st, cal, tools = await connected(tmp_path)
+    window = {"start": "2026-11-09", "end": "2026-11-30"}
+    g.events["primary"].append({"id": "m1", "summary": "Flight to Testville", "description": "ref QQ9",
+                                "start": {"dateTime": "2026-11-12T10:00:00+09:00"}, "end": {"dateTime": "2026-11-12T12:00:00+09:00"}})
+    out = await tools["gcal_events"].handler({**window, "query": ["zilch", "testville"]})
+    assert "Flight to Testville" in out
+    assert "Flight to Testville" in await tools["gcal_events"].handler({**window, "query": ["qq9"]})   # the notes are searched
+    empty = await tools["gcal_events"].handler({**window, "query": "zilch nothing"})
+    assert 'No events matching "zilch" or "nothing"' in empty and "without it the same range holds" in empty
+    sent = [parse_qs(urlsplit(url).query) for _, url, *_ in g.api if "/events" in url and "?" in url]
+    assert sent and all("q" not in query for query in sent)   # Google's own q is never sent: the words are matched here
+    assert tools["gcal_update_event"].validate({"event_id": "m1", "title": "x"}) is None   # no refusal: an event is just an event
+
+
+def data_parts(text: str) -> list[str]:
+    """The parts of a tool's text that are others' data (marked by fence.data); what the loop would fence."""
+    return [p for is_data, p in split(text) if is_data]
+
+
+async def test_the_owners_own_events_are_the_apps_words_and_others_are_data(tmp_path):
+    """An event the owner made on their own calendar is plain; an invitation, a mail-made event and an event on a calendar they only read
+    have their title and place marked as data (fenced by the loop)."""
+    g, st, cal, tools = await connected(tmp_path)
+    own_only = await tools["gcal_events"].handler({"start": "2026-11-09", "end": "2026-11-09", "calendar": ADDRESS})
+    assert isinstance(own_only, Ours) and not marked(own_only) and "치과" in own_only and "강남역" in own_only
+    g.events["primary"].append({"id": "inv", "summary": "Board invite", "location": "Room 4", "organizer": {"email": "boss@x.y"},
+                                "start": {"dateTime": "2026-11-09T10:00:00+09:00"}, "end": {"dateTime": "2026-11-09T11:00:00+09:00"}})
+    g.events["primary"].append({"id": "mail", "summary": "From a mail", "eventType": "fromGmail",
+                                "start": {"dateTime": "2026-11-09T12:00:00+09:00"}, "end": {"dateTime": "2026-11-09T13:00:00+09:00"}})
+    g.events["holidays"] = [{"id": "h1", "summary": "Reader holiday", "start": {"date": "2026-11-09"}, "end": {"date": "2026-11-10"}}]
+    mixed = await tools["gcal_events"].handler({"start": "2026-11-09", "end": "2026-11-09"})
+    assert marked(mixed) and "치과" in plain(mixed) and "치과" not in data_parts(mixed)
+    assert {"Board invite", "Room 4", "From a mail"} <= set(data_parts(mixed))
+    assert "Reader holiday" in data_parts(await tools["gcal_events"].handler({"start": "2026-11-09", "end": "2026-11-09", "calendar": "holidays"}))
+    assert "Holidays" in data_parts(await tools["gcal_calendars"].handler({}))
+
+
+async def test_a_calendar_list_that_cannot_be_read_fences_every_title(tmp_path):
+    g, st, cal, tools = await connected(tmp_path)
+
+    async def broken(account="", tool="gcal_calendars"):
+        from assistant.google_calendar import CalendarError
+        raise CalendarError("the list is down")
+    cal.calendars = broken
+    out = await tools["gcal_events"].handler({"start": "2026-11-09", "end": "2026-11-09", "calendar": ADDRESS})
+    assert "치과" in data_parts(out) and "강남역" in data_parts(out)

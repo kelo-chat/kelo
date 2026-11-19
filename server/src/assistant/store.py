@@ -22,6 +22,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from .keyguard import CARDS_INFO, VAULT_INFO, KeyGuard, Locked, is_system_key, load_server_key
 from .keyring_client import PLACEHOLDER
 from .i18n import t
+from .calls import CALL_MARK
 from .vault import KEYCHAIN, LOG_KEEP, Sealer, VaultError, aad_for, mask_username
 
 SCHEMA = """
@@ -186,6 +187,36 @@ def schema_fingerprint(db: sqlite3.Connection) -> str:
     return hashlib.sha256("\n".join("\t".join(str(c) for c in r) for r in rows).encode()).hexdigest()[:16]
 
 
+CALL_IDS_META = "messages:call_id_v1"
+
+
+def backfill_call_ids(db: sqlite3.Connection) -> bool:
+    """Once per database (meta `messages:call_id_v1`): call messages stored before messages.call_id get one id per call, so the apps
+    show each call as one card. A call is a run of via="call" rows; its hidden start message (calls.CALL_MARK) starts a new call and any
+    other row ends it. The id is "legacy-<first row id>". Returns True when it ran."""
+    if db.execute("SELECT 1 FROM meta WHERE key = ?", (CALL_IDS_META,)).fetchone():
+        return False
+    first = db.execute("SELECT MIN(id) FROM messages WHERE via = 'call' AND call_id = ''").fetchone()[0]
+    updates: list[tuple[str, int]] = []
+    if first is not None:
+        current = ""
+        for rid, role, content, via, cid in db.execute(
+                "SELECT id, role, content, via, call_id FROM messages WHERE id >= ? ORDER BY id", (first,)).fetchall():
+            if via != "call":
+                current = ""
+                continue
+            if cid:
+                current = cid
+                continue
+            if not current or (role == "user" and str(content).startswith(CALL_MARK)):
+                current = f"legacy-{rid}"
+            updates.append((current, rid))
+    db.executemany("UPDATE messages SET call_id = ? WHERE id = ?", updates)
+    db.execute("INSERT INTO meta(key, value) VALUES(?, ?)", (CALL_IDS_META, "1"))
+    db.commit()
+    return True
+
+
 class Store:
     def __init__(self, path: str | Path = ":memory:", secret_key: str | None = None, keyguard: KeyGuard | None = None):
         if str(path) != ":memory:":
@@ -217,7 +248,7 @@ class Store:
             if "approval_key" not in {r[1] for r in self._db.execute("PRAGMA table_info(devices)")}:   # before signed payment approvals
                 self._db.execute("ALTER TABLE devices ADD COLUMN approval_key TEXT NOT NULL DEFAULT ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(messages)")}
-            for col in ("reaction", "reaction_hold", "reaction_next", "via", "author", "steps"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from; author = owner/forwarded/tapped (owner_messages.py); steps = the tool steps of an assistant reply, for the model only (reply_text.py)
+            for col in ("reaction", "reaction_hold", "reaction_next", "via", "author", "steps", "call_id"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from; author = owner/forwarded/tapped (owner_messages.py); steps = the tool steps of an assistant reply, for the model only (reply_text.py); call_id = the in-app call a message belongs to (calls.py), "" for everything else
                 if col not in have:
                     self._db.execute(f"ALTER TABLE messages ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(usage)")}
@@ -230,6 +261,7 @@ class Store:
             from .owner_messages import backfill_authors, retract_unowned_claims   # local: the markers' modules import the store
             backfill_authors(self._db)            # a database made before messages.author: the owner's own rows, once (owner_messages.py)
             retract_unowned_claims(self._db)      # claims that are not the owner's own words stop being active, once (rows kept)
+            backfill_call_ids(self._db)   # call messages stored before call_id: one id per call, once
             self._db.commit()
         self._usage_writes = 0
         self.credential_watchers: list[Callable[[str, bool], None]] = []
@@ -300,12 +332,13 @@ class Store:
         return self.profile()
 
     # ---- conversation (one continuous chat)
-    def add_message(self, role: str, content: str, via: str = "", author: str = "", steps: str = "") -> int:
+    def add_message(self, role: str, content: str, via: str = "", author: str = "", steps: str = "", call_id: str = "") -> int:
         """`via`: the messenger the message came through ("telegram"); "" for the app. `author`: owner, forwarded or tapped for the
         owner's own user messages (owner_messages.py); "" for everything else, hidden handoff rows included. `steps`: the reply's
-        tool steps in one line (reply_text.py), read by the model only; the apps never get it."""
-        return self._run("INSERT INTO messages(role, content, created_at, via, author, steps) VALUES(?,?,?,?,?,?)",
-                         (role, content, time.time(), via, author, steps)).lastrowid or 0
+        tool steps in one line (reply_text.py), read by the model only; the apps never get it. `call_id`: the in-app call these words
+        belong to (the call id the app sent, calls.py); "" otherwise."""
+        return self._run("INSERT INTO messages(role, content, created_at, via, author, steps, call_id) VALUES(?,?,?,?,?,?,?)",
+                         (role, content, time.time(), via, author, steps, call_id)).lastrowid or 0
 
     def message_count(self) -> int:
         """How many messages the conversation holds (the owner's and the assistant's)."""
@@ -314,7 +347,7 @@ class Store:
     def messages(self, *, limit: int = 100, before_id: int | None = None) -> list[dict[str, Any]]:
         """Newest `limit` messages (before `before_id` if given), oldest first."""
         rows = self._all(
-            "SELECT id, role, content, created_at, reaction, via, author FROM messages WHERE (? IS NULL OR id < ?) "
+            "SELECT id, role, content, created_at, reaction, via, author, call_id FROM messages WHERE (? IS NULL OR id < ?) "
             "ORDER BY id DESC LIMIT ?", (before_id, before_id, limit))
         return rows[::-1]
 
@@ -323,6 +356,18 @@ class Store:
         rows = self._all("SELECT id, role, content, created_at, via, steps FROM messages WHERE id > ? AND (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?",
                          (after_id, before_id, before_id, limit))
         return rows[::-1]
+
+    def drop_unanswered_call_words(self, call_id: str) -> bool:
+        """Deletes the newest message when it is the owner's words of call `call_id` that nothing answered yet (no row after it): the
+        owner went on talking and the app sends those words again with the rest (POST /api/turns "amend", calls.py). True when one went."""
+        with self._lock:
+            row = self._db.execute("SELECT id, role, content, via, call_id FROM messages ORDER BY id DESC LIMIT 1").fetchone()
+            if (row is None or row["role"] != "user" or row["via"] != "call" or row["call_id"] != call_id
+                    or str(row["content"]).startswith(CALL_MARK)):
+                return False
+            self._db.execute("DELETE FROM messages WHERE id = ?", (row["id"],))
+            self._db.commit()
+            return True
 
     def condensed_messages(self, *, before_id: int, after_id: int = 0, query: str = "", limit: int = 10) -> tuple[list[dict[str, Any]], bool]:
         """(the newest `limit` user/assistant messages with after_id < id < before_id whose text contains `query` (case-insensitive

@@ -277,7 +277,8 @@ def expand(texts: list[str], start: datetime, end: datetime, tz: Any) -> list[di
                 b = b if b.tzinfo else b.replace(tzinfo=tz)
             out.append({"uid": str(ev.get("UID", "")), "title": re.sub(r"\s+", " ", str(ev.get("SUMMARY", ""))).strip()[:200],
                         "start": a.timestamp(), "end": max(b.timestamp(), a.timestamp()),
-                        "where": re.sub(r"\s+", " ", str(ev.get("LOCATION", ""))).strip()[:200], "all_day": all_day})
+                        "where": re.sub(r"\s+", " ", str(ev.get("LOCATION", ""))).strip()[:200], "all_day": all_day,
+                        "notes": re.sub(r"\s+", " ", str(ev.get("DESCRIPTION", ""))).strip()[:500]})
     return sorted(out, key=lambda e: e["start"])
 
 
@@ -361,7 +362,9 @@ class Calendars:
                 if e["all_day"] and not all_day:
                     continue
                 evs.append({"id": f"phone:{int(e['start'])}:{e['title'][:40]}", "title": e["title"], "start": e["start"], "end": e["end"],
-                            "where": e["location"], "all_day": bool(e["all_day"]), **({"day": e["day"]} if e["all_day"] and e.get("day") else {})})
+                            "where": e["location"], "all_day": bool(e["all_day"]), **({"day": e["day"]} if e["all_day"] and e.get("day") else {}),
+                            "notes": e.get("notes", ""), "account": e.get("account", ""), "account_type": e.get("account_type", ""),
+                            "own": bool(e.get("own"))})
         elif acct.provider == "google":
             for ev in await self.google.events(acct.item, start, end, tool=tool, **({"pages": pages} if pages > 1 else {})):
                 if ev["start"] is None or (ev["all_day"] and not all_day):
@@ -369,7 +372,8 @@ class Calendars:
                 stop = ev.get("end")
                 evs.append({"id": f"gcal:{ev['id']}", "title": ev["title"], "start": ev["start"].timestamp(), "where": ev["location"],
                             "all_day": bool(ev["all_day"]), **({"end": stop.timestamp()} if stop is not None else {}),
-                            **({"day": ev["start"].date().isoformat()} if ev["all_day"] else {})})
+                            **({"day": ev["start"].date().isoformat()} if ev["all_day"] else {}),
+                            "notes": ev.get("notes", ""), "account": acct.address, "own": bool(ev.get("own"))})
         elif acct.provider == "outlook":
             evs = await self.outlook.between(start, end, all_day=all_day, tool=tool, **({"pages": pages} if pages > 1 else {}))
         elif acct.provider == "nest":
@@ -415,7 +419,7 @@ class Calendars:
                     digest = hashlib.sha256(f"{acct.id}|{e['uid']}".encode()).hexdigest()[:10]
                     day = datetime.fromtimestamp(e["start"], tz).date().isoformat() if e["all_day"] else ""
                     out.append({"id": f"caldav:{digest}:{int(e['start'])}", "title": e["title"], "start": e["start"], "end": e["end"], "where": e["where"],
-                                "all_day": e["all_day"], **({"day": day} if day else {})})
+                                "all_day": e["all_day"], **({"day": day} if day else {}), "notes": e.get("notes", "")})
             return out
         except CalDavError as e:
             if e.code in ("auth", "off"):

@@ -19,9 +19,50 @@ private final class CenterTestAudio: CallAudio, @unchecked Sendable {
     func release() {}
 }
 
+/// Records how many device voices the center made, and what each one spoke.
+private final class RecordingEngine: SpeechEngine, @unchecked Sendable {
+    let lock = NSLock()
+    var spoken: [String] = []
+    var released = false
+    func speak(_ text: String, lang: String, onDone: @escaping @Sendable () -> Void) {
+        lock.withLock { spoken.append(text) }
+        onDone()
+    }
+    func stop() {}
+    func shutDown() { lock.withLock { released = true } }
+}
+
+private final class FactoryCounter: @unchecked Sendable {
+    let lock = NSLock()
+    private var all: [RecordingEngine] = []
+    var made: Int { lock.withLock { all.count } }
+    var first: RecordingEngine? { lock.withLock { all.first } }
+    func next() -> RecordingEngine {
+        let e = RecordingEngine()
+        lock.withLock { all.append(e) }
+        return e
+    }
+}
+
+/// Records every request path the center reads (the voice models), answers the reads, and fails anything else.
+private final class PathLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var paths: [String] = []
+    func add(_ p: String) { lock.withLock { paths.append(p) } }
+    var all: [String] { lock.withLock { paths } }
+}
+
+private final class CountingPhoneListener: PhoneListener, @unchecked Sendable {
+    func listenOnce(language: String, onStarted: @escaping @Sendable () -> Void, onLevel: @escaping @Sendable (Float) -> Void, onDone: @escaping @Sendable (String?) -> Void) {}
+    func cancel() {}
+}
+
 @MainActor
 @Suite struct CallCenterTests {
-    private func makeCenter() -> (CallCenter, ChatModel, VoiceModel, SpeechModel) {
+    private func makeCenter(
+        device: @escaping @Sendable () -> (any SpeechEngine)? = { nil },
+        phone: @escaping @Sendable () -> (any PhoneListener)? = { nil },
+    ) -> (CallCenter, ChatModel, VoiceModel, SpeechModel) {
         let t = RouteTransport { _, _, _ in (200, "{}") }
         let defaults = UserDefaults(suiteName: "kelo-center-test-\(UUID().uuidString)")!
         let app = AppModel(
@@ -39,8 +80,8 @@ private final class CenterTestAudio: CallAudio, @unchecked Sendable {
             stt: stt,
             speech: speech,
             audio: { CenterTestAudio() },
-            device: { nil },
-            phoneListener: { nil },
+            device: device,
+            phoneListener: phone,
             appLang: { "ko" }
         )
         return (center, chat, stt, speech)
@@ -126,5 +167,95 @@ private final class CenterTestAudio: CallAudio, @unchecked Sendable {
         #expect(!marks.contains("m1"))
         #expect(!marks.contains("m2"))
         #expect(!marks.contains("m5"))
+    }
+
+    @Test func ownTurnEventsOnlyAreSpokenWithOneDeviceVoice() async {
+        let counter = FactoryCounter()
+        let (center, chat, _, _) = makeCenter(device: { counter.next() })
+        let link = center.attach(chat: chat)
+        defer { link.cancel() }
+        center.ringFromButton(chat: chat)
+        center.session?.accept()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        guard let session = center.session, let engine = counter.first else {
+            Issue.record("the call did not start")
+            return
+        }
+
+        chat.onCallTurnEvent?(nil, .text("입력한 답"))
+        chat.onCallTurnEvent?(nil, .done(inputTokens: 1, outputTokens: 1, steps: 1))
+        chat.onCallTurnEvent?("other", .text("다른 통화"))
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        #expect(engine.spoken.isEmpty)
+
+        chat.onCallTurnEvent?(session.callId, .text("이 통화의 답."))
+        chat.onCallTurnEvent?(session.callId, .done(inputTokens: 1, outputTokens: 1, steps: 1))
+        var attempts = 0
+        while engine.spoken.isEmpty && attempts < 100 {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            attempts += 1
+        }
+        #expect(engine.spoken == ["이 통화의 답."])
+
+        session.hangUp()
+        #expect(counter.made == 1)
+        #expect(engine.released)
+    }
+
+    @Test func callReadsTheServerModelsAndUsesServerEars() async {
+        let paths = PathLog()
+        let t = RouteTransport { _, path, _ in
+            paths.add(path)
+            if path == "/api/voice" || path.hasPrefix("/api/voice?") { return (200, #"{"state":"ready","runtime":"ready"}"#) }
+            if path == "/api/voice/speech" { return (200, #"{"state":"ready","runtime":"ready","languages":["ko"]}"#) }
+            return (500, "{}")
+        }
+        let defaults = UserDefaults(suiteName: "kelo-center-models-\(UUID().uuidString)")!
+        let app = AppModel(
+            store: MemorySessionStore(Session(serverUrl: "https://kelo.test", token: "tok")),
+            prefs: Prefs(defaults: defaults),
+            transport: t,
+            cache: ScreenCache(directory: nil, key: { nil })
+        )
+        let api = app.api
+        let chat = ChatModel(app: app)
+        let stt = VoiceModel(api: { api })
+        let speech = SpeechModel(api: { api })
+        let center = CallCenter(
+            api: { api },
+            stt: stt,
+            speech: speech,
+            audio: { CenterTestAudio() },
+            device: { nil },
+            phoneListener: { CountingPhoneListener() },
+            appLang: { "ko" }
+        )
+        let link = center.attach(chat: chat)
+        defer { link.cancel() }
+        center.ringFromButton(chat: chat)
+        center.session?.accept()
+
+        var attempts = 0
+        while (center.session?.ui.phase == .preparing || center.session?.ui.phase == .ringing) && attempts < 150 {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            attempts += 1
+        }
+        guard let session = center.session else {
+            Issue.record("the call ended")
+            return
+        }
+        #expect(session.ui.ears == .server)
+        #expect(paths.all.contains { $0 == "/api/voice" || $0.hasPrefix("/api/voice?") })
+        #expect(paths.all.contains("/api/voice/speech"))
+
+        chat.onCallTurnEvent?(session.callId, .text("안녕하세요."))
+        chat.onCallTurnEvent?(session.callId, .done(inputTokens: 1, outputTokens: 1, steps: 1))
+        attempts = 0
+        while !paths.all.contains("/api/voice/speak") && attempts < 150 {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            attempts += 1
+        }
+        #expect(paths.all.contains("/api/voice/speak"))
+        session.hangUp()
     }
 }

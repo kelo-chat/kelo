@@ -343,7 +343,7 @@ sealed interface SocketEnd {
     data object Unavailable : SocketEnd
 }
 
-class KeloTurnApi(private val api: KeloApi, private val canCall: () -> Boolean = { false }) : TurnApi {
+class KeloTurnApi(private val api: KeloApi, private val canCall: () -> Boolean = { false }, private val amend: Boolean = false) : TurnApi {
     override suspend fun start(text: String, timezone: String): String = start(text, timezone, emptyList())
 
     override suspend fun start(text: String, timezone: String, answers: List<ReplyAnswer>): String = start(text, timezone, answers, null)
@@ -373,6 +373,7 @@ class KeloTurnApi(private val api: KeloApi, private val canCall: () -> Boolean =
                 kotlinx.serialization.json.buildJsonObject { put("question", JsonPrimitive(a.question)); put("value", JsonPrimitive(a.value)) }
             }))
             if (call != null) put("call", JsonPrimitive(call))
+            if (call != null && amend) put("amend", JsonPrimitive(true))   // replaces the call's unanswered words (server calls.py)
             put("can_call", JsonPrimitive(canCall()))
         })
         return ((answer as? JsonObject)?.get("id") as? JsonPrimitive)?.content.orEmpty()

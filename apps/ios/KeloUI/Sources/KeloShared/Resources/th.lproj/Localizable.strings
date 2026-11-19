@@ -824,6 +824,7 @@
 "agent_tab_working" = "กำลังทำงาน";
 "agent_tab_failed" = "ติดขัด";
 "agent_tab_idle" = "ว่าง";
+"agent_tab_waiting" = "รอคุณอยู่";
 "agent_tab_picture" = "หน้าจอแท็บ";
 "agent_tab_no_picture" = "ไม่มีอะไรให้แสดง (หน้าว่าง)";
 "agent_tab_close" = "ปิดแท็บ";
@@ -1567,6 +1568,9 @@
 "call_mic_denied" = "ไม่สามารถเริ่มการโทรได้เนื่องจากไม่ได้รับอนุญาตให้ใช้ไมโครโฟน";
 "call_voice_offer" = "นี่คือเสียงที่เป็นธรรมชาติของ Kelo สำหรับการโทร ดาวน์โหลดโมเดลเสียง (%1$s) ไปยังเซิร์ฟเวอร์ Kelo ของคุณเพียงครั้งเดียว แล้ว Kelo จะเริ่มพูดด้วยเสียงนี้จากประโยคถัดไป หากไม่ดาวน์โหลด Kelo จะใช้เสียงหุ่นยนต์ในตัวของอุปกรณ์นี้";
 "call_mark" = "โทร";
+"call_chat_length##other" = "โทร · %1$d นาที";
+"call_chat_show" = "ดูการโทร";
+"call_chat_hide" = "ซ่อนการโทร";
 "call_voice_offer_title" = "ดาวน์โหลดเสียงของ Kelo หรือไม่";
 "call_voice_offer_ok" = "ดาวน์โหลด";
 "call_voice_offer_later" = "ใช้เสียงอุปกรณ์ไปก่อน";
@@ -1574,6 +1578,12 @@
 "call_voice_get" = "ดาวน์โหลด";
 "call_voice_line_close" = "ปิด";
 "call_ears_failed" = "การรู้จำเสียงของโทรศัพท์ไม่ได้ยินเสียงของคุณ";
+"call_voice_device" = "โหลดเสียงของ Kelo ไม่ได้ จึงใช้เสียงของอุปกรณ์นี้พูดแทน";
+"call_voice_none" = "ตอนนี้อุปกรณ์นี้เล่นเสียงของ Kelo ไม่ได้ คำตอบอยู่ในแชท";
+"call_minimize" = "กลับไปที่แชท";
+"call_keyboard" = "พิมพ์";
+"call_type_hint" = "พิมพ์ข้อความถึง Kelo";
+"call_type_send" = "ส่ง";
 "voice_speech_title" = "เสียงของ Kelo";
 "voice_speech_download" = "ดาวน์โหลดโมเดลเสียง · %1$s";
 "voice_speech_downloading" = "กำลังดาวน์โหลดโมเดลเสียง · %1$d%%";

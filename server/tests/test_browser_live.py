@@ -6,6 +6,7 @@ import base64
 import io
 import json
 import logging
+import time
 
 import httpx
 import pytest
@@ -608,6 +609,22 @@ async def test_live_websocket_sends_the_agent_pointer_and_puts_the_last_one_in_t
             assert [(m["x"], m["y"], m["down"]) for m in got] == [(50.5, 60.0, True), (50.5, 60.0, False)]
             human._set_pointer(page, (70.0, 80.0))
             assert await recv_until(ws, "pointer") == {"type": "pointer", "x": 70.0, "y": 80.0, "down": False}
+
+
+async def test_the_live_status_shows_the_pages_own_pop_up_which_the_picture_never_does(tmp_path):
+    # owner report 2026-11-19: the page asked in a native pop-up, Kelo answered Cancel, and the owner watched a page that did nothing
+    sess, cdps = make_session()
+    page = sess._pages["owner"]
+    app = create_app(app_settings(tmp_path), tools=[], stream_fn=calling(), browser=sess)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        r = (await c.post("/api/browser/sessions/owner/live-ticket")).json()
+        async with websockets.connect(ws_url(srv, f"/api/browser/sessions/owner/live?ticket={r['ticket']}")) as ws:
+            st = await recv_until(ws, "status")
+            assert "dialog" not in st                                   # nothing asked: no field (older apps see nothing new)
+            sess._tab_dialogs("owner").add("confirm", "Sign in first?", "cancel", "", page.url, time.time())
+            st = await recv_until(ws, "status")                        # the next status (sent within a second)
+            assert st["dialog"]["kind"] == "confirm" and st["dialog"]["answer"] == "cancel" and st["dialog"]["count"] == 1
+            assert st["dialog"]["text"] == "The page asked: “Sign in first?” Kelo answered Cancel."
 
 
 # ---------------------------------------------------------------------------------------- secret fields on the picture (`secure`)

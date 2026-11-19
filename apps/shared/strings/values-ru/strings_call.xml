@@ -25,6 +25,14 @@
     <string name="call_mic_denied">Не удалось начать звонок: доступ к микрофону запрещён.</string>
     <string name="call_voice_offer">Это естественный голос Kelo для звонков. Скачайте голосовую модель (%1$s) на сервер Kelo, и со следующей фразы Kelo заговорит этим голосом. Без неё Kelo использует встроенный механический голос устройства.</string>
     <string name="call_mark">Звонок</string>
+    <plurals name="call_chat_length">
+        <item quantity="one">Звонок · %1$d мин</item>
+        <item quantity="few">Звонок · %1$d мин</item>
+        <item quantity="many">Звонок · %1$d мин</item>
+        <item quantity="other">Звонок · %1$d мин</item>
+    </plurals>
+    <string name="call_chat_show">Показать звонок</string>
+    <string name="call_chat_hide">Скрыть звонок</string>
     <string name="call_voice_offer_title">Скачать голос Kelo?</string>
     <string name="call_voice_offer_ok">Скачать</string>
     <string name="call_voice_offer_later">Пока использовать голос устройства</string>
@@ -32,6 +40,12 @@
     <string name="call_voice_get">Скачать</string>
     <string name="call_voice_line_close">Закрыть</string>
     <string name="call_ears_failed">Распознавание речи на телефоне не слышит вас.</string>
+    <string name="call_voice_device">Не удалось загрузить собственный голос Kelo, поэтому говорит голос этого устройства.</string>
+    <string name="call_voice_none">Это устройство сейчас не может воспроизвести голос Kelo. Ответ есть в чате.</string>
+    <string name="call_minimize">Вернуться в чат</string>
+    <string name="call_keyboard">Ввод</string>
+    <string name="call_type_hint">Напишите сообщение для Kelo</string>
+    <string name="call_type_send">Отправить</string>
     <string name="voice_speech_title">Голос Kelo</string>
     <string name="voice_speech_download">Скачать голосовую модель · %1$s</string>
     <string name="voice_speech_downloading">Загрузка голосовой модели · %1$d%%</string>

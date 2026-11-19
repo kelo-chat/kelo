@@ -87,15 +87,17 @@ import Testing
 
     @Test func moodPriority() {
         let all = AgentActivityRules.MoodInput(
-            offline: true, status: asking, stuck: true, listening: true, following: true, turnKind: .browser,
+            offline: true, status: asking, need: .failed, listening: true, following: true, turnKind: .browser,
             polledBrowsing: true, sinceDoneMs: 100, night: true)
         // each step down the list once the ones above it are gone
         #expect(mood(all) == .offline)
         #expect(mood(copy(all) { $0.offline = false }) == .approval)
         let noAsk = copy(all) { $0.offline = false; $0.status = busy }
-        #expect(mood(noAsk) == .error)
-        #expect(mood(copy(noAsk) { $0.stuck = false }) == .listening)
-        let work = copy(noAsk) { $0.stuck = false; $0.listening = false }
+        #expect(mood(noAsk) == .error)                                                  // a failed run nobody looked at: the sweat
+        #expect(mood(copy(noAsk) { $0.need = .waiting }) == .approval)                  // a job waiting for the owner asks (2026-11-19)
+        #expect(mood(.init(need: .waiting)) == .approval)
+        #expect(mood(copy(noAsk) { $0.need = .none }) == .listening)
+        let work = copy(noAsk) { $0.need = .none; $0.listening = false }
         #expect(mood(work) == .browser)
         #expect(mood(copy(work) { $0.turnKind = .reading }) == .reading)
         #expect(mood(copy(work) { $0.turnKind = .tool }) == .working)
@@ -113,12 +115,14 @@ import Testing
 
     @Test func stuckOnTheUser() {
         let now = 2_000_000.0
-        #expect(AgentActivityRules.needsUser(newest: TaskBrief(id: 1, status: "failed", seen: false), waiting: [], nowS: now) == true)
-        #expect(AgentActivityRules.needsUser(newest: TaskBrief(id: 1, status: "failed", seen: true), waiting: [], nowS: now) == false)   // looked at
-        #expect(AgentActivityRules.needsUser(newest: TaskBrief(id: 1, status: "done", seen: false), waiting: [], nowS: now) == false)
-        #expect(AgentActivityRules.needsUser(newest: nil, waiting: [WorkerBrief(id: "w", status: "needs_input", updatedAt: now - 600)], nowS: now) == true)
-        #expect(AgentActivityRules.needsUser(newest: nil, waiting: [WorkerBrief(id: "w", status: "needs_input", updatedAt: now - 13 * 3600)], nowS: now) == false)   // old
-        #expect(AgentActivityRules.needsUser(newest: nil, waiting: [WorkerBrief(id: "w", status: "running", updatedAt: now)], nowS: now) == false)
+        #expect(AgentActivityRules.needsUser(newest: TaskBrief(id: 1, status: "failed", seen: false), waiting: [], nowS: now) == .failed)
+        #expect(AgentActivityRules.needsUser(newest: TaskBrief(id: 1, status: "failed", seen: true), waiting: [], nowS: now) == .none)   // looked at
+        #expect(AgentActivityRules.needsUser(newest: TaskBrief(id: 1, status: "done", seen: false), waiting: [], nowS: now) == .none)
+        #expect(AgentActivityRules.needsUser(newest: nil, waiting: [WorkerBrief(id: "w", status: "needs_input", updatedAt: now - 600)], nowS: now) == .waiting)
+        #expect(AgentActivityRules.needsUser(newest: nil, waiting: [WorkerBrief(id: "w", status: "needs_input", updatedAt: now - 13 * 3600)], nowS: now) == .none)   // old
+        #expect(AgentActivityRules.needsUser(newest: nil, waiting: [WorkerBrief(id: "w", status: "running", updatedAt: now)], nowS: now) == .none)
+        // both: the failure shows
+        #expect(AgentActivityRules.needsUser(newest: TaskBrief(id: 1, status: "failed", seen: false), waiting: [WorkerBrief(id: "w", status: "needs_input", updatedAt: now)], nowS: now) == .failed)
     }
 
     @Test func finishedOnlyWhenARunEndsWell() {
@@ -207,6 +211,21 @@ import Testing
         // the JSON of GET /api/proactive
         let json = #"{"enabled":true,"wake_start":"09:00","wake_end":"01:30","hours_source":"learned","timezone":"Asia/Seoul","awake":true}"#
         #expect(try JSONDecoder().decode(SleepHours.self, from: Data(json.utf8)) == h)
+    }
+
+    @Test func aFailedChatReplyShowsTheErrorFaceUntilALaterOneWorks() {
+        let failed = AgentStatus(lastReplyFailed: true)
+        #expect(mood(.init(status: failed)) == .error)
+        #expect(mood(.init(status: failed, sinceDoneMs: 100, night: true)) == .error)
+        #expect(mood(.init(status: AgentStatus(busy: true, lastReplyFailed: true), following: true, turnKind: .tool)) == .working)
+        #expect(mood(.init(status: AgentStatus(lastReplyFailed: false))) == .idle)
+    }
+
+    @Test func lastReplyFailedIsReadFromTheStatusAndDefaultsToFalse() throws {
+        let yes = try JSONDecoder().decode(AgentStatus.self, from: Data(#"{"busy":false,"last_reply_failed":true}"#.utf8))
+        #expect(yes.lastReplyFailed)
+        let none = try JSONDecoder().decode(AgentStatus.self, from: Data(#"{"busy":false}"#.utf8))
+        #expect(none.lastReplyFailed == false)
     }
 }
 

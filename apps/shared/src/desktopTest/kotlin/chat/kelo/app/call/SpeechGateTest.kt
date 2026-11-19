@@ -49,15 +49,15 @@ class SpeechGateTest {
         return out
     }
 
-    @Test fun `a tone of 300 ms then 700 ms of silence emits Started then Ended with preroll`() {
+    @Test fun `a tone of 300 ms then a clear pause emits Started then Ended with preroll`() {
         val gate = SpeechGate()
-        val pcm = silence(400) + tone(300) + silence(800)
+        val pcm = silence(400) + tone(300) + silence(1100)
         val events = gate.feed(pcm)
         assertEquals(2, events.size)
         assertEquals(SpeechGate.Out.Started, events[0])
         assertTrue(events[1] is SpeechGate.Out.Ended)
         val ended = events[1] as SpeechGate.Out.Ended
-        // Pre-roll (up to 300 ms) + tone (300 ms) + silence (700 ms) is at least (300 + 300) * 32 bytes
+        // Pre-roll (up to 300 ms) + tone (300 ms) + silence (1000 ms) is at least (300 + 300) * 32 bytes
         assertTrue("Ended audio should include pre-roll and speech", ended.pcm16le.size >= 600 * 32)
     }
 
@@ -70,7 +70,7 @@ class SpeechGateTest {
 
     @Test fun `250 ms of tone and silence is Dropped under minSpeechMs`() {
         val gate = SpeechGate()
-        val pcm = silence(300) + tone(250) + silence(800)
+        val pcm = silence(300) + tone(250) + silence(1100)
         val events = gate.feed(pcm)
         assertEquals(2, events.size)
         assertEquals(SpeechGate.Out.Started, events[0])
@@ -116,7 +116,7 @@ class SpeechGateTest {
     @Test fun `odd chunk sizes give the same result as 640`() {
         val gate1 = SpeechGate()
         val gate2 = SpeechGate()
-        val pcm = silence(400) + tone(300) + silence(800)
+        val pcm = silence(400) + tone(300) + silence(1100)
 
         // gate1 fed in 640-byte chunks
         val ev1 = mutableListOf<SpeechGate.Out>()
@@ -137,5 +137,45 @@ class SpeechGateTest {
         val end1 = ev1[1] as SpeechGate.Out.Ended
         val end2 = ev2[1] as SpeechGate.Out.Ended
         assertEquals(end1.pcm16le.size, end2.pcm16le.size)
+    }
+
+    @Test fun `a pause of 800 ms inside a sentence does not end it`() {   // owner 2026-11-20: "나 목소리 너무 끊겨"
+        val events = SpeechGate().feed(silence(400) + tone(600) + silence(800) + tone(700) + silence(1400))
+        assertEquals(2, events.size)
+        assertEquals(SpeechGate.Out.Started, events[0])
+        assertTrue((events[1] as SpeechGate.Out.Ended).pcm16le.size >= (600 + 800 + 700) * 32)
+    }
+
+    @Test fun `the turn ends after a clear pause of one second`() {
+        val gate = SpeechGate()
+        assertEquals(listOf<SpeechGate.Out>(SpeechGate.Out.Started), gate.feed(silence(400) + tone(800) + silence(950)))
+        assertTrue(gate.feed(silence(100)).single() is SpeechGate.Out.Ended)
+    }
+
+    @Test fun `after a long pause inside the turn the end waits longer`() {
+        val gate = SpeechGate()
+        assertEquals(listOf<SpeechGate.Out>(SpeechGate.Out.Started), gate.feed(silence(400) + tone(600) + silence(900) + tone(600) + silence(1300)))
+        assertTrue(gate.feed(silence(120)).single() is SpeechGate.Out.Ended)   // 900 + 500 = 1400 ms
+    }
+
+    @Test fun `the end never waits more than 1800 ms`() {
+        val gate = SpeechGate()
+        val pcm = silence(400) + tone(600) + silence(900) + tone(600) + silence(1300) + tone(600) + silence(1700) + tone(600) + silence(1780)
+        assertEquals(listOf<SpeechGate.Out>(SpeechGate.Out.Started), gate.feed(pcm))
+        assertTrue(gate.feed(silence(20)).single() is SpeechGate.Out.Ended)
+    }
+
+    @Test fun `a soft ending after loud speech is still speech`() {
+        val events = SpeechGate().feed(silence(400) + tone(600, db = -20f) + tone(1100, db = -54f) + silence(1100))
+        assertEquals(2, events.size)
+        assertTrue((events[1] as SpeechGate.Out.Ended).pcm16le.size >= (400 + 1100) * 32)
+    }
+
+    @Test fun `single clicks in the quiet do not keep the turn open`() {
+        var pcm = silence(400) + tone(600)
+        repeat(6) { pcm += silence(180) + tone(20) }
+        val events = SpeechGate().feed(pcm + silence(1000))
+        assertEquals(2, events.size)
+        assertTrue((events[1] as SpeechGate.Out.Ended).pcm16le.size <= (300 + 400 + 1000 + 40) * 32)
     }
 }

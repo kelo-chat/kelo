@@ -25,6 +25,12 @@
     <string name="call_mic_denied">Anruf konnte nicht gestartet werden: Mikrofonzugriff nicht erlaubt.</string>
     <string name="call_voice_offer">Dies ist Kelos natürliche Stimme für Anrufe. Lade das Sprachmodell (%1$s) einmal auf deinen Kelo-Server herunter, und Kelo spricht ab dem nächsten Satz damit. Ohne das Modell spricht Kelo mit der Roboterstimme dieses Geräts.</string>
     <string name="call_mark">Anruf</string>
+    <plurals name="call_chat_length">
+        <item quantity="one">Anruf · %1$d Min.</item>
+        <item quantity="other">Anruf · %1$d Min.</item>
+    </plurals>
+    <string name="call_chat_show">Anruf anzeigen</string>
+    <string name="call_chat_hide">Anruf ausblenden</string>
     <string name="call_voice_offer_title">Kelos eigene Stimme herunterladen?</string>
     <string name="call_voice_offer_ok">Laden</string>
     <string name="call_voice_offer_later">Vorerst Gerätestimme nutzen</string>
@@ -32,6 +38,12 @@
     <string name="call_voice_get">Laden</string>
     <string name="call_voice_line_close">Schließen</string>
     <string name="call_ears_failed">Die Spracherkennung des Telefons hört dich nicht.</string>
+    <string name="call_voice_device">Kelos eigene Stimme wurde nicht geladen, deshalb spricht die Stimme dieses Geräts.</string>
+    <string name="call_voice_none">Dieses Gerät kann Kelos Stimme gerade nicht abspielen. Die Antwort steht im Chat.</string>
+    <string name="call_minimize">Zurück zum Chat</string>
+    <string name="call_keyboard">Tippen</string>
+    <string name="call_type_hint">Nachricht an Kelo eingeben</string>
+    <string name="call_type_send">Senden</string>
     <string name="voice_speech_title">Kelos Stimme</string>
     <string name="voice_speech_download">Sprachmodell herunterladen · %1$s</string>
     <string name="voice_speech_downloading">Sprachmodell wird heruntergeladen · %1$d%%</string>

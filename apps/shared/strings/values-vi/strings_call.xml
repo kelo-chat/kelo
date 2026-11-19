@@ -25,6 +25,11 @@
     <string name="call_mic_denied">Không thể bắt đầu cuộc gọi: chưa cấp quyền micro.</string>
     <string name="call_voice_offer">Đây là giọng nói tự nhiên của Kelo khi gọi. Tải mô hình giọng nói (%1$s) về máy chủ Kelo một lần và Kelo sẽ nói bằng giọng này từ câu tiếp theo. Nếu không tải, Kelo sẽ dùng giọng nói máy móc của thiết bị này.</string>
     <string name="call_mark">Cuộc gọi</string>
+    <plurals name="call_chat_length">
+        <item quantity="other">Cuộc gọi · %1$d phút</item>
+    </plurals>
+    <string name="call_chat_show">Xem cuộc gọi</string>
+    <string name="call_chat_hide">Ẩn cuộc gọi</string>
     <string name="call_voice_offer_title">Tải giọng nói của Kelo?</string>
     <string name="call_voice_offer_ok">Tải về</string>
     <string name="call_voice_offer_later">Tạm thời dùng giọng thiết bị</string>
@@ -32,6 +37,12 @@
     <string name="call_voice_get">Tải về</string>
     <string name="call_voice_line_close">Đóng</string>
     <string name="call_ears_failed">Tính năng nhận dạng giọng nói của điện thoại không nghe thấy bạn.</string>
+    <string name="call_voice_device">Không tải được giọng của Kelo nên giọng của thiết bị này đang nói.</string>
+    <string name="call_voice_none">Thiết bị này hiện không phát được giọng của Kelo. Câu trả lời có trong cuộc trò chuyện.</string>
+    <string name="call_minimize">Quay lại cuộc trò chuyện</string>
+    <string name="call_keyboard">Nhập</string>
+    <string name="call_type_hint">Nhập tin nhắn gửi Kelo</string>
+    <string name="call_type_send">Gửi</string>
     <string name="voice_speech_title">Giọng nói Kelo</string>
     <string name="voice_speech_download">Tải mô hình giọng nói · %1$s</string>
     <string name="voice_speech_downloading">Đang tải mô hình giọng nói · %1$d%%</string>

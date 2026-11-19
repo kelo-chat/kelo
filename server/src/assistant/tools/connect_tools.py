@@ -37,6 +37,7 @@ from ..deliverables import Deliverables, LibraryFileError
 from ..home import Home, HomeError
 from ..data_trail import USES_PARAM
 from ..i18n import t
+from ..injection_watch import current as injection_watch_var
 from ..keyguard import Locked
 from ..mcp_oauth import open_token
 from ..netguard import NetGuardError, Reply, fetch, fetch_local
@@ -147,6 +148,23 @@ def asked_in_chat() -> bool:
     seen = outside_seen.get()
     asked = (turn.get("source") == "chat" and not turn.get("unattended")) or bool(turn.get("owner_asked"))
     return asked and not (seen and seen[0])
+
+
+def owner_request() -> bool:
+    """The owner's own chat message (or an app request they made) asked for this run's step, and nothing says it was not theirs: a change
+    to their own things (calendar events) then needs no card. Unattended runs and a message from anyone else (a group, a forward) do not
+    count; a run the injection watch flagged does not either. The outside-text rule (outside_rule.py) still decides per step."""
+    turn = current_turn.get() or {}
+    if turn.get("unattended"):
+        return False
+    asked = (turn.get("source") == "chat" and bool(turn.get("owner_message"))) or bool(turn.get("owner_asked"))
+    if not asked:
+        return False
+    try:
+        watch = injection_watch_var.get()
+        return not (watch is not None and watch.flagged())
+    except Exception:  # noqa: BLE001 - unsure: the card asks
+        return False
 
 
 def connect_tools(store: Store, home: Home | None = None, fetcher: Fetcher = fetch, local_fetcher: Fetcher = fetch_local,

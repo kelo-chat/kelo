@@ -386,3 +386,39 @@ async def test_a_reply_that_made_the_schedule_is_not_checked(tmp_path, monkeypat
         await asyncio.sleep(0.3)
         msgs = (await c.get("/api/messages")).json()
     assert made and len(msgs) == 2 and not any(judging(r) for r in fn.calls)
+
+
+async def test_the_judge_is_shown_the_reply_in_order_and_a_lead_in_followed_by_its_work_is_no_promise(monkeypatch):
+    """The owner's case (2026-11-20): the lead-in "사진과 캘린더를 다시 확인할게요." was followed by the work; a judge that reads it as a promise
+    must not put a correction under the reply. Also a real later promise (no work after it) still gets its line."""
+    from assistant.reply_text import ReplyText
+    monkeypatch.setattr(sr, "PROMISE_CHECK", True)
+    r = ReplyText()
+    for e in ({"type": "text", "text": "사진과 캘린더를 다시 확인할게요."},
+              {"type": "tool_started", "id": "1", "name": "view_image", "arguments": "{}"},
+              {"type": "tool_result", "id": "1", "name": "view_image", "output": "a photo", "is_error": False},
+              {"type": "tool_started", "id": "2", "name": "gcal_create_event", "arguments": "{}"},
+              {"type": "tool_result", "id": "2", "name": "gcal_create_event", "output": "Added.", "is_error": False},
+              {"type": "text", "text": "정리했어요."}, {"type": "done"}):
+        r.feed(e)
+    reply = r.text()
+    seen = []
+
+    async def ask(system, text):
+        seen.append(json.loads(text))
+        return {"promises_later": True, "offer": False, "quote": "사진과 캘린더를 다시 확인할게요."}
+    got = await PromiseJudge(ask).promised(reply, "정리해줘", steps=r.timeline())
+    assert got == "사진과 캘린더를 다시 확인할게요." and r.lead_in_done(got)
+    assert seen[0]["in_order"] and {"did" in e for e in seen[0]["in_order"]} == {True, False}
+    assert "in_order" in PROMISE_SYSTEM and "not a promise" in PROMISE_SYSTEM
+    later = ReplyText()
+    for e in ({"type": "text", "text": "내일 알려드릴게요."}, {"type": "done"}):
+        later.feed(e)
+    assert not later.lead_in_done("내일 알려드릴게요.")   # no work follows it: a real promise, the line stays
+
+
+def test_a_check_waits_for_an_open_card_of_the_reply():
+    assert sr.promise_check_needed(0, [], "t1") is True
+    assert sr.promise_check_needed(1, [], "t1") is False                                    # a card the turn is waiting on
+    assert sr.promise_check_needed(0, [{"turn_id": "t1"}], "t1") is False                  # a card of this reply still pending
+    assert sr.promise_check_needed(0, [{"turn_id": "other"}], "t1") is True

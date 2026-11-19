@@ -173,10 +173,19 @@ async def test_a_ref_whose_element_cannot_be_read_is_judged_by_its_words(ctx, mo
     assert await env.session.judge("browser_click", {"selector": pay}) == ""
     assert env.session.selector_words(pay) == 'button "Pay now"' and env.session.selector_words("#pay") == "#pay"
     assert await env.session.judge("browser_click", {"selector": "e999"}) == "unknown"    # a ref the reading never had
-    # an unknown ref always asks, even inside an order the user asked for
-    run = await env.run([("begin_order", {"site": "shop.example", "what": "a mug"}), ("browser_click", {"selector": "e999"})],
-                        answer=lambda req: False)
-    assert "browser_click" in run.card_tools()
+    # a ref the page does not have is never asked about: it fails at once with "read the page again" (owner report 2026-11-19)
+    run = await env.run([("browser_click", {"selector": "e999"})], answer=lambda req: True)
+    assert run.cards == [] and "read the page again" in run.result("browser_click").output
+    # an element that is there but cannot be read or named always asks, even inside an order the user asked for, and says so
+    async def no_name(selector):
+        return ""
+    monkeypatch.setattr(env.session, "_ref_name_now", no_name)
+    await env.run([("begin_order", {"site": "shop.example", "what": "a mug"})])
+    browser_owner.set("owner")
+    env.session._ref_words["owner"] = {}
+    run = await env.run([("browser_click", {"selector": pay})], answer=lambda req: False)
+    assert run.card_tools() == ["browser_click"]
+    assert run.cards[0].detail.startswith("Click a button on shop.example. Kelo could not read what is there.")
 
 
 async def test_a_ref_missing_from_the_last_reading_is_named_by_the_element_itself(ctx, monkeypatch):
@@ -279,6 +288,8 @@ POINTS = """<style>body{margin:0} .p{position:absolute;width:160px;height:40px}<
 <div id=log style="position:absolute;left:20px;top:400px">-</div>"""
 PAGES["/points"] = POINTS
 PAGES["/elsewhere"] = "<p>elsewhere</p>"
+PAGES["/plain"] = """<h1>List</h1><a class=icon href="/box/list?from=top"><svg width=20 height=20></svg></a>
+<span class=plain>Show all</span><input class=bare>"""
 
 
 async def point_env(ctx) -> Env:
@@ -404,3 +415,80 @@ async def test_a_typed_value_is_secret_by_the_field_and_an_unreadable_field_is_m
     monkeypatch.setattr(env.session, "read_target", password_field)
     await env.session.judge("browser_type", {"selector": pay, "text": "x"})
     assert env.session.judged_secret(pay) is True
+
+
+async def test_a_ref_the_page_no_longer_has_fails_at_once_and_never_shows_a_card(ctx):
+    # owner report 2026-11-19: an old ref was clicked after the page changed; a card asked the owner, who allowed it, and the click
+    # then failed because the element was gone
+    env = await env_on(ctx)
+    first = await env.run([("browser_open", {"url": SHOP + "/pay"})])
+    pay = ref_for(first.result("browser_open").output, 'button "Pay now"')
+    await env.page.goto(SHOP + "/next")
+    run = await env.run([("browser_click", {"selector": pay}), ("browser_type", {"selector": pay, "text": "x"}),
+                         ("browser_click", {"selector": "e999"})], answer=lambda req: True)
+    assert run.cards == []
+    assert len(run.results) == 3
+    for r in run.results:
+        assert r.is_error and "was not run" in r.output and "read the page again (browser_read)" in r.output, r.output[:300]
+
+
+async def test_a_card_always_says_what_it_presses_or_that_kelo_could_not_read_it(ctx, monkeypatch):
+    # owner report 2026-11-19: a card said only "Click a button on <site>."
+    env = await env_on(ctx)
+    await env.run([("browser_open", {"url": SHOP + "/plain"})])
+    browser_owner.set("owner")
+    click, type_ = env.by_name["browser_click"].describe, env.by_name["browser_type"].describe
+    await env.session.judge("browser_click", {"selector": "a.icon"})
+    assert (await click({"selector": "a.icon"})).startswith("Click the link to shop.example/box/list on shop.example.")
+    await env.session.judge("browser_click", {"selector": "span.plain"})
+    assert (await click({"selector": "span.plain"})).startswith("Click the text “Show all” on shop.example.")
+    await env.session.judge("browser_type", {"selector": "input.bare", "text": "x"})
+    assert (await type_({"selector": "input.bare", "text": "x"})).startswith(
+        "Type into a field on shop.example. It has no words on the page.")
+
+    async def unreadable(selector):
+        return None
+    monkeypatch.setattr(env.session, "read_target", unreadable)
+    await env.session.judge("browser_click", {"selector": "a.icon"})
+    assert (await click({"selector": "a.icon"})).startswith("Click a button on shop.example. Kelo could not read what is there.")
+    await env.session.judge("browser_type", {"selector": "input.bare", "text": "x"})
+    assert (await type_({"selector": "input.bare", "text": "x"})).startswith(
+        "Type into a field on shop.example. Kelo could not read what is there.")
+
+
+async def test_a_ref_missing_from_the_last_reading_is_named_on_the_card_by_the_element_itself(ctx, monkeypatch):
+    env = await env_on(ctx)
+    first = await env.run([("browser_open", {"url": SHOP + "/pay"})])
+    pay = ref_for(first.result("browser_open").output, 'button "Pay now"')
+
+    async def unreadable(selector):
+        return None
+    monkeypatch.setattr(env.session, "read_target", unreadable)
+    browser_owner.set("owner")
+    env.session._ref_words["owner"] = {}                      # the reading after a click no longer carries it
+    await env.session.judge("browser_click", {"selector": pay})
+    assert (await env.by_name["browser_click"].describe({"selector": pay})).startswith("Click “Pay now” on shop.example.")
+
+
+async def test_an_async_validate_refuses_before_any_card():
+    from fixtures.order_harness import scripted
+    from assistant.agent import Tool, ToolResult, run_agent
+    ran, asked = [], []
+
+    async def check(args):
+        return "it is gone" if args.get("x") == "bad" else None
+
+    async def handler(args):
+        ran.append(args)
+        return "ok"
+
+    async def approve(req):
+        asked.append(req.name)
+        return True
+    tool = Tool("act", "Acts.", {"type": "object", "properties": {"x": {"type": "string"}}}, handler, requires_approval=True,
+                validate=check)
+    events = [ev async for ev in run_agent("p", "m", [{"role": "user", "content": "go"}], [tool], approve=approve, max_steps=5,
+                                           stream_fn=scripted([("act", {"x": "bad"}), ("act", {"x": "good"})]))]
+    results = [e for e in events if isinstance(e, ToolResult)]
+    assert results[0].is_error and "act was not run: it is gone" in results[0].output
+    assert asked == ["act"] and ran == [{"x": "good"}]

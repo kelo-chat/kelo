@@ -1,8 +1,9 @@
 # Sidecar image for ONE subscription CLI. Build a target: `claude` or `agy` (see compose.yml profiles).
 # It runs assistant.cli_runner (port 9300): the server sends it chat requests, it runs the CLI.
 # No model keys, no ASSISTANT_TOKEN: only the shared CLI_RUNNER_TOKEN.
-# The CLI is installed at build time and always fetched fresh: update with `assistant update`
-# (= rebuild with --pull --no-cache). The login lives in a named volume, so it survives a rebuild.
+# The CLI is installed at build time. `assistant update` rebuilds this image with Docker's cache (its layers are rebuilt when their
+# inputs change); `assistant update --cli claude|agy` rebuilds it from scratch (--pull --no-cache) with the newest CLI. The login lives
+# in a named volume, so it survives a rebuild.
 # The owner can also press 업데이트 in the app: the runner installs a newer CLI into that same volume
 # (/home/cli/.kelo-cli/<cli>/<version>, at most two kept) and uses the newer of that copy and this image's (cli_update.py).
 

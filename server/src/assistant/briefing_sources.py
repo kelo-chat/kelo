@@ -42,8 +42,10 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .agent import Tool
+from .agent import Ours, Tool
+from .agent.fence import data, marked
 from .calendars import Calendars, classify
+from .event_search import matches, no_match_line, query_terms
 from .i18n import N_, t
 from .google_calendar import parse_when, when_text
 from .mail import PROVIDERS as MAIL
@@ -252,11 +254,19 @@ class Sources:
         await asyncio.gather(*(view.list(a.item, unread=True, limit=1) for a in self.accounts("mail")))
 
     # ------------------------------------------------------------------ reading for the chat
-    async def events(self, start: datetime, end: datetime, query: str | list[str] = "", *,
+    async def events(self, start: datetime, end: datetime, query: Any = "", *,
                      pages: int = 1, tool: str = "calendar_events") -> tuple[list[dict[str, Any]], list[Acct], list[Acct], list[Acct]]:
         """(events of the chosen calendars overlapping [start, end), all-day ones included, each with "source"; the calendars read; the
-        ones left out by the owner's choice; the ones that could not be read). `query`: one or more words, an event matching any of
-        them (in its title or place, any case) is kept. `tool`: who reads, for the vault's use log."""
+        ones left out by the owner's choice; the ones that could not be read). `query`: words (event_search.query_terms), an event with
+        any of them in its title, place or notes is kept. `tool`: who reads, for the vault's use log."""
+        evs, _, read, left, failed = await self.events_and_total(start, end, query, pages=pages, tool=tool)
+        return evs, read, left, failed
+
+    async def events_and_total(self, start: datetime, end: datetime, query: Any = "", *, pages: int = 1,
+                               tool: str = "calendar_events") -> tuple[list[dict[str, Any]], int, list[Acct], list[Acct], list[Acct]]:
+        """As events(), plus the number of events in the range before the words filter it (so an empty search can say so). The same
+        event from two calendars is listed once: the first copy is kept, the other's calendar goes to its "also" and a mail mark or the
+        account of either copy is carried over."""
         group = self.config()["calendar"]
         accts = self.accounts("calendar")
         failed: list[str] = []
@@ -272,19 +282,23 @@ class Sources:
                                         **({"pages": pages} if pages > 1 else {}))
         read = [a for a in accts if on(a)]
         names = {a.id: self.label(a, read) for a in read}
-        terms = search_terms(query)
-        seen: set[tuple[str, int]] = set()
-        out = []
+        terms = query_terms(query)
+        kept: dict[tuple[str, int], dict[str, Any]] = {}
+        everything: list[dict[str, Any]] = []
         for e in evs:
-            text = f"{e['title']} {e.get('where', '')}".casefold()
-            if terms and not any(q in text for q in terms):
-                continue
+            labelled = {**e, "source": names.get(e["source_id"], "")}
             key = (e["title"].strip().lower(), int(e["start"]) // 60)
-            if key in seen:
-                continue   # the same event from two calendars (a Google calendar synced into the phone)
-            seen.add(key)
-            out.append({**e, "source": names.get(e["source_id"], "")})
-        return out, [a for a in read if a.id not in failed], [a for a in accts if not on(a)], [a for a in read if a.id in failed]
+            if key in kept:   # the same event from two calendars (a Google calendar synced into the phone): listed once
+                first = kept[key]
+                if labelled["source"] and labelled["source"] != first["source"]:
+                    first.setdefault("also", []).append(labelled["source"])
+                first["account"] = first.get("account") or labelled.get("account", "")
+                first["own"] = bool(first.get("own")) and bool(labelled.get("own"))   # the owner's own only when every copy is
+                continue
+            kept[key] = labelled
+            everything.append(labelled)
+        out = [e for e in everything if matches(terms, e["title"], e.get("where", ""), e.get("notes", ""))]
+        return out, len(everything), [a for a in read if a.id not in failed], [a for a in accts if not on(a)], [a for a in read if a.id in failed]
 
     def calendar_tool(self, timezone_name: Callable[[], str | None]) -> Tool:
         async def calendar_events(args: dict[str, Any]) -> str:
@@ -300,11 +314,11 @@ class Sources:
                 return f"error: {e}"
             if end <= start:
                 return "error: end is before start"
-            terms = search_terms(args.get("query"))
+            terms = query_terms(args.get("query"))
             if end - start > timedelta(days=SEARCH_DAYS if terms else LIST_DAYS):
                 return ("error: a search covers at most 18 months at a time" if terms else
                         "error: list at most two months at a time; to find something over a longer span, give query")
-            evs, read, left, failed = await self.events(start, end, terms, pages=SEARCH_PAGES if end - start > timedelta(days=LIST_DAYS) else 1)
+            evs, total, read, left, failed = await self.events_and_total(start, end, terms, pages=SEARCH_PAGES if end - start > timedelta(days=LIST_DAYS) else 1)
             if not read and not failed:
                 return ("No calendar is read: " + ("the user left every calendar out of what Kelo reads (they can change it with "
                         "briefing_sources)." if left else "none is connected. They can share the phone's calendar or connect one with connect_service."))
@@ -314,10 +328,10 @@ class Sources:
             if left:
                 lines.append("Left out by the user's choice: " + ", ".join(t(a.name) for a in left) + ".")
             zone = getattr(tz, "key", "UTC")
+            span = f"between {start.strftime('%Y-%m-%d %H:%M')} and {end.strftime('%Y-%m-%d %H:%M')} ({zone})"
             if not evs:
-                lines.append(("No events matching " + " or ".join(f'"{q}"' for q in terms) + " " if terms else "No events ") +
-                             f"between {start.strftime('%Y-%m-%d %H:%M')} and {end.strftime('%Y-%m-%d %H:%M')} ({zone}).")
-                return "\n".join(lines)
+                lines.append(no_match_line(terms, span, total) if terms else f"No events {span}.")
+                return Ours("\n".join(lines))   # the app's own words: the calendars read and the span
             lines.append(f"Events ({zone}), {len(evs)}" + (f", the first {MAX_SHOWN} shown" if len(evs) > MAX_SHOWN else "") + ":")
             for e in evs[:MAX_SHOWN]:
                 a = datetime.fromtimestamp(e["start"], tz)
@@ -326,9 +340,20 @@ class Sources:
                     a = datetime.fromisoformat(e["day"]).replace(tzinfo=tz)
                     b = a + timedelta(days=1) if b is None or b <= a else b
                 when = when_text(a, b, bool(e.get("all_day")))
-                lines.append(f"- {when} · {e['title'] or '(no title)'}" + (f" · at {e['where']}" if e.get("where") else "")
-                             + (f" · {e['source']}" if e.get("source") and len(read) > 1 else ""))
-            return "\n".join(lines)
+                source = e.get("source", "") if len(read) > 1 else ""
+                if source and e.get("source_id") == "phone" and e.get("account") and e.get("account_type", "").lower() != "local":
+                    source += f" (account {e['account']})"
+                # an event the owner made on a calendar they own is their own data; any other event's title and place are others' text
+                title, where = e["title"] or "(no title)", e.get("where", "")
+                if not e.get("own"):
+                    title = data(title)
+                    where = data(where) if where else ""
+                lines.append(f"- {when} · {title}" + (f" · at {where}" if where else "")
+                             + (f" · {source}" if source else "")
+                             + (f", also in {', '.join(e['also'])}" if e.get("also") else "")
+                             )
+            text = "\n".join(lines)
+            return text if marked(text) else Ours(text)
 
         when = "YYYY-MM-DD or YYYY-MM-DDTHH:MM, the user's time zone"
         return Tool("calendar_events",
@@ -339,7 +364,8 @@ class Sources:
                     "the tools of its own calendar.",
                     {"type": "object", "properties": {"start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
                                                       "query": {"type": "array", "items": {"type": "string"},
-                                                                "description": "words in titles or places; an event matching any one is shown"}}},
+                                                                "description": "words to look for; an event whose title, place or notes contains "
+                                                                               "any one of them is shown (any case)"}}},
                     calendar_events, read_only=True, untrusted=True, source="calendar", trail="calendar")
 
     # ------------------------------------------------------------------ the agent's tool

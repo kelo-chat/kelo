@@ -20,13 +20,19 @@ from typing import Any
 from urllib.parse import quote, urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .agent import Tool
+from .agent import Ours, Tool
+from .agent.fence import data, marked
+from .event_search import matches, no_match_line, query_terms
 from .google_web import CALENDAR_SCOPES, GoogleWeb, GoogleWebError
 from .i18n import t
 from .netguard import NetGuardError, Reply, fetch
+from .tools.connect_tools import owner_request
 from .store import Store
 
 Fetcher = Callable[..., Awaitable[Reply]]
+# Google's event types the owner makes themself (the API's enum). "fromGmail" events are made from mail and "birthday" ones from contacts:
+# their text came from somewhere else, so they are read as others' text.
+OWN_EVENT_TYPES = ("default", "focusTime", "outOfOffice", "workingLocation")
 API = "https://www.googleapis.com/calendar/v3"
 HOST = "www.googleapis.com"
 ITEM = "google-calendar"
@@ -35,6 +41,7 @@ WRITE_SCOPES = {"https://www.googleapis.com/auth/calendar.events", "https://www.
 MAX_CALENDARS = 10
 MAX_EVENTS = 50
 PAGE_EVENTS = 250     # per page when a long span is searched (calendar_events with query)
+SEARCH_PAGES_GOOGLE = 8   # pages read for a search: Google matches words itself no longer, so every event of the span is read and filtered here
 
 
 class CalendarError(Exception):
@@ -184,8 +191,8 @@ class GoogleCalendar:
         except NetGuardError as e:
             raise CalendarError(f"could not reach Google Calendar: {e}") from None
 
-    def _open(self, account: str, tool: str) -> tuple[str, dict[str, Any]]:
-        from .vault import use_credential
+    def _pick(self, account: str) -> dict[str, Any]:
+        """The connected account the call means (its name, address, scopes); the same errors whichever tool asks."""
         mine = self.accounts()
         if not mine:
             raise CalendarError("no Google Calendar is connected. Ask the user to connect it with connect_service(service='google_calendar').")
@@ -193,6 +200,11 @@ class GoogleCalendar:
         pick = next((x for x in mine if a and (x["name"] == a or x["address"].lower() == a)), None) if a else (mine[0] if len(mine) == 1 else None)
         if pick is None:
             raise CalendarError("say which Google account with account: " + ", ".join(x["address"] for x in mine))
+        return pick
+
+    def _open(self, account: str, tool: str) -> tuple[str, dict[str, Any]]:
+        from .vault import use_credential
+        pick = self._pick(account)
         cred = use_credential(self.store, pick["name"], tool=tool)
         return pick["name"], json.loads(cred["secret"])
 
@@ -250,17 +262,29 @@ class GoogleCalendar:
                 break
         return out
 
-    async def events(self, account: str, start: datetime, end: datetime, query: str = "", calendar: str = "",
+    async def events(self, account: str, start: datetime, end: datetime, query: Any = "", calendar: str = "",
                      tool: str = "gcal_events", pages: int = 1) -> list[dict[str, Any]]:
-        """Events overlapping [start, end); `pages` > 1 follows Google's next pages (a long search span), PAGE_EVENTS each."""
+        """Events overlapping [start, end); `pages` > 1 follows Google's next pages (a long search span), PAGE_EVENTS each.
+        `query` (words, event_search.query_terms) is matched here, not by Google: only the events with any of the words are kept."""
         tz = self.tz()
+        terms = query_terms(query)
+        address = self._pick(account)["address"]
+        pages = max(pages, SEARCH_PAGES_GOOGLE) if terms else pages
+        try:   # the calendar list once, in every case: each calendar's access role says whose events these are (own data, see gcal_events)
+            listed = await self.calendars(account, tool)
+        except (CalendarError, NetGuardError):
+            if not calendar:
+                raise
+            listed = []   # a given calendar still reads; its events are then all read as others' text
+        roles = {str(c.get("id", "")): str(c.get("accessRole") or "") for c in listed}
         if calendar:
             cals = [{"id": calendar, "summary": calendar}]
         else:
-            cals = [c for c in await self.calendars(account, tool) if c.get("primary") or c.get("selected", False)][:MAX_CALENDARS] or \
+            cals = [c for c in listed if c.get("primary") or c.get("selected", False)][:MAX_CALENDARS] or \
                 [{"id": "primary", "summary": "primary"}]
         rows: list[dict[str, Any]] = []
         for c in cals:
+            calendar_own = roles.get(str(c["id"]), "") == "owner"
             items: list[Any] = []
             token = ""
             for _ in range(max(1, pages)):
@@ -268,7 +292,7 @@ class GoogleCalendar:
                     "timeMin": start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
                     "timeMax": end.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
                     "singleEvents": "true", "orderBy": "startTime", "maxResults": MAX_EVENTS if pages <= 1 else PAGE_EVENTS,
-                    "q": query.strip()[:200], "timeZone": getattr(tz, "key", "UTC"), "pageToken": token})
+                    "timeZone": getattr(tz, "key", "UTC"), "pageToken": token})
                 items += r.get("items", []) if isinstance(r.get("items"), list) else []
                 token = str(r.get("nextPageToken") or "")
                 if not token:
@@ -280,10 +304,15 @@ class GoogleCalendar:
                 if me and me.get("responseStatus") == "declined":
                     continue
                 a, b, all_day = _event_times(ev, tz)
+                people = " ".join(f"{x.get('displayName', '')} {x.get('email', '')}" for x in ev.get("attendees") or [] if isinstance(x, dict))
                 rows.append({"id": str(ev.get("id", "")), "calendar_id": str(c["id"]), "calendar": str(c.get("summaryOverride") or c.get("summary") or ""),
                              "title": str(ev.get("summary") or t("(no title)")), "start": a, "end": b, "all_day": all_day,
                              "location": str(ev.get("location") or ""), "attendees": len(ev.get("attendees") or []),
-                             "recurring": bool(ev.get("recurringEventId"))})
+                             "recurring": bool(ev.get("recurringEventId")), "notes": str(ev.get("description") or "")[:2000],
+                             "people": people[:1000], "account": address,
+                             "own": calendar_own and _own_event(ev), "calendar_own": calendar_own})
+        if terms:
+            rows = [r for r in rows if matches(terms, r["title"], r["location"], r["notes"], r["people"])]
         rows.sort(key=lambda x: x["start"] or datetime.max.replace(tzinfo=timezone.utc))
         return rows
 
@@ -299,6 +328,14 @@ class GoogleCalendar:
                 if ev["start"] is not None and not ev["all_day"]:
                     out.append({"id": f"gcal:{ev['id']}", "title": ev["title"], "start": ev["start"].timestamp(), "where": ev["location"]})
         return out
+
+
+def _own_event(ev: dict[str, Any]) -> bool:
+    """An event the owner made themself: nobody else organized or created it, and it is not one made from mail or contacts."""
+    organizer, creator = ev.get("organizer"), ev.get("creator")
+    return ((("organizer" not in ev) or (isinstance(organizer, dict) and organizer.get("self") is True))
+            and (("creator" not in ev) or (isinstance(creator, dict) and creator.get("self") is True))
+            and ev.get("eventType", "default") in OWN_EVENT_TYPES)
 
 
 # ---------------------------------------------------------------------------------------------------------------- the tools
@@ -356,31 +393,46 @@ def calendar_tools(cal: GoogleCalendar) -> list[Tool]:
             return err(e)
         if not rows:
             return "No calendars."
-        return "\n".join(f"- {c.get('summaryOverride') or c.get('summary') or '?'} (calendar: {c.get('id')}"
-                         f"{', primary' if c.get('primary') else ''}{', read-only' if c.get('accessRole') in ('reader', 'freeBusyReader') else ''})"
-                         for c in rows)
+        lines = []
+        for c in rows:
+            name = str(c.get('summaryOverride') or c.get('summary') or '?')
+            if c.get("accessRole") != "owner":   # a calendar someone else owns: its name is others' text
+                name = data(name)
+            lines.append(f"- {name} (calendar: {c.get('id')}"
+                         f"{', primary' if c.get('primary') else ''}{', read-only' if c.get('accessRole') in ('reader', 'freeBusyReader') else ''})")
+        text = "\n".join(lines)
+        return text if marked(text) else Ours(text)
 
     async def gcal_events(args: dict[str, Any]) -> str:
         tz = cal.tz()
+        terms = query_terms(args.get("query"))
         try:
             start = parse_when(str(args["start"]), tz)[0] if args.get("start") else datetime.now(tz)
             end = parse_when(str(args["end"]), tz, end_of_day=True)[0] if args.get("end") else start + timedelta(days=7)
             if end <= start:
                 return "error: end is before start"
-            rows = await cal.events(str(args.get("account", "")), start, min(end, start + timedelta(days=366)), str(args.get("query") or ""),
-                                    str(args.get("calendar") or ""))
+            rows = await cal.events(str(args.get("account", "")), start, min(end, start + timedelta(days=366)), "",
+                                    str(args.get("calendar") or ""), pages=SEARCH_PAGES_GOOGLE if terms else 1)
         except (CalendarError, NetGuardError) as e:
             return err(e)
         zone = getattr(tz, "key", "UTC")
+        span = f"between {start.strftime('%Y-%m-%d %H:%M')} and {end.strftime('%Y-%m-%d %H:%M')} ({zone})"
+        total = len(rows)
+        if terms:
+            rows = [r for r in rows if matches(terms, r["title"], r["location"], r["notes"], r["people"])]
         if not rows:
-            return f"No events between {start.strftime('%Y-%m-%d %H:%M')} and {end.strftime('%Y-%m-%d %H:%M')} ({zone})."
+            return Ours(no_match_line(terms, span, total) if terms else f"No events {span}.")
         lines = [f"Events ({zone}), {len(rows)}:"]
-        for r in rows[:150]:
-            extra = "".join([f" · at {r['location']}" if r["location"] else "", f" · {r['attendees']} people" if r["attendees"] else "",
+        for r in rows[:150]:   # the owner's own events are the app's words; an event others wrote has its title and place marked as data
+            title = r["title"] if r["own"] else data(r["title"])
+            place = r["location"] if r["own"] or not r["location"] else data(r["location"])
+            calendar = r["calendar"] if r["calendar_own"] else data(r["calendar"])
+            extra = "".join([f" · at {place}" if r["location"] else "", f" · {r['attendees']} people" if r["attendees"] else "",
                              " · repeats" if r["recurring"] else ""])
-            lines.append(f"- {when_text(r['start'], r['end'], r['all_day'])} · {r['title']}{extra} · {r['calendar']} "
+            lines.append(f"- {when_text(r['start'], r['end'], r['all_day'])} · {title}{extra} · {calendar} "
                          f"(event_id: {r['id']}, calendar: {r['calendar_id']})")
-        return "\n".join(lines)
+        text = "\n".join(lines)
+        return text if marked(text) else Ours(text)
 
     async def gcal_create_event(args: dict[str, Any]) -> str:
         try:
@@ -474,18 +526,26 @@ def calendar_tools(cal: GoogleCalendar) -> list[Tool]:
         Tool("gcal_events", "List or search events in the user's Google Calendar only (default: the next 7 days), each occurrence of a "
              "repeating event apart, with the ids needed to change one. For what is on across all calendars use calendar_events.",
              {"type": "object", "properties": {"start": {"type": "string", "description": when}, "end": {"type": "string", "description": when},
-                                               "query": {"type": "string", "description": "words in titles, places, notes, attendees"},
+                                               "query": {"type": "array", "items": {"type": "string"},
+                                                         "description": "words to look for; an event whose title, place, notes or guests contain "
+                                                                        "any one of them is shown (any case)"},
                                                "calendar": {"type": "string", "description": "only this calendar id"},
                                                "account": account}},
              gcal_events, read_only=True, untrusted=True, source="calendar", trail="calendar"),
-        Tool("gcal_create_event", "Add an event to the user's Google Calendar; the user approves it. A date-only start is all-day; a timed "
-             "event without end lasts an hour.",
+        Tool("gcal_create_event", "Add an event to the user's Google Calendar. When the user asked for it in the chat it runs at once; otherwise "
+             "the user approves it on a card. A date-only start is all-day; a timed event without end lasts an hour. For several changes of "
+             "one request, call them together in one step: the user then sees one card.",
              {"type": "object", "properties": fields, "required": ["title", "start"]},
-             gcal_create_event, requires_approval=True, describe=describe_create, validate=check_body(False)),
-        Tool("gcal_update_event", "Change an event in the user's Google Calendar, giving only what changes; the user approves it.",
+             gcal_create_event, requires_approval=True, describe=describe_create, validate=check_body(False),
+             auto_approve=lambda a: owner_request(), shares_card=True),
+        Tool("gcal_update_event", "Change an event in the user's Google Calendar, giving only what changes. When the user asked for it in the "
+             "chat it runs at once; otherwise the user approves it on a card. For several changes of one request, call them together in one step.",
              {"type": "object", "properties": {**fields, **target}, "required": ["event_id"]},
-             gcal_update_event, requires_approval=True, describe=describe_update, validate=check_body(True)),
-        Tool("gcal_delete_event", "Delete an event (one occurrence of a repeating one) from the user's Google Calendar; the user approves it.",
+             gcal_update_event, requires_approval=True, describe=describe_update, validate=check_body(True),
+             auto_approve=lambda a: owner_request(), shares_card=True),
+        Tool("gcal_delete_event", "Delete an event (one occurrence of a repeating one) from the user's Google Calendar. When the user asked for it "
+             "in the chat it runs at once; otherwise the user approves it on a card. For several deletions of one request, call them together in one step.",
              {"type": "object", "properties": target, "required": ["event_id"]},
-             gcal_delete_event, requires_approval=True, describe=describe_delete, validate=need_id),
+             gcal_delete_event, requires_approval=True, describe=describe_delete, validate=need_id,
+             auto_approve=lambda a: owner_request(), shares_card=True),
     ]

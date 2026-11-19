@@ -42,6 +42,7 @@ struct BrowserTabPage: View {
             if LiveRules.showTabs(live.tabs) { tabChips }
             if controlling { banner }
             if LiveRules.showWorkNote(live.status) { workNote }
+            if let line = LiveRules.dialogLine(live.status) { pageDialog(line) }
             ZStack(alignment: .bottom) {
                 Group {
                     if live.mode == .ended && live.end != .noBrowser {
@@ -206,8 +207,8 @@ struct BrowserTabPage: View {
             if s.youControl { return (L(R.string.live_state_you), c.accent) }
             if s.someoneElse { return (L(R.string.live_state_other), c.muted) }
             if s.agent.waitingApproval { return (L(R.string.live_state_waiting), c.accent) }
-            if s.agent.busy || tab?.status == "working" { return (L(R.string.agent_tab_working), c.accent) }
-            return (L(R.string.agent_tab_idle), c.muted)
+            let state = WorkText.tabState(tab?.status, busy: s.agent.busy)
+            return (WorkText.tabWord(state), state == .failed ? c.danger : state == .idle ? c.muted : c.accent)
         }()
         let line: String = switch live.mode {
         case .connecting: L(R.string.live_connecting)
@@ -252,6 +253,19 @@ struct BrowserTabPage: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).padding(.vertical, 2)
+    }
+
+
+    /// The page's own pop-up, which is never in the picture: what it said and how Kelo answered (server status `dialog`).
+    private func pageDialog(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            KeloIconView(.alert, size: 18, tint: c.muted)
+            Text(text).font(KeloFont.small).foregroundStyle(c.ink).lineLimit(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 14).fill(c.card))
+        .padding(.horizontal, 12).padding(.vertical, 4)
     }
 
     /// While the user holds the tab: the agent waits; one tap gives it back.

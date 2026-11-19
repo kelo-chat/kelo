@@ -933,6 +933,7 @@
     <string name="agent_tab_working">يعمل</string>
     <string name="agent_tab_failed">عالق</string>
     <string name="agent_tab_idle">خامل</string>
+    <string name="agent_tab_waiting">بانتظارك</string>
     <string name="agent_tab_picture">شاشة التبويب</string>
     <string name="agent_tab_no_picture">لا شيء لعرضه (صفحة فارغة).</string>
     <string name="agent_tab_close">إغلاق التبويب</string>

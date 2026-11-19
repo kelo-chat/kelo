@@ -901,6 +901,7 @@
     <string name="agent_tab_working">일하는 중</string>
     <string name="agent_tab_failed">막힘</string>
     <string name="agent_tab_idle">쉬는 중</string>
+    <string name="agent_tab_waiting">기다리는 중</string>
     <string name="agent_tab_picture">탭 화면</string>
     <string name="agent_tab_no_picture">보여 줄 화면이 없어요 (빈 페이지).</string>
     <string name="agent_tab_close">탭 닫기</string>

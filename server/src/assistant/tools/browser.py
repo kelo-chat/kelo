@@ -43,7 +43,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
 from ..agent import Tool, emit_ui, handover
 from ..browser_devices import accept_language
@@ -63,7 +63,7 @@ from .commits import TARGET_JS, click_route, judge_type, kind_of_verdict, label_
 from .downloads import DownloadArea
 from .pacing import SitePacer
 from .sites import registrable, same_site
-from .work_browser import DOWN_NOTE, SEED_FAILED_NOTE, WorkBrowser, WorkBrowserDown, WorkTab, COOKIE_KEYS, collect_changes, seed_tab, work_tab
+from .work_browser import DOWN_NOTE, SEED_FAILED_NOTE, WorkBrowser, WorkBrowserDown, WorkTab, COOKIE_KEYS, collect_changes, seed_tab, work_tab, seed_signed_out_note
 from .task_window import TaskWindow
 from .verification import SIGN_IN_SECONDS, Verification, options_note, unconfirmed, verification_note, verification_step, waiting_note
 from .page_notes import (OVERLAY_JS, OVERLAY_ROUNDS, closed_note, masked_note, masked_values, not_found_note, open_note,
@@ -71,6 +71,7 @@ from .page_notes import (OVERLAY_JS, OVERLAY_ROUNDS, closed_note, masked_note, m
 from .browser_locale import tab_locale
 from .page_paths import NO_ELEMENT, PATH_OF_JS, with_path
 from .page_tree import controls_only, for_reading, frame_hosts, frame_of, interactive_refs, ref_boxes, ref_name, ref_of, ref_selector, ref_words
+from .page_dialogs import DIALOG_ONLY_NOTE, TabDialogs, answer_for, dialog_note, live_view
 
 log = logging.getLogger("assistant.browser")
 
@@ -125,9 +126,10 @@ TIMEOUT_NOTE = ("[The owner's control of this tab timed out (their screen went a
 TAB_CLOSED_NOTE = "[The tab you were in closed; you are now in tab {id}: {title}. browser_tabs lists this task's tabs.]"
 # a browser that restarted (or crashed) under a job: its tab is a new blank page; the first acting step waits until the page is read (job_cuts.py)
 BROWSER_LOST_NOTE = ("[The browser restarted and this tab's page was lost; this is a new blank tab. Your last page was {url}. Sign-ins are "
-                     "kept. Open it again and read it before you act; a form you were filling may be empty again.]")
-LOST_ACT_NOTE = ("[Not done: the browser restarted and this tab is a new blank page. Open the page you need again (browser_open) and read "
-                 "it before you click or type.]")
+                     "kept. Open that site's home page (browser_open) and get back to the page through the site's own links, then read it "
+                     "before you act; a form you were filling may be empty again.]")
+LOST_ACT_NOTE = ("[Not done: the browser restarted and this tab is a new blank page. Open the site's home page again (browser_open), get back "
+                 "to the page you need through the site's own links, and read it before you click or type.]")
 NO_CHANGE_NOTE = ("[The click went through, but nothing changed: same address, same page content and form values, no new window, no "
                   "pop-up. Do not click the same element again. Look at the page below for what holds it (a message, an unticked box, "
                   "a choice still to make, a frame or window it belongs to), try another way (another element), or tell "
@@ -308,6 +310,18 @@ class BrowserPolicyError(Exception):
     pass
 
 
+class NoSignInForm(BrowserPolicyError):
+    """fill_login found no sign-in field on the open page; browser_login then reaches the form by a click (card p-signin-gaps)."""
+
+
+class LoginOptions(BrowserPolicyError):
+    """The sign-in form has unticked boxes or switches and the agent has not chosen yet: nothing was typed (card p-signin-gaps)."""
+
+    def __init__(self, options: list[tuple[str, str]]):
+        super().__init__("the sign-in form has unticked options; nothing was typed")
+        self.options = options
+
+
 class BrowserControlled(Exception):
     """The user holds this tab (they took control on their phone); the agent may not act on it now."""
 
@@ -423,7 +437,13 @@ _TAG_LOGIN_FIELDS = with_path("""() => {
   const p = inputs.findIndex((e) => kind(e) === 'password');
   let u = -1;
   if (p >= 0) { for (let k = p - 1; k >= 0; k--) { if (textish(inputs[k])) { u = k; break; } } }
-  else { u = inputs.findIndex(textish); }
+  else {
+    // no password field: only a field that says it takes the account name (a username-first sign-in step), never a search box or
+    // any other text field of the page (2026-11-19: a saved login's name was typed into a shop's search field and sent)
+    const ac = (e) => (e.getAttribute('autocomplete') || '').toLowerCase().split(/\\s+/);
+    const searchy = (e) => kind(e) === 'search' || e.getAttribute('role') === 'searchbox' || !!e.closest('[role=search], search');
+    u = inputs.findIndex((e) => textish(e) && !searchy(e) && (kind(e) === 'email' || ac(e).includes('username') || ac(e).includes('email')));
+  }
   return { u: u >= 0, p: p >= 0, p_count: inputs.filter((e) => kind(e) === 'password').length,
            u_path: u >= 0 ? keloPath(inputs[u]) : '', p_path: p >= 0 ? keloPath(inputs[p]) : '' };
 }""")
@@ -661,6 +681,7 @@ _CHECK_HEADERS = {"server", "cf-mitigated", "cf-ray", "x-amzn-waf-action", "x-da
 BLOCK_LIMIT = 2                   # access-denied answers from one host in one task, then it is not tried again...
 BLOCK_SECONDS = 600.0             # ...for this long (a new message of the user starts a new task, and with it a clean slate)
 SIGN_IN_PASS_SECONDS = 15 * 60.0   # after a refusal of a browser not signed in to the site: a sign-in pass (brief B2)
+KEEP_CHOICE_SECONDS = 120.0        # browser_login's second call (the stay-signed-in choice) is part of the approved sign-in this long
 TOUCH_SECONDS = 10 * 60.0   # a site's sign-in row is marked used at most this often (brief B1)
 REFUSAL_PAUSE_SECONDS = 6 * 3600.0   # a site that refused the browser is not loaded again for this long (per registrable site, the whole server)
 REFUSAL_PAUSE_NOTE = ("[{site} refused Kelo's browser a short while ago. Kelo's browser will not load {site} again for about {minutes} minutes, "
@@ -910,7 +931,7 @@ class BrowserSession:
         self._cancel: dict[str, tuple[str, float, int, str]] = {}   # device -> (host, until, clicks left, order no) to cancel a wrong charge
         self.on_cancel_click: Callable[[str, str, str], None] | None = None   # (host, the click's words, order no): logged by the server
         self._last_card: dict[str, float] = {}                   # device -> when its last browser card went out
-        self._dialogs: dict[str, list[str]] = {}                 # device -> pop-up messages since the last page reading
+        self._dialogs: dict[str, TabDialogs] = {}                # tab -> its page's own pop-ups (page_dialogs.py)
         self._status: dict[str, tuple[str, float]] = {}          # device -> (last status line of its card, wall time)
         self._seen_at: dict[str, float] = {}                     # device -> wall time its tab was last used
         self._control: dict[str, str] = {}                       # tab -> the device that took control of it (absent = the agent's)
@@ -971,6 +992,7 @@ class BrowserSession:
         self._judged: dict[str, tuple[str, str, bool]] = {}      # device -> (selector, commit kind, password field) of its last judged step
         self._carried: dict[str, tuple[str, str, str, float]] = {}   # device -> a step judge_ahead judged for the next judge() of it
         self._judged_info: dict[str, dict[str, Any] | None] = {}  # device -> what was read of that step's element (commits.TARGET_JS)
+        self._judged_words: dict[str, tuple[str, str]] = {}  # device -> (selector, the words it was judged by) of its last judged step
         self._verdict: dict[str, Any] = {}   # device -> the step judge's last verdict (its flags; use_cancel_action reads them)
         # device -> {(page, label): commit kind}: the first judgement of an element stays its judgement on that page (a retry with
         # another selector for the same button gets the same card words)
@@ -983,6 +1005,7 @@ class BrowserSession:
         self.order_dialog: Callable[[str, str, str], bool] | None = None   # (tab, host, message): a pop-up an open order may accept
         self._wake: dict[str, asyncio.Event] = {}                # tab -> set when it is handed back (a waiting human check looks again)
         self._options: dict[str, set[str]] = {}                  # tab -> option selectors (CSS paths) of its last reading
+        self._keep_choice: dict[str, float] = {}                 # login name -> when browser_login listed its form's options (S6)
         self._hand_end: dict[str, tuple[str, str, float]] = {}   # tab -> (site, step kind, when) of its last finished verification hand-over
         self._pending_hand: dict[str, tuple[Any, ...]] = {}      # tab -> a verification hand-over raised while the agent chooses options
         self._approving: dict[str, tuple[bool, float]] = {}      # site -> (an approve-step hand-over is open, when it opened / ended)
@@ -1380,6 +1403,7 @@ class BrowserSession:
                 seen.pop(next(iter(seen)))
         self._judged[browser_owner.get()] = (selector, kind, tool == "browser_type" and secret)
         self._judged_info[browser_owner.get()] = info
+        self._judged_words[browser_owner.get()] = (selector, words)
         return kind
 
     @staticmethod
@@ -1552,6 +1576,22 @@ class BrowserSession:
         first = next((x.strip() for x in str(line or "").splitlines() if x.strip()), "")
         return first.lstrip("- ").split(" [ref=")[0].rstrip(":").strip()
 
+    async def gone_ref(self, selector: str) -> str | None:
+        """STALE_REF when `selector` is a ref this tab's page no longer has, checked before any card (owner report 2026-11-19: the
+        owner was asked about an element that was gone, allowed it, and the click failed); None for a selector that is not a ref, a ref
+        that is there, no page yet, or a page that cannot be asked in time (then the step's own checks decide)."""
+        ref = ref_of(selector)
+        page = self._pages.get(browser_owner.get())
+        if ref is None or page is None:
+            return None
+        try:
+            if page.is_closed():
+                return None
+            n = await asyncio.wait_for(page.locator(ref_selector(selector)).count(), TARGET_READ_MS / 1000)
+        except Exception:  # noqa: BLE001 - not answered in time, or a page that cannot be asked this way
+            return None
+        return STALE_REF.format(ref=ref) if n == 0 else None
+
     def selector_words(self, selector: str) -> str:
         """What a selector names for judging and cards: for a ref of the last reading its words there (`button "Pay now"`), else the
         selector itself (also for a ref that reading did not have)."""
@@ -1565,8 +1605,12 @@ class BrowserSession:
         return dict(self._ref_words.get(key, {}))
 
     def ref_label(self, selector: str) -> str:
-        """The page's own name for a ref of the last reading ("" for a selector, or a ref without one): what a card shows."""
-        return ref_name(self.selector_words(selector)) if ref_of(selector) else ""
+        """The page's own name for a ref: from the last reading, else as the element itself gave it when its step was judged ("" for
+        a selector, or a ref without one): what a card shows."""
+        if not ref_of(selector):
+            return ""
+        got = self._judged_words.get(browser_owner.get())
+        return ref_name(self.selector_words(selector)) or (ref_name(got[1]) if got and got[0] == selector else "")
 
     def _target_key(self, info: dict[str, Any] | None, selector: str) -> tuple[str, str]:
         """Which element this is, for "the same button again": the page (without its #fragment) and the element's own words."""
@@ -2021,10 +2065,27 @@ class BrowserSession:
                 n = await seed_tab(wt, site, cookies, storage)
                 wt.touched.add(site)
             self._touch_site(site, profile=profile)
-            log.info("work browser: tab %s seeded, %d cookies", key, n)
+            if not profile and not wt.signed_out:
+                wt.owner_had.setdefault(site, len(cookies))   # what the owner's browser held for the site at the first copy (S3)
+            state = ("named profile" if profile else "signed-out tab" if wt.signed_out
+                     else "sign-in on record" if wt.owner_had.get(site) and self.signed_in_site(site) else "no sign-in")
+            log.info("work browser: tab %s, site %s: %d cookies copied of %d in the source, %s", key, site, n, len(cookies), state)
         except Exception:  # noqa: BLE001 - the tab still loads, and the agent is told it may not be signed in
             self._notes.setdefault(key, []).append(SEED_FAILED_NOTE)
             log.info("work browser: tab %s could not be seeded", key)
+
+    def _seed_note(self, key: str, url: str) -> str:
+        """Once per site and job tab, on a reading of a page of a site whose sign-in copy found no sign-in in the owner's browser (nothing
+        there, or no record of a sign-in): the job knows before a refusal tells it (card p-signin-gaps). "" otherwise."""
+        wt = self.work.tab(key) if self.work is not None else None
+        site = _site_of(url)
+        if wt is None or wt.signed_out or not site or site in wt.told or site not in wt.owner_had:
+            return ""
+        wt.told.add(site)
+        found = wt.owner_had[site]
+        if found and self.signed_in_site(site):
+            return ""
+        return seed_signed_out_note(site, found, self.login_for(site)) + "\n"
 
     async def _guard_work_context(self, key: str, ctx: Any) -> None:
         """A document request in a work tab's context is seeded first (the route hook of card A3): the route always goes on
@@ -2476,8 +2537,8 @@ class BrowserSession:
             pass
 
     def _watch(self, page: Any, key: str) -> None:
-        """A JavaScript pop-up (alert / confirm) is answered here: accepted only inside a purchase the user allowed on that site,
-        dismissed otherwise (what the browser would do with nobody there). Its words go into the next page reading."""
+        """A page's own pop-up (alert, confirm, prompt, leaving the page) is answered here (page_dialogs.answer_for: OK only for the
+        user or what they allowed) and kept for the next page reading (dialog_note) and the live view (page_dialog)."""
         if not hasattr(page, "on"):
             return
 
@@ -2514,22 +2575,21 @@ class BrowserSession:
                 pass
 
         async def on_dialog(dialog: Any) -> None:
-            host = (urlsplit(str(getattr(page, "url", "") or "")).hostname or "").lower()
+            url = str(getattr(page, "url", "") or "")
+            host = (urlsplit(url).hostname or "").lower()
+            kind = str(getattr(dialog, "type", "") or "")
+            message = str(getattr(dialog, "message", "") or "")
             token = browser_owner.set(key)
             try:
                 by_user = key in self._control   # the user is at the controls: a pop-up their tap caused is theirs to accept
-                accept = by_user or self.purchase_active(host) or self.cancel_active(host)
-                in_order = not accept and self.order_dialog is not None and self.order_dialog(key, host, str(getattr(dialog, "message", "") or ""))
-                accept = accept or in_order
+                in_purchase = self.purchase_active(host) or self.cancel_active(host)
+                in_order = not by_user and not in_purchase and self.order_dialog is not None and self.order_dialog(key, host, message)
             finally:
                 browser_owner.reset(token)
-            msgs = self._dialogs.setdefault(key, [])
-            how = ("accepted (the user was controlling the browser)" if by_user else "accepted (a step of the order the user asked for)"
-                   if in_order else "accepted (inside the purchase the user allowed)" if accept else "dismissed")
-            msgs.append(f"{str(getattr(dialog, 'message', '') or '')[:300]!r} -> {how}")
-            del msgs[:-5]
+            answer, _why = answer_for(kind, by_user=by_user, in_purchase=in_purchase, in_order=bool(in_order))
+            self._tab_dialogs(key).add(kind, message[:300], answer, _why, url, time.time())
             try:
-                await (dialog.accept() if accept else dialog.dismiss())
+                await (dialog.accept() if answer == "ok" else dialog.dismiss())
             except Exception:  # noqa: BLE001 - the pop-up may already be gone
                 pass
 
@@ -2641,10 +2701,11 @@ class BrowserSession:
             cut = f"\n[page text truncated, {len(text) - MAX_TEXT_CHARS} more chars]"
             text = text[:MAX_TEXT_CHARS]
         key = browser_owner.get()
-        popups = self._dialogs.pop(key, [])
+        popups = self._dialogs[key].take() if key in self._dialogs else []
         # the page's own words (title, text, pop-ups) are marked as external data: the loop fences them, and keeps these lines of
         # ours (address, notes, hand-over) outside (agent/fence.py)
-        said = "".join(f"[the page showed a pop-up: {data(m)}]\n" for m in popups)
+        said = "".join(dialog_note(d, site=_site_of(d.url), login=self.login_for(_site_of(d.url)) if d.answer == "cancel" else "",
+                                   job=self._is_job()) + "\n" for d in popups)
         said += "".join(f"{n}\n" for n in self._notes.pop(key, []))
         self._owner_moved.discard(key)
         self._lost_act.discard(key)
@@ -2652,6 +2713,7 @@ class BrowserSession:
         if spots := masked_values(text):
             said += masked_note(spots, data) + "\n"
         said += await self._lists_note(page)
+        said += self._seed_note(key, str(getattr(page, "url", "") or ""))
         check, otp = await self._look(page, key)
         if check is None and (why := self._denied(key, page, title, text)):
             host = urlsplit(str(page.url or "")).hostname or ""
@@ -3248,6 +3310,45 @@ class BrowserSession:
         self._options[browser_owner.get()] = {sel for sel, _ in found}
         return found
 
+    async def sign_in_links(self, hosts: list[str]) -> list[str]:
+        """The words of up to 3 visible links of the open page that go to one of `hosts` (a saved login's own hosts) on another host than
+        the page's (SIGN_IN_LINKS_JS). [] on any error."""
+        try:
+            got = await (await self.page()).evaluate(SIGN_IN_LINKS_JS, [h.lower() for h in hosts if not h.startswith("app:")])
+        except Exception:  # noqa: BLE001
+            return []
+        return [str(w) for w in (got or []) if isinstance(w, str) and w][:3]
+
+    async def open_sign_in(self, via: str) -> str:
+        """browser_login's own click on the site's sign-in link or button `via` (a ref or selector of the open page), made like any click
+        of the agent (pacing, a window it opens becomes the tab's page); the click's reading. Only an element that just opens something
+        (judged "" like a link): anything that may change something is refused, so the approval rules of browser_click stay whole.
+        BrowserPolicyError when `via` is not on the page or is such a step: nothing is clicked."""
+        page = await self.page()
+        try:
+            owner = await self.frame_for(page, via)
+            n = await owner.locator(ref_selector(via)).count()
+        except Exception:  # noqa: BLE001
+            n = 0
+        if n == 0:
+            raise BrowserPolicyError(f"{via} is not on this page: read the page again and pass the ref of the site's sign-in link or "
+                                     "button from that reading; nothing was clicked or typed")
+        if kind := await self.judge("browser_click", {"selector": via}):
+            raise BrowserPolicyError(f"{via} may change something ({kind}), so browser_login does not click it: click it with browser_click "
+                                     "(it asks as usual), then call browser_login on the page with the form; nothing was typed")
+        return await self.click(via)
+
+    def wait_keep_choice(self, name: str) -> None:
+        """browser_login listed the form's options for login `name`: its next call with `keep` is part of the same sign-in (S6)."""
+        self._keep_choice[name] = time.monotonic()
+
+    def keep_choice_open(self, name: str) -> bool:
+        at = self._keep_choice.get(name)
+        return at is not None and time.monotonic() - at < KEEP_CHOICE_SECONDS
+
+    def end_keep_choice(self, name: str) -> None:
+        self._keep_choice.pop(name, None)
+
     async def wait_verification_gone(self, key: str, url: str, step: Verification) -> bool | str:
         """How the sign-in verification `step`, handed to the user, ended on this tab (nobody holding the tab):
         True = signed in (signin_state.still_signing_in clear on CLEAN_READINGS readings in a row);
@@ -3558,6 +3659,19 @@ class BrowserSession:
     def last_click_changed_nothing(self, key: str | None = None) -> bool:
         return self._unchanged.get(key or browser_owner.get(), False)
 
+    def _tab_dialogs(self, key: str) -> TabDialogs:
+        return self._dialogs.setdefault(key, TabDialogs())
+
+    def page_dialog(self, key: str) -> dict[str, Any] | None:
+        """The live status's `dialog` for a tab (server.py LIVE VIEW API): its newest page pop-up while the tab still shows the address
+        it came from (page_dialogs.SHOW_SECONDS at most), else None. A native pop-up is never in the picture or on the X screen, so
+        without this the owner watches a page that seems to do nothing (owner report 2026-11-19)."""
+        tab, page = self._dialogs.get(key), self._pages.get(key)
+        if tab is None or page is None:
+            return None
+        d = tab.shown(str(getattr(page, "url", "") or ""), time.time())
+        return live_view(d) if d is not None else None
+
     async def click(self, selector: str) -> str:
         page = await self.page()
         key = browser_owner.get()
@@ -3582,7 +3696,8 @@ class BrowserSession:
                 return note
             await self._pace_wait(host, paced, key)
         mark = await self._fingerprint(page)
-        dialogs = len(self._dialogs.get(key, []))
+        pops = self._tab_dialogs(key)
+        dialogs = pops.mark()
         await human.click(owner, selector, timeout_ms=10_000, fallback=lambda ms: owner.click(selector, timeout=ms))
         await self._loaded(page, key)
         moved = await self._moved_to_window(key, page)
@@ -3599,9 +3714,10 @@ class BrowserSession:
         await self._human_pause(page, self._look_pause(glance=str(getattr(page, "url", "") or "") == before))
         if moved is not None:
             self._notes.setdefault(key, []).insert(0, POPUP_NOTE.format(url=str(page.url or "")[:200]))
-        elif len(self._dialogs.get(key, [])) == dialogs and await self._fingerprint(page) == mark:
+        elif (cancelled := pops.only_cancelled(dialogs)) is not False and await self._fingerprint(page) == mark:
+            # nothing changed, or the only pop-ups were questions answered Cancel: the same click again does the same (2026-11-19)
             self._unchanged[key] = True
-            self._notes.setdefault(key, []).insert(0, NO_CHANGE_NOTE)
+            self._notes.setdefault(key, []).insert(0, DIALOG_ONLY_NOTE if cancelled else NO_CHANGE_NOTE)
         return await self.snapshot(changes=True)   # a window the click opened on the same page is the agent's own (snapshot)
 
     # ------------------------------------------------------------------ pacing per site (pacing.py)
@@ -3733,7 +3849,8 @@ class BrowserSession:
         before = str(getattr(page, "url", "") or "")
         self._unchanged.pop(key, None)
         mark = await self._fingerprint(page)
-        dialogs = len(self._dialogs.get(key, []))
+        pops = self._tab_dialogs(key)
+        dialogs = pops.mark()
         try:
             if len(where) == 1:
                 await human.click_at(page, *where[0])
@@ -3754,9 +3871,10 @@ class BrowserSession:
         await self._human_pause(page, self._look_pause(glance=str(getattr(page, "url", "") or "") == before))
         if moved is not None:
             self._notes.setdefault(key, []).insert(0, POPUP_NOTE.format(url=str(page.url or "")[:200]))
-        elif len(self._dialogs.get(key, [])) == dialogs and await self._fingerprint(page) == mark:
+        elif (cancelled := pops.only_cancelled(dialogs)) is not False and await self._fingerprint(page) == mark:
+            # nothing changed, or the only pop-ups were questions answered Cancel: the same click again does the same (2026-11-19)
             self._unchanged[key] = True
-            self._notes.setdefault(key, []).insert(0, NO_CHANGE_NOTE)
+            self._notes.setdefault(key, []).insert(0, DIALOG_ONLY_NOTE if cancelled else NO_CHANGE_NOTE)
         return await self.snapshot(changes=True)
 
     async def _ime_sender(self, page: Any) -> Callable[[str, dict[str, Any]], Awaitable[Any]] | None:
@@ -3830,12 +3948,15 @@ class BrowserSession:
                                      "sign-in was not sent. Do not retry; tell the user")
 
     async def fill_login(self, username: str, password: str, *, step: str = "both", submit: bool = True,
-                         origin_ok: Callable[[str], bool] | None = None) -> SignIn:
+                         origin_ok: Callable[[str], bool] | None = None, ask_options: bool = False,
+                         keep: str | None = None) -> SignIn:
         """Type a saved login into the visible sign-in form of the current page, and (optionally) press Enter.
         The values go straight from here to the page: the answer is the page afterwards with both values removed from it,
         and a reading of whether the site accepted the login. The password goes only into one masked input of type password on a
         https page of the credential's site (`origin_ok(url)`), and its length in the field must equal the password's, else
-        nothing is sent, the field is cleared and a precise error says why (no retry)."""
+        nothing is sent, the field is cleared and a precise error says why (no retry).
+        `ask_options` (browser_login's submit call without a choice yet): a form with unticked boxes or switches raises LoginOptions
+        before anything is typed. `keep`: the listed option to tick before typing ("none": tick nothing)."""
         page = await self.page()
         await self._guard(page.url)
         before = page.url
@@ -3844,7 +3965,16 @@ class BrowserSession:
         found = await page.evaluate(_TAG_LOGIN_FIELDS)
         want_user, want_pass = step in ("both", "username"), step in ("both", "password")
         if not ((want_user and found["u"]) or (want_pass and found["p"])):
-            raise BrowserPolicyError("no sign-in form with the expected field was found on this page")
+            raise NoSignInForm("no sign-in form with the expected field was found on this page")
+        if ask_options and keep is None and (options := await self._unticked_options(page)):
+            raise LoginOptions(options)   # nothing typed: the agent chooses the stay-signed-in option by its words first (S6)
+        if keep and keep != "none":
+            if keep not in self._options.get(browser_owner.get(), set()):
+                raise BrowserPolicyError("keep must be one of the option selectors browser_login listed for this page; nothing was typed")
+            try:
+                await human.click(page, keep, timeout_ms=10_000, fallback=lambda ms: page.locator(keep).click(timeout=ms))
+            except Exception as e:  # noqa: BLE001 - a driver message never reaches the model as it is
+                raise BrowserPolicyError(f"could not tick the chosen option ({type(e).__name__}); nothing was typed") from None
         try:
             if want_pass and found["p"]:
                 if int(found.get("p_count", 1)) > 1:
@@ -4747,6 +4877,22 @@ LISTS_JS = r"""() => { const out = [];
               options: [...e.options].slice(0, 25).map((o) => o.text.trim().slice(0, 30))}); });
   return out; }"""
 
+# Links of the open page that go to one of a saved login's own hosts, on another host than the page's: where the site's own sign-in most
+# likely is (structure only: the link's target, never its words). Their words, at most 3.
+SIGN_IN_LINKS_JS = r"""(hosts) => {
+  const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
+    return r.width > 0 && r.height > 0 && c.visibility !== 'hidden' && c.display !== 'none'; };
+  const out = [];
+  for (const a of document.querySelectorAll('a[href]')) {
+    if (out.length >= 3) break;
+    let u; try { u = new URL(a.getAttribute('href'), location.href); } catch (e) { continue; }
+    if (u.protocol !== 'https:' || !hosts.includes(u.hostname.toLowerCase()) || u.hostname === location.hostname || !shown(a)) continue;
+    const words = (a.innerText || a.getAttribute('aria-label') || a.title || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (words && !out.includes(words)) out.push(words);
+  }
+  return out;
+}"""
+
 # The visible, unticked checkboxes and switches of a page, each given as a CSS path and named by the words next to it
 OPTIONS_JS = with_path(r"""() => {
   const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
@@ -4778,7 +4924,37 @@ def target_label(info: dict[str, Any] | None, selector: str) -> str:
     return words[:60] + "…" if len(words) > 60 else words
 
 
-SELECTOR_ARG = "ref (e12) or Playwright selector"
+def link_place(info: dict[str, Any] | None) -> str:
+    """Where a link goes, as a card shows it: host and path, without the query ("" for no link, a #fragment or a script link)."""
+    href = str((info or {}).get("href") or "").strip()
+    if not href or href.startswith("#") or href.lower().startswith("javascript:"):
+        return ""
+    try:
+        parts = urlsplit(urljoin(str((info or {}).get("url") or ""), href))
+    except ValueError:
+        return ""
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return ""
+    place = parts.hostname + unquote(parts.path).rstrip("/")
+    return place[:60] + "…" if len(place) > 60 else place
+
+
+def page_words(info: dict[str, Any] | None) -> str:
+    """The plain text of what a step clicks when it is no control (a selector picked words on the page): the page's own words."""
+    words = " ".join(str((info or {}).get("text") or "").split())
+    return words[:60] + "…" if len(words) > 60 else words
+
+
+def ref_check(session: "BrowserSession", inner: Callable[[dict[str, Any]], str | None] | None = None) -> Callable[[dict[str, Any]], Awaitable[str | None]]:
+    """A tool's `validate`: `inner`'s reason first, then a ref (args["selector"]) the page no longer has (STALE_REF), before any card."""
+    async def check(args: dict[str, Any]) -> str | None:
+        if inner is not None and (problem := inner(args)):
+            return problem
+        return await session.gone_ref(str(args.get("selector") or ""))
+    return check
+
+
+SELECTOR_ARG = "ref (e12) from your latest reading of the page (a ref ends when the page changes), or a Playwright selector"
 
 # What the approval card adds, by commit kind (commits.py).
 _COMMIT_WARNINGS = {
@@ -4887,12 +5063,25 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
         kind = session.judged(str(args.get("selector", "")))
         return " " + t(_COMMIT_WARNINGS[kind]) if kind in _COMMIT_WARNINGS else ""
 
+    def unnamed(info: dict[str, Any] | None) -> str:
+        """Said after "a button" / "a field" when nothing names it: whether it has no words or could not be read at all."""
+        return " " + (t("It has no words on the page.") if info else t("Kelo could not read what is there."))
+
     async def describe_click(args: dict[str, Any]) -> str:
         host = session.current_host() or t("blank page")
         sel = str(args.get("selector", ""))
-        # what the user sees on the page, never the selector (for a ref the page's own name for it, never "aria-ref=…")
-        label = target_label(session.judged_info(sel), sel) or session.ref_label(sel)
-        line = t("Click “{label}” on {host}.", host=host, label=label) if label else t("Click a button on {host}.", host=host)
+        info = session.judged_info(sel)
+        # what the user sees on the page, never the selector (for a ref the page's own name for it, never "aria-ref=…"); never only
+        # "a button" (owner report 2026-11-19)
+        label = target_label(info, sel) or session.ref_label(sel)
+        if label:
+            line = t("Click “{label}” on {host}.", host=host, label=label)
+        elif place := link_place(info):
+            line = t("Click the link to {place} on {host}.", host=host, place=place)
+        elif text := page_words(info):
+            line = t("Click the text “{label}” on {host}.", host=host, label=text)
+        else:
+            line = t("Click a button on {host}.", host=host) + unnamed(info)
         return line + warning(args)
 
     async def describe_type(args: dict[str, Any]) -> str:
@@ -4901,16 +5090,16 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
         info = session.judged_info(sel)
         label = target_label({**info, "text": "", "words": info.get("words") or info.get("attrs") or ""} if info else None, sel) \
             or session.ref_label(sel)
-        line = t("Type into “{label}” on {host}.", host=host, label=label) if label else t("Type into a field on {host}.", host=host)
+        line = t("Type into “{label}” on {host}.", host=host, label=label) if label else t("Type into a field on {host}.", host=host) + unnamed(info)
         return line + warning(args)
 
     obj = lambda props, req: {"type": "object", "properties": props, "required": req}  # noqa: E731
     return session.with_deadline([
-        Tool("browser_open", "Open a public http(s) address in your browser and return the page text. Only an address you were given "
-             "(a search result, a link on a page, the user, a tool); never one you made up. Open the address you were given directly "
-             "(a search address built from the user's words is one of them): a site's home page first and then its search is a path "
-             "a site may block. Go through the home page only to find the way when you have no address. Its reading marks elements "
-             "with [ref=e12]: click and type by the refs of your last reading.",
+        Tool("browser_open", "Open a public http(s) address in your browser and return the page text. Use it only to get onto a site: its "
+             "home page, an exact address the user gave, your job's start address, or a search result you were given (a person arrives "
+             "there by clicking it). Within a site, move the way a person does: click its links, menus and buttons and use its own search "
+             "box; never type or build an address of that site (a search, product, sign-in or account page), and never one you made up. "
+             "Its reading marks elements with [ref=e12]: click and type by the refs of your last reading.",
              obj({"url": {"type": "string"},
                   "profile": {"type": "string", "description": "a browser_profiles id"}}, ["url"]),
              open_, untrusted=True, source="page", hold=session.hold_for_navigation, trail="web"),
@@ -4925,7 +5114,7 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
              "opens becomes the page you are on). A click that commits something in "
              "the user's name shows them a card first.",
              obj({"selector": {"type": "string", "description": SELECTOR_ARG}}, ["selector"]), click, requires_approval=True, untrusted=True, source="page",
-             auto_approve=no_card("browser_click"), describe=describe_click, declined=declined_click, hold=guarded(session, session.hold_to_act)),
+             validate=ref_check(session), auto_approve=no_card("browser_click"), describe=describe_click, declined=declined_click, hold=guarded(session, session.hold_to_act)),
         Tool("browser_type", "Type text into an input. On a list (a select or a dropdown) it chooses the option with that text instead: "
              "the one way to set a list (quantity, size, date). Personal details or "
              "a message show the user a card first.",
@@ -4933,7 +5122,7 @@ def browser_tools(session: BrowserSession, *, approve_actions: bool = False, gra
                   "submit": {"type": "boolean", "description": "press Enter after"},
                   "uses": USES_PARAM},
                  ["selector", "text"]),
-             type_, requires_approval=True, untrusted=True, source="page", auto_approve=no_card("browser_type"), describe=describe_type,
+             type_, requires_approval=True, untrusted=True, source="page", validate=ref_check(session), auto_approve=no_card("browser_type"), describe=describe_type,
              hold=guarded(session, session.hold_to_act, only_submit=True)),
     ])
 

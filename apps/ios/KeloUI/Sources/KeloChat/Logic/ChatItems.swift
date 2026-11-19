@@ -19,6 +19,8 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
     case secret(Secret)
     /// The reply needs this phone's place (location_request).
     case locationAsk(LocationAsk)
+    /// One in-app call's messages folded into one row (`CallCards.fold`): drawn only, never stored. `lines` oldest first, never empty.
+    case call(CallCard)
     case notice(key: String, ChatNotice)
     case error(key: String, ChatError)
 
@@ -36,6 +38,7 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         case .shipping(let s): s.key
         case .secret(let s): s.key
         case .locationAsk(let l): l.key
+        case .call(let c): c.key
         case .notice(let k, _): k
         case .error(let k, _): k
         }
@@ -45,6 +48,7 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
 
     public var asMsg: Msg? { if case .msg(let m) = self { return m } else { return nil } }
     public var asApproval: Approval? { if case .approval(let a) = self { return a } else { return nil } }
+    public var asCall: CallCard? { if case .call(let c) = self { return c } else { return nil } }
     public var isMine: Bool { asMsg?.mine == true }
 
     /// A message; `id` is the server's (nil while a reply is still being written here). `at`: when it was written (unix ms; the
@@ -69,13 +73,23 @@ public enum ChatItem: Equatable, Sendable, Identifiable {
         public var autoText: Bool
         /// Whether this message arrived via an in-app voice call.
         public var fromCall: Bool
+        /// The call this message belongs to: the chat folds a call into one card (`CallCards`).
+        public var callId: String?
         public init(key: String, mine: Bool, text: String, id: Int64? = nil, replies: ReplySet? = nil, at: Int64 = 0, reaction: String = "",
                     briefing: BriefingCard? = nil, comparison: ComparisonCard? = nil, images: [ChatImage] = [], files: [MessageFile] = [], autoText: Bool = false,
-                    fromCall: Bool = false) {
+                    fromCall: Bool = false, callId: String? = nil) {
             self.key = key; self.mine = mine; self.text = text; self.id = id; self.replies = replies; self.at = at; self.reaction = reaction
             self.briefing = briefing; self.comparison = comparison; self.images = images; self.files = files; self.autoText = autoText
-            self.fromCall = fromCall
+            self.fromCall = fromCall; self.callId = callId
         }
+    }
+
+    /// One in-app call in the chat: its messages (oldest first) under one row; see `CallCards`.
+    public struct CallCard: Equatable, Sendable {
+        public let key: String
+        public let callId: String
+        public var lines: [Msg]
+        public init(key: String, callId: String, lines: [Msg]) { self.key = key; self.callId = callId; self.lines = lines }
     }
 
     /// The reply needs this phone's place (location_request): Share / Not now, or the phone's settings when the owner refused before
@@ -735,7 +749,7 @@ public enum ChatReducer {
             if let id = o.id, let i = byId[id] { swap[o.key] = i; used.insert(i) }
         }
         var p = free.count - 1
-        var folded = Set<String>()   // streamed bubbles that one stored reply covers (a reply split by tool chips)
+        var folded = Set<String>()   // streamed bubbles that one stored reply covers (a reply split by chips or cards)
         for run in idLessRuns(shown).reversed() {
             var matched = 0
             for o in run.reversed() {
@@ -767,19 +781,18 @@ public enum ChatReducer {
         return rows + appended
     }
 
-    /// The id-less message bubbles of one reply, in order: bubbles separated only by tool chips are one run (a live reply split by
-    /// a tool chip). Any other row ends a run.
+    /// The id-less message bubbles of one reply, in order (Android ChatHistory.idLessRuns). Rows that are not messages (tool chips,
+    /// login and approval cards, browser cards, notices) sit between the parts of one live reply, so they never end a run; a message
+    /// with an id (stored: another turn) ends a run, and a bubble of the other author starts a new one.
     private static func idLessRuns(_ shown: [ChatItem]) -> [[ChatItem.Msg]] {
         var runs: [[ChatItem.Msg]] = []
-        var open = false   // the last row that is not a tool chip is an id-less bubble
+        var open = false   // the last message row is an id-less bubble
         for item in shown {
-            switch item {
-            case .tool:
-                continue
-            case .msg(let m) where m.id == nil:
+            guard case .msg(let m) = item else { continue }
+            if m.id == nil {
                 if open, let last = runs.last?.last, last.mine == m.mine { runs[runs.count - 1].append(m) } else { runs.append([m]) }
                 open = true
-            default:
+            } else {
                 open = false
             }
         }
@@ -934,7 +947,7 @@ public enum ChatReducer {
     public static func item(_ m: ChatMessage) -> ChatItem {
         .msg(.init(key: "m\(m.id)", mine: m.role == "user", text: m.content, id: m.id, replies: m.replies, at: Int64(m.createdAt * 1000),
                    reaction: m.reaction, briefing: m.briefing, comparison: m.comparison, images: m.images, files: m.attachments, autoText: m.autoText,
-                   fromCall: m.via == "call"))
+                   fromCall: m.via == "call", callId: m.callId.isEmpty ? nil : m.callId))
     }
 
     /// The server's "replies" or "comparison" event: answer buttons or a comparison card was attached, KeloCore keeps it as an unknown type.

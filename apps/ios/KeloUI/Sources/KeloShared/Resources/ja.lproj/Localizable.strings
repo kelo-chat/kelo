@@ -825,6 +825,7 @@
 "agent_tab_working" = "作業中";
 "agent_tab_failed" = "行き詰まり";
 "agent_tab_idle" = "待機中";
+"agent_tab_waiting" = "あなたの返事待ち";
 "agent_tab_picture" = "タブの画面";
 "agent_tab_no_picture" = "表示するものがありません（空白のページ）。";
 "agent_tab_close" = "タブを閉じる";
@@ -1568,6 +1569,9 @@
 "call_mic_denied" = "マイクの使用が許可されていないため通話を開始できませんでした。";
 "call_voice_offer" = "通話で使用するKeloの自然な声です。Keloサーバーに音声モデル（%1$s）を一度ダウンロードすると、次の文からこの声で話します。ダウンロードしない場合は、この端末の内蔵音声で話します。";
 "call_mark" = "通話";
+"call_chat_length##other" = "通話 · %1$d分";
+"call_chat_show" = "通話を表示";
+"call_chat_hide" = "通話を閉じる";
 "call_voice_offer_title" = "Keloの音声モデルをダウンロードしますか？";
 "call_voice_offer_ok" = "ダウンロード";
 "call_voice_offer_later" = "端末の音声を使用";
@@ -1575,6 +1579,12 @@
 "call_voice_get" = "ダウンロード";
 "call_voice_line_close" = "閉じる";
 "call_ears_failed" = "スマートフォンの音声認識が声を認識できていません。";
+"call_voice_device" = "Keloの声を読み込めなかったため、この端末の音声で話しています。";
+"call_voice_none" = "今はこの端末でKeloの声を再生できません。返事はチャットで見られます。";
+"call_minimize" = "チャットに戻る";
+"call_keyboard" = "入力";
+"call_type_hint" = "Keloへのメッセージを入力";
+"call_type_send" = "送信";
 "voice_speech_title" = "Keloの声";
 "voice_speech_download" = "音声モデルをダウンロード · %1$s";
 "voice_speech_downloading" = "音声モデルをダウンロード中 · %1$d%%";

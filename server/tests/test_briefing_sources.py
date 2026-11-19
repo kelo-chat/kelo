@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from assistant import i18n
+from assistant.agent.fence import plain
 from assistant.briefing import Briefing
 from assistant.briefing_sources import SelectedMail, Sources, sources_routes
 from assistant.calendars import Calendars
@@ -50,7 +51,8 @@ class FakeGoogle:
         if self.fail:
             raise CalendarError("Google did not renew the sign-in")
         return [{"id": "g" + str(i), "title": r["title"], "start": datetime.fromtimestamp(r["at"], SEOUL), "end": None, "all_day": False,
-                 "location": r.get("where", "")} for i, r in enumerate(self.rows)]
+                 "location": r.get("where", ""), "notes": r.get("notes", ""), "account": account, "own": bool(r.get("own"))}
+                for i, r in enumerate(self.rows)]
 
 
 class FakeOutlook:
@@ -62,7 +64,7 @@ class FakeOutlook:
 
     async def between(self, start: datetime, end: datetime, *, all_day: bool = False, tool: str = "", **_: Any) -> list[dict[str, Any]]:
         return [{"id": "outlook:" + r["title"], "title": r["title"], "start": r["at"], "where": "", "all_day": bool(r.get("all_day")),
-                 **({"day": r["day"]} if r.get("day") else {})}
+                 "notes": r.get("notes", ""), **({"day": r["day"]} if r.get("day") else {})}
                 for r in self.rows or [] if (all_day or not r.get("all_day")) and start.timestamp() <= r["at"] < end.timestamp()]
 
 
@@ -104,13 +106,20 @@ def build(store: Store, *, fake: FakeCalDav | None = None, google: FakeGoogle | 
     phones = PhoneCalendars(store, clock=clock)
     if phone is not None:
         phones.put("owner", {"device_name": "Pixel", "events": [{"title": p["title"], "start": p["at"], "end": p["at"] + 1800,
-                                                                  "location": p.get("where", "")} for p in phone]})
+                                                                  "location": p.get("where", ""),
+                                                                  **{k: p[k] for k in ("account", "account_type", "own") if k in p}}
+                                                                 for p in phone]})
     store.set_profile(timezone="Asia/Seoul")
     mail = mail or FakeMail(store)
     cal = Calendars(store, mail, phones, google or FakeGoogle([]), outlook or FakeOutlook(), fetcher=(fake.fetcher if fake else None) or _no_fetch,
                     timezone_name=lambda: "Asia/Seoul", clock=clock)
     return Sources(store, cal, mail, clock=clock), cal, mail
 
+
+
+async def read(tool, args):
+    """The tool's text without the fence's marks (the loop fences the marked parts; these tests check the words)."""
+    return plain(await tool.handler(args))
 
 async def _no_fetch(*a: Any, **kw: Any) -> Any:
     raise AssertionError("no CalDAV request was expected")
@@ -417,7 +426,7 @@ async def test_the_chat_tool_reads_every_chosen_calendar_with_all_day_events_and
         cal.fetcher = _icloud_fails(fake)                     # iCloud cannot be reached; Naver works
         tool = src.calendar_tool(lambda: "Asia/Seoul")
         assert tool.name == "calendar_events" and tool.untrusted and tool.source == "calendar" and not tool.requires_approval
-        out = await tool.handler({"start": "2026-11-10", "end": "2026-11-10"})
+        out = await read(tool, {"start": "2026-11-10", "end": "2026-11-10"})
         assert "Calendars read: Phone calendar, Google Calendar (me@gmail.test), Outlook Calendar (work@corp.test), Naver Calendar (kang@naver.test)." in out
         assert "Could not read now: iCloud Calendar" in out
         assert "- 2026-11-10, all day · Company holiday · Outlook" in out
@@ -426,15 +435,15 @@ async def test_the_chat_tool_reads_every_chosen_calendar_with_all_day_events_and
         assert out.index("Company holiday") < out.index("Google thing") < out.index("Dentist") < out.index("Board")
         # the same setting as the briefing: a calendar left out is not read, and is named as left out
         src.set_group("calendar", accounts={"google:google-calendar": False})
-        out = await tool.handler({"start": "2026-11-10", "end": "2026-11-10"})
+        out = await read(tool, {"start": "2026-11-10", "end": "2026-11-10"})
         assert "Google thing" not in out and "Left out by the user's choice: Google Calendar." in out
-        assert "Dentist" in (await tool.handler({"start": "2026-11-10", "end": "2026-11-11", "query": "dent"})) and \
-            "Board" not in (await tool.handler({"start": "2026-11-10", "end": "2026-11-11", "query": "dent"}))
-        assert (await tool.handler({"start": "2026-11-12", "end": "2026-11-10"})).startswith("error:")
-        assert (await tool.handler({"start": "2026-11-10", "end": "2027-03-10"})).startswith("error:")
-        assert (await tool.handler({"start": "tomorrow-ish"})).startswith("error:")
+        assert "Dentist" in (await read(tool, {"start": "2026-11-10", "end": "2026-11-11", "query": "dent"})) and \
+            "Board" not in (await read(tool, {"start": "2026-11-10", "end": "2026-11-11", "query": "dent"}))
+        assert (await read(tool, {"start": "2026-11-12", "end": "2026-11-10"})).startswith("error:")
+        assert (await read(tool, {"start": "2026-11-10", "end": "2027-03-10"})).startswith("error:")
+        assert (await read(tool, {"start": "tomorrow-ish"})).startswith("error:")
         src.set_group("calendar", accounts={a.id: False for a in src.accounts("calendar")})
-        assert "left every calendar out" in await tool.handler({})
+        assert "left every calendar out" in await read(tool, {})
 
 
 async def test_one_search_finds_every_spelling_over_eighteen_months(tmp_path):
@@ -458,14 +467,14 @@ async def test_one_search_finds_every_spelling_over_eighteen_months(tmp_path):
                                             {"title": "Tokyo trip", "at": ts(8, day=11) + 300 * 86400}]),
                       phone=[{"title": "Dinner", "at": ts(19, day=12), "where": "Shanghai Tower"}])
     tool = src.calendar_tool(lambda: "Asia/Seoul")
-    out = await tool.handler({"start": "2026-11-09", "end": "2028-03-31", "query": ["상해", "상하이", "Shanghai", "PVG"]})
+    out = await read(tool, {"start": "2026-11-09", "end": "2028-03-31", "query": ["상해", "상하이", "Shanghai", "PVG"]})
     assert "상하이 여행" in out and "Flight KE893 ICN-PVG" in out and "Dinner · at Shanghai Tower" in out and "Tokyo trip" not in out
     assert any(kw.get("pages", 1) > 1 for kw in asked)
-    assert "shanghai" in (await tool.handler({"start": "2026-11-09", "end": "2027-12-31", "query": "SHANGHAI"})).lower()   # a string still works
-    none = await tool.handler({"start": "2026-11-09", "end": "2027-12-31", "query": ["Osaka", "KIX"]})
+    assert "shanghai" in (await read(tool, {"start": "2026-11-09", "end": "2027-12-31", "query": "SHANGHAI"})).lower()   # a string still works
+    none = await read(tool, {"start": "2026-11-09", "end": "2027-12-31", "query": ["Osaka", "KIX"]})
     assert 'No events matching "osaka" or "kix"' in none
-    assert (await tool.handler({"start": "2026-11-09", "end": "2028-12-31", "query": ["상해"]})).startswith("error:")    # past 18 months
-    assert "give query" in await tool.handler({"start": "2026-11-09", "end": "2027-03-10"})                           # a list: two months
+    assert (await read(tool, {"start": "2026-11-09", "end": "2028-12-31", "query": ["상해"]})).startswith("error:")    # past 18 months
+    assert "give query" in await read(tool, {"start": "2026-11-09", "end": "2027-03-10"})                           # a list: two months
     props = tool.parameters["properties"]["query"]
     assert props["type"] == "array" and "spelling" in tool.description and "short code" in tool.description
 
@@ -551,3 +560,61 @@ async def test_a_calendar_that_takes_too_long_is_skipped_and_shown(tmp_path, mon
     assert [e["title"] for e in await src.upcoming_events(24)] == ["Dentist"]
     row = next(a for a in src.public()["calendar"]["accounts"] if a["id"] == "google:google-calendar")
     assert "took too long" in row["problem"]
+
+
+# ------------------------------------------------------------------------------------------------------ the search rule (event_search)
+async def test_a_search_takes_several_words_as_a_list_or_a_string_and_searches_the_notes_too(tmp_path):
+    store = full_store(tmp_path)
+    src, _, _ = build(store, google=FakeGoogle([("google-calendar", "me@gmail.test")], [{"title": "Flight to Testville", "at": ts(9, day=12),
+                                                                                        "notes": "booking QQ9"}]),
+                      outlook=FakeOutlook([{"title": "Board", "at": ts(16, day=12), "notes": "agenda: Zilch review"}]))
+    tool = src.calendar_tool(lambda: "Asia/Seoul")
+    window = {"start": "2026-11-12", "end": "2026-11-12"}
+    assert "Flight to Testville" in await read(tool, {**window, "query": ["zilch", "testville"]})
+    assert "Flight to Testville" in await read(tool, {**window, "query": '["nowhere","TESTVILLE"]'})
+    assert "Flight to Testville" in await read(tool, {**window, "query": "nowhere, testville"})
+    assert "Flight to Testville" in await read(tool, {**window, "query": ["qq9"]})                 # Google notes
+    assert "Board" in await read(tool, {**window, "query": ["zilch"]})                             # Outlook notes
+    empty = await read(tool, {**window, "query": "nowhere zilchx"})
+    assert 'No events matching "nowhere" or "zilchx"' in empty and "without it the same range holds 2 events" in empty
+    assert len(await src.events(datetime(2026, 11, 12, tzinfo=SEOUL), datetime(2026, 11, 13, tzinfo=SEOUL), ["zilch"])) == 4
+
+
+async def test_the_same_event_on_the_phone_and_in_google_is_listed_once_with_where_else_it_is(tmp_path):
+    store = full_store(tmp_path)
+    src, _, _ = build(store, google=FakeGoogle([("google-calendar", "me@gmail.test")], [{"title": "Team lunch", "at": ts(12, day=13)}]),
+                      phone=[{"title": "Team lunch", "at": ts(12, day=13), "account": "me@gmail.test", "account_type": "com.google"}])
+    out = await src.calendar_tool(lambda: "Asia/Seoul").handler({"start": "2026-11-13", "end": "2026-11-13", "query": "lunch"})
+    lines = [line for line in out.splitlines() if "Team lunch" in line]
+    assert len(lines) == 1, out
+    assert "also in " in lines[0] and "Team lunch" in lines[0]
+
+
+async def test_a_search_finds_a_caldav_event_by_its_description(tmp_path):
+    store = full_store(tmp_path)
+    with FakeCalDav(host="caldav.calendar.naver.com") as fake:
+        src, _, _ = build(store, fake=fake)
+        out = await src.calendar_tool(lambda: "Asia/Seoul").handler({"start": "2026-11-09", "end": "2026-11-09", "query": ["qq9"]})
+    assert "Lunch with Mina" in out, out
+
+
+async def test_the_owners_own_events_are_plain_and_others_are_data_in_the_chat_list(tmp_path):
+    """Own rows (the phone's `own`, a Google event the owner made on a calendar they own) keep their title and place as the app's words;
+    any other row's title and place are data (fenced by the loop). A pair listed once is own only when every copy is."""
+    from assistant.agent import Ours
+    from assistant.agent.fence import marked, split
+    store = full_store(tmp_path)
+    src, cal, _ = build(store, google=FakeGoogle([("google-calendar", "me@gmail.test")],
+                                                 [{"title": "Own gcal", "at": ts(9, day=10), "own": True},
+                                                  {"title": "Invited gcal", "at": ts(11, day=10), "own": False}]),
+                        phone=[{"title": "Own phone", "at": ts(12, day=10), "own": True},
+                               {"title": "Dentist", "at": ts(14, day=10)},
+                               {"title": "Shared pair", "at": ts(15, day=10), "own": True}],
+                        outlook=FakeOutlook([{"title": "Shared pair", "at": ts(15, day=10)}]))
+    out = await src.calendar_tool(lambda: "Asia/Seoul").handler({"start": "2026-11-10", "end": "2026-11-10"})
+    assert marked(out)
+    data_text = [p for is_data, p in split(out) if is_data]
+    assert "Own gcal" not in data_text and "Own phone" not in data_text
+    assert "Invited gcal" in data_text and "Dentist" in data_text and "Shared pair" in data_text
+    plain_only = await src.calendar_tool(lambda: "Asia/Seoul").handler({"start": "2026-11-10", "end": "2026-11-10", "query": "own"})
+    assert isinstance(plain_only, Ours) and "Own gcal" in plain_only and "Own phone" in plain_only and not marked(plain_only)

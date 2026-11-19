@@ -62,11 +62,13 @@ class ChatViewModel(
 
     private val host = ChatHost(viewModelScope, sessions, _state, _events, drafts, activity, watch, platform, canCall)
     override val turnEvents: SharedFlow<TurnEvent> = host.turnEvents
+    override val callTurnEvents: SharedFlow<chat.kelo.app.call.CallTurnEvent> = host.callTurnEvents
 
+    /** The chat cannot take a call's words now: a reply runs, or a secret or consent question is open. */
     override val busy: StateFlow<Boolean> = _state
-        .map { it.busy }
+        .map { it.busy || it.secretAsk != null || it.consentAsk != null }
         .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.busy)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _state.value.let { it.busy || it.secretAsk != null || it.consentAsk != null })
     private val draft = ChatDraft(host)
     private val sync = ChatSync(host)
     private val history = ChatHistory(host, sync, kept)
@@ -175,16 +177,18 @@ class ChatViewModel(
      * Follows a reply the server started by itself for this phone (a secure entry saved after the reply that asked had ended): the
      * same status line, events and end as a reply sent from here, without a bubble of the user's own.
      */
-    fun followTurn(turnId: String) = turns.followTurn(turnId)
+    fun followTurn(turnId: String) { turns.followTurn(turnId) }
 
-    override fun followFromCall(turnId: String) = turns.followTurn(turnId)
+    override fun followFromCall(turnId: String, callId: String): Boolean = turns.followTurn(turnId, call = callId)
 
-    override fun sendFromCall(text: String, callId: String): Boolean {
+    override fun sendFromCall(text: String, callId: String, amend: Boolean): Boolean {
         val s = _state.value
         if (s.busy || s.secretAsk != null || s.consentAsk != null) return false
-        turns.start(text, fromComposer = false, tookAttachments = false, answers = emptyList(), secrets = null, call = callId)
+        turns.start(text, fromComposer = false, tookAttachments = false, answers = emptyList(), secrets = null, call = callId, amend = amend)
         return true
     }
+
+    override fun takeBackFromCall(callId: String): Boolean = turns.takeBack(callId)
 
     // ---- the location card (location_request): the screen asks the phone (permission, place) and hands the answer here
     /** The card shows "getting your location" while the screen reads the place. */

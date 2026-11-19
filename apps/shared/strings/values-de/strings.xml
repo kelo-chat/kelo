@@ -887,6 +887,7 @@
     <string name="agent_tab_working">Arbeitet</string>
     <string name="agent_tab_failed">Hängt fest</string>
     <string name="agent_tab_idle">Untätig</string>
+    <string name="agent_tab_waiting">Wartet auf dich</string>
     <string name="agent_tab_picture">Tab-Ansicht</string>
     <string name="agent_tab_no_picture">Nichts anzuzeigen (leere Seite).</string>
     <string name="agent_tab_close">Tab schließen</string>

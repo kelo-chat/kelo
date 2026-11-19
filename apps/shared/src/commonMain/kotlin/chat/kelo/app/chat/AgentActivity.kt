@@ -17,6 +17,8 @@ data class AgentStatus(
     @SerialName("agent_name") val agentName: String? = null,
     /** The profile's tone ("friendly" | "polite"): a change made in the chat or on another device shows without a reload; null = older server */
     val tone: String? = null,
+    /** The newest chat reply failed (the red bubble): the character shows the error face until a later reply works; false from an older server */
+    @SerialName("last_reply_failed") val lastReplyFailed: Boolean = false,
     @SerialName("unseen_tasks") val unseenTasks: Int = 0,
     @SerialName("unseen_notifications") val unseenNotifications: Int = 0,
     @SerialName("avatar_version") val avatarVersion: Long = -1,
@@ -36,6 +38,10 @@ data class AgentStatus(
  * say it ([turnLine]: the newest tool label or browser status); otherwise GET /api/agent/status, polled every few seconds in the
  * foreground, covers work the chat is not following (scheduled or background runs).
  */
+/** What the owner is needed for, for the character: nothing, a job waiting for their answer (it asks), or a failed run nobody has
+ *  looked at (it sweats). */
+enum class UserNeed { None, Waiting, Failed }
+
 class AgentActivity {
     val following = MutableStateFlow(false)
     val turnLine = MutableStateFlow<String?>(null)
@@ -48,8 +54,8 @@ class AgentActivity {
     val polledBrowsing = MutableStateFlow(false)
     /** The server could not be reached on the last polls ([AgentActivityRules.OFFLINE_AFTER] network failures in a row) */
     val offline = MutableStateFlow(false)
-    /** A job is stuck on the user ([AgentActivityRules.needsUser]) */
-    val stuck = MutableStateFlow(false)
+    /** What the owner is needed for ([AgentActivityRules.needsUser]) */
+    val need = MutableStateFlow(UserNeed.None)
     /** Bumped when a screen learns that background work changed under it (the live view found its tab gone): the Work page and the
      *  job page load again at once instead of at their next poll. */
     val workChanged = MutableStateFlow(0)
@@ -208,12 +214,14 @@ object AgentActivityRules {
     const val STUCK_FOR_S = 12 * 3600.0
 
     /**
-     * A job is stuck on the user: the newest task failed and nobody has looked at it yet, or a background job has been waiting
-     * for the user (a login, a choice, a code) since less than [STUCK_FOR_S] ago (against [nowS]).
+     * What the owner is needed for: the newest task failed and nobody has looked at it yet ([UserNeed.Failed], it wins), or a
+     * background job has been waiting for the owner (a login, a choice, a code) since less than [STUCK_FOR_S] ago (against [nowS]).
      */
-    fun needsUser(newest: TaskBrief?, waiting: List<WorkerBrief>, nowS: Double): Boolean =
-        (newest != null && newest.status == "failed" && !newest.seen) ||
-            waiting.any { it.status == "needs_input" && (it.updatedAt ?: 0.0) >= nowS - STUCK_FOR_S }
+    fun needsUser(newest: TaskBrief?, waiting: List<WorkerBrief>, nowS: Double): UserNeed = when {
+        newest != null && newest.status == "failed" && !newest.seen -> UserNeed.Failed
+        waiting.any { it.status == "needs_input" && (it.updatedAt ?: 0.0) >= nowS - STUCK_FOR_S } -> UserNeed.Waiting
+        else -> UserNeed.None
+    }
 
     /** Work just finished (the agent was busy at the previous poll and is not now) and the newest task went well. */
     fun finished(before: AgentStatus?, now: AgentStatus, newest: TaskBrief?): Boolean =
@@ -291,7 +299,7 @@ object AgentActivityRules {
     data class MoodInput(
         val offline: Boolean = false,
         val status: AgentStatus? = null,
-        val stuck: Boolean = false,
+        val need: UserNeed = UserNeed.None,
         val listening: Boolean = false,
         val following: Boolean = false,
         val turnKind: TurnKind = TurnKind.Thinking,
@@ -304,16 +312,17 @@ object AgentActivityRules {
     )
 
     /**
-     * The character's mood, the first that applies: unreachable server, an approval waiting, a job stuck on the user, the
-     * microphone listening, then the work itself (the followed reply's kind; else a polled run in the browser or at work), the
-     * cheer after finishing, sleep at night once nothing has happened for [SLEEP_AFTER_IDLE_MS], else rest.
+     * The character's mood, the first that applies: unreachable server, an approval or a job waiting for the owner (asking), a
+     * failed run nobody looked at (sweat), the microphone listening, then the work itself (the followed reply's kind; else a polled
+     * run in the browser or at work), a chat reply that failed (sweat, until a later reply works), the cheer after finishing, sleep at
+     * night once nothing has happened for [SLEEP_AFTER_IDLE_MS], else rest.
      */
     fun mood(m: MoodInput): KeloMood {
         val busy = m.following || m.status?.busy == true
         return when {
             m.offline -> KeloMood.Offline
-            (m.status?.pendingApprovals ?: 0) > 0 -> KeloMood.Approval
-            m.stuck -> KeloMood.Error
+            (m.status?.pendingApprovals ?: 0) > 0 || m.need == UserNeed.Waiting -> KeloMood.Approval
+            m.need == UserNeed.Failed -> KeloMood.Error
             m.listening -> KeloMood.Listening
             m.following -> when (m.turnKind) {
                 TurnKind.Browser -> KeloMood.Browser
@@ -322,6 +331,7 @@ object AgentActivityRules {
                 TurnKind.Thinking -> KeloMood.Thinking
             }
             busy -> if (m.polledBrowsing) KeloMood.Browser else KeloMood.Working
+            m.status?.lastReplyFailed == true -> KeloMood.Error
             m.sinceDoneMs != null && m.sinceDoneMs < DONE_MS -> KeloMood.Done
             m.night && (m.idleMs == null || m.idleMs >= SLEEP_AFTER_IDLE_MS) -> KeloMood.Sleeping
             else -> KeloMood.Idle

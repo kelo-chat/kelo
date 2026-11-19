@@ -61,6 +61,13 @@ fun stringArray(res: StringArrayResource): List<String> = stringArrayResource(re
 suspend fun loadString(res: StringResource, vararg args: Any?): String =
     TextFormat.format(Locale.getDefault(), getString(environment(), res), args)
 
+/** The text in the language of [tag] (an app language code such as "ko" or "de"), for code outside composition: the call's spoken lines. */
+suspend fun loadStringIn(tag: String, res: StringResource, vararg args: Any?): String {
+    val l = Locale.forLanguageTag(tag)
+    val env = ResourceEnvironment(LanguageQualifier(l.language), RegionQualifier(l.country), ThemeQualifier.LIGHT, DensityQualifier.MDPI)
+    return TextFormat.format(l, getString(env, res), args)
+}
+
 suspend fun loadPlural(res: PluralStringResource, count: Int, vararg args: Any?): String =
     TextFormat.format(Locale.getDefault(), getPluralString(environment(), res, count), args)
 

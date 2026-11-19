@@ -4,6 +4,7 @@ the journal (fake model), the agent's picture and the notification feed."""
 import asyncio
 import io
 import json
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -375,6 +376,7 @@ async def test_every_reply_becomes_a_task_with_title_result_and_answer(tmp_path)
         assert (await c.get("/api/tasks/999")).status_code == 404
         status = (await c.get("/api/agent/status")).json()
         assert status["busy"] is False and status["status"] is None and status["pending_approvals"] == 0
+        assert status["last_reply_failed"] is (failed["source"] == "chat")   # the newest chat reply is the failed one here
         assert (await c.get("/api/notifications")).json()["items"] == []      # both were watched in the chat: no notification
 
 
@@ -622,6 +624,25 @@ async def test_browser_tabs_are_listed_with_small_pictures_shown_larger_and_clos
         assert (await c.post("/api/browser/sessions", json={"prompt": "x"})).status_code == 404
 
 
+async def test_a_job_tab_waiting_for_the_owner_says_waiting_not_idle(tmp_path):
+    # owner report 2026-11-19: a job that ended asking the owner for something showed its tab as resting
+    sess = BrowserSession(connect=None)
+    sess._pages["owner"] = ShotPage("https://shop.example.com/cart")
+    sess._pages["task:w0wait"] = ShotPage("https://shop.example.com/list")
+    app = create_app(app_settings(tmp_path), tools=[], stream_fn=answering("x"), browser=sess)
+    now = time.time()
+    app.state.workers.store._run(
+        "INSERT INTO workers(id, kind, title, task, status, tab, created_at, updated_at, deadline_at, minutes, max_steps, token_cap, report) "
+        "VALUES('w0wait', 'browser', 'Job', 'Look', 'needs_input', 'task:w0wait', ?, ?, ?, 60, 200, 1000000, ?)",
+        (now, now, now + 3600, json.dumps({"status": "needs_input", "summary": "Sign in, then it goes on."})))
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        tabs = {t["id"]: t for t in (await c.get("/api/browser/sessions?thumbnails=false")).json()["items"]}
+    assert tabs["task:w0wait"]["status"] == "waiting" and tabs["task:w0wait"]["status_text"] == "Needs your help"
+    assert tabs["owner"]["status"] == "idle"
+    assert app.state.workers.waits_for_owner("task:w0wait") is True
+    assert app.state.workers.waits_for_owner("owner") is False and app.state.workers.waits_for_owner("task:w0none") is False
+
+
 async def test_a_task_handed_over_from_the_agent_screen_runs_in_its_own_tab(tmp_path):
     sess = BrowserSession(connect=None)
     fn = answering("찾아봤어요.")
@@ -836,3 +857,59 @@ async def test_profile_says_whether_a_main_model_is_chosen(tmp_path):
     async with Running(create_app(app_settings(tmp_path / "b"), tools=[], stream_fn=answering("x"))) as srv, \
             httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
         assert (await c.get("/api/profile")).json()["model_ready"] is True      # the server's default (ASSISTANT_PROVIDER/MODEL)
+
+
+async def test_several_calendar_changes_of_one_chat_step_share_one_card_over_http(tmp_path):
+    """One step with a delete and two adds, asked for in the owner's chat without a card each: the apps get ONE approval_request whose
+    `lines` list the changes (and `steps` for each), one answer runs all of them; a second run declined by the owner runs none."""
+    from assistant.agent import Tool
+    from assistant.providers import Done, TextDelta, ToolCall
+    ran = []
+
+    def tool(name):
+        async def handler(args):
+            ran.append((name, args))
+            return f"{name} done"
+        return Tool(name, name, {"type": "object"}, handler, requires_approval=True, shares_card=True,
+                    describe=lambda args: f"{name} {args.get('title') or args.get('event_id')}")
+    tools = [tool("gcal_delete_event"), tool("gcal_create_event")]
+    script = iter([
+        [ToolCall("d", "gcal_delete_event", '{"event_id":"e1"}'), ToolCall("a", "gcal_create_event", '{"title":"Lunch"}'),
+         ToolCall("b", "gcal_create_event", '{"title":"Dinner"}'), Done("tool_calls")], [TextDelta("ok"), Done("stop")],
+        [ToolCall("d2", "gcal_delete_event", '{"event_id":"e2"}'), ToolCall("a2", "gcal_create_event", '{"title":"Tea"}'), Done("tool_calls")],
+        [TextDelta("ok"), Done("stop")]])
+
+    async def fn(provider, request, **kw):
+        for ev in next(script):
+            yield ev
+
+    async def turn(c, text, answer):
+        tid = (await c.post("/api/turns", json={"text": text})).json()["id"]
+        events, after = [], 0
+        for _ in range(200):
+            r = (await c.get(f"/api/turns/{tid}", params={"after": after, "wait": 2})).json()
+            events += r["events"]
+            after = r["next"]
+            for ev in r["events"]:
+                if ev["type"] == "approval_request":
+                    got = (await c.post(f"/api/approvals/{ev['approval_id']}", json=answer)).json()
+                    events.append({"type": "answered", **got})
+            if r["done"]:
+                return events
+        raise AssertionError("the reply did not end")
+
+    async with Running(create_app(app_settings(tmp_path, payment_specialist=False), tools=tools, stream_fn=fn)) as srv, \
+            httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        first = await turn(c, "정리해줘", {"approve": True})
+        cards = [e for e in first if e["type"] == "approval_request"]
+        assert len(cards) == 1
+        card = cards[0]
+        assert card["ask"] and [s["name"] for s in card["steps"]] == ["gcal_delete_event", "gcal_create_event", "gcal_create_event"]
+        assert len(card["lines"]) == 3 and card["lines"][0]["label"] == "1"
+        assert [e["output"] for e in first if e["type"] == "tool_result"] == ["gcal_delete_event done", "gcal_create_event done",
+                                                                              "gcal_create_event done"]
+        assert len(ran) == 3
+        second = await turn(c, "하나 더", {"approve": False})
+        assert len([e for e in second if e["type"] == "approval_request"]) == 1
+        assert [e["is_error"] for e in second if e["type"] == "tool_result"] == [True, True]
+        assert len(ran) == 3

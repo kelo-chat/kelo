@@ -459,8 +459,10 @@ public struct AgentStatus: Codable, Equatable, Hashable, Sendable {
     public var tone: String?
     public var briefingRev: String?
     public var locked: Bool
+    /// The newest chat reply failed: the character shows the error face until a later reply works (false from an older server).
+    public var lastReplyFailed: Bool
 
-    public init(busy: Bool = false, status: String? = nil, taskId: Int64? = nil, turnId: String? = nil, title: String? = nil, source: String? = nil, controller: String? = nil, controlledBy: String? = nil, running: [RunningRun] = [], pendingApprovals: Int = 0, openFollowups: Int = 0, agentName: String? = nil, unseenTasks: Int = 0, unseenNotifications: Int = 0, avatarVersion: Int64 = -1, secretRequests: Int = 0, secretKinds: [String: Int64] = [:], tone: String? = nil, briefingRev: String? = nil, locked: Bool = false) {
+    public init(busy: Bool = false, status: String? = nil, taskId: Int64? = nil, turnId: String? = nil, title: String? = nil, source: String? = nil, controller: String? = nil, controlledBy: String? = nil, running: [RunningRun] = [], pendingApprovals: Int = 0, openFollowups: Int = 0, agentName: String? = nil, unseenTasks: Int = 0, unseenNotifications: Int = 0, avatarVersion: Int64 = -1, secretRequests: Int = 0, secretKinds: [String: Int64] = [:], tone: String? = nil, briefingRev: String? = nil, locked: Bool = false, lastReplyFailed: Bool = false) {
         self.busy = busy
         self.status = status
         self.taskId = taskId
@@ -481,6 +483,7 @@ public struct AgentStatus: Codable, Equatable, Hashable, Sendable {
         self.tone = tone
         self.briefingRev = briefingRev
         self.locked = locked
+        self.lastReplyFailed = lastReplyFailed
     }
 
     public init(from decoder: Decoder) throws {
@@ -505,6 +508,7 @@ public struct AgentStatus: Codable, Equatable, Hashable, Sendable {
         tone = j.optStr("tone")
         briefingRev = j.optStr("briefing_rev")
         locked = j.bool("locked", false)
+        lastReplyFailed = j.bool("last_reply_failed", false)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -529,6 +533,7 @@ public struct AgentStatus: Codable, Equatable, Hashable, Sendable {
         try c.encodeIfPresent(tone, forKey: AnyKey("tone"))
         try c.encodeIfPresent(briefingRev, forKey: AnyKey("briefing_rev"))
         try c.encode(locked, forKey: AnyKey("locked"))
+        try c.encode(lastReplyFailed, forKey: AnyKey("last_reply_failed"))
     }
 }
 

@@ -161,12 +161,15 @@ extension AppModel: PhoneSource {}
                                                  end: Date(timeIntervalSince1970: window.1), calendars: nil)
         return eventStore.events(matching: pred).map { e in
             let me = e.attendees?.first { $0.isCurrentUser }
+            // iOS cannot tell a Google account from another one: the type says only "local" or nothing
+            let local = e.calendar?.source.map { $0.sourceType == .local || $0.sourceType == .birthdays } ?? false
             return PhoneEvent(
                 id: e.eventIdentifier ?? "", title: e.title ?? "",
                 start: e.startDate.timeIntervalSince1970, end: e.endDate.timeIntervalSince1970, allDay: e.isAllDay,
                 location: e.location ?? "", calendar: e.calendar?.title ?? "",
                 declined: me?.participantStatus == .declined, cancelled: e.status == .canceled,
-                attendees: e.attendees?.count ?? 0)
+                attendees: e.attendees?.count ?? 0, notes: e.notes ?? "",
+                account: e.calendar?.source?.title ?? "", accountType: local ? "local" : "")
         }
     }
 

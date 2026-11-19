@@ -170,7 +170,8 @@ async def test_a_js_popup_is_accepted_only_inside_an_allowed_purchase():
     assert d2.answer == "accept"
     out = await session.snapshot()
     out = plain(out)
-    assert "pop-up: 'Pay 24,000?' -> dismissed" in out and "accepted (inside the purchase the user allowed)" in out
+    assert "pop-up: Pay 24,000? Kelo answered Cancel for you" in out
+    assert "Kelo answered OK: accepted (inside the purchase the user allowed)" in out
 
 
 # ---------------------------------------------------------------- browser cards

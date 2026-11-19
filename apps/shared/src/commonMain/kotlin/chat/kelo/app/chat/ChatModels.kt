@@ -26,6 +26,8 @@ data class StoredMessage(
     @SerialName("auto_text") val autoText: Boolean = false,
     /** Which path the message arrived through ("call" for voice call messages) */
     val via: String = "",
+    /** The in-app call this message belongs to (server "call"); null on other messages and from older servers */
+    @SerialName("call") val callId: String? = null,
 )
 
 /**

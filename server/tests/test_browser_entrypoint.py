@@ -100,11 +100,12 @@ def test_the_main_browser_keeps_session_cookies_and_drops_saved_tabs(tmp_path):
     (profile / "Default" / "Sessions" / "Session_1").write_text("tabs")
     (profile / "Default" / "Preferences").write_text(json.dumps({"profile": {"name": "x"}, "session": {"restore_on_startup": 5, "other": 1}}))
     block = _session_block().replace("/data/profile", str(profile)).replace("python -c", f"{sys.executable} -c")
-    out = subprocess.run(["sh", "-c", f"BROWSER_EPHEMERAL=0\n{block}"], capture_output=True, text=True)
+    out = subprocess.run(["sh", "-c", f"BROWSER_EPHEMERAL=0\n{block}\nprintf 'RESTORE=%s\\n' \"$RESTORE_FLAG\"\n"], capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     prefs = json.loads((profile / "Default" / "Preferences").read_text())
     assert prefs["session"]["restore_on_startup"] == 1 and prefs["session"]["other"] == 1 and prefs["profile"]["name"] == "x"
     assert not (profile / "Default" / "Sessions").exists()
+    assert "RESTORE=--restore-last-session\n" in out.stdout
 
 
 def test_the_work_browser_is_not_given_the_session_preference(tmp_path):
@@ -113,5 +114,11 @@ def test_the_work_browser_is_not_given_the_session_preference(tmp_path):
     profile = tmp_path / "profile"
     (profile / "Default" / "Sessions").mkdir(parents=True)
     block = _session_block().replace("/data/profile", str(profile)).replace("python -c", f"{sys.executable} -c")
-    subprocess.run(["sh", "-c", f"BROWSER_EPHEMERAL=1\n{block}"], capture_output=True, text=True)
+    out = subprocess.run(["sh", "-c", f"BROWSER_EPHEMERAL=1\n{block}\nprintf 'RESTORE=%s\\n' \"$RESTORE_FLAG\"\n"], capture_output=True, text=True)
     assert (profile / "Default" / "Sessions").exists() and not (profile / "Default" / "Preferences").exists()
+    assert "RESTORE=\n" in out.stdout
+
+
+def test_the_restore_switch_is_on_the_browser_line():
+    line = ENTRYPOINT[ENTRYPOINT.index("    exec browser \\"):]
+    assert "$RESTORE_FLAG" in line.split("about:blank", 1)[0]

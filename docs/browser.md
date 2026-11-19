@@ -186,6 +186,29 @@ the order.
 
 To have every click and typing step ask, as before, set `ASSISTANT_APPROVE_BROWSER_ACTIONS=1` in `.env` (default `0`).
 
+## Page pop-ups (alert, confirm, prompt)
+
+A page's own pop-ups (JavaScript `alert`, `confirm`, `prompt`, and the question a page asks before it is left) are answered the moment
+they open (`BrowserSession._watch`; the rules are in `tools/page_dialogs.py`, owner report 2026-11-19):
+
+- **OK** only for the user: they hold the tab (the pop-up came from their own tap), a purchase or cancel window they allowed on that site
+  is open, or it is a step of the order they asked for (`Orders.dialog_ok`).
+- Otherwise an **alert** (only OK; closing it chooses nothing) is closed and a **question** (confirm, prompt, leaving the page, a kind
+  the browser did not name) is answered **Cancel**. Its words come from the site, only words would tell a sign-in question from
+  "delete?", "pay?", "leave?" or "send?", nothing is judged by word lists, and a wrong yes cannot be taken back: no chat step and no job
+  says yes on its own.
+- The model's next page reading has a note per pop-up (`dialog_note`): its kind and full words (fenced as page data), the answer and what
+  it means (Cancel = the step that opened it did nothing), how many times the same pop-up came on that page in a row, and the general
+  next step: a sign-in question -> the usual sign-in path (a saved login: the site's own sign-in page and `browser_login`; a job without
+  one: report `needs_input`; the chat: `request_login`, or the owner signs in by taking over), anything else -> another way on the page,
+  else ask the owner (a job: `needs_input`), who can answer it by taking over the browser.
+- A click (or a click at a point, or a drag) whose page did not change and whose only pop-ups were questions answered Cancel counts as a
+  click that changed nothing (`last_click_changed_nothing`, `DIALOG_ONLY_NOTE`): the same click is not repeated. An alert or an OK still
+  counts as a change (the page may have acted).
+- Native pop-ups are never in the live picture or on the X screen. The live view's `status` carries `dialog` (the newest pop-up while the
+  tab still shows the address it came from, 60 s at most; server.py LIVE VIEW API) and the apps show its line under the status strip
+  ("The page asked: “…” Kelo answered Cancel."). Apps that do not know the field ignore it.
+
 ## The work browser
 
 Scheduled and background tabs run in a second browser, the work browser (the `work-browser` container, same image as the browser). The
@@ -201,12 +224,16 @@ owner's chat tabs and the purchase sign-in stay in the main browser.
   cookie or storage key is written only where the owner's browser still holds the value the tab started from (compare-and-set). A value the
   owner changed meanwhile is kept; a deletion is never written back, so a job that signs out never signs the owner out. Two tabs on one site:
   the first to close wins. The log has counts only (written, left), never a value.
+- A job's tab is told once per site, on its first reading of that site, when the copy found no sign-in for it in the owner's browser:
+  nothing at all for that site, or cookies but no `browser_sign_ins` record of a sign-in there. The note names a saved login of the site
+  (browser_login with via) or says to ask the owner. Cookie names are never used to guess. The log line `work browser: tab ..., site ...: N
+  cookies copied of M in the source, <state>` is in the server's container log (counts, sites and tab keys only).
 - Research jobs (`kind: research`) browse signed out: their tab starts empty, nothing is copied in and nothing is written back.
-- The owner's browser is set to restore the last session (`session.restore_on_startup = 1` in its profile, written by `entrypoint.sh`; the
-  saved tabs are dropped so none reopen), because Chrome keeps a session cookie ("stay signed in" off) only when it restores the last
-  session. The work browser never has it (it starts empty at every start). The live restart test
-  (`test_a_session_cookie_survives_a_restart_with_the_preference` in `test_work_seed_live.py`) is `xfail` while it fails with the
-  Chromium used for tests; whether the container's Google Chrome keeps the cookie is still to be checked on a real install.
+- The owner's browser keeps session sign-ins (a sign-in without "stay signed in") across a restart: `entrypoint.sh` starts it with
+  `--restore-last-session` (Chrome deletes session cookies at start otherwise; the profile preference `session.restore_on_startup = 1`,
+  still written, did not keep them on its own) and removes the saved tabs first, so none reopen. Checked live in `test_work_seed_live.py`
+  with the full browser (`channel="chromium"`; the headless shell has no session restore). Known limit: Chrome writes cookies to disk in
+  batches of about 30 s, so a sign-in made seconds before a container stop can be lost. The work browser never has it.
 - A refusal of a signed-out browser leads to sign-in: when a site refuses and Kelo holds no sign-in for it, the pause note says so and a
   15-minute sign-in pass opens (a saved login, then the owner's card, then take-over). A pass ends with its outcome; a site the owner signs
   in to by hand ends its pause.
@@ -234,6 +261,23 @@ owner's chat tabs and the purchase sign-in stay in the main browser.
   `WORK_BROWSER_CDP_PORT` (default 9225).
 - Known limit: a site that rotates its sign-in token on every use may sign the main browser out after a job used the copied cookie. The
   next chat on that site signs in again (the vault fills it in).
+
+## Signing in: saved logins, click-first
+
+- A saved login is the login of its whole site (the registrable domain, public-suffix aware: `a.github.io` and `b.github.io` are two
+  sites), plus the short `SAME_SERVICE` list. `request_login` never raises a second fill-in card for another address of a site that has a
+  saved login, whatever name is asked for; a second account on one site only with `another_account=true` and its own name (browser_login
+  then picks by name). Open fill-in cards of one site replace each other. Stored hosts are never rewritten (they are bound into the
+  sealed value); matching is at read time.
+- Click-first: the browser opens an address directly only to get onto a site (its home page, an address the user gave, a job's start
+  address, a search result); within a site it moves by the site's links, menus, buttons and own search box. `browser_login` on a page
+  without a sign-in form types nothing and says so; with `via` (the ref of the site's own sign-in link or button) it clicks that like a
+  person (only an element that just opens something; anything that may change something goes through browser_click and its card), checks
+  the new page is the login's site, and fills the form there. It never jumps back: the result says where the job was.
+- Stay signed in: before typing, `browser_login` gives the agent the form's unticked boxes and switches; the agent picks the one that keeps
+  the browser signed in by its words (`keep`) or `keep="none"`. That second call is part of the approved sign-in for 120 s (no second
+  card). Only Kelo's own sign-ins; the owner's hand sign-in is never touched.
+- A checkout job starts at the shop's home page and clicks to the cart; the cart address the chat gives is not opened.
 
 ## Task windows and tabs
 

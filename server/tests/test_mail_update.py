@@ -512,7 +512,7 @@ async def test_after_outside_mail_marking_gets_no_card_and_trash_still_does(tmp_
     assert review.line(effect_of("email_update", trash)) is not None
     assert (await gate.check(tools["email_update"], read)).action != "ask"
     verdict = await gate.check(tools["email_update"], trash)
-    assert verdict.action == "ask" and "gmail" in verdict.card
+    assert verdict.action == "ask" and verdict.card.endswith("Check that this change is the one you asked for.")   # a place with no text form: the change line
     no_deletion(fake)
 
 

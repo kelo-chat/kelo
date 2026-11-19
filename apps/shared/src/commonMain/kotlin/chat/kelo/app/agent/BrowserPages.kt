@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import chat.kelo.app.ui.platform.decodeImage
 import androidx.compose.ui.layout.ContentScale
@@ -111,14 +112,42 @@ private fun tabLabel(t: BrowserTab): String = when (t.kind) {
     else -> t.label
 }
 
+/** How a browser tab's status shows: working, waiting for the owner (a job that asked them something), failed, else idle. */
+enum class TabState { WORKING, WAITING, FAILED, IDLE }
+
+/** [status] of GET /api/browser/sessions; any value this app does not know (a newer server's) shows as idle. [busy]: a step runs now. */
+internal fun tabState(status: String?, busy: Boolean = false): TabState = when {
+    busy || status == "working" -> TabState.WORKING
+    status == "waiting" -> TabState.WAITING
+    status == "failed" -> TabState.FAILED
+    else -> TabState.IDLE
+}
+
+@Composable
+internal fun tabWord(s: TabState): String = string(
+    when (s) {
+        TabState.WORKING -> Res.string.agent_tab_working
+        TabState.WAITING -> Res.string.agent_tab_waiting
+        TabState.FAILED -> Res.string.agent_tab_failed
+        TabState.IDLE -> Res.string.agent_tab_idle
+    },
+)
+
+@Composable
+internal fun tabTone(s: TabState): Color {
+    val c = Kelo.colors
+    return when (s) {
+        TabState.WORKING, TabState.WAITING -> c.accent
+        TabState.FAILED -> c.danger
+        TabState.IDLE -> c.muted
+    }
+}
+
 @Composable
 private fun TabStatus(t: BrowserTab) {
-    val c = Kelo.colors
-    val (word, color) = when (t.status) {
-        "working" -> string(Res.string.agent_tab_working) to c.accent
-        "failed" -> string(Res.string.agent_tab_failed) to c.danger
-        else -> string(Res.string.agent_tab_idle) to c.muted
-    }
+    val state = tabState(t.status)
+    val word = tabWord(state)
+    val color = tabTone(state)
     Text(
         word, style = MaterialTheme.typography.labelSmall, color = color, fontWeight = FontWeight.SemiBold,
         modifier = Modifier.clip(RoundedCornerShape(99.dp)).background(color.copy(alpha = 0.12f)).padding(horizontal = 7.dp, vertical = 2.dp),

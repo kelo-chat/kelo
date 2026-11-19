@@ -25,6 +25,12 @@
     <string name="call_mic_denied">कॉल शुरू नहीं हो सकी: माइक्रोफ़ोन की अनुमति नहीं है।</string>
     <string name="call_voice_offer">यह कॉल के लिए Kelo की स्वाभाविक आवाज़ है। अपने Kelo सर्वर पर एक बार वॉयस मॉडल (%1$s) डाउनलोड करें, और Kelo अगले वाक्य से इसमें बोलेगा। इसके बिना, Kelo इस डिवाइस की रोबोटिक आवाज़ का उपयोग करता है।</string>
     <string name="call_mark">कॉल</string>
+    <plurals name="call_chat_length">
+        <item quantity="one">कॉल · %1$d मिनट</item>
+        <item quantity="other">कॉल · %1$d मिनट</item>
+    </plurals>
+    <string name="call_chat_show">कॉल दिखाएँ</string>
+    <string name="call_chat_hide">कॉल छिपाएँ</string>
     <string name="call_voice_offer_title">Kelo की आवाज़ डाउनलोड करें?</string>
     <string name="call_voice_offer_ok">डाउनलोड</string>
     <string name="call_voice_offer_later">फ़िलहाल डिवाइस की आवाज़ का उपयोग करें</string>
@@ -32,6 +38,12 @@
     <string name="call_voice_get">डाउनलोड</string>
     <string name="call_voice_line_close">बंद करें</string>
     <string name="call_ears_failed">फ़ोन का वाक् पहचान आपको सुन नहीं पा रहा है।</string>
+    <string name="call_voice_device">Kelo की अपनी आवाज़ लोड नहीं हुई, इसलिए इस डिवाइस की आवाज़ बोल रही है।</string>
+    <string name="call_voice_none">यह डिवाइस अभी Kelo की आवाज़ नहीं चला सकता। जवाब चैट में है।</string>
+    <string name="call_minimize">चैट पर वापस जाएँ</string>
+    <string name="call_keyboard">लिखें</string>
+    <string name="call_type_hint">Kelo के लिए संदेश लिखें</string>
+    <string name="call_type_send">भेजें</string>
     <string name="voice_speech_title">Kelo की आवाज़</string>
     <string name="voice_speech_download">वॉयस मॉडल डाउनलोड करें · %1$s</string>
     <string name="voice_speech_downloading">वॉयस मॉडल डाउनलोड हो रहा है · %1$d%%</string>

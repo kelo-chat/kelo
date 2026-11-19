@@ -277,7 +277,7 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     u = sub.add_parser("update", help="update a copy safely: back up its data, rebuild, restart, check it, and roll back by itself if it fails")
     u.add_argument("name", nargs="?", help="which extra copy (default: the main one; `instance update` does every extra copy)")
     u.add_argument("--cli", action="append", choices=CLIS, dest="clis",
-                   help="only rebuild this Claude/agy container with the newest CLI (repeatable)")
+                   help="only rebuild this Claude/agy container, from scratch with the newest CLI (repeatable); a normal update reuses Docker's cache for it")
     u.add_argument("--no-build", action="store_true", help="use the images already on this computer (built or pulled by hand)")
     src = u.add_mutually_exclusive_group()
     src.add_argument("--from-release", dest="source", action="store_const", const="release",
@@ -286,8 +286,9 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
                      help="build the images here from these source files (the default otherwise)")
     u.add_argument("--timeout", type=float, default=180, help="seconds the restarted copy has to pass the health check (default 180)")
     u.add_argument("--env-file", type=Path, default=Path(".env"))
-    rb = sub.add_parser("rollback", help="go back to the images (and, if the database changed, the data) from before the last update")
+    rb = sub.add_parser("rollback", help="go back to the images (and, if the database changed, the data) from before the last update, or an earlier one with --to")
     rb.add_argument("name", nargs="?", help="which extra copy (default: the main one)")
+    rb.add_argument("--to", metavar="POINT", help="an earlier rollback point instead of the newest (its id, as `assistant backups` shows it)")
     rb.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     rb.add_argument("--keep-data", action="store_true", help="keep the current data even if the database changed (at your own risk)")
     rb.add_argument("--timeout", type=float, default=180, help="seconds it has to pass the health check (default 180)")

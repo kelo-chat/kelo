@@ -162,6 +162,7 @@ async def test_the_loop_shows_the_picture_only_to_a_model_that_sees_images(home)
             assert all(isinstance(m.get("content"), (str, type(None))) for m in second)        # no picture went anywhere
             assert NO_VISION in tool_msg["content"] and NO_VISION in results[0].output
         assert "data:image" not in results[0].output                                         # the chat never gets the bytes
+        assert results[0].pictures == (1 if images_ok else 0)                                 # what the model was shown, for the steps line
 
 
 def test_which_providers_get_pictures():
@@ -182,3 +183,30 @@ def test_transports_carry_pictures_in_their_own_shape():
     _, items = responses.convert_input(MSGS)
     assert items[1]["content"] == [{"type": "input_text", "text": "[picture]"}, {"type": "input_image", "image_url": IMG["image_url"]["url"]}]
     json.dumps(items)
+
+
+async def test_a_picture_from_an_earlier_turn_can_be_opened_again(home):
+    """The next turn reads the steps line of the last reply: it names the call that showed the picture, and that call (with a fresh
+    tool set, as the next turn has) gives the picture again. The photo stays in the home context too."""
+    from assistant.reply_text import ReplyText
+    home.save_upload("cat.jpg", picture(gps=False))
+    said = ReplyText()
+    said.feed({"type": "tool_started", "id": "c1", "name": "view_image", "arguments": '{"name": "cat.jpg"}'})
+    said.feed({"type": "tool_result", "id": "c1", "name": "view_image", "output": "a photo", "pictures": 1})
+    said.feed({"type": "text", "text": "A cat."})
+    said.feed({"type": "done"})
+    note = said.steps_text()
+    assert "not attached any more" in note
+    args = json.loads(note[note.index("{"):])
+    fresh = {t.name: t for t in home_tools(home, None)}
+    out = await fresh["view_image"].handler(args)
+    assert isinstance(out, ToolOutput) and len(out.images) == 1 and out.images[0].startswith("data:image/jpeg;base64,")
+    assert "### Photos the user uploaded" in home.context_block() and "cat.jpg" in home.context_block()
+
+
+def test_a_tool_result_says_how_many_pictures_it_showed_only_when_there_were_some():
+    from assistant.server import serialize
+    shown = serialize(ToolResult("1", "view_image", "a photo", pictures=2))
+    assert shown["pictures"] == 2
+    assert "pictures" not in serialize(ToolResult("2", "view_image", "a photo"))
+

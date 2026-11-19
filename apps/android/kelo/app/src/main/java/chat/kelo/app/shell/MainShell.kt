@@ -495,10 +495,15 @@ private fun MainShellContent(profile: Profile, onProfile: (Profile) -> Unit, onS
             }
         }
         val agentPhoto by container.agentAvatar.image.collectAsStateWithLifecycle()
+        // the call asks for the microphone when it starts without it; the answer goes to the call (refused: the call ends and says so)
+        val micAsk = androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+        ) { granted -> container.calls.session.value?.micPermission(granted) }
         chat.kelo.app.call.CallOverlay(
             center = container.calls,
             agentName = profile.agentName.ifBlank { "Kelo" },
             photo = agentPhoto,
+            onNeedMicrophone = { micAsk.launch(android.Manifest.permission.RECORD_AUDIO) },
         )
     }
 }

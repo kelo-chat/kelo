@@ -716,12 +716,13 @@ struct TabRow: View {
     }
 
     private func tabStatus(_ t: BrowserTab) -> some View {
-        let (word, tone): (String, Color) = switch t.status {
-        case "working": (L(R.string.agent_tab_working), c.accent)
-        case "failed": (L(R.string.agent_tab_failed), c.danger)
-        default: (L(R.string.agent_tab_idle), c.muted)
+        let state = WorkText.tabState(t.status)
+        let tone: Color = switch state {
+        case .working, .waiting: c.accent
+        case .failed: c.danger
+        case .idle: c.muted
         }
-        return Text(word).font(.system(.caption2, weight: .semibold)).foregroundStyle(tone)
+        return Text(WorkText.tabWord(state)).font(.system(.caption2, weight: .semibold)).foregroundStyle(tone)
             .padding(.horizontal, 7).padding(.vertical, 2).background(Capsule().fill(tone.opacity(0.12)))
     }
 }

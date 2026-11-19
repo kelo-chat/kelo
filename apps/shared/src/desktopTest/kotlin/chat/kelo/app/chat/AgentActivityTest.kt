@@ -89,16 +89,18 @@ class AgentActivityTest {
 
     @Test fun moodPriority() {
         val all = AgentActivityRules.MoodInput(
-            offline = true, status = asking, stuck = true, listening = true, following = true, turnKind = TurnKind.Browser,
+            offline = true, status = asking, need = UserNeed.Failed, listening = true, following = true, turnKind = TurnKind.Browser,
             polledBrowsing = true, sinceDoneMs = 100, night = true,
         )
         // each step down the list once the ones above it are gone
         assertEquals(KeloMood.Offline, mood(all))
         assertEquals(KeloMood.Approval, mood(all.copy(offline = false)))
         val noAsk = all.copy(offline = false, status = busy)
-        assertEquals(KeloMood.Error, mood(noAsk))
-        assertEquals(KeloMood.Listening, mood(noAsk.copy(stuck = false)))
-        val work = noAsk.copy(stuck = false, listening = false)
+        assertEquals(KeloMood.Error, mood(noAsk))                                          // a failed run nobody looked at: the sweat
+        assertEquals(KeloMood.Approval, mood(noAsk.copy(need = UserNeed.Waiting)))         // a job waiting for the owner asks (2026-11-19)
+        assertEquals(KeloMood.Approval, mood(AgentActivityRules.MoodInput(need = UserNeed.Waiting)))
+        assertEquals(KeloMood.Listening, mood(noAsk.copy(need = UserNeed.None)))
+        val work = noAsk.copy(need = UserNeed.None, listening = false)
         assertEquals(KeloMood.Browser, mood(work))
         assertEquals(KeloMood.Reading, mood(work.copy(turnKind = TurnKind.Reading)))
         assertEquals(KeloMood.Working, mood(work.copy(turnKind = TurnKind.Tool)))
@@ -116,12 +118,14 @@ class AgentActivityTest {
 
     @Test fun stuckOnTheUser() {
         val now = 2_000_000.0
-        assertEquals(true, AgentActivityRules.needsUser(TaskBrief(1, "failed", seen = false), emptyList(), now))
-        assertEquals(false, AgentActivityRules.needsUser(TaskBrief(1, "failed", seen = true), emptyList(), now))   // looked at
-        assertEquals(false, AgentActivityRules.needsUser(TaskBrief(1, "done", seen = false), emptyList(), now))
-        assertEquals(true, AgentActivityRules.needsUser(null, listOf(WorkerBrief("w", "needs_input", now - 600)), now))
-        assertEquals(false, AgentActivityRules.needsUser(null, listOf(WorkerBrief("w", "needs_input", now - 13 * 3600)), now))   // old
-        assertEquals(false, AgentActivityRules.needsUser(null, listOf(WorkerBrief("w", "running", now)), now))
+        assertEquals(UserNeed.Failed, AgentActivityRules.needsUser(TaskBrief(1, "failed", seen = false), emptyList(), now))
+        assertEquals(UserNeed.None, AgentActivityRules.needsUser(TaskBrief(1, "failed", seen = true), emptyList(), now))   // looked at
+        assertEquals(UserNeed.None, AgentActivityRules.needsUser(TaskBrief(1, "done", seen = false), emptyList(), now))
+        assertEquals(UserNeed.Waiting, AgentActivityRules.needsUser(null, listOf(WorkerBrief("w", "needs_input", now - 600)), now))
+        assertEquals(UserNeed.None, AgentActivityRules.needsUser(null, listOf(WorkerBrief("w", "needs_input", now - 13 * 3600)), now))   // old
+        assertEquals(UserNeed.None, AgentActivityRules.needsUser(null, listOf(WorkerBrief("w", "running", now)), now))
+        // both: the failure shows
+        assertEquals(UserNeed.Failed, AgentActivityRules.needsUser(TaskBrief(1, "failed", seen = false), listOf(WorkerBrief("w", "needs_input", now)), now))
     }
 
     @Test fun finishedOnlyWhenARunEndsWell() {
@@ -237,5 +241,19 @@ class AgentActivityTest {
             "weekend_end":"01:00","weekend_source":"learned","day_types":{"2026-11-11":"weekend"},"day_type":"weekday"}""",
         )
         assertEquals(h, parsed)
+    }
+
+    @Test fun aFailedChatReplyShowsTheErrorFaceUntilALaterOneWorks() {
+        val failed = AgentStatus(lastReplyFailed = true)
+        assertEquals(KeloMood.Error, mood(AgentActivityRules.MoodInput(status = failed)))
+        assertEquals(KeloMood.Error, mood(AgentActivityRules.MoodInput(status = failed, sinceDoneMs = 100, night = true)))
+        assertEquals(KeloMood.Working, mood(AgentActivityRules.MoodInput(status = failed.copy(busy = true), following = true, turnKind = TurnKind.Tool)))
+        assertEquals(KeloMood.Idle, mood(AgentActivityRules.MoodInput(status = AgentStatus(lastReplyFailed = false))))
+    }
+
+    @Test fun lastReplyFailedIsReadFromTheStatusAndDefaultsToFalse() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        assertEquals(true, json.decodeFromString<AgentStatus>("""{"busy":false,"last_reply_failed":true}""").lastReplyFailed)
+        assertEquals(false, json.decodeFromString<AgentStatus>("""{"busy":false}""").lastReplyFailed)
     }
 }

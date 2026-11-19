@@ -255,6 +255,7 @@ private fun LiveTabContent(
             scope.launch { client.control(false) }
         }
         if (LiveRules.showWorkNote(state.status)) WorkNote()
+        LiveRules.dialogLine(state.status)?.let { PageDialogLine(it) }
         Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp)) {
           Box(Modifier.fillMaxSize().onSizeChanged { area = ViewSize(it.width, it.height, density) }) {
             when {
@@ -398,8 +399,7 @@ private fun LiveStrip(state: LiveState, tab: BrowserTab?) {
             s.youControl -> string(Res.string.live_state_you) to c.accent
             s.someoneElse -> string(Res.string.live_state_other) to c.muted
             s.agent.waitingApproval -> string(Res.string.live_state_waiting) to c.accent
-            s.agent.busy || tab?.status == "working" -> string(Res.string.agent_tab_working) to c.accent
-            else -> string(Res.string.agent_tab_idle) to c.muted
+            else -> tabState(tab?.status, s.agent.busy).let { tabWord(it) to tabTone(it) }
         }
         if (s.inWorkBrowser) WorkBrowserPill()   // the work pill first; the state pill follows
         Pill(word, color)
@@ -468,6 +468,22 @@ private fun WorkNote() {
         string(Res.string.live_work_browser_note), style = MaterialTheme.typography.bodySmall, color = c.muted,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
     )
+}
+
+
+/** The page's own pop-up, which is never in the picture: what it said and how Kelo answered (server status `dialog`, owner report 2026-11-19). */
+@Composable
+private fun PageDialogLine(text: String) {
+    val c = Kelo.colors
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clip(RoundedCornerShape(14.dp)).background(c.card)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(KeloIcons.Alert, contentDescription = null, tint = c.muted, modifier = Modifier.size(18.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = c.ink, maxLines = 4, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f))
+    }
 }
 
 /**

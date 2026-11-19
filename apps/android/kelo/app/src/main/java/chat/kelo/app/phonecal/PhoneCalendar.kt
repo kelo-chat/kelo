@@ -214,7 +214,7 @@ object PhoneCalendarSync {
             CalendarContract.Instances.EVENT_ID, CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN,
             CalendarContract.Instances.END, CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.EVENT_LOCATION,
             CalendarContract.Instances.CALENDAR_DISPLAY_NAME, CalendarContract.Instances.SELF_ATTENDEE_STATUS,
-            CalendarContract.Instances.STATUS,
+            CalendarContract.Instances.STATUS, CalendarContract.Instances.CALENDAR_ID, CalendarContract.Instances.DESCRIPTION,
         )
         val rows = mutableListOf<PhoneEvent>()
         cr.query(uri, cols, "${CalendarContract.Instances.VISIBLE} = 1", null, "${CalendarContract.Instances.BEGIN} ASC")?.use { c ->
@@ -223,11 +223,31 @@ object PhoneCalendarSync {
                     eventId = c.getLong(0), title = c.getString(1).orEmpty(), beginMs = c.getLong(2), endMs = c.getLong(3),
                     allDay = c.getInt(4) == 1, location = c.getString(5).orEmpty(), calendar = c.getString(6).orEmpty(),
                     selfStatus = if (c.isNull(7)) 0 else c.getInt(7), status = if (c.isNull(8)) 0 else c.getInt(8),
+                    notes = if (c.isNull(10)) "" else c.getString(10).orEmpty(),
+                    calendarId = if (c.isNull(9)) -1L else c.getLong(9),
                 )
             }
         }
         val counts = attendeeCounts(context, rows.map { it.eventId }.distinct())
-        return rows.map { it.copy(attendees = counts[it.eventId] ?: 0) }
+        val accounts = calendarAccounts(context, rows.map { it.calendarId }.distinct())
+        return rows.map { row ->
+            val (name, type) = accounts[row.calendarId] ?: ("" to "")
+            row.copy(attendees = counts[row.eventId] ?: 0, account = name, accountType = type)
+        }
+    }
+
+    /** Calendar id -> (its account name, its account type), for the calendars the events are in; empty when the phone does not say. */
+    private fun calendarAccounts(context: Context, ids: List<Long>): Map<Long, Pair<String, String>> {
+        val out = HashMap<Long, Pair<String, String>>()
+        if (ids.isEmpty()) return out
+        runCatching {
+            context.contentResolver.query(
+                CalendarContract.Calendars.CONTENT_URI,
+                arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.ACCOUNT_NAME, CalendarContract.Calendars.ACCOUNT_TYPE),
+                null, null, null,
+            )?.use { c -> while (c.moveToNext()) out[c.getLong(0)] = c.getString(1).orEmpty() to c.getString(2).orEmpty() }
+        }
+        return out
     }
 
     private fun attendeeCounts(context: Context, ids: List<Long>): Map<Long, Int> {

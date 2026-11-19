@@ -833,6 +833,7 @@
 "agent_tab_working" = "Çalışıyor";
 "agent_tab_failed" = "Takıldı";
 "agent_tab_idle" = "Boşta";
+"agent_tab_waiting" = "Seni bekliyor";
 "agent_tab_picture" = "Sekme ekranı";
 "agent_tab_no_picture" = "Gösterilecek bir şey yok (boş sayfa).";
 "agent_tab_close" = "Sekmeyi kapat";
@@ -1602,6 +1603,10 @@
 "call_mic_denied" = "Arama başlatılamadı: mikrofon izni verilmedi.";
 "call_voice_offer" = "Bu, Kelo'nun aramalar için doğal sesidir. Ses modelini (%1$s) bir kez Kelo sunucunuza indirin, Kelo bir sonraki cümleden itibaren bu sesle konuşacaktır. İndirmezseniz cihazın robotik sesi kullanılır.";
 "call_mark" = "Arama";
+"call_chat_length##one" = "Arama · %1$d dk";
+"call_chat_length##other" = "Arama · %1$d dk";
+"call_chat_show" = "Aramayı göster";
+"call_chat_hide" = "Aramayı gizle";
 "call_voice_offer_title" = "Kelo'nun sesi indirilsin mi?";
 "call_voice_offer_ok" = "İndir";
 "call_voice_offer_later" = "Şimdilik cihaz sesini kullan";
@@ -1609,6 +1614,12 @@
 "call_voice_get" = "İndir";
 "call_voice_line_close" = "Kapat";
 "call_ears_failed" = "Telefonun ses tanıma özelliği sizi duymuyor.";
+"call_voice_device" = "Kelo'nun kendi sesi yüklenemedi, bu yüzden bu cihazın sesi konuşuyor.";
+"call_voice_none" = "Bu cihaz şu anda Kelo'nun sesini çalamıyor. Yanıt sohbette.";
+"call_minimize" = "Sohbete dön";
+"call_keyboard" = "Yaz";
+"call_type_hint" = "Kelo'ya bir mesaj yazın";
+"call_type_send" = "Gönder";
 "voice_speech_title" = "Kelo'nun sesi";
 "voice_speech_download" = "Ses modelini indir · %1$s";
 "voice_speech_downloading" = "Ses modeli indiriliyor · %1$d%%";

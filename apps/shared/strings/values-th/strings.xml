@@ -876,6 +876,7 @@
     <string name="agent_tab_working">กำลังทำงาน</string>
     <string name="agent_tab_failed">ติดขัด</string>
     <string name="agent_tab_idle">ว่าง</string>
+    <string name="agent_tab_waiting">รอคุณอยู่</string>
     <string name="agent_tab_picture">หน้าจอแท็บ</string>
     <string name="agent_tab_no_picture">ไม่มีอะไรให้แสดง (หน้าว่าง)</string>
     <string name="agent_tab_close">ปิดแท็บ</string>

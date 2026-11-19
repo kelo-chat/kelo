@@ -2,6 +2,9 @@ package chat.kelo.app.call.platform
 
 /** The platform audio operations for an in-app call (brief §4.7). */
 interface CallAudio {
+    /** Whether the microphone permission is granted; a call that starts without it asks for it (the screen that started the call). */
+    val micGranted: Boolean get() = true
+
     /** True when the platform cancels Kelo's voice from the microphone (allows barge-in). */
     val echoCancel: Boolean
 

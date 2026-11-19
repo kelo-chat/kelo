@@ -228,3 +228,23 @@ def test_the_connector_permissions_doc_is_in_step_with_the_code():
         "run: uv run python tools/connector_effects.py --write"
     counts = mod.counts()
     assert counts["connectors"] > 100 and counts["actions"] > counts["connectors"]
+
+
+def test_a_calendar_change_names_its_calendar_and_its_event_and_a_calendar_grant_covers_them_all():
+    from assistant.effects import norm_target
+    from assistant.schedule_grants import _target_ok
+
+    def eff(name, args):
+        return effect_of(name, args)
+    create = eff("gcal_create_event", {"title": "Lunch", "location": "Gangnam", "description": ""})
+    assert create.kind == "change" and create.targets == ["calendar"] and create.text == "Lunch\nGangnam"
+    update = eff("gcal_update_event", {"event_id": "Ev1", "calendar": "Family@Group.example", "title": "Dinner"})
+    assert update.targets == ["calendar:family@group.example", "event:Ev1"] and update.text == "Dinner"
+    delete = eff("gcal_delete_event", {"event_id": "e1"})
+    assert delete.kind == "delete" and delete.targets == ["calendar", "event:e1"] and delete.text == ""
+    phone = eff("phone_calendar_update", {"event_id": 42, "title": "Standup"})
+    assert phone.targets == ["calendar", "event:42"]
+    assert eff("phone_calendar_add", {"title": "x", "start": "2026-11-09T10:00"}).targets == ["calendar"]
+    assert norm_target("calendar:Abc@Group") == "calendar:abc@group" and norm_target("event:X1") == "event:x1"
+    assert all(_target_ok(t, {"calendar"}) for t in ("calendar", "calendar:family@group.example", "event:e1"))
+    assert not _target_ok("event:e1", {"calendar:other@group.example"})

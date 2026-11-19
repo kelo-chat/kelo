@@ -6,6 +6,10 @@ public enum TurnKind: Sendable, Equatable { case thinking, browser, reading, too
 /// The rules behind the header's name pill and the character (Android chat/AgentActivity.kt AgentActivityRules, same order and
 /// constants). While the chat follows a reply, the reply's own events say what the agent does; otherwise GET /api/agent/status,
 /// polled every few seconds in the foreground, covers work the chat is not following (scheduled or background runs).
+/// What the owner is needed for, for the character (Android UserNeed): nothing, a job waiting for their answer (it asks), or a
+/// failed run nobody has looked at (it sweats).
+public enum UserNeed: Sendable, Equatable { case none, waiting, failed }
+
 public enum AgentActivityRules {
     public static let pollMs: UInt64 = 3_000
 
@@ -77,11 +81,11 @@ public enum AgentActivityRules {
     /// A job waiting for the user counts this long after its last change (older ones stay in the work list, not on the character).
     public static let stuckForS = 12 * 3600.0
 
-    /// A job is stuck on the user: the newest task failed and nobody has looked at it, or a background job has been waiting for the
-    /// user since less than `stuckForS` ago.
-    public static func needsUser(newest: TaskBrief?, waiting: [WorkerBrief], nowS: Double) -> Bool {
-        if let n = newest, n.status == "failed", !n.seen { return true }
-        return waiting.contains { $0.status == "needs_input" && ($0.updatedAt ?? 0) >= nowS - stuckForS }
+    /// What the owner is needed for: the newest task failed and nobody has looked at it yet (`.failed`, it wins), or a background job
+    /// has been waiting for the owner (a login, a choice, a code) since less than `stuckForS` ago (`.waiting`).
+    public static func needsUser(newest: TaskBrief?, waiting: [WorkerBrief], nowS: Double) -> UserNeed {
+        if let n = newest, n.status == "failed", !n.seen { return .failed }
+        return waiting.contains { $0.status == "needs_input" && ($0.updatedAt ?? 0) >= nowS - stuckForS } ? .waiting : .none
     }
 
     /// Work just finished (busy at the previous poll, not now) and the newest task went well.
@@ -166,7 +170,7 @@ public enum AgentActivityRules {
     public struct MoodInput: Sendable {
         public var offline = false
         public var status: AgentStatus? = nil
-        public var stuck = false
+        public var need: UserNeed = .none
         public var listening = false
         public var following = false
         public var turnKind: TurnKind = .thinking
@@ -177,23 +181,24 @@ public enum AgentActivityRules {
         /// ms since the owner or the agent last did something (`idleMs`; nil = nothing since launch)
         public var idleMs: Int64? = nil
 
-        public init(offline: Bool = false, status: AgentStatus? = nil, stuck: Bool = false, listening: Bool = false, following: Bool = false,
+        public init(offline: Bool = false, status: AgentStatus? = nil, need: UserNeed = .none, listening: Bool = false, following: Bool = false,
                     turnKind: TurnKind = .thinking, polledBrowsing: Bool = false, sinceDoneMs: Int64? = nil, night: Bool = false,
                     idleMs: Int64? = nil) {
-            self.offline = offline; self.status = status; self.stuck = stuck; self.listening = listening; self.following = following
+            self.offline = offline; self.status = status; self.need = need; self.listening = listening; self.following = following
             self.turnKind = turnKind; self.polledBrowsing = polledBrowsing; self.sinceDoneMs = sinceDoneMs; self.night = night
             self.idleMs = idleMs
         }
     }
 
-    /// The character's mood, the first that applies: unreachable server, an approval waiting, a job stuck on the user, the
-    /// microphone listening, then the work itself (the followed reply's kind; else a polled run in the browser or at work), the cheer
-    /// after finishing, sleep at night once nothing has happened for `sleepAfterIdleMs`, else rest.
+    /// The character's mood, the first that applies: unreachable server, an approval or a job waiting for the owner (asking), a failed
+    /// run nobody looked at (sweat), the microphone listening, then the work itself (the followed reply's kind; else a polled run in
+    /// the browser or at work), a chat reply that failed (sweat, until a later reply works), the cheer after finishing, sleep at night
+    /// once nothing has happened for `sleepAfterIdleMs`, else rest.
     public static func mood(_ m: MoodInput) -> KeloMood {
         let busy = m.following || m.status?.busy == true
         if m.offline { return .offline }
-        if (m.status?.pendingApprovals ?? 0) > 0 { return .approval }
-        if m.stuck { return .error }
+        if (m.status?.pendingApprovals ?? 0) > 0 || m.need == .waiting { return .approval }
+        if m.need == .failed { return .error }
         if m.listening { return .listening }
         if m.following {
             switch m.turnKind {
@@ -204,6 +209,7 @@ public enum AgentActivityRules {
             }
         }
         if busy { return m.polledBrowsing ? .browser : .working }
+        if m.status?.lastReplyFailed == true { return .error }
         if let since = m.sinceDoneMs, since < doneMs { return .done }
         if m.night && (m.idleMs ?? sleepAfterIdleMs) >= sleepAfterIdleMs { return .sleeping }
         return .idle
