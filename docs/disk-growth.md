@@ -36,6 +36,8 @@ The storage warning and the cleanup screen cover their size.
 | `help_events` | per status change of a help item (situation.py) | older than 90 days, and rows whose item is gone (`SituationResearch.cleanup`) | yes |
 | `situation_passes` | one row per situation pass | older than 90 days, never a running row (`SituationResearch.cleanup`); the count rule `KEEP_PASSES` is gone | yes |
 | `checklist_links` | one row per checklist item: how it is looked after (its own job, or the send times) | an item taken off the list loses its row (`Checklist.reconcile`); at most MAX_ITEMS (30) rows | yes |
+| `event_reminders` | one row per reminder job for a checklist item (event_reminders.py) | deleted with its item: the owner taking it off, or no item linking it at the next tick; one per item in practice (MAX_ITEMS 30) | yes |
+| `event_reminders_sent` | one row per reminder told (job, event, start, lead) | dropped a day after the event's start (`EventReminders.tick`) and with its job | yes |
 | `meta` (`situation:source:<sid>` snapshots) | one hash per declared source (fingerprint, ids, times; no content) | removed when its `read_at` is older than 90 days (a connector removed long ago) | yes |
 | `followups` | per follow-up | closed ones 30 days | none |
 | `offers` | per card | closed ones 60 days | none |

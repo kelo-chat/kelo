@@ -37,7 +37,7 @@ PROMISE_CHECK = True    # the promise check after an attended reply (one short m
 # The tools that put something in front of the owner, and the tools whose success makes a later action real. Declared here, by name,
 # once; `declare(tools)` sets the two flags on the tool objects the app assembled.
 REACHES_OWNER = frozenset({"quick_replies", "await_reply", "compare_options", "react", "offer_post"})
-KEEPS_PROMISE = frozenset({"schedule_create", "schedule_update", "watch_add", "watch_enable", "watch_update", "delegate", "worker_message"})
+KEEPS_PROMISE = frozenset({"schedule_create", "schedule_update", "watch_add", "watch_enable", "watch_update", "event_reminders_set", "delegate", "worker_message"})
 
 
 def declare(tools: list[Any]) -> None:

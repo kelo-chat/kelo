@@ -21,6 +21,8 @@ FAMILIES = {   # tool -> arguments that change a setting (not a read)
     "schedule_update": {"id": 1, "name": "Morning"},
     "briefing": {"enabled": False},
     "big_event_notice": {"days": [3]},
+    "event_reminders_set": {"item": "Before each event", "lead_minutes": [30]},
+    "event_reminders_remove": {"id": 1},
 }
 
 
@@ -97,5 +99,6 @@ def test_a_change_the_owner_did_not_ask_for_in_chat_keeps_its_card(tools):
     try:
         assert not tools["followup_snooze"].auto_approve({"item": "x"})
         assert not tools["schedule_create"].auto_approve({"name": "x", "prompt": "y"})
+        assert not tools["event_reminders_set"].auto_approve({"item": "x", "lead_minutes": [30]})
     finally:
         _reset(tokens)

@@ -153,6 +153,9 @@ LABELS: dict[str, tuple[str, bool]] = {
     "ha_watch_list": (N_("Checking Home Assistant watches"), True),
     "ha_watch_remove": (N_("Deleting a Home Assistant watch"), False),
     "checklist_link": (N_("Things to keep an eye on"), False),
+    "event_reminders_set": (N_("Reminders before events"), False),
+    "event_reminders_list": (N_("Reminders before events"), True),
+    "event_reminders_remove": (N_("Reminders before events"), False),
     "journal_search": (N_("Searching the journal"), False),
     "delegate": (N_("Handing off a task"), False),
     "report": (N_("Reporting on a task"), False),
@@ -253,6 +256,8 @@ ASKS: dict[str, str] = {
     "schedule_create": N_("Create this automation?"),
     "schedule_delete": N_("Delete this automation?"),
     "schedule_update": N_("Change this automation?"),
+    "event_reminders_set": N_("Set up these reminders?"),
+    "event_reminders_remove": N_("Stop these reminders?"),
     "save_found_secret": N_("Send the found key to these hosts?"),   # only when a host is not on the page's own site
     "share_file": N_("Make a public link to this file?"),
     "task_allow": N_("When this happens, do this without asking?"),

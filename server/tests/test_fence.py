@@ -163,7 +163,7 @@ OWN = {"start_voice_call", "chat_view", "kelo_help", "read_earlier_messages", "c
        "phone_call", "phone_send_text", "quick_replies", "compare_options", "remember", "memory_explain", "forget_plan", "forget_confirm", "request_card", "request_payment_pin", "request_login", "request_task_permission", "resume",
        "save_product_image", "task_allow", "schedule_create", "schedule_delete", "schedule_list", "schedule_pause", "schedule_retry",
        "schedule_runs", "schedule_update", "vault_status", "view_image", "weather", "my_location", "wallet_cards", "watch_add", "watch_enable",
-       "watch_remove", "watch_update", "ha_watch_add", "ha_watch_list", "ha_watch_remove", "checklist_link", "react", "set_tone", "set_owner_settings", "finish_first_chat", "big_event_notice", "briefing", "offer_post", "send_screenshot", "show_picture", "connector_download", "propose_skill", "worker_message", "worker_status", "worker_stop", "workers_list", "write_file", "report",
+       "watch_remove", "watch_update", "ha_watch_add", "ha_watch_list", "ha_watch_remove", "checklist_link", "event_reminders_set", "event_reminders_list", "event_reminders_remove", "react", "set_tone", "set_owner_settings", "finish_first_chat", "big_event_notice", "briefing", "offer_post", "send_screenshot", "show_picture", "connector_download", "propose_skill", "worker_message", "worker_status", "worker_stop", "workers_list", "write_file", "report",
        "follow_list", "follow_stop", "follow_remove",
        "begin_order", "briefing_sources", "end_order", "shipping_profiles", "ask_shipping", "package_entry_add", "package_entry_delete", "messenger",
        "nest_draft_create", "nest_draft_write", "nest_draft_check", "nest_draft_delete", "nest_draft_from_skill", "nest_share_github"}

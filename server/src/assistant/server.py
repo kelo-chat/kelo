@@ -162,6 +162,7 @@ from . import windows
 from . import version as release_version
 from .schedules import CATCH_UP_SECONDS, SCHEDULE_MARK, ScheduleError, Scheduler, Schedules, schedule_check_text, schedule_tools
 from .checklist import CHECKLIST_MARK, NOTE as CHECKLIST_NOTE, Checklist, JobKind, checklist_routes, checklist_tools, setup_text as checklist_setup_text
+from .event_reminders import EventReminders, event_reminder_tools
 from .buy_ready import FAST_STEPS, FAST_TOOLS, LOGIN_PROMPT, LOGIN_STEPS, LOGIN_TOOLS, BuyReady
 from .buy_replay import Plans, Recorder, ReplayStream
 from .watchers import WATCH_MARK, Page as WatchPage, WatchError, Watchers, handoff_text as watch_handoff_text, watch_tools, watcher_routes
@@ -1912,9 +1913,26 @@ def create_app(
     ha_events = HaEvents(store, connect=ha_connect)   # Home Assistant live watches (backlog 62); tests pass a fake socket
     app.state.ha_events = ha_events
     checklist_box: list[Any] = [None]   # the Checklist, made further down; its tool is listed here with the other job tools
+
+    async def reminder_events(start: datetime, end: datetime) -> tuple[list[dict[str, Any]], list[str]]:
+        """Every calendar Kelo reads between two times, for the reminders before events (event_reminders.py), and the ids of the
+        calendars that could not be read."""
+        evs, _read, _left, failed = await sources.events(start, end, tool="event_reminders")
+        return evs, [a.id for a in failed]
+
+    def reminder_links() -> set[int]:
+        """The event reminder jobs a checklist item links now (event_reminders.py runs only those)."""
+        ck = checklist_box[0]
+        return {int(e["job"]["id"]) for e in (ck.entries() if ck is not None else []) if e["job"] and e["job"]["kind"] == "event_reminder"}
+
+    event_reminders = EventReminders(store, reminder_events, notify=lambda kind, title, body: activity.notify(kind, title, body),
+                                     linked=reminder_links, awake=lambda ts: proactive.awake(ts), tz=lambda: calendars.tz())
+    app.state.event_reminders = event_reminders
     if with_schedule_tools or (with_schedule_tools is None and not tools_given):
         tools = [*tools, *schedule_tools(schedules, scheduler), *task_allow_tools(schedule_grants, wallet), *watch_tools(watchers), *ha_watch_tools(ha_events),
-                 *(checklist_tools(lambda: checklist_box[0]) if home else [])]
+                 *(checklist_tools(lambda: checklist_box[0]) if home else []),
+                 *(event_reminder_tools(event_reminders, lambda: checklist_box[0], lambda: [a.id for a in sources.accounts("calendar")])
+                   if home else [])]
     # the journal (written each night with the main model) and the agent's read-only search of it
     journal = Journal(store, job_stream("journal"), lambda: journal_model(), lambda p: key_args(p))
     # the nightly run that learns the user's preferences (reflection.py), also with the main model
@@ -2722,6 +2740,7 @@ def create_app(
             "ha_watch": JobKind(get=lambda i: (h := ha_events.get(i)) and {"name": h["name"], "description": h["entity_id"],
                                                                             "on": bool(h["enabled"])},
                                 remove=ha_events.remove),
+            "event_reminder": JobKind(get=event_reminders.public, remove=event_reminders.delete),
         }
     checklist_setup_task: list[Any] = [None]
 
@@ -2783,6 +2802,7 @@ def create_app(
     scheduler.paused = lambda: store.keyguard.locked   # jobs that need a key wait for Keyguard's unlock (schedules.Scheduler.held)
     scheduler.add_daily("schedule_archive", 4, 30, purge_schedules, needs_secrets=False)   # deleted schedules older than 30 days go for good
     scheduler.add_every("watchers", 30, watchers.check_due)
+    scheduler.add_every("event_reminders", 60, event_reminders.tick)   # reminders before calendar events for checklist items (event_reminders.py)
     if reflection:
         nightly_jobs.append(reflection.nightly)
     if memory_upkeep:

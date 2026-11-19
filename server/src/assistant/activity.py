@@ -79,15 +79,15 @@ def restart_results() -> list[str]:
 
 def rule_kind(tool: str) -> str:
     """The kind of rule an approval of `tool` may become, or "" when it can never be remembered."""
-    if tool.startswith(NEVER_REMEMBER) or tool.startswith("schedule_"):
+    if tool.startswith(NEVER_REMEMBER) or tool.startswith(("schedule_", "event_reminders_")):
         return ""
     return RULE_KINDS.get(tool, "")
 
 
 def schedule_rule_ok(tool: str) -> bool:
     """Whether an approval of `tool` in a scheduled run may become a rule for that schedule ("keep allowing in this scheduled job").
-    Never for payments (confirm_purchase, card filling, anything of the wallet) or for changing schedules themselves."""
-    return bool(tool) and not tool.startswith(NEVER_REMEMBER) and not tool.startswith("schedule_")
+    Never for payments (confirm_purchase, card filling, anything of the wallet) or for changing schedules or event reminders themselves."""
+    return bool(tool) and not tool.startswith(NEVER_REMEMBER) and not tool.startswith(("schedule_", "event_reminders_"))
 
 
 def host_of(value: str) -> str:

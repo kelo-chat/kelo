@@ -206,7 +206,7 @@ async def test_the_agents_tools_exist_only_when_files_are_enabled_and_can_write_
                "weather", "my_location", "places_near", "messenger",   # forecasts without a browser, the phone's last location, places near it
                "start_voice_call"}                                       # a call with Kelo in the owner's app (call_tools.py): no files needed
     files = {"read_file", "write_file", "list_files", "read_skill", "search_skills", "extract_document", "generate_image", "save_product_image", "list_product_images", "view_image", "remember", "memory_explain", "forget_plan", "forget_confirm",
-             "propose_skill", "storage_cleanup_list", "storage_cleanup", "show_picture", "checklist_link"}
+             "propose_skill", "storage_cleanup_list", "storage_cleanup", "show_picture", "checklist_link", "event_reminders_set", "event_reminders_list", "event_reminders_remove"}
     assert every[0] == files | connect
     assert every[1] == connect                                       # connections need no files area
     # tools on demand: the first request shows only the core set (those this server has); the rest load with find_tools

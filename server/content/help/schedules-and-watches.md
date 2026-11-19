@@ -20,7 +20,7 @@ For "if it rains, remind me" or "buy it when it is back in stock" Kelo sets up t
 
 ## Things to keep an eye on
 
-In the app (My → Notifications, under the news alerts) you can keep a short list of things for Kelo to keep an eye on, or ask Kelo in the chat to add one. When you add one, Kelo decides what timing it needs. If it needs its own, Kelo sets up a schedule or a watcher for it and tells you briefly; the list then shows it as checked separately. Everything else is looked at together at your send times. Taking an item off the list also removes the job Kelo made for it.
+In the app (My → Notifications, under the news alerts) you can keep a short list of things for Kelo to keep an eye on, or ask Kelo in the chat to add one. When you add one, Kelo decides what timing it needs. If it needs its own, Kelo sets up a schedule or a watcher for it and tells you briefly; the list then shows it as checked separately. If an item asks to hear some time before each of your calendar events, Kelo sets up reminders tied to the events themselves: one per event, from every calendar Kelo reads, moved or dropped together with the event. Everything else is looked at together at your send times. Taking an item off the list also removes the job Kelo made for it.
 
 ## Morning briefing
 

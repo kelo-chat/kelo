@@ -20,8 +20,30 @@ actual fun graphemeStarts(s: String): IntArray {
     it.setText(s)
     val out = ArrayList<Int>()
     var i = it.first()
-    while (i != java.text.BreakIterator.DONE && i < s.length) { out.add(i); i = it.next() }
+    while (i != java.text.BreakIterator.DONE && i < s.length) {
+        if (out.isEmpty() || !joinsPrevious(s, i)) out.add(i)
+        i = it.next()
+    }
     return out.toIntArray()
+}
+
+/** The Java 17 runtime the desktop app ships with splits emoji sequences that every page and phone keeps as one character
+ *  (a skin tone, a joiner sequence, a flag, a variation selector): a start at [at] that continues the character before it is no start. */
+private fun joinsPrevious(s: String, at: Int): Boolean {
+    val cp = s.codePointAt(at)
+    if (cp == 0x200D || cp in 0xFE00..0xFE0F || cp in 0xE0100..0xE01EF || cp in 0x1F3FB..0x1F3FF || cp in 0xE0020..0xE007F) return true
+    when (Character.getType(cp)) {
+        Character.NON_SPACING_MARK.toInt(), Character.ENCLOSING_MARK.toInt(), Character.COMBINING_SPACING_MARK.toInt() -> return true
+    }
+    val prev = s.codePointBefore(at)
+    if (prev == 0x200D) return true
+    if (cp in 0x1F1E6..0x1F1FF && prev in 0x1F1E6..0x1F1FF) {   // regional indicators pair up into flags
+        var n = 0
+        var p = at
+        while (p > 0 && s.codePointBefore(p) in 0x1F1E6..0x1F1FF) { n++; p -= Character.charCount(s.codePointBefore(p)) }
+        return n % 2 == 1
+    }
+    return false
 }
 
 actual fun decodeImage(bytes: ByteArray): ImageBitmap? =

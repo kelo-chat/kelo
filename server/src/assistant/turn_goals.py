@@ -104,7 +104,7 @@ def start_checklist_setup(ctx: Any, items: list[str], *, owner_asked: bool, adde
     setup_text = S.checklist_setup_text
     if not items or ctx.journal_model() is None:
         return False
-    ctx.tool_scopes.add("chat", ["checklist_link"])   # the hand-off shows the tool it must call, without a search first
+    ctx.tool_scopes.add("chat", ["checklist_link", "event_reminders_set"])   # the hand-off shows these tools without a search first
     title = i18n.t("Things to keep an eye on")
     task = asyncio.ensure_future(ctx.worker_handoff({"id": "", "title": title, "parent_task_id": None},
                                                     setup_text(items, ctx.checklist_send_times(), added=owner_asked if added is None else added), title,

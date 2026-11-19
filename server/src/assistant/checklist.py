@@ -3,7 +3,7 @@ list under the news alerts, or asked for in the chat). It is part of "Kelo tells
 (owner decision 2026-11-19, card p-checklist-own-pace; the 2-hourly pass is gone):
 
 - every item is either looked after by a job of its own that the agent made for it (a schedule, a watcher, a live Home Assistant
-  watch: whatever fits its timing) or looked at with everything else at the proactive send times (situation.py, pack section
+  watch, reminders before each calendar event (event_reminders.py): whatever fits its timing) or looked at with everything else at the proactive send times (situation.py, pack section
   CHECKLIST_SECTION). Which one is the model's judgment, made once when the item is added; nothing here knows what an item is about;
 - the link is a row of the table checklist_links, keyed by item_key (the text with case and spacing ignored). state: new (the owner
   added it, its setup turn has not started), old (it was on the list before this version), asked (handed to a setup turn),
@@ -23,7 +23,7 @@ list under the news alerts, or asked for in the chat). It is part of "Kelo tells
 CHECKLIST API (contracts next to serialize() in server.py):
 GET /api/checklist        {"enabled" (= the proactive switch), "every_minutes" (= the proactive setting; the checklist has no pace),
                            "text", "items": n, "list": [item], "entries": [{"text", "state": own|send_times, "job": {"kind":
-                           schedule|watcher|ha_watch, "id", "name", "description", "on"}|null}], "path": "CHECKLIST.md",
+                           schedule|watcher|ha_watch|event_reminder, "id", "name", "description", "on"}|null}], "path": "CHECKLIST.md",
                            "last_run": LastRun|null, "next_run_at": the next send time while an item rides the send times and proactive
                            messages are on, else null, "running": bool}
 PUT /api/checklist        {"items"? [item] (replaces the list lines, keeps the rest of the file), "text"? (the whole file,
@@ -59,7 +59,7 @@ MAX_ITEMS = 30
 MAX_ITEM = 300
 SETUP_DELAY = 10.0             # seconds from the owner's change to the setup turn (a few quick additions make one turn)
 ITEM = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(?:\[[ xX]?\]\s*)?(.+?)\s*$")
-JOB_KINDS = ("schedule", "watcher", "ha_watch")   # the jobs an item can have (server.py registers a JobKind for each)
+JOB_KINDS = ("schedule", "watcher", "ha_watch", "event_reminder")   # the jobs an item can have (server.py registers a JobKind for each)
 PENDING = ("new", "old")                          # rows waiting for their setup turn
 SEEDED = "checklist:links_seeded"                 # meta: the first start of this version has seen the list
 CHECKLIST_SECTION = "Checklist: what the owner asked Kelo to keep an eye on"   # its section of the send pass's pack (situation.py)

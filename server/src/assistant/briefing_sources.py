@@ -253,10 +253,10 @@ class Sources:
 
     # ------------------------------------------------------------------ reading for the chat
     async def events(self, start: datetime, end: datetime, query: str | list[str] = "", *,
-                     pages: int = 1) -> tuple[list[dict[str, Any]], list[Acct], list[Acct], list[Acct]]:
+                     pages: int = 1, tool: str = "calendar_events") -> tuple[list[dict[str, Any]], list[Acct], list[Acct], list[Acct]]:
         """(events of the chosen calendars overlapping [start, end), all-day ones included, each with "source"; the calendars read; the
         ones left out by the owner's choice; the ones that could not be read). `query`: one or more words, an event matching any of
-        them (in its title or place, any case) is kept."""
+        them (in its title or place, any case) is kept. `tool`: who reads, for the vault's use log."""
         group = self.config()["calendar"]
         accts = self.accounts("calendar")
         failed: list[str] = []
@@ -268,7 +268,7 @@ class Sources:
             self.report(a.id, code, detail)
             if code != "ok":
                 failed.append(a.id)
-        evs = await self.calendars.read(start, end, all_day=True, wanted=on, report=note, tool="calendar_events",
+        evs = await self.calendars.read(start, end, all_day=True, wanted=on, report=note, tool=tool,
                                         **({"pages": pages} if pages > 1 else {}))
         read = [a for a in accts if on(a)]
         names = {a.id: self.label(a, read) for a in read}

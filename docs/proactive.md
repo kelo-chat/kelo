@@ -93,6 +93,16 @@ uses it); the agent taking one off offers to. Each send pass has a "Checklist" s
 (an unchanged pack still makes no model call); the hourly watch does not read it. GET /api/checklist adds "entries" (each item
 with its state and job); the apps show "checked separately · <job>" under an item with its own job. No prompt names any kind of item.
 
+Reminders before calendar events (owner decision 2026-11-19, card p-checklist-event-reminders): an item that asks to hear some time
+before each of the owner's events gets the job kind `event_reminder` (event_reminders.py), made with `event_reminders_set`, which also
+links the item. Code makes one reminder per event at its start minus the lead (a notification of type follow_reminder: the event's
+title, time and place and the owner's note), from every calendar Kelo reads (Sources.events), read at most every 15 minutes while a
+linked job exists and again right before a reminder goes out, so new, moved and cancelled events are followed; no model call per
+event. Authority: making, changing or removing such a job asks on a card unless the owner asked (asked_in_chat: the chat or the setup
+turn that carries their request, before any outside text); such an approval never becomes a standing rule; a job runs only while an
+item links it and is deleted when none does. What it does per event is fixed by code, so outside text still cannot make Kelo create
+jobs on any other path.
+
 ## API
 `GET /api/proactive` adds `held` (count of held items). `GET /api/proactive/held` lists held items (key, source, title, urgency,
 message, why: over_cap | waiting_for_reply, held_at, expires_at), soonest deadline first. The apps show "sent today · N held" under
@@ -100,7 +110,7 @@ the daily cap; the held part shows only when N > 0 and opens the list (three app
 
 ## Files
 `server/src/assistant/proactive.py` (all of it), `server/src/assistant/situation.py` (blocked, watch, send pass), `server/src/assistant/send_times.py`, `server/content/prompts/situation_watch.md`, `forget.py`, `chat_clear.py`, `connector_data.py` (held rows),
-`server/src/assistant/locales/*.json` (three new reason texts), `server/tests/test_proactive_hold.py`.
+`server/src/assistant/event_reminders.py` (reminders before calendar events for a checklist item), `server/src/assistant/locales/*.json` (three new reason texts), `server/tests/test_proactive_hold.py`.
 
 ## Tests
 Fake model and clock: hold over cap then release next day inside deadline; expiry = missed; revalidation drop and rewording; guard
