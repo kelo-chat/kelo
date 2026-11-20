@@ -92,6 +92,41 @@ TARGET_JS = with_path(r"""(el) => {
   const judgePath = keloPath(act);
   const judgeHits = judgePath ? document.querySelectorAll(judgePath) : [];
   const formTarget = form ? (form.getAttribute('target') || '') : '';
+  // how the control stands now, and how the part of the page around it stands (done_once.py: the same click on a changed page is a
+  // new step). By structure only: ARIA states, checked/disabled/selected values, the other controls' own labels with digits masked
+  // (a counter or a timer is not a change), the open dialogs' labels. Typed text is not read here (done_once FormWords has it).
+  const stateOf = (e) => {
+    const out = [];
+    for (const a of ['aria-pressed', 'aria-checked', 'aria-selected', 'aria-expanded', 'aria-disabled', 'aria-current']) {
+      const v = e.getAttribute(a); if (v !== null && v !== '') out.push(a.slice(5) + '=' + v);
+    }
+    if (e.matches('input[type=checkbox], input[type=radio]')) out.push('checked=' + e.checked);
+    if (e.matches('select')) out.push('value=' + clean(e.selectedOptions && e.selectedOptions[0] ? e.selectedOptions[0].text : e.value).slice(0, 40));
+    if (e.disabled) out.push('disabled');
+    return out.join(' ');
+  };
+  const CONTROLS = 'button, a[href], [role=button], [role=link], [role=tab], [role=checkbox], [role=switch], [role=radio], [role=option], '
+    + '[role=menuitem], input, select, textarea, [aria-pressed], [aria-checked], [aria-expanded]';
+  const labelOf = (c) => c.getAttribute('aria-label') || (c.matches('input[type=button], input[type=submit]') ? c.value
+    : c.matches('input, textarea, select') ? (c.getAttribute('placeholder') || c.getAttribute('name') || '') : (c.innerText || ''));
+  let scope = form || act.parentElement || act;
+  for (let n = scope, i = 0; n && n.parentElement && n !== document.body && i < 12; n = n.parentElement, i++) {
+    if (n.parentElement.querySelectorAll(CONTROLS).length > 30) break;
+    scope = n.parentElement;
+  }
+  const sceneParts = [];
+  for (const c of [...scope.querySelectorAll(CONTROLS)].slice(0, 30)) {
+    if (c === act || act.contains(c) || c.contains(act)) continue;
+    const r = c.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) continue;
+    sceneParts.push((c.getAttribute('role') || c.tagName.toLowerCase()) + ':' + clean(labelOf(c)).replace(/\d/g, '#').slice(0, 40) + ':' + stateOf(c));
+  }
+  for (const d of document.querySelectorAll('[role=dialog], [role=alertdialog], [aria-modal=true], dialog[open]')) {
+    const r = d.getBoundingClientRect();
+    if (!(r.width > 1 && r.height > 1)) continue;
+    const head = d.querySelector('h1,h2,h3,h4');
+    sceneParts.push('w:' + clean(d.getAttribute('aria-label') || (head && head.innerText) || d.innerText || '').replace(/\d/g, '#').slice(0, 60));
+  }
   return {
     structure_read: true, handler_src: code.join('\n;\n').slice(0, 12000),
     link_target: (tag === 'a' || tag === 'area') ? (act.getAttribute('target') || '') : '', form_target: formTarget,
@@ -104,6 +139,7 @@ TARGET_JS = with_path(r"""(el) => {
     submits, search_form: search, form_personal: personal, form_message: message, form_text: texts, secure_form: secure, signup_form: signup,
     url: location.href, title: clean(document.title),
     judge_path: judgeHits.length === 1 && judgeHits[0] === act ? judgePath : '',
+    state: stateOf(act), scene: sceneParts.join('\n').slice(0, 4000),
   };
 }""")
 

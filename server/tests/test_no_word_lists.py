@@ -168,6 +168,7 @@ if for while switch return function typeof new javascript https mailto native ta
 onmousedown onmouseup onpointerup ontouchend tabindex contenteditable alertdialog command webauthn address-line address-level
 pointer center fixed sticky before after overlay aria-modal cc-csc cc-exp cc-number webkit-text-security
 protected field
+pressed checked selected expanded current   # WAI-ARIA state attribute names (aria-pressed, aria-checked ...): structure, not words
 challenge running stage form browser verification cloudflare please wait turnstile recaptcha hcaptcha widget captcha holder panel box
 geetest arkose funcaptcha awswaf aws waf ddv container datadome ddv1 kelo true false address
 # (the JS keywords, DOM events and CSS values above, the kind values of page_notes (dialog, overlay), and the names of the server's own

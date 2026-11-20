@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "{title} kartının istediği bilgilere ihtiyacım var. Doldurduğunda devam edeceğim.",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "{title} için giriş bilgilerine ihtiyacım var. Kaydedildiğinde göreve devam edeceğim.",
  "I need your {site} login to prepare for {title}": "{title} hazırlığı için {site} giriş bilgilerinize ihtiyacım var",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "\"{quote}\" dedim, ama bunun için kurulmuş bir şey yok, bu yüzden kendiliğinden olmayacak. Ayarlayayım mı?",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "Devam etmem için hâlâ {label} giriş bilgilerine ihtiyacım var. Şimdi uygulamadan girebilir, sana daha sonra hatırlatmamı isteyebilir ya da bırakabilirsin.",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "Devam etmek için hâlâ {what} ({label}) gerekiyor. Sohbetteki kartı doldur (ya da Profilim → Anahtar Zinciri → Giriş bekleniyor) ya da vazgeçmemi söyle.",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "Son adımlar ilerleme olmadan tekrarlandığı için durdum. Yeniden denemek için Devam'a bas ya da neyi değiştireyim söyle.",

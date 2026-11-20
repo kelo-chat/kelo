@@ -140,6 +140,7 @@ from assistant.tools.browser import BrowserPolicyError
     ("browser_click", "Message sent. Back to the inbox.", Outcome("done", "")),
     ("browser_click", "- alert: Email is required.\n- textbox \"Email\"", Outcome("failed")),                          # the ARIA alert role
     ("browser_click", "[The click went through, but nothing changed: same address, same page content]", Outcome("failed")),
+    ("browser_click", "[Nothing on the page changed: same address. The click only brought up the page's own question, which Kelo answered Cancel (see the note)]", Outcome("failed")),
     ("browser_click", "Error: navigation timeout while the page loaded", Outcome("unknown")),
 ])
 def test_the_result_reader_by_tool_kind(tool, result, expected):

@@ -38,6 +38,9 @@ VAD_MAX_SPEECH_S = 20.0
 VAD_MIN_SILENCE_S = 0.25
 LEAD_SAMPLES = SAMPLE_RATE         # one second of audio before a segment, when there is one
 TAIL_SAMPLES = 0                   # no tail: the next segment may start within half a second and its words would repeat
+JOIN_GAP_SAMPLES = SAMPLE_RATE     # VAD pieces less than a second apart are one stretch of speech, decoded once (owner 2026-11-20:
+                                   # a short pause inside a sentence split a word, and each piece alone came out as broken syllables)
+JOIN_MAX_SAMPLES = int(VAD_MAX_SPEECH_S * SAMPLE_RATE)   # a stretch is never longer than this
 CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿豈-﫿　-〿＀-￯]")
 TAG = re.compile(r"<\|[^|>]*\|>")
 
@@ -248,39 +251,56 @@ class Engine:
         if hasattr(vad, "reset"):
             vad.reset()
         segments = 0
-        prev_end = 0
+        prev_end = 0               # where the last decoded stretch ended (a lead-in never reaches back over it)
+        group: list[int] = []      # [start, end) of the stretch being gathered, in samples
 
-        def decode_ready() -> None:
-            nonlocal lang, segments, prev_end
+        def decode(chunk: list[float]) -> None:
+            nonlocal lang, segments
+            stream = self._model.create_stream()
+            stream.accept_waveform(SAMPLE_RATE, chunk)
+            self._model.decode_stream(stream)
+            result = stream.result
+            segments += 1
+            if clean_text(result.text):
+                texts.append(clean_text(result.text))
+            lang = lang or lang_code(getattr(result, "lang", ""))
+            del stream
+
+        def decode_group() -> None:
+            # The model writes spaced-out syllables when a piece begins right at speech (measured with the real SenseVoice model:
+            # 0.8 s of audio before the speech gives clean text). So each stretch gets up to one second of the audio before it.
+            nonlocal prev_end
+            if not group:
+                return
+            start, end = group
+            lead = max(0, min(LEAD_SAMPLES, start - prev_end))
+            decode(samples[start - lead:end + TAIL_SAMPLES].tolist())
+            prev_end = end
+            group.clear()
+
+        def take_ready() -> None:
             while not vad.empty():
                 seg = vad.front
                 start = getattr(seg, "start", None)
                 own = list(seg.samples)   # read before pop(): the segment's buffer goes with it
                 vad.pop()
-                if start is None:
-                    chunk = own
-                else:
-                    # The model writes spaced-out syllables when a segment begins right at speech (measured with the real
-                    # SenseVoice model: 0.8 s of audio before the speech gives clean text). So each segment gets up to one
-                    # second of the audio before it (never past the previous segment).
-                    lead = max(0, min(LEAD_SAMPLES, start - prev_end))
-                    chunk = samples[start - lead:start + len(own) + TAIL_SAMPLES].tolist()
-                    prev_end = start + len(own)
-                stream = self._model.create_stream()
-                stream.accept_waveform(SAMPLE_RATE, chunk)
-                self._model.decode_stream(stream)
-                result = stream.result
-                segments += 1
-                if clean_text(result.text):
-                    texts.append(clean_text(result.text))
-                lang = lang or lang_code(getattr(result, "lang", ""))
-                del stream
+                if start is None:         # a VAD without positions: each piece alone, as it is
+                    decode_group()
+                    decode(own)
+                    continue
+                end = start + len(own)
+                if group and start - group[1] < JOIN_GAP_SAMPLES and end - group[0] <= JOIN_MAX_SAMPLES:
+                    group[1] = end        # close to the stretch: part of it
+                    continue
+                decode_group()
+                group[:] = [start, end]
 
         for i in range(0, len(samples), VAD_WINDOW):
             vad.accept_waveform(samples[i:i + VAD_WINDOW])
-            decode_ready()
+            take_ready()
         vad.flush()
-        decode_ready()
+        take_ready()
+        decode_group()
         return {"text": join_segments(texts), "lang": lang, "segments": segments}
 
     async def transcribe(self, model_id: str, hint: str | None, pcm16: bytes) -> dict[str, Any]:

@@ -19,6 +19,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .page_paths import with_path
+
 OVERLAY_ROUNDS = 3        # windows closed one after another on one reading (a notice over another)
 LABEL_CHARS = 160         # how much of a window's text the note quotes
 
@@ -128,6 +130,54 @@ OVERLAY_JS = r"""() => {
   }
   return { kelo_overlay, found };
 }"""
+
+# The labels of the windows open over the page now: a dialog by role or by the HTML element, or a fixed layer over the middle of the screen
+# (the same structure OVERLAY_JS uses; no word decides). Read before and after a click: a new one means the click opened a window on the
+# page; one that is gone means the click closed it.
+LAYERS_JS = r"""() => {
+  const W = window.innerWidth, H = window.innerHeight, body = document.body;
+  if (!body || !W || !H) return [];
+  const shown = (e) => { const r = e.getBoundingClientRect(), c = getComputedStyle(e);
+    return r.width > 1 && r.height > 1 && c.visibility !== 'hidden' && c.display !== 'none' && Number(c.opacity) > 0.05; };
+  const zOf = (e) => { let z = 0; for (let x = e; x && x !== body; x = x.parentElement) { const v = parseInt(getComputedStyle(x).zIndex, 10); if (v > z) z = v; } return z; };
+  const roots = [...document.querySelectorAll('[role=dialog],[role=alertdialog],[aria-modal=true],dialog[open]')].filter(shown);
+  const bodyText = (body.innerText || '').length;
+  for (const e of document.elementsFromPoint(W / 2, H / 2)) {
+    let f = null;
+    for (let x = e; x && x !== body && x !== document.documentElement; x = x.parentElement) { if (getComputedStyle(x).position === 'fixed') f = x; }
+    if (f && shown(f)) {
+      const r = f.getBoundingClientRect();
+      if (r.width * r.height >= 0.12 * W * H && zOf(f) >= 10 && (f.innerText || '').length < 0.7 * Math.max(bodyText, 1)) roots.push(f);
+    }
+    break;
+  }
+  const outer = [...new Set(roots)].filter((e, _i, all) => !all.some((o) => o !== e && o.contains(e)));
+  return outer.slice(0, 4).map((root) => { const head = root.querySelector('h1,h2,h3,h4');
+    return ((root.getAttribute('aria-label') || (head && head.innerText) || root.innerText || '') + '').replace(/\s+/g, ' ').trim().slice(0, 120); });
+}"""
+
+# For the element about to be clicked: the window it sits in (its label, as LAYERS_JS gives it) and CSS paths of up to 4 other pressable
+# controls of that window (read with TARGET_JS and judged before the click). null when the element is in no window.
+LAYER_CHOICES_JS = with_path(r"""(el) => {
+  const body = document.body, SEL = '[role=dialog],[role=alertdialog],[aria-modal=true],dialog[open]';
+  let root = el.closest(SEL);
+  while (root && root.parentElement && root.parentElement.closest(SEL)) root = root.parentElement.closest(SEL);
+  if (!root) { for (let x = el; x && x !== body && x !== document.documentElement; x = x.parentElement) { if (getComputedStyle(x).position === 'fixed') root = x; } }
+  if (!root) return null;
+  const head = root.querySelector('h1,h2,h3,h4');
+  const label = ((root.getAttribute('aria-label') || (head && head.innerText) || root.innerText || '') + '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  const act = el.closest('button, a[href], [role=button], [role=link], input, [onclick]') || el;
+  const paths = [];
+  for (const c of root.querySelectorAll('button, a[href], [role=button], [role=link], input[type=button], input[type=submit], [onclick]')) {
+    if (c === act || c.contains(act) || act.contains(c)) continue;
+    const r = c.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) continue;
+    const p = keloPath(c);
+    if (p && document.querySelectorAll(p).length === 1) paths.push(p);
+    if (paths.length >= 4) break;
+  }
+  return { label, paths };
+}""")
 
 
 def overlays(probe: Any) -> list[dict[str, Any]]:

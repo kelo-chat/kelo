@@ -25,6 +25,13 @@ def judging(request) -> bool:
     return request.messages[0].get("content") == PROMISE_SYSTEM
 
 
+ROUND_HEAD = "[Not from the user: your reply says"
+
+
+def in_round(request) -> bool:
+    return any(str(m.get("content") or "").startswith(ROUND_HEAD) for m in request.messages)
+
+
 # ------------------------------------------------------------------------------------------------------------------ the pieces
 def test_a_decision_is_strict():
     assert sr.parse_decision({"outcome": "nothing"}) == Decision(False)
@@ -95,6 +102,35 @@ def test_the_promise_answer_is_strict():
     for bad in ({"promises_later": True, "quote": ""}, {"promises_later": True}, {"promises_later": "yes", "quote": "x"}, {"quote": "x"},
                 {"promises_later": True, "offer": "maybe", "quote": "x"}, None, "x"):
         assert sr.parse_promise(bad) is None
+
+
+def test_how_kelo_will_respond_from_now_on_is_never_a_later_promise():
+    # owner 2026-11-20: a reply that only says how Kelo will respond in this conversation from now on got a "nothing is set up" line
+    v = sr.parse_verdict({"promises_later": True, "offer": False, "in_conversation": True, "quote": " From now on I answer in one word. "})
+    assert v == sr.Verdict(promise="", keeps="From now on I answer in one word.")       # even when the judge also says "later"
+    assert sr.parse_verdict({"promises_later": True, "offer": False, "in_conversation": False, "quote": "I will tell you tomorrow."}) \
+        == sr.Verdict(promise="I will tell you tomorrow.", keeps="")
+    assert sr.parse_verdict({"promises_later": False, "offer": False, "quote": ""}) == sr.Verdict()   # an older answer without the field
+    for bad in ({"promises_later": True, "in_conversation": "yes", "quote": "x"}, {"in_conversation": True, "quote": "x"}):
+        assert sr.parse_verdict(bad) is None
+    assert sr.parse_promise({"promises_later": True, "offer": False, "in_conversation": True, "quote": "x y z w"}) == ""
+    assert '"in_conversation": bool' in PROMISE_SYSTEM and "this same conversation from now on" in PROMISE_SYSTEM
+    for word in ("interpret", "translat"):
+        assert word not in PROMISE_SYSTEM.lower()
+
+
+async def test_the_judge_hands_back_both_kinds_of_words_only_when_they_are_in_the_reply(monkeypatch):
+    monkeypatch.setattr(sr, "PROMISE_CHECK", True)
+
+    async def keeps(system, user):
+        return {"promises_later": False, "offer": False, "in_conversation": True, "quote": "From now on I answer in one word."}
+    reply = "Sure. From now on I answer in one word."
+    assert await PromiseJudge(keeps).judge(reply, "answer in one word from now on") == sr.Verdict("", "From now on I answer in one word.")
+    assert await PromiseJudge(keeps).promised(reply) == ""
+
+    async def made_up(system, user):
+        return {"promises_later": False, "offer": False, "in_conversation": True, "quote": "I will always be brief."}
+    assert await PromiseJudge(made_up).judge(reply) == sr.Verdict()                     # not the reply's own words: nothing kept
 
 
 async def test_the_promise_judge_asks_only_about_a_real_reply(monkeypatch):
@@ -189,17 +225,11 @@ async def test_a_source_note_after_the_last_sentence_does_not_hide_a_question(mo
     assert not sr.ends_with_question("I will tell you tomorrow.\n(Source: example data service)")
 
 
-def test_the_promise_line_quotes_the_reply_in_every_language():
-    import json as _json
-    from pathlib import Path
-
-    from assistant import i18n
-    assert "{quote}" in sr.PROMISE_LINE and "{what}" not in sr.PROMISE_LINE
-    assert i18n.t(sr.PROMISE_LINE, lang="ko", quote="나중에 알려 드릴게요").startswith("\"나중에 알려 드릴게요\"")
-    locales = Path(sr.__file__).parent / "locales"
-    for f in locales.glob("*.json"):
-        table = _json.loads(f.read_text(encoding="utf-8"))
-        assert sr.PROMISE_LINE in table and "{quote}" in table[sr.PROMISE_LINE], f.name
+def test_the_round_note_quotes_the_reply_and_sets_it_up_without_asking_whether():
+    assert sr.PROMISE_ROUND_NOTE.startswith(ROUND_HEAD) and "{quote}" in sr.PROMISE_ROUND_NOTE
+    assert "without asking whether to" in sr.PROMISE_ROUND_NOTE and "one short question" in sr.PROMISE_ROUND_NOTE
+    assert sr.PROMISE_ROUND_NOTE.format(quote="I will tell you tomorrow").count("I will tell you tomorrow") == 1
+    assert not hasattr(sr, "PROMISE_LINE")
 
 
 def test_the_declared_tools_are_flagged():
@@ -302,21 +332,46 @@ async def test_the_working_phase_is_not_offered_the_tools_that_reach_the_owner(t
     assert work and all("quick_replies" not in [t["function"]["name"] for t in r.tools] for r in work)
 
 
-async def test_a_chat_reply_that_promises_something_nothing_will_do_gets_one_correction(tmp_path, monkeypatch):
+async def test_a_chat_reply_that_promises_something_nothing_will_do_sets_it_up_in_the_same_reply(tmp_path, monkeypatch):
+    """Owner 2026-11-20: Kelo sets up what it promised, in the same reply; never a separate "shall I set it up?" line."""
     monkeypatch.setattr(sr, "PROMISE_CHECK", True)
 
     def script(req, n):
         if judging(req):
-            return say('{"promises_later": true, "offer": false, "quote": "내일 알려드릴게요"}')
-        return say("내일 알려드릴게요.")
+            return say('{"promises_later": true, "offer": false, "in_conversation": false, "quote": "내일 아침에 알려드릴게요"}')
+        if in_round(req):
+            return say("내일 아침 8시 알림을 만들었어요.")
+        return say("내일 아침에 알려드릴게요.")
     fn = model(script)
     app = create_app(settings(tmp_path), tools=[], stream_fn=fn)
     async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
-        await follow(c, (await c.post("/api/turns", json={"text": "내일 알려줘"})).json()["id"])
-        await until(lambda: _messages(c, 3))
+        events = await follow(c, (await c.post("/api/turns", json={"text": "내일 아침에 알려줘"})).json()["id"])
+        await asyncio.sleep(0.3)
         msgs = (await c.get("/api/messages")).json()
-    assert msgs[1]["content"] == "내일 알려드릴게요." and "내일 알려드릴게요" in msgs[2]["content"] and "나중" not in msgs[1]["content"]
+    said = [i for i, e in enumerate(events) if e["type"] == "text" and "알림을 만들었어요" in e["text"]]
+    assert said and said[-1] < [e["type"] for e in events].index("done")      # inside the reply, before its end
+    assert len(msgs) == 2 and "내일 아침 8시 알림을 만들었어요." in msgs[1]["content"]   # one reply, no extra bubble
+    rounds = [r for r in fn.calls if in_round(r)]
+    assert len(rounds) == 1 and any(str(m.get("content") or "").startswith(ROUND_HEAD) and "내일 아침에 알려드릴게요" in m["content"]
+                                    for m in rounds[0].messages)
     assert sum(judging(r) for r in fn.calls) == 1
+
+
+async def test_a_reply_about_how_kelo_responds_from_now_on_gets_no_round_and_no_line(tmp_path, monkeypatch):
+    """Owner 2026-11-20: "from now on I answer in one word" is how Kelo responds in this conversation, not a later task."""
+    monkeypatch.setattr(sr, "PROMISE_CHECK", True)
+
+    def script(req, n):
+        if judging(req):   # the worst case: a judge that also calls it a later promise
+            return say('{"promises_later": true, "offer": false, "in_conversation": true, "quote": "지금부터 한 단어로만 답할게요"}')
+        return say("네, 지금부터 한 단어로만 답할게요.")
+    fn = model(script)
+    app = create_app(settings(tmp_path), tools=[], stream_fn=fn)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await follow(c, (await c.post("/api/turns", json={"text": "앞으로 한 단어로만 대답해"})).json()["id"])
+        await asyncio.sleep(0.3)
+        msgs = (await c.get("/api/messages")).json()
+    assert len(msgs) == 2 and not any(in_round(r) for r in fn.calls) and sum(judging(r) for r in fn.calls) == 1
 
 
 async def test_a_chat_reply_that_ends_on_an_offer_gets_no_correction(tmp_path, monkeypatch):

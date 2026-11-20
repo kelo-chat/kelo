@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "Necesito lo que pide la tarjeta de {title}. En cuanto lo rellenes, continuaré.",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "Necesito tu inicio de sesión para {title}. Una vez guardado, continuaré con la tarea.",
  "I need your {site} login to prepare for {title}": "Necesito tu inicio de sesión de {site} para preparar {title}",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "Dije \"{quote}\", pero no hay nada configurado para hacerlo, así que no pasará por sí solo. ¿Quieres que lo configure?",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "Todavía necesito tus datos de acceso de {label} para seguir. Puedes introducirlos ahora en la app, pedirme que te lo recuerde más tarde o dejarlo.",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "Todavía necesito {what} ({label}) para continuar. Completa la tarjeta en el chat (o en Mi espacio → Llavero → Pendiente de completar), o dime que lo deje.",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "Me detuve porque los últimos pasos se repetían sin avanzar. Pulsa Continuar para intentarlo otra vez o dime qué cambiar.",

@@ -163,7 +163,8 @@ async def test_remove_returns_to_offered(tmp_path):
         assert vm.SENSE_ID not in dl.ready_ids
 
 
-async def test_transcribe_returns_text_and_passes_the_hint(tmp_path):
+async def test_transcribe_returns_text_and_lets_the_model_detect_the_language(tmp_path):
+    # owner 2026-11-20: speech recognition stays on automatic language detection (no language hint from the owner's app language)
     dl = FakeDownloader()
     dl.ready_ids.add(vm.SENSE_ID)
     client = FakeClient()
@@ -173,7 +174,7 @@ async def test_transcribe_returns_text_and_passes_the_hint(tmp_path):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["text"] == "안녕하세요 Kelo" and body["lang"] == "ko" and body["seconds"] == 2.0
-    assert client.calls == [(vm.SENSE_ID, "ko", 2 * 16000 * 2)]
+    assert client.calls == [(vm.SENSE_ID, None, 2 * 16000 * 2)]   # no hint: the container sends "auto"
 
 
 async def test_zh_hant_owner_gets_traditional_text(tmp_path):
@@ -185,7 +186,7 @@ async def test_zh_hant_owner_gets_traditional_text(tmp_path):
     async with http(app) as c:
         r = await c.post("/api/voice/transcribe", content=wav(1.0))
     assert r.json()["text"] == "說话"
-    assert client.calls[0][1] == "zh"
+    assert client.calls[0][1] is None   # automatic detection (no hint); the converter still gives Traditional characters
 
 
 async def test_too_long_and_wrong_format_are_refused(tmp_path):

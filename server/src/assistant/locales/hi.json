@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "मुझे वह जानकारी चाहिए जो {title} का कार्ड माँगता है। आपके भरने के बाद मैं आगे बढ़ूँगा।",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "मुझे {title} के लिए आपके लॉगिन की आवश्यकता है। सहेजे जाने के बाद मैं काम जारी रखूँगा।",
  "I need your {site} login to prepare for {title}": "{title} की तैयारी के लिए मुझे {site} के लिए आपके लॉगिन की आवश्यकता है",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "मैंने कहा था \"{quote}\", लेकिन उसके लिए कुछ सेट नहीं है, इसलिए वह अपने-आप नहीं होगा। क्या आप चाहते हैं कि मैं इसे सेट कर दूँ?",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "आगे बढ़ने के लिए अभी भी आपका {label} लॉगिन चाहिए। आप इसे अभी ऐप में डाल सकते हैं, बाद में याद दिलाने को कह सकते हैं, या इसे छोड़ सकते हैं।",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "आगे बढ़ने के लिए मुझे अब भी {what} ({label}) चाहिए। चैट में कार्ड भरें (या मेरा → कीचेन → इनपुट की प्रतीक्षा), या मुझे इसे छोड़ने को कहें।",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "मैं रुक गया क्योंकि आख़िरी चरण बिना प्रगति के दोहराए जा रहे थे। फिर से कोशिश के लिए जारी रखें दबाएँ, या बताएँ क्या बदलना है।",

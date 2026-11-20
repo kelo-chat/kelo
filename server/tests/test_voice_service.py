@@ -180,29 +180,54 @@ class StartVAD(FakeVAD):
                         SimpleNamespace(samples=[0.2] * 10000, start=30000)]
 
 
-async def test_each_segment_gets_up_to_one_second_before_it_and_never_overlaps_the_previous(tmp_path):
+class Seen(FakeRecognizer):
+    """Records the length of every chunk it is given."""
+
+    def __init__(self, texts, seen):
+        super().__init__(texts)
+        self.seen = seen
+
+    def create_stream(self):
+        stream = super().create_stream()
+        original = stream.accept_waveform
+
+        def accept(rate, samples):
+            self.seen.append(len(samples))
+            original(rate, samples)
+        stream.accept_waveform = accept
+        return stream
+
+
+def spans_vad(spans):
+    class V(StartVAD):
+        def flush(self):
+            self.pending = [SimpleNamespace(samples=[0.1] * n, start=s) for s, n in spans]
+    return V()
+
+
+async def test_close_pieces_of_speech_are_decoded_as_one_stretch(tmp_path):
+    # owner 2026-11-20: a short pause inside a sentence split a word ("하 라고"); pieces under a second apart are one stretch
     ready_folder(tmp_path)
     seen: list[int] = []
+    eng = vs.Engine(tmp_path, "/x.onnx", 1, 600, recognizer_factory=lambda *a: Seen(["<|ko|>하라고"], seen),
+                    vad_factory=lambda p: spans_vad([(4000, 16000), (30000, 10000)]))   # a 0.625 s gap
+    out = await eng.transcribe("sensevoice-small", None, b"\x01\x00" * 40000)
+    assert out["segments"] == 1 and out["text"] == "하라고"
+    assert seen == [40000]                       # 4000 of lead-in + 4000..40000, the gap included
 
-    class Rec(FakeRecognizer):
-        def create_stream(self):
-            stream = super().create_stream()
-            original = stream.accept_waveform
 
-            def accept(rate, samples):
-                seen.append(len(samples))
-                original(rate, samples)
-            stream.accept_waveform = accept
-            return stream
-
-    eng = vs.Engine(tmp_path, "/x.onnx", 1, 600, recognizer_factory=lambda *a: Rec(["<|ko|>a", "<|ko|>b"]),
-                    vad_factory=lambda p: StartVAD())
-    pcm = (b"\x01\x00" * 40000)
-    out = await eng.transcribe("sensevoice-small", None, pcm)
+async def test_pieces_far_apart_or_too_long_together_stay_apart(tmp_path):
+    ready_folder(tmp_path)
+    seen: list[int] = []
+    eng = vs.Engine(tmp_path, "/x.onnx", 1, 600, recognizer_factory=lambda *a: Seen(["<|ko|>a", "<|ko|>b"], seen),
+                    vad_factory=lambda p: spans_vad([(4000, 16000), (40000, 10000)]))   # a 1.25 s gap
+    out = await eng.transcribe("sensevoice-small", None, b"\x01\x00" * 60000)
+    assert out["segments"] == 2 and seen == [4000 + 16000, 16000 + 10000]   # the second gets one second before it, never the first's
+    seen.clear()
+    eng = vs.Engine(tmp_path, "/x.onnx", 1, 600, recognizer_factory=lambda *a: Seen(["<|ko|>a", "<|ko|>b"], seen),
+                    vad_factory=lambda p: spans_vad([(0, 12 * 16000), (12 * 16000 + 4000, 12 * 16000)]))   # together over 20 s
+    out = await eng.transcribe("sensevoice-small", None, b"\x01\x00" * (25 * 16000))
     assert out["segments"] == 2
-    # first: 4000 samples of lead (the whole lead the input has before start) + 16000 own
-    # second: lead is min(16000, 30000 - 20000 = 10000) = 10000 + 10000 own
-    assert seen == [4000 + 16000, 10000 + 10000]
 
 
 # ---- Kelo's voice (POST /speak, the Speaker): a fake TTS, no real model in unit tests

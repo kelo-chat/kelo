@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "أحتاج إلى ما تطلبه بطاقة {title}. بمجرد تعبئته سأتابع.",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "أحتاج إلى بيانات تسجيل الدخول الخاصة بك لـ {title}. بمجرد حفظها سأتابع المهمة.",
  "I need your {site} login to prepare for {title}": "أحتاج إلى بيانات تسجيل الدخول الخاصة بك لـ {site} للتحضير لـ {title}",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "قلت \"{quote}\"، لكن لم يُعدّ شيء لتنفيذ ذلك، لذا لن يحدث من تلقاء نفسه. هل تريد أن أُعدّه؟",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "ما زلت أحتاج إلى بيانات دخول {label} لأتابع. يمكنك إدخالها في التطبيق الآن، أو أن أذكّرك لاحقًا، أو أن أتركه.",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "ما زلت بحاجة إلى {what} ({label}) لأتابع. املأ البطاقة في المحادثة (أو صفحتي ← سلسلة المفاتيح ← بانتظار الإدخال)، أو قل لي أن أتركه.",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "توقفت لأن الخطوات الأخيرة تكررت دون تقدم. اضغط «متابعة» للمحاولة مجددًا، أو أخبرني بما يجب تغييره.",

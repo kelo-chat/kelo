@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "Aku butuh informasi yang diminta di kartu {title}. Setelah kamu mengisinya, aku akan melanjutkan.",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "Aku butuh info masukmu untuk {title}. Setelah tersimpan, aku akan melanjutkan tugasnya.",
  "I need your {site} login to prepare for {title}": "Aku butuh info masuk {site} untuk mempersiapkan {title}",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "Saya bilang \"{quote}\", tetapi belum ada yang diatur untuk itu, jadi itu tidak akan terjadi dengan sendirinya. Mau saya atur?",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "Aku masih butuh login {label} kamu untuk lanjut. Kamu bisa memasukkannya di aplikasi sekarang, memintaku mengingatkan nanti, atau membatalkannya.",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "Aku masih butuh {what} ({label}) untuk melanjutkan. Isi kartunya di chat (atau Saya → Keychain → Menunggu diisi), atau bilang padaku untuk membatalkannya.",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "Saya berhenti karena langkah terakhir terus berulang tanpa kemajuan. Tekan Lanjutkan untuk mencoba lagi, atau beri tahu apa yang perlu diubah.",

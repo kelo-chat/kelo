@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "{title} のカードで求められている情報が必要です。ご入力いただければ続行します。",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "{title} のログイン情報が必要です。保存していただければタスクを続行します。",
  "I need your {site} login to prepare for {title}": "{title}の準備のため、{site}のログイン情報が必要です",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "「{quote}」と言いましたが、そのための設定がないので自動では実行されません。設定しましょうか？",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "続けるには{label}のログイン情報が必要です。今アプリで入力するか、あとでリマインドするか、やめることができます。",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "続けるには{what}（{label}）が必要です。チャットのカードに入力するか（マイページ → キーチェーン → 入力待ち）、やめると伝えてください。",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "同じ手順が進展なく繰り返されたため止めました。「続ける」でもう一度試すか、変えたい点を教えてください。",

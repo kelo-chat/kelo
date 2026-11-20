@@ -37,7 +37,7 @@ import re
 import smtplib
 import time
 from collections.abc import Awaitable, Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, NamedTuple
 from urllib.parse import parse_qsl, urlencode, urlsplit
@@ -73,6 +73,15 @@ AGAIN_NOTE = ("Note: the same step was done at {time} (id {id}); it ran again be
 UNKNOWN_LINE = ("The result is unknown (id {id}): tell the owner what you did and that you are checking, check whether it went out (for mail: "
                 "`email_list` in the sent folder; on a site: its history or order page), then call `action_result({id}, done|not_done)`. "
                 "Do not repeat it before you know.")
+OPENED_DETAIL = "opened a pop-up on the page"          # a page click whose result was a window it opened (tools/browser.py OPENED_NOTE)
+NO_CHANGE_DETAIL = "no change: the pop-up it opened was closed without its step"
+BROWSER_DONE_BLOCK = ("Not run: this same click (the same control, with the same words and state, on a page in the same state) was made at "
+                      "{time} (id {id}){what}. Read the page again now (browser_read) and look at what that click led to: whether what it "
+                      "was for is done, or what the page asks for first. Tell the owner what the page shows. When something on the page "
+                      "changes (a choice made, a required step done), the same control is a new step and runs; on an unchanged page it "
+                      "runs again only when the owner asks for it again in their own words.")
+RELAY_AGAIN_NOTE = ("Note: the same step was done at {time} (id {id}); it ran again because the owner asked for it again in the message "
+                    "that was passed to you.")
 
 # what the owner is told an unattended run left unconfirmed ("Kelo did <phrase> on <target> at <time> ...", followups.py)
 TOOL_PHRASES = {
@@ -110,11 +119,15 @@ def shown_target(targets: list[str] | tuple[str, ...], limit: int = 3) -> str:
 @dataclass(frozen=True, slots=True)
 class PageStep:
     """What a browser step stands on: its commit class (commits.py), the page's path (no query), the clicked element's words and
-    what was typed on the page before it (FormWords.digest): two reviews sent with the same "등록" button are two different steps."""
+    what was typed on the page before it (FormWords.digest): two reviews sent with the same "등록" button are two different steps.
+    And how the element and its part of the page stand now (role, state, scene): the same button after the page changed is another step."""
     commit: str
     path: str = ""
     label: str = ""
     typed: str = ""
+    role: str = ""
+    state: str = ""
+    scene: str = ""   # a short digest of the page part around the element (never its words)
 
 
 # Query keys that only track, time or sign a visit: dropped, so the same page reached twice keeps one address
@@ -176,7 +189,8 @@ class ActionFingerprint:
             page = page or PageStep("")
             body = {"commit": page.commit, "path": page.path.rstrip("/"),
                     "text": squash(args.get("text") if tool in TYPING_STEPS else page.label)}
-            return {**body, "typed": page.typed} if page.typed else body
+            extra = {k: v for k, v in (("typed", page.typed), ("role", page.role), ("state", page.state), ("scene", page.scene)) if v}
+            return {**body, **extra}   # an empty field leaves the old fingerprint unchanged (phone steps, unread elements)
         if tool == "mcp_call_tool":
             return {"tool": squash(args.get("tool")), "arguments": cls.normalise(args.get("arguments") or {})}
         if tool == "phone_send_text":
@@ -223,13 +237,17 @@ class ActionFingerprint:
 class Outcome(NamedTuple):
     state: str          # done | unknown | failed
     outside_id: str = ""
+    detail: str = ""    # set by the reader when the state alone does not say it (OPENED_DETAIL)
 
 
 ERROR_PREFIXES = ("error", "not run", "(the tool reported an error)")   # how this app's own tools begin an answer that went wrong
 _HTTP_FIRST = re.compile(r"^\s*HTTP (\d{3})\b")
 _HTTP_ANY = re.compile(r"\bHTTP (\d{3})\b")
 _SMTP = re.compile(r"(?<![\d.])([45]\d\d)[ -]\d\.\d\.\d")
-_NOTHING_CHANGED = re.compile(r"the click went through, but nothing changed", re.I)
+_NOTHING_CHANGED = re.compile(r"the click went through, but nothing changed|the click only brought up the page's own question, which Kelo answered Cancel",
+                              re.I)
+_OPENED = re.compile(r"the click opened a pop-up on this page", re.I)   # our own line (browser.py OPENED_NOTE)
+_DECLINED = re.compile(r"the click closed the pop-up without taking the step it offered", re.I)   # our own line (DECLINED_NOTE)
 # a page that raised an alert (the ARIA role of an error or notice region, as the page tree prints it): the step did not go through
 _PAGE_ERROR = re.compile(r"^\s*-?\s*alert\b", re.M)
 _ID_KEYS = ("message_id", "messageId", "order_id", "orderId", "event_id", "eventId", "confirmation", "id")
@@ -290,6 +308,8 @@ class ResultReader:
         text = own + "\n" + data
         if _NOTHING_CHANGED.search(text) or _PAGE_ERROR.search(text):
             return Outcome("failed")
+        if _OPENED.search(own):   # our own line, never the page's words
+            return Outcome("done", self._id(text), OPENED_DETAIL)
         return Outcome("done", self._id(text))   # a number on a confirmation page is not read by its words in any language
 
     # ---- the pieces
@@ -415,13 +435,23 @@ def asks_of(turn: dict[str, Any] | None) -> Asks:
     return raw if isinstance(raw, Asks) else Asks()
 
 
+def owner_asks(turn: dict[str, Any] | None) -> Asks | None:
+    """The owner's judged words that cover this run: their own chat or API turn's, or the words they sent to this job through the
+    server (`relay_asks`, set only by DoneOnce.begin from Workers.owner_words). None: no owner words at all."""
+    turn = turn or {}
+    if owner_turn(turn):
+        return asks_of(turn)
+    raw = turn.get("relay_asks")
+    return raw if isinstance(raw, Asks) else None
+
+
 class RepeatAsk:
     """Pure: may the step run again inside this run? Only while the done ones are fewer than the count the owner asked for."""
 
     def allowed(self, turn: dict[str, Any] | None, effect: Effect, done_in_run: int) -> bool:
-        if not owner_turn(turn):
+        asks = owner_asks(turn)
+        if asks is None:
             return False
-        asks = asks_of(turn)
         return effect.kind in asks.kinds and done_in_run < asks.count
 
 
@@ -429,9 +459,9 @@ class OwnerAsk:
     """Pure: the owner's own chat or API turn asks for this kind of action (the judge's `kinds`)."""
 
     def asked(self, turn: dict[str, Any] | None, effect: Effect) -> bool:
-        if not owner_turn(turn):
+        asks = owner_asks(turn)
+        if asks is None:
             return False
-        asks = asks_of(turn)
         return effect.kind in asks.kinds and asks.count >= 1
 
 
@@ -601,7 +631,8 @@ class DuplicateRule:
         """"stop", "again" (runs, with a note) or "ok" (runs) for a step whose fingerprint was done in `rec`."""
         if rec.run_id == DoneOnce.run_id(turn):   # a retry inside one run, unless the owner asked for it more than once
             return "ok" if self.repeats.allowed(turn, effect, done_in_run) else "stop"
-        if owner_turn(turn):   # a new request from the owner is no repeat they did not ask for; the model redoing it on its own is
+        if owner_turn(turn) or isinstance(turn.get("relay_asks"), Asks):   # a new request from the owner is no repeat they did not ask for; the
+            # model redoing it on its own is (and a job's own run is not a new request: the owner's words sent to it decide)
             return "again" if self.asks.asked(turn, effect) else "stop"
         source = str(turn.get("source") or "")
         # a recurring schedule's next run is expected to do its step again; another kind of run is not
@@ -611,8 +642,9 @@ class DuplicateRule:
 class Attempt:
     """One tracked step of this run: a block (the step is not run), or the record that `settle` closes."""
 
-    def __init__(self, once: DoneOnce, tool: str, record_id: int = 0, block: str = "", note: str = ""):
+    def __init__(self, once: DoneOnce, tool: str, record_id: int = 0, block: str = "", note: str = "", *, run: str = "", watch: int = 0):
         self.once, self.tool, self.record_id, self.block, self.note = once, tool, record_id, block, note
+        self.run, self.watch = run, watch   # watch: the record of this run's click that opened a pop-up (a plain click after it may decline it)
 
     def release(self) -> None:
         """Called when the handler's call is over, however it ended (a cancel included): the step is no longer in flight."""
@@ -622,11 +654,22 @@ class Attempt:
     def settle(self, result: Any, text: str) -> str:
         """After the handler: `result` is its answer or the exception it raised, `text` what the model is shown. Returns `text`, with
         the note that it ran again at the owner's request, and the line about an unknown result, added."""
+        if self.watch:   # a plain click right after a click that opened a pop-up: did it decline that pop-up?
+            try:
+                own = "" if isinstance(result, BaseException) else self.once.reader._parts(result)[0]
+                if _DECLINED.search(own) and self.once.opened.get(self.run) == self.watch:
+                    self.once.ledger.mark(self.watch, "failed", detail=NO_CHANGE_DETAIL)
+                    self.once.opened.pop(self.run, None)
+            except Exception:  # noqa: BLE001 - the record is a help; it never changes what the step answered
+                log.exception("the pop-up check after %s failed", self.tool)
+            return text
         text = f"{text}\n\n{self.note}" if self.note else text
         try:
             outcome = self.once.reader.of(self.tool, result)
-            detail = "" if outcome.state == "done" else self.once.reader.detail(result)
+            detail = outcome.detail or ("" if outcome.state == "done" else self.once.reader.detail(result))
             note = self.once.after(self.record_id, outcome, detail)
+            if outcome.detail == OPENED_DETAIL:   # a committing step's pop-up: a plain click after it may decline it (watch)
+                self.once.opened[self.run] = self.record_id
         except Exception:  # noqa: BLE001 - the record is a help; it never changes what the step answered
             log.exception("the action record of %s could not be closed", self.tool)
             return text
@@ -640,20 +683,23 @@ class DoneOnce:
                  turn: Callable[[], dict[str, Any] | None] = lambda: None, clock: Callable[[], float] = time.time,
                  tz: Callable[[], str | None] = lambda: None,
                  browser_step: Callable[[str, dict[str, Any]], Awaitable[tuple[str, str]]] | None = None,
-                 browser_page: Callable[[str, dict[str, Any]], tuple[str, str]] | None = None,
+                 browser_page: Callable[[str, dict[str, Any]], tuple[str, ...]] | None = None,
                  on_unresolved: Callable[[dict[str, Any]], Any] | None = None,
                  reader: ResultReader | None = None, rule: DuplicateRule | None = None,
                  ask: Callable[[str, str], Awaitable[dict[str, Any] | None]] | None = None):
         """`effect(tool, args)`: effects.effect_of with the app's mailboxes (permissions.Permissions.effect). `turn()`: the running turn
         ({"task_id", "turn_id", "source", "unattended", "request"}). `browser_step(tool, args)` (async): (commit class, site) of a
-        browser step; `browser_page(tool, args)`: (page path, clicked element's words). `on_unresolved(info)`: told, at the end of an
+        browser step; `browser_page(tool, args)`: (page path, clicked element's words[, role, state, scene]). `on_unresolved(info)`: told, at the end of an
         unattended run, of each step whose result is still unknown (followups.unknown_result)."""
         self.ledger, self.effect, self.turn, self.clock, self.tz = ledger, effect, turn, clock, tz
         self.browser_step, self.browser_page, self.on_unresolved = browser_step, browser_page, on_unresolved
         self.inflight: set[int] = set()   # records of steps running now: busy() is true while one runs (a stop waits, an update waits)
         self.reader, self.rule = reader or ResultReader(), rule or DuplicateRule()
         self.form = FormWords()
+        self.opened: dict[str, int] = {}   # run -> the record of its click that opened a pop-up, until the next committing step of that run
         self.turn_asks = TurnAsks(ask)   # the main model reads the owner's message once, and only when a done record makes it matter
+        self.relay: Callable[[], tuple[str, str] | None] | None = None   # the owner's own words sent to the job running now (server.py)
+        self.relay_used: Callable[[str], None] | None = None           # those words were used for one repeat (key)
 
     def busy(self) -> bool:
         """True while a step that sends, changes or deletes is in flight (its record is written and not yet settled)."""
@@ -684,24 +730,42 @@ class DoneOnce:
                 self.form.typed(run, args.get("text"))
             effect, page = await self._effect_of(tool, name, args)
             if effect is None or effect.kind not in CHECKED_KINDS:
+                if name in BROWSER_STEPS - ANDROID_STEPS and (rid := self.opened.get(run)):
+                    return Attempt(self, name, run=run, watch=rid)   # records nothing; its result may show the pop-up declined
                 return None
             if page is not None:
-                page = PageStep(page.commit, page.path, page.label, self.form.digest(run))
+                page = replace(page, typed=self.form.digest(run))
                 self.form.committed(run)
             fp = ActionFingerprint.of(effect, name, args, page)
             turn = dict(self.turn() or {})
-            if owner_turn(turn) and any(r.state == "done" for r in self.ledger.recent(fp, DAY)):
-                turn["asks"] = await self.turn_asks.read(turn)
+            if any(r.state == "done" for r in self.ledger.recent(fp, DAY)):
+                if owner_turn(turn):
+                    turn["asks"] = await self.turn_asks.read(turn)
+                elif (said := self._relayed()) is not None:   # a job: the owner's own words passed to it (never page or model text)
+                    turn["relay_asks"] = await self.turn_asks.read({"source": "chat", "unattended": False, "turn_id": f"relay:{said[0]}",
+                                                                   "request": said[1]})
+                    turn["relay_key"] = said[0]
             found = self.before(effect, fp, turn, name, approved=approved)
+            if found is not None and found.reason == "again" and turn.get("relay_key") and self.relay_used is not None:
+                self.relay_used(str(turn["relay_key"]))   # used up: one repeat per message the owner sent
             if found is not None and found.stops:
                 return Attempt(self, name, block=found.text)
+            self.opened.pop(run, None)   # a committing step: an earlier pop-up was not simply declined
             rid = self.ledger.record(run_id=self.run_id(turn), task_id=turn.get("task_id"), turn_id=str(turn.get("turn_id") or ""),
                                      source=str(turn.get("source") or ""), tool=name, kind=effect.kind, connector=effect.connector,
                                      targets=list(effect.targets), fingerprint=fp, state="unknown", detail=STARTED_DETAIL)
             self.inflight.add(rid)
-            return Attempt(self, name, record_id=rid, note=found.text if found is not None else "")
+            return Attempt(self, name, record_id=rid, note=found.text if found is not None else "", run=run)
         except Exception:  # noqa: BLE001 - a broken record never stops the owner's step
             log.exception("the action ledger failed before %s", getattr(tool, "name", tool))
+            return None
+
+    def _relayed(self) -> tuple[str, str] | None:
+        """(key, the owner's own words) sent to the job running now, or None (an error reads as none)."""
+        try:
+            return self.relay() if self.relay is not None else None
+        except Exception:  # noqa: BLE001 - no words, no repeat: fail closed
+            log.exception("the owner's words for the job could not be read")
             return None
 
     def before(self, effect: Effect, fp: str, turn: dict[str, Any] | None, tool: str = "", *, approved: bool | None = None) -> Block | None:
@@ -713,7 +777,12 @@ class DoneOnce:
         reason, rec = found
         words = {"action": (tool or rec.tool).replace("_", " "), "target": shown_target(rec.targets or effect.targets),
                  "time": self._when(rec.ts), "id": rec.id}
-        text = {"unknown": UNKNOWN_BLOCK, "done": DONE_BLOCK, "again": AGAIN_NOTE}[reason].format(**words)
+        if reason == "done" and (tool or rec.tool) in BROWSER_STEPS - ANDROID_STEPS:   # a site's click: the page as it is now decides
+            text = BROWSER_DONE_BLOCK.format(time=words["time"], id=rec.id,
+                                             what=" and opened a pop-up that was not declined" if rec.detail == OPENED_DETAIL else "")
+        else:
+            again = AGAIN_NOTE if owner_turn(turn) else RELAY_AGAIN_NOTE
+            text = {"unknown": UNKNOWN_BLOCK, "done": DONE_BLOCK, "again": again}[reason].format(**words)
         if reason == "done" and approved:
             text += APPROVED_NOTE
         return Block(text, rec, reason)
@@ -733,8 +802,10 @@ class DoneOnce:
         effect = effect_of(name, args, site=site, commit=commit) if commit and site else None
         if effect is None:
             return None, None
-        path, label = self.browser_page(name, args) if self.browser_page is not None else ("", "")
-        return effect, PageStep(commit, path, label)
+        got = tuple(self.browser_page(name, args)) if self.browser_page is not None else ()
+        path, label, role, state, scene = (got + ("", "", "", "", ""))[:5]
+        digest = hashlib.sha256(str(scene).encode()).hexdigest()[:16] if scene else ""
+        return effect, PageStep(commit, path, label, "", str(role), str(state), digest)
 
     # ---- the end of an unattended run
     def run_ended(self, turn: dict[str, Any]) -> int:

@@ -204,7 +204,7 @@ class Voice:
         if self._sem.locked() and self._waiting >= MAX_WAITING:
             raise VoiceError("voice_busy")
         lang = self.owner_language(app_lang)
-        hint = vm.language_hint(lang)
+        hint = None   # automatic language detection (owner 2026-11-20): the model finds the language; the container sends "auto"
         seconds = len(pcm) / 2 / SAMPLE_RATE
         self._waiting += 1
         try:

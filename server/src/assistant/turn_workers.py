@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from . import tool_roles
 from .reply_text import ReplyText
+from .workers import ALREADY_SAID_NOTE, already_said
 from .turn_engine import Turn, _server  # noqa: F401
 
 if TYPE_CHECKING:
@@ -77,6 +78,9 @@ async def worker_handoff(ctx: Any, w: dict[str, Any], text: str, head: str, quie
             return
         tz = store.profile()["timezone"]
         if again is None:
+            said = already_said(store.messages(limit=12), workers.run_started(w["id"]))   # what the chat already told the owner in this run
+            if said:
+                text = f"{text}\n{ALREADY_SAID_NOTE.format(said=said)}"
             mid = store.add_message("user", text)
             ctx = TurnContext(tz, [{"role": "user", "content": text}], mid)
         else:

@@ -130,6 +130,8 @@ async def test_delegate_answers_at_once_the_job_runs_to_done_and_the_main_agent_
         assert [m["content"] for m in msgs] == ["세 곳 가격 비교해줘", "맡겼어요. 끝나면 알려 드릴게요.", "비교 끝났어요: 가장 싼 곳은 1,000원이에요."]
         handoff = brain.calls["handoff"][0].messages[-1]["content"]
         assert HANDOFF_MARK in handoff and "가장 싼 곳은 1,000원이에요." in handoff and done["id"] in handoff
+        # the chat already said the job was sent on: the handoff says only what is new (repeat_guard_state S5)
+        assert "Already told the owner in the chat" in handoff and "맡겼어요. 끝나면 알려 드릴게요." in handoff
         assert "Progress (server record): " in handoff and "no step that commits something went through" in handoff
         # 활동: the job's run and the handoff sit under the chat task; only the handoff speaks up with a notification
         tasks = (await c.get("/api/tasks")).json()["items"]
@@ -449,6 +451,29 @@ async def test_the_main_agent_resumes_a_paused_job_with_the_users_answer_and_lis
         events = await follow(c, (await c.post("/api/turns", json={"text": "파랑으로 해줘"})).json()["id"])
         assert any(e["type"] == "tool_result" and e["name"] == "resume" and "goes on" in e["output"] for e in events)
         await one_worker(c, "done")
+
+
+async def test_a_job_waiting_for_the_owner_is_listed_in_the_chat_turns_until_it_is_settled(tmp_path):
+    # repeat_guard_state S6: the chat sees the paused job on its own line (never inside the job's run)
+    def worker(req, n):
+        assert "Jobs waiting for the owner" not in str(req.messages)
+        return call("report", {"status": "needs_input", "summary": "색상을 골라 주세요: 빨강 또는 파랑."}, cid="c-ask")
+
+    def chat(req, n):
+        if n == 0:
+            return call("delegate", {"task": "옷 담아줘"})
+        return say("맡겼어요." if n == 1 else "네.")
+
+    brain = Brain(chat=chat, worker=worker)
+    app = create_app(app_settings(tmp_path), tools=[], stream_fn=brain, with_worker_tools=True)
+    async with Running(app) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await follow(c, (await c.post("/api/turns", json={"text": "옷 담아줘"})).json()["id"])
+        w = await one_worker(c, "needs_input")
+        await until(lambda: _handoff_over(c))
+        await follow(c, (await c.post("/api/turns", json={"text": "날씨 어때?"})).json()["id"])
+        last = brain.calls["chat"][-1]
+        assert "Jobs waiting for the owner:" in str(last) and w["id"] in str(last) and "question q_" in str(last)
+        assert "Jobs waiting for the owner" not in str(brain.calls["worker"][0])
 
 
 # ---------------------------------------------------------------------------------------------------------- approvals

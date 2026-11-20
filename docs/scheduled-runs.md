@@ -73,27 +73,32 @@ failed or was skipped, say it is nothing when it is nothing (`NO_REPLY` still me
 ## The promise rule
 
 1. Prompt (`server/content/prompts/system.md`, "Never promise what nothing will do"): say you will tell, remind, check or do something
-   later only in a reply where you also created the thing that does it; otherwise do it now or say plainly you cannot and offer to set
-   it up. No promise to catch something "the moment it happens" (checks run on a schedule).
-2. Code, after an attended chat or api reply (`turn_engine.check_promise`, `scheduled_runs.PromiseJudge`):
+   later only in a reply where you also created the thing that does it; set it up in the same reply without asking whether to (only a
+   missing detail is asked); otherwise do it now. No promise to catch something "the moment it happens" (checks run on a schedule).
+2. Code, before an attended chat or api reply ends (`turn_engine.promise_round`, `scheduled_runs.PromiseJudge`):
    - tools declared `keeps_promise` are `schedule_create`, `schedule_update`, `watch_add`, `watch_enable`, `watch_update`,
      `delegate`. A reply with a SUCCESSFUL call of one of them (no error, approval not declined) is backed: no check.
    - Otherwise one short request to the owner's main model reads the reply (last 3000 characters) and answers
      `{"promises_later": bool, "what": "..."}`: true only when the assistant says it will itself tell, remind, check, watch or do
      something later or when something happens, without being asked again. Work done in the reply, offers and questions that wait for
      the user's answer, and explanations of what an existing schedule does are false.
-   - On true, one plain line is added to the chat (i18n in every language): "I said "{what}", but nothing is set up to do that, so it
-     will not happen by itself. Do you want me to set it up?" The owner's yes starts the normal `schedule_create` approval card.
+   - The judge also answers `in_conversation`: a reply that says how the assistant will respond or act in this same conversation from
+     now on promises nothing later (it happens on the next turns by itself); in a call those words are kept for the call's next turns
+     (`call_keep.py`).
+   - On a real promise, the reply gets one more round before it ends (`turn_engine.promise_round`, `PROMISE_ROUND_NOTE`): set up exactly
+     what was promised now, without asking whether to, and confirm it in one sentence; a missing detail is asked in one short question.
+     It is the same reply: one message in the chat, spoken in a call (owner 2026-11-20; before, a separate line asked "Do you want me
+     to set it up?").
    - Unattended runs, background jobs and hidden handoffs are never checked (they promise nothing to the owner). No valid answer, no
-     model or an error says nothing. It runs after the reply ended, so the reply is never delayed.
+     model, an error or no answer within `PROMISE_WAIT_S` (4 s) says nothing. The end of an attended reply waits for the check.
    - Cost: one extra short request per attended reply without a backing call. `scheduled_runs.PROMISE_CHECK` switches it off (the test
      conftest does, to keep scripted fake models in order).
 
 ## Files
 
-- `server/src/assistant/scheduled_runs.py`: `RunEvidence`, `Closer`, `Decision`, `PromiseJudge`, `declare(tools)`, the prompts, `PROMISE_LINE`.
+- `server/src/assistant/scheduled_runs.py`: `RunEvidence`, `Closer`, `Decision`, `PromiseJudge`, `declare(tools)`, the prompts, `PROMISE_ROUND_NOTE`.
 - `server/src/assistant/agent/loop.py`: `Tool.reaches_owner`, `Tool.keeps_promise`.
-- `server/src/assistant/turn_engine.py`: `Turn.evidence / defer_report / report`, the tool filter of a scheduled run, `two_phase`, `check_promise`.
+- `server/src/assistant/turn_engine.py`: `Turn.evidence / defer_report / report`, the tool filter of a scheduled run, `two_phase`, `promise_round`.
 - `server/src/assistant/server.py`: `run_schedule` (closing phase), `task_closed` (no notification for a deferred working phase), `SCHEDULE_NOTE`.
 - `server/src/assistant/activity.py`: `set_outcome(task_id, text)`.
 - `server/tests/test_scheduled_runs.py`.

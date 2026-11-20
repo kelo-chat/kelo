@@ -11,8 +11,8 @@ field. Nothing is sent by itself.
   (at most two more wait; the rest get 429), and hands the raw frames to the `voice` container over `voice.sock` in the `voice-io`
   volume.
 - The `voice` container (`ROLE=voice`, `server/src/assistant/voice_service.py`) has no network (`network_mode: none`), no env file,
-  a read-only root and no keys. It runs Silero VAD, splits the speech into segments of at most 20 seconds, and decodes one segment at
-  a time with sherpa-onnx.
+  a read-only root and no keys. It runs Silero VAD, splits the speech into segments, joins pieces less than a second apart into one stretch
+  of at most 20 seconds, and decodes one stretch at a time with sherpa-onnx.
 - The model files are downloaded by the server (`voice_download.py`) into the `voice-models` volume, which the server writes and the
   `voice` container reads (read-only).
 
@@ -26,8 +26,8 @@ field. Nothing is sent by itself.
 - Every file is pinned to a commit (never `main`) and checked by its SHA-256 before it is used.
 - Languages neither model covers (Arabic, Hindi, Indonesian, Thai, Turkish, Vietnamese) keep the phone's recognizer; there is no
   prompt for them.
-- SenseVoice takes the owner's language as a hint (`ko`, `ja`, `zh`); Parakeet TDT v3 takes no hint in sherpa-onnx and detects the
-  language itself.
+- Recognition uses automatic language detection: no language hint is sent to SenseVoice (owner 2026-11-20), and Parakeet TDT v3
+  takes no hint in sherpa-onnx either; both detect the language themselves.
 - zh-Hant owners get Traditional characters: SenseVoice writes Simplified, and the server converts it with OpenCC (`s2twp`).
 - Silero VAD (MIT) is baked into the image at `/opt/voice/silero_vad.onnx`, pinned in `docker/voice.lock`.
 

@@ -66,8 +66,8 @@ from .sites import registrable, same_site
 from .work_browser import DOWN_NOTE, SEED_FAILED_NOTE, WorkBrowser, WorkBrowserDown, WorkTab, COOKIE_KEYS, collect_changes, seed_tab, work_tab, seed_signed_out_note
 from .task_window import TaskWindow
 from .verification import SIGN_IN_SECONDS, Verification, options_note, unconfirmed, verification_note, verification_step, waiting_note
-from .page_notes import (OVERLAY_JS, OVERLAY_ROUNDS, closed_note, masked_note, masked_values, not_found_note, open_note,
-                         overlays, signature)
+from .page_notes import (LAYER_CHOICES_JS, LAYERS_JS, OVERLAY_JS, OVERLAY_ROUNDS, closed_note, masked_note, masked_values, not_found_note,
+                         open_note, overlays, signature)
 from .browser_locale import tab_locale
 from .page_paths import NO_ELEMENT, PATH_OF_JS, with_path
 from .page_tree import controls_only, for_reading, frame_hosts, frame_of, interactive_refs, ref_boxes, ref_name, ref_of, ref_selector, ref_words
@@ -134,6 +134,14 @@ NO_CHANGE_NOTE = ("[The click went through, but nothing changed: same address, s
                   "pop-up. Do not click the same element again. Look at the page below for what holds it (a message, an unticked box, "
                   "a choice still to make, a frame or window it belongs to), try another way (another element), or tell "
                   "the user what you see.]")
+# A click that brought up a window on the same page (page_notes.LAYERS_JS): it may confirm what was done, or ask for a choice or another
+# step first. Our own lines: done_once.py reads their first words, never the page's.
+OPENED_NOTE = ("[The click opened a pop-up on this page. Read it: it may confirm what was done, or ask for a choice or another step first. "
+               "A step it asks for that your task forbids or does not mention is the user's choice: do not take it, and do not cancel it "
+               "to look for a way around; report needs_input naming that step and what it does.]")
+# A click inside the window an earlier click opened, that took none of the committing steps the window offered and closed it
+DECLINED_NOTE = ("[The click closed the pop-up without taking the step it offered; nothing was done through that pop-up. Read the page "
+                 "before your next step.]")
 # After a click or typing on the same page, only what changed is returned (the whole page again is mostly repeated words): the changed
 # lines with CHANGE_CONTEXT lines around them, and what left the page. A change bigger than CHANGE_MAX_SHARE of the page: all of it.
 CHANGE_CONTEXT = 2
@@ -1017,6 +1025,7 @@ class BrowserSession:
         self.check_tries = CHECK_TRIES                           # readings of one check the agent may try before it goes to the user
         self.check_poll = CHECK_POLL_SECONDS
         self._own_layers: dict[str, tuple[str, set[str]]] = {}   # tab -> (page address, windows the agent's own steps opened there)
+        self._opened_layer: dict[str, tuple[str, str]] = {}      # tab -> (page address, label) of the window its last click opened (OPENED_NOTE)
         # tab -> the pages under the one it shows now, each with its tab DevTools session: a window a page opened
         # (window.open, target=_blank) becomes the tab's page; when it closes, the tab goes back to the page that opened it
         self._windows: dict[str, TaskWindow] = {}              # tab key -> its window: its own tabs, the active one is _pages[key] (brief C1)
@@ -1620,6 +1629,12 @@ class BrowserSession:
     def note_allowed(self, selector: str) -> tuple[str, str]:
         """A step is about to run (allowed by a card or by a rule): what it is, in case it fails and is tried again."""
         return self._target_key(self.judged_info(selector), selector)
+
+    def target_state(self, selector: str) -> tuple[str, str, str]:
+        """(role, state, scene) of the element last judged for this selector (commits.TARGET_JS): what it is, how it stands now and how
+        its part of the page stands; ("", "", "") when it was not read. done_once.py puts them in the step's fingerprint."""
+        info = self.judged_info(selector) or {}
+        return str(info.get("role") or info.get("tag") or ""), str(info.get("state") or ""), str(info.get("scene") or "")
 
     def allowed_failed(self, target: tuple[str, str]) -> None:
         if target[1]:
@@ -3641,6 +3656,40 @@ class BrowserSession:
         return page
 
     @staticmethod
+    async def _layer_labels(page: Any) -> list[str]:
+        """The windows open over the page now (page_notes.LAYERS_JS); [] when they cannot be read."""
+        try:
+            got = await asyncio.wait_for(page.evaluate(LAYERS_JS), 2.0)
+        except Exception:  # noqa: BLE001 - a page that is changing: no window is claimed
+            return []
+        return [str(x) for x in got] if isinstance(got, list) else []
+
+    async def _offered_elsewhere(self, owner: Any, selector: str, key: str) -> tuple[str, bool] | None:
+        """Before a click: when the element sits in the window this tab's earlier click opened, (that window's label, whether another
+        control of it commits something by the step judge). None otherwise, or when it cannot be read. A judge that cannot answer
+        counts as no commit (the earlier click then stays done)."""
+        opened, page = self._opened_layer.get(key), self._pages.get(key)
+        if opened is None or page is None or str(getattr(page, "url", "") or "").split("#")[0] != opened[0]:
+            return None
+        try:
+            got = await asyncio.wait_for(owner.locator(selector).first.evaluate(LAYER_CHOICES_JS), 2.0)
+        except Exception:  # noqa: BLE001
+            return None
+        if not isinstance(got, dict) or str(got.get("label") or "") != opened[1]:
+            return None
+        for path in [str(p) for p in (got.get("paths") or []) if p][:4]:
+            info = await self.read_target(path)
+            if info is None or click_route(info) == "" or self.step_judge is None:
+                continue
+            try:
+                verdict = await self.step_judge.web(info)
+            except Exception:  # noqa: BLE001
+                verdict = None
+            if kind_of_verdict(verdict, info) not in ("", "unknown"):
+                return opened[1], True
+        return opened[1], False
+
+    @staticmethod
     async def _fingerprint(page: Any) -> str:
         """The address, markup and form values of the page and its frames (FINGERPRINT_JS): equal before and after a click = the
         click changed nothing."""
@@ -3679,6 +3728,8 @@ class BrowserSession:
         if said := self.blocked_site(before):   # a click on the page of a site that already blocked us twice: nothing is sent to it
             return said
         self._unchanged.pop(key, None)
+        pressed = self.judged(selector)   # the kind the gate judged for THIS click ("" = commits nothing)
+        declines = self._judged.get(key, ("",))[0] == selector and pressed == ""
         info = self.judged_info(selector) or {}
         owner = await self.frame_for(page, selector)
         selector = ref_selector(selector)
@@ -3696,6 +3747,8 @@ class BrowserSession:
                 return note
             await self._pace_wait(host, paced, key)
         mark = await self._fingerprint(page)
+        layers = await self._layer_labels(page)
+        offered = await self._offered_elsewhere(owner, selector, key) if declines else None
         pops = self._tab_dialogs(key)
         dialogs = pops.mark()
         await human.click(owner, selector, timeout_ms=10_000, fallback=lambda ms: owner.click(selector, timeout=ms))
@@ -3712,12 +3765,21 @@ class BrowserSession:
             self.pacer.record(host, "nav", human.pace_factor())
         await self._settle(page)
         await self._human_pause(page, self._look_pause(glance=str(getattr(page, "url", "") or "") == before))
+        after = await self._layer_labels(page)
+        same = str(getattr(page, "url", "") or "") == before
         if moved is not None:
             self._notes.setdefault(key, []).insert(0, POPUP_NOTE.format(url=str(page.url or "")[:200]))
         elif (cancelled := pops.only_cancelled(dialogs)) is not False and await self._fingerprint(page) == mark:
             # nothing changed, or the only pop-ups were questions answered Cancel: the same click again does the same (2026-11-19)
             self._unchanged[key] = True
             self._notes.setdefault(key, []).insert(0, DIALOG_ONLY_NOTE if cancelled else NO_CHANGE_NOTE)
+        elif same and (new := [x for x in after if x not in layers]):
+            self._notes.setdefault(key, []).insert(0, OPENED_NOTE)   # a window of the page itself opened: maybe a result, maybe a step
+            self._opened_layer[key] = (before.split("#")[0], new[0])
+        elif same and offered is not None and offered[1] and offered[0] not in after:
+            self._notes.setdefault(key, []).insert(0, DECLINED_NOTE)   # the job closed it without the step it offered
+        if (o := self._opened_layer.get(key)) is not None and (not same or o[1] not in after):
+            self._opened_layer.pop(key, None)   # that window is gone (closed any way): nothing more to decline
         return await self.snapshot(changes=True)   # a window the click opened on the same page is the agent's own (snapshot)
 
     # ------------------------------------------------------------------ pacing per site (pacing.py)
@@ -3849,6 +3911,7 @@ class BrowserSession:
         before = str(getattr(page, "url", "") or "")
         self._unchanged.pop(key, None)
         mark = await self._fingerprint(page)
+        layers = await self._layer_labels(page)
         pops = self._tab_dialogs(key)
         dialogs = pops.mark()
         try:
@@ -3869,12 +3932,19 @@ class BrowserSession:
         await self._guard(page.url)
         await self._settle(page)
         await self._human_pause(page, self._look_pause(glance=str(getattr(page, "url", "") or "") == before))
+        after = await self._layer_labels(page)
+        same = str(getattr(page, "url", "") or "") == before
         if moved is not None:
             self._notes.setdefault(key, []).insert(0, POPUP_NOTE.format(url=str(page.url or "")[:200]))
         elif (cancelled := pops.only_cancelled(dialogs)) is not False and await self._fingerprint(page) == mark:
             # nothing changed, or the only pop-ups were questions answered Cancel: the same click again does the same (2026-11-19)
             self._unchanged[key] = True
             self._notes.setdefault(key, []).insert(0, DIALOG_ONLY_NOTE if cancelled else NO_CHANGE_NOTE)
+        elif same and (new := [x for x in after if x not in layers]):
+            self._notes.setdefault(key, []).insert(0, OPENED_NOTE)   # a point click never declines a pop-up: fail closed
+            self._opened_layer[key] = (before.split("#")[0], new[0])
+        if (o := self._opened_layer.get(key)) is not None and (not same or o[1] not in after):
+            self._opened_layer.pop(key, None)
         return await self.snapshot(changes=True)
 
     async def _ime_sender(self, page: Any) -> Callable[[str, dict[str, Any]], Awaitable[Any]] | None:

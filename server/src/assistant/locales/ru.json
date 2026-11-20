@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "Нужны данные, запрошенные в карточке {title}. Как только заполните, я продолжу.",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "Нужны данные для входа в {title}. Как только сохраните, я продолжу работу.",
  "I need your {site} login to prepare for {title}": "Для подготовки {title} требуются данные для входа в {site}",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "Я написал: «{quote}», но для этого ничего не настроено, так что само по себе это не произойдёт. Настроить?",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "Чтобы продолжить, мне всё ещё нужен ваш вход в {label}. Можно ввести его в приложении сейчас, попросить напомнить позже или отменить.",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "Чтобы продолжить, мне всё ещё нужно: {what} ({label}). Заполните карточку в чате (или Моё → Связка ключей → Ждут ввода) либо скажите, что это не нужно.",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "Я остановился, потому что последние шаги повторялись без продвижения. Нажмите «Продолжить», чтобы попробовать снова, или скажите, что изменить.",

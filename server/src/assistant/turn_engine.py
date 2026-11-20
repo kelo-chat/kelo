@@ -23,7 +23,7 @@ from .privacy_guard import URL_TOOLS
 from .tools.browser import CHAT_CONTROL_WAIT_SECONDS, hold_patience
 from .reply_paths import ReplyPaths
 from .reply_text import BOOKKEEPING, ReplyText
-from .scheduled_runs import PROMISE_LINE, RunEvidence, promise_check_needed
+from .scheduled_runs import PROMISE_ROUND_NOTE, PROMISE_WAIT_S, RunEvidence, promise_check_needed
 from .tool_roles import for_kind
 from .schedule_grants import ACK_LINE, APPLIED_TITLE, PROGRESS_NOTICE, PROGRESS_TITLE
 
@@ -107,6 +107,9 @@ class Turn:
         self.source = "chat"               # chat | api | schedule:<id> | background
         self.unattended = False            # nobody is expected to watch: never stopped for want of a reader, approvals wait longer
         self.can_call = False              # the app this reply writes to can ring a call screen (call_tools.py)
+        self.call_id = ""                  # the in-app call this reply speaks in (calls.py); "" for a typed reply
+        self.owner_words = ""              # a call reply: the owner's spoken words, without the notes the model gets with them
+        self.promise_checked = False       # the promise rule ran in this reply (promise_round): once per reply
         self.owner = "owner"               # whose browser tab it drives
         self.status_text = ""              # the live line for the agent screen ("Opening a site", ...)
         self.thinking_since: float | None = None   # monotonic time the model began its current reasoning (live_line: a long think)
@@ -690,28 +693,11 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             log.exception("task log update failed")
         await turn.close()
         turn.ended.set()
-        promise_judge = getattr(ctx, "promise_judge", None)
-        if (promise_judge is not None and turn.source in ("chat", "api") and not turn.unattended and not turn.worker_id
-                and turn.final_status == "done" and not turn.evidence.kept_promise and not stopping[0] and said.text().strip()
-                and promise_check_needed(turn.waiting, pending_approvals.values(), turn.id)):
-            asyncio.ensure_future(check_promise(promise_judge, said, turn.request))   # the promise rule (scheduled_runs.py)
         if session is not None and session.has_tab(turn.owner):
             if one_run_tab(turn.owner):
                 asyncio.ensure_future(retire_tab(turn.owner))   # the run is over: keep its last picture, close the tab
             else:
                 session.touch(turn.owner)                      # a chat tab's idle hour counts from the end of its last turn
-
-    async def check_promise(judge: Any, said: Any, user_message: str = "") -> None:
-        """The reply ended with no schedule, watcher, background job or re-check made in it: if it still promised to tell or do something
-        later on its own, one plain line in the chat says nothing will do that and offers to set it up. A reply that ends on a question
-        or an offer is never checked; the judge also sees what the user wrote last and the reply's steps in order. A lead-in the reply
-        followed by the work it announced is no promise (reply_text.lead_in_done)."""
-        try:
-            what = await judge.promised(said.text(), user_message, steps=said.timeline())
-            if what and not said.lead_in_done(what):
-                store.add_message("assistant", i18n.t(PROMISE_LINE, quote=what))
-        except Exception:  # noqa: BLE001 - a check never breaks a reply
-            log.exception("promise check failed")
 
     async def page_title() -> str:
         """The title of this reply's tab, read without opening one ("" when there is none)."""
@@ -1313,6 +1299,38 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
             last = done_event or last
         return last
 
+    async def promise_round(prov_: str, model_: str, thread: list[dict[str, Any]]) -> dict[str, Any] | None:
+        """The promise rule (scheduled_runs.py), before an attended reply ends (owner 2026-11-20): a later action the reply promised
+        with nothing set up to do it gets one more round of this reply, to set up exactly that now and confirm it in one sentence (a
+        missing detail: one question). It is the same reply, so a call speaks it and the chat shows one message. How the reply said it
+        will respond from now on is no such promise; in a call those words are kept for the call's next turns (call_keep.py). Once per
+        reply. Returns that round's finish event (None: no round)."""
+        judge = getattr(ctx, "promise_judge", None)
+        if (judge is None or turn.promise_checked or turn.source not in ("chat", "api") or turn.unattended or turn.worker_id
+                or turn.evidence.kept_promise or stopping[0] or not said.text().strip()
+                or not promise_check_needed(turn.waiting, pending_approvals.values(), turn.id)):
+            return None
+        turn.promise_checked = True
+        try:
+            verdict = await asyncio.wait_for(judge.judge(said.text(), turn.owner_words or turn.request, steps=said.timeline()),
+                                             PROMISE_WAIT_S)
+        except Exception:  # noqa: BLE001 - a check never breaks a reply (a slow one is skipped)
+            log.info("turn %s: the promise check did not answer in time", turn.id)
+            return None
+        book = getattr(ctx, "call_book", None)
+        if verdict.keeps and turn.call_id and book is not None:
+            book.keep(turn.call_id, verdict.keeps)
+        if not verdict.promise or said.lead_in_done(verdict.promise):
+            return None
+        log.info("turn %s: a later action was promised with nothing set up; one round to set it up", turn.id)
+        try:
+            done_event, _, _ = await run_once(prov_, model_, [*thread, {"role": "system",
+                                                                         "content": PROMISE_ROUND_NOTE.format(quote=verdict.promise)}])
+        except Exception:  # noqa: BLE001 - the reply already said its words
+            log.exception("the promise round of turn %s failed", turn.id)
+            return None
+        return done_event
+
     async def pump() -> None:
         ui_sink.set(put)   # browser cards and other extra events from tools reach this reply (this task only)
         current_turn.set({"task_id": turn.task_id, "turn_id": turn.id, "source": turn.source, "unattended": turn.unattended,
@@ -1369,6 +1387,8 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
                         await put({"type": "text", "text": i18n.t(NO_ANSWER_LINE)})
                         await offer_continue_button()
                     done_event = await receipt_rounds(prov_, model_, thread) or done_event
+                    if done_event and answered and not limited:   # a promised later action nothing set up: set it up now (promise_round)
+                        done_event = await promise_round(prov_, model_, thread) or done_event
                     if done_event:
                         cached = {"cache_read_tokens": tokens[2], "cache_write_tokens": tokens[3]} if tokens[2] or tokens[3] else {}
                         if tokens[0]:

@@ -57,6 +57,7 @@ from .agent.loop import digest_tool_results
 from .compaction import request_tokens
 from .i18n import N_, t
 from .job_cuts import Cut, cut_result, next_pickup, open_calls, pickup_note
+from .outside_rule import OWNER_SOURCES
 from .shopping import ProductResults, pages_read, verify
 from .tools.sites import registrable
 
@@ -75,6 +76,19 @@ MAIN_ONLY = ("delegate", "workers_list", "worker_status", "worker_message", "wor
              "browser_forget_site", "browser_profiles", "browser_profile_delete",   # sign-in data controls: the owner asks the chat
              "chat_view")   # the browser or phone shown in the chat is hidden only by the main agent (chat_views.py)
 HANDOFF_MARK = "[Handoff from a background job, not from the user]"   # leads the hidden message; GET /api/messages leaves these out
+ALREADY_SAID_NOTE = ("Already told the owner in the chat after this job was started or sent on (your own words): {said}\n"
+                     "Do not say any of that again. Say only what is new since then: what the job did or found, and what is needed now.")
+SAID_CHARS = 800
+
+
+def already_said(messages: list[dict[str, Any]], since: float) -> str:
+    """The chat's own replies written since `since` (the start of the job's run), oldest first, joined and cut to the last SAID_CHARS
+    characters; "" when there are none or the start is not known."""
+    if since <= 0:
+        return ""
+    said = [m["content"].strip() for m in messages if m.get("role") == "assistant" and isinstance(m.get("content"), str)
+            and float(m.get("created_at") or 0) >= since - 2 and m["content"].strip()]
+    return " / ".join(said)[-SAID_CHARS:]
 STATUS_HEAD = {"done": N_("Finished"), "needs_input": N_("Needs your help"), "blocked": N_("Got stuck"), "failed": N_("It did not work out")}
 RESTART_REASON = N_("Stopped because the server restarted")   # translate with t() where it is saved or shown
 LIMIT_RETRY = 1800.0   # a job paused by the usage limit with no reset time known looks again after this long
@@ -220,6 +234,7 @@ class WorkerHost:
 @dataclass
 class _Live:
     task: asyncio.Task | None = None
+    started_at: float = 0.0                        # when this run of the job began (_launch)
     turn: Any = None
     inbox: list[dict[str, Any]] = field(default_factory=list)
     stop: bool = False
@@ -334,6 +349,7 @@ class Workers:
         self.products = ProductResults(store)
         self.chat_views: Any = None   # the chat's views (chat_views.py), set by server.py
         self._live: dict[str, _Live] = {}
+        self._owner_words: dict[str, tuple[str, str]] = {}   # job -> (key, the owner's own message passed to it); done_once uses it once
         self._queue: list[tuple[str, str]] = []     # automatic resumes waiting for a free slot: (id, why)
         self._closing = False
         self._cut_seen: set[str] = set()            # jobs this process already cut at its start (startup may run again after a Keyguard unlock)
@@ -466,7 +482,7 @@ class Workers:
                "login": wait.get("login"), "reason": reason, "status_text": r["status_text"] or None, "last_url": r["last_url"] or None,
                "thumbnail": f"/api/browser/sessions/{r['tab']}/screenshot" if self.host.has_picture(r["tab"]) else None,
                "progress": ({"done": p[0], "total": p[1]} if (p := self.progress_of(r["id"])) else None), "picked_up": picked}
-        if r["status"] == "needs_input" and r.get("question_id"):
+        if r["status"] in ("needs_input", "blocked") and r.get("question_id"):   # a paused job's question: answer_to names it
             out["question_id"] = r["question_id"]
         if full:
             out.update(task=r["task"], url=r["url"] or None, files=json.loads(r["files"] or "[]"), report=report,
@@ -577,8 +593,10 @@ class Workers:
         lines.append(
             f"Budget: about {steps} steps and {minutes} minutes. Finish by calling report(status, summary, details?, keep_tab?) once, as your last step:\n"
             "- done: the job is complete. summary: the result in the user's language, with facts (prices, times, numbers) copied exactly.\n"
-            "- needs_input: you need the user: a login, a choice, a one-time code, or a step they must do on the page. Before you pause "
-            "for anything but a login or a code, try 2-3 other ways yourself (the per-item action again, the site's own request, another "
+            "- needs_input: you need the user: a login, a choice, a one-time code, or a step they must do on the page. A step the site requires "
+            "before it goes on that your task forbids or does not mention is the user's choice: do not take it, and do not back out of the site's "
+            "flow to look for a way around; report needs_input at once, naming that step and what it does, and asking whether to take it. Before "
+            "you pause for anything else but a login or a code, try 2-3 other ways yourself (the per-item action again, the site's own request, another "
             "page or tool). Then the summary says in 2-4 lines what you tried and why each failed, the concrete options with your "
             "recommendation, and ends with one question; never just \"tell me how\". When a website login "
             "is missing, call request_login for that site first. You will be resumed here, with this history and this tab, once it is "
@@ -694,8 +712,14 @@ class Workers:
                                "ORDER BY created_at LIMIT 1", (tool_roles.PHONE_KIND,))
         return str(rows[0]["id"]) if rows else None
 
+    def run_started(self, wid: str) -> float:
+        """When this run of the job began (0 when it is not known)."""
+        live = self._live.get(wid)
+        return live.started_at if live else 0.0
+
     def _launch(self, wid: str, note: str) -> None:
         live = self._live.setdefault(wid, _Live())
+        live.started_at = self._clock()
         live.stop = live.timed_out = False
         live.report, live.turn = None, None
         live.chunk_progress = live.chunks = 0
@@ -742,6 +766,7 @@ class Workers:
         r = self._row(wid)
         if r is None:
             return False
+        self._owner_words.pop(wid, None)
         live = self._live.get(wid)
         self._queue = [q for q in self._queue if q[0] != wid]
         if live and live.task and not live.task.done():
@@ -764,15 +789,32 @@ class Workers:
         await self._retire(r["tab"])
         return True
 
-    def message(self, wid: str, text: str, answer_to: str = "") -> tuple[bool, str]:
+    def owner_said(self, wid: str, text: str) -> None:
+        """The owner's own words reach this job (their chat message relayed by the main agent, or typed in the app for it)."""
+        if text.strip():
+            self._owner_words[wid] = (secrets.token_hex(4), text.strip()[:2000])
+
+    def owner_words(self, wid: str) -> tuple[str, str] | None:
+        """(key, the owner's own words) passed to this job and not used yet, or None. Only the server sets them (owner_said)."""
+        return self._owner_words.get(wid) if wid else None
+
+    def owner_words_used(self, wid: str, key: str) -> None:
+        """done_once ran a step again on these words: they are used up (one "again" per message)."""
+        if wid in self._owner_words and self._owner_words[wid][0] == key:
+            self._owner_words.pop(wid, None)
+
+    def message(self, wid: str, text: str, answer_to: str = "", *, owner_text: str = "") -> tuple[bool, str]:
         """A word for a job: a running one reads it before its next step; one that is not running is resumed with it. `answer_to` (the
         question id a job's needs_input report carries) makes it the answer to that question: refused ("stale" / "wrong") unless it is
-        the job's open question."""
+        the job's open question. `owner_text`: the owner's own words this message carries (their chat message, or the app's text); a
+        job's repeat check may use them once (done_once.py)."""
         r = self._row(wid)
         if r is None:
             return False, "missing"
+        if owner_text:
+            self.owner_said(wid, owner_text)
         if answer_to:
-            if r["status"] != "needs_input" or not r.get("question_id"):
+            if r["status"] not in ("needs_input", "blocked") or not r.get("question_id"):
                 return False, "stale"
             if answer_to != r["question_id"]:
                 return False, "wrong"
@@ -1108,6 +1150,7 @@ class Workers:
         return out
 
     async def _settle(self, wid: str, outcome: tuple[str, str, str, bool] | None, rec: _Recorder | None) -> None:
+        self._owner_words.pop(wid, None)   # the owner's words were for this run
         live = self._live.get(wid) or _Live()
         r = self._row(wid)
         if r is None:
@@ -1164,7 +1207,7 @@ class Workers:
             report["products"] = [p.id for p in live.report_products]
         self._update(wid, status=status, report=json.dumps(report, ensure_ascii=False), wait_on=json.dumps(wait), keep_tab=int(keep),
                      wake_at=wake_at, finished_at=now if status in ("done", "failed") else None,
-                     question_id=new_question_id() if status == "needs_input" else "")
+                     question_id=new_question_id() if status == "needs_input" or (status == "blocked" and wake_at <= 0) else "")
         self._emit(wid)
         if status in ("done", "failed") and not keep:
             await self._retire(r["tab"])
@@ -1258,6 +1301,10 @@ class Workers:
                     )
                 else:
                     lines.append("Say in one or two lines what stopped it and the next step. Never show prices, stock or links from a text search, not even as information.")
+                if r.get("question_id"):
+                    lines.append(f"Question id: {r['question_id']}. When the owner answers or decides, call worker_message(id='{r['id']}', "
+                                 f"text=<their words>, answer_to='{r['question_id']}') to let it go on, or worker_stop(id='{r['id']}') when "
+                                 "they no longer want it.")
         else:
             lines.append("Say that it stopped, why, and how far it got (the counts above are the server's own record: use them; never "
                          "guess that something was not done).")
@@ -1553,16 +1600,23 @@ class Workers:
                 return "Error: text is required."
             wid = str(args.get("id") or args.get("worker_id") or "")
             answer_to = str(args.get("answer_to") or "").strip()
-            _ok, how = self.message(wid, text, answer_to)
+            turn = current_turn.get() or {}   # the owner's own message of this turn (never the model's words, never a page's)
+            own = str(turn.get("source") or "") in OWNER_SOURCES and not turn.get("unattended")
+            owner_text = str(turn.get("request") or "") if own else ""
+            _ok, how = self.message(wid, text, answer_to, owner_text=owner_text)
             if how in ("stale", "wrong"):
                 r = self._row(wid)
-                open_id = r["question_id"] if r is not None and r["status"] == "needs_input" else ""
+                open_id = r["question_id"] if r is not None and r["status"] in ("needs_input", "blocked") else ""
                 return ("Error: " + (f"that job has no open question with id {answer_to} (it was answered, or the job went on). "
                         "Send the text without answer_to if it is only an update, or check worker_status." if how == "stale" or not open_id else
                         f"answer_to {answer_to} is not the job's open question; the open question's id is {open_id}. Use that id, "
                         "or leave answer_to out for an update."))
-            return {"delivered": "Sent: the job reads it before its next step.", "resumed": "The job was not running; it goes on now with your message.",
-                    "queued": "The job goes on with your message as soon as a slot is free.", "missing": "Error: no such job.",
+            return {"delivered": "Sent: the job reads it before its next step. Its report comes back by itself: tell the owner in one short line "
+                                 "that you passed it on.",
+                    "resumed": "The job was not running; it goes on now with your message. Its report comes back to you by itself: tell the owner "
+                               "in one short line that you passed it on, and promise nothing about the result.",
+                    "queued": "The job goes on with your message as soon as a slot is free; tell the owner that in one short line.",
+                    "missing": "Error: no such job.",
                     "limit": "Error: too many jobs are running to start this one again now.", "running": "Error: the job is busy; try again."}.get(how, how)
 
         async def worker_stop(args: dict[str, Any]) -> str:
@@ -1638,7 +1692,7 @@ def worker_routes(app: FastAPI, workers: Workers, auth: Callable[..., Any]) -> N
     async def message_worker(wid: str, body: WorkerMessageIn, request: Request) -> dict[str, Any]:
         check = getattr(request.app.state, "secret_check", None)   # a pasted key or password stops here (409), as in chat
         text = await check(body.text, body.secrets) if check is not None else body.text
-        ok, how = workers.message(wid, text)
+        ok, how = workers.message(wid, text, owner_text=text)   # the owner typed it: their own words
         if not ok:
             raise HTTPException({"missing": 404, "running": 409, "limit": 429}.get(how, 409), how)
         return {"ok": True, "delivered": how, "worker": workers.get(wid)}

@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "我需要「{title}」卡片中要求的資訊。填寫完成後我將繼續。",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "我需要「{title}」的登入資訊。儲存後我將繼續執行任務。",
  "I need your {site} login to prepare for {title}": "準備「{title}」需要「{site}」的登入資訊",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "我說過「{quote}」，但還沒有設定好要做這件事，所以不會自己發生。要我幫你設定嗎？",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "我還需要你的 {label} 登入資訊才能繼續。你可以現在在 App 中輸入、讓我晚點提醒你，或放棄。",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "要繼續，我還需要{what}（{label}）。請在聊天裡填寫卡片（或在 我的 → 鑰匙圈 → 等待輸入），也可以告訴我放棄。",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "最近的步驟反覆重複卻沒有進展，所以停下了。按「繼續」再試一次，或告訴我要改什麼。",

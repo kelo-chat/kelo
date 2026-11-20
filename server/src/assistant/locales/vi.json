@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "Tôi cần thông tin mà thẻ cho {title} yêu cầu. Sau khi bạn điền, tôi sẽ tiếp tục.",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "Tôi cần thông tin đăng nhập của bạn cho {title}. Sau khi lưu xong, tôi sẽ tiếp tục công việc.",
  "I need your {site} login to prepare for {title}": "Tôi cần thông tin đăng nhập {site} của bạn để chuẩn bị cho {title}",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "Tôi đã nói \"{quote}\", nhưng chưa có gì được thiết lập để làm việc đó nên sẽ không tự xảy ra. Bạn có muốn tôi thiết lập không?",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "Mình vẫn cần thông tin đăng nhập {label} của bạn để tiếp tục. Bạn có thể nhập ngay trong ứng dụng, để mình nhắc lại sau, hoặc bỏ qua.",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "Mình vẫn cần {what} ({label}) để tiếp tục. Hãy điền thẻ trong cuộc trò chuyện (hoặc Của tôi → Kho bảo mật → Đang chờ nhập), hoặc bảo mình bỏ qua.",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "Tôi đã dừng vì các bước gần đây lặp lại mà không tiến triển. Nhấn Tiếp tục để thử lại, hoặc cho tôi biết cần đổi gì.",

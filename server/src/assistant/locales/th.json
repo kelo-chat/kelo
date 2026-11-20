@@ -566,7 +566,6 @@
  "I need what the card for {title} asks for. Once you fill it in I'll go on.": "ต้องการข้อมูลตามที่การ์ดของ {title} ร้องขอ เมื่อคุณกรอกแล้วฉันจะดำเนินการต่อ",
  "I need your login for {title}. Once it is saved I'll go on with the task.": "ต้องการข้อมูลการลงชื่อเข้าใช้สำหรับ {title} เมื่อบันทึกแล้วฉันจะดำเนินการต่อ",
  "I need your {site} login to prepare for {title}": "ต้องการข้อมูลการลงชื่อเข้าใช้ {site} เพื่อเตรียมการสำหรับ {title}",
- "I said \"{quote}\", but nothing is set up to do that, so it will not happen by itself. Do you want me to set it up?": "ฉันบอกว่า \"{quote}\" แต่ยังไม่ได้ตั้งค่าไว้เพื่อทำสิ่งนั้น จึงจะไม่เกิดขึ้นเอง ให้ฉันตั้งค่าให้ไหม",
  "I still need your {label} login to go on. You can enter it in the app now, have me remind you later, or drop it.": "ต้องใช้ข้อมูลเข้าสู่ระบบ {label} ของคุณเพื่อทำต่อ ใส่ในแอปตอนนี้ ให้เตือนอีกทีภายหลัง หรือยกเลิกก็ได้",
  "I still need {what} ({label}) to go on. Fill in the card in the chat (or My → Keychain → Waiting for input), or tell me to drop it.": "ยังต้องใช้{what} ({label}) เพื่อทำต่อ กรอกการ์ดในแชต (หรือ ของฉัน → พวงกุญแจ → รอการกรอก) หรือบอกให้ยกเลิกก็ได้",
  "I stopped because the last steps kept repeating without getting anywhere. Press Continue to try again, or tell me what to change.": "หยุดแล้วเพราะขั้นตอนล่าสุดวนซ้ำโดยไม่คืบหน้า กด ทำต่อ เพื่อลองอีกครั้ง หรือบอกว่าจะให้เปลี่ยนอะไร",

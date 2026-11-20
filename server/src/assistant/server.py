@@ -191,6 +191,7 @@ from .follow.upcoming import UpcomingExtractor
 from .calendars import Calendars
 from .weather import Weather
 from .calls import CALL_NOTE
+from .call_keep import CallBook, keep_note
 from .tools.call_tools import call_tools
 from .wallet import CardDeliveries, Wallet, site_keys as wallet_site_keys
 from .payment_pins import PaymentLedger, PaymentPaths, PaymentPins, PinDeliveries
@@ -1787,7 +1788,8 @@ def create_app(
     code_shelf.SHELF.judge = CodeJudge(judge_model.ask)   # which number-like tokens in a message are one-time codes (code_judge.py)
     run_closer = scheduled_runs.Closer(judge_model.ask)           # the closing phase of a scheduled run (scheduled_runs.py)
     promise_judge = scheduled_runs.PromiseJudge(judge_model.ask)  # the promise rule: a reply that promises a later action nothing will do
-    appctx.add(promise_judge=promise_judge)   # turn_engine: the promise rule (scheduled_runs.py)
+    call_book = CallBook()   # how Kelo said it will respond for the rest of each call (call_keep.py)
+    appctx.add(promise_judge=promise_judge, call_book=call_book)   # turn_engine: the promise rule (scheduled_runs.py), call_keep.py
     mcp_conn.picker = ScopePick(judge_model.ask)   # which listed OAuth scopes are this app's own (scope_pick.py)
     effects.JUDGE = ToolJudge(judge_model.ask)   # what an MCP tool / REST call of a connector does when nothing declares it (tool_judge.py)
     step_judge = StepJudge(judge_model.ask)   # what a control does when structure cannot tell: web submits, phone taps (step_judge.py)
@@ -2126,15 +2128,16 @@ def create_app(
             return "", ""
         return await session.judge_ahead(tool, args), session.current_host()
 
-    def browser_page(tool: str, args: dict[str, Any]) -> tuple[str, str]:
-        """(the page's path with the query keys that name its subject, the clicked element's words) of a browser step, for
-        done_once.py's fingerprint (page_key); for a phone app's step: (package/activity, the item's words)."""
+    def browser_page(tool: str, args: dict[str, Any]) -> tuple[str, ...]:
+        """(the page's path with the query keys that name its subject, the clicked element's words[, role, state, scene]) of a browser
+        step, for done_once.py's fingerprint (page_key); for a phone app's step: (package/activity, the item's words)."""
         if tool.startswith("android_"):
             return android_session.page(tool, args) if android_session is not None else ("", "")
         if session is None:
             return "", ""
-        url, label = session.note_allowed(str(args.get("selector") or ""))
-        return page_key(url), label
+        selector = str(args.get("selector") or "")
+        url, label = session.note_allowed(selector)
+        return (page_key(url), label, *session.target_state(selector))
 
     action_ledger = ActionLedger(store)   # what Kelo sent, changed or deleted: a step is done once (done_once.py)
     done_once = DoneOnce(action_ledger, effect=permissions.effect, turn=current_turn.get, tz=lambda: store.profile().get("timezone"),
@@ -2349,6 +2352,16 @@ def create_app(
             log.exception("could not list watchers for the prompt")
             return None
 
+    def jobs_for_prompt() -> list[dict[str, Any]]:
+        """The jobs waiting for the owner, for the per-turn line (prompt.jobs_line); none inside a job's own run (it cannot settle them)."""
+        if current_worker.get():
+            return []
+        try:
+            return [w for w in workers.list(20) if w["status"] in ("needs_input", "blocked")]
+        except Exception:  # noqa: BLE001 - a turn never fails over this line (also before the jobs exist)
+            log.exception("could not list jobs for the prompt")
+            return []
+
     def follow_for_prompt() -> list[dict[str, Any]]:
         """The next follow items (not done or stopped, from yesterday on), soonest first, for the per-turn line (prompt.follow_line)."""
         try:
@@ -2368,7 +2381,8 @@ def create_app(
             return prompts.build_parts(agent_name=prof["agent_name"], user_name=prof["user_name"], provider=provider, model=model,
                                        goals=goal_book.for_prompt(), tz_name=tz_name, connected=connected_ids(),
                                        schedules=schedules_for_prompt(), tone=prof["tone"], limits=permissions.limits_line(),
-                                       first_chat=first_chat.block(), follow=follow_for_prompt(), watchers=watchers_for_prompt())
+                                       first_chat=first_chat.block(), follow=follow_for_prompt(), watchers=watchers_for_prompt(),
+                                       jobs=jobs_for_prompt())
         return settings.system_prompt, persona(tz_name).lstrip("\n")
 
     def system_text(provider: str, model: str, tz_name: str) -> str:
@@ -2909,6 +2923,8 @@ def create_app(
         WorkerLimits(settings.workers_max, settings.worker_steps, settings.worker_minutes, settings.worker_tokens),
         resume_on_start=settings.worker_resume_on_start)
     workers.chat_views = chat_views   # a job's hand-off says whether its tab is shown in the chat (chat_views.py)
+    done_once.relay = lambda: workers.owner_words(current_worker.get())   # the owner's own words sent to the job running now
+    done_once.relay_used = lambda key: workers.owner_words_used(current_worker.get(), key)
     if session is not None:
         session.on_lost = workers.browser_lost   # a browser that restarted under a job: its card says so (job_cuts.py)
         # a research job's tab browses signed out: it is never given the owner's sign-ins and writes none back (brief A6)
@@ -3663,7 +3679,8 @@ def create_app(
         prof = store.profile()
         return "\n\n" + "\n".join(turn_lines(tz_name=tz_name or prof["timezone"], agent_name=prof["agent_name"],
                                               user_name=prof["user_name"], goals=goal_book.for_prompt(), schedules=schedules_for_prompt(),
-                                              tone=prof["tone"], follow=follow_for_prompt(), watchers=watchers_for_prompt()))
+                                              tone=prof["tone"], follow=follow_for_prompt(), watchers=watchers_for_prompt(),
+                                              jobs=jobs_for_prompt()))
 
     def answers_note(answers: list[AnswerIn] | None) -> str:
         """The values of the quick-reply fields a message answers, checked against the open questions, as a line for the model
@@ -3698,6 +3715,8 @@ def create_app(
         if body.call:   # a spoken message of an in-app call (calls.py): stored as the call's words; the model gets the spoken-reply rules
             via = via or "call"
             note = f"{note}\n\n{CALL_NOTE}" if note else CALL_NOTE
+            if kept := keep_note(call_book.kept(body.call)):   # how Kelo said it will respond for the rest of this call (call_keep.py)
+                note = f"{note}\n\n{kept}"
         provider, model = resolve_model(None, None)
         offer = activity.open_offer(last_user_id())   # a "Continue" button under the newest message (resume.py)
         held_answer = await hold_asker.answer(last_user_id(), body.text)   # "hand back" / "keep" to the idle question (hold_asks.py), else None
@@ -3772,6 +3791,8 @@ def create_app(
             keep_resume(turn, {"kind": "chat", "message_id": user_id}, restarts, old["id"] if old else None)
             turn.reaction_msg = user_id
             turn.owner_message = user_id if author == OWNER else 0   # the owner's own message this turn answers (memory: remember)
+            turn.call_id = body.call or ""   # a call's reply: its promise round is spoken in the call (turn_engine.promise_round)
+            turn.owner_words = body.text if body.call else ""   # the spoken words alone, for the promise check
             turn.picked = {*(str(x) for x in body.picked or []), *(f"uploads/{a['name']}" for a in attached), *(a['name'] for a in attached)}   # the owner's picks and attachments: this turn's items to use
             turn.read_pending = True   # 👀 once the model starts answering, not while the reply still waits for it (deliver below)
             if shown:   # the files the message carries, first in the reply's events (chat_attachments.py)
