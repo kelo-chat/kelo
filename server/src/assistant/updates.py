@@ -7,12 +7,14 @@ An update of one copy (the main one, or `assistant update <name>`; `assistant in
     images were measured to use, whichever is more). When it is short, old rollback sets and Kelo's dangling images go first; when it
     is still short, the update stops here, before anything changed.
  2. Rollback point: the image each of its containers runs (server, browser, egress, work room, Claude/agy sidecars) is tagged
-    `<repo>:rollback-<copy>-<time>` so it cannot be pruned, and written to `instances/<copy>/rollback.json` with its id. The newest two
-    rollback points are kept (rollback.json and its `earlier`); older rollback tags of that copy are removed after every update, good or
-    failed.
+    `<repo>:rollback-<copy>-<time>` so it cannot be pruned, and written to `instances/<copy>/rollback.json` with its id. Each copy keeps its
+    newest KELO_ROLLBACK_SETS rollback points (its env file; default 2, `assistant backups [copy] --rollback-sets N` sets it):
+    rollback.json and its `earlier`; older rollback tags of that copy are removed after every update, good or failed.
  3. Backup, inside the data volume (`/state/.backups/<time>/`, made by the server's own user with umask 077, so it stays exactly as
     private as the live data): a consistent copy of assistant.db made with SQLite's backup API (checked with integrity_check), and
     every other file of the state (home folder, notes, uploads, installed packages, master.key when there is one) as a tar.gz.
+    Left out, and left in place by a restore: the published app installers (downloads/; they come from the release builds), the
+    browser's step pictures (browser-history/) and the upload previews (.thumbs/, made again on demand).
     The newest 3 backups are kept, plus the one the rollback point needs. Nothing secret is printed.
  4. The shared images are built (once for all copies being updated), the copy is restarted on them, and it must pass a health check
     before a deadline: the containers run, /healthz answers, /api/about says the database opened with its migrations done, and a
@@ -24,7 +26,7 @@ An update of one copy (the main one, or `assistant update <name>`; `assistant in
     puts every copy's rollback.json back and removes its own tags and Kelo's dangling images, so it leaves nothing behind.
 
 `assistant rollback [copy]` goes back to the last rollback point on purpose (`--to <id>` goes to the earlier point); it is the only
-way to downgrade. `assistant backups [copy]` lists the backups. The next `assistant update` of a held copy clears the hold and brings it to the newest images.
+way to downgrade. `assistant backups [copy]` lists the backups (`--rollback-sets N` sets how many rollback sets the copy keeps). The next `assistant update` of a held copy clears the hold and brings it to the newest images.
 
 THE MIGRATION RULE. The schema is upgraded in place at start-up (store.py and the modules that own a table: CREATE TABLE IF NOT
 EXISTS, then ALTER TABLE ADD COLUMN for a missing column). There is no down-migration, and an older server is not guaranteed to work on
@@ -52,6 +54,7 @@ KEEP_BACKUPS = 3
 HEALTH_TIMEOUT = 180.0
 GiB = 1024 ** 3
 KEEP_ROLLBACK_SETS = 2      # rollback sets kept per copy: rollback.json's point and one earlier (owner 2026-11-20)
+ROLLBACK_SETS_VAR = "KELO_ROLLBACK_SETS"   # in the copy's env file: how many rollback sets it keeps (1 or more); unset = KEEP_ROLLBACK_SETS
 BUILD_HEADROOM = 2 * GiB    # free room a local build needs besides what build_need() counts: the contexts of builds running at the same
                             # time (~0.3 GB each), downloads inside a step before the step deletes them, the copies' own writes meanwhile
 MARGIN_NO_BUILD = GiB // 2  # release images are pulled finished: no build
@@ -68,6 +71,7 @@ HELPER = r'''
 import hashlib, json, os, shutil, sqlite3, sys, tarfile, time
 S = os.environ.get("KELO_STATE", "/state"); B = os.path.join(S, ".backups"); DB = os.path.join(S, "assistant.db"); KEEP = int(os.environ.get("KELO_KEEP_BACKUPS", "3"))
 SKIP = {".backups", "assistant.db", "assistant.db-journal", "assistant.db-wal", "assistant.db-shm"}
+LEAVE_OUT = {"downloads", "browser-history", ".thumbs"}   # not in a backup, left in place by a restore (docs/disk-growth.md)
 os.umask(0o077)
 
 def fp(con):
@@ -126,7 +130,7 @@ def backup(bid, label, meta, protect):
                 src.close(); dst.close()
         with tarfile.open(os.path.join(tmp, "state.tar.gz"), "w:gz", compresslevel=1) as t:
             for n in sorted(os.listdir(S)):
-                if n not in SKIP:
+                if n not in SKIP and n not in LEAVE_OUT:
                     t.add(os.path.join(S, n), arcname=n)
         out["bytes"] = size(tmp)
         with open(os.path.join(tmp, "meta.json"), "w") as f:
@@ -150,14 +154,15 @@ def restore(bid):
         shutil.rmtree(p, ignore_errors=True)
         os.mkdir(p, 0o700)
     with tarfile.open(os.path.join(d, "state.tar.gz")) as t:
+        members = [m for m in t.getmembers() if m.name.split("/", 1)[0] not in LEAVE_OUT]   # an older backup may still hold them
         try:
-            t.extractall(work, filter="tar")
+            t.extractall(work, members=members, filter="tar")
         except TypeError:
-            t.extractall(work)
+            t.extractall(work, members=members)
     if meta.get("schema") is not None:
         shutil.copy2(os.path.join(d, "assistant.db"), os.path.join(work, "assistant.db"))
     for n in os.listdir(S):
-        if n != ".backups":
+        if n != ".backups" and n not in LEAVE_OUT:
             os.rename(os.path.join(S, n), os.path.join(old, n))
     for n in os.listdir(work):
         os.rename(os.path.join(work, n), os.path.join(S, n))
@@ -168,7 +173,7 @@ def restore(bid):
 cmd, args = sys.argv[1], sys.argv[2:]
 if cmd == "info":
     st = os.statvfs(S)
-    res = {"schema": schema(DB), "free": st.f_bavail * st.f_frsize, "state": size(S, {".backups"}), "backups": size(B)}
+    res = {"schema": schema(DB), "free": st.f_bavail * st.f_frsize, "state": size(S, {".backups"} | LEAVE_OUT), "backups": size(B)}
 elif cmd == "backup":
     res = backup(args[0], args[1], json.loads(args[2]), args[3:])
 elif cmd == "list":
@@ -378,24 +383,37 @@ class Updater:
             json.dump(point, f, indent=1)
         os.replace(tmp, p)
 
+    def keep_sets(self, inst: Instance) -> int:
+        """How many rollback sets this copy keeps: ROLLBACK_SETS_VAR in its env file when it is a whole number of 1 or more, else
+        KEEP_ROLLBACK_SETS (owner 2026-11-20: default 2, a copy may keep 1)."""
+        raw = read_env(inst.env, ROLLBACK_SETS_VAR).strip()
+        return int(raw) if raw.isascii() and raw.isdigit() and int(raw) >= 1 else KEEP_ROLLBACK_SETS
+
+    def _kept(self, insts: list[Instance]) -> str:
+        """'each copy keeps its newest 2', or 'the main copy keeps its newest 1, operator keeps its newest 2'."""
+        ns = {i.name: self.keep_sets(i) for i in insts}
+        if len(set(ns.values())) <= 1:
+            return f"each copy keeps its newest {next(iter(ns.values()), KEEP_ROLLBACK_SETS)}"
+        return ", ".join(f"{self._who(i)} keeps its newest {ns[i.name]}" for i in insts)
+
     def points(self, inst: Instance) -> list[dict[str, Any]]:
-        """The copy's rollback points, newest first: rollback.json and its `earlier` list (at most KEEP_ROLLBACK_SETS)."""
+        """The copy's rollback points, newest first: rollback.json and its `earlier` list (at most keep_sets(inst))."""
         p = self.point(inst)
         if not p or not p.get("images"):
             return []
         earlier = [e for e in p.get("earlier") or [] if isinstance(e, dict) and e.get("images")]
-        return [p, *earlier][:KEEP_ROLLBACK_SETS]
+        return [p, *earlier][:self.keep_sets(inst)]
 
     @staticmethod
-    def _earlier(prev: dict[str, Any] | None, images: dict[str, dict[str, str]]) -> list[dict[str, Any]]:
+    def _earlier(prev: dict[str, Any] | None, images: dict[str, dict[str, str]], keep: int = KEEP_ROLLBACK_SETS) -> list[dict[str, Any]]:
         """The points a new point keeps as `earlier`: the previous point and its earlier ones, minus any with the very same images
-        (that is the same set, not a second one), at most KEEP_ROLLBACK_SETS - 1."""
+        (that is the same set, not a second one), at most keep - 1."""
         if not prev:
             return []
         ids = {v: i["id"] for v, i in images.items()}
         chain = [{k: v for k, v in prev.items() if k != "earlier"}, *[e for e in prev.get("earlier") or [] if isinstance(e, dict)]]
         chain = [p for p in chain if p.get("images") and {v: i.get("id") for v, i in p["images"].items()} != ids]
-        return chain[:KEEP_ROLLBACK_SETS - 1]
+        return chain[:max(0, keep - 1)]
 
     def _put_points_back(self, insts: list[Instance], before: dict[str, dict[str, Any] | None]) -> None:
         """A run that did not change these copies leaves their rollback.json as it found it (none stays none)."""
@@ -572,7 +590,7 @@ class Updater:
     def room(self, insts: list[Instance], pre: dict[str, dict[str, Any]], *, build: bool, clis: list[str] | None = None) -> None:
         """1b. One Docker disk holds every copy's volume and all images, so it must take a backup of EVERY copy in this run plus what the
         build writes (build_need) or, for release images that are pulled, MARGIN_NO_BUILD. When it does not, old rollback sets (beyond
-        each copy's newest KEEP_ROLLBACK_SETS) and Kelo's dangling images go first, and it says so; when it still does not,
+        what each copy keeps (keep_sets)) and Kelo's dangling images go first, and it says so; when it still does not,
         UpdateError before anything was tagged, backed up or built."""
         state = sum(int(pre[i.name].get("state") or 0) for i in insts)
         extra, why = self.build_need(insts, clis) if build else (MARGIN_NO_BUILD, "room for the new images")
@@ -581,7 +599,7 @@ class Updater:
         if free >= need:
             return
         self.out(f"Only {_size(free)} is free on the Docker disk and this update needs {_size(need)}: removing old rollback sets "
-                 f"(each copy keeps its newest {KEEP_ROLLBACK_SETS}) and unused Kelo images first.")
+                 f"({self._kept(insts)}) and unused Kelo images first.")
         self.tidy(insts, why="disk check")
         now = self._free(insts)
         free = now if now is not None else free
@@ -591,7 +609,7 @@ class Updater:
         raise UpdateError(
             f"not enough free disk for a safe update of {', '.join(self._who(i) for i in insts)}: it needs {_size(need)} (a backup of "
             f"{_size(state)} plus {why}), only {_size(free)} is free even after removing old rollback sets and unused "
-            f"Kelo images{self._docker_usage()}. The newest {KEEP_ROLLBACK_SETS} rollback sets of each copy are kept on purpose. To make "
+            f"Kelo images{self._docker_usage()}. The rollback sets each copy keeps ({self._kept(insts)}) stay on purpose. To make "
             "room: `docker system df` shows what uses the disk, and `docker builder prune` removes the build cache (the next build then "
             "takes longer)")
 
@@ -780,7 +798,7 @@ class Updater:
 
     def tidy(self, insts: list[Instance], *, why: str, releases: bool = False) -> None:
         """Cleanup after an update (good or failed), a rollback, or in the disk check: each copy's rollback sets beyond its newest
-        KEEP_ROLLBACK_SETS, old release images (after a good registry update), Kelo's dangling images. Says which sets went and the
+        what it keeps (keep_sets), old release images (after a good registry update), Kelo's dangling images. Says which sets went and the
         Docker disk's free space before and after. Never raises: a failed cleanup never changes how the update ended. The build cache is
         never pruned (shared with every other build on this Docker; see docs/disk-growth.md)."""
         try:
@@ -796,10 +814,32 @@ class Updater:
         for inst in insts:
             stamps = sorted({t.rpartition(":")[2][-15:] for t in removed.get(inst.name, [])})
             if stamps:
+                n = self.keep_sets(inst)
                 self.out(f"{self._who(inst)}: removed {len(stamps)} old rollback set{'' if len(stamps) == 1 else 's'} "
-                         f"({', '.join(stamps)}); the newest {KEEP_ROLLBACK_SETS} are kept.")
+                         f"({', '.join(stamps)}); the newest {n} {'is' if n == 1 else 'are'} kept.")
         if before is not None and after is not None:
             self.out(f"Cleanup after the {why}: unused Kelo images removed; Docker disk free {_size(before)} -> {_size(after)}.")
+
+    def tidy_installers(self, insts: list[Instance]) -> None:
+        """After a good update: each copy's downloads folder keeps, per platform, only the installer its manifest names
+        (downloads.tidy_installers, run inside its server container). Silent when nothing goes; never raises."""
+        from .downloads import INSTALLERS_HELPER, tidy_installers
+
+        for inst in insts:
+            folder = read_env(inst.env, "ASSISTANT_DOWNLOADS_DIR") or "/state/downloads"
+
+            def run(args: list[str], as_root: bool, inst: Instance = inst) -> Any:
+                return self._run(self.m.compose(inst, "exec", "-T", *(["-u", "0"] if as_root else []), "server", "python", "-c",
+                                                INSTALLERS_HELPER, *args), env=self.m.compose_env(inst))
+            try:
+                gone = tidy_installers(run, folder)
+            except Exception as e:  # noqa: BLE001 - never changes how the update ended
+                self.out(f"{self._who(inst)}: removing older app installers was skipped ({type(e).__name__}); this does not change "
+                         "the result.")
+                continue
+            if gone:
+                self.out(f"{self._who(inst)}: removed {len(gone)} older app installer{'' if len(gone) == 1 else 's'} from its downloads "
+                         "folder (each platform keeps only the published file).")
 
     # ------------------------------------------------------------------ commands
     def update(self, names: list[str], *, build: bool = True, clis: list[str] | None = None) -> int:
@@ -832,7 +872,7 @@ class Updater:
         try:                                   # 2 + 3: tags and backups only; the copies keep running untouched
             for inst in insts:
                 images = self.record(inst, stamp)
-                earlier = self._earlier(before_points[inst.name], images)
+                earlier = self._earlier(before_points[inst.name], images, self.keep_sets(inst))
                 p = pre[inst.name]
                 meta = {"instance": inst.name, "version": p["version"], "images": {v: i["id"] for v, i in images.items()}}
                 b = self.backup(inst, stamp, "before update", meta, protect=[e["backup"] for e in earlier if e.get("backup")])
@@ -886,6 +926,7 @@ class Updater:
             self._put_points_back(rest, before_points)        # not restarted: their rollback points stay what they were
             return self._failed(inst, point, problem, shared_before if not done else None, rest=rest, everyone=insts)
         self.tidy(insts, why="update", releases=True)
+        self.tidy_installers(insts)
         self.result.update(outcome="done")
         finish = getattr(self.source, "finish", None)
         if finish is not None:                 # e.g. the updater container itself moves to the new release, last
@@ -931,7 +972,9 @@ class Updater:
             raise InstanceError(f"{who} has no rollback point yet; `assistant update{self._flag(inst)}` makes one before it changes anything")
         point = next((p for p in pts if p.get("id") == to), None) if to else pts[0]
         if point is None:
-            raise InstanceError(f"{who} has no rollback point {to}; `assistant backups{self._flag(inst)}` lists them")
+            one = ("; it keeps only its newest rollback set (`assistant backups" + self._flag(inst) + " --rollback-sets 2` keeps one "
+                   "more from the next update on)") if self.keep_sets(inst) == 1 else ""
+            raise InstanceError(f"{who} has no rollback point {to}{one}; `assistant backups{self._flag(inst)}` lists them")
         img = point["images"].get("KELO_IMAGE", {})
         self.out(f"Rollback point of {who}: made {_when(point.get('created'))} before an update; version {point.get('version') or '?'}, "
                  f"image {img.get('id', '?')[7:19]}; backup {point.get('backup') or '(none)'}.")
@@ -972,6 +1015,18 @@ class Updater:
                  f". It stays there until the next `assistant update{self._flag(inst)}`.")
         return 0
 
+    def set_rollback_sets(self, name: str | None, n: int) -> int:
+        """`assistant backups [copy] --rollback-sets N`: save how many rollback sets the copy keeps (its env file) and remove the
+        sets beyond that at once (tidy)."""
+        inst = self.m.load(name)
+        if n < 1:
+            raise InstanceError("--rollback-sets must be 1 or more: an update always keeps the point it rolls back to by itself")
+        write_env(inst.env, {ROLLBACK_SETS_VAR: str(n)})
+        self.out(f"Rollback sets kept for {self._who(inst)}: {n} (each is a full set of its images, about 10 GB for a whole copy)"
+                 + ("; `assistant rollback --to` then has no earlier point." if n == 1 else "."))
+        self.tidy([inst], why="setting change")
+        return 0
+
     def list_backups(self, name: str | None) -> int:
         inst = self.m.load(name)
         rows = self.helper(inst, "list")
@@ -988,6 +1043,10 @@ class Updater:
                 mark = marks.get(b.get("id"), "")
                 self.out(f"  {b.get('id')}  {_when(b.get('created'))}  {_size(b.get('bytes')):>9}  {b.get('label', '')}"
                          f"{'  version ' + str(b['version']) if b.get('version') else ''}{mark}")
+        if pts:
+            n = self.keep_sets(inst)
+            self.out(f"Rollback sets kept: {n} (`assistant backups{self._flag(inst)} --rollback-sets N` changes it)"
+                     + ("; with 1 there is no earlier point to go to." if n == 1 else "."))
         for p in pts[1:]:
             self.out(f"Earlier rollback point: {_when(p.get('created'))} (`assistant rollback{self._flag(inst)} --to {p.get('id')}`)")
         if pts:
@@ -1026,6 +1085,8 @@ def run_command(args: Any, manager: Instances | None = None, updater: Updater | 
                 interactive = ask is not None or sys.stdin.isatty()
                 return u.rollback(args.name, yes=args.yes, ask=(ask or input) if interactive else None, keep_data=args.keep_data,
                                   to=getattr(args, "to", None))
+            if getattr(args, "rollback_sets", None) is not None:
+                return u.set_rollback_sets(args.name, args.rollback_sets)
             return u.list_backups(args.name)
         finally:
             lock.release()

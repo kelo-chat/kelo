@@ -1447,6 +1447,7 @@
     <string name="goal_resume">Keloに任せる</string>
     <string name="goal_resume_started">Keloが取りかかりました。チャットで様子を確認できます。</string>
     <string name="goal_resume_no_model">先にマイページでモデルを選んでください。</string>
+    <string name="goal_log_more">以前の記録を表示</string>
     <string name="goal_edit">編集</string>
     <string name="goal_due">%1$s まで</string>
     <string name="goal_mark_step">完了にする</string>
@@ -1517,4 +1518,11 @@
     <string name="endpoint_in_use">現在使用中のモデルのエンドポイントです。別のモデルに変更してから削除してください。</string>
     <string name="endpoint_name_taken">その名前は既に使用されています。</string>
     <string name="endpoint_too_many">エンドポイントは20個まで保持できます。</string>
+    <string name="goals_work_section">Kelo が担当していること</string>
+    <string name="goals_subgoals">小さな目標</string>
+    <string name="goal_about">説明</string>
+    <string name="goal_log_from">%1$sから</string>
+    <plurals name="goals_delete_children">
+        <item quantity="other">小さな目標 %d件も一緒に削除されます。</item>
+    </plurals>
 </resources>

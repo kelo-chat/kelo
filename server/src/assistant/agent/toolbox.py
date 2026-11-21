@@ -46,8 +46,9 @@ CORE_TOOLS: frozenset[str] = frozenset({
 })
 # The tool the checkout tools wrap (the same approval and grant checks, no page reading): code and tests call it, the model never sees it.
 INTERNAL_TOOLS: frozenset[str] = frozenset({"confirm_purchase"})
-# loaded up front for every automatic run of a schedule (the run note tells it to pause a job that cannot work any more, or to try again later when the block is temporary)
-SCHEDULE_RUN_TOOLS: tuple[str, ...] = ("schedule_pause", "schedule_retry")
+# loaded up front for every automatic run of a schedule: none. A scheduled run never pauses, turns off, deletes or retries its job itself;
+# what blocks it is said in its report (owner 2026-11-20)
+SCHEDULE_RUN_TOOLS: tuple[str, ...] = ()
 ACTIVE_MAX = 30            # at most this many activated tools per scope; the oldest go first
 ACTIVE_TTL = 45 * 86_400   # a saved activation not used for this long is dropped when the scope is loaded again
 FIND_LIMIT = 8             # tools one search loads

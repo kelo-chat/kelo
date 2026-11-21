@@ -3,7 +3,7 @@ import Foundation
 import KeloCore
 @testable import KeloChat
 
-/// The typed answer fields and the app's own "Other" (Android ReplyFieldsTest / QuickReplyRulesTest, the same cases).
+/// The typed answer fields and the answers to write (Android ReplyFieldsTest / QuickReplyRulesTest, the same cases).
 @Suite struct ReplyFieldsTests {
     private func q(_ kind: String, min: Double? = nil, max: Double? = nil, unit: String = "", def: String = "") -> ReplyQuestion {
         ReplyQuestion(question: "Q", kind: kind, defaultValue: def, min: min, max: max, unit: unit)
@@ -60,17 +60,22 @@ import KeloCore
         #expect(ReplyFields.daysPlain([6, 1]) == "tue,sun")
     }
 
-    @Test func everyChoiceGetsAnOtherBoxUnlessItHasOneOrIsALoneButton() {
+    @Test func aChoiceShowsOnlyTheServersOptions() {
         let when = ReplyQuestion(question: "When", options: ["Morning", "Evening"])
-        #expect(QuickReplyRules.choices(when) == ["Morning", "Evening", QuickReplyRules.other])
-        #expect(QuickReplyRules.choices(ReplyQuestion(question: "Q", options: ["a", "Other"], typed: ["Other"])) == ["a", "Other"])
+        #expect(QuickReplyRules.choices(when) == ["Morning", "Evening"])   // no answer of the app's own
         #expect(QuickReplyRules.choices(ReplyQuestion(options: ["Continue"])) == ["Continue"])
         #expect(QuickReplyRules.choices(ReplyQuestion(question: "Day", options: ["a", "b"], kind: "date")).isEmpty)
+        #expect(!QuickReplyRules.isTyped(when, "Morning"))
+    }
+
+    @Test func aTypedOptionOpensABoxAndNothingElseDoes() {
+        let when = ReplyQuestion(question: "When", options: ["Morning", "Type it"], typed: ["Type it"])
+        #expect(QuickReplyRules.choices(when) == ["Morning", "Type it"])
         let one = ReplySet(questions: [when])
-        #expect(!QuickReplyRules.sendsOnTap(one, when, QuickReplyRules.other))
-        #expect(QuickReplyRules.showsSend(one, picks: [0: QuickReplyRules.other]))
-        #expect(!QuickReplyRules.canSend(one, picks: [0: QuickReplyRules.other], typed: [:]))
-        #expect(QuickReplyRules.compose(one, picks: [0: QuickReplyRules.other], typed: [0: " Late night "]) == "Late night")
+        #expect(!QuickReplyRules.sendsOnTap(one, when, "Type it"))
+        #expect(QuickReplyRules.showsSend(one, picks: [0: "Type it"]))
+        #expect(!QuickReplyRules.canSend(one, picks: [0: "Type it"], typed: [:]))
+        #expect(QuickReplyRules.compose(one, picks: [0: "Type it"], typed: [0: " Late night "]) == "Late night")
     }
 
     @Test func fieldsAreSentInWordsWithTheirPlainValuesAlongside() {

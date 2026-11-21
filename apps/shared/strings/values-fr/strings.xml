@@ -1517,6 +1517,7 @@
     <string name="goal_resume">Rendre la main à Kelo</string>
     <string name="goal_resume_started">Kelo s’en occupe. Vous pouvez suivre dans Discussion.</string>
     <string name="goal_resume_no_model">Choisissez d’abord un modèle dans Moi.</string>
+    <string name="goal_log_more">Afficher les entrées précédentes</string>
     <string name="goal_edit">Modifier</string>
     <string name="goal_due">Avant le %1$s</string>
     <string name="goal_mark_step">Marquer comme terminé</string>
@@ -1589,4 +1590,13 @@
     <string name="endpoint_in_use">Il s\'agit du point de terminaison du modèle utilisé. Passez d\'abord à un autre modèle.</string>
     <string name="endpoint_name_taken">Ce nom est déjà utilisé.</string>
     <string name="endpoint_too_many">Vous pouvez conserver jusqu\'à 20 points de terminaison.</string>
+    <string name="goals_work_section">Ce que Kelo gère</string>
+    <string name="goals_subgoals">Petits objectifs</string>
+    <string name="goal_about">À propos</string>
+    <string name="goal_log_from">De %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">Son petit objectif sera supprimé aussi.</item>
+        <item quantity="many">Ses %d petits objectifs seront supprimés aussi.</item>
+        <item quantity="other">Ses %d petits objectifs seront supprimés aussi.</item>
+    </plurals>
 </resources>

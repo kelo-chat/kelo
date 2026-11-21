@@ -1480,6 +1480,7 @@
     <string name="goal_resume">Kelo에게 이어서 맡기기</string>
     <string name="goal_resume_started">Kelo가 이어서 하고 있어요. 채팅에서 볼 수 있어요.</string>
     <string name="goal_resume_no_model">먼저 마이에서 쓸 모델을 정해 주세요.</string>
+    <string name="goal_log_more">이전 기록 더 보기</string>
     <string name="goal_edit">고치기</string>
     <string name="goal_due">%1$s까지</string>
     <string name="goal_mark_step">끝냄 표시</string>
@@ -1550,4 +1551,11 @@
     <string name="endpoint_in_use">지금 쓰는 모델의 엔드포인트예요. 다른 모델로 바꾼 뒤 지워 주세요.</string>
     <string name="endpoint_name_taken">이미 있는 이름이에요.</string>
     <string name="endpoint_too_many">엔드포인트는 20개까지 둘 수 있어요.</string>
+    <string name="goals_work_section">Kelo가 맡은 일</string>
+    <string name="goals_subgoals">작은 목표</string>
+    <string name="goal_about">설명</string>
+    <string name="goal_log_from">%1$s에서</string>
+    <plurals name="goals_delete_children">
+        <item quantity="other">작은 목표 %d개도 함께 지워져요.</item>
+    </plurals>
 </resources>

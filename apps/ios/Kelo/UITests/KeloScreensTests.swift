@@ -480,7 +480,7 @@ final class KeloScreensTests: KeloShotCase {
     }
 
     /// Typed answer fields (KELO_FIELDS=1, against `mock_server.py --form`): the form under the last message (a date, a number, a
-    /// choice with the app's own "Other", days with a time), then "Other" opened and typed into, then the time picker.
+    /// choice with an answer to write, days with a time), then that answer opened and typed into, then the time picker.
     func testAnswerFields() throws {
         guard env["KELO_FIELDS"] == "1", env["KELO_SERVER"] != nil, let key = env["KELO_KEY"] else { throw XCTSkip("no answer-fields walk asked") }
         launchApp()
@@ -496,7 +496,7 @@ final class KeloScreensTests: KeloShotCase {
         for target in [app!, springboard] {
             for label in ["Not Now", "지금 안 함"] where target.buttons[label].waitForExistence(timeout: 1) { target.buttons[label].tap(); pause(1) }
         }
-        let other = element(lang == "ko" ? "직접 정하기" : "Other")
+        let other = element(lang == "ko" ? "직접 입력할게요" : "Type it")
         var n = 0
         while (!other.exists || !other.isHittable) && n < 8 { app.swipeDown(); n += 1 }
         // not under the floating name tag at the top

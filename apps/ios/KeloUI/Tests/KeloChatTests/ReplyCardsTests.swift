@@ -79,9 +79,9 @@ import KeloCore
     }
 
     @Test func anAnswerToWriteOpensABoxInsteadOfSending() {
-        let set = ReplySet(questions: [ReplyQuestion(question: "Diet?", options: ["None", "Other"])])
+        let set = ReplySet(questions: [ReplyQuestion(question: "Diet?", options: ["None", "Other"], typed: ["Other"])])
         // the "Other" card (or chip) is an answer to write: a tap picks it, the typed words are sent
-        #expect(QuickReplyRules.tap(set, 0, QuickReplyRules.other) == .pick)
+        #expect(QuickReplyRules.tap(set, 0, "Other") == .pick)
     }
 
     @Test func aTapOutsideTheQuestionsPicksOnly() {
@@ -273,5 +273,34 @@ import KeloCore
         let merged = ChatReducer.mergeStored(shown, stored)
         #expect(merged.map(\.key) == ["a1", "m5", "s6", "a7"])
         #expect(merged.compactMap(\.asMsg?.text) == ["older streamed", "stored", "newest saved"])
+    }
+
+    // The server stores a reply as one message per part the chat showed (reply_text.rows): these pin how the apps match them.
+    @Test func aReplyStoredAsOpenerAndAnswerKeepsBothBubbles() {
+        let shown: [ChatItem] = [msg("u1", mine: true, text: "q", id: 1), msg("a2", text: "Let me check."), chip("t3"),
+                                 msg("a4", text: "\n\nIt is correct.")]
+        let stored: [ChatItem] = [msg("s1", mine: true, text: "q", id: 1), msg("s2", text: "Let me check.", id: 2),
+                                  msg("s3", text: "It is correct.", id: 3)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.map(\.key) == ["u1", "a2", "t3", "a4"])
+        #expect(merged.compactMap(\.asMsg?.text) == ["q", "Let me check.", "It is correct."])
+    }
+
+    @Test func aLeadInThatWasNotStoredLeavesOpenerAndAnswerOnce() {
+        let shown: [ChatItem] = [msg("u1", mine: true, text: "q", id: 1), msg("a2", text: "Let me look."), chip("t3"),
+                                 msg("a4", text: "Now the prices."), chip("t5"), msg("a6", text: "Answer.")]
+        let stored: [ChatItem] = [msg("s1", mine: true, text: "q", id: 1), msg("s2", text: "Let me look.", id: 2),
+                                  msg("s3", text: "Answer.", id: 3)]
+        let merged = ChatReducer.mergeStored(shown, stored)
+        #expect(merged.compactMap(\.asMsg?.text) == ["q", "Let me look.", "Answer."])
+        #expect(merged.map(\.key).filter { $0 == "t3" || $0 == "t5" } == ["t3", "t5"])
+    }
+
+    @Test func theNewsCheckAddsOpenerAndAnswerOnce() {
+        let shown: [ChatItem] = [msg("m1", mine: true, text: "q", id: 1)]
+        let stored: [ChatItem] = [msg("m1", mine: true, text: "q", id: 1), msg("m2", text: "Let me check.", id: 2),
+                                  msg("m3", text: "It is correct.", id: 3)]
+        let merged = ChatReducer.refreshNewest(shown, stored)
+        #expect(merged?.compactMap(\.asMsg?.text) == ["q", "Let me check.", "It is correct."])
     }
 }

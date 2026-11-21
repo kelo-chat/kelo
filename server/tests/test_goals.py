@@ -122,7 +122,8 @@ def test_prompt_block_is_compact_and_shows_progress_next_step_facts_and_waiting(
     assert goals_block([]) == ""
     for i in range(30):
         store.add_goal(f"goal number {i} " + "x" * 150)
-    assert len(goals_block(b.for_prompt())) < 2_600
+    from assistant.prompt import GOAL_RULES as RULES
+    assert len(goals_block(b.for_prompt())) - len(RULES) < 2_600   # the goal lines; the rules are a fixed text of their own
 
 
 def test_quick_replies_are_cleaned_and_shown_only_until_the_user_writes_again():
@@ -144,17 +145,13 @@ def test_quick_replies_are_cleaned_and_shown_only_until_the_user_writes_again():
     assert all("replies" not in m for m in b.replies_for(store.messages()))
 
 
-def test_answers_that_ask_for_typing_open_a_text_box():
+def test_answers_that_ask_for_typing_open_no_box_of_their_own():
+    """owner 2026-11-20 (D11): no "typed" mark is read; the user types in the message box, and an answer is one of at most three."""
     _, b = book()
-    qs = b.clean_questions([
-        {"question": "Weight (now -> target)", "options": ["I'll type it", "Rather not say"], "hint": "now and target weight"},
-        {"question": "Diet", "options": ["None", "Some (I'll write)", "Rather not say"], "typed": ["Some (I'll write)", "not an option"]},
-        {"question": "Sport", "options": ["Running", "Swimming", "Something"], "typed": ["Something"]},
-        {"question": "When", "options": ["Today", "Tomorrow"], "hint": "dropped without a typed answer"}])
-    assert qs[0] == {"question": "Weight (now -> target)", "options": ["I'll type it", "Rather not say"]}   # no mark: no words read, so the hint is dropped
-    assert qs[1]["typed"] == ["Some (I'll write)"] and "hint" not in qs[1]
-    assert qs[2]["typed"] == ["Something"]                       # the model's own mark, words that say nothing about typing
-    assert qs[3] == {"question": "When", "options": ["Today", "Tomorrow"]}
+    q = b.clean_questions([{"question": "Diet", "options": ["None", "Some (I'll write)"], "typed": ["Some (I'll write)"]}])[0]
+    assert "typed" not in q and q["options"] == ["None", "Some (I'll write)"]
+    q = b.clean_questions([{"question": "When", "options": ["Today", "Tomorrow"], "hint": "a few words"}])[0]
+    assert q == {"question": "When", "options": ["Today", "Tomorrow"]}                # a hint goes only with a text question
 
 
 def test_quick_replies_says_whole_sentence():
@@ -178,9 +175,6 @@ def test_quick_replies_says_whole_sentence():
     qs = b.clean_questions([{"question": "Q", "options": ["A", "B"], "says": ["Go with A, the cheaper one", "B"]}])
     assert qs[0]["says"] == ["Go with A, the cheaper one", ""]
 
-    # a typed option ("Other (write it)") gets ""
-    qs = b.clean_questions([{"question": "Q", "options": ["A", "Other (write it)"], "typed": ["Other (write it)"], "says": ["Go with A, the cheaper one", "I'll type it"]}])
-    assert qs[0]["says"] == ["Go with A, the cheaper one", ""]
 
 
 def test_a_goal_shows_working_while_something_runs_for_it_and_waiting_only_after():
@@ -248,9 +242,9 @@ def test_suggestions_never_repeat_goals_or_declined_ones():
     g = b.accept(s2)
     assert g["title"] == "Other aim" and g["origin"] == "suggestion" and g["note"] == "why"
     assert b.accept(s2) is None and b.suggestions() == []
-    for i in range(10):
+    for i in range(10):                    # owner 2026-11-20 (D13): no queue of six; a proposed one stays until it is answered
         b.suggest(f"aim {i}", "r")
-    assert len(b.suggestions()) == 6
+    assert len(b.suggestions()) == 10
 
 
 # ---------------------------------------------------------------------------------------------------------- instructions stay generic
@@ -258,13 +252,17 @@ def test_the_goal_instructions_name_no_kind_of_goal():
     """The kickoff, the resume note, the tool descriptions and the prompt section are about goals in general, never one kind. (Health,
     money and relationships appear only in the rule against guessing sensitive things; "job" there means a scheduled job.)"""
     store, b = book()
-    words = re.compile(r"\b(diet|weight|exercise|fitness|meal|career|resume|cv|salary|study|exam|marathon|savings?|budget|"
+    words = re.compile(r"\b(diet|weight|exercise|fitness|meal|career|resume|cv|salary|study|exam|marathon|savings|saving (?:for|up)|budget|"
                        r"workout|calorie|interview)\b", re.I)
     texts = [KICKOFF, RESUME, *(t.description for t in b.tools()), json.dumps([t.parameters for t in b.tools()])]
     system = (ROOT / "server" / "content" / "prompts" / "system.md").read_text(encoding="utf-8")
-    texts.append(system[system.index("**Offering a goal.**"):system.index("**Files and media.**")])
+    texts.append(system[system.index("**Goals.**"):system.index("**Files and media.**")])
     from assistant.prompt import GOAL_RULES
     texts.append(GOAL_RULES)                       # how to work on goals: next to the goals in the per-turn block
+    # the goal-coaching skill's start file and SKILL.md too; the area files are about one area by design
+    skill = ROOT / "server" / "content" / "skills" / "goal-coaching"
+    skill_md = "\n".join(x for x in (skill / "SKILL.md").read_text(encoding="utf-8").splitlines() if not x.startswith("Areas: "))
+    texts += [skill_md, (skill / "start.md").read_text(encoding="utf-8")]   # the "Areas:" line names the areas by design
     hits = [m.group(0) for t in texts for m in words.finditer(t)]
     assert hits == []
 
@@ -534,15 +532,14 @@ async def test_a_kickoff_that_repeats_its_message_after_the_buttons_is_stored_on
 # ---------------------------------------------------------------------------------------------------------- typed answer fields
 def test_question_kinds_are_checked_and_choice_stays_the_default():
     _, b = book()
-    qs = b.clean_questions([
-        {"question": "A", "options": ["x", "y"]},
-        {"question": "B", "kind": "date", "default": "2026-11-10"},
-        {"question": "C", "kind": "TIME", "default": "9:05"},
-        {"question": "D", "kind": "weekdays", "default": "wed, mon,mon"},
-    ]) + b.clean_questions([
-        {"question": "E", "kind": "weekdays_time", "default": "sun 21:30", "options": ["kept for older apps", "too"]},
-        {"question": "F", "kind": "number", "min": 1, "max": "5", "unit": "pcs", "default": "3"},
-    ])
+    def one(q):   # one question per call (owner 2026-11-20, D11)
+        return b.clean_questions([q])[0]
+    qs = [one({"question": "A", "options": ["x", "y"]}),
+          one({"question": "B", "kind": "date", "default": "2026-11-10"}),
+          one({"question": "C", "kind": "TIME", "default": "9:05"}),
+          one({"question": "D", "kind": "weekdays", "default": "wed, mon,mon"}),
+          one({"question": "E", "kind": "weekdays_time", "default": "sun 21:30", "options": ["kept for older apps", "too"]}),
+          one({"question": "F", "kind": "number", "min": 1, "max": "5", "unit": "pcs", "default": "3"})]
     assert qs[0] == {"question": "A", "options": ["x", "y"]}                      # no kind written for a plain choice
     assert qs[1] == {"question": "B", "options": [], "kind": "date", "default": "2026-11-10"}
     assert qs[2]["default"] == "09:05" and qs[3]["default"] == "mon,wed"
@@ -579,8 +576,7 @@ async def test_a_message_answering_typed_fields_is_checked_and_its_values_reach_
         last = request.messages[-1]
         if len(seen) == 1:
             yield TextDelta("Pick a few things.")
-            yield ToolCall("q1", "quick_replies", json.dumps({"questions": [
-                {"question": "Which", "options": ["x", "y"]}, {"question": "Days", "kind": "weekdays_time"}]}))
+            yield ToolCall("q1", "quick_replies", json.dumps({"questions": [{"question": "Days", "kind": "weekdays_time"}]}))
             yield Done("tool_calls")
         else:
             yield TextDelta("ok" if last["role"] == "user" else "")
@@ -593,26 +589,25 @@ async def test_a_message_answering_typed_fields_is_checked_and_its_values_reach_
             ms = (await c.get("/api/messages")).json()
             return ms if ms and "replies" in ms[-1] else None
         ms = await wait_for(stored)
-        assert ms[-1]["replies"]["questions"][1]["kind"] == "weekdays_time"
-        bad = await c.post("/api/turns", json={"text": "Which: x\nDays: Mon at 25:00", "answers": [{"question": 1, "value": "mon 25:00"}]})
-        assert bad.status_code == 422 and "answer 2" in bad.json()["detail"]
+        assert ms[-1]["replies"]["questions"][0]["kind"] == "weekdays_time"
+        bad = await c.post("/api/turns", json={"text": "Days: Mon at 25:00", "answers": [{"question": 0, "value": "mon 25:00"}]})
+        assert bad.status_code == 422 and "answer 1" in bad.json()["detail"]
         assert len((await c.get("/api/messages")).json()) == 2                            # nothing was saved
-        ok = await c.post("/api/turns", json={"text": "Which: x\nDays: Mon, Wed at 12:00 PM",
-                                              "answers": [{"question": 0, "value": "x"}, {"question": 1, "value": "wed,mon 12:00"}]})
+        ok = await c.post("/api/turns", json={"text": "Days: Mon, Wed at 12:00 PM",
+                                              "answers": [{"question": 0, "value": "wed,mon 12:00"}]})
         assert ok.status_code == 200
         await wait_for(lambda: asyncio.sleep(0, result=len(seen) >= 2))
         said = seen[-1].messages[-1]["content"]
-        assert said.startswith("Which: x\nDays: Mon, Wed at 12:00 PM") and "Days = mon,wed 12:00 (weekdays_time)" in said
-        assert "Which =" not in said                                                      # a choice says it in its own words
+        assert said.startswith("Days: Mon, Wed at 12:00 PM") and "Days = mon,wed 12:00 (weekdays_time)" in said
         stored_text = [m["content"] for m in (await c.get("/api/messages")).json() if m["role"] == "user"][-1]
-        assert stored_text == "Which: x\nDays: Mon, Wed at 12:00 PM"                       # the chat keeps the user's words only
-        late = await c.post("/api/turns", json={"text": "later", "answers": [{"question": 1, "value": "nonsense"}]})
+        assert stored_text == "Days: Mon, Wed at 12:00 PM"                                # the chat keeps the user's words only
+        late = await c.post("/api/turns", json={"text": "later", "answers": [{"question": 0, "value": "nonsense"}]})
         assert late.status_code == 200                                                    # nothing open any more: the words go as they are
 
 
 def test_the_choice_tool_stays_general():
     _, b = book()
     desc = next(t for t in b.tools() if t.name == "quick_replies").description.lower()
-    assert "never narrow the answer space" in desc
+    assert "one question at a time" in desc and "two or three concrete answers" in desc
     for word in ("lotto", "lottery", "schedule", "monday", "saturday", "site"):
         assert word not in desc, word

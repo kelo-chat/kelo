@@ -44,7 +44,7 @@ Each push goes to every phone paired with that copy that registered a token. A d
 When Kelo finds that something it told you is wrong or no longer holds, it says so on its own. There is no list or timetable for
 this: one check (`server/src/assistant/corrections.py`) reads Kelo's own answers of the last day and looks again at what, if false,
 could put you in an awkward spot or cause you harm or a loss (never prices, stock or sellers of things to buy), and keeps a
-correction only when an official source, or two independent ones, show it. The morning briefing runs it while the briefing is on
+correction only when an official source, or two independent ones, show it. Only what you may still act on or rely on is corrected (something already removed or set right is left alone), and a claim counts as wrong only when its meaning, read the way it was said, differs from what is true; the same fact said another way is not a correction. On the morning card each correction says what Kelo told you and when, then what is right. The morning briefing runs it while the briefing is on
 (the corrections are notes on the card); the hourly look runs it while proactive messages are on (a correction is then an ordinary
 Kelo message and a normal `task_done` push, ids only, in your contact hours, under the same daily limits). A correction told by one
 is never told by the other. What still holds sends nothing. Follow-up checks you ask for ("tell me when this changes") are
@@ -148,3 +148,5 @@ How the broker handles FCM's answers:
 - A `401` mints a new OAuth token once and tries again.
 
 Tokens and payloads never reach a log line. Only the notification type and counts are logged.
+
+A chat delivery that is tried again after a restart wakes the phones again with the same notification id; the phones read after their last id, so the row is shown once.

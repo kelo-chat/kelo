@@ -4,6 +4,8 @@ download buttons; `assistant publish-app` (with a fake docker); and which server
 import hashlib
 import json
 import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -233,6 +235,8 @@ class FakeDocker:
 
     def __init__(self, volume: Path, cid: str = "abc123"):
         self.volume, self.cid, self.calls = volume, cid, []
+        self.root_fails = False
+        self.exec_fails = False
 
     def __call__(self, cmd, **kw):
         self.calls.append(cmd)
@@ -253,6 +257,17 @@ class FakeDocker:
             return SimpleNamespace(returncode=0, stdout="", stderr="")
         if cmd[1:3] == ["dump", "badging"]:
             return SimpleNamespace(returncode=0, stdout="package: name='chat.kelo.app' versionCode='402102' versionName='0.1.402102'\n", stderr="")
+        if cmd[:2] == ["docker", "exec"]:                      # INSTALLERS_HELPER, run for real on the fake volume
+            if self.exec_fails:
+                return SimpleNamespace(returncode=1, stdout="", stderr="Error response from daemon: container is not running")
+            i = cmd.index("-c")
+            script, args = cmd[i + 1], list(cmd[i + 2:])
+            assert args[1] == "/state/downloads"
+            if "-u" in cmd[:i] and self.root_fails and args[0] == "remove-installers":
+                return SimpleNamespace(returncode=0, stdout=json.dumps({"removed": [], "failed": args[2:]}), stderr="")
+            args[1] = str(self.volume)
+            r = subprocess.run([sys.executable, "-c", script, *args], capture_output=True, text=True, timeout=60)
+            return SimpleNamespace(returncode=r.returncode, stdout=r.stdout, stderr=r.stderr)
         raise AssertionError(cmd)
 
 
@@ -305,6 +320,69 @@ def test_publish_keeps_the_other_platforms_and_picks_msi_and_versions(tmp_path):
         pub.publish("mac", tmp_path / "missing.dmg", "1.0", unsigned=True)
     with pytest.raises(PublishError, match="container was not found"):
         Publisher(tmp_path, run=FakeDocker(volume, cid=""), out=lambda s: None).publish("mac", dmg, "1.0.0", unsigned=True)
+
+
+def test_which_old_installers_go(tmp_path):
+    from assistant.downloads import installer_platform, old_installers
+    assert [installer_platform(n) for n in ("kelo-1.0-402500.apk", "kelo-1.0.exe", "kelo-1.0.msi", "kelo-server-1.0.msi", "kelo-1.0.dmg",
+                                            "kelo-server-1.0.zip", "kelo-1.0.zip", "manifest.json", "notices.json", "other.apk")] == \
+        ["android", "windows", "windows-msi", "windows-server-msi", "mac", "mac-server-bundle", None, None, None, None]
+    f = lambda name, t: {"name": name, "mtime": t}  # noqa: E731
+    files = [f("kelo-1.0.apk", 1), f("kelo-1.1.apk", 2), f("kelo-1.2.apk", 3), f("kelo-1.3.apk", 4),
+             f("kelo-1.0.msi", 1), f("kelo-1.1.msi", 2), f("kelo-server-0.9.msi", 1), f("kelo-server-1.0.msi", 2), f("kelo-server-1.1.msi", 3),
+             f("kelo-0.8.dmg", 1), f("kelo-0.9.dmg", 2), f("manifest.json", 9), f("notices.json", 9), f("kelo-1.0.zip", 1)]
+    named = ["kelo-1.2.apk", "kelo-1.1.msi", "kelo-server-1.1.msi"]       # 1.3.apk is newer but not named (a copy in progress)
+    assert sorted(old_installers(files, named)) == ["kelo-1.0.apk", "kelo-1.0.msi", "kelo-1.1.apk", "kelo-1.3.apk",
+                                                    "kelo-server-0.9.msi", "kelo-server-1.0.msi"]   # owner 2026-11-20: only the published file stays
+    assert old_installers(files, named, keep_previous=2) == ["kelo-1.0.apk"]
+    assert old_installers(files, None) == []                               # no readable manifest: nothing goes
+    assert old_installers(files, ["kelo-1.0.apk", "kelo-1.1.apk"]) == ["kelo-1.2.apk", "kelo-1.3.apk"]   # a named file never goes, whatever its age
+
+
+def test_a_publish_removes_older_installers_and_keeps_only_the_published_one(tmp_path):
+    volume = tmp_path / "vol"
+    volume.mkdir()
+    for i, name in enumerate(("kelo-0.7.dmg", "kelo-0.8.dmg", "kelo-0.9.dmg", "kelo-1.0.exe", "kelo-0.9.exe", "notices.json")):
+        (volume / name).write_bytes(b"x" * 10)
+        os.utime(volume / name, (1_700_000_000 + i, 1_700_000_000 + i))
+    (volume / "manifest.json").write_text(json.dumps({"platforms": {
+        "mac": {"file": "kelo-0.9.dmg", "version": "0.9", "size": 10, "sha256": "0" * 64, "date": "2026-11-01T00:00:00Z"},
+        "windows": {"file": "kelo-1.0.exe", "version": "1.0", "size": 10, "sha256": "0" * 64, "date": "2026-11-01T00:00:00Z"}}}))
+    docker, lines = FakeDocker(volume), []
+    dmg = tmp_path / "Kelo.dmg"
+    dmg.write_bytes(DMG)
+    Publisher(tmp_path, run=docker, out=lines.append).publish("mac", dmg, "1.0.0", unsigned=True)
+    assert sorted(p.name for p in volume.iterdir()) == ["kelo-1.0.0.dmg", "kelo-1.0.exe", "manifest.json", "notices.json"]
+    execs = [c for c in docker.calls if c[:2] == ["docker", "exec"]]
+    assert any(c[2:4] == ["-u", "0"] and "remove-installers" in c for c in execs)
+    assert any("Removed 4 older installers (kelo-0.7.dmg, kelo-0.8.dmg, kelo-0.9.dmg, kelo-0.9.exe)" in x for x in lines)
+
+
+def test_installers_root_could_not_remove_are_removed_by_the_servers_user(tmp_path):
+    volume = tmp_path / "vol"
+    volume.mkdir()
+    for i, name in enumerate(("kelo-0.8.dmg", "kelo-0.9.dmg")):
+        (volume / name).write_bytes(b"x")
+        os.utime(volume / name, (1_700_000_000 + i, 1_700_000_000 + i))
+    (volume / "manifest.json").write_text(json.dumps({"platforms": {
+        "mac": {"file": "kelo-0.9.dmg", "version": "0.9", "size": 1, "sha256": "0" * 64, "date": "2026-11-01T00:00:00Z"}}}))
+    docker = FakeDocker(volume)
+    docker.root_fails = True
+    dmg = tmp_path / "Kelo.dmg"
+    dmg.write_bytes(DMG)
+    Publisher(tmp_path, run=docker, out=lambda s: None).publish("mac", dmg, "1.0.0", unsigned=True)
+    assert sorted(p.name for p in volume.iterdir()) == ["kelo-1.0.0.dmg", "manifest.json"]
+
+
+def test_a_failing_cleanup_never_fails_the_publish(tmp_path):
+    volume = tmp_path / "vol"
+    docker, lines = FakeDocker(volume), []
+    docker.exec_fails = True
+    dmg = tmp_path / "Kelo.dmg"
+    dmg.write_bytes(DMG)
+    got = Publisher(tmp_path, run=docker, out=lines.append).publish("mac", dmg, "1.0.0", unsigned=True)
+    assert got["file"] == "kelo-1.0.0.dmg" and (volume / "kelo-1.0.0.dmg").exists()
+    assert any("Removing older installers was skipped" in x for x in lines)
 
 
 def _operator_root(tmp_path, env: str) -> Path:

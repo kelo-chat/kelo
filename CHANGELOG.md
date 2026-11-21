@@ -9,6 +9,23 @@ build's version and date, and copy the app lines into the Play release notes (en
 
 ## Unreleased
 
+## 0.10.7 (build 23, 2026-11-21)
+
+### Added
+- Goals the way a coach keeps them: Kelo notices a long-running goal without the word, asks one question at a time, keeps smaller goals under a goal, a one-line summary and the whole progress record, with a starting guide for each area of life; it checks for goals that pull against each other and asks at the end of a goal's time whether it is done or goes on.
+- One list of what Kelo carries for you on the goal screen: bookings, deliveries, trips and plans from your chats and your calendar and mail, each thing once, nearest date first; Kelo closes an item when the evidence shows it is over.
+- Scheduled jobs that stop because a service is disconnected say why, and run again as soon as you reconnect it; a failed run is tried again 5 minutes later, and after three misses in a row Kelo asks whether to stop the job.
+- "Kelo tells you first" sorts what it finds into regular, today and now; per kind of source (calendar, mail, messages, notifications, money); a real fraud or security alert, a plan changing within hours or travel trouble reaches you at once, even past a "don't tell me" rule.
+
+### Changed
+- Corrections in the morning briefing say what Kelo said and when, then what is right; only things you may still rely on are corrected, and the same fact in another time zone or unit is never called wrong.
+- When Kelo says it will check something first, the answer after the check arrives as its own message, without repeating the first part.
+- Choice questions: one at a time, at most three options.
+- Every result and report reaches you exactly once, after the reply you are reading, even across a restart; phone wake-ups are retried until the push service takes them.
+
+### Fixed
+- Small fixes in the apps and the server.
+
 ## 0.10.6 (build 22, 2026-11-19)
 
 ### Added

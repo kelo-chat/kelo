@@ -32,7 +32,7 @@ def _pending(store: Store) -> dict[str, Any]:
 
 
 def ways(store: Store, mail: Mail, *, browser: bool, google_open: bool = False, registry: Registry | None = None,
-         relay: str = "", vpn: VpnRoute | None = None) -> dict[str, dict[str, Any]]:
+         relay: str = "", vpn: VpnRoute | None = None, items: bool = False) -> dict[str, dict[str, Any]]:
     """`relay`: the fixed page sign-ins return to (the address an organisation's admin has to allow, in a caution note).
     `google_open`: new Google sign-ins are open (GoogleWeb.open_to_all()). While closed, Gmail and Google Calendar rows that are not
     connected yet say "pending_review" (Gmail keeps the app password as the other way); connected ones stay as they are.
@@ -49,7 +49,8 @@ def ways(store: Store, mail: Mail, *, browser: bool, google_open: bool = False, 
     for cid in ("gmail", "imap_email"):
         # a Gmail mailbox belongs to the gmail connector only: "IMAP Email" counts the other mailboxes (Naver, Daum, iCloud, ...)
         mine = [a for a in mail.accounts() if cid in MAIL[a["provider"]].connectors and (cid == "gmail" or a["provider"] != "gmail")]
-        row = {"connect": "mail", "via": cid, "item": mine[0]["name"] if mine else "", "blurb": t(MAIL_BLURB[cid]), "connected": bool(mine)}
+        row = {"connect": "mail", "via": cid, "item": mine[0]["name"] if mine else "", "blurb": t(MAIL_BLURB[cid]), "connected": bool(mine),
+               "items": [a["name"] for a in mine]}
         if mine:   # how it is connected and with which address, for the detail screen's facts
             oauth = (signed.get(mine[0]["name"]) or {}).get("placement", {}).get("via") == "oauth"
             row.update({"method": "google" if oauth else "password", "account": ", ".join(a["address"] for a in mine)})
@@ -58,7 +59,7 @@ def ways(store: Store, mail: Mail, *, browser: bool, google_open: bool = False, 
         out[cid] = row
     mine = generic_accounts(store)
     out["caldav_calendar"] = {"connect": "caldav", "via": "caldav_calendar", "item": mine[0]["name"] if mine else "",
-                              "blurb": t(CALDAV_BLURB), "connected": bool(mine),
+                              "blurb": t(CALDAV_BLURB), "connected": bool(mine), "items": [a["name"] for a in mine],
                               **({"method": "password", "account": ", ".join(a["address"] for a in mine)} if mine else {})}
     for k in KEYS.values():
         if k.route and (vpn is None or not vpn.available):
@@ -83,6 +84,7 @@ def ways(store: Store, mail: Mail, *, browser: bool, google_open: bool = False, 
             del row["fallback"]   # the service account stays out of the way unless it is how this calendar is connected
         if not row["connected"]:
             row.update(_pending(store))
+    row["items"] = signed_in + ([GOOGLE.item] if GOOGLE.item in have else [])   # the vault items this connection is made of (run_blocks)
     out["google_calendar"] = row
     for cid, site in BROWSER.items():
         out[cid] = ({"connect": "browser", "via": cid, "item": "", "site": site, "connected": False,
@@ -104,6 +106,11 @@ def ways(store: Store, mail: Mail, *, browser: bool, google_open: bool = False, 
         for p in registry.installed("connector"):
             if p.id not in out:
                 out[p.id] = installed_way(p, have, browser=browser)
+    for row in out.values():   # the vault items a connector row is made of, for the typed blocks (items=True only; run_blocks.py)
+        if items:
+            row.setdefault("items", [row["item"]] if row.get("item") else [])
+        else:
+            row.pop("items", None)
     return out
 
 

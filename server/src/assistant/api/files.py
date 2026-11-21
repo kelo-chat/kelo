@@ -83,7 +83,7 @@ def router(ctx: AppContext) -> APIRouter:
 
     @router.get("/api/files", dependencies=[Depends(require_auth)])
     async def list_agent_files(folders: bool = False) -> list[dict[str, Any]]:
-        return need_home().tree(folders)
+        return need_home().tree(folders, for_app=True)
 
     @router.get("/api/files/{path:path}", dependencies=[Depends(require_auth)])
     async def read_agent_file(path: str) -> dict[str, Any]:

@@ -167,3 +167,15 @@ import Testing
     }
 
 }
+
+/// A blocked run's one line from the server (`block_line`) is decoded; a job that is not blocked has none.
+@Suite struct ScheduleBlockLineTests {
+    @Test func blockLineIsDecodedForAJobThatWaits() throws {
+        let json = #"{"id": 3, "name": "메일", "prompt": "check", "block_line": "Waiting for Gmail to be connected.", "paused": false}"#
+        let s = try JSONDecoder().decode(Schedule.self, from: Data(json.utf8))
+        #expect(s.blockLine == "Waiting for Gmail to be connected.")
+        #expect(s.paused == false)
+        let plain = try JSONDecoder().decode(Schedule.self, from: Data(#"{"id": 4, "name": "x", "prompt": "y"}"#.utf8))
+        #expect(plain.blockLine == nil)
+    }
+}

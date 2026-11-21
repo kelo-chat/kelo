@@ -1551,6 +1551,7 @@
     <string name="goal_resume">Вернуть Kelo</string>
     <string name="goal_resume_started">Kelo взялся за дело. Следить можно в чате.</string>
     <string name="goal_resume_no_model">Сначала выберите модель в разделе «Моё».</string>
+    <string name="goal_log_more">Показать более ранние записи</string>
     <string name="goal_edit">Изменить</string>
     <string name="goal_due">До %1$s</string>
     <string name="goal_mark_step">Отметить выполненным</string>
@@ -1624,4 +1625,14 @@
     <string name="endpoint_in_use">Это эндпоинт используемой модели. Сначала переключитесь на другую модель.</string>
     <string name="endpoint_name_taken">Это имя уже используется.</string>
     <string name="endpoint_too_many">Можно сохранить до 20 эндпоинтов.</string>
+    <string name="goals_work_section">Что Kelo ведёт</string>
+    <string name="goals_subgoals">Мелкие цели</string>
+    <string name="goal_about">Описание</string>
+    <string name="goal_log_from">Из: %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">Вместе с ней удалится и её мелкая цель.</item>
+        <item quantity="few">Вместе с ней удалятся %d мелкие цели.</item>
+        <item quantity="many">Вместе с ней удалятся %d мелких целей.</item>
+        <item quantity="other">Вместе с ней удалятся %d мелких целей.</item>
+    </plurals>
 </resources>

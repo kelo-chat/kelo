@@ -50,6 +50,7 @@ class World:
         self.others = {}                        # containers outside the copies (build leftovers, the owner's own): id -> {"status", "labels", "bytes"?}
         self.leftovers = {}                     # what a failing build leaves (Docker's classic builder): moved into `others` when it fails
         self.fail_ls = False                    # `docker container ls` fails
+        self.installer_calls = []                 # (project, args) of INSTALLERS_HELPER runs (downloads.py)
 
     # -------------------------------------------------------------- helpers
     def resolve(self, ref):
@@ -211,6 +212,14 @@ class World:
     def helper(self, project, args, image):
         vol = self.volume(project)
         cmd = args[0]
+        if args[0] in ("installers", "remove-installers"):   # downloads.INSTALLERS_HELPER: the volume's "files" and "named"
+            vol = self.volume(project)
+            self.installer_calls.append((project, list(args)))
+            if args[0] == "installers":
+                return self.ok(json.dumps({"files": vol.get("files", []), "named": vol.get("named")}))
+            gone = [n for n in args[2:] if n not in (vol.get("named") or [])]
+            vol["files"] = [f for f in vol.get("files", []) if f["name"] not in gone]
+            return self.ok(json.dumps({"removed": gone, "failed": []}))
         self.log.append((cmd, project, image))
         if cmd == "info":
             return self.ok(json.dumps({"schema": vol["schema"], "free": vol["free"] + self.freed - self.used, "state": vol["state"], "backups": 0}))
@@ -508,6 +517,88 @@ def test_rollback_to_is_on_the_command_line(monkeypatch):
     assert seen[0].name == "alice" and seen[0].to == "20261120-031500"
 
 
+def test_a_copy_set_to_one_rollback_set_keeps_only_its_newest_point(tmp_path):
+    """Owner 2026-11-20: the number of rollback sets is a setting per copy; this Mac's copies keep one."""
+    m, u, w, msgs = make(tmp_path)
+    inst = w.add_copy(m, "alice")
+    write_env(inst.env, {"KELO_ROLLBACK_SETS": "1"})
+    for i in range(3):
+        w.suffix = f"-{i}"
+        assert u.update(["alice"]) == 0
+    pts = u.points(inst)
+    assert [p["images"]["KELO_IMAGE"]["id"] for p in pts] == ["sha256:new-server-1"]
+    assert u.point(inst)["earlier"] == []
+    assert sorted(t for t in w.images if "rollback-alice-" in t) == sorted(i["tag"] for i in pts[0]["images"].values())
+    assert any("the newest 1 is kept" in x for x in msgs)
+
+
+def test_one_set_refuses_rollback_to_an_older_point_and_backups_says_so(tmp_path):
+    m, u, w, msgs = make(tmp_path)
+    inst = w.add_copy(m, "alice")
+    w.suffix = "-0"
+    assert u.update(["alice"]) == 0
+    w.suffix = "-1"
+    assert u.update(["alice"]) == 0
+    earlier = u.points(inst)[1]
+    write_env(inst.env, {"KELO_ROLLBACK_SETS": "1"})
+    with pytest.raises(Exception, match="keeps only its newest rollback set"):
+        u.rollback("alice", yes=True, ask=None, to=earlier["id"])
+    msgs.clear()
+    assert u.list_backups("alice") == 0
+    text = "\n".join(msgs)
+    assert "--to" not in text.replace("--rollback-sets", "") and "Rollback sets kept: 1" in text
+    assert msgs[-1].startswith("Rollback point:")
+    assert u.rollback("alice", yes=True, ask=None) == 0          # the newest point still works
+
+
+def test_backups_rollback_sets_saves_the_setting_and_frees_the_older_set_at_once(tmp_path):
+    m, u, w, msgs = make(tmp_path)
+    inst = w.add_copy(m, "alice")
+    w.suffix = "-0"
+    assert u.update(["alice"]) == 0
+    w.suffix = "-1"
+    assert u.update(["alice"]) == 0
+    newest, earlier = u.points(inst)
+    assert run_command(NS(cmd="backups", name="alice", rollback_sets=1), manager=m, updater=u) == 0
+    assert read_env(inst.env, "KELO_ROLLBACK_SETS") == "1"
+    assert not any(i["tag"] in w.images for i in earlier["images"].values())
+    assert all(w.images.get(i["tag"]) == i["id"] for i in newest["images"].values())
+    assert any("removed 1 old rollback set" in x for x in msgs)
+    assert run_command(NS(cmd="backups", name="alice", rollback_sets=0), manager=m, updater=u) == 1
+    assert "1 or more" in msgs[-1] and read_env(inst.env, "KELO_ROLLBACK_SETS") == "1"
+
+
+def test_a_missing_or_bad_rollback_setting_keeps_two(tmp_path):
+    m, u, w, msgs = make(tmp_path)
+    inst = w.add_copy(m, "alice")
+    assert u.keep_sets(inst) == 2
+    for bad in ("0", "-1", "two", " ", "1.5"):
+        write_env(inst.env, {"KELO_ROLLBACK_SETS": bad})
+        assert u.keep_sets(inst) == 2, bad
+    write_env(inst.env, {"KELO_ROLLBACK_SETS": "3"})
+    assert u.keep_sets(inst) == 3
+
+
+def test_each_copy_keeps_its_own_number_of_rollback_sets(tmp_path):
+    m, u, w, msgs = make(tmp_path)
+    alice, bob = w.add_copy(m, "alice"), w.add_copy(m, "bob")
+    write_env(alice.env, {"KELO_ROLLBACK_SETS": "1"})
+    for i in range(3):
+        w.suffix = f"-{i}"
+        assert u.update(["alice", "bob"]) == 0
+    assert len(u.points(alice)) == 1 and len(u.points(bob)) == 2
+    assert len({t for t in w.images if "rollback-bob-" in t}) == 2 * len(u.points(bob)[0]["images"])
+
+
+def test_backups_rollback_sets_is_on_the_command_line(monkeypatch):
+    from assistant import cli
+    seen = []
+    monkeypatch.setattr("assistant.updates.run_command", lambda args: seen.append(args) or 0)
+    assert cli.main(["backups", "operator", "--rollback-sets", "1"]) == 0
+    assert cli.main(["backups"]) == 0
+    assert seen[0].name == "operator" and seen[0].rollback_sets == 1 and seen[1].rollback_sets is None
+
+
 def test_deleting_a_copy_drops_its_rollback_tags_but_not_another_copys(tmp_path):
     m, u, w, msgs = make(tmp_path)
     w.add_copy(m, "alice")
@@ -702,6 +793,80 @@ async def test_about_reports_that_the_database_opened_with_its_schema(tmp_path):
     con = sqlite3.connect(tmp_path / "s" / "assistant.db")
     assert db["ok"] is True and db["migrations"] == "done" and db["tables"] > 10 and db["schema"] == schema_fingerprint(con)
     con.close()
+
+
+def test_the_helper_leaves_out_installers_and_caches_and_a_restore_keeps_the_live_ones(tmp_path):
+    """Owner 2026-11-20: the published installers (downloads/), step pictures (browser-history/) and previews (.thumbs/) are not in
+    the pre-update backup; a restore leaves the live folders exactly as they are."""
+    state = tmp_path / "state"
+    store = Store(state / "assistant.db", secret_key=None)
+    store._db.close()
+    for rel, body in (("uploads/a.txt", "first"), ("downloads/kelo-1.0.apk", "A" * 5000), ("downloads/manifest.json", "{}"),
+                      ("browser-history/tab1/1.png", "P" * 3000), (".thumbs/x.jpg", "T" * 2000)):
+        (state / rel).parent.mkdir(parents=True, exist_ok=True)
+        (state / rel).write_text(body)
+    helper(state, "info")                                                         # first look (SQLite may leave a -shm file)
+    small = helper(state, "info")["state"]
+    (state / "downloads" / "kelo-0.9.apk").write_text("B" * 100_000)
+    assert helper(state, "info")["state"] == small                               # the disk check does not count them either
+    first = helper(state, "backup", "20260101-000001", "before update", "{}")
+    with tarfile.open(state / ".backups" / first["id"] / "state.tar.gz") as t:
+        names = t.getnames()
+    assert "uploads/a.txt" in names
+    assert not any(n.split("/")[0] in ("downloads", "browser-history", ".thumbs") for n in names)
+    (state / "uploads" / "a.txt").write_text("second")
+    (state / "downloads" / "kelo-1.1.apk").write_text("C" * 10)                  # published after the backup
+    helper(state, "restore", first["id"])
+    assert (state / "uploads" / "a.txt").read_text() == "first"
+    assert sorted(p.name for p in (state / "downloads").iterdir()) == ["kelo-0.9.apk", "kelo-1.0.apk", "kelo-1.1.apk", "manifest.json"]
+    assert (state / "browser-history" / "tab1" / "1.png").exists() and (state / ".thumbs" / "x.jpg").exists()
+    assert sorted(p.name for p in (state / ".backups").iterdir()) == [first["id"]]
+
+
+def test_a_restore_of_an_older_backup_that_still_holds_installers_keeps_the_live_folder(tmp_path):
+    state = tmp_path / "state"
+    (state / "downloads").mkdir(parents=True)
+    (state / "downloads" / "kelo-2.0.apk").write_text("new")
+    (state / "notes").mkdir()
+    (state / "notes" / "n.md").write_text("now")
+    old = tmp_path / "old"                                                         # a backup made before this change
+    (old / "downloads").mkdir(parents=True)
+    (old / "downloads" / "kelo-1.0.apk").write_text("old")
+    (old / "notes").mkdir()
+    (old / "notes" / "n.md").write_text("then")
+    d = state / ".backups" / "20260101-000001"
+    d.mkdir(parents=True)
+    with tarfile.open(d / "state.tar.gz", "w:gz") as t:
+        for n in ("downloads", "notes"):
+            t.add(old / n, arcname=n)
+    (d / "meta.json").write_text(json.dumps({"id": "20260101-000001", "schema": None, "created": 1.0}))
+    helper(state, "restore", "20260101-000001")
+    assert (state / "notes" / "n.md").read_text() == "then"
+    assert sorted(p.name for p in (state / "downloads").iterdir()) == ["kelo-2.0.apk"]
+
+
+def test_a_restore_without_a_live_downloads_folder_makes_none(tmp_path):
+    state = tmp_path / "state"
+    (state / "notes").mkdir(parents=True)
+    (state / "notes" / "n.md").write_text("x")
+    b = helper(state, "backup", "20260101-000001", "before update", "{}")
+    helper(state, "restore", b["id"])
+    assert not (state / "downloads").exists() and (state / "notes" / "n.md").read_text() == "x"
+
+
+def test_a_good_update_removes_older_installers_and_a_failed_one_does_not(tmp_path):
+    m, u, w, msgs = make(tmp_path)
+    w.add_copy(m, "alice")
+    vol = w.volume("assistant-u-alice")
+    vol["files"] = [{"name": n, "mtime": t} for n, t in (("kelo-1.0.apk", 1), ("kelo-1.1.apk", 2), ("kelo-1.2.apk", 3), ("manifest.json", 4))]
+    vol["named"] = ["kelo-1.2.apk"]
+    w.fail_build = "server"
+    assert u.update(["alice"]) == 1 and not w.installer_calls
+    w.fail_build = None
+    assert u.update(["alice"]) == 0
+    assert [f["name"] for f in vol["files"]] == ["kelo-1.2.apk", "manifest.json"]
+    assert any("removed 2 older app installers" in x for x in msgs)
+    assert any(a[0] == "remove-installers" for _, a in w.installer_calls)
 
 
 def test_an_opt_in_service_built_here_is_built_with_the_update_when_a_copy_has_its_profile_on(tmp_path):

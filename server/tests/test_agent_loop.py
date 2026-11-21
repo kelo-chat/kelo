@@ -588,3 +588,25 @@ async def test_the_owners_calendar_step_with_outside_text_read_first_gets_no_car
     finally:
         current_turn.reset(token)
     assert asked == [] and len(ran) == 4
+
+
+# ---------------------------------------------------------------------------------------------------------- words before a step (S5)
+from assistant.agent.loop import SAID_NOTE
+
+
+async def test_words_written_before_a_step_are_noted_once_for_the_next_pass():
+    fn = scripted(
+        [TextDelta("Let me check."), ToolCall("c1", "echo", '{"x":"A"}'), Done("tool_calls")],
+        [ToolCall("c2", "echo", '{"x":"B"}'), Done("tool_calls")],
+        [TextDelta("It is A and B."), Done("stop")],
+    )
+    events = await run([echo_tool()], fn)
+    assert fn.seen[1].messages[-2]["role"] == "tool" and fn.seen[1].messages[-1] == {"role": "system", "content": SAID_NOTE}
+    assert sum(1 for m in fn.seen[2].messages if m.get("content") == SAID_NOTE) == 1
+    assert not any(m.get("content") == SAID_NOTE for m in events[-1].new_messages)
+
+
+async def test_no_note_when_nothing_was_written_before_the_step():
+    fn = scripted([ToolCall("c1", "echo", '{"x":"A"}'), Done("tool_calls")], [TextDelta("It is A."), Done("stop")])
+    await run([echo_tool()], fn)
+    assert not any(m.get("content") == SAID_NOTE for request in fn.seen for m in request.messages)

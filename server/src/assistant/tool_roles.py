@@ -121,7 +121,7 @@ def for_kind(tools: Iterable[Any], kind: str | None, *, pay_split: bool = True, 
 # schedules, watchers and jobs, the calendar of the briefing, a goal.
 RESEARCH_READ_NAMES: frozenset[str] = frozenset({
     "read_file", "list_files", "read_skill", "search_skills", "read_earlier_messages", "memory_explain", "web_search", "web_fetch", "weather",
-    "schedule_list", "schedule_runs", "watch_list", "ha_watch_list", "event_reminders_list", "workers_list", "worker_status", "goal_get", "calendar_events",
+    "schedule_list", "schedule_runs", "watch_list", "ha_watch_list", "event_reminders_list", "workers_list", "worker_status", "goal_get", "work_list", "calendar_events",
 })
 # Connector tools whose every call is a read, by the effect kinds in effects.TOOL_FAMILY (never by words in a name). The phone's own data
 # is left out (no phone tool in this run), and a download saves a file.

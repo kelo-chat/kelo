@@ -83,7 +83,7 @@ PROVIDERS: dict[str, DeviceProvider] = {
         settings_url="https://github.com/settings/applications",
         situation={"tool": "connector_get", "arguments": {"name": "{{connection}}", "url": "https://api.github.com/notifications?per_page=20"},
                    "mode": "changes", "id": ["id"], "max_rows": 20, "fields": {"reason": "reason", "title": "subject.title",
-                   "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"}},
+                   "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"}, "content": ["notifications"]},
         blurb=N_("Reads your repositories, issues and PRs, and creates them when you allow it. Connect by typing a code once."),
         help=(N_("On GitHub, open Settings → Developer settings → OAuth Apps → New OAuth App."),
               N_("Any name works. For Homepage URL and Authorization callback URL, enter https://github.com (they are not used)."),

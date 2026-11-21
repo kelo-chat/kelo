@@ -119,7 +119,8 @@ async def test_keep_is_the_default_and_a_bad_option_is_refused(tmp_path):
         assert (await c.delete(f"/api/goals/{g['id']}", params={"schedules": "stop"})).status_code == 422
         assert (await c.get(f"/api/goals/{g['id']}")).status_code == 200    # refused: nothing was deleted
         out = (await c.delete(f"/api/goals/{g['id']}")).json()
-        assert out == {"ok": True, "stopped_turns": 0, "stopped_jobs": 0, "deleted_schedules": [], "kept_schedules": [s["id"]]}
+        assert out == {"ok": True, "stopped_turns": 0, "stopped_jobs": 0, "deleted_schedules": [], "kept_schedules": [s["id"]],
+                       "deleted_goals": []}
         kept = (await c.get(f"/api/schedules/{s['id']}")).json()
         assert kept["enabled"] is True and kept["paused"] is False and kept["goal_id"] is None
 

@@ -302,6 +302,9 @@ private fun ScheduleStateBlock(vm: AgentViewModel, s: Schedule) {
         s.disabledReason?.takeIf { it.isNotBlank() && !s.enabled }?.let {
             Text(string(Res.string.agent_schedule_off_reason, it), style = MaterialTheme.typography.labelSmall, color = c.danger)
         }
+        if (!s.paused) s.blockLine?.takeIf { it.isNotBlank() }?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = c.ink)
+        }
         if (s.paused) {
             Text(string(Res.string.work_schedule_paused_reason, s.pausedReason?.ifBlank { null } ?: string(Res.string.work_schedule_paused_unknown)),
                 style = MaterialTheme.typography.bodySmall, color = c.ink)

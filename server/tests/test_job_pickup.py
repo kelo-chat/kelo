@@ -8,7 +8,7 @@ import time
 
 import httpx
 
-from assistant import job_cuts
+from assistant import job_cuts, tool_labels
 from assistant.agent import Tool
 from assistant.done_once import STARTED_DETAIL, ActionLedger
 from assistant.pay_terms import AttemptJournal
@@ -501,3 +501,23 @@ def test_auto_update_waits_while_a_job_step_is_in_flight():
     assert su.due(now) is False
     flying[0] = False
     assert su.due(now) is True
+
+
+def test_a_fourth_cut_stops_the_job_with_where_and_what_it_did():
+    """owner 2026-11-20 (D3): the stop report says where the job stopped and what it did, and it is owed to the chat once."""
+    ws, store, now = _bare()
+    _job(store, "w4")
+    store._run("UPDATE workers SET lines = ? WHERE id = 'w4'", (json.dumps([{"text": "Read the cart"}], ensure_ascii=False),))
+    for n in range(1, 5):
+        ws, _, now = _bare(store=store)
+        _kill(store, "w4", (f"c-{n}", "browser_click" if n == 4 else "browser_read"))
+        ws.startup()
+    row = store._all("SELECT * FROM workers WHERE id = 'w4'")[0]
+    assert row["status"] == "blocked" and row["report_owed_at"] is not None
+    rep = json.loads(row["report"])
+    assert rep["reason"] == "cut_loop"
+    assert tool_labels.label("browser_click") in rep["details"] and "Read the cart" in rep["details"]
+    assert "Stopped at:" in rep["details"] or "Stopped after:" in rep["details"]
+    text = ws._handoff_text(row, rep, {})
+    assert "where it stopped" in text
+    assert [wid for wid in ws.owed()] == ["w4"]

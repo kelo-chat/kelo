@@ -142,4 +142,5 @@ async def test_a_reply_that_finishes_keeps_its_step_lines_with_the_answer(tmp_pa
         events = await follow(c, tid)
         assert events[-1]["type"] == "done"
         texts = await assistant_texts(c)
-        assert len(texts) == 1 and texts[0].startswith(SCRATCH) and texts[0].endswith("다 봤어요.")
+        # 2026-11-20 (p-reply-split-bubbles): the opener and the answer after a shown step are two stored messages, not one
+        assert texts == [SCRATCH, "다 봤어요."]

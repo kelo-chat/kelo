@@ -45,6 +45,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import unquote, urljoin, urlsplit
 
+from .. import run_blocks
 from ..agent import Tool, emit_ui, handover
 from ..browser_devices import accept_language
 from ..browser_identity import identity_for as _chrome_override
@@ -2747,6 +2748,7 @@ class BrowserSession:
                 self._announce(key, check, host)
                 hand = handover.get() if handing else None
                 if hand is None:
+                    run_blocks.note("site_check", run_blocks.site_on(host))   # a scheduled run waits for a person here (run_blocks.py)
                     said += note_for(check, host) + "\n"
                 else:
                     with self.pause_clock(key):
@@ -2754,6 +2756,7 @@ class BrowserSession:
                     if outcome in ("solved", "done"):
                         again = await self.snapshot(handing=False)   # the page as it is now (no second hand-over from this step)
                         return handover_note(outcome, host) + "\n" + again
+                    run_blocks.note("site_check", run_blocks.site_on(host))
                     said += handover_note(outcome, host, round(minutes)) + "\n"
         else:
             self._check_clicked.pop(key, None)

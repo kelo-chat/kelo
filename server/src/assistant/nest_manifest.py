@@ -745,7 +745,8 @@ def parse_provides(raw: Any, *, kind: str, connect: Mapping[str, Any]) -> Mappin
     return MappingProxyType(out)
 
 
-SITUATION_FIELDS = ("request", "tool", "arguments", "mode", "select", "fields", "id", "lines", "max_rows", "max_chars", "every_minutes", "wakes")
+SITUATION_FIELDS = ("request", "tool", "arguments", "mode", "select", "fields", "id", "lines", "max_rows", "max_chars", "every_minutes", "wakes",
+                    "content")
 
 
 def parse_situation(raw: Any, *, connect: Mapping[str, Any]) -> Any:

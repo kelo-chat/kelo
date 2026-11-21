@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import chat.kelo.app.follow.FollowItemRow
 import chat.kelo.app.LocalAppServices
 import chat.kelo.app.agent.dayText
 import chat.kelo.app.res.*
@@ -135,6 +136,10 @@ fun GoalsScreen(frame: TabPageFrame = TabPageFrame.None) {
     val undoText = string(Res.string.undo)
     var editing by remember { mutableStateOf<Goal?>(null) }
     var openedId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // a follow item of the one list: its plan sheet (the same one the work tab opened before)
+    var selectedFollow by remember { mutableStateOf<chat.kelo.app.follow.FollowItem?>(null) }
+    val followVm = keloViewModel("goals-follow") { chat.kelo.app.follow.FollowViewModel(services.sessions) }
+    val followState by followVm.state.collectAsStateWithLifecycle()
     val opened = openedId?.let { id -> state.goals.firstOrNull { it.id == id } }
     val addedText = string(Res.string.goals_suggest_added)
     var adding by rememberSaveable { mutableStateOf(false) }
@@ -158,7 +163,7 @@ fun GoalsScreen(frame: TabPageFrame = TabPageFrame.None) {
     }
     val remove: (Goal) -> Unit = { g ->
         haptics.tick()
-        if (GoalsRules.asksAboutSchedules(g)) askSchedules = g else startRemove(g, false)
+        if (GoalsRules.asksAboutSchedules(g) || GoalsRules.deleteNotice(g) != null) askSchedules = g else startRemove(g, false)
     }
     val toggle: (Goal) -> Unit = { g ->
         if (!g.isDone) haptics.confirm() else haptics.tick()
@@ -197,14 +202,33 @@ fun GoalsScreen(frame: TabPageFrame = TabPageFrame.None) {
             if (state.loaded && state.tracking.isEmpty()) {
                 item(key = "empty") { MutedText(string(Res.string.goals_empty), small = true, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             }
-            goalRows(state.tracking, today, swipeReset, onToggle = toggle, onOpen = { openedId = it.id }, onDelete = remove)
+            goalRows(GoalsRules.grouped(state.tracking), today, swipeReset, onToggle = toggle, onOpen = { openedId = it.id }, onDelete = remove)
+            if (state.carriedKnown) {
+                // the one list of what Kelo carries: a work item with its follow items under it, a follow item on its own
+                val open = CarriedRules.ordered(state.carried).filter { it.state != "done" && it.state != "stopped" }
+                if (open.isNotEmpty()) {
+                    item(key = "h:work") { GroupHeading(string(Res.string.goals_work_section), open.size) }
+                    open.forEach { c ->
+                        val work = c.work
+                        if (CarriedRules.isWork(c) && work != null) {
+                            goalRows(listOf(GoalGroup(work, emptyList())), today, swipeReset, onToggle = toggle, onOpen = { openedId = it.id }, onDelete = remove)
+                            c.follow.forEach { f -> item(key = "cf:" + f.key, contentType = "follow") { FollowItemRow(item = f, onClick = { selectedFollow = f }) } }
+                        } else {
+                            c.follow.firstOrNull()?.let { f -> item(key = "cf:" + f.key, contentType = "follow") { FollowItemRow(item = f, onClick = { selectedFollow = f }) } }
+                        }
+                    }
+                }
+            } else if (state.work.isNotEmpty()) {
+                item(key = "h:work") { GroupHeading(string(Res.string.goals_work_section), state.work.size) }
+                goalRows(state.work.map { GoalGroup(it, emptyList()) }, today, swipeReset, onToggle = toggle, onOpen = { openedId = it.id }, onDelete = remove)
+            }
             if (state.done.isNotEmpty()) {
                 item(key = "h:done") {
                     GroupHeading(string(Res.string.goals_done), state.done.size) {
                         LinkButton(string(if (showDone) Res.string.goals_hide else Res.string.goals_show), onClick = { showDone = !showDone })
                     }
                 }
-                if (showDone) goalRows(state.done, today, swipeReset, onToggle = toggle, onOpen = { openedId = it.id }, onDelete = remove)
+                if (showDone) goalRows(state.done.map { GoalGroup(it, emptyList()) }, today, swipeReset, onToggle = toggle, onOpen = { openedId = it.id }, onDelete = remove)
             }
         }
         StaleHint(
@@ -226,18 +250,34 @@ fun GoalsScreen(frame: TabPageFrame = TabPageFrame.None) {
     if (wide && opened != null) {
         VerticalDivider(color = c.line)
         // (GoalDetailPage is a SubPage, which already sits below the header)
-        Box(Modifier.weight(1f).fillMaxHeight().background(c.bg)) { GoalDetail(opened, vm, services, { editing = it }) { openedId = null } }
+        Box(Modifier.weight(1f).fillMaxHeight().background(c.bg)) {
+            GoalDetail(opened, vm, services, CarriedRules.followOf(state.carried, opened.id), { selectedFollow = it }, { editing = it }, { openedId = it.id }) { openedId = null }
+        }
     }
     }
     LocalChromeHider.current("goal-detail", opened != null && !wide)
     if (!wide && opened != null) {
-        Box(Modifier.fillMaxSize().background(c.bg)) { GoalDetail(opened, vm, services, { editing = it }) { openedId = null } }
+        Box(Modifier.fillMaxSize().background(c.bg)) {
+            GoalDetail(opened, vm, services, CarriedRules.followOf(state.carried, opened.id), { selectedFollow = it }, { editing = it }, { openedId = it.id }) { openedId = null }
+        }
+    }
+    selectedFollow?.let { sel ->
+        val current = followState.items.firstOrNull { it.key == sel.key } ?: sel
+        chat.kelo.app.follow.FollowPlanSheet(
+            item = current, onDismiss = { selectedFollow = null },
+            onStop = { key -> followVm.stop(key) }, onReplan = { key -> followVm.replan(key) }, onRemove = { key -> followVm.remove(key) },
+        )
     }
     }
     askSchedules?.let { g ->
-        ScheduleQuestion(
-            g.schedulesOn,
+        val smaller = GoalsRules.deleteNotice(g)
+        if (g.schedulesOn > 0) ScheduleQuestion(
+            g.schedulesOn, smaller,
             onAnswer = { pause -> askSchedules = null; startRemove(g, pause) },
+            onCancel = { askSchedules = null; swipeReset++ },
+        ) else ChildrenQuestion(
+            smaller ?: 0,
+            onConfirm = { askSchedules = null; startRemove(g, false) },
             onCancel = { askSchedules = null; swipeReset++ },
         )
     }
@@ -246,11 +286,14 @@ fun GoalsScreen(frame: TabPageFrame = TabPageFrame.None) {
 }
 
 @Composable
-private fun GoalDetail(goal: Goal, vm: GoalsViewModel, services: chat.kelo.app.AppServices, onEdit: (Goal) -> Unit, onClose: () -> Unit) {
-    GoalDetailPage(goal, onBack = { onClose(); vm.load() }, onEdit = onEdit, onOpenChat = {
+private fun GoalDetail(
+    goal: Goal, vm: GoalsViewModel, services: chat.kelo.app.AppServices, linked: List<chat.kelo.app.follow.FollowItem>,
+    onFollowOpen: (chat.kelo.app.follow.FollowItem) -> Unit, onEdit: (Goal) -> Unit, onOpenGoal: (Goal) -> Unit, onClose: () -> Unit,
+) {
+    GoalDetailPage(goal, onBack = { onClose(); vm.load() }, onEdit = onEdit, onOpenGoal = onOpenGoal, onOpenChat = {
         onClose()
         services.openRequests.value = OpenTarget.Chat
-    })
+    }, linkedFollow = linked, onFollowOpen = onFollowOpen)
 }
 
 @Composable
@@ -266,23 +309,51 @@ private fun GroupHeading(text: String, count: Int, trailing: @Composable () -> U
     }
 }
 
+/** Each goal, then its smaller goals indented under it. */
 private fun LazyListScope.goalRows(
-    goals: List<Goal>, today: LocalDate, swipeReset: Int, onToggle: (Goal) -> Unit, onOpen: (Goal) -> Unit, onDelete: (Goal) -> Unit,
+    groups: List<GoalGroup>, today: LocalDate, swipeReset: Int, onToggle: (Goal) -> Unit, onOpen: (Goal) -> Unit, onDelete: (Goal) -> Unit,
 ) {
-    items(goals, key = { it.id }, contentType = { "goal" }) { g ->
-        Box(Modifier.animateItem()) { SwipeAway(swipeReset, onSwiped = { onDelete(g) }) { GoalRow(g, today, onToggle, onOpen, onDelete) } }
+    groups.forEach { group ->
+        item(key = "g" + group.goal.id, contentType = "goal") {
+            Box(Modifier.animateItem()) { SwipeAway(swipeReset, onSwiped = { onDelete(group.goal) }) { GoalRow(group.goal, today, onToggle, onOpen, onDelete) } }
+        }
+        group.children.forEach { child ->
+            item(key = "g" + child.id, contentType = "goal") {
+                Box(Modifier.animateItem().padding(start = 16.dp)) {
+                    SwipeAway(swipeReset, onSwiped = { onDelete(child) }) { GoalRow(child, today, onToggle, onOpen, onDelete, indent = true) }
+                }
+            }
+        }
     }
+}
+
+/** A goal with smaller goals goes: say so (and that schedules may stay). */
+@Composable
+private fun ChildrenQuestion(count: Int, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val c = Kelo.colors
+    AlertDialog(
+        onDismissRequest = onCancel,
+        containerColor = c.card,
+        title = { Text(plural(Res.plurals.goals_delete_children, count, count), color = c.ink, style = MaterialTheme.typography.titleMedium) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(string(Res.string.delete), color = c.danger) } },
+        dismissButton = { TextButton(onClick = onCancel) { Text(string(Res.string.cancel), color = c.muted) } },
+    )
 }
 
 /** Before a goal with schedules on goes: turn those schedules off too, or keep them running without the goal. Cancel keeps the goal. */
 @Composable
-private fun ScheduleQuestion(count: Int, onAnswer: (pause: Boolean) -> Unit, onCancel: () -> Unit) {
+private fun ScheduleQuestion(count: Int, smaller: Int?, onAnswer: (pause: Boolean) -> Unit, onCancel: () -> Unit) {
     val c = Kelo.colors
     AlertDialog(
         onDismissRequest = onCancel,
         containerColor = c.card,
         title = { Text(plural(Res.plurals.goals_delete_schedules_q, count, count), color = c.ink, style = MaterialTheme.typography.titleMedium) },
-        text = { Text(string(Res.string.goals_delete_schedules_body), color = c.muted, style = MaterialTheme.typography.bodyMedium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(string(Res.string.goals_delete_schedules_body), color = c.muted, style = MaterialTheme.typography.bodyMedium)
+                if (smaller != null) Text(plural(Res.plurals.goals_delete_children, smaller, smaller), color = c.muted, style = MaterialTheme.typography.bodyMedium)
+            }
+        },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End) {
                 TextButton(onClick = { onAnswer(true) }) { Text(string(Res.string.goals_delete_schedules_off), color = c.danger) }
@@ -321,7 +392,7 @@ private fun SwipeAway(reset: Int, onSwiped: () -> Unit, content: @Composable () 
 
 /** One goal: its box, the title, and under it the tag, the due date and the progress, when it has them. */
 @Composable
-private fun GoalRow(g: Goal, today: LocalDate, onToggle: (Goal) -> Unit, onOpen: (Goal) -> Unit, onDelete: (Goal) -> Unit) {
+private fun GoalRow(g: Goal, today: LocalDate, onToggle: (Goal) -> Unit, onOpen: (Goal) -> Unit, onDelete: (Goal) -> Unit, indent: Boolean = false) {
     val c = Kelo.colors
     val doneLabel = string(Res.string.goals_mark_done)
     val scope = rememberCoroutineScope()
@@ -349,9 +420,11 @@ private fun GoalRow(g: Goal, today: LocalDate, onToggle: (Goal) -> Unit, onOpen:
         )
         Column(Modifier.weight(1f).padding(top = 12.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
-                g.title, style = MaterialTheme.typography.bodyLarge, color = if (checked) c.muted else c.ink,
+                g.title, style = if (indent) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
+                color = if (checked) c.muted else c.ink,
                 textDecoration = if (checked) TextDecoration.LineThrough else null, maxLines = 3, overflow = TextOverflow.Ellipsis,
             )
+            if (g.summary.isNotBlank()) Text(g.summary, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (!g.isDone && g.nextStep != null) Text(string(Res.string.goals_next, g.nextStep!!), style = MaterialTheme.typography.bodySmall,
                 color = c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (meta.note.isNotBlank()) Text(meta.note, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -414,9 +487,9 @@ private fun GoalSheet(goal: Goal?, onClose: () -> Unit, onSave: (title: String, 
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(string(if (goal == null) Res.string.goals_add else Res.string.goals_edit), style = MaterialTheme.typography.titleLarge, color = c.ink)
-            KeloTextField(title, { title = it }, string(Res.string.goals_title_placeholder), maxLength = 200)
-            KeloTextField(note, { note = it }, string(Res.string.goals_note_placeholder), singleLine = false, maxLength = 1800)
-            KeloTextField(tag, { tag = it }, string(Res.string.goals_tag_placeholder), maxLength = 40)
+            KeloTextField(title, { title = it }, string(Res.string.goals_title_placeholder))
+            KeloTextField(note, { note = it }, string(Res.string.goals_note_placeholder), singleLine = false)
+            KeloTextField(tag, { tag = it }, string(Res.string.goals_tag_placeholder))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(KeloIcons.Calendar, contentDescription = null, tint = c.muted, modifier = Modifier.size(20.dp))
                 val due = dueDay?.let { LocalDate.ofEpochDay(it) }

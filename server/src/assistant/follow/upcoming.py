@@ -12,6 +12,7 @@ the runner plans them once they enter the look-ahead window.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import re
 from collections.abc import Callable
 from datetime import datetime
@@ -67,11 +68,23 @@ class UpcomingExtractor:
         items = [it for it in self.store.list_items() if it.get("state") != "stopped" and float(it["starts_at"]) >= now - 86400]
         return items[:LISTED_MAX]
 
+    def _open_work(self) -> list[dict[str, Any]]:
+        """The open work items Kelo carries (goals.py kind work): a look-back item that is one of them is not added (owner 2026-11-20)."""
+        try:
+            return self.store._all("SELECT id, title FROM goals WHERE kind = 'work' AND status != 'done' ORDER BY id")
+        except sqlite3.OperationalError:   # a store without the goal book's tables (no work items can exist there)
+            return []
+
+    def _is_open_work(self, key: str) -> bool:
+        m = re.match(r"^work:(\d+)$", key)
+        return bool(m) and any(int(w["id"]) == int(m.group(1)) for w in self._open_work())
+
     def known_block(self) -> str:
         """Today's date (so the model can name the year) and what is already kept, with each item's key and source."""
         today = datetime.fromtimestamp(self.clock(), self.tz()).date().isoformat()
         lines = [f"- {it['key']}: {it['title']} on {self._local_day(float(it['starts_at']))} ({it.get('source') or 'unknown'})"
                  for it in self.kept()]
+        lines += [f"- work:{w['id']}: {w['title']} (work item)" for w in self._open_work()]
         return f"Today: {today}\nAlready kept (do not add them again; same_as and upcoming_drop use these keys):\n" + (
             "\n".join(lines) if lines else "(none)")
 
@@ -100,7 +113,8 @@ class UpcomingExtractor:
             if not isinstance(it, dict):
                 continue
             title = _line(it.get("title"), TITLE_MAX)
-            if _line(it.get("same_as"), 200) in known:   # already kept under its own source: linked, nothing new
+            same = _line(it.get("same_as"), 200)
+            if same in known or self._is_open_work(same):   # already kept under its own source, or one of the open work items: nothing new
                 continue
             quote = find_quote(it.get("quote"), owner_words)
             if not title or quote is None:

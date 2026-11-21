@@ -1515,6 +1515,7 @@
     <string name="goal_resume">Devolver ao Kelo</string>
     <string name="goal_resume_started">O Kelo está cuidando disso. Você pode acompanhar no Chat.</string>
     <string name="goal_resume_no_model">Escolha um modelo em Minha área primeiro.</string>
+    <string name="goal_log_more">Mostrar entradas anteriores</string>
     <string name="goal_edit">Editar</string>
     <string name="goal_due">Até %1$s</string>
     <string name="goal_mark_step">Marcar como feito</string>
@@ -1587,4 +1588,13 @@
     <string name="endpoint_in_use">Este é o endpoint do modelo em uso. Mude para outro modelo primeiro.</string>
     <string name="endpoint_name_taken">Esse nome já está em uso.</string>
     <string name="endpoint_too_many">Você pode manter até 20 endpoints.</string>
+    <string name="goals_work_section">O que a Kelo está cuidando</string>
+    <string name="goals_subgoals">Objetivos menores</string>
+    <string name="goal_about">Sobre</string>
+    <string name="goal_log_from">De %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">O objetivo menor também será apagado.</item>
+        <item quantity="many">Os %d objetivos menores também serão apagados.</item>
+        <item quantity="other">Os %d objetivos menores também serão apagados.</item>
+    </plurals>
 </resources>

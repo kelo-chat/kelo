@@ -20,6 +20,7 @@ _BREAK = re.compile(r"<message_break\s*/?>")
 _PARA_BREAK = re.compile(r"\n\s*\n|<message_break\s*/?>")   # a blank line or a bubble break
 SIMILAR = 0.8      # this alike (0..1) counts as the same message said again
 HEAD = 24          # characters of a message's opening that must come back for a repeat
+MIN_COPY = 6       # letters or digits an earlier run needs before an exact copy of it is taken out ("1." or "**" never is)
 
 
 def norm(text: str) -> str:
@@ -112,9 +113,26 @@ class RepeatGuard:
         return norm(re.sub(r"<[^>]*$", "", "".join(i.get("text", "") for i in self.held)))
 
     def _release(self) -> list[dict[str, Any]]:
-        out, self.held, self.holding = self.held, [], False
+        out, self.held, self.holding = self._without_copy(self.held), [], False
         self.current += [i.get("text", "") for i in out]
         return out
+
+    def _without_copy(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The held text without an exact copy of an earlier run of this turn at its start (white space and bubble breaks aside), when
+        more follows the copy: the model wrote its earlier words again and went on. A copy must end where a word ends."""
+        raw = "".join(str(i.get("text", "")) for i in items)
+        whole = norm(raw)
+        for seg in sorted(self.segments, key=len, reverse=True):
+            if sum(ch.isalnum() for ch in seg) < MIN_COPY or len(whole) <= len(seg) or not whole.startswith(seg):
+                continue
+            cut = next((k for k in range(1, len(raw) + 1) if norm(raw[:k]) == seg), None)
+            if cut is None:
+                continue
+            rest = raw[cut:]
+            if not (rest[:1].isspace() or rest.startswith("<") or not seg[-1:].isalnum()):
+                continue   # the copy would end inside a word
+            return [{**items[0], "text": rest}] if rest.strip() else []
+        return items
 
     def feed(self, item: dict[str, Any]) -> list[dict[str, Any]]:
         """The events to pass on now for `item` (none while a possible repeat is held)."""

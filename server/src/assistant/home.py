@@ -47,6 +47,7 @@ CHECKLIST = "CHECKLIST.md"
 NOTIFY_PREFS = "NOTIFY_PREFS.md"
 SIDE_FILES = (CHECKLIST, NOTIFY_PREFS)
 WRITABLE_DIRS = ("memory", "notes")
+APP_HIDDEN = ("notes/goals",)   # Kelo's own goal notes and check bookkeeping (goals.NOTES_DIR): not in the apps' file screens (owner 2026-11-20, D16)
 # What the owner's own words make (memory-owner-only): the memory pass writes these from the owner's messages, the app's editor and the
 # server's own jobs may still change them, the agent's file tools may not (`by="agent"`).
 OWNER_MEMORY = ("user.md", "MEMORY.md", "AGENTS.md", NOTIFY_PREFS)
@@ -419,13 +420,16 @@ class Home:
         visit(base, norm, 1)
         return out
 
-    def tree(self, folders: bool = False) -> list[dict[str, Any]]:
+    def tree(self, folders: bool = False, *, for_app: bool = False) -> list[dict[str, Any]]:
         """Every readable file, for the Settings editor. `folders`: the folders too (even empty ones), as {"path", "type": "dir", "bytes":
-        None, "writable": whether files can be made in it}; every row then has a "type" ("file" or "dir")."""
+        None, "writable": whether files can be made in it}; every row then has a "type" ("file" or "dir"). `for_app`: the apps' file
+        screens leave out APP_HIDDEN (Kelo still sees them: list, walk and the context are unchanged)."""
         out = []
         for p in sorted(self.root.rglob("*")):
             rel = p.relative_to(self.root).as_posix()
             if p.is_symlink() or any(part.startswith(".") for part in p.relative_to(self.root).parts):
+                continue
+            if for_app and any(rel == h or rel.startswith(h + "/") for h in APP_HIDDEN):
                 continue
             if folders and p.is_dir():
                 out.append({"path": rel, "type": "dir", "bytes": None, "writable": rel.split("/")[0] in WRITABLE_DIRS})

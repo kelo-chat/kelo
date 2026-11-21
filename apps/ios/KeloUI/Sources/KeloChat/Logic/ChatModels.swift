@@ -113,11 +113,15 @@ public struct ReplyQuestion: Codable, Equatable, Sendable {
     public var unit: String
     /// A picture card per option, same order (`cardList` checks the length); none on older servers and for plain choices.
     public var cards: [ReplyCard]
+    /// A question about connecting a service: the ids of the services, in the order of the options (the last option, not now, has none).
+    /// The app shows plain buttons for it and reads nothing else from it.
+    public var connect: [String]
 
     public init(question: String = "", options: [String] = [], says: [String] = [], typed: [String] = [], hint: String = "", kind: String = "",
-                defaultValue: String = "", min: Double? = nil, max: Double? = nil, unit: String = "", cards: [ReplyCard] = []) {
+                defaultValue: String = "", min: Double? = nil, max: Double? = nil, unit: String = "", cards: [ReplyCard] = [], connect: [String] = []) {
         self.question = question; self.options = options; self.says = says; self.typed = typed; self.hint = hint
         self.kind = kind; self.defaultValue = defaultValue; self.min = min; self.max = max; self.unit = unit; self.cards = cards
+        self.connect = connect
     }
 
     public init(from decoder: Decoder) throws {
@@ -134,6 +138,7 @@ public struct ReplyQuestion: Codable, Equatable, Sendable {
         unit = j.str("unit")
         // one card per entry, in order: an unreadable entry becomes an empty card so the options still line up
         cards = (j["cards"]?.arrayValue ?? []).map { (try? JSON.decode(ReplyCard.self, from: $0)) ?? ReplyCard() }
+        connect = j.strings("connect")
     }
 
     public func encode(to encoder: Encoder) throws {

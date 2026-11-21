@@ -536,6 +536,9 @@ struct AgendaRow: View {
             if let r = s.disabledReason, !r.isEmpty, !s.enabled, !s.paused {
                 Text(L(R.string.agent_schedule_off_reason, r)).font(KeloFont.label).foregroundStyle(c.danger).lineLimit(3)
             }
+            if !s.paused, let line = s.blockLine, !line.isEmpty {
+                Text(line).font(KeloFont.label).foregroundStyle(c.ink).lineLimit(3)
+            }
             if s.paused {
                 Text(L(R.string.work_schedule_paused_reason, (s.pausedReason ?? "").isEmpty ? L(R.string.work_schedule_paused_unknown) : s.pausedReason!))
                     .font(KeloFont.label).foregroundStyle(c.warn).lineLimit(4)

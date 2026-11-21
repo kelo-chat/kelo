@@ -63,19 +63,25 @@ class QuickReplyRulesTest {
         assertEquals(emptyList<String>(), old.questions[0].typed)
     }
 
-    @Test fun everyChoiceGetsAnOtherBoxUnlessItHasOneOrIsALoneButton() {
+    @Test fun aChoiceShowsOnlyTheServersOptions() {
         val q = ReplyQuestion("When", listOf("Morning", "Evening"))
-        assertEquals(listOf("Morning", "Evening", QuickReplyRules.OTHER), QuickReplyRules.choices(q))
-        assertEquals(form.questions[0].options, QuickReplyRules.choices(form.questions[0]))      // its own "직접 입력할게요"
+        assertEquals(listOf("Morning", "Evening"), QuickReplyRules.choices(q))   // no answer of the app's own
+        assertEquals(form.questions[0].options, QuickReplyRules.choices(form.questions[0]))
         assertEquals(listOf("Continue"), QuickReplyRules.choices(ReplyQuestion("", listOf("Continue"))))
         assertEquals(emptyList<String>(), QuickReplyRules.choices(ReplyQuestion("Day", listOf("a", "b"), kind = "date")))
+        assertFalse(QuickReplyRules.isTyped(q, "Morning"))                       // a plain choice opens no box
+    }
+
+    @Test fun aTypedOptionOpensABoxAndNothingElseDoes() {
+        val q = ReplyQuestion("Which", listOf("Morning", "Write it"), typed = listOf("Write it"))
+        assertEquals(listOf("Morning", "Write it"), QuickReplyRules.choices(q))
         val one = ReplySet(listOf(q))
-        assertTrue(QuickReplyRules.isTyped(q, QuickReplyRules.OTHER))
-        assertFalse(QuickReplyRules.sendsOnTap(one, q, QuickReplyRules.OTHER))
-        assertTrue(QuickReplyRules.showsSend(one, mapOf(0 to QuickReplyRules.OTHER)))
-        assertFalse(QuickReplyRules.canSend(one, mapOf(0 to QuickReplyRules.OTHER), emptyMap()))
-        assertEquals("Late night", QuickReplyRules.compose(one, mapOf(0 to QuickReplyRules.OTHER), mapOf(0 to " Late night ")))
-        assertEquals(listOf(ReplyAnswer(0, "Late night")), QuickReplyRules.answers(one, mapOf(0 to QuickReplyRules.OTHER), mapOf(0 to "Late night")))
+        assertTrue(QuickReplyRules.isTyped(q, "Write it"))
+        assertFalse(QuickReplyRules.sendsOnTap(one, q, "Write it"))
+        assertTrue(QuickReplyRules.showsSend(one, mapOf(0 to "Write it")))
+        assertFalse(QuickReplyRules.canSend(one, mapOf(0 to "Write it"), emptyMap()))
+        assertEquals("Late night", QuickReplyRules.compose(one, mapOf(0 to "Write it"), mapOf(0 to " Late night ")))
+        assertEquals(listOf(ReplyAnswer(0, "Late night")), QuickReplyRules.answers(one, mapOf(0 to "Write it"), mapOf(0 to "Late night")))
     }
 
     @Test fun fieldsAreSentInWordsWithTheirPlainValuesAlongside() {

@@ -6,6 +6,10 @@ Declarations are DATA, written next to each connector's own definition (presets.
 oauth_connect.DeviceProvider.situation, mcp_oauth.McpService.situation, a Nest package's connector.situation, phone_data.SITUATION).
 This module never names a connector, a connector id, a phone kind or a service's path (tests/test_situation_sources.py enforces it).
 
+A declaration may name the kinds of data its rows are (`content`, a list): each kind is the name of a guidance file in
+content/prompts/situation_kinds/ (KINDS_DIR). The hourly look shows the kind on the section and gives the model that file's guidance;
+a read without `content` follows the general rules. The list of kinds is the files that exist, never a list in code.
+
 A declared read is one of Kelo's own tools with fixed arguments. Only reads run: the effect must be a read and the owner's limits must
 allow it, unattended. Snapshots hold hashes, ids and times only, never content.
 """
@@ -41,6 +45,7 @@ MAX_IDS = 500                  # ids kept per snapshot (changes mode)
 ROW_VALUE_CHARS = 200          # one value in a row
 MODES = ("state", "changes")
 SNAPSHOT = "situation:source:{sid}"
+KINDS_DIR = "situation_kinds"   # content/prompts/<KINDS_DIR>/<kind>.md: one guidance file per kind of data; the file names are the kinds
 
 _BINDING = re.compile(r"\{\{(\w+)\}\}")
 
@@ -59,6 +64,7 @@ class SituationRead:
     every_minutes: int = 0                     # 0 = every pass; else at most once per this many minutes
     wakes: bool = True                         # False: shown when a pass runs, but its change alone never starts a research turn
     label: str = ""                            # a sub-name when one connector has several items (the phone's)
+    content: tuple[str, ...] = ()              # the kinds of data the rows are (file names in KINDS_DIR); () = general rules only
 
 
 @dataclass
@@ -95,9 +101,17 @@ class SourceSection:
     compact: bool = False          # not_due or unchanged: the pack says "No change since"
     since: float = 0.0             # when the fingerprint last changed
     kind: str = "connector"        # "connector" | "phone" (sources_json)
+    content: tuple[str, ...] = ()  # the kinds of data of the rows (file names in KINDS_DIR)
 
 
 # ------------------------------------------------------------------------------------------------------------- parsing
+def content_kinds() -> frozenset[str]:
+    """The kinds of data a read may name in `content`: the guidance files that exist (situation.prompts_dir() / KINDS_DIR / *.md)."""
+    from .situation import prompts_dir   # lazy: situation imports this module
+    d = prompts_dir() / KINDS_DIR
+    return frozenset(p.stem for p in d.glob("*.md")) if d.is_dir() else frozenset()
+
+
 def _bindings_in(value: Any) -> set[str]:
     if isinstance(value, str):
         return set(_BINDING.findall(value))
@@ -165,8 +179,16 @@ def parse_read(raw: Mapping[str, Any], *, where: str) -> SituationRead:
         raise ValueError(f"{where}: label must be text")
     if mode == "changes" and not (ids or lines):
         raise ValueError(f"{where}: changes needs id (JSON) or lines (text)")
+    content = raw.get("content", ())
+    content = (content,) if isinstance(content, str) else content
+    if not isinstance(content, (list, tuple)) or not all(isinstance(c, str) for c in content):
+        raise ValueError(f"{where}: content must be a kind of data or a list of them")
+    unknown = sorted(set(content) - content_kinds())
+    if unknown:
+        raise ValueError(f"{where}: unknown kind of data {unknown[0]!r}; the kinds are {', '.join(sorted(content_kinds()))}")
     return SituationRead(tool=tool, arguments=dict(args), mode=mode, select=select, fields=dict(fields), id=ids, lines=lines,
-                         max_rows=max_rows, max_chars=max_chars, every_minutes=every, wakes=wakes, label=label)
+                         max_rows=max_rows, max_chars=max_chars, every_minutes=every, wakes=wakes, label=label,
+                         content=tuple(dict.fromkeys(content)))
 
 
 @lru_cache(maxsize=256)
@@ -393,7 +415,7 @@ class SourceReader:
 
     def _failed(self, d: Declared, outcome: str, note: str) -> SourceSection:
         return SourceSection(d.sid, self._title(d), [], None, "", note, d.read.wakes, d.kind, outcome,
-                             _call_words(d.read.tool, d.read.arguments), kind=d.kind)
+                             _call_words(d.read.tool, d.read.arguments), kind=d.kind, content=d.read.content)
 
     async def _read_one(self, d: Declared, tools: Mapping[str, Any], base: dict[str, Any], now: float) -> SourceSection:
         read, saved = d.read, self._saved(d.sid)
@@ -437,7 +459,7 @@ class SourceReader:
         ids = saved.get("ids") if d.read.mode == "changes" else None
         return SourceSection(d.sid, self._title(d), [], list(ids or []) if d.read.mode == "changes" else None,
                              str(saved.get("fp", "")), "", d.read.wakes, d.kind, outcome, call, compact=True,
-                             since=float(saved.get("since") or 0), kind=d.kind)
+                             since=float(saved.get("since") or 0), kind=d.kind, content=d.read.content)
 
     def _answered(self, d: Declared, call: str, got: Projected, saved: dict[str, Any], now: float) -> SourceSection:
         read = d.read
@@ -454,7 +476,7 @@ class SourceReader:
             else:
                 section = SourceSection(d.sid, self._title(d), [r for r, _i in fresh], list(got.ids), got.fingerprint,
                                         f"{got.more} more not shown" if got.more else "", read.wakes, d.kind, outcome, call,
-                                        since=now, kind=d.kind)
+                                        since=now, kind=d.kind, content=read.content)
             self._pending[d.sid] = {"fp": got.fingerprint, "ids": list(got.ids)[:MAX_IDS], "since": section.since or now, "read_at": now}
             return section
         same = bool(saved.get("fp")) and saved.get("fp") == got.fingerprint
@@ -464,7 +486,7 @@ class SourceReader:
             return self._unchanged(d, "same", {**saved, "since": since}, call)
         outcome = "changed" if saved.get("fp") else "new"
         return SourceSection(d.sid, self._title(d), got.rows, None, got.fingerprint, f"{got.more} more not shown" if got.more else "",
-                             read.wakes, d.kind, outcome, call, since=now, kind=d.kind)
+                             read.wakes, d.kind, outcome, call, since=now, kind=d.kind, content=read.content)
 
     def commit(self) -> None:
         """Saves the snapshots of the pass that got through (a failed pass re-reads the same changes next time)."""
@@ -482,4 +504,4 @@ async def _ensure(tool: Any, args: dict[str, Any]) -> None:
 
 
 __all__ = ["SituationRead", "Declared", "SourceReader", "SourceSection", "Projected", "parse_read", "read_of", "fill", "project",
-           "declared", "READ_SECONDS", "READ_PARALLEL", "SOURCES_SECONDS", "SOURCES_CHARS"]
+           "declared", "content_kinds", "KINDS_DIR", "READ_SECONDS", "READ_PARALLEL", "SOURCES_SECONDS", "SOURCES_CHARS"]

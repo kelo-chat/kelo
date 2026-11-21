@@ -61,7 +61,6 @@ fun QuickReplies(set: ReplySet, onSend: (String, List<ReplyAnswer>) -> Unit) {
     val writing = QuickReplyRules.writing(set, picks)
     val canSend = QuickReplyRules.canSend(set, picks, typed, values)
     val send = { if (canSend) onSend(QuickReplyRules.compose(set, picks, typed, values, show), QuickReplyRules.answers(set, picks, typed, values)) }
-    val other = string(Res.string.reply_other)
     Column(Modifier.fillMaxWidth().padding(start = 4.dp, end = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         set.questions.forEachIndexed { i, q ->
             // the question, its answers and its text box are brought into view together, clear of the floating header above the chat
@@ -95,10 +94,9 @@ fun QuickReplies(set: ReplySet, onSend: (String, List<ReplyAnswer>) -> Unit) {
                     if (cards != null) {
                         ReplyCardList(q.options, cards, picks[i], pick)
                     }
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        // with cards the options are the cards above; only the app's own "Other" stays a button
-                        QuickReplyRules.choices(q).filter { cards == null || it == QuickReplyRules.OTHER }.forEach { o ->
-                            ChoiceChip(if (o == QuickReplyRules.OTHER) other else o, selected = picks[i] == o, onClick = { pick(o) })
+                    if (cards == null) {   // with cards the options are the cards above
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            QuickReplyRules.choices(q).forEach { o -> ChoiceChip(o, selected = picks[i] == o, onClick = { pick(o) }) }
                         }
                     }
                 }

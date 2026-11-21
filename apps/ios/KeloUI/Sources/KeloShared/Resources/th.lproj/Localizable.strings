@@ -1309,6 +1309,7 @@
 "goal_resume" = "ฝากกลับให้ Kelo";
 "goal_resume_started" = "Kelo กำลังทำอยู่ ติดตามได้ในแชต";
 "goal_resume_no_model" = "เลือกโมเดลใน ของฉัน ก่อน";
+"goal_log_more" = "แสดงรายการก่อนหน้า";
 "goal_edit" = "แก้ไข";
 "goal_due" = "ภายใน %1$s";
 "goal_mark_step" = "ทำเครื่องหมายว่าเสร็จ";
@@ -1358,6 +1359,11 @@
 "endpoint_in_use" = "นี่คือปลายทางของโมเดลที่ใช้งานอยู่ โปรดเปลี่ยนเป็นโมเดลอื่นก่อน";
 "endpoint_name_taken" = "ชื่อนี้ถูกใช้แล้ว";
 "endpoint_too_many" = "คุณสามารถเก็บปลายทางได้สูงสุด 20 ปลายทาง";
+"goals_work_section" = "สิ่งที่ Kelo ดูแล";
+"goals_subgoals" = "เป้าหมายย่อย";
+"goal_about" = "รายละเอียด";
+"goal_log_from" = "จาก %1$s";
+"goals_delete_children##other" = "เป้าหมายย่อยอีก %d รายการจะถูกลบไปด้วย";
 "actions_title" = "สิ่งที่ Kelo ทำ";
 "actions_period_today" = "วันนี้";
 "actions_period_7d" = "7 วัน";
@@ -2121,7 +2127,6 @@
 "pin_secret_title" = "PIN ชำระเงินของ %1$s";
 "pin_secret_where" = "เข้ารหัสในโทรศัพท์เครื่องนี้ ไม่แสดงในแชตเด็ดขาด";
 "pin_secret_done" = "บันทึก PIN ชำระเงินของ %1$s แล้ว";
-"reply_other" = "อื่นๆ";
 "reply_pick_date" = "เลือกวันที่";
 "reply_pick_time" = "เลือกเวลา";
 "reply_number_hint" = "ใส่ตัวเลข";

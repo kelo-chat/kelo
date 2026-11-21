@@ -46,6 +46,7 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from . import run_blocks
 from .agent import Tool
 from .code_shelf import SHELF
 from .data_trail import USES_PARAM, note_item
@@ -62,11 +63,11 @@ KINDS = (*SNAPSHOT_KINDS, "notifications")
 # so "last sync" text stays out of the fingerprint. Labels are translated when the pack is built.
 SITUATION: dict[str, dict[str, Any]] = {
     "messages": {"tool": "phone_messages", "arguments": {"days": 1, "limit": 30}, "mode": "changes", "lines": "^- ", "max_rows": 30,
-                 "label": "Text messages"},
+                 "label": "Text messages", "content": ["messages"]},
     "call_log": {"tool": "phone_call_log", "arguments": {"days": 1, "limit": 20}, "mode": "changes", "lines": "^- ", "max_rows": 20,
                  "label": "Calls"},
     "notifications": {"tool": "phone_notifications", "arguments": {"hours": 3, "limit": 40}, "mode": "changes", "lines": "^- ",
-                      "max_rows": 40, "label": "Notifications"},
+                      "max_rows": 40, "label": "Notifications", "content": ["notifications"]},
     "health": {"tool": "phone_health", "arguments": {}, "mode": "state", "lines": "^- ", "max_rows": 20, "wakes": False, "label": "Health"},
 }
 PATHS = {"contacts": "contacts", "messages": "messages", "call-log": "call_log", "health": "health", "dialer": "dialer",
@@ -623,6 +624,7 @@ def phone_tools(data: PhoneData, timezone_name: Callable[[], str | None]) -> lis
             return f"Sent the text to {who} from {sender['device_name'] or 'the phone'}."
         if done and done["state"] == "failed":
             return f"The phone could not send the text to {who}: {done['error'] or 'unknown reason'}. Tell the user; do not retry on your own."
+        run_blocks.note("device_away", run_blocks.device_on(sender["owner"]))   # a scheduled run waits for the phone (run_blocks.py)
         return (f"The text to {who} is waiting for {sender['device_name'] or 'the phone'} to pick it up (the phone seems offline). It is sent "
                 "when the phone comes online within an hour, otherwise it is dropped. Tell the user it is not sent yet.")
 
@@ -663,6 +665,7 @@ def phone_tools(data: PhoneData, timezone_name: Callable[[], str | None]) -> lis
             return f"The phone {how} with {who} filled in. The user places the call themselves; Kelo cannot hear or join it."
         if done and done["state"] == "failed":
             return f"The phone could not open the dialer: {done['error'] or 'unknown reason'}."
+        run_blocks.note("device_away", run_blocks.device_on(d["owner"]))
         return f"The phone has not picked up the request yet (it may be offline); it opens the dialer for {who} if it comes online within 10 minutes."
 
     # ---- call log
@@ -897,6 +900,7 @@ def phone_calendar_write_tools(data: PhoneData, cals: Any, timezone_name: Callab
             return f"Done on the phone: {what}. The phone sends a fresh copy of its calendar now."
         if done and done["state"] == "failed":
             return f"The phone could not do it ({what}): {done['error'] or 'unknown reason'}. Tell the user; do not retry on your own."
+        run_blocks.note("device_away", run_blocks.device_on(owner))
         return f"Not done yet: the phone seems offline. It does it ({what}) if it comes online within an hour. Tell the user."
 
     async def phone_calendar_add(args: dict[str, Any]) -> str:

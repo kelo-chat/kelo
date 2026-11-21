@@ -23,7 +23,9 @@ import json
 import re
 from typing import Any
 
+from . import tool_labels
 from .agent.fence import is_fenced
+from .repeats import collapse_repeat
 
 LEAD_IN_MAX = 160
 STEPS_MAX = 400      # the steps line the next turn reads: whole steps only, a picture step always kept (see steps_text)
@@ -34,6 +36,8 @@ BOOKKEEPING = frozenset({
 _BREAK = re.compile(r"<message_break\s*/?>")
 _BREAK_END = re.compile(r"<message_break\s*/?>\s*$")
 _PARAGRAPH = re.compile(r"\n\s*\n")
+ROW_JOIN = "<message_break/>"    # only used to run collapse_repeat over a whole reply; never stored between rows
+_EDGE = re.compile(r"^(?:\s|<message_break\s*/?>)+|(?:\s|<message_break\s*/?>)+$")
 
 
 def is_lead_in(segment: str) -> bool:
@@ -64,7 +68,7 @@ class ReplyText:
     """Fed every event of a reply (the observe callback of run_turn); `text()` is what the conversation stores."""
 
     def __init__(self) -> None:
-        self.parts: list[str] = []
+        self.streamed: list[str] = []
         self.cut = 0          # parts before this index were written before a tool step
         self.segments: list[str] = []   # text before each counted tool step (never empty ones)
         self.cur: list[str] = []
@@ -75,14 +79,15 @@ class ReplyText:
         self.args: dict[str, str] = {}   # id -> the whole argument text of a tool step, until its result comes (a picture step says how to call it again)
         self.kept: set[int] = set()      # indexes of steps that steps_text always keeps (a step that showed a picture)
         self.order: list[dict[str, str]] = []   # the reply in order: {"said": text written before a step} / {"did": the step's line} (timeline)
+        self.gaps: list[bool] = []       # per segment: a step the apps show as a chip started after it, before the next text
 
     def feed(self, item: dict[str, Any]) -> None:
         kind = item.get("type")
         if kind == "text":
-            self.parts.append(str(item.get("text") or ""))
+            self.streamed.append(str(item.get("text") or ""))
             self.cur.append(str(item.get("text") or ""))
         elif kind == "tool_started":
-            self.cut = len(self.parts)
+            self.cut = len(self.streamed)
             if item.get("name") not in BOOKKEEPING:
                 self.names[str(item.get("id") or "")] = str(item.get("name") or "")
                 args = item.get("arguments") or ""
@@ -92,8 +97,11 @@ class ReplyText:
                 seg = "".join(self.cur)
                 if seg.strip():
                     self.segments.append(seg)
+                    self.gaps.append(False)
                     self.order.append({"said": seg})
                 self.cur = []
+                if self.segments and not "".join(self.cur).strip() and not tool_labels.hidden(str(item.get("name") or "")):
+                    self.gaps[-1] = True   # the apps show this step as a chip: the text after it is a new bubble
         elif kind == "tool_result":
             rid = str(item.get("id") or "")
             self.open.pop(rid, None)
@@ -114,6 +122,56 @@ class ReplyText:
             tail = "".join(self.cur)
             if tail.strip():
                 self.order.append({"said": tail})
+
+    def parts(self) -> list[str]:
+        """The reply as the chat showed it: one part per bubble that a shown tool step started. Lead-ins are left out as in text(); a
+        single part is exactly text()."""
+        if not self.done:
+            t = self.text()
+            return [t] if t.strip() else []
+        tail = "".join(self.cur)
+        segs = [*self.segments, tail] if tail.strip() else list(self.segments)
+        out, cur, dropped, last = [], "", False, -1
+        for i, seg in enumerate(segs):
+            if 0 < i < len(segs) - 1 and is_lead_in(seg):
+                dropped = True
+                continue
+            if last >= 0 and any(self.gaps[last:i]):          # a chip between the last kept segment and this one
+                out.append(cur)
+                cur = ""
+            elif dropped and cur and not cur[-1:].isspace() and not seg[:1].isspace() and not _BREAK_END.search(cur):
+                cur += "\n\n"                                 # same joining rule as text()
+            dropped = False
+            cur += seg
+            last = i
+        out.append(cur)
+        if len(out) == 1:
+            return [self.text()] if self.text().strip() else []
+        return [p for p in (_EDGE.sub("", p) for p in out) if p]
+
+    def rows(self, split: bool = True) -> list[str]:
+        """What the conversation stores: one message per part (parts()); `split` False for a call's reply. collapse_repeat runs over
+        the whole reply; its cut, always a beginning of what it was given, is mapped back to the parts."""
+        parts = self.parts() if split else []
+        if len(parts) <= 1:
+            whole = collapse_repeat(self.text())
+            return [whole] if whole.strip() else []
+        joined = ROW_JOIN.join(parts)
+        kept = collapse_repeat(joined)
+        if not joined.startswith(kept):    # collapse_repeat only ever cuts the end; anything else keeps every part
+            return parts
+        out, start = [], 0
+        for p in parts:
+            end = start + len(p)
+            if len(kept) >= end:
+                out.append(p)
+            else:
+                rest = _EDGE.sub("", kept[start:]) if len(kept) > start else ""
+                if rest:
+                    out.append(rest)
+                break
+            start = end + len(ROW_JOIN)
+        return out
 
     def steps_text(self) -> str:
         """The tool steps of this reply in one line ("watch_add -> Watcher #3 saved; email_list -> read"), stored with the message
@@ -167,7 +225,7 @@ class ReplyText:
 
     def text(self) -> str:
         if not self.done:
-            return "".join(self.parts[self.cut:])
+            return "".join(self.streamed[self.cut:])
         tail = "".join(self.cur)
         segs = [*self.segments, tail] if tail.strip() else list(self.segments)   # no closing text: the last thing written is the answer
         out = ""
@@ -183,10 +241,11 @@ class ReplyText:
         return out if segs else tail
 
     def clear(self) -> None:
-        self.parts.clear()
+        self.streamed.clear()
         self.segments.clear()
         self.cur.clear()
         self.cut = 0
+        self.gaps.clear()
 
     def __bool__(self) -> bool:
         return bool(self.text())

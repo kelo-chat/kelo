@@ -17,6 +17,7 @@ from ..android.device import DeviceError
 from ..android.signin import APP_HOST, APP_SIGNIN_HOSTS, SignInReader, choose_submit, find_fields, fingerprint, masked
 from ..credentials import clean_name
 from ..i18n import N_, t
+from .. import run_blocks
 from ..netguard import NetGuardError, valid_host
 from ..secret_requests import SecretRequests, entry_context
 from ..store import Store
@@ -214,6 +215,9 @@ def vault_tools(store: Store, session: BrowserSession | None = None, transient: 
             return f"error: {e}"
         label = str(args.get("label") or host).strip()[:80] or host
         hint = clean_username_hint(args.get("username"))
+        if (current_turn.get() or {}).get("unattended") and not host.startswith("app:") and not any(
+                c["has_secret"] and login_site_ok(host, c["hosts"]) for c in store.credentials() if c["kind"] == "login"):
+            run_blocks.note("owner_step", run_blocks.site_on(host))   # a scheduled run needs the owner's own sign-in for this site (run_blocks.py)
         def long_for(login: str) -> str:
             if host.startswith("app:"):   # an app on the Android device: its sign-in screen and android_login, not a page and browser_login
                 return f"open the sign-in screen of {host[4:]} on the phone (android_open) and call android_login(name={login!r})"

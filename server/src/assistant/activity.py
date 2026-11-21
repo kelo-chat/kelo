@@ -181,6 +181,12 @@ class Activity:
                 store._db.execute("ALTER TABLE notifications ADD COLUMN followup_id INTEGER")   # a follow-up's notification (followups.py)
             if "provider" not in note_cols:   # the provider a notification is about (cli_update: which CLI's box My → Model opens at)
                 store._db.execute("ALTER TABLE notifications ADD COLUMN provider TEXT NOT NULL DEFAULT ''")
+            if "once_key" not in note_cols:   # a delivery's notification: one row per delivery key (deliveries.py)
+                store._db.execute("ALTER TABLE notifications ADD COLUMN once_key TEXT NOT NULL DEFAULT ''")
+            if "once_key" not in {r[1] for r in store._db.execute("PRAGMA table_info(tasks)")}:   # a delivery's task: one per key
+                store._db.execute("ALTER TABLE tasks ADD COLUMN once_key TEXT NOT NULL DEFAULT ''")
+            store._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS tasks_once ON tasks(once_key) WHERE once_key != ''")
+            store._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS notifications_once ON notifications(once_key) WHERE once_key != ''")
             if "urgent" not in note_cols:     # time matters (a card of a task marked urgent at setup): the phone may break quiet hours
                 store._db.execute("ALTER TABLE notifications ADD COLUMN urgent INTEGER NOT NULL DEFAULT 0")
             if "settled" not in note_cols:    # the item it waited for (approval_id) was answered, ran out or was cancelled: the phones take it down
@@ -281,9 +287,17 @@ class Activity:
             return ZoneInfo("UTC")
 
     # ------------------------------------------------------------------ tasks
-    def start_task(self, title: str, source: str = "chat", turn_id: str = "") -> int:
-        tid = int(self.store._run("INSERT INTO tasks(turn_id, title, status, source, started_at, seen) VALUES(?,?,?,?,?,0)",
-                                  (turn_id, (title or t("Conversation"))[:80], "running", source, self._clock())).lastrowid or 0)
+    def has_resume_for(self, message_id: int) -> bool:
+        """A task's resume record already names this hidden message (a handoff turn that was started on it)."""
+        return bool(self.store._all("SELECT 1 AS x FROM tasks WHERE json_extract(resume, '$.message_id') = ? LIMIT 1", (message_id,)))
+
+    def start_task(self, title: str, source: str = "chat", turn_id: str = "", *, once_key: str = "") -> int:
+        if once_key:   # a delivery's task: the same key gives back the task it made
+            got = self.store._all("SELECT id FROM tasks WHERE once_key = ?", (once_key,))
+            if got:
+                return int(got[0]["id"])
+        tid = int(self.store._run("INSERT INTO tasks(turn_id, title, status, source, started_at, seen, once_key) VALUES(?,?,?,?,?,0,?)",
+                                  (turn_id, (title or t("Conversation"))[:80], "running", source, self._clock(), once_key)).lastrowid or 0)
         self.store._run("DELETE FROM tasks WHERE id <= ? - ?", (tid, KEEP_TASKS))
         self.store._run("DELETE FROM trail_labels WHERE run_id GLOB '[0-9]*' AND CAST(run_id AS INTEGER) <= ? - ?", (tid, KEEP_TASKS))   # the labels go with the run (data_trail.py)
         return tid
@@ -302,17 +316,18 @@ class Activity:
         self.store._run("UPDATE tasks SET status = ? WHERE id = ? AND status IN ('running', 'waiting_approval')", (status, task_id))
 
     def finish_task(self, task_id: int, status: str, *, answer: str = "", error: str = "", seen: bool = False,
-                    input_tokens: int = 0, output_tokens: int = 0) -> dict[str, Any] | None:
+                    input_tokens: int = 0, output_tokens: int = 0, result_from: str = "") -> dict[str, Any] | None:
+        """`result_from`: the text the task's one-line result is taken from (the reply's last part); `answer` is stored whole."""
         if status == "failed":
             result = t("Failed: {error}", error=error)[:160] if error else t("It failed")
         elif status == "stopped":
-            result = result_line(answer) or t("Stopped partway")
+            result = result_line(result_from or answer) or t("Stopped partway")
         elif status == "waiting_model":
             result = t("Waiting for the AI model to come back")
         elif answer.strip() == "NO_REPLY":   # a run nobody watched that had nothing worth telling (compaction.NO_REPLY)
             result = t("There was nothing to tell")
         else:
-            result = result_line(answer) or t("Finished")
+            result = result_line(result_from or answer) or t("Finished")
         self.store._run("UPDATE tasks SET status = ?, result = ?, answer = ?, error = ?, finished_at = ?, seen = ?, input_tokens = ?, "
                         "output_tokens = ? WHERE id = ?",
                         (status, result, answer[:20000], error[:500], self._clock(), int(seen), input_tokens, output_tokens, task_id))
@@ -500,14 +515,26 @@ class Activity:
     # ------------------------------------------------------------------ notifications
     def notify(self, type_: str, title: str, body: str = "", *, task_id: int | None = None, approval_id: str | None = None,
                schedule_id: int | None = None, payment_id: int | None = None, push: bool = True, followup_id: int | None = None,
-               provider: str = "", urgent: bool = False) -> int:
+               provider: str = "", urgent: bool = False, once_key: str = "", push_again: bool = False) -> int:
         """Adds a notification. `push`: also wake the phones (false when the user is following the reply right now). `provider`: the
-        provider it is about (cli_update: the apps open My → Model at that CLI)."""
+        provider it is about (cli_update: the apps open My → Model at that CLI). `once_key`: one notification per delivery key; the same
+        key gives back the existing one, and `push_again` wakes the phones with it again while it is unseen (the phones read after their
+        last id, so the same row is never shown twice)."""
         title, body = scrub(title), scrub(body)   # a key never goes into a notification (agent/found_secrets.py)
+        if once_key:
+            got = self.store._all("SELECT id, seen FROM notifications WHERE once_key = ?", (once_key,))
+            if got:
+                nid = int(got[0]["id"])
+                if push_again and not got[0]["seen"] and self.on_notify is not None:
+                    try:
+                        self.on_notify({"id": nid, "type": type_, "task_id": task_id, "approval_id": approval_id, "schedule_id": schedule_id})
+                    except Exception:  # noqa: BLE001
+                        logging.getLogger("uvicorn.error").warning("push: could not queue a %s push", type_)
+                return nid
         nid = int(self.store._run("INSERT INTO notifications(type, title, body, task_id, approval_id, schedule_id, payment_id, created_at, "
-                                  "followup_id, provider, urgent) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                                  "followup_id, provider, urgent, once_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                                   (type_, title[:120], body[:400], task_id, approval_id, schedule_id, payment_id, self._clock(), followup_id,
-                                   provider, int(bool(urgent)))).lastrowid or 0)
+                                   provider, int(bool(urgent)), once_key)).lastrowid or 0)
         self.store._run("DELETE FROM notifications WHERE id <= ? - ?", (nid, KEEP_NOTIFICATIONS))
         if push and self.on_notify is not None:
             try:   # ids only: the push never carries the title or body

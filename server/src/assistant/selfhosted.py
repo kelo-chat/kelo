@@ -45,7 +45,8 @@ SITUATION_READS: dict[str, dict[str, Any]] = {
     # firefly_iii: the transactions path and its start parameter are from the app's API; check them with a live instance before relying on them
     "firefly_iii": _get("/api/v1/transactions?limit=10&start={{since_date}}", "changes", select="data", id=["id"],
                         fields={"date": "attributes.transactions.0.date", "amount": "attributes.transactions.0.amount",
-                                "currency": "attributes.transactions.0.currency_code", "what": "attributes.transactions.0.description"}),
+                                "currency": "attributes.transactions.0.currency_code", "what": "attributes.transactions.0.description"},
+                        content=["finance"]),
     # miniflux, freshrss: unread news is context, not a reason to wake the look
     "miniflux": _get("/v1/entries?status=unread&limit=20&order=published_at&direction=desc", "changes", select="entries", id=["id"],
                      fields={"title": "title", "feed": "feed.title", "published_at": "published_at"}, wakes=False),
@@ -61,11 +62,13 @@ SITUATION_READS: dict[str, dict[str, Any]] = {
     "nextcloud": _get("/ocs/v2.php/apps/notifications/api/v2/notifications?format=json", "changes", select="ocs.data",
                       id=["notification_id"], fields={"app": "app", "subject": "subject", "datetime": "datetime"},
                       arguments={"name": "{{connection}}", "url": "/ocs/v2.php/apps/notifications/api/v2/notifications?format=json",
-                                 "headers": {"OCS-APIRequest": "true"}}),
+                                 "headers": {"OCS-APIRequest": "true"}}, content=["notifications"]),
     "gitea": _get("/api/v1/notifications?status-types=unread&limit=20", "changes", id=["id"],
-                  fields={"title": "subject.title", "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"}),
+                  fields={"title": "subject.title", "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"},
+                  content=["notifications"]),
     "forgejo": _get("/api/v1/notifications?status-types=unread&limit=20", "changes", id=["id"],
-                    fields={"title": "subject.title", "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"}),
+                    fields={"title": "subject.title", "type": "subject.type", "repo": "repository.full_name", "updated_at": "updated_at"},
+                    content=["notifications"]),
     # immich, linkwarden, karakeep, wallabag, actual_budget: saved items or a budget, nothing that changes the owner's situation by the hour
 }
 

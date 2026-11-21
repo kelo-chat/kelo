@@ -12,6 +12,8 @@ from ..mail import Mail
 from ..oauth_connect import PROVIDERS as DEVICE, DeviceFlows
 from ..packages import Registry, builtin
 from ..presets import GOOGLE
+from .. import run_blocks
+from ..workers import current_turn
 
 WHERE = "Connectors tab"
 
@@ -40,6 +42,8 @@ def oauth_tools(table: Callable[[], dict[str, dict[str, Any]]], flows: DeviceFlo
             why = f" ({w['reason']})" if w and w.get("reason") else ""
             can = ", ".join(sorted(k for k, v in ways.items() if v.get("connect")))
             return f"error: {sid!r} cannot be connected in this app{why}. Services that can: {can}."
+        if not w.get("connected") and (current_turn.get() or {}).get("unattended"):
+            run_blocks.note("connect_missing", sid)   # a scheduled run waits for this connection (run_blocks.py)
         card = (f"A connection card is now shown to the user in the chat (it is also in the {WHERE}). You never see anything they enter. "
                 "Tell them to follow the card, and wait until they say it is connected.")
         kind, item = w["connect"], w.get("item", "")

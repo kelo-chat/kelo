@@ -1445,6 +1445,7 @@
     <string name="goal_resume">Giao lại cho Kelo</string>
     <string name="goal_resume_started">Kelo đang làm. Bạn có thể theo dõi trong Trò chuyện.</string>
     <string name="goal_resume_no_model">Hãy chọn mô hình trong Của tôi trước.</string>
+    <string name="goal_log_more">Xem các mục trước</string>
     <string name="goal_edit">Sửa</string>
     <string name="goal_due">Trước %1$s</string>
     <string name="goal_mark_step">Đánh dấu là xong</string>
@@ -1515,4 +1516,11 @@
     <string name="endpoint_in_use">Đây là điểm cuối của mô hình đang sử dụng. Hãy chuyển sang mô hình khác trước.</string>
     <string name="endpoint_name_taken">Tên đó đã được sử dụng.</string>
     <string name="endpoint_too_many">Bạn có thể giữ tối đa 20 điểm cuối.</string>
+    <string name="goals_work_section">Việc Kelo đang lo</string>
+    <string name="goals_subgoals">Mục tiêu nhỏ</string>
+    <string name="goal_about">Giới thiệu</string>
+    <string name="goal_log_from">Từ %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="other">Các mục tiêu nhỏ (%d) bên trong cũng sẽ bị xóa.</item>
+    </plurals>
 </resources>

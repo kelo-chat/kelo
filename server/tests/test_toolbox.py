@@ -232,7 +232,7 @@ async def test_a_schedule_run_gets_its_tools_up_front(tmp_path):
         await until(idle)
         run = (await c.post(f"/api/schedules/{s['id']}/run")).json()
         await follow(c, run["turn_id"])
-        assert "phone_contacts" in names(seen[-1]) and "schedule_pause" in names(seen[-1])
+        assert "phone_contacts" in names(seen[-1]) and "schedule_pause" not in names(seen[-1])   # a run loads no pause tool (owner 2026-11-20)
 
 
 async def test_a_background_job_starts_with_the_tools_its_conversation_loaded(tmp_path):

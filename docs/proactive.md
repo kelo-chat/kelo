@@ -57,10 +57,12 @@ the next save drops it); held rows with why `slots` become `over_cap` when the s
 
 ## 4. Send times, the hourly watch and how sends are counted (owner decisions 2026-11-19, research on)
 The hourly look (situation.py) runs in two kinds of pass. Every hour on the hour inside the contact hours, the watch looks ONLY at new
-mail and at what changed in the connected services (declared reads; SituationSources marked outside). Nothing new -> no model call.
-What the model judges urgent (waiting until the next send time would cost the owner) is written by the main agent and goes out at once
-as one urgent send at the immediate level, under daily_now (over it, it is an ordinary send and needs room in daily_total). Everything
-else waits, as an open item, for the next send time. At the send times everything else is looked at (the last 24 h of conversation,
+mail, at calendar changes (added, changed, or gone by time) and at what changed in the connected services (declared reads;
+SituationSources marked outside). Nothing new -> no model call. Every proposal gets a level: regular, today or now (judged on the facts,
+"today" when unsure; situation_watch.md). What gets level now (learning it an hour later would cost the owner) is written by the main
+agent and goes out at once as one send at the immediate level, under daily_now (over it, it is an ordinary send and needs room in
+daily_total); the level decides when, not whether, the main agent checks it first. Everything else waits, as an open item keeping its
+level, for the next send time. At the send times everything else is looked at (the last 24 h of conversation,
 calendar, goals and follow-through, schedules and watchers, memory changes, the correction check of earlier answers, open items,
 preferences, research and selection); a send time may carry a "today" and a "regular" message.
 Counting: daily_total counts SENDS. Every message of one pass carries the same delivery id and the day's counts take each delivery
@@ -102,6 +104,19 @@ event. Authority: making, changing or removing such a job asks on a card unless 
 turn that carries their request, before any outside text); such an approval never becomes a standing rule; a job runs only while an
 item links it and is deleted when none does. What it does per event is fixed by code, so outside text still cannot make Kelo create
 jobs on any other path.
+
+## 6. Levels and kinds of source (parity unit pipe-proactive-urgency, owner 2026-11-20)
+The hourly watch gives every proposal one level: regular (a later send time is fine), today (acting today changes the outcome) or now
+(the owner needs to hear it now; learning it even an hour later would cost them), judged on the facts, "today" when unsure
+(situation_watch.md). Level now goes straight to the main agent (no selection), which checks it and may answer NO_REPLY: the level
+decides when, not whether. At the send times an item keeps its level: a message is at least the level of its items and a level is
+never raised to win a place (select_help refuses both). Each declared read may name the kinds of data its rows are (`content`); the
+kinds are the guidance files in server/content/prompts/situation_kinds/ (calendar, mail, messages, notifications, finance,
+encrypted_chat). The built-in mail and calendar sections carry theirs. The watch and the research get the guidance of the kinds in
+their pack, the main agent the guidance of the kinds behind its items. Calendar changes (added, changed, gone by time) are news for
+the watch (WATCH_CALENDAR is the calendar as the last pass saw it). An item at level now goes out during the no-answer pause (the
+pause holds the send times and ordinary items; the watch still looks), and it overrides a "don't tell me" rule; ordinary items obey
+both. The daily cap of urgent sends (3) and the waking hours are unchanged. No service is named anywhere.
 
 ## API
 `GET /api/proactive` adds `held` (count of held items). `GET /api/proactive/held` lists held items (key, source, title, urgency,

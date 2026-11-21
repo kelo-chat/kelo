@@ -1480,6 +1480,7 @@
     <string name="goal_resume">Kelo को वापस सौंपें</string>
     <string name="goal_resume_started">Kelo काम पर लग गया है। चैट में साथ-साथ देख सकते हैं।</string>
     <string name="goal_resume_no_model">पहले \"मेरा\" में एक मॉडल चुनें।</string>
+    <string name="goal_log_more">पिछली प्रविष्टियाँ देखें</string>
     <string name="goal_edit">एडिट करें</string>
     <string name="goal_due">%1$s तक</string>
     <string name="goal_mark_step">पूरा मार्क करें</string>
@@ -1551,4 +1552,12 @@
     <string name="endpoint_in_use">यह उपयोग में आ रहे मॉडल का एंडपॉइंट है। पहले किसी अन्य मॉडल पर स्विच करें।</string>
     <string name="endpoint_name_taken">वह नाम पहले से उपयोग में है।</string>
     <string name="endpoint_too_many">आप 20 एंडपॉइंट तक रख सकते हैं।</string>
+    <string name="goals_work_section">Kelo जो संभाल रहा है</string>
+    <string name="goals_subgoals">छोटे लक्ष्य</string>
+    <string name="goal_about">विवरण</string>
+    <string name="goal_log_from">%1$s से</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">इसका छोटा लक्ष्य भी हट जाएगा।</item>
+        <item quantity="other">इसके %d छोटे लक्ष्य भी हट जाएँगे।</item>
+    </plurals>
 </resources>

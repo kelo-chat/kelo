@@ -82,7 +82,7 @@ MODELS = {
         "id:L!", "name:S", "prompt:S", "kind:S=\"cron\"", "cron:S?", "runAt:S?", "everyMinutes:I?", "startAt:S?", "windowMinutes:I",
         "timezone:S", "enabled:B=true", "description:S", "nextRun:S?", "nextRunTs:D?", "createdAt:D?", "updatedAt:D?",
         "createdBy:S=\"user\"", "goalId:L?", "lastRun:LastRun?", "failureCount:I", "disabledReason:S?", "running:B", "paused:B",
-        "pausedReason:S?", "pausedAt:D?", "archivedAt:D?", "purgeAt:D?"]),
+        "pausedReason:S?", "blockLine:S?", "pausedAt:D?", "archivedAt:D?", "purgeAt:D?"]),
     "ScheduleList": ("GET /api/schedules?goal_id=.", ["items:[Schedule]", "timezone:S"]),
     "ScheduleRun": ("One run of a schedule. status: running | done | quiet | failed | stopped | skipped | paused.", [
         "id:L", "scheduleId:L?", "startedAt:D", "finishedAt:D?", "status:S", "result:S", "taskId:L?", "error:S?"]),

@@ -160,7 +160,7 @@ from .compaction import (
 )
 from . import windows
 from . import version as release_version
-from .schedules import CATCH_UP_SECONDS, SCHEDULE_MARK, ScheduleError, Scheduler, Schedules, schedule_check_text, schedule_tools
+from .schedules import MAX_FAILURES, SCHEDULE_MARK, TICK_SECONDS, ScheduleError, Scheduler, Schedules, schedule_check_text, schedule_tools
 from .checklist import CHECKLIST_MARK, NOTE as CHECKLIST_NOTE, Checklist, JobKind, checklist_routes, checklist_tools, setup_text as checklist_setup_text
 from .event_reminders import EventReminders, event_reminder_tools
 from .buy_ready import FAST_STEPS, FAST_TOOLS, LOGIN_PROMPT, LOGIN_STEPS, LOGIN_TOOLS, BuyReady
@@ -188,6 +188,7 @@ from .owner_messages import OWNER, OwnerMessages, author_for
 from .briefing_sources import Sources, sources_routes
 from .follow import AeroApiFlights, FollowRunner, FollowStore, IncheonFlights, ItemFinder, PageSource, ParcelSource, Planner, WeatherSource, follow_routes, follow_tools
 from .follow.upcoming import UpcomingExtractor
+from .carried import CarriedLinks, carried_routes
 from .calendars import Calendars
 from .weather import Weather
 from .calls import CALL_NOTE
@@ -235,6 +236,9 @@ from .oauth_connect import DeviceFlows, GetJson, PostForm
 from .mail import Mail, MailError
 from .mcp_oauth import (McpConnections, Fetcher as McpFetcher)
 from .connect_ways import ways as connect_ways
+from . import run_blocks
+from .deliveries import Deliveries
+from .stop_reports import StopReports
 from .github_web import GitHubWeb
 from .kelo_names import TICK_SECONDS as KELO_TICK_SECONDS, KeloNames
 from . import ddns
@@ -307,9 +311,9 @@ from .providers.registry import (
 )
 from .providers import refused as refused_fields
 from .store import Store
-from .goals import GOAL_MARK, GoalBook, GoalError
+from .goals import GOAL_MARK, GOAL_TURN_TOOLS, GUIDE_SKILL, SUMMARY_PROMPT, GoalBook, GoalError
 from .comparison import Comparisons, comparison_tools
-from .repeats import RepeatGuard, collapse_repeat
+from .repeats import RepeatGuard, collapse_repeat  # collapse_repeat: read by the other turn modules through this module
 from .reply_text import ReplyText
 from .channels import ChannelManager, Discord, Slack, Telegram
 from .netguard import fetch as netguard_fetch
@@ -418,10 +422,10 @@ SCHEDULE_NOTE = ("[This is the automatic job '{name}' that the user set up. Nobo
                  "job and finish with a short plain report: what you did, what you found, anything that failed or was skipped, "
                  "anything the user must decide. Any approval you need goes to the user's phone and may not be answered; skip a step "
                  "that is not approved and say so. Ask no questions: if something is missing, report what. If there is nothing worth "
-                 "telling, reply exactly NO_REPLY. If the job cannot work any more (a login is gone, the site changed, the account has a "
-                 "problem), call schedule_pause with the reason. A temporary block (the site is under maintenance, down, or sold out "
-                 "right now): call schedule_retry with the time it should work again (the site's own reopening time when it shows "
-                 "one).]")
+                 "telling, reply exactly NO_REPLY. When a step cannot be done because a connected service must be connected (again), a site "
+                 "needs the user's own sign-in or check, or a device is offline, say so plainly in your report; the closing step records "
+                 "what waits, and Kelo tries the job again by itself. Never pause, turn off or delete this job and never "
+                 "set up another run of it: say plainly in your report what went wrong; the user decides about the job.]")
 BACKGROUND_NOTE = ("[The user handed you this task to do on your own, in a browser tab of its own, and may not be watching. Do it and "
                    "finish with a short report. Skip any step whose approval is not answered and say so.]")
 JOURNAL_HOUR, JOURNAL_MINUTE = 3, 30
@@ -754,10 +758,9 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 #   "status": done|quiet|failed|stopped|paused|missed, "at"}|null, "failure_count", "disabled_reason": str|null, "paused": bool,
 #   "paused_reason": str|null, "paused_at": ts|null, "archived_at": ts|null, "purge_at": ts|null (archived only), "running": bool,
 #   "retry_at": unix ts|null, "retry_why": str|null}
-#   retry_at: a run stopped by a temporary block (site maintenance, down, sold out) asked to be tried again then (schedule_retry): the same
-#   schedule runs once more at that time with the same permissions; its regular times do not move. null when none is waiting. retry_why is
-#   the reason in the owner's language. That run shows in the history as "skipped" with the line "Will try again at <time>: <why>" and
-#   sends no notification; the retry's own report is the one the owner gets. Apps ignore fields they do not know.
+#   retry_at: the automatic try again of a failed or blocked run (FAILED_RETRY_SECONDS, BLOCKED_RETRY_SECONDS); its regular times do not
+#   move. null when none is waiting. retry_why is the reason in the owner's language. A failed run's first failure is not told when its
+#   try again is planned: the owner hears the result of the try, or the failure when that try fails too. Apps ignore fields they do not know.
 #   quiet = the run had nothing worth telling (the agent replied NO_REPLY): no chat message, no notification, still in the history.
 #   paused = the run (or the user) paused it for a lasting blocker: off until turned back on (PATCH enabled true or POST .../resume).
 # GET    /api/schedules?goal_id=   {"items": [Schedule] (not archived; only that goal's when goal_id is given), "timezone": default zone}
@@ -780,7 +783,7 @@ from .turn_log import INTERRUPTED, TurnLog  # noqa: E402
 # GET    /api/schedules/{id}/runs?limit=20      {"items": [Run] newest first}  (the last 100 per schedule are kept; archived ones too)
 #   Run: {"id", "schedule_id", "started_at", "finished_at": ts|null (running), "status": running|done|quiet|failed|stopped|skipped|paused,
 #        "result": one line (the answer's first sentence, the pause reason, why it was skipped), "task_id": int|null, "error": str|null}
-#   skipped = the time came while the last run was still going, or the server was down too long (CATCH_UP_SECONDS).
+#   skipped = the time came while the last run was still going.
 # GET    /api/schedules/archive                 {"items": [Schedule with archived_at, purge_at], "keep_days": 30}
 # POST   /api/schedules/{id}/restore            Schedule (back as it was; a one-time job whose time passed comes back off) 404 / 422
 # DELETE /api/schedules/archive/{id}            {"ok"}: an archived one deleted for good (it cannot be restored any more); 404
@@ -1360,6 +1363,7 @@ def create_app(
             workers.startup()   # jobs: marked interrupted, and resumed when they may be
             if settings.task_resume_on_start:
                 resume_after_restart()   # turns: background ones go on, a chat turn gets a Continue button
+            asyncio.ensure_future(after_restart())   # scheduled results held by the restart, and deliveries still waiting
         vpn_start = None if site else asyncio.create_task(vpn.start(store.keyguard))   # the route files from the vault (after the unlock when Keyguard is locked)
         tester_resend = asyncio.create_task(tester_resend_loop())   # kelo.chat/tester notices whose mail failed go out again
         notices_start = asyncio.create_task(notices_feed.refresh()) if notices_feed.enabled and not site else None
@@ -1391,6 +1395,9 @@ def create_app(
         yield
         stopping[0] = True   # turns cut off from here on stay "interrupted" (looked at again on the next start)
         await workers.drain_steps()   # a send / change / pay step in flight gets up to 25 s to finish before it is cut (job_cuts.py)
+        for rt in running_turns():   # the steps so far, for a stop report (stop_reports.py): the turn's events are pruned after a day
+            if steps := run_steps(rt.events):
+                activity.set_steps(rt.task_id, steps)
         activity.interrupt_tasks([t.task_id for t in running_turns()])
         for t in running_turns():   # the log says what a restart would: "interrupted" is the last event; what the cut-off replies write later is not kept
             if t.log is not None:
@@ -1451,6 +1458,7 @@ def create_app(
     )
     appctx.add(notices_feed=notices_feed)
     app.state.notices_feed = notices_feed
+    app.state.store = store   # the app's own store (tests reach the vault through it)
     keyring = KeyringClient(settings.keyring_url, settings.keyring_token, ring_key_from(store.keyguard), transport=keyring_transport)
     appctx.add(keyring=keyring)   # AI-provider keys live there when it is on (docs/keyring.md)
     # every model call is counted (usage.py): by the kind of the turn running, or by the job that asked (counted(kind))
@@ -1519,6 +1527,7 @@ def create_app(
     avatar = Avatar(store)
     schedules = Schedules(store)
     scheduler = Scheduler(schedules)   # its runner is set below, once turns can be started
+    app.state.scheduler = scheduler
     schedule_grants = ConditionalGrants(store, schedules, wallet)   # what a "when X, do Y" task may do on its own (asked once at setup)
     # the owner's advance cover for payments (pay_preapprovals.py): one-order pre-approvals and a schedule's payment allow; one switch
     preapprovals = Preapprovals(store, schedule_name=lambda sid: (schedules.get(sid) or {}).get("name", ""))
@@ -1693,6 +1702,8 @@ def create_app(
     appctx.add(home_relativize=home.relativize if home else None)   # turn_engine: a sandbox path of the model in a reply -> Kelo's file (reply_paths.py)
     appctx.add(connector_data=ConnectorData(store, home))   # what came from a connector, counted and forgotten on the owner's word (connector_data.py)
     goal_book = GoalBook(store, home)   # each goal's facts, plan, numbers, log, documents; suggestions; quick replies (goals.py)
+    goal_book.guides_dir = (content / "skills" / GUIDE_SKILL) if content else None   # the goal-coaching skill's guides (start.md, area files)
+    app.state.goal_book = goal_book   # the tests and the apps' helpers reach the book through the app
     comparisons = Comparisons(store, hidden_marks=(HANDOFF_MARK, WATCH_MARK, GOAL_MARK, SCHEDULE_MARK, RECHECK_MARK, NEST_SHARE_MARK, CHECKLIST_MARK))
     images = ImageStore(Path(settings.home_dir) / ".tryon") if settings.home_dir else None
     state_root = Path(settings.db_path).parent if settings.db_path != ":memory:" else (Path(settings.home_dir).parent if settings.home_dir else None)
@@ -2065,6 +2076,34 @@ def create_app(
         ids |= {cid for cid, w in connect_ways(store, mail, browser=browsing, google_open=google_web.open_here(), registry=packages, vpn=vpn).items()
                 if (w.get("connected") and cid not in NETWORK_IDS) or (browsing and w.get("connect") == "browser")}   # the VPN is not a service for the model
         return ids
+
+    def connectors_of_item(name: str) -> set[str]:
+        """The connector ids this vault item is (a connect_ways row lists it); an item no row lists stands for itself."""
+        rows = connect_ways(store, mail, browser=False, google_open=google_web.open_here(), registry=packages, vpn=vpn, items=True)
+        return {cid for cid, w in rows.items() if name in (w.get("items") or [])} or {name}
+
+    def connector_back(name: str, removed: bool = False) -> None:
+        """A vault item got a usable value again (saved, reconnected, sign-in renewed): the scheduled jobs blocked on a connector it
+        serves try again (run_blocks; a removal releases nothing; a routine renewal of another connector releases nothing either)."""
+        if removed:
+            return
+        if schedules.release_blocks(connectors_of_item(name)):
+            scheduler.poke()
+        site = run_blocks.site_on(name)   # a saved login for the site a run stopped at (decision 4): that run goes again
+        if site and schedules.release_owner_wait(site):
+            scheduler.poke()
+
+    def connector_result(name: str, result: str | None) -> None:
+        """What the last real use of a vault item showed: a rejected key blocks the run that used it (typed, run_blocks.note)."""
+        if result == "rejected":
+            for cid in connectors_of_item(name):
+                run_blocks.note("connect_expired", cid)
+        elif result == "ok":
+            connector_back(name)
+
+    store.credential_watchers.append(connector_back)
+    store.credential_listeners.append(connector_result)
+    run_blocks.resolve_connectors = connectors_of_item
 
     # what the owner lets Kelo do with each connector (permissions.py); the gate runs before every tool call (agent/loop.py)
     ways_seen: list[Any] = [0.0, {}]
@@ -2565,20 +2604,30 @@ def create_app(
             return android_session.package()   # the app stands for the site
         return ""
 
-    def task_closed(turn: Turn, status: str, answer: str, error: str) -> None:
+    def first_try_pending(turn: Any, status: str) -> bool:
+        """A regular scheduled run failed and its automatic try again is planned (schedules.after_run): nothing is told yet (owner
+        2026-11-20, decision 5). The try's own outcome is told."""
+        if status != "failed" or not str(turn.source or "").startswith("schedule:") or getattr(turn, "retry_kind", ""):
+            return False
+        r = schedules._row(int(str(turn.source)[9:] or 0))
+        return bool(r) and not r.get("archived_at")
+
+    def task_closed(turn: Turn, status: str, answer: str, error: str, result_from: str = "") -> None:
         """The reply is over: its task record, and a notification when nobody was there to see the end."""
         if status == "waiting_model":   # the AI model is down: the task waits and goes on once it is back (model_wait_tick)
-            activity.finish_task(turn.task_id, status, answer=answer, error=error, seen=True)
+            activity.finish_task(turn.task_id, status, answer=answer, error=error, seen=True, result_from=result_from)
+            if steps := run_steps(turn.events):   # kept for the stop report if it is given up (stop_reports.py); a wait can be 48 h
+                activity.set_steps(turn.task_id, steps)
             if turn.limited:
                 store._run("UPDATE tasks SET result = ? WHERE id = ?", (i18n.t(model_limits.USED_UP), turn.task_id))
             # out of usage: the first check is at the reset (nothing is tried before it); an outage: in a minute
             activity.wait_for_model(turn.task_id, turn.limit_reset if turn.limited and turn.limit_reset else time.time() + next_wait(0))
             return
-        # a job's own steps, a background reply that chose to say nothing, or a scheduled run that asked to be tried again later
-        quiet = (turn.quiet_end or answer.strip() == NO_REPLY or turn.task_id in schedules.retried_tasks
+        # a job's own steps, a background reply that chose to say nothing, or a scheduled run whose failure is tried once more (run_schedule)
+        quiet = (turn.quiet_end or answer.strip() == NO_REPLY or first_try_pending(turn, status)
                  or (turn.defer_report and status == "done"))   # a scheduled run's working phase: its closing phase tells (run_schedule)
         watched = quiet or (not turn.unattended and time.monotonic() - turn.touched < WATCHED_SECONDS)
-        task = activity.finish_task(turn.task_id, status, answer=answer, error=error, seen=watched)
+        task = activity.finish_task(turn.task_id, status, answer=answer, error=error, seen=watched, result_from=result_from)
         if status in ("done", "failed") and (steps := run_steps(turn.events)):
             activity.set_steps(turn.task_id, steps)   # the tool steps, for the nightly look-back's lessons (skill_lessons.py); no model call here
         if watched or task is None or status not in ("done", "failed"):
@@ -2589,6 +2638,14 @@ def create_app(
         else:
             activity.notify("task_failed", f"{i18n.t('It did not work out')}: {turn.title}"[:120], task["result"], task_id=turn.task_id,
                             schedule_id=task["schedule_id"])
+
+    def store_reply(said: ReplyText, *, via: str = "", steps: str = "", call_id: str = "") -> list[int]:
+        """A reply's messages (ReplyText.rows): one per part the chat showed as its own bubble, so the apps' streamed bubbles each keep
+        their own text; a call's reply stays one message (the call card shows a call's lines one per reply). The tool steps line goes with
+        the last message, the answer, which the next turn reads them after."""
+        rows = said.rows(split=not call_id)
+        return [store.add_message("assistant", row, via=via, steps=steps if i == len(rows) - 1 else "", call_id=call_id)
+                for i, row in enumerate(rows)]
 
     def scope_of(source: str) -> str:
         """The tool scope of a run by its source: the conversation's own turns share "chat"; a schedule or the checklist has its own."""
@@ -2604,7 +2661,7 @@ def create_app(
         if scope.startswith("schedule:"):
             if not store.meta(ToolScopes.PREFIX + scope):
                 up_front += tool_scopes.load("chat")
-            up_front += SCHEDULE_RUN_TOOLS
+            up_front += SCHEDULE_RUN_TOOLS   # empty: a scheduled run never pauses or retries its job itself (owner 2026-11-20)
         up_front += situation_scopes.get(scope, [])   # the situation research turns (situation.py) show exactly the tools they were given
         box = tool_scopes.box(scope, tool_core, up_front)
         box.blocked = permission_gate.hides   # a tool the owner switched off for every connector it could act on is not offered
@@ -2670,7 +2727,7 @@ def create_app(
                     said.feed(item)
                 if item is None or item["type"] == "done":
                     if said:
-                        store.add_message("assistant", collapse_repeat(said.text()))
+                        store_reply(said)
                     said.clear()
 
             title = i18n.t("Carrying on: {label}", label=req.get("label") or req.get("name") or "")
@@ -2716,6 +2773,7 @@ def create_app(
             turn = start_background(s["prompt"] + retry, title=s["name"], source=f"schedule:{s['id']}", owner=f"schedule:{s['id']}",
                                     note=SCHEDULE_NOTE.format(name=s["name"]), saved_as=i18n.t("[Automatic run · {name}]", name=s['name']),
                                     extra_note=allowed, two_phase=True)
+            turn.retry_kind = str(s.get("retry_kind") or "")   # "" for a regular run (first_try_pending)
         except HTTPException as e:
             tid = activity.start_task(s["name"], f"schedule:{s['id']}")
             activity.finish_task(tid, "failed", error=str(e.detail))
@@ -2725,25 +2783,120 @@ def create_app(
         status = "stopped" if turn.final_status == "waiting_model" else turn.final_status   # it goes on once the model is back
         saved_as = i18n.t("[Automatic run · {name}]", name=s['name'])
         report = (turn.report or "").strip()
-        if turn.task_id in schedules.retried_tasks:   # it asked to be tried again later: nothing to say now
-            return {"task_id": turn.task_id, "status": status, "error": turn.final_error, "quiet": True, "result": ""}
         if status != "done":   # a stopped or failed run: what it had written stays in the chat, as before the two phases
-            if report and report != NO_REPLY:
+            pending = first_try_pending(turn, status)   # its first failure: the try again tells the outcome (decision 5)
+            if report and report != NO_REPLY and not pending:
                 store.add_message("assistant", f"{saved_as}\n{report}")
-            return {"task_id": turn.task_id, "status": status, "error": turn.final_error, "quiet": report == NO_REPLY or not report,
+            return {"task_id": turn.task_id, "status": status, "error": turn.final_error, "quiet": pending or report == NO_REPLY or not report,
                     "result": ""}
+        run_id = s.get("run_id")
+        if run_id:   # the result is held in the run's row until the closing phase decides and the outcome is delivered (a restart finishes it)
+            schedules.hold_result(run_id, {"task_id": turn.task_id, "status": status, "error": turn.final_error or "", "report": report,
+                                           "evidence": turn.evidence.as_dict(), "title": turn.title, "note_head": turn.note_head or ""})
         # the closing phase (scheduled_runs.py): one outcome, from the private report and what the tool calls did
         decision = await run_closer.close(s["name"], s["prompt"], report, turn.evidence)
+        return await finish_closed(s, {"task_id": turn.task_id, "status": status, "error": turn.final_error, "title": turn.title,
+                                       "note_head": turn.note_head, "run_id": run_id}, decision, turn.evidence)
+
+    async def finish_closed(s: dict[str, Any], held: dict[str, Any], decision: Any, evidence: Any) -> dict[str, Any]:
+        """The closing phase's decision becomes the run's outcome: a typed block keeps the job on and records why (run_blocks.py); the
+        owner is told once for a block (an unchanged block stays silent); a site's own sign-in stop fails only this run. A message to
+        the owner is a delivery (deliveries.py): it reaches the chat once, and a restart finishes it instead of losing it."""
+        tid, status, error = held["task_id"], held["status"], held.get("error", "")
+        run_id = held.get("run_id")
+        block, run_status = decision.block, status
+        if block is not None:
+            run_status = "blocked"
+            if block.reason == "owner_step" and block.on.startswith("site:"):
+                schedules.wait_for_owner(s["id"], block.on)     # the owner is told once below; it runs again when the owner signs in there
+            elif schedules.set_block(s["id"], block):
+                if run_id:
+                    schedules.hold_result(run_id, None)
+                return {"task_id": tid, "status": run_status, "error": error, "quiet": True, "result": "", "clean": evidence.clean}
         if not decision.tell:
-            activity.set_outcome(turn.task_id, "")
-            return {"task_id": turn.task_id, "status": status, "error": turn.final_error, "quiet": True, "result": ""}
+            activity.set_outcome(tid, "")
+            if run_id:
+                schedules.hold_result(run_id, None)
+            return {"task_id": tid, "status": run_status, "error": error, "quiet": True, "result": "", "clean": evidence.clean}
         text = decision.text or i18n.t("It did not work out")
-        store.add_message("assistant", f"{saved_as}\n{text}")
-        task = activity.set_outcome(turn.task_id, text) or {}
-        activity.notify("task_done", f"{turn.note_head or i18n.t('Finished')}: {turn.title}"[:120], task.get("result") or "",
-                        task_id=turn.task_id, schedule_id=s["id"])
-        return {"task_id": turn.task_id, "status": status, "error": turn.final_error, "quiet": False,
-                "result": str(task.get("result") or "")}
+        saved_as = i18n.t("[Automatic run · {name}]", name=s["name"])
+        title = f"{held.get('note_head') or i18n.t('Finished')}: {held.get('title') or s['name']}"[:120]
+        key = f"schedule-run:{run_id}" if run_id else f"schedule-run:task:{tid}"
+        also = ((("UPDATE schedule_runs SET held_result = NULL, finished_at = ?, status = ?, result = ? WHERE id = ?",
+                  (time.time(), run_status, text[:300], run_id)),) if run_id else ())
+        delivery_log.put(key, "chat", f"schedule:{s['id']}", {
+            "text": f"{saved_as}\n{text}", "task_id": tid, "outcome": {"task_id": tid, "text": text},
+            "notify": {"type": "task_done", "title": title, "schedule_id": s["id"]}}, also=also)
+        await wait_for_reply()
+        await delivery_log.send(key)
+        task = activity.task(tid) or {}
+        return {"task_id": tid, "status": run_status, "error": error, "quiet": False, "result": str(task.get("result") or ""),
+                "clean": evidence.clean}
+
+    async def finish_held_runs() -> None:
+        """A restart came while a run's closing phase ran: the closing step is asked again for the held result (the working phase is
+        never run again), and the outcome is finished the same way (run_schedule)."""
+        for row in schedules.held_runs():
+            s = schedules.get(row["schedule_id"])
+            held = json.loads(row["held_result"] or "{}")
+            if s is None or not held:
+                schedules.hold_result(row["id"], None)
+                continue
+            evidence = scheduled_runs.RunEvidence.from_dict(held.get("evidence") or {})
+            decision = await run_closer.close(s["name"], s["prompt"], held.get("report") or "", evidence)
+            out = await finish_closed(s, {**held, "run_id": row["id"]}, decision, evidence)
+            schedules.record_run(row["schedule_id"], held.get("task_id"), out["status"], out.get("error") or "", run_id=row["id"],
+                                 result=out["result"], quiet=out["quiet"], clean=out["clean"])
+
+    async def deliver_chat(t: Any) -> None:
+        """The chat part of a delivery (deliveries.py): the message, its task and its notification, each keyed by the delivery."""
+        p = t.payload
+        tid = p.get("task_id")
+        if task_p := p.get("task"):   # a delivery that has no task yet (a proactive message)
+            tid = activity.start_task(task_p["title"], task_p["source"], once_key=t.once_key)
+            activity.finish_task(tid, "done", answer=task_p["answer"])
+        store.add_message("assistant", p["text"], once_key=t.once_key)
+        task: dict[str, Any] = {}
+        if o := p.get("outcome"):
+            task = activity.set_outcome(o["task_id"], o["text"]) or {}
+        if n := p.get("notify"):
+            activity.notify(n["type"], n["title"], n.get("body") or str(task.get("result") or ""), task_id=tid,
+                            schedule_id=n.get("schedule_id"), once_key=t.once_key, push_again=t.again)
+
+    delivery_log = Deliveries(store)
+    delivery_log.on("chat", deliver_chat)
+
+    async def wait_for_reply() -> None:
+        """A result or a message Kelo starts itself goes into the chat only after the chat reply that is running ends (owner
+        2026-11-20, D5/D8-results: no time limit), like a job's report (turn_workers.wait_for_chat_reply)."""
+        await turn_workers.wait_for_chat_reply(running_turns)
+    stop_reports = StopReports(store, delivery_log, turn_log, ask=judge_model.ask)   # a stop by Kelo: one report in the chat (stop_reports.py)
+    appctx.add(stop_reports=stop_reports)
+
+    def schedule_asks(job: dict[str, Any], error: str) -> None:
+        """Three failures in a row (owner decision 2026-11-20): the owner is asked once for this streak, in the chat, and the job keeps
+        running at its next times until the owner answers (schedule_keep_going or schedule_pause)."""
+        name = str(job.get("name") or "")
+        text = i18n.t("{name} failed {n} times in a row ({error}). Should Kelo stop it? Until you answer, it keeps running at its next times.",
+                      name=name, n=MAX_FAILURES, error=error or i18n.t("No reason was given"))
+        key = f"schedule-asks:{job['id']}:{job.get('last_task_id') or 0}"
+        delivery_log.put(key, "chat", f"schedule:{job['id']}", {
+            "text": text, "task_id": None,
+            "notify": {"type": "task_failed", "title": f"{i18n.t('It did not work out')}: {name}"[:120], "body": text[:400],
+                       "schedule_id": job["id"]}})
+        try:
+            asyncio.ensure_future(delivery_log.send(key))
+        except RuntimeError:   # no loop here: the delivery goes out on the next pass (deliveries.drain)
+            pass
+
+    schedules.on_failures_asked = schedule_asks
+
+    async def after_restart() -> None:
+        try:
+            await finish_held_runs()
+            await delivery_log.drain()
+        except Exception:  # noqa: BLE001 - the held and waiting records are tried again on the next tick
+            log.exception("could not finish what a restart left open")
 
     def schedule_off(s: dict[str, Any]) -> None:
         activity.notify("schedule_disabled", i18n.t("Turned off the automatic run: {name}", name=s['name'])[:120], s.get("disabled_reason") or "", schedule_id=s["id"])
@@ -2835,15 +2988,33 @@ def create_app(
 
     task_namer = TaskNamer(job_stream("task_name"), rename_task, journal_model, lambda p: key_args(p))   # a short task name (task_names.py)
 
+    async def goal_summary(goal: dict[str, Any], entry: dict[str, Any]) -> str | None:
+        """The one-line summary of a goal or work item after a new entry (SUMMARY_PROMPT): the new line, or None to keep the old one."""
+        chosen = journal_model()
+        if chosen is None:
+            return None
+        provider, model = chosen
+        user = (f"Title: {goal['title']}\nDescription: {goal.get('description') or '-'}\nCurrent summary: {goal.get('summary') or '-'}\n"
+                f"New entry: {entry.get('title') or '-'} | {entry.get('outcome') or '-'} | {entry.get('text') or '-'}")
+        req = ChatRequest(model=model, messages=[{"role": "system", "content": SUMMARY_PROMPT}, {"role": "user", "content": user}],
+                          tools=[], extra={})
+        parts = [ev.text async for ev in counted("goal_summary")(provider, req, **key_args(provider)) if isinstance(ev, TextDelta)]
+        out = "".join(parts).strip()
+        return out[4:].strip() if out.upper().startswith("NEW:") else None
+
+    goal_book.summarize = goal_summary
+
     # The nightly jobs (journal, then the look-back) run once a night at the quietest time learned from the user's own use
     # (quiet_hours.py; 03:50 until a week of use is known), checked every 5 minutes so a restart during the night still runs them.
     nightly_jobs: list[Callable[[], Awaitable[Any]]] = [journal.daily]
 
     async def purge_schedules() -> int:
-        return schedules.purge_archived()
+        return schedules.purge_archived() + delivery_log.purge()   # the daily cleanup: deleted schedules, and deliveries a year old (deliveries.py)
     scheduler.paused = lambda: store.keyguard.locked   # jobs that need a key wait for Keyguard's unlock (schedules.Scheduler.held)
     scheduler.add_daily("schedule_archive", 4, 30, purge_schedules, needs_secrets=False)   # deleted schedules older than 30 days go for good
     scheduler.add_every("watchers", 30, watchers.check_due)
+    scheduler.add_every("deliveries", TICK_SECONDS, delivery_log.drain, needs_secrets=False)   # a delivery not yet with the chat (deliveries.py)
+    scheduler.add_every("owed job reports", TICK_SECONDS, lambda: workers.hand_owed())   # a finished job whose report the chat does not have yet
     scheduler.add_every("event_reminders", 60, event_reminders.tick)   # reminders before calendar events for checklist items (event_reminders.py)
     if reflection:
         nightly_jobs.append(reflection.nightly)
@@ -3146,8 +3317,19 @@ def create_app(
     app.include_router(api_voice.router(appctx))
 
     # proactive messages (proactive.py): off until the user turns them on
-    async def deliver_proactive(item: dict[str, Any]) -> int:
+    async def deliver_proactive(item: dict[str, Any]) -> int | None:
+        await wait_for_reply()   # Kelo's own message: after the chat reply that is running (owner 2026-11-20)
         text = item["message"]
+        once = str(item.get("once_key") or "")
+        if once:   # the message, its task and its notification are one delivery; its log rows go in the same write (deliveries.py)
+            notice = (item.get("notice") or store.profile().get("agent_name") or "Kelo")[:60]
+            title = item["title"][:80] or i18n.t("Heads-up")
+            delivery_log.put(once, "chat", "proactive", {
+                "text": text, "task": {"title": title, "source": "proactive", "answer": text},
+                "notify": {"type": "proactive", "title": notice, "body": text[:400]}}, also=item.get("also") or ())
+            await delivery_log.send(once)
+            got = store._all("SELECT id FROM tasks WHERE once_key = ?", (once,))
+            return int(got[0]["id"]) if got else None
         store.add_message("assistant", text)
         tid = activity.start_task(item["title"][:80] or i18n.t("Heads-up"), "proactive")
         activity.finish_task(tid, "done", answer=text)
@@ -3480,9 +3662,12 @@ def create_app(
                 t.goal_ids.add(gid)
         async def card_images(turn_id: str, urls: list[str]) -> list[dict[str, Any] | None]:
             return await chat_images.card_pictures(turn_id, urls, netguard_fetch) if chat_images.root is not None else [None] * len(urls)
+        def created(gid: int) -> None:   # a goal saved in the chat: the next chat turns see its tools without a search
+            tool_scopes.add("chat", list(GOAL_TURN_TOOLS))
         return goal_book.tools(current_turn.get, replies, lambda gid: schedules.list(gid), link_schedule, on_goal=touched,
                                card_images=card_images,
-                               product_of=lambda pid: workers.products.get(pid) if workers is not None else None)
+                               product_of=lambda pid: workers.products.get(pid) if workers is not None else None,
+                               on_created=created)
 
     followups = Followups(store, home=home, stream_fn=counted("followup"), model=lambda: journal_model(), key_args=lambda p: key_args(p),
                           deliver=deliver_followup, wake=lambda: proactive.window_at()[:2], next_wake=proactive.next_awake,
@@ -3518,7 +3703,7 @@ def create_app(
         def observe(item: dict[str, Any] | None) -> None:
             if item is None:   # the run ended: its answer joins the chat (the request does not: it is Kelo's own plan, not a message)
                 if said and said.text().strip() != NO_REPLY:
-                    store.add_message("assistant", collapse_repeat(said.text()))
+                    store_reply(said)
                 said.clear()
             else:
                 said.feed(item)
@@ -3548,6 +3733,11 @@ def create_app(
             return ZoneInfo("UTC")
 
     follow_store = FollowStore(store)
+    carried = CarriedLinks(store, follow_store, goal_book, clock=follow_store.clock)   # the one list: work items and their follow items (carried.py)
+    follow_store.on_saved = carried.match_follow      # a new follow item becomes (or joins) a work item (owner 2026-11-20, decision 18)
+    follow_store.on_removed = carried.unlink_follow
+    goal_book.carried = carried
+    carried.migrate()
     upcoming = UpcomingExtractor(follow_store, tz=follow_tz, clock=follow_store.clock)   # chat items from the nightly look-back
     if reflection:
         reflection.upcoming = upcoming
@@ -3581,7 +3771,9 @@ def create_app(
         tz=follow_tz(),
     )
     follow_runner.notify_block = notify_block
+    follow_runner.links = carried
     app.state.follow_runner = follow_runner
+    app.state.carried = carried
     app.state.follow_store = follow_store
     if with_followup_tools or (with_followup_tools is None and not tools_given):
         tools = [*tools, *followups.tools(current_turn.get), *done_once.tools()]   # action_result: shown only while a result is unknown
@@ -3613,6 +3805,7 @@ def create_app(
     app.include_router(module_router(sources_routes, sources, require_auth))
     scheduler.add_every("follow", 60, follow_runner.tick)
     app.include_router(module_router(follow_routes, follow_runner, require_auth))
+    app.include_router(module_router(carried_routes, carried, require_auth))
     if checklist:
         app.include_router(module_router(checklist_routes, checklist, require_auth, lambda: (
             situation.next_send(time.time()) if checklist.send_time_items() else None)))
@@ -3768,7 +3961,7 @@ def create_app(
         def save() -> None:
             nonlocal saved
             if not saved and said:
-                store.add_message("assistant", collapse_repeat(said.text()), via=via, steps=said.steps_text(), call_id=body.call or "")
+                store_reply(said, via=via, steps=said.steps_text(), call_id=body.call or "")
             saved = True
 
         def observe(item: dict[str, Any] | None) -> None:

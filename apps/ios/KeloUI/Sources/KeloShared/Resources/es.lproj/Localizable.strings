@@ -1376,6 +1376,7 @@
 "goal_resume" = "Devolver a Kelo";
 "goal_resume_started" = "Kelo se pone con ello. Puedes seguirlo en el chat.";
 "goal_resume_no_model" = "Primero elige un modelo en Mi espacio.";
+"goal_log_more" = "Ver entradas anteriores";
 "goal_edit" = "Editar";
 "goal_due" = "Antes del %1$s";
 "goal_mark_step" = "Marcar como hecho";
@@ -1427,6 +1428,13 @@
 "endpoint_in_use" = "Este es el punto de conexión del modelo en uso. Cambie primero a otro modelo.";
 "endpoint_name_taken" = "Ese nombre ya está en uso.";
 "endpoint_too_many" = "Puede tener hasta 20 puntos de conexión.";
+"goals_work_section" = "Lo que Kelo lleva";
+"goals_subgoals" = "Objetivos más pequeños";
+"goal_about" = "Acerca de";
+"goal_log_from" = "De %1$s";
+"goals_delete_children##one" = "También se eliminará su objetivo pequeño.";
+"goals_delete_children##many" = "También se eliminarán sus %d objetivos pequeños.";
+"goals_delete_children##other" = "También se eliminarán sus %d objetivos pequeños.";
 "actions_title" = "Lo que hizo Kelo";
 "actions_period_today" = "Hoy";
 "actions_period_7d" = "7 días";
@@ -2202,7 +2210,6 @@
 "pin_secret_title" = "PIN de pago para %1$s";
 "pin_secret_where" = "Cifrado en este teléfono. Nunca aparece en el chat.";
 "pin_secret_done" = "PIN de pago guardado para %1$s";
-"reply_other" = "Otra";
 "reply_pick_date" = "Elegir fecha";
 "reply_pick_time" = "Elegir hora";
 "reply_number_hint" = "Escribe un número";

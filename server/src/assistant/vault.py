@@ -143,6 +143,9 @@ def use_credential(store: Any, name: str, *, tool: str, kind: str = "api", detai
     cred = store.credential(name)
     if not cred:
         store.add_vault_log(name, "denied", f"{tool}: no such item", False)
+        if kind != "login":
+            from . import run_blocks
+            run_blocks.note_item("connect_missing", name)   # a scheduled run waits for the connection (run_blocks.py)
         known = ", ".join(c["name"] for c in store.credentials()) or "none"
         raise VaultError(f"nothing named {name!r} in the vault. Items: {known}. Ask the user to add it with "
                          f"{'request_login' if kind == 'login' else 'add_service_key'}.")
@@ -152,6 +155,9 @@ def use_credential(store: Any, name: str, *, tool: str, kind: str = "api", detai
                          "not what this tool uses.")
     if not cred["secret"]:
         store.add_vault_log(name, "denied", f"{tool}: nothing entered yet", False)
+        if kind != "login":
+            from . import run_blocks
+            run_blocks.note_item("connect_missing", name)
         raise VaultError(f"the user has not entered the {'password' if kind == 'login' else 'key'} for {name!r} yet. Its fill-in card "
                          f"is waiting in the chat (and in {t(KEYCHAIN)}); you are told when it is saved. If they closed it, ask once "
                          f"with {'request_login' if kind == 'login' else 'add_service_key'}.")

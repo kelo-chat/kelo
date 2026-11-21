@@ -56,6 +56,7 @@ from .agent.found_secrets import scrub
 from .agent.loop import digest_tool_results
 from .compaction import request_tokens
 from .i18n import N_, t
+from .stop_reports import AT_LINE, DONE_LINE, NOTHING_DONE
 from .job_cuts import Cut, cut_result, next_pickup, open_calls, pickup_note
 from .outside_rule import OWNER_SOURCES
 from .shopping import ProductResults, pages_read, verify
@@ -350,6 +351,7 @@ class Workers:
         self.chat_views: Any = None   # the chat's views (chat_views.py), set by server.py
         self._live: dict[str, _Live] = {}
         self._owner_words: dict[str, tuple[str, str]] = {}   # job -> (key, the owner's own message passed to it); done_once uses it once
+        self._handing: set[str] = set()   # jobs whose report is being handed to the chat in this process (hand_report)
         self._queue: list[tuple[str, str]] = []     # automatic resumes waiting for a free slot: (id, why)
         self._closing = False
         self._cut_seen: set[str] = set()            # jobs this process already cut at its start (startup may run again after a Keyguard unlock)
@@ -360,6 +362,8 @@ class Workers:
                 store._db.execute("ALTER TABLE workers ADD COLUMN wake_at REAL NOT NULL DEFAULT 0")
             if "retries" not in have:
                 store._db.execute("ALTER TABLE workers ADD COLUMN retries INTEGER NOT NULL DEFAULT 0")
+            if "report_owed_at" not in have:   # when a settled job's report became owed to the chat; cleared once the chat has it
+                store._db.execute("ALTER TABLE workers ADD COLUMN report_owed_at REAL")
             if "question_id" not in have:   # the id of the open question of a job that reported needs_input ("q_" + 16 hex), "" otherwise
                 store._db.execute("ALTER TABLE workers ADD COLUMN question_id TEXT NOT NULL DEFAULT ''")
             if "parent_cond" not in have:   # the conditional task (watcher:N / schedule:N) that handed the job over, "" for a chat
@@ -1149,7 +1153,7 @@ class Workers:
                 self._update(r["id"], wait_on=json.dumps(wait))
         return out
 
-    async def _settle(self, wid: str, outcome: tuple[str, str, str, bool] | None, rec: _Recorder | None) -> None:
+    async def _settle(self, wid: str, outcome: tuple[str, str, str, bool] | None, rec: _Recorder | None, *, reason: str = "") -> None:
         self._owner_words.pop(wid, None)   # the owner's words were for this run
         live = self._live.get(wid) or _Live()
         r = self._row(wid)
@@ -1202,20 +1206,54 @@ class Workers:
             report["need"] = live.report["need"]                             # a typed reason (REPORT_NEEDS), never read from the summary
         if live.report and live.report.get("reason"):
             report["reason"] = live.report["reason"]
+        if reason:   # set by Kelo itself (the cut loop): the handoff text says what it means (_handoff_text)
+            report["reason"] = reason
         if getattr(live, "report_products", None):
             self.products.save(wid, live.report_products, now)
             report["products"] = [p.id for p in live.report_products]
+        # the report and its owed mark in ONE statement: a stop before the chat has it leaves the mark for the next start (hand_owed)
         self._update(wid, status=status, report=json.dumps(report, ensure_ascii=False), wait_on=json.dumps(wait), keep_tab=int(keep),
                      wake_at=wake_at, finished_at=now if status in ("done", "failed") else None,
-                     question_id=new_question_id() if status == "needs_input" or (status == "blocked" and wake_at <= 0) else "")
+                     question_id=new_question_id() if status == "needs_input" or (status == "blocked" and wake_at <= 0) else "",
+                     report_owed_at=now)
         self._emit(wid)
         if status in ("done", "failed") and not keep:
             await self._retire(r["tab"])
         self._drain()
+        await self.hand_report(wid)
+
+    def report_key(self, r: dict[str, Any]) -> str:
+        """The delivery key of one job report (the report's own time): the same report never reaches the chat twice."""
+        return f"job-report:{r['id']}:{int(float(json.loads(r['report'])['at']) * 1000)}"
+
+    async def hand_report(self, wid: str) -> None:
+        """A job's last report goes to the chat (host.handoff) while it is owed. One at a time per job in this process; the owed mark is
+        cleared when the chat has it (report_handed), so a stop before that leaves it owed for hand_owed."""
+        r = self._row(wid)
+        if not r or not r.get("report_owed_at") or wid in self._handing or not r.get("report"):
+            return
+        self._handing.add(wid)
         try:
-            await self.host.handoff(self._row(wid) or r, self._handoff_text(self._row(wid) or r, report, wait), t(STATUS_HEAD[status]))
-        except Exception:  # noqa: BLE001 - the report stays readable in the app
+            rep = json.loads(r["report"])
+            wait = json.loads(r["wait_on"] or "{}")
+            await self.host.handoff(r, self._handoff_text(r, rep, wait), t(STATUS_HEAD[rep["status"]]), once_key=self.report_key(r))
+        except Exception:  # noqa: BLE001 - the report stays readable in the app and owed until the chat has it
             log.exception("worker %s: the handoff to the conversation failed", wid)
+        finally:
+            self._handing.discard(wid)
+
+    def report_handed(self, wid: str, once_key: str) -> None:
+        """The chat has this job's report (the handoff turn's resume record names it): it is no longer owed."""
+        r = self._row(wid)
+        if r is not None and r.get("report") and self.report_key(r) == once_key:
+            self.store._run("UPDATE workers SET report_owed_at = NULL WHERE id = ? AND report_owed_at IS NOT NULL", (wid,))
+
+    def owed(self) -> list[str]:
+        return [r["id"] for r in self.store._all("SELECT id FROM workers WHERE report_owed_at IS NOT NULL ORDER BY report_owed_at")]
+
+    async def hand_owed(self) -> None:
+        for wid in self.owed():
+            await self.hand_report(wid)
 
     def _format_time(self, ts: float) -> str:
         try:
@@ -1248,8 +1286,8 @@ class Workers:
                     sale = f" (now {p.sale_price})" if p.sale_price else ""
                     lines.append(f"- {p.id} · {p.name} · {p.price}{sale} · {p.seller}")
             lines.append(
-                "Offer them as one choice card: quick_replies with one option per product (a short name as the label) and each card's product set to "
-                "its id, one of them recommended."
+                "Offer them as one choice card: quick_replies with one option per product for the best fits, at most three (a short name as the "
+                "label) and each card's product set to its id, one of them recommended."
             )
             lines.append(
                 "In your text give one short takeaway and the decisive difference, naming at most two; do not list them."
@@ -1287,6 +1325,9 @@ class Workers:
                 lines.append(f"The job will retry by itself at {time_str}. Tell the user once, in one line (e.g. that the site is "
                              f"blocking for now and it will try again at {time_str}; they can keep talking).")
             else:
+                if rep.get("reason") == "cut_loop":
+                    lines.append("It stopped by itself after being cut off at the same step again and again. Tell the user in a few lines "
+                                 "what it did (the details above), where it stopped and why.")
                 site = registrable(urlsplit(str(r.get("last_url") or "")).hostname or "") if r.get("last_url") else ""
                 if not site:
                     site = "the site"
@@ -1420,16 +1461,25 @@ class Workers:
         self._update(wid, wait_on=json.dumps({"kind": "cut", "until": now + wait}))
 
     def _cut_stop(self, wid: str, cuts: int) -> None:
-        """The job was cut too many times at the same step: it stops as blocked and the report goes to the conversation."""
+        """The job was cut too many times at the same step: it stops as blocked and the report goes to the conversation, with where it
+        stopped and what it did (owner 2026-11-20, D3)."""
         text = t(CUT_LOOP_LINE, n=cuts)
+        r = self._row(wid) or {}
+        cut = Cut.of(r.get("cut") or "")
+        where = ""
+        if cut is not None and cut.step is not None:
+            where = tool_labels.label(cut.step.tool) + (f" · {host_of(cut.url)}" if cut.url else "")
+        lines = [str(x.get("text") or "") for x in json.loads(r.get("lines") or "[]") if x.get("text")]
+        details = "\n".join(([t(AT_LINE, step=where)] if where else [])
+                            + ([t(DONE_LINE, steps=", ".join(lines))] if lines else [t(NOTHING_DONE)]))
         try:
             asyncio.get_running_loop()
         except RuntimeError:   # no loop (a start outside the server): the row says it, the report goes on at the next settle
-            report = {"status": "blocked", "summary": text, "details": "", "keep_tab": False, "at": self._clock()}
+            report = {"status": "blocked", "summary": text, "details": details, "keep_tab": False, "at": self._clock(), "reason": "cut_loop"}
             self._update(wid, status="blocked", report=json.dumps(report, ensure_ascii=False), wait_on=json.dumps({"kind": "user"}),
-                         wake_at=0.0)
+                         wake_at=0.0, report_owed_at=self._clock())
             return
-        asyncio.ensure_future(self._settle(wid, ("blocked", text, "", False), None))
+        asyncio.ensure_future(self._settle(wid, ("blocked", text, details, False), None, reason="cut_loop"))
 
     def _pickup(self, wid: str) -> bool:
         """Go on with a cut job: the pick-up note says what happened and what to check first (job_cuts.pickup_note)."""

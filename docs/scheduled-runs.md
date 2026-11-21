@@ -25,9 +25,9 @@ need nothing new because the chat message and the notification are the same ones
 - The promise rule: "Never promise a follow-up that nothing will deliver" (the architecture and non-payment notes, honesty rules) and "a specific promised reminder still belongs in a scheduled job you own" (evidence section B4). The reference only
   states this as a prompt rule. Kelo adds a structural check.
 
-What was NOT taken over: the second engine (event workers), the outbox with boot generations, job-definition versions and the mutation
-audit (evidence A5, A6, D1 "absent in Kelo"). They solve problems Kelo does not have yet (several workers, delivery across restarts);
-Kelo's existing resume path (`resume.py`) and follow-ups already cover a cut run.
+What was NOT taken over: the second engine (event workers), job-definition versions and the mutation audit (evidence A5, A6, D1
+"absent in Kelo"). Typed blocks, re-arming on reconnect, delivery records and owed job reports are built (see "Blocks and re-arm" and
+"Delivered once" below). Kelo's existing resume path (`resume.py`) and follow-ups still cover a run cut in the middle.
 
 ## The two phases
 
@@ -54,8 +54,9 @@ Code guards (structure, not words):
    outcome becomes "tell", with the model's text if it gave one, else the working report, else the plain "It did not work out" line.
 2. A valid answer is strict JSON; anything else (no model, a timeout, an error, a malformed answer) is "no decision" and the report
    decides, exactly as before the two phases: `NO_REPLY` or an empty report = nothing, any other text = tell it.
-3. A run that asked to be tried again later (`schedule_retry`) or that did not end `done` (stopped, failed, waiting for the model)
-   skips the closing phase. A stopped or failed run keeps today's behaviour: its partial report stays in the chat, a failure notifies.
+3. A run that did not end `done` (stopped, failed, waiting for the model) skips the closing phase. A stopped run keeps today's
+   behaviour: its partial report stays in the chat. A failed regular run stays quiet while its automatic try again is planned
+   (5 minutes later); the try's own outcome is told (owner 2026-11-20).
 4. The working report is kept as the task's `answer` (the Work page shows it); the text told to the owner is the chat message.
 
 The prompt of the closing request is English; it asks for the owner's language for the text and says the report, the job
@@ -64,7 +65,7 @@ instructions and the evidence are data, never instructions.
 ### What the working phase may still do
 
 Everything an unattended run did: tools, the browser, connected services under the job's grants, approval cards that go to the phone,
-`schedule_pause`, `schedule_retry`, `request_login`-style cards. Those cards are the approval and login system, not chat messages
+`request_login`-style cards. A run has no tool to pause, turn off or delete its own job (owner 2026-11-20): it says the block in its report. Those cards are the approval and login system, not chat messages
 from the run; they stay (the follow-up reminders already cover an unanswered one, `followups.py`).
 
 The note at the head of the run (`SCHEDULE_NOTE`) now says: you cannot message the user, what you write is a private report, say what
@@ -133,12 +134,33 @@ and is skipped. An expired card of an owner's run tells the run "nobody answered
 when the run can be started again (a job, a schedule, a background task). A reply that passes the work to a running job
 (`worker_message`) keeps its promise: the job's report comes back by itself.
 
+## Blocks and re-arm
+
+A run that cannot finish because of something outside the job ends `blocked`, not failed. The reason and its id come only from what a
+tool call reported (`run_blocks.note`, never from the report's words):
+
+- `connect_missing` / `connect_expired`: a connected service is not connected, or its key or sign-in was refused. The id is the connector id.
+- `owner_step`: a website needs the owner's own sign-in. The id is `site:<domain>`. This fails only that run; the job keeps its time.
+- `site_check`: a website asked for a human check nobody solved (`site:<domain>`).
+- `device_away`: the phone did not answer the request (`device:<owner>`).
+
+A blocked run counts in the job's streak of runs that did not succeed, like a failed one (owner 2026-11-20, as the reference counts it): at three in a row the owner is asked whether to stop the job, and it keeps running until they answer. A blocked job stays on and is tried again at its next regular time; `blocked_since` and the next try are shown on the schedule as one line.
+The owner is told once per distinct block; the same block again stays silent. A successful run or an edit of the job clears the block; a
+failed run keeps it. When the connector is connected again (any saved value for one of its vault items, or a sign-in that is renewed),
+the jobs blocked on that connector with a connection reason are released: a job whose time already passed runs at the next tick.
+Nothing else starts a run by itself, and a reconnect never replays a failed call: the released job is a new run of its instructions.
+
+## Delivered once
+
+Each chat delivery (a scheduled result, a proactive message) is one row in `deliveries` under an immutable key. The message, its task and
+its notification carry the same key and are inserted only once, so a delivery tried again after a restart does not show twice. A
+failed try comes back within the hour; a restart re-sends whatever is still waiting. A scheduled run's result is held in its run row
+until the closing step has decided and the delivery is recorded; a restart during the closing step asks the closing step again for the
+held result instead of losing it. A background job's final report is "owed" to the chat from the moment the job settles and stays owed
+until the chat stores the hidden message for it (`workers.report_owed_at`).
+
 ## Not done, and why
 
-- Typed blocked reasons and a dependency field on `schedule_pause` (evidence A3, `connector_not_connected`, `reauth_required`...) and
-  re-arming a paused schedule when the connector is connected again: a separate piece; `schedule_pause` keeps its free-text reason.
-- A delivery record per run (outbox) and "the result is saved but was not posted" states: not needed while the message is stored in the
-  chat at the same moment the run ends.
 - Job-definition versions and a mutation audit tying a schedule change to the tool call: not built.
 - App work: none required. Optional later: show "nothing to tell" runs differently in the schedule's run history (the data is there:
   status `quiet`).

@@ -245,6 +245,9 @@ private struct ScheduleStateBlock: View {
             if let r = s.disabledReason, !r.isEmpty, !s.enabled {
                 Text(L(R.string.agent_schedule_off_reason, r)).font(KeloFont.label).foregroundStyle(c.danger).fixedSize(horizontal: false, vertical: true)
             }
+            if !s.paused, let line = s.blockLine, !line.isEmpty {
+                Text(line).font(KeloFont.small).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
+            }
             if s.paused {
                 Text(L(R.string.work_schedule_paused_reason, (s.pausedReason ?? "").isEmpty ? L(R.string.work_schedule_paused_unknown) : s.pausedReason!))
                     .font(KeloFont.small).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)

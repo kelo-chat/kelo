@@ -1410,6 +1410,7 @@
 "goal_resume" = "Повернути Kelo";
 "goal_resume_started" = "Kelo взявся до справи. Стежити можна в чаті.";
 "goal_resume_no_model" = "Спершу виберіть модель у розділі «Моє».";
+"goal_log_more" = "Показати попередні записи";
 "goal_edit" = "Змінити";
 "goal_due" = "До %1$s";
 "goal_mark_step" = "Позначити виконаним";
@@ -1462,6 +1463,14 @@
 "endpoint_in_use" = "Це ендпоінт використовуваної моделі. Спочатку перейдіть на іншу модель.";
 "endpoint_name_taken" = "Ця назва вже використовується.";
 "endpoint_too_many" = "Можна зберегти до 20 ендпоінтів.";
+"goals_work_section" = "Те, чим опікується Kelo";
+"goals_subgoals" = "Дрібніші цілі";
+"goal_about" = "Опис";
+"goal_log_from" = "З: %1$s";
+"goals_delete_children##one" = "Разом із нею видалиться і її дрібніша ціль.";
+"goals_delete_children##few" = "Разом із нею видалиться ще %d дрібніші цілі.";
+"goals_delete_children##many" = "Разом із нею видалиться %d дрібніших цілей.";
+"goals_delete_children##other" = "Разом із нею видалиться %d дрібніших цілей.";
 "actions_title" = "Що зробив Kelo";
 "actions_period_today" = "Сьогодні";
 "actions_period_7d" = "7 днів";
@@ -2243,7 +2252,6 @@
 "pin_secret_title" = "Платіжний PIN для %1$s";
 "pin_secret_where" = "Зашифровано на цьому телефоні. Ніколи не показується в чаті.";
 "pin_secret_done" = "Платіжний PIN для %1$s збережено";
-"reply_other" = "Інше";
 "reply_pick_date" = "Вибрати дату";
 "reply_pick_time" = "Вибрати час";
 "reply_number_hint" = "Введіть число";

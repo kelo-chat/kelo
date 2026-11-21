@@ -570,9 +570,9 @@ async def test_what_the_model_finds_urgent_goes_out_at_once_as_one_urgent_send_a
 
     async def watch(tools, user):
         h = tools["propose_help"].handler
-        await h({"key": "cancel", "title": "14:00 미팅 취소", "prepared": "취소됨.", "urgent": True, "evidence": [label_of(user, "미팅 취소")]})
-        await h({"key": "place", "title": "15:00 장소 변경", "prepared": "바뀜.", "urgent": True, "evidence": [label_of(user, "장소 변경")]})
-        await h({"key": "ask", "title": "다음 주 일정 문의", "prepared": "답장이 필요함.", "evidence": [label_of(user, "일정 문의")]})
+        await h({"key": "cancel", "title": "14:00 미팅 취소", "prepared": "취소됨.", "level": "now", "evidence": [label_of(user, "미팅 취소")]})
+        await h({"key": "place", "title": "15:00 장소 변경", "prepared": "바뀜.", "level": "now", "evidence": [label_of(user, "장소 변경")]})
+        await h({"key": "ask", "title": "다음 주 일정 문의", "prepared": "답장이 필요함.", "level": "regular", "evidence": [label_of(user, "일정 문의")]})
     r.agent.on("situation", watch)
     r.agent.on("situation_write", lambda tools, user: "14시 미팅이 취소됐고 15시 장소가 바뀌었어요.")
     await r.p.tick()
@@ -594,7 +594,7 @@ async def test_over_daily_now_an_urgent_send_counts_as_today_and_waits_when_the_
     box = FakeMail([mail("1", "미팅 취소")])
     r = owner_day(tmp_path, ts(2026, 11, 17, 13, 0), mail_box=box)
     r.p.update(daily_now=0)
-    r.agent.on("situation", lambda tools, user: tools["propose_help"].handler({"key": "c", "title": "취소", "prepared": "p", "urgent": True,
+    r.agent.on("situation", lambda tools, user: tools["propose_help"].handler({"key": "c", "title": "취소", "prepared": "p", "level": "now",
                                                                                "evidence": [label_of(user, "미팅 취소")]}))
     r.agent.on("situation_write", lambda tools, user: "취소됐어요.")
     await r.p.tick()
@@ -605,7 +605,7 @@ async def test_over_daily_now_an_urgent_send_counts_as_today_and_waits_when_the_
                     task_id=9 + i, delivery=f"situation:{i + 100}")
     box.items = [mail("2", "미팅 취소 둘")]
     r.clock.t = ts(2026, 11, 17, 14, 0)
-    r.agent.on("situation", lambda tools, user: tools["propose_help"].handler({"key": "c2", "title": "취소 둘", "prepared": "p", "urgent": True,
+    r.agent.on("situation", lambda tools, user: tools["propose_help"].handler({"key": "c2", "title": "취소 둘", "prepared": "p", "level": "now",
                                                                                "evidence": [label_of(user, "취소 둘")]}))
     await r.p.tick()
     assert len(r.sent) == 1 and r.items("prepared")[0]["reason"] == "waiting: over_cap"   # never past the caps
@@ -630,11 +630,11 @@ async def test_the_correction_check_runs_only_at_send_times(tmp_path):
     assert kinds(r) == ["watch", "send"] and Check.calls == 1
 
 
-def test_the_watch_prompt_leaves_urgent_to_judgment_and_the_rest_waits():
+def test_the_watch_prompt_leaves_the_level_to_judgment_and_the_rest_waits():
     from assistant import situation as S
     text = (S.prompts_dir() / "situation_watch.md").read_text(encoding="utf-8")
-    assert "only when waiting until the next send time would cost the owner" in text and "Wording alone" in text
-    assert "Everything else waits for the next send time" in text and "act_by" not in text
+    assert 'choose "today"' in text and "never from alarming words" in text and "waits for the owner's next send time" in text
+    assert "act_by" not in text
 
 
 # ---------------------------------------------------------------------------------------------------------------- the checklist (owner 2026-11-19)

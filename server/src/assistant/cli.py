@@ -295,6 +295,9 @@ def main(argv: list[str] | None = None, out: Callable[[str], None] = print) -> i
     rb.add_argument("--env-file", type=Path, default=Path(".env"))
     bk = sub.add_parser("backups", help="list a copy's backups and its rollback point")
     bk.add_argument("name", nargs="?", help="which extra copy (default: the main one)")
+    bk.add_argument("--rollback-sets", type=int, metavar="N", dest="rollback_sets",
+                    help="how many rollback sets this copy keeps (each a full set of its images; default 2, at least 1): saved in the "
+                         "copy's settings, and older sets are removed at once")
     bk.add_argument("--env-file", type=Path, default=Path(".env"))
     inst = sub.add_parser("instance", help="more copies of the assistant on this computer, each with its own data, keys and phones")
     isub = inst.add_subparsers(dest="icmd", required=True, metavar="{create,start,stop,delete,token,list,update,routes,site-only}")

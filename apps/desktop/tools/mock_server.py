@@ -703,11 +703,12 @@ def form_questions(lang: str) -> list[dict]:
     import datetime as dt
     due = (dt.date.today() + dt.timedelta(days=3)).isoformat()
     ko = lang == "ko"
+    typed = "직접 입력할게요" if ko else "Type it"   # an answer to write: the server lists it in "typed", the app opens a box under it
     return [
         {"question": "언제까지 필요하세요?" if ko else "When do you need it?", "options": [], "kind": "date", "default": due},
         {"question": "표는 몇 개 넣을까요?" if ko else "How many tables?", "options": [], "kind": "number", "min": 1.0, "max": 10.0,
          "unit": "개" if ko else "tables"},
-        {"question": "어떤 파일로 받을까요?" if ko else "Which file type?", "options": ["Word", "PDF"]},
+        {"question": "어떤 파일로 받을까요?" if ko else "Which file type?", "options": ["Word", "PDF", typed], "typed": [typed]},
         {"question": "진행 상황은 언제 알려 드릴까요?" if ko else "When should I give you updates?", "options": [], "kind": "weekdays_time",
          "default": "mon,thu 09:00"},
     ]

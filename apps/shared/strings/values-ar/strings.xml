@@ -1623,6 +1623,7 @@
     <string name="goal_resume">إعادته إلى Kelo</string>
     <string name="goal_resume_started">Kelo يعمل عليه. يمكنك المتابعة في الدردشة.</string>
     <string name="goal_resume_no_model">اختر نموذجًا في صفحتي أولًا.</string>
+    <string name="goal_log_more">عرض السجلات السابقة</string>
     <string name="goal_edit">تعديل</string>
     <string name="goal_due">قبل %1$s</string>
     <string name="goal_mark_step">تعليم كمنجز</string>
@@ -1698,4 +1699,16 @@
     <string name="endpoint_in_use">هذه نقطة النهاية للنموذج قيد الاستخدام. قم بالتبديل إلى نموذج آخر أولاً.</string>
     <string name="endpoint_name_taken">هذا الاسم مستخدم بالفعل.</string>
     <string name="endpoint_too_many">يمكنك الاحتفاظ بما يصل إلى 20 نقطة نهاية.</string>
+    <string name="goals_work_section">ما يتولاه Kelo</string>
+    <string name="goals_subgoals">أهداف فرعية</string>
+    <string name="goal_about">عن الهدف</string>
+    <string name="goal_log_from">من %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="zero">ستُحذف أهدافه الفرعية أيضاً.</item>
+        <item quantity="one">سيُحذف هدفه الفرعي أيضاً.</item>
+        <item quantity="two">سيُحذف هدفاه الفرعيان أيضاً.</item>
+        <item quantity="few">سيُحذف %d أهداف فرعية أيضاً.</item>
+        <item quantity="many">سيُحذف %d هدفاً فرعياً أيضاً.</item>
+        <item quantity="other">سيُحذف %d هدف فرعي أيضاً.</item>
+    </plurals>
 </resources>

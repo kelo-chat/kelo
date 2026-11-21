@@ -100,15 +100,8 @@ class WorkRowsInput(
     val offerProblem: Pair<String, chat.kelo.app.offers.OfferStart>? = null,
     val onOfferStart: (chat.kelo.app.offers.Offer) -> Unit = {},
     val onOfferDismiss: (chat.kelo.app.offers.Offer, chat.kelo.app.offers.OfferReason) -> Unit = { _, _ -> },
-    val followItems: List<chat.kelo.app.follow.FollowItem> = emptyList(),
-    val onFollowClick: (chat.kelo.app.follow.FollowItem) -> Unit = {},
-    /** The stopped follow items are folded under one row; the screen keeps whether it is open. */
-    val showStoppedFollow: Boolean = false,
-    val onToggleStoppedFollow: () -> Unit = {},
 )
 
-const val SECTION_FOLLOW = "sec:follow"
-const val SECTION_FOLLOW_STOPPED = "sec:follow:stopped"
 const val SECTION_OPEN_TABS = "sec:opentabs"
 
 /**
@@ -120,8 +113,6 @@ fun buildWorkRows(i: WorkRowsInput): List<WorkRow> = WorkRowSink().apply {
     val watchers = i.watchers; val followups = i.followups; val followupBusy = i.followupBusy; val entries = i.entries
     val filter = i.filter; val showPaused = i.showPaused; val today = i.today; val push = i.push; val onOpenLive = i.onOpenLive; val container = i.container
     val offers = i.offers; val offerStarting = i.offerStarting; val offerProblem = i.offerProblem; val onOfferStart = i.onOfferStart; val onOfferDismiss = i.onOfferDismiss
-    val followItems = i.followItems; val onFollowClick = i.onFollowClick
-    val showStoppedFollow = i.showStoppedFollow; val onToggleStoppedFollow = i.onToggleStoppedFollow
     val taskItems = tasks.data?.items.orEmpty()
     val workerItems = workers.data?.items.orEmpty()
     val nested = Timeline.nest(taskItems, workerItems)
@@ -159,27 +150,7 @@ fun buildWorkRows(i: WorkRowsInput): List<WorkRow> = WorkRowSink().apply {
             )
         }
     }
-    // ---- Kelo가 챙기는 일 (at the top when there are items, hidden when empty)
-    if (followItems.isNotEmpty()) {
-        val live = followItems.filter { it.state != "stopped" }
-        val stopped = followItems.filter { it.state == "stopped" }
-        item(key = SECTION_FOLLOW, contentType = "section") { SectionTitle(string(Res.string.follow_section_title), live.size) }
-        live.forEach { item ->
-            item(key = "follow:" + item.key, contentType = "follow") {
-                chat.kelo.app.follow.FollowItemRow(item = item, onClick = { onFollowClick(item) })
-            }
-        }
-        if (stopped.isNotEmpty()) {
-            item(key = SECTION_FOLLOW_STOPPED, contentType = "paused") {
-                chat.kelo.app.follow.FollowStoppedToggle(stopped.size, showStoppedFollow, onToggleStoppedFollow)
-            }
-            if (showStoppedFollow) stopped.forEach { item ->
-                item(key = "follow:" + item.key, contentType = "follow") {
-                    chat.kelo.app.follow.FollowItemRow(item = item, onClick = { onFollowClick(item) })
-                }
-            }
-        }
-    }
+    // the follow items moved to the goals screen: one list of what Kelo carries (goals/CarriedModels.kt)
     if (asks.isNotEmpty()) asksSection()
     if (offers.isNotEmpty()) {
         item(key = "offers", contentType = "section") { SectionTitle(string(Res.string.offers_title), offers.size) }

@@ -15,46 +15,43 @@ from .runner import FollowRunner
 from .store import FollowStore
 
 
+def item_view(store: Any, it: dict[str, Any]) -> dict[str, Any]:
+    """One follow item as the apps show it (GET /api/follow items; GET /api/carried uses the same shape for the items inside a work item)."""
+    checks_out = []
+    for ch in store.list_checks(item_key=it["key"]):
+        last = store.last_reading(ch["id"], ok_only=True)
+        checks_out.append({
+            "kind": ch["kind"],
+            "fields": ch["fields"],
+            "from": ch["from_offset"],
+            "until": ch["until_offset"],
+            "state": ch["state"],
+            "last": last["fields"] if last else None,
+            "next_at": ch.get("next_at"),
+            # a check waiting for the month (an allowance used up) keeps its reason in "note" and counts no errors
+            "paused": ch["state"] == "active" and bool(ch.get("last_error")) and not ch.get("consecutive_errors"),
+            "note": ch.get("last_error") or "",
+        })
+    preps_out = [{"what": p.get("what", ""), "when": p.get("when", ""), "state": p.get("state", "later")} for p in it.get("prep", [])]
+    return {
+        "key": it["key"],
+        "kind": it["kind"],
+        "title": it["title"],
+        "starts_at": it["starts_at"],
+        "all_day": bool((it.get("refs") or {}).get("all_day")),   # no time was given: the apps show the day only
+        "checks": checks_out,
+        "prep": preps_out,
+        "plan": it.get("plan", {}),
+        "state": it.get("state", "planned"),
+    }
+
+
 def follow_routes(app: Any, runner: FollowRunner, auth: Callable[..., Any]) -> None:
     """The FOLLOW-THROUGH API: GET /api/follow, POST /api/follow/{key}/stop, POST /api/follow/{key}/replan, DELETE /api/follow/{key}."""
 
     @app.get("/api/follow", dependencies=[Depends(auth)])
     async def get_follow_items() -> dict[str, Any]:
-        items = runner.store.list_items()
-        out = []
-        for it in items:
-            checks = runner.store.list_checks(item_key=it["key"])
-            checks_out = []
-            for ch in checks:
-                last = runner.store.last_reading(ch["id"], ok_only=True)
-                checks_out.append({
-                    "kind": ch["kind"],
-                    "fields": ch["fields"],
-                    "from": ch["from_offset"],
-                    "until": ch["until_offset"],
-                    "state": ch["state"],
-                    "last": last["fields"] if last else None,
-                    "next_at": ch.get("next_at"),
-                    # a check waiting for the month (an allowance used up) keeps its reason in "note" and counts no errors
-                    "paused": ch["state"] == "active" and bool(ch.get("last_error")) and not ch.get("consecutive_errors"),
-                    "note": ch.get("last_error") or "",
-                })
-            preps_out = [
-                {"what": p.get("what", ""), "when": p.get("when", ""), "state": p.get("state", "later")}
-                for p in it.get("prep", [])
-            ]
-            out.append({
-                "key": it["key"],
-                "kind": it["kind"],
-                "title": it["title"],
-                "starts_at": it["starts_at"],
-                "all_day": bool((it.get("refs") or {}).get("all_day")),   # no time was given: the apps show the day only
-                "checks": checks_out,
-                "prep": preps_out,
-                "plan": it.get("plan", {}),
-                "state": it.get("state", "planned"),
-            })
-        return {"items": out, "usage": runner.usage()}
+        return {"items": [item_view(runner.store, it) for it in runner.store.list_items()], "usage": runner.usage()}
 
     @app.post("/api/follow/{key}/stop", dependencies=[Depends(auth)])
     async def stop_follow_item(key: str) -> dict[str, Any]:
@@ -154,7 +151,10 @@ def follow_tools(runner: FollowRunner) -> list[Tool]:
             state = STATE_WORDS.get(it.get("state", "planned"), it.get("state", "planned"))
             source = SOURCE_WORDS.get(str(it.get("source") or ""), str(it.get("source") or "unknown"))
             where = f", {it['place']}" if it.get("place") else ""
-            lines.append(f"- {item_when(it, tz)} {it['title']} (from {source}{where}; {state}; key {it['key']})")
+            links = getattr(runner, "links", None)   # the work item it is linked to (carried.py), named in the line
+            work = links.work_of(it["key"]) if links is not None else None
+            tie = f"; work item #{work}" if work is not None else ""
+            lines.append(f"- {item_when(it, tz)} {it['title']} (from {source}{where}; {state}{tie}; key {it['key']})")
             refs = it.get("refs") or {}
             if refs.get("what"):
                 lines.append(f"    what: {refs['what']}")

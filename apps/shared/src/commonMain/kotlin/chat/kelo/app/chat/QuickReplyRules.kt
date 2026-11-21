@@ -4,14 +4,11 @@ package chat.kelo.app.chat
  * Answer buttons under an agent message, apart from the UI (the phone, desktop and iPhone apps follow the same rules).
  *
  * An answer may mean "I will write it" ("Other", "직접 입력할게요", "있어요 (직접 입력)"): the server lists those in the question's
- * `typed` (the app reads no words of any language; it adds its own "Other" to a choice question with none). Picking one opens a text box under that
- * question (placeholder: [placeholder]); what is typed is sent instead of the button's words, and nothing is sent while a picked one is
- * still empty.
+ * `typed` (the app reads no words of any language). Picking one opens a text box under that question (placeholder: [placeholder]); what
+ * is typed is sent instead of the button's words, and nothing is sent while a picked one is still empty. The server's options are the
+ * only answers the app shows as buttons: the app adds no answer of its own; the user can type in the message box.
  */
 object QuickReplyRules {
-    /** The app's own "Other" answer, added to every choice question that has no answer to write ([choices]); it opens a text box. */
-    const val OTHER = "\u0000other"
-
     /** Buttons show only under the newest agent message, while the user has not written after it. */
     fun isOpen(items: List<ChatItem>, key: String): Boolean {
         val msgs = items.filterIsInstance<ChatItem.Msg>()
@@ -19,20 +16,16 @@ object QuickReplyRules {
         return i >= 0 && msgs.drop(i + 1).none { it.mine }
     }
 
-    /** The buttons of a choice question: its options, then [OTHER] when none of them is an answer to write. Choices are suggestions:
-     *  the user can always answer outside them. A lone button (a "Continue") gets no "Other". A field question has no buttons. */
-    fun choices(q: ReplyQuestion): List<String> = when {
-        ReplyFields.isField(q) -> emptyList()
-        q.options.size >= 2 && q.options.none { isTyped(q, it) } -> q.options + OTHER
-        else -> q.options
-    }
+    /** The buttons of a choice question: the server's options. Choices are suggestions: the user can always answer outside them.
+     *  A field question has no buttons. */
+    fun choices(q: ReplyQuestion): List<String> = if (ReplyFields.isField(q)) emptyList() else q.options
 
     /** One choice question: a tap sends the answer at once. Several, or a field (a picker or a box): the answers go together with
      *  the send button, one line per question. */
     fun sendsAtOnce(set: ReplySet): Boolean = set.questions.size <= 1 && set.questions.none { ReplyFields.isField(it) }
 
     /** The answer [option] of [q] opens a text box instead of being the answer itself. */
-    fun isTyped(q: ReplyQuestion, option: String): Boolean = option == OTHER || option in q.typed
+    fun isTyped(q: ReplyQuestion, option: String): Boolean = option in q.typed
 
     /** A tap on [option] sends it straight away (a single question, and not an answer to write). */
     fun sendsOnTap(set: ReplySet, q: ReplyQuestion, option: String): Boolean = sendsAtOnce(set) && !isTyped(q, option)

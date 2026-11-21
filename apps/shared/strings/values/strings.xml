@@ -1703,6 +1703,7 @@
     <string name="goal_resume">Let Kelo continue</string>
     <string name="goal_resume_started">Kelo\'s on it. You can follow along in Chat.</string>
     <string name="goal_resume_no_model">Pick a model in My first.</string>
+    <string name="goal_log_more">Show earlier entries</string>
     <string name="goal_edit">Edit</string>
     <string name="goal_due">By %1$s</string>
     <string name="goal_mark_step">Mark as done</string>
@@ -1780,4 +1781,12 @@
     <string name="endpoint_in_use">This is the endpoint of the model in use. Switch to another model first.</string>
     <string name="endpoint_name_taken">That name is already used.</string>
     <string name="endpoint_too_many">You can keep up to 20 endpoints.</string>
+    <string name="goals_work_section">Things Kelo is handling</string>
+    <string name="goals_subgoals">Smaller goals</string>
+    <string name="goal_about">About</string>
+    <string name="goal_log_from">From %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">Its smaller goal will be removed too.</item>
+        <item quantity="other">Its %d smaller goals will be removed too.</item>
+    </plurals>
 </resources>

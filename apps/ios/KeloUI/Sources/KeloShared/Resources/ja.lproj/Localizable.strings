@@ -1310,6 +1310,7 @@
 "goal_resume" = "Keloに任せる";
 "goal_resume_started" = "Keloが取りかかりました。チャットで様子を確認できます。";
 "goal_resume_no_model" = "先にマイページでモデルを選んでください。";
+"goal_log_more" = "以前の記録を表示";
 "goal_edit" = "編集";
 "goal_due" = "%1$s まで";
 "goal_mark_step" = "完了にする";
@@ -1359,6 +1360,11 @@
 "endpoint_in_use" = "現在使用中のモデルのエンドポイントです。別のモデルに変更してから削除してください。";
 "endpoint_name_taken" = "その名前は既に使用されています。";
 "endpoint_too_many" = "エンドポイントは20個まで保持できます。";
+"goals_work_section" = "Kelo が担当していること";
+"goals_subgoals" = "小さな目標";
+"goal_about" = "説明";
+"goal_log_from" = "%1$sから";
+"goals_delete_children##other" = "小さな目標 %d件も一緒に削除されます。";
 "actions_title" = "Keloがしたこと";
 "actions_period_today" = "今日";
 "actions_period_7d" = "7日";
@@ -2122,7 +2128,6 @@
 "pin_secret_title" = "%1$s の決済パスワード";
 "pin_secret_where" = "このスマホに暗号化して保管します。チャットには表示されません。";
 "pin_secret_done" = "%1$s の決済パスワードを保存しました";
-"reply_other" = "その他";
 "reply_pick_date" = "日付を選ぶ";
 "reply_pick_time" = "時刻を選ぶ";
 "reply_number_hint" = "数字を入力してください";

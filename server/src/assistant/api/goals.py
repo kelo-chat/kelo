@@ -14,16 +14,16 @@ from .context import AppContext
 
 
 class GoalIn(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-    category: str = Field(default="", max_length=40)
-    note: str = Field(default="", max_length=2000)
+    title: str = Field(min_length=1)
+    category: str = ""
+    note: str = ""
     kickoff: bool = True
 
 
 class GoalPatch(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    category: str | None = Field(default=None, max_length=40)
-    note: str | None = Field(default=None, max_length=2000)
+    title: str | None = Field(default=None, min_length=1)
+    category: str | None = None
+    note: str | None = None
     status: str | None = None
 
 
@@ -47,12 +47,15 @@ def router(ctx: AppContext) -> APIRouter:
                 start_work=lambda g, text: start_goal_work(g, text))   # before the /api/goals/{id} routes below
 
     @router.get("/api/goals", dependencies=[Depends(require_auth)])
-    async def get_goals() -> list[dict[str, Any]]:
-        return goal_book.listing()
+    async def get_goals(include: str | None = Query(None)) -> list[dict[str, Any]]:
+        """The user's goals; `include=work` adds the work items Kelo carries for the user (an older app gets goals only)."""
+        if include not in (None, "", "work"):
+            raise HTTPException(422, "include must be work")
+        return goal_book.listing(("goal", "work") if include == "work" else ("goal",))
 
     @router.post("/api/goals", dependencies=[Depends(require_auth)], status_code=201)
     async def post_goal(body: GoalIn) -> dict[str, Any]:
-        g = store.add_goal(body.title, body.category, body.note)
+        g = goal_book.create(body.title, category=body.category, note=body.note)
         if body.kickoff:
             start_goal_work(g, goal_book.kickoff_text(g))
         return goal_book.public(store.goal(g["id"]) or g)
@@ -92,22 +95,30 @@ def router(ctx: AppContext) -> APIRouter:
     async def remove_goal(goal_id: int, schedules_: str = Query("keep", alias="schedules")) -> dict[str, Any]:
         """`schedules`: keep (the default, also for older apps: the linked schedules keep running, taken off the goal) | delete (every
         linked schedule goes to the archive with the goal, restorable there; a run of theirs in progress is stopped). `pause` is what
-        apps before 0.9.4 send for "turn them off too": it deletes as well. The goal's own work in progress always stops."""
+        apps before 0.9.4 send for "turn them off too": it deletes as well. The goal's own work in progress always stops. Its smaller
+        goals (one level) go with it, with the same choice for their schedules; `deleted_goals` lists them."""
         if schedules_ not in ("keep", "delete", "pause"):
             raise HTTPException(422, "schedules must be keep or delete")
         if store.goal(goal_id) is None:
             raise HTTPException(404, "no such goal")
-        linked = [int(s["id"]) for s in schedules.list(goal_id)]
-        deleted = linked if schedules_ != "keep" else []
-        stopped = await stop_goal_work(goal_id, set(deleted))
-        for sid in deleted:
-            schedules.delete(sid)
-        if deleted:
-            scheduler.poke()
-        if not store.delete_goal(goal_id):
-            raise HTTPException(404, "no such goal")
-        goal_book.delete(goal_id)
-        return {"ok": True, "stopped_turns": stopped["turns"], "stopped_jobs": stopped["jobs"], "deleted_schedules": deleted,
-                "kept_schedules": [sid for sid in linked if sid not in deleted]}
+        children = [int(c["id"]) for c in store._all("SELECT id FROM goals WHERE parent_id = ? ORDER BY id", (goal_id,))]
+        out: dict[str, Any] = {"ok": True, "stopped_turns": 0, "stopped_jobs": 0, "deleted_schedules": [], "kept_schedules": [],
+                               "deleted_goals": children}
+        for gid in [*children, goal_id]:
+            linked = [int(s["id"]) for s in schedules.list(gid)]
+            deleted = linked if schedules_ != "keep" else []
+            stopped = await stop_goal_work(gid, set(deleted))
+            for sid in deleted:
+                schedules.delete(sid)
+            if deleted:
+                scheduler.poke()
+            if not store.delete_goal(gid):
+                raise HTTPException(404, "no such goal")
+            goal_book.delete(gid)
+            out["stopped_turns"] += stopped["turns"]
+            out["stopped_jobs"] += stopped["jobs"]
+            out["deleted_schedules"] += deleted
+            out["kept_schedules"] += [sid for sid in linked if sid not in deleted]
+        return out
 
     return router

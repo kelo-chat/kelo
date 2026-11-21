@@ -145,7 +145,8 @@ def test_the_page_gets_when_each_thing_is_looked_at(tmp_path):
     assert [g["when"] for g in body["looks"]] == ["hourly", "send", "briefing", "needed"]
     looks = {g["when"]: g for g in body["looks"]}
     assert looks["hourly"] == {"when": "hourly", "times": [], "covers": [
-        {"id": "mail", "name": "", "kind": "section"}, {"id": "home", "name": "Home", "kind": "connector"},
+        {"id": "mail", "name": "", "kind": "section"}, {"id": "calendar", "name": "", "kind": "section"},
+        {"id": "home", "name": "Home", "kind": "connector"},
         {"id": "phone:photos", "name": "Phone · Photos", "kind": "phone"}]}
     assert [c["id"] for c in looks["send"]["covers"]] == ["conversation", "calendar", "goals", "schedules", "memory", "corrections", "held"]
     assert looks["send"]["times"] == ["10:45", "14:30", "18:15"]           # 07:00-22:00 in four parts, the first is the briefing's
@@ -158,9 +159,10 @@ def test_without_mail_a_briefing_or_reads_those_groups_are_left_out(tmp_path):
     r = rig(tmp_path, ts(2026, 11, 17, 9, 9))
     r.p.update(mail_check=False)
     body = _client(r).get("/api/proactive/research").json()
-    assert [g["when"] for g in body["looks"]] == ["send"]                  # no mail, nothing connected, no briefing
-    assert body["looks"][0]["times"] == ["07:00", "12:00", "17:00"]
-    assert "corrections" not in [c["id"] for c in body["looks"][0]["covers"]]   # no correction check wired
+    assert [g["when"] for g in body["looks"]] == ["hourly", "send"]        # no mail, nothing connected, no briefing (the calendar is hourly)
+    assert body["looks"][0]["covers"] == [{"id": "calendar", "name": "", "kind": "section"}]
+    assert body["looks"][1]["times"] == ["07:00", "12:00", "17:00"]
+    assert "corrections" not in [c["id"] for c in body["looks"][1]["covers"]]   # no correction check wired
     r.p.update(research=False)
     assert _client(r).get("/api/proactive/research").json()["looks"] == []
 

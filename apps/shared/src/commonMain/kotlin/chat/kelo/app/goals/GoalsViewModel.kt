@@ -35,11 +35,17 @@ data class GoalsState(
     val suggestions: List<GoalSuggestion> = emptyList(),
     /** Suggestions being added or waved off right now (hidden at once) */
     val settling: Set<Long> = emptySet(),
+    /** The one list of what Kelo carries (GET /api/carried): work items with their follow items, and follow items on their own */
+    val carried: List<CarriedItem> = emptyList(),
+    /** The server answered the one list (an older server does not: the work section shows its own work items instead) */
+    val carriedKnown: Boolean = false,
 ) {
     val shownSuggestions: List<GoalSuggestion> get() = suggestions.filter { it.id !in settling }
     /** In progress, the nearest due date first */
-    val tracking: List<Goal> get() = GoalsRules.ordered(goals.filter { !it.isDone && it.id !in removing })
-    val done: List<Goal> get() = goals.filter { it.isDone && it.id !in removing }
+    val tracking: List<Goal> get() = GoalsRules.ordered(goals.filter { !it.isDone && !it.isWork && it.id !in removing })
+    /** The open work items Kelo carries for the user (the goals' own section, before the one list) */
+    val work: List<Goal> get() = GoalsRules.work(goals.filter { it.id !in removing })
+    val done: List<Goal> get() = goals.filter { it.isDone && it.id !in removing }   // done goals and done work items alike
 }
 
 /**
@@ -68,7 +74,7 @@ class GoalsViewModel(
         viewModelScope.launch {
             try {
                 val api = sessions.requireApi()
-                val goals = api.get<List<Goal>>("/api/goals")
+                val goals = api.get<List<Goal>>("/api/goals?include=work")
                 sessions.keep(api, Caches.GOALS, goals)
                 _state.update { it.copy(goals = goals, loaded = true, failed = false, offline = false) }
                 pace.value = paceMs(goals)
@@ -79,6 +85,10 @@ class GoalsViewModel(
             // an older server has no suggestions: nothing shows
             runCatching { sessions.requireApi().get<GoalSuggestions>("/api/goals/suggestions") }.getOrNull()?.let { s ->
                 _state.update { it.copy(suggestions = s.items) }
+            }
+            // an older server has no one list: the goals' own work section shows instead
+            runCatching { sessions.requireApi().get<CarriedList>("/api/carried") }.getOrNull()?.let { c ->
+                _state.update { it.copy(carried = c.items, carriedKnown = true) }
             }
         }
     }

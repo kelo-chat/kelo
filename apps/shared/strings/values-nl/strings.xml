@@ -1480,6 +1480,7 @@
     <string name="goal_resume">Teruggeven aan Kelo</string>
     <string name="goal_resume_started">Kelo is ermee bezig. Je kunt meekijken in Chat.</string>
     <string name="goal_resume_no_model">Kies eerst een model in Profiel.</string>
+    <string name="goal_log_more">Eerdere items tonen</string>
     <string name="goal_edit">Bewerken</string>
     <string name="goal_due">Uiterlijk %1$s</string>
     <string name="goal_mark_step">Markeren als klaar</string>
@@ -1551,4 +1552,12 @@
     <string name="endpoint_in_use">Dit is het eindpunt van het model dat in gebruik is. Schakel eerst over naar een ander model.</string>
     <string name="endpoint_name_taken">Die naam is al in gebruik.</string>
     <string name="endpoint_too_many">U kunt maximaal 20 eindpunten behouden.</string>
+    <string name="goals_work_section">Wat Kelo voor je doet</string>
+    <string name="goals_subgoals">Kleinere doelen</string>
+    <string name="goal_about">Over</string>
+    <string name="goal_log_from">Van %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">Het kleinere doel wordt ook verwijderd.</item>
+        <item quantity="other">Zijn %d kleinere doelen worden ook verwijderd.</item>
+    </plurals>
 </resources>

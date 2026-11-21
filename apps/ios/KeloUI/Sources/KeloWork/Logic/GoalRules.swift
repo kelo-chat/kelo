@@ -29,15 +29,34 @@ struct GoalItem: Codable, Equatable, Hashable, Identifiable, Sendable {
     var working = false
     /// Linked schedules that are on: deleting the goal first asks whether to turn them off too (an older server says 0)
     var schedulesOn = 0
+    /// goal | work: a work item is something Kelo carries for the user (listed with include=work)
+    var kind = "goal"
+    /// The top-level goal this smaller goal sits under (one level only); nil at the top
+    var parentId: Int64?
+    /// One line: where the goal stands now (empty on an older server)
+    var summary = ""
+    /// Two or three sentences Kelo wrote about the goal (the note stays the user's own words)
+    var description = ""
+    /// wellbeing | people | finances | job | hobbies | workload | other; empty when none is set
+    var area = ""
+    /// The reason given at the last status change
+    var doneReason = ""
+    /// How many smaller goals sit under this one
+    var children = 0
 
     static let statusTracking = "tracking"
     static let statusDone = "done"
     var isDone: Bool { status == GoalItem.statusDone }
+    var isWork: Bool { kind == "work" }
 
     init(id: Int64, title: String, category: String = "", note: String = "", status: String = "tracking", origin: String = "user",
-         plan: GoalPlan = GoalPlan(), nextStep: String? = nil, asking: Bool = false, working: Bool = false, schedulesOn: Int = 0) {
+         plan: GoalPlan = GoalPlan(), nextStep: String? = nil, asking: Bool = false, working: Bool = false, schedulesOn: Int = 0,
+         kind: String = "goal", parentId: Int64? = nil, summary: String = "", description: String = "", area: String = "",
+         doneReason: String = "", children: Int = 0) {
         self.id = id; self.title = title; self.category = category; self.note = note; self.status = status; self.origin = origin
         self.plan = plan; self.nextStep = nextStep; self.asking = asking; self.working = working; self.schedulesOn = schedulesOn
+        self.kind = kind; self.parentId = parentId; self.summary = summary; self.description = description; self.area = area
+        self.doneReason = doneReason; self.children = children
     }
 
     init(from decoder: Decoder) throws {
@@ -54,6 +73,13 @@ struct GoalItem: Codable, Equatable, Hashable, Identifiable, Sendable {
         asking = j.bool("asking")
         working = j.bool("working")
         schedulesOn = max(0, j.int("schedules_on"))
+        kind = j.str("kind", "goal")
+        parentId = j.optInt64("parent_id")
+        summary = j.str("summary")
+        description = j.str("description")
+        area = j.str("area")
+        doneReason = j.str("done_reason")
+        children = max(0, j.int("children"))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -69,6 +95,13 @@ struct GoalItem: Codable, Equatable, Hashable, Identifiable, Sendable {
         try c.encode(asking, forKey: AnyKey("asking"))
         try c.encode(working, forKey: AnyKey("working"))
         try c.encode(schedulesOn, forKey: AnyKey("schedules_on"))
+        try c.encode(kind, forKey: AnyKey("kind"))
+        try c.encodeIfPresent(parentId, forKey: AnyKey("parent_id"))
+        try c.encode(summary, forKey: AnyKey("summary"))
+        try c.encode(description, forKey: AnyKey("description"))
+        try c.encode(area, forKey: AnyKey("area"))
+        try c.encode(doneReason, forKey: AnyKey("done_reason"))
+        try c.encode(children, forKey: AnyKey("children"))
     }
 }
 
@@ -99,7 +132,21 @@ struct GoalMetric: Equatable, Identifiable, Sendable {
     var values: [GoalMetricValue] = []
 }
 
-struct GoalLogEntry: Equatable, Identifiable, Sendable { var id: Int64; var at: Double; var text: String }
+struct GoalRef: Equatable, Sendable { var id: Int64; var title: String }
+
+struct GoalLogEntry: Equatable, Identifiable, Sendable {
+    var id: Int64
+    var at: Double
+    var text: String
+    /// A few words: what happened (empty on older entries)
+    var title = ""
+    /// One line: the main result
+    var outcome = ""
+    /// The day the entry is about, when it is not the day it was written
+    var happenedAt: Double?
+    /// The smaller goal the entry was written on (it shows on the goal above too)
+    var fromGoal: GoalRef?
+}
 struct GoalDocument: Equatable, Identifiable, Sendable { var id: Int64; var path: String; var title: String; var exists: Bool }
 struct GoalScheduleBrief: Equatable, Identifiable, Sendable { var id: Int64; var name: String; var description: String; var enabled: Bool }
 
@@ -110,8 +157,12 @@ struct GoalWorkspace: Decodable, Equatable, Sendable {
     var steps: [GoalStep] = []
     var metrics: [GoalMetric] = []
     var log: [GoalLogEntry] = []
+    /// The offset of the next page of `log` (GET /api/goals/{id}/log), or nil when `log` has every entry
+    var logNext: Int?
     var documents: [GoalDocument] = []
     var schedules: [GoalScheduleBrief] = []
+    /// The smaller goals under this one
+    var children: [GoalItem] = []
 
     init(from decoder: Decoder) throws {
         let j = try Lenient(decoder)
@@ -134,10 +185,9 @@ struct GoalWorkspace: Decodable, Equatable, Sendable {
             }
             return GoalMetric(id: id, name: o.str("name"), unit: o.str("unit"), start: o.optDouble("start"), target: o.optDouble("target"), values: values)
         }
-        log = list("log").compactMap { o in
-            guard let id = o.optInt64("id") else { return nil }
-            return GoalLogEntry(id: id, at: o.double("at"), text: o.str("text"))
-        }
+        children = j.list("children", of: GoalItem.self)
+        log = list("log").compactMap(GoalLogEntry.parse)
+        logNext = j.optInt64("log_next").map { Int($0) }
         documents = list("documents").compactMap { o in
             guard let id = o.optInt64("id") else { return nil }
             return GoalDocument(id: id, path: o.str("path"), title: o.str("title"), exists: o.bool("exists", true))
@@ -146,6 +196,31 @@ struct GoalWorkspace: Decodable, Equatable, Sendable {
             guard let id = o.optInt64("id") else { return nil }
             return GoalScheduleBrief(id: id, name: o.str("name"), description: o.str("description"), enabled: o.bool("enabled", true))
         }
+    }
+}
+
+/// GET /api/goals/{id}/log?offset=: the next entries; `next` is the offset of the page after, or nil at the end.
+struct GoalLogPage: Decodable, Equatable, Sendable {
+    var items: [GoalLogEntry] = []
+    var next: Int?
+
+    init(items: [GoalLogEntry], next: Int?) { self.items = items; self.next = next }
+
+    init(from decoder: Decoder) throws {
+        let j = try Lenient(decoder)
+        items = Lenient.items(j, "items").compactMap(GoalLogEntry.parse)
+        next = j.optInt64("next").map { Int($0) }
+    }
+}
+
+extension GoalLogEntry {
+    /// One log entry as the server sends it; nil without an id.
+    static func parse(_ o: Lenient) -> GoalLogEntry? {
+        guard let id = o.optInt64("id") else { return nil }
+        let from = o.obj("from_goal")
+        let ref = from.optInt64("id").map { GoalRef(id: $0, title: from.str("title")) }
+        return GoalLogEntry(id: id, at: o.double("at"), text: o.str("text"), title: o.str("title"), outcome: o.str("outcome"),
+                            happenedAt: o.optDouble("happened_at"), fromGoal: ref)
     }
 }
 
@@ -235,8 +310,25 @@ enum GoalsRules {
 
     static func overdue(_ due: LocalDay?, today: LocalDay) -> Bool { due.map { $0 < today } ?? false }
 
-    /// The free-form tag as the server takes it (at most 40 characters).
-    static func tag(_ text: String) -> String { String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40)) }
+    /// The user's goals with their smaller goals under them, in the list's order; a smaller goal whose parent is not in the list shows at the top.
+    static func grouped(_ goals: [GoalItem]) -> [(goal: GoalItem, children: [GoalItem])] {
+        let own = goals.filter { !$0.isWork }
+        let ids = Set(own.map(\.id))
+        let tops = own.filter { $0.parentId == nil || !ids.contains($0.parentId!) }
+        return ordered(tops).map { g in (g, ordered(own.filter { $0.parentId == g.id })) }
+    }
+
+    /// The open work items Kelo carries, in the server's order (newest first).
+    static func work(_ goals: [GoalItem]) -> [GoalItem] { goals.filter { $0.isWork && !$0.isDone } }
+
+    /// The day a log entry is about: the day it happened, else the day it was written.
+    static func logDay(_ e: GoalLogEntry) -> Double { e.happenedAt ?? e.at }
+
+    /// How many smaller goals a delete takes with it (the list asks first), or nil when there are none.
+    static func deleteNotice(_ g: GoalItem) -> Int? { g.children > 0 ? g.children : nil }
+
+    /// The free-form tag as typed, trimmed.
+    static func tag(_ text: String) -> String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     /// The slider's value snapped to tens.
     static func snapProgress(_ v: Double) -> Int { min(max(Int((v / 10).rounded()) * 10, 0), 100) }
@@ -295,9 +387,15 @@ struct GoalsState: Equatable, Sendable {
     var pausing: Set<Int64> = []
     var suggestions: [GoalSuggestion] = []
     var settling: Set<Int64> = []
+    /// The one list of what Kelo carries (GET /api/carried), and whether the server answered it (an older one does not: the work
+    /// section then shows its own work items)
+    var carried: [CarriedItem] = []
+    var carriedKnown = false
 
     var shownSuggestions: [GoalSuggestion] { suggestions.filter { !settling.contains($0.id) } }
-    var tracking: [GoalItem] { GoalsRules.ordered(goals.filter { !$0.isDone && !removing.contains($0.id) }) }
+    var tracking: [GoalItem] { GoalsRules.ordered(goals.filter { !$0.isDone && !$0.isWork && !removing.contains($0.id) }) }
+    /// The open work items Kelo carries for the user
+    var work: [GoalItem] { GoalsRules.work(goals.filter { !removing.contains($0.id) }) }
     var done: [GoalItem] { goals.filter { $0.isDone && !removing.contains($0.id) } }
 }
 
@@ -315,6 +413,28 @@ enum GoalDetailRules {
     static func withUnit(_ v: Double?, _ unit: String) -> String {
         unit.trimmingCharacters(in: .whitespaces).isEmpty || v == nil ? number(v) : number(v) + " " + unit
     }
+
+    /// The workspace with the next page of entries added; an entry already shown is not added twice.
+    static func withMoreLog(_ w: GoalWorkspace, _ page: GoalLogPage) -> GoalWorkspace {
+        var out = w
+        let seen = Set(w.log.map(\.id))
+        out.log += page.items.filter { !seen.contains($0.id) }
+        out.logNext = page.next
+        return out
+    }
+
+    /// A fresh first page keeps the older entries already loaded, so a refresh does not fold the list back up.
+    static func refreshed(prev: GoalWorkspace?, fresh: GoalWorkspace) -> GoalWorkspace {
+        guard let prev, prev.log.count > fresh.log.count else { return fresh }
+        var out = fresh
+        let seen = Set(fresh.log.map(\.id))
+        out.log += prev.log.filter { !seen.contains($0.id) }
+        out.logNext = prev.logNext
+        return out
+    }
+
+    /// More entries can be asked for: there is a next page and no request for one is running.
+    static func canLoadMore(workspace: GoalWorkspace?, loading: Bool) -> Bool { workspace?.logNext != nil && !loading }
 
     static func canTick(_ s: GoalStep) -> Bool { s.mine }
     static func toggled(_ s: GoalStep) -> String { s.isDone ? "todo" : "done" }

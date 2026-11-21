@@ -1342,6 +1342,7 @@
 "goal_resume" = "Kelo'ya geri ver";
 "goal_resume_started" = "Kelo üzerinde çalışıyor. Sohbet'ten takip edebilirsin.";
 "goal_resume_no_model" = "Önce Profilim'den bir model seç.";
+"goal_log_more" = "Daha önceki kayıtları göster";
 "goal_edit" = "Düzenle";
 "goal_due" = "Son tarih: %1$s";
 "goal_mark_step" = "Tamamlandı olarak işaretle";
@@ -1392,6 +1393,12 @@
 "endpoint_in_use" = "Bu, kullanımda olan modelin uç noktasıdır. Önce başka bir modele geçin.";
 "endpoint_name_taken" = "Bu ad zaten kullanılıyor.";
 "endpoint_too_many" = "En fazla 20 uç nokta tutabilirsiniz.";
+"goals_work_section" = "Kelo'nun üstlendikleri";
+"goals_subgoals" = "Alt hedefler";
+"goal_about" = "Hakkında";
+"goal_log_from" = "%1$s kaynaklı";
+"goals_delete_children##one" = "Alt hedefi de silinecek.";
+"goals_delete_children##other" = "%d alt hedefi de silinecek.";
 "actions_title" = "Kelo'nun yaptıkları";
 "actions_period_today" = "Bugün";
 "actions_period_7d" = "7 gün";
@@ -2161,7 +2168,6 @@
 "pin_secret_title" = "%1$s için ödeme PIN'i";
 "pin_secret_where" = "Bu telefonda şifreli saklanır. Sohbette asla görünmez.";
 "pin_secret_done" = "%1$s için ödeme PIN'i kaydedildi";
-"reply_other" = "Diğer";
 "reply_pick_date" = "Tarih seç";
 "reply_pick_time" = "Saat seç";
 "reply_number_hint" = "Bir sayı girin";

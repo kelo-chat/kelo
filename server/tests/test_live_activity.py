@@ -289,7 +289,7 @@ async def test_a_copy_without_the_key_sends_its_update_through_the_broker_and_gi
         raise NetGuardError("broker not reachable")
 
     st = Store(tmp_path / "friend.db")
-    client = PushClient(st, Fcm(st), None, broker_url=BROKER, fetcher=fetch, backoff=(0.0, 0.0), sleep=lambda s: asyncio.sleep(0))
+    client = PushClient(st, Fcm(st), None, broker_url=BROKER, fetcher=fetch)
     content = {"v": 1, "n": 1, "sealed": "AAECAw=="}
     assert await client.live(TOKEN, "production", content, "update", 1000) == {"ok": True, "invalid": False}
     url, sent = calls[0]

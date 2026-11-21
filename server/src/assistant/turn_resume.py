@@ -85,7 +85,6 @@ def continue_chat(ctx: Any, row: dict[str, Any], restarts: int) -> str:
     Continue button (then the button, or their new message, is the way on)."""
     S = _server()   # read at each call (tests tune some of these on assistant.server)
     MODEL_NOTE = S.MODEL_NOTE
-    collapse_repeat = S.collapse_repeat
     i18n = S.i18n
     TurnContext = ctx.TurnContext
     activity = ctx.activity
@@ -107,7 +106,8 @@ def continue_chat(ctx: Any, row: dict[str, Any], restarts: int) -> str:
     def observe(item: dict[str, Any] | None) -> None:
         if item is None:
             if said:
-                store.add_message("assistant", collapse_repeat(said.text()))
+                for row in said.rows():   # one message per part the chat showed (reply_text.py), as in turn_workers
+                    store.add_message("assistant", row)
             said.clear()
         else:
             said.feed(item)
@@ -119,11 +119,16 @@ def continue_chat(ctx: Any, row: dict[str, Any], restarts: int) -> str:
     return "resumed"
 
 
+def stop_report(ctx: Any, tid: int, why: str) -> None:
+    """Kelo gave up on this task by itself: its one report goes to the chat (owner 2026-11-20, D3; stop_reports.py)."""
+    key = ctx.stop_reports.put(tid, why)
+    ctx.stop_reports.send_soon(key)
+
+
 def resume_task(ctx: Any, row: dict[str, Any], why: str) -> str:
     """Start task `row` (activity.resume_row) again; why: restart | model. Returns resumed | offered | skipped | failed."""
     S = _server()   # read at each call (tests tune some of these on assistant.server)
     BACKGROUND_NOTE = S.BACKGROUND_NOTE
-    CATCH_UP_SECONDS = S.CATCH_UP_SECONDS
     HTTPException = S.HTTPException
     MAX_RESTART_RESUMES = S.MAX_RESTART_RESUMES
     MODEL_NOTE = S.MODEL_NOTE
@@ -157,7 +162,7 @@ def resume_task(ctx: Any, row: dict[str, Any], why: str) -> str:
     if why == "restart" and restarts > MAX_RESTART_RESUMES:
         msg = i18n.t("Stopped for good: the server restarted {n} times while this was running", n=restarts)
         activity.resolve_resume(tid, "failed", status="failed", result=msg, seen=False)
-        activity.notify("task_failed", f"{i18n.t('It did not work out')}: {row['title']}"[:120], msg, task_id=tid)
+        stop_report(ctx, tid, msg)
         log.warning("task %s not resumed: the server restarted %d times while it ran", tid, restarts)
         return "failed"
     if kind == "chat":
@@ -165,8 +170,11 @@ def resume_task(ctx: Any, row: dict[str, Any], why: str) -> str:
     if kind == "schedule":
         sid = int(spec.get("schedule_id") or 0)
         s = schedules.get(sid)
-        late = time.time() - float(row["started_at"]) > CATCH_UP_SECONDS and not limit_wait(row)   # one held by the usage limit runs late
-        if s is None or not s.get("enabled", True) or late:
+        # a run cut by a restart goes on (owner 2026-11-20, D2), unless its job is gone or off, or a newer time is already due: then that
+        # time's run does the job
+        row_s = schedules._row(sid)
+        newer = bool(row_s and row_s["next_run"] is not None and row_s["next_run"] <= time.time())
+        if s is None or not s.get("enabled", True) or (newer and not limit_wait(row)):   # one held by the usage limit goes on late
             activity.resolve_resume(tid, "skipped", status="interrupted")   # gone, off, or too late: its next time comes as usual
             return "skipped"
         pending_links[f"schedule:{sid}"] = (tid, restarts)
@@ -355,8 +363,7 @@ async def model_wait_tick(ctx: Any, now: float | None = None) -> dict[int, str]:
         for r in [x for x in activity.model_waits() if limit_wait(x)]:
             tid = int(r["id"])
             activity.resolve_resume(tid, "failed", status="failed", result=msg, seen=False)
-            if (r.get("spec") or {}).get("kind") != "chat":   # a chat reply already said it
-                activity.notify("task_failed", f"{i18n.t(model_limits.BALANCE_USED_UP, provider=name)}: {r['title']}"[:120], msg, task_id=tid)
+            stop_report(ctx, tid, msg)   # every kind: the owner gets the report once (a chat reply's own words are no report)
             out[tid] = "failed"
         return out
     due = [r for r in activity.model_waits() if (r.get("retry_at") or 0) <= now]
@@ -376,7 +383,7 @@ async def model_wait_tick(ctx: Any, now: float | None = None) -> dict[int, str]:
                 if now - since >= model_limits.MAX_HOLD:
                     msg = i18n.t("Failed: {error}", error=i18n.t(model_limits.USED_UP))
                     activity.resolve_resume(tid, "failed", status="failed", result=msg, seen=False)
-                    activity.notify("task_failed", f"{i18n.t('It did not work out')}: {r['title']}"[:120], msg, task_id=tid)
+                    stop_report(ctx, tid, msg)
                     out[tid] = "failed"
                     continue
                 activity.bump_wait(tid, held_until or now + next_wait(int(r.get("waits") or 0) + 1))
@@ -385,7 +392,7 @@ async def model_wait_tick(ctx: Any, now: float | None = None) -> dict[int, str]:
             if now - since >= MODEL_WAIT_GIVE_UP:
                 msg = i18n.t("Failed: {error}", error=r.get("error") or i18n.t("the AI model could not be reached"))
                 activity.resolve_resume(tid, "failed", status="failed", result=msg, seen=False)
-                activity.notify("task_failed", f"{i18n.t('It did not work out')}: {r['title']}"[:120], msg, task_id=tid)
+                stop_report(ctx, tid, msg)
                 out[tid] = "failed"
                 continue
             tell = now - since >= MODEL_WAIT_NOTIFY_AFTER and not r.get("wait_noted")

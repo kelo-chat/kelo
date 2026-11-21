@@ -1515,6 +1515,7 @@
     <string name="goal_resume">Devolver a Kelo</string>
     <string name="goal_resume_started">Kelo se pone con ello. Puedes seguirlo en el chat.</string>
     <string name="goal_resume_no_model">Primero elige un modelo en Mi espacio.</string>
+    <string name="goal_log_more">Ver entradas anteriores</string>
     <string name="goal_edit">Editar</string>
     <string name="goal_due">Antes del %1$s</string>
     <string name="goal_mark_step">Marcar como hecho</string>
@@ -1587,4 +1588,13 @@
     <string name="endpoint_in_use">Este es el punto de conexión del modelo en uso. Cambie primero a otro modelo.</string>
     <string name="endpoint_name_taken">Ese nombre ya está en uso.</string>
     <string name="endpoint_too_many">Puede tener hasta 20 puntos de conexión.</string>
+    <string name="goals_work_section">Lo que Kelo lleva</string>
+    <string name="goals_subgoals">Objetivos más pequeños</string>
+    <string name="goal_about">Acerca de</string>
+    <string name="goal_log_from">De %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">También se eliminará su objetivo pequeño.</item>
+        <item quantity="many">También se eliminarán sus %d objetivos pequeños.</item>
+        <item quantity="other">También se eliminarán sus %d objetivos pequeños.</item>
+    </plurals>
 </resources>

@@ -125,4 +125,37 @@ class ChatMergeTest {
         assertEquals(listOf("a1", "m5", "s6", "a7"), keys(out))
         assertEquals(listOf("older streamed", "stored", "newest saved"), texts(out))
     }
+
+    // server stores a reply as one message per part the chat showed (reply_text.rows): these pin how the apps match them
+    @Test fun `a reply stored as opener and answer keeps both bubbles where they streamed and repeats no text`() {
+        val shownRows = listOf(shown("u1", true, "q", 1), shown("a2", false, "Let me check.", null), tool("t3"),
+                               shown("a4", false, "\n\nIt is correct.", null))
+        val storedRows = listOf(stored(1, true, "q"), stored(2, false, "Let me check."), stored(3, false, "It is correct."))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("u1", "a2", "t3", "a4"), keys(out))
+        assertEquals(listOf("q", "Let me check.", "It is correct."), texts(out))
+    }
+
+    @Test fun `a reply whose lead-in line was not stored shows the opener and the answer once each`() {
+        val shownRows = listOf(shown("u1", true, "q", 1), shown("a2", false, "Let me look.", null), tool("t3"),
+                               shown("a4", false, "Now the prices.", null), tool("t5"), shown("a6", false, "Answer.", null))
+        val storedRows = listOf(stored(1, true, "q"), stored(2, false, "Let me look."), stored(3, false, "Answer."))
+        val out = mergeStoredRows(shownRows, storedRows)
+        assertEquals(listOf("q", "Let me look.", "Answer."), texts(out))
+        assertEquals(listOf("t3", "t5"), keys(out).filter { it.startsWith("t") })
+    }
+
+    @Test fun `the news check on another device adds the opener and the answer once each`() {
+        val shownRows = listOf(shown("m1", true, "q", 1))
+        val storedRows = listOf(stored(1, true, "q"), stored(2, false, "Let me check."), stored(3, false, "It is correct."))
+        val out = refreshNewest(shownRows, storedRows)
+        assertEquals(listOf("q", "Let me check.", "It is correct."), texts(out!!))
+    }
+
+    @Test fun `a fresh load shows one bubble per stored message`() {
+        val items = listOf(StoredMessage(id = 2, role = "assistant", content = "Let me check."),
+                           StoredMessage(id = 3, role = "assistant", content = "It is correct.")).map(::toChatItem)
+        assertEquals(listOf("Let me check.", "It is correct."), texts(items))
+        assertEquals(2, items.count { it is ChatItem.Msg })
+    }
 }

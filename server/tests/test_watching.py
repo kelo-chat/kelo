@@ -143,7 +143,8 @@ async def test_run_history_records_done_quiet_failed_skipped_and_paused_runs():
     _, clock, s = make()
     gate = asyncio.Event()
     outs = iter([{"task_id": 11, "status": "done", "result": "환율 1,380원"}, {"task_id": 12, "status": "done", "quiet": True},
-                 {"task_id": 13, "status": "failed", "error": "site down"}])
+                 {"task_id": 13, "status": "failed", "error": "site down"},
+                 {"task_id": 14, "status": "done", "result": "다시 해 보니 됐어요"}])   # the failed run's automatic try (5 minutes later)
 
     async def run(sched):
         if sched["name"] == "느림":
@@ -162,7 +163,9 @@ async def test_run_history_records_done_quiet_failed_skipped_and_paused_runs():
     assert s.get(j["id"])["last_run"]["status"] == "failed" and s.get(j["id"])["failure_count"] == 1
     slow = s.create("느림", "오래 걸림", cron="*/10 * * * *")
     clock.t = ts(2026, 11, 7, 8, 10, 1)
-    assert sch.tick() == [slow["id"]]
+    assert sorted(sch.tick()) == sorted([slow["id"], j["id"]])   # the failed run is tried again 5 minutes after it (owner 2026-11-20)
+    await asyncio.sleep(0.02)
+    assert s.runs(j["id"])[0]["status"] == "done"
     clock.t = ts(2026, 11, 7, 8, 20, 1)
     sch.tick()                                                    # still running: this time is skipped, and the skip is logged
     assert [r["status"] for r in s.runs(slow["id"])] == ["skipped", "running"]
@@ -185,32 +188,41 @@ async def test_run_history_records_done_quiet_failed_skipped_and_paused_runs():
     assert back["enabled"] and not back["paused"] and back["paused_reason"] is None
 
 
-async def test_schedule_pause_tool_needs_a_reason_defaults_to_the_running_job_and_notifies():
+async def test_schedule_pause_tool_needs_an_id_and_a_reason_and_a_run_cannot_use_it():
     _, clock, s = make()
     paused = []
     s.on_paused = paused.append
     tools = {t.name: t for t in schedule_tools(s)}
     j = s.create("주문", "주문 상태 확인", cron="0 9 * * *")
     assert "reason" in tools["schedule_pause"].validate({"id": j["id"]})
+    assert "no schedule" in tools["schedule_pause"].validate({"reason": "계정이 잠겼어요"})   # no id: nothing to pause
+    assert tools["schedule_pause"].requires_approval and tools["schedule_pause"].auto_approve is None   # a chat asks the user first
     from assistant.workers import current_turn
     tok = current_turn.set({"source": f"schedule:{j['id']}"})
     try:
-        assert tools["schedule_pause"].requires_approval and tools["schedule_pause"].auto_approve({"reason": "x"}) is True   # its own job: no card
-        assert tools["schedule_pause"].validate({"reason": "계정이 잠겼어요"}) is None
-        out = await tools["schedule_pause"].handler({"reason": "계정이 잠겼어요"})
+        assert "cannot pause" in tools["schedule_pause"].validate({"id": j["id"], "reason": "계정이 잠겼어요"})   # a run says it in its report
     finally:
         current_turn.reset(tok)
+    assert paused == [] and s.get(j["id"])["enabled"] is True
+    out = await tools["schedule_pause"].handler({"id": j["id"], "reason": "계정이 잠겼어요"})   # the user's yes (a chat card) pauses it
     assert "Paused" in out and paused and paused[0]["id"] == j["id"] and paused[0]["paused_by"] == "agent"
     assert "paused (계정이 잠겼어요)" in await tools["schedule_list"].handler({})
     assert tools["schedule_runs"].read_only and "has not run" in await tools["schedule_runs"].handler({"id": j["id"]})
 
 
-def test_missed_runs_are_logged_as_skipped():
+async def test_a_missed_time_runs_once_and_leaves_no_skipped_row():
     store, clock, s = make()
     j = s.create("아침", "a", cron="0 9 * * *")
-    clock.t = ts(2026, 11, 8, 7, 0)                      # 09:00 yesterday is long gone
-    Scheduler(s, None, clock=clock).tick()
-    assert s.runs(j["id"])[0]["status"] == "skipped" and "server was off" in s.runs(j["id"])[0]["result"]
+    clock.t = ts(2026, 11, 8, 7, 0)                      # 09:00 yesterday is long gone: owner 2026-11-20, it runs now, once
+    ran = []
+
+    async def run(sched):
+        ran.append(sched["id"])
+        return {"task_id": 1, "status": "done"}
+
+    assert Scheduler(s, run, clock=clock).tick() == [j["id"]]
+    await asyncio.sleep(0.02)
+    assert ran == [j["id"]] and [r["status"] for r in s.runs(j["id"])] == ["done"]
 
 
 # ---------------------------------------------------------------------------------------------------------- archive, goals
@@ -324,7 +336,7 @@ async def test_a_quiet_run_says_nothing_but_is_in_the_history(tmp_path):
         run = (await c.post(f"/api/schedules/{s['id']}/run")).json()
         await follow(c, run["turn_id"])
         await until(lambda: _last_status(c, s["id"]))
-        assert "NO_REPLY" in fn.calls[0].messages[-1]["content"] and "schedule_pause" in fn.calls[0].messages[-1]["content"]
+        assert "NO_REPLY" in fn.calls[0].messages[-1]["content"] and "schedule_pause" not in fn.calls[0].messages[-1]["content"]
         assert (await c.get("/api/messages")).json() == []                                   # nothing joins the chat
         assert (await c.get("/api/notifications")).json()["items"] == []                     # no notification, no push
         runs = (await c.get(f"/api/schedules/{s['id']}/runs")).json()["items"]
@@ -343,7 +355,7 @@ async def test_a_run_that_hits_a_lasting_blocker_pauses_its_schedule_with_a_noti
     def script(req, n):
         if req.messages[-1].get("role") == "tool":
             return say("로그인이 만료돼서 멈췄어요.")
-        return call("schedule_pause", {"reason": "사이트 로그인이 만료됐어요. 앱에서 다시 저장해 주세요."})
+        return call("schedule_pause", {"id": 1, "reason": "사이트 로그인이 만료됐어요. 앱에서 다시 저장해 주세요."})
 
     fn = model(script)
     async with Running(create_app(settings(tmp_path), tools=[], stream_fn=fn, with_schedule_tools=True)) as srv, \
@@ -353,15 +365,14 @@ async def test_a_run_that_hits_a_lasting_blocker_pauses_its_schedule_with_a_noti
         await follow(c, run["turn_id"])
         await until(lambda: _last_status(c, s["id"]))
         got = (await c.get(f"/api/schedules/{s['id']}")).json()
-        assert got["paused"] and got["enabled"] is False and "만료" in got["paused_reason"]
-        notes = (await c.get("/api/notifications")).json()["items"]
-        assert any(n["type"] == "schedule_paused" and n["schedule_id"] == s["id"] and "만료" in n["body"] for n in notes)
-        assert (await c.get(f"/api/schedules/{s['id']}/runs")).json()["items"][0]["status"] == "paused"
+        # owner 2026-11-20: a scheduled run never pauses its own job; it says the block in its report and the job goes on
+        assert not got["paused"] and got["enabled"] is True
+        assert all(n["type"] != "schedule_paused" for n in (await c.get("/api/notifications")).json()["items"])
         back = (await c.post(f"/api/schedules/{s['id']}/resume")).json()
         assert back["enabled"] and not back["paused"]
         mine = (await c.post(f"/api/schedules/{s['id']}/pause", json={"reason": "휴가 중"})).json()
         assert mine["paused_reason"] == "휴가 중"
-        assert sum(n["type"] == "schedule_paused" for n in (await c.get("/api/notifications")).json()["items"]) == 1   # not for my own
+        assert sum(n["type"] == "schedule_paused" for n in (await c.get("/api/notifications")).json()["items"]) == 0   # not for my own
 
 
 async def test_schedule_api_takes_intervals_windows_goals_and_archives_on_delete(tmp_path):
@@ -975,7 +986,7 @@ def test_the_prompt_lines_are_few_and_generic():
     assert len(para) < 900 and "schedule_create" in para and "watch_add" in para
     assert "NOTIFY_PREFS.md" in prompt and "CHECKLIST.md" in prompt
     from assistant.server import SCHEDULE_NOTE
-    assert "NO_REPLY" in SCHEDULE_NOTE and "schedule_pause" in SCHEDULE_NOTE     # what an automatic run must do: in its own note
+    assert "NO_REPLY" in SCHEDULE_NOTE and "schedule_pause" not in SCHEDULE_NOTE and "the user decides" in SCHEDULE_NOTE   # its own note
     for name in ("schedules.py", "watchers.py", "checklist.py", "proactive.py"):
         code = (ROOT / "server" / "src" / "assistant" / name).read_text(encoding="utf-8")
         assert not re.search(r"heartbeat|lotto|로또|coupang|쿠팡|naver|네이버", code, re.I), name

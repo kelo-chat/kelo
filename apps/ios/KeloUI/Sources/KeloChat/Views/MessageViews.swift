@@ -397,16 +397,17 @@ struct QuickReplies: View {
                 if ReplyFields.isField(q) {
                     ReplyFieldView(q: q, value: Binding(get: { values[i] ?? "" }, set: { values[i] = $0 }))
                 } else {
-                    // picture cards replace the option buttons when they match the options; the app's own "Other" stays a button
+                    // picture cards replace the option buttons when they match the options
                     let cards = q.cardList
                     if let cards {
                         ReplyCardList(options: q.options, cards: cards, picked: picks[i]) { choose(i, $0) }
-                    }
-                    let chips = QuickReplyRules.choices(q).filter { cards == nil || $0 == QuickReplyRules.other }
-                    if !chips.isEmpty {
-                        FlowLayout(spacing: 6, lineSpacing: 6) {
-                            ForEach(chips, id: \.self) { o in
-                                ChoiceChip(o == QuickReplyRules.other ? L(R.string.reply_other) : o, selected: picks[i] == o) { choose(i, o) }
+                    } else {
+                        let chips = QuickReplyRules.choices(q)
+                        if !chips.isEmpty {
+                            FlowLayout(spacing: 6, lineSpacing: 6) {
+                                ForEach(chips, id: \.self) { o in
+                                    ChoiceChip(o, selected: picks[i] == o) { choose(i, o) }
+                                }
                             }
                         }
                     }

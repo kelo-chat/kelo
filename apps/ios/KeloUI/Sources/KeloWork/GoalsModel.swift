@@ -38,7 +38,7 @@ final class GoalsModel {
         let task = Task { @MainActor [self] in
             do {
                 let api = try requireApi()
-                let goals: [GoalItem] = try await api.get("/api/goals")
+                let goals: [GoalItem] = try await api.get("/api/goals?include=work")
                 if Task.isCancelled { return }
                 cache.put("goals", goals)
                 state.goals = goals; state.loaded = true; state.failed = false; state.offline = false
@@ -49,6 +49,10 @@ final class GoalsModel {
             } catch { if !Task.isCancelled { state.failed = true } }
             // an older server has no suggestions: nothing shows
             if !Task.isCancelled, let s: GoalSuggestions = try? await requireApi().get("/api/goals/suggestions") { state.suggestions = s.items }
+            // an older server has no one list: the work section shows its own work items instead
+            if !Task.isCancelled, let c: CarriedList = try? await requireApi().get("/api/carried") {
+                state.carried = c.items; state.carriedKnown = true
+            }
         }
         loading = task
         await task.value
@@ -133,12 +137,16 @@ final class GoalsModel {
 final class GoalDetailModel {
     let goalId: Int64
     var workspace: GoalWorkspace?
+    /// The follow items of this work item, from the one list (GET /api/carried); empty for a goal
+    var linkedFollow: [FollowItem] = []
     var failed = false
     /// Steps being ticked right now (shown ticked at once).
     var ticking: [Int64: String] = [:]
     /// The line shown after "Kelo에게 이어서 맡기기".
     var resumed: String?
     var resuming = false
+    /// A page of older entries is on its way.
+    var loadingLog = false
     @ObservationIgnored private let api: () -> KeloApi?
     @ObservationIgnored private var loading: Task<Void, Never>?
     @ObservationIgnored let jobs = Jobs()
@@ -159,12 +167,26 @@ final class GoalDetailModel {
             do {
                 let w: GoalWorkspace = try await requireApi().get("/api/goals/\(goalId)")
                 if Task.isCancelled { return }
-                workspace = w
+                workspace = GoalDetailRules.refreshed(prev: workspace, fresh: w)
                 failed = false; ticking = [:]
+                if let c: CarriedList = try? await requireApi().get("/api/carried") { linkedFollow = CarriedRules.followOf(c.items, goalId: goalId) }
             } catch { if !Task.isCancelled { failed = true } }
         }
         loading = task
         await task.value
+    }
+
+    /// The next page of older entries (GET /api/goals/{id}/log), added to the page once; no call while one runs.
+    func loadMoreLog() {
+        guard GoalDetailRules.canLoadMore(workspace: workspace, loading: loadingLog), let offset = workspace?.logNext else { return }
+        loadingLog = true
+        jobs.run { [self] in
+            do {
+                let page: GoalLogPage = try await requireApi().get("/api/goals/\(goalId)/log?offset=\(offset)")
+                if let w = workspace { workspace = GoalDetailRules.withMoreLog(w, page) }
+            } catch { failed = true }
+            loadingLog = false
+        }
     }
 
     func tick(_ step: GoalStep) {

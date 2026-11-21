@@ -1446,6 +1446,7 @@
     <string name="goal_resume">Serahkan lagi ke Kelo</string>
     <string name="goal_resume_started">Kelo sedang mengerjakannya. Kamu bisa mengikutinya di Obrolan.</string>
     <string name="goal_resume_no_model">Pilih model di Saya dulu.</string>
+    <string name="goal_log_more">Lihat catatan sebelumnya</string>
     <string name="goal_edit">Edit</string>
     <string name="goal_due">Paling lambat %1$s</string>
     <string name="goal_mark_step">Tandai selesai</string>
@@ -1516,4 +1517,11 @@
     <string name="endpoint_in_use">Ini adalah titik akhir dari model yang sedang digunakan. Beralih ke model lain terlebih dahulu.</string>
     <string name="endpoint_name_taken">Nama tersebut sudah digunakan.</string>
     <string name="endpoint_too_many">Anda dapat menyimpan hingga 20 titik akhir.</string>
+    <string name="goals_work_section">Yang Kelo tangani</string>
+    <string name="goals_subgoals">Tujuan kecil</string>
+    <string name="goal_about">Tentang</string>
+    <string name="goal_log_from">Dari %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="other">Tujuan kecilnya %d juga akan dihapus.</item>
+    </plurals>
 </resources>

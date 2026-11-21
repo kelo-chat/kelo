@@ -92,4 +92,31 @@ class GoalWorkspaceTest {
         assertNull(ms[1].replies)
         assertEquals(TurnEvent.Replies, TurnEvent.parse(Json.parseToJsonElement("""{"type":"replies","questions":[],"goal_id":null}""")))
     }
+
+    @Test fun readsSmallerGoalsTheLogTitlesAndRollUps() {
+        val w = KeloApi.json.decodeFromString<GoalWorkspace>("""
+            {"goal":{"id":1,"title":"G","summary":"Walking twice a week","description":"Keep it easy.","area":"wellbeing",
+                     "parent_id":null,"done_reason":"","children":1,"kind":"goal"},
+             "children":[{"id":2,"title":"Child","parent_id":1,"kind":"goal"}],
+             "log":[{"id":7,"at":1,"text":"Ran 2 km","kind":"note","by":"agent","title":"Run","outcome":"Good",
+                     "happened_at":1700000000.5,"from_goal":{"id":2,"title":"Child"}}]}
+        """)
+        assertEquals("Walking twice a week", w.goal.summary)
+        assertEquals("Keep it easy.", w.goal.description)
+        assertEquals(1, w.goal.children)
+        assertEquals(2L, w.children.single().id)
+        val e = w.log.single()
+        assertEquals("Run", e.title)
+        assertEquals("Good", e.outcome)
+        assertEquals(2L, e.fromGoal?.id)
+        assertEquals(1700000000.5, GoalsRules.logDay(e), 0.0)
+        // a log row from an older server has none of the new fields
+        val old = KeloApi.json.decodeFromString<GoalWorkspace>("""{"goal":{"id":1,"title":"G"},"log":[{"id":1,"at":1,"text":"x"}]}""")
+        val o = old.log.single()
+        assertEquals("", o.title)
+        assertNull(o.fromGoal)
+        assertNull(o.happenedAt)
+        assertEquals(1.0, GoalsRules.logDay(o), 0.0)
+    }
+
 }

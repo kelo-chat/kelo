@@ -33,7 +33,7 @@ def prompt_text():
 
 
 def test_shipped_prompt_is_short_and_names_nothing_from_other_products(prompt_text):
-    assert len(prompt_text.encode("utf-8")) <= 14_900   # 14_400 before the lines on a way of responding that holds and setting up a promised later action (2026-11-20, p-call-standing-mode); 14_200 before the line on saying what a search covered and that an empty search is not proof (2026-11-19, p-calendar-query-photo); 14_050 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 14_000 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 13_350 before round 2 shared shopping rule; 12_250 before round 1 (2026-11-19, card p-shopping-like-reference); 12_000 before the line on delegating phone work (2026-11-16, docs/phone-worker.md)
+    assert len(prompt_text.encode("utf-8")) <= 15_350   # 15_000 before the goal paragraph of system.md (2026-11-20, card goals-coaching: the owner's text for goals and work items, 580 characters); 14_900 before the line on going on from words written before a tool step (2026-11-20, p-reply-split-bubbles); 14_400 before the lines on a way of responding that holds and setting up a promised later action (2026-11-20, p-call-standing-mode); 14_200 before the line on saying what a search covered and that an empty search is not proof (2026-11-19, p-calendar-query-photo); 14_050 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 14_000 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 13_350 before round 2 shared shopping rule; 12_250 before round 1 (2026-11-19, card p-shopping-like-reference); 12_000 before the line on delegating phone work (2026-11-16, docs/phone-worker.md)
     assert not FOREIGN.search(prompt_text), FOREIGN.search(prompt_text)
     assert "{agent_name}" in prompt_text and "~/" not in prompt_text
     assert not (CONTENT / "prompts" / "system.original.md").exists() and not (CONTENT / "prompts" / "CHANGES.md").exists()
@@ -85,13 +85,13 @@ def test_facts_moved_out_of_the_prompt_sit_where_the_model_sees_them():
     assert language_line("ko").startswith("The user's language: Korean. Write every message in it")
     assert "delegate" in CORE_TOOLS
     block = goals_block([{"id": 1, "title": "g", "status": "tracking"}])
-    assert "never silently" in block and "declined stays unasked" in block
+    assert "never a second goal or a work item" in block and "Ask one question at a time" in block
     assert goals_block([]) == ""                                                  # no goals: no goal rules either
     prompt = (CONTENT / "prompts" / "system.md").read_text(encoding="utf-8")
-    for moved in ("**Long work.**", "**Goals.**", "**Waiting for the user.**", "read their page", "Take weekdays from the calendar"):
+    for moved in ("**Long work.**", "**Waiting for the user.**", "read their page", "Take weekdays from the calendar"):
         assert moved not in prompt, moved
     from assistant.server import SCHEDULE_NOTE                                   # what an automatic run must do: in its own note
-    assert "NO_REPLY" in SCHEDULE_NOTE and "schedule_pause" in SCHEDULE_NOTE
+    assert "NO_REPLY" in SCHEDULE_NOTE and "schedule_pause" not in SCHEDULE_NOTE and "the user decides" in SCHEDULE_NOTE
     from assistant.schedules import schedule_tools
     from assistant.watchers import watch_tools
     sched = {t.name: t.description for t in schedule_tools(None, None)}
@@ -135,7 +135,7 @@ def test_the_real_content_loads_and_stays_small():
     b = PromptBuilder.load(CONTENT, None, Skills(CONTENT / "skills"))
     out = b.build(agent_name="Sage", now=NOW)
     assert "You are Sage, a personal agent" in out and "- shopping-and-bookings:" in out and "- work-room:" in out
-    assert len(out) < 17_500, len(out)   # 17_100 before the lines on a way of responding that holds and setting up a promised later action (2026-11-20, p-call-standing-mode); 16_900 before the line on saying what a search covered and that an empty search is not proof (2026-11-19, p-calendar-query-photo); 16_750 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 16_700 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 16_100 before round 2 shared shopping rule; 14_950 before round 1 (2026-11-19, card p-shopping-like-reference); 14_700 before the line on delegating phone work (2026-11-16, docs/phone-worker.md); 14_500 before the line telling the agent to read its help pages (kelo_help) for questions about Kelo itself (2026-11-16, server/content/help); 14_050 before the rule on never promising what nothing will do (2026-11-16, docs/scheduled-runs.md); 13_800 before the lines on showing pictures unasked when looks matter and never giving a path the user cannot open (owner 2026-11-15); 13_100 before the five everyday-life skills joined the skill list (2026-11-15); 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
+    assert len(out) < 18_250, len(out)   # 17_750 before the goal setup texts and the work-item rules (2026-11-20, card goals-coaching); 17_500 before the line on going on from words written before a tool step (2026-11-20, p-reply-split-bubbles); 17_100 before the lines on a way of responding that holds and setting up a promised later action (2026-11-20, p-call-standing-mode); 16_900 before the line on saying what a search covered and that an empty search is not proof (2026-11-19, p-calendar-query-photo); 16_750 before the line on the checklist and checklist_link (2026-11-19, p-checklist-own-pace); 16_700 before the line on saying plainly when an earlier answer was wrong (2026-11-19, p-recheck-like-reference); 16_100 before round 2 shared shopping rule; 14_950 before round 1 (2026-11-19, card p-shopping-like-reference); 14_700 before the line on delegating phone work (2026-11-16, docs/phone-worker.md); 14_500 before the line telling the agent to read its help pages (kelo_help) for questions about Kelo itself (2026-11-16, server/content/help); 14_050 before the rule on never promising what nothing will do (2026-11-16, docs/scheduled-runs.md); 13_800 before the lines on showing pictures unasked when looks matter and never giving a path the user cannot open (owner 2026-11-15); 13_100 before the five everyday-life skills joined the skill list (2026-11-15); 12_900 before the line on saying first what a multi-step job will do (backlog 67, owner 2026-11-13: raise the cap a little); 12_800 before the recheck_later line (2026-11-13; the examples it had trimmed were put back); 12_700 before the longer privacy line and the keys line that loads add_service_key at once (2026-11-12; the privacy line was paid for by trimming elsewhere first); 12_500 before the lines on looking facts up and on advice (2026-11-12); 13_200 before the prompt diet, 2026-11-11 (built length 12_056 then); 13_000 before the reply-language line named the user's language (2026-11-11); 12_000 before the lines on how to talk to the user (prompt.tone_line), tap answers, the briefing
     # and the clause on answering from the closest data; 12_700 before remembering the browser on the owner's sign-ins (2026-11-10)
     assert not FOREIGN.search(out)
 
@@ -204,12 +204,13 @@ async def test_the_agents_tools_exist_only_when_files_are_enabled_and_can_write_
                "gcal_calendars", "gcal_events", "gcal_create_event", "gcal_update_event", "gcal_delete_event", "phone_calendar_events",
                "phone_calendar_add", "phone_calendar_update", "phone_calendar_delete", "phone_contacts", "phone_messages", "phone_send_text",
                "phone_call", "phone_call_log", "phone_notifications", "phone_health", "briefing_sources", "calendar_events",
-               "schedule_create", "schedule_list", "schedule_update", "schedule_delete", "schedule_pause", "schedule_retry", "schedule_runs", "task_allow", "journal_search",
+               "schedule_create", "schedule_list", "schedule_update", "schedule_delete", "schedule_pause", "schedule_keep_going", "schedule_runs", "task_allow", "journal_search",
                "watch_add", "watch_list", "watch_update", "watch_remove", "watch_dry_run", "watch_enable",
                "ha_watch_add", "ha_watch_list", "ha_watch_remove",
                "delegate", "workers_list", "worker_status", "worker_message", "worker_stop", "resume",
                "await_reply", "followup_snooze", "followup_cancel", "action_result",   # (action_result: offered only while a result is unknown, done_once.py)
-               "goal_get", "goal_set_facts", "goal_plan", "goal_step_done", "goal_log", "goal_metric_add", "goal_link_schedule",
+               "goal_get", "goal_create", "goal_update", "goal_set_status", "work_create", "work_list", "work_close", "work_log",
+               "goal_set_facts", "goal_plan", "goal_step_done", "goal_log", "goal_metric_add", "goal_link_schedule",
                "goal_add_document", "goal_suggest", "quick_replies", "compare_options", "react", "set_tone", "set_owner_settings", "finish_first_chat", "big_event_notice", "briefing", "offer_post",
                "follow_list", "follow_stop", "follow_remove",
                "package_entries", "package_entry_add", "package_entry_delete",   # entries of installed Nest packages (nest.py)
@@ -278,7 +279,7 @@ def test_shipped_skills_are_kelos_own_with_front_matter():
     ids = [e["id"] for e in s.index]
     assert set(ids) == {"shopping-and-bookings", "connect-a-service", "documents", "images", "schedules-and-watching",
                         "research", "work-room", "critique-a-plan", "break-down-work", "trips", "meals-and-groceries",
-                        "mail-triage", "receipts-and-spending", "subscriptions-and-bills"}
+                        "mail-triage", "receipts-and-spending", "subscriptions-and-bills", "goal-coaching"}
     assert all(e["description"] for e in s.index) and not (CONTENT / "skills" / "index.json").exists()
     # a skill folder holds SKILL.md and, optionally, extra .md files it names (read with read_skill's file argument)
     assert not [p for p in (CONTENT / "skills").rglob("*") if p.is_file() and p.name != "SKILL.md" and p.suffix != ".md"]
@@ -443,7 +444,8 @@ def test_the_prompt_states_each_principle_once(prompt_text):
                    "Asked what you or the app did, set up, saved or shows: read that record first",
                    "change a match instead of adding a twin",
                    "A step whose result is unknown is checked, never repeated",
-                   "Write the answer once"):
+                   "Write the answer once",
+                   "already shown as its own message"):
         assert prompt_text.count(phrase) == 1, phrase
     for gone in ("When the user answers a question, act on that answer", "**Apps on the Android device.**"):
         assert gone not in prompt_text, gone
@@ -502,7 +504,8 @@ def test_the_core_tool_texts_stay_small(tmp_path):
     for name, desc, params in _tool_texts(app):
         if name in CORE_TOOLS:
             total += len(desc.encode("utf-8")) + sum(len(p.encode("utf-8")) for p in params)
-    assert total < 15_400, total
+    # owner 2026-11-20 (D11): the quick_replies text is the owner's exact wording (one question, at most three answers, connect, no catch-alls)
+    assert total < 15_800, total
 
 
 def test_the_watchers_line_names_the_ones_on_and_never_their_values_or_addresses():

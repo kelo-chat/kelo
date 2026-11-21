@@ -38,6 +38,6 @@ class GoalMetaTest {
         assertFalse(GoalsRules.overdue(LocalDate.of(2026, 11, 7), LocalDate.of(2026, 11, 7)))
         assertFalse(GoalsRules.overdue(null, LocalDate.of(2026, 11, 7)))
         assertEquals("건강", GoalsRules.tag("  건강 "))
-        assertEquals(40, GoalsRules.tag("x".repeat(60)).length)
+        assertEquals(60, GoalsRules.tag("x".repeat(60)).length)
     }
 }

@@ -17,7 +17,7 @@ from assistant import push as push_mod
 from assistant.agent import Tool, emit_ui
 from assistant.netguard import NetGuardError, Reply
 from assistant.providers import Done, TextDelta, ToolCall
-from assistant.push import FCM_SCOPE, Apns, Fcm, PushBroker, PushClient, PushError, apns_payload, check_data, parse_service_account
+from assistant.push import FCM_SCOPE, Apns, Fcm, PushBroker, PushClient, PushError, apns_payload, check_data, parse_service_account, retryable
 from assistant.server import Settings, create_app
 from assistant.store import Store
 
@@ -55,6 +55,7 @@ class FakeGoogle:
         self.gone: set[str] = set()          # tokens FCM calls UNREGISTERED
         self.bad: set[str] = set()           # INVALID_ARGUMENT
         self.flaky: dict[str, int] = {}      # token -> how many 503s before it goes through
+        self.custom: dict[str, Reply] = {}   # token -> this answer, every time (a 403, a 429 with Retry-After ...)
         self.refuse_key = False
 
     async def fetch(self, method, url, *, allowed_hosts, headers=None, content=None, **kw):
@@ -80,6 +81,8 @@ class FakeGoogle:
             body = json.loads(content)
             self.sent.append(body)
             token = body["message"]["token"]
+            if token in self.custom:
+                return self.custom[token]
             if token in self.gone:
                 return fcm_error(404, "UNREGISTERED", "NOT_FOUND")
             if token in self.bad:
@@ -310,6 +313,7 @@ def through(op_url, google):
 
 async def test_another_copy_pushes_through_the_broker_and_drops_tokens_fcm_calls_invalid(tmp_path, monkeypatch):
     monkeypatch.setattr("assistant.server.WATCHED_SECONDS", 0.0)
+    monkeypatch.setattr(push_mod, "FIRST_WAIT", 0.0)   # FCM is busy twice: the queue tries again at once (no real wait in the test)
     google = FakeGoogle()
     op_app = make_app(tmp_path, google, name="op")
     op_run = Running(op_app)
@@ -331,60 +335,48 @@ async def test_another_copy_pushes_through_the_broker_and_drops_tokens_fcm_calls
                 google.flaky[PHONE_A] = 2                                  # FCM is busy twice; the broker retries
                 await c.post("/api/turns", headers=phones[0], json={"text": "정리해줘"})
                 assert await until(lambda: friend.state.push.tokens() == [PHONE_A])
+                assert await until(lambda: not friend.state.push.store._all("SELECT 1 FROM push_queue"))   # the phone's try waits until accepted
                 ok = [m for m in google.sent if m["message"]["token"] == PHONE_A]
-                assert len(ok) == 3 and ok[-1]["message"]["data"]["type"] == "task_done"
+                assert len(ok) == 3 and ok[-1]["message"]["data"]["type"] == "task_done"   # 503, 503, then accepted
                 assert "정리" not in json.dumps(google.sent, ensure_ascii=False)
                 # the broker kept only the hash of the copy's install secret, and nothing of the push
                 install = friend.state.push.install_id()
                 rows = op_app.state.push_broker.store._all("SELECT * FROM push_installs")
-                assert len(rows) == 1 and rows[0]["owner"] != install and rows[0]["requests"] == 1
+                assert len(rows) == 1 and rows[0]["owner"] != install and rows[0]["requests"] == 3   # the copy tried three times (busy twice)
                 assert install.encode() not in (tmp_path / "friend.db").read_bytes()          # sealed on the copy too
                 assert install not in json.dumps(rows)
-    assert "push: task_done to 3 device(s) (broker), 1 delivered, 2 stale token(s) dropped" in logs.text
-    assert "push broker: task_done to 3 device(s), 1 delivered, 2 invalid" in logs.text
+    assert "push: task_done to 3 device(s) (broker), 0 delivered, 2 stale token(s) dropped" in logs.text   # the first try
+    assert "push: task_done to 1 device(s) (broker), 1 delivered, 0 stale token(s) dropped" in logs.text   # the phone that waits, accepted
+    assert "push broker: task_done to 3 device(s), 0 delivered, 2 invalid" in logs.text
+    assert "push broker: task_done to 1 device(s), 1 delivered, 0 invalid" in logs.text
     for secret in (PHONE_A, PHONE_B, PHONE_C, install, "ya29."):
         assert secret not in logs.text
 
 
-async def test_the_copy_retries_a_busy_broker_with_backoff_and_gives_up_quietly(tmp_path):
+async def test_a_busy_broker_is_retried_until_it_accepts(tmp_path, monkeypatch):
+    """owner 2026-11-20 (D7): a wake-up is kept until the broker accepts it; a broker that is busy three times is asked again."""
+    monkeypatch.setattr(push_mod, "FIRST_WAIT", 0.0)
     google = FakeGoogle()
     st = Store(tmp_path / "c.db")
-    calls, waits = [], []
-    answers = [j({"detail": "busy"}, 503), j({"detail": "slow down"}, 429, {"Retry-After": "7"}), None]
+    calls = []
+    answers = [j({"detail": "busy"}, 503), j({"detail": "busy"}, 503), j({"detail": "busy"}, 503)]
 
     async def broker(method, url, *, allowed_hosts, headers=None, content=None):
         body = json.loads(content)
         calls.append(body)
-        a = answers[len(calls) - 1] if len(calls) <= len(answers) else None
-        if a is None:
-            return j({"results": [{"ok": True, "invalid": False} for _ in body["tokens"]]})
-        return a
+        if answers:
+            return answers.pop(0)
+        return j({"results": [{"ok": True, "invalid": False} for _ in body["tokens"]]})
 
-    async def sleep(s):
-        waits.append(s)
-
-    client = PushClient(st, Fcm(st, fetcher=google.fetch), broker_url=BROKER, fetcher=broker, backoff=(1.0, 4.0, 16.0), sleep=sleep)
-    tokens = []
+    client = PushClient(st, Fcm(st, fetcher=google.fetch), broker_url=BROKER, fetcher=broker)
     for i in range(12):                                   # 12 phones: two requests of at most 10 tokens
         st._run("INSERT INTO devices(name, token_hash, created_at) VALUES(?,?,0)", (f"p{i}", f"h{i}"))
-        tok = f"tok{i:02d}:APA91b" + "x" * 30
-        client.register(i + 1, tok, "android")
-        tokens.append(tok)
-    out = await client.deliver({"type": "schedule_disabled", "id": "5", "schedule_id": "2"})
-    assert out == {"devices": 12, "delivered": 12, "dropped": 0}
-    assert waits == [1.0, 7.0] and [len(c["tokens"]) for c in calls] == [10, 10, 10, 2]
+        client.register(i + 1, f"tok{i:02d}:APA91b" + "x" * 30, "android")
+    client.notify({"type": "schedule_disabled", "id": "5", "schedule_id": "2"})
+    assert await until(lambda: not st._all("SELECT 1 FROM push_queue"))
+    assert len(calls) == 3 + 2 and {len(c["tokens"]) for c in calls[3:]} == {10, 2}
     assert all(c["data"] == {"type": "schedule_disabled", "id": "5", "schedule_id": "2"} for c in calls)
-    assert len({c["install_id"] for c in calls}) == 1
-    # a broker that stays down: given up after the backoff steps, nothing dropped
-    answers[:] = [j({}, 502)] * 10
-    calls.clear(), waits.clear()
-    assert (await client.deliver({"type": "task_done", "id": "6"}))["delivered"] == 0
-    assert waits == [1.0, 4.0, 16.0] * 2 and len(client.tokens()) == 12
-    # 404 = the broker does not send pushes: no retries
-    answers[:] = [j({"detail": "off"}, 404)] * 10
-    calls.clear(), waits.clear()
-    await client.deliver({"type": "task_done", "id": "7"})
-    assert len(calls) == 2 and waits == []           # one try per batch
+    assert len(client.tokens()) == 12
 
 
 # ---------------------------------------------------------------------------------------------------------- the broker's limits
@@ -399,7 +391,7 @@ class Tick:
 async def test_the_broker_limits_each_install_each_address_new_installs_and_tokens_per_request(tmp_path, monkeypatch):
     google = FakeGoogle()
     st = Store(tmp_path / "op.db")
-    fcm = Fcm(st, fetcher=google.fetch, backoff=0)
+    fcm = Fcm(st, fetcher=google.fetch)
     await fcm.configure(json.dumps(KEY_FILE))
     tick = Tick()
     b = PushBroker(st, fcm, clock=tick)
@@ -593,19 +585,21 @@ async def test_apns_410_and_bad_device_token_are_reported_invalid_and_other_erro
     assert got[1]["error"] == "Unregistered" and len(apple.sent) == 3        # a malformed token never leaves the server
 
 
-async def test_apns_retries_429_and_5xx_with_backoff_and_gives_up_after_a_few_tries(tmp_path):
+async def test_apns_429_and_5xx_are_answered_as_retry_and_410_as_gone(tmp_path):
+    """A wake-up is one try per send (the queue tries again on Apple's rules); Live Activity updates keep their own tries."""
     apple = FakeApple()
     apple.flaky[IPHONE_A] = (503, 2)
     apple.flaky[IPHONE_B] = (429, 1)
     apple.flaky[IPHONE_C] = (503, 99)
-    waits = []
-
-    async def nap(s):
-        waits.append(s)
-    apns = make_apns(tmp_path, apple, sleep=nap)
+    apns = make_apns(tmp_path, apple)
     got = await apns.send([(IPHONE_A, "production"), (IPHONE_B, "production"), (IPHONE_C, "production")], {"type": "task_done", "id": "1"})
-    assert [r["ok"] for r in got] == [True, True, False] and got[2] == {"ok": False, "invalid": False, "error": "ServiceUnavailable"}
-    assert sum(1 for m in apple.sent if m["token"] == IPHONE_C) == 3 and waits      # 1 try + 2 retries
+    assert [r["ok"] for r in got] == [False, False, False]
+    assert got[0]["retry"] is True and got[0]["error"] == "ServiceUnavailable" and got[0]["quota"] is False
+    assert got[1]["retry"] is True and got[1]["quota"] is True and got[1]["error"] == "TooManyRequests"
+    assert sum(1 for m in apple.sent if m["token"] == IPHONE_A) == 1          # one try, no retry in the call
+    apple.gone.add(IPHONE_B)
+    got = await apns.send([(IPHONE_B, "production")], {"type": "task_done", "id": "2"})
+    assert got == [{"ok": False, "invalid": True, "error": "Unregistered"}]
 
 
 async def test_apns_mints_again_once_when_apple_calls_the_provider_token_expired(tmp_path):
@@ -779,3 +773,144 @@ async def test_apns_settled_is_a_silent_background_push_without_an_alert(tmp_pat
     assert got["body"] == {"aps": {"content-available": 1}, "type": "settled", "id": "ap1", "ids": "ap1,ap2"}
     assert got["headers"]["apns-push-type"] == "background" and got["headers"]["apns-priority"] == "5"
     assert "apns-collapse-id" not in got["headers"]
+
+
+# ---------------------------------------------------------------------------------------------------------- the queue (owner 2026-11-20, D7)
+async def queue_client(tmp_path, google, clock, *, device: int = 1, token: str = PHONE_A):
+    st = Store(tmp_path / "q.db")
+    fcm = Fcm(st, fetcher=google.fetch, clock=clock)
+    await fcm.configure(json.dumps(KEY_FILE))
+    client = PushClient(st, fcm, None, fetcher=google.fetch, clock=clock)
+    st._run("INSERT INTO devices(name, token_hash, created_at) VALUES(?,?,0)", (f"p{device}", f"h{device}"))
+    client.register(device, token, "android")
+    return st, client
+
+
+def queued(st):
+    return st._all("SELECT * FROM push_queue ORDER BY id")
+
+
+async def test_a_wake_up_waits_in_the_database_until_fcm_accepts_it(tmp_path):
+    google, clock = FakeGoogle(), Tick()
+    google.flaky[PHONE_A] = 5                              # five 503s, then accepted
+    st, client = await queue_client(tmp_path, google, clock)
+    client.notify({"type": "task_done", "id": "1"})
+    for n in range(1, 6):
+        await client.drain()
+        row = queued(st)[0]
+        assert row["tries"] == n
+        gap = row["send_at"] - clock.t
+        base = push_mod.FIRST_WAIT * 2 ** (n - 1)
+        assert base <= gap <= base * (1 + push_mod.JITTER) + 1e-9
+        clock.t = row["send_at"]
+    await client.drain()
+    assert queued(st) == []
+    assert len([m for m in google.sent if m["message"]["token"] == PHONE_A]) == 6   # the phone got it once
+
+
+async def test_retry_after_is_honoured_even_when_long(tmp_path):
+    google, clock = FakeGoogle(), Tick()
+    google.custom[PHONE_A] = Reply(503, {"content-type": "application/json", "retry-after": "900"},
+                                   fcm_error(503, "UNAVAILABLE", "UNAVAILABLE").body, False)
+    st, client = await queue_client(tmp_path, google, clock)
+    client.notify({"type": "task_done", "id": "1"})
+    await client.drain()
+    assert queued(st)[0]["send_at"] - clock.t == 900
+
+
+async def test_a_rate_limit_without_retry_after_waits_a_minute_first(tmp_path):
+    google, clock = FakeGoogle(), Tick()
+    google.custom[PHONE_A] = fcm_error(429, "QUOTA_EXCEEDED", "RESOURCE_EXHAUSTED")
+    st, client = await queue_client(tmp_path, google, clock)
+    client.notify({"type": "task_done", "id": "1"})
+    await client.drain()
+    gap = queued(st)[0]["send_at"] - clock.t
+    assert 60.0 <= gap <= 60.0 * (1 + push_mod.JITTER) + 1e-9
+
+
+async def test_an_unregistered_token_is_dropped_and_not_retried(tmp_path):
+    google, clock = FakeGoogle(), Tick()
+    google.custom[PHONE_A] = fcm_error(404, "UNREGISTERED", "NOT_FOUND")
+    st, client = await queue_client(tmp_path, google, clock)
+    client.notify({"type": "task_done", "id": "1"})
+    await client.drain()
+    assert queued(st) == [] and client.tokens() == []
+
+
+async def test_other_client_errors_are_not_retried_and_keep_the_token(tmp_path):
+    google, clock = FakeGoogle(), Tick()
+    google.custom[PHONE_A] = fcm_error(403, "SENDER_ID_MISMATCH", "PERMISSION_DENIED")
+    st, client = await queue_client(tmp_path, google, clock)
+    client.notify({"type": "task_done", "id": "1"})
+    await client.drain()
+    assert queued(st) == [] and client.tokens() == [PHONE_A]
+
+
+async def test_many_wake_ups_while_fcm_is_down_become_one_for_the_phone(tmp_path):
+    google, clock = FakeGoogle(), Tick()
+    google.flaky[PHONE_A] = 10 ** 6                        # FCM down
+    st, client = await queue_client(tmp_path, google, clock)
+    with Logs() as logs:
+        for i in range(250):
+            client.notify({"type": "task_done", "id": str(i)})
+        await client.drain()
+    rows = queued(st)
+    assert len(rows) == 1 and json.loads(rows[0]["devices"]) == [1]
+    assert "queue full" not in logs.text
+
+
+async def test_a_queued_wake_up_survives_a_restart(tmp_path):
+    google, clock = FakeGoogle(), Tick()
+    google.flaky[PHONE_A] = 1
+    st, first = await queue_client(tmp_path, google, clock)
+    first.notify({"type": "task_done", "id": "1"})
+    await first.drain()                                    # busy once; the row waits
+    await first.close()
+    clock.t = queued(st)[0]["send_at"]
+    second = PushClient(st, Fcm(st, fetcher=google.fetch, clock=clock), None, fetcher=google.fetch, clock=clock)   # a new start
+    await second.drain()
+    assert queued(st) == [] and [m["message"]["token"] for m in google.sent][-1] == PHONE_A
+
+
+async def test_a_refreshed_token_is_used_for_a_queued_wake_up(tmp_path):
+    google, clock = FakeGoogle(), Tick()
+    google.flaky[PHONE_A] = 1
+    st, client = await queue_client(tmp_path, google, clock)
+    client.notify({"type": "task_done", "id": "1"})
+    await client.drain()
+    new = "dA1b2C3d4E5:APA91bNEW-" + "z" * 140
+    client.register(1, new, "android")                    # the phone's token changed while it waited
+    clock.t = queued(st)[0]["send_at"]
+    await client.drain()
+    assert queued(st) == [] and google.sent[-1]["message"]["token"] == new
+
+
+async def test_the_broker_answers_retry_per_phone_and_an_older_answer_is_judged_by_its_code(tmp_path):
+    clock = Tick()
+    answers = []
+
+    async def broker(method, url, *, allowed_hosts, headers=None, content=None):
+        answers.append(json.loads(content))
+        return j({"results": answers_list.pop(0)})
+
+    answers_list = [
+        [{"ok": False, "invalid": False, "retry": True, "retry_after": None, "quota": False, "error": "UNAVAILABLE"},
+         {"ok": True, "invalid": False}],
+        [{"ok": False, "invalid": False, "error": "UNAVAILABLE"}],           # an older broker: no "retry" flag
+        [{"ok": False, "invalid": False, "error": "SENDER_ID_MISMATCH"}],     # an older broker: not a retry
+    ]
+    st = Store(tmp_path / "b.db")
+    client = PushClient(st, Fcm(st), None, broker_url=BROKER, fetcher=broker, clock=clock)
+    for i, tok in enumerate((PHONE_A, PHONE_B), start=1):
+        st._run("INSERT INTO devices(name, token_hash, created_at) VALUES(?,?,0)", (f"p{i}", f"h{i}"))
+        client.register(i, tok, "android")
+    client.notify({"type": "task_done", "id": "1"})
+    await client.drain()
+    assert json.loads(queued(st)[0]["devices"]) == [1]                       # phone 1 waits, phone 2 is done
+    clock.t = queued(st)[0]["send_at"]
+    await client.drain()
+    assert json.loads(queued(st)[0]["devices"]) == [1]
+    clock.t = queued(st)[0]["send_at"]
+    await client.drain()
+    assert queued(st) == []
+    assert retryable({"error": "UNAVAILABLE"}) and retryable({"error": "HTTP_503"}) and not retryable({"error": "SENDER_ID_MISMATCH"})

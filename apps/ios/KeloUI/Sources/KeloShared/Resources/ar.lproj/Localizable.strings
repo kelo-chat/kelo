@@ -1481,6 +1481,7 @@
 "goal_resume" = "إعادته إلى Kelo";
 "goal_resume_started" = "Kelo يعمل عليه. يمكنك المتابعة في الدردشة.";
 "goal_resume_no_model" = "اختر نموذجًا في صفحتي أولًا.";
+"goal_log_more" = "عرض السجلات السابقة";
 "goal_edit" = "تعديل";
 "goal_due" = "قبل %1$s";
 "goal_mark_step" = "تعليم كمنجز";
@@ -1535,6 +1536,16 @@
 "endpoint_in_use" = "هذه نقطة النهاية للنموذج قيد الاستخدام. قم بالتبديل إلى نموذج آخر أولاً.";
 "endpoint_name_taken" = "هذا الاسم مستخدم بالفعل.";
 "endpoint_too_many" = "يمكنك الاحتفاظ بما يصل إلى 20 نقطة نهاية.";
+"goals_work_section" = "ما يتولاه Kelo";
+"goals_subgoals" = "أهداف فرعية";
+"goal_about" = "عن الهدف";
+"goal_log_from" = "من %1$s";
+"goals_delete_children##zero" = "ستُحذف أهدافه الفرعية أيضاً.";
+"goals_delete_children##one" = "سيُحذف هدفه الفرعي أيضاً.";
+"goals_delete_children##two" = "سيُحذف هدفاه الفرعيان أيضاً.";
+"goals_delete_children##few" = "سيُحذف %d أهداف فرعية أيضاً.";
+"goals_delete_children##many" = "سيُحذف %d هدفاً فرعياً أيضاً.";
+"goals_delete_children##other" = "سيُحذف %d هدف فرعي أيضاً.";
 "actions_title" = "ما فعله Kelo";
 "actions_period_today" = "اليوم";
 "actions_period_7d" = "7 أيام";
@@ -2328,7 +2339,6 @@
 "pin_secret_title" = "رمز الدفع لـ %1$s";
 "pin_secret_where" = "مشفّر على هذا الهاتف. لا يظهر في المحادثة أبدًا.";
 "pin_secret_done" = "حُفظ رمز الدفع لـ %1$s";
-"reply_other" = "غير ذلك";
 "reply_pick_date" = "اختر تاريخًا";
 "reply_pick_time" = "اختر وقتًا";
 "reply_number_hint" = "أدخل رقمًا";

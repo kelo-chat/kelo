@@ -19,7 +19,7 @@ from assistant.avatar import AvatarError, process
 from assistant.journal import Journal, journal_tools, parse_entries
 from assistant.providers import Done, TextDelta, ToolCall
 from assistant.schedules import (
-    CATCH_UP_SECONDS, ScheduleError, Scheduler, Schedules, describe_cron, parse_cron, schedule_tools,
+    ScheduleError, Scheduler, Schedules, describe_cron, parse_cron, schedule_tools,
 )
 from assistant.server import Settings, create_app
 from assistant.store import Store
@@ -243,13 +243,14 @@ async def test_due_runs_start_once_and_one_time_jobs_are_spent(tmp_path):
     await asyncio.sleep(0.05)
 
 
-async def test_after_a_restart_a_recent_missed_run_happens_once_and_an_old_one_is_skipped(tmp_path):
+async def test_after_a_restart_a_missed_time_runs_once_however_late(tmp_path):
+    # owner 2026-11-20 (D2): no catch-up window. A repeating job runs once for its newest missed time; a one-time job whose time
+    # passed runs at once, and is spent after
     store, clock, s = make(tmp_path, ts(2026, 11, 7, 8, 0))
     recent = s.create("최근", "a", cron="0 9 * * *")
     old = s.create("오래됨", "b", cron="0 5 * * *")
     once_old = s.create("놓친 한 번", "c", run_at="2026-11-07T08:30")
     del s, store
-    # the server comes back at 07:01 the next day: 09:00 yesterday is 22 h late, 05:00 today 2 h 1 min late, 08:30 yesterday long gone
     store2 = Store(str(tmp_path / "s.db"))
     clock2 = Clock(ts(2026, 11, 8, 7, 1))
     s2 = Schedules(store2, clock2)
@@ -261,16 +262,11 @@ async def test_after_a_restart_a_recent_missed_run_happens_once_and_an_old_one_i
 
     started = Scheduler(s2, run, clock=clock2).tick()
     await asyncio.sleep(0.05)
-    assert started == [] and ran == []
-    assert s2.get(recent["id"])["next_run"] == "2026-11-08T09:00+09:00" and s2.get(recent["id"])["last_run"] is None
+    assert sorted(started) == sorted([recent["id"], old["id"], once_old["id"]]) and sorted(ran) == sorted(["최근", "오래됨", "놓친 한 번"])
+    assert s2.get(recent["id"])["next_run"] == "2026-11-08T09:00+09:00" and [r["status"] for r in s2.runs(recent["id"])] == ["done"]
     assert s2.get(old["id"])["next_run"] == "2026-11-09T05:00+09:00"
-    gone = s2.get(once_old["id"])
-    assert gone["enabled"] is False and "Could not run at the set time" in gone["disabled_reason"]
-    clock2.t = ts(2026, 11, 8, 10, 59)                # down 09:00 -> 10:59: 1 h 59 min late, inside the window
-    assert Scheduler(s2, run, clock=clock2).tick() == [recent["id"]]
-    await asyncio.sleep(0.05)
-    assert ran == ["최근"] and CATCH_UP_SECONDS == 7200
-
+    assert s2.get(once_old["id"])["enabled"] is False and not any(r["status"] == "skipped" for r in s2.runs(once_old["id"]))
+    assert Scheduler(s2, run, clock=clock2).tick() == []                 # nothing is owed later on
 
 async def test_three_failures_in_a_row_turn_a_schedule_off_and_say_why():
     _, clock, s = make()
@@ -288,9 +284,10 @@ async def test_three_failures_in_a_row_turn_a_schedule_off_and_say_why():
         assert sch.start_run(s.get(job["id"]))
         await asyncio.sleep(0.02)
     got = s.get(job["id"])
-    assert got["enabled"] is False and got["failure_count"] == 3 and "failing 3 times in a row" in got["disabled_reason"] and "site is down" in got["disabled_reason"]
-    assert [o["id"] for o in offs] == [job["id"]]
-    back = s.update(job["id"], enabled=True)
+    # owner decision 2026-11-20: three in a row ask the owner (on_failures_asked); the job keeps running and is not switched off
+    assert got["enabled"] is True and got["failure_count"] == 3 and got["disabled_reason"] is None and got["next_run"] is not None
+    assert offs == []
+    back = s.keep_going(job["id"])
     assert back["enabled"] and back["failure_count"] == 0 and back["disabled_reason"] is None
 
 
@@ -561,9 +558,9 @@ async def test_a_schedule_that_keeps_failing_is_turned_off_with_a_notification(t
                     break
                 await asyncio.sleep(0.02)
         got = (await c.get(f"/api/schedules/{s['id']}")).json()
-        assert got["enabled"] is False and got["failure_count"] == 3 and "bad gateway" in got["disabled_reason"]
+        assert got["enabled"] is True and got["failure_count"] == 3 and got["disabled_reason"] is None   # asked, not switched off
         types = [n["type"] for n in (await c.get("/api/notifications")).json()["items"]]
-        assert types[0] == "schedule_disabled" and types.count("task_failed") == 3
+        assert "schedule_disabled" not in types and types.count("task_failed") == 1                     # the question; a first failure waits for its try again
 
 
 async def test_an_unattended_approval_notifies_waits_and_then_skips(tmp_path, monkeypatch):

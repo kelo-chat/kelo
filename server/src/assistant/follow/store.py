@@ -90,6 +90,8 @@ def _to_dict(row: Any, cols: tuple[str, ...]) -> dict[str, Any]:
 class FollowStore:
     def __init__(self, db_or_store: Any, clock: Any = time.time):
         self.clock = clock
+        self.on_saved: Any = None     # carried.py: a NEW item was saved (its key); the server sets it
+        self.on_removed: Any = None   # carried.py: an item is gone (its key); its link goes with it
         if isinstance(db_or_store, sqlite3.Connection):
             self._db = db_or_store
             self._store = None
@@ -130,6 +132,7 @@ class FollowStore:
     def save_item(self, item: UpcomingItem, plan: dict[str, Any] | None = None, state: str = "planned",
                   prep: list[dict[str, Any]] | None = None) -> None:
         now = self.clock()
+        is_new = self._one("SELECT 1 AS x FROM follow_items WHERE key = ?", (item.key,)) is None
         plan_json = json.dumps(plan or {})
         prep_json = json.dumps(prep or [])
         refs_json = json.dumps(item.refs or {})
@@ -144,6 +147,8 @@ class FollowStore:
         )
         if item.aliases:
             self.add_aliases(item.key, list(item.aliases))
+        if is_new and self.on_saved is not None:
+            self.on_saved(item.key)
 
     def get_item(self, key: str) -> dict[str, Any] | None:
         row = self._one("SELECT * FROM follow_items WHERE key = ?", (key,))
@@ -183,6 +188,8 @@ class FollowStore:
             self._run("DELETE FROM follow_readings WHERE check_id = ?", (ch["id"],))
         self._run("DELETE FROM follow_checks WHERE item_key = ?", (key,))
         self._run("DELETE FROM follow_items WHERE key = ?", (key,))
+        if self.on_removed is not None:
+            self.on_removed(key)
 
     def remove_item(self, key: str) -> bool:
         """The owner takes the item off the list for good: it and its checks go, and its keys (and its aliases') are tombstoned so

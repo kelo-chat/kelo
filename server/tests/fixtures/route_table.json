@@ -2142,6 +2142,24 @@
    "methods": [
     "GET"
    ],
+   "name": "get_carried",
+   "path": "/api/carried",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "get_checklist",
    "path": "/api/checklist",
    "path_params": [],
@@ -3484,6 +3502,50 @@
    "status": null
   },
   {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "goal_log_page",
+   "path": "/api/goals/{goal_id}/log",
+   "path_params": [
+    {
+     "alias": "goal_id",
+     "default": null,
+     "kind": "Path",
+     "name": "goal_id",
+     "required": true,
+     "type": "int"
+    }
+   ],
+   "query": [
+    {
+     "alias": "offset",
+     "default": 0,
+     "kind": "Query",
+     "name": "offset",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "limit",
+     "default": 100,
+     "kind": "Query",
+     "name": "limit",
+     "required": false,
+     "type": "int"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
    "body": [
     {
      "alias": "body",
@@ -3690,7 +3752,16 @@
    "name": "get_goals",
    "path": "/api/goals",
    "path_params": [],
-   "query": [],
+   "query": [
+    {
+     "alias": "include",
+     "default": null,
+     "kind": "Query",
+     "name": "include",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
    "response_class": "JSONResponse",
    "schema": true,
    "status": null
@@ -14048,6 +14119,24 @@
    "methods": [
     "GET"
    ],
+   "name": "get_carried",
+   "path": "/api/carried",
+   "path_params": [],
+   "query": [],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
    "name": "get_ai_consent",
    "path": "/api/ai-consent",
    "path_params": [],
@@ -15327,6 +15416,50 @@
    "status": null
   },
   {
+   "body": [],
+   "deps": [
+    "require_auth"
+   ],
+   "headers": [],
+   "kind": "APIRoute",
+   "methods": [
+    "GET"
+   ],
+   "name": "goal_log_page",
+   "path": "/api/goals/{goal_id}/log",
+   "path_params": [
+    {
+     "alias": "goal_id",
+     "default": null,
+     "kind": "Path",
+     "name": "goal_id",
+     "required": true,
+     "type": "int"
+    }
+   ],
+   "query": [
+    {
+     "alias": "offset",
+     "default": 0,
+     "kind": "Query",
+     "name": "offset",
+     "required": false,
+     "type": "int"
+    },
+    {
+     "alias": "limit",
+     "default": 100,
+     "kind": "Query",
+     "name": "limit",
+     "required": false,
+     "type": "int"
+    }
+   ],
+   "response_class": "JSONResponse",
+   "schema": true,
+   "status": null
+  },
+  {
    "body": [
     {
      "alias": "body",
@@ -15533,7 +15666,16 @@
    "name": "get_goals",
    "path": "/api/goals",
    "path_params": [],
-   "query": [],
+   "query": [
+    {
+     "alias": "include",
+     "default": null,
+     "kind": "Query",
+     "name": "include",
+     "required": false,
+     "type": "str | None"
+    }
+   ],
    "response_class": "JSONResponse",
    "schema": true,
    "status": null

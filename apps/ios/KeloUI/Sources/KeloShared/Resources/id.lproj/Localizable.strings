@@ -1309,6 +1309,7 @@
 "goal_resume" = "Serahkan lagi ke Kelo";
 "goal_resume_started" = "Kelo sedang mengerjakannya. Kamu bisa mengikutinya di Obrolan.";
 "goal_resume_no_model" = "Pilih model di Saya dulu.";
+"goal_log_more" = "Lihat catatan sebelumnya";
 "goal_edit" = "Edit";
 "goal_due" = "Paling lambat %1$s";
 "goal_mark_step" = "Tandai selesai";
@@ -1358,6 +1359,11 @@
 "endpoint_in_use" = "Ini adalah titik akhir dari model yang sedang digunakan. Beralih ke model lain terlebih dahulu.";
 "endpoint_name_taken" = "Nama tersebut sudah digunakan.";
 "endpoint_too_many" = "Anda dapat menyimpan hingga 20 titik akhir.";
+"goals_work_section" = "Yang Kelo tangani";
+"goals_subgoals" = "Tujuan kecil";
+"goal_about" = "Tentang";
+"goal_log_from" = "Dari %1$s";
+"goals_delete_children##other" = "Tujuan kecilnya %d juga akan dihapus.";
 "actions_title" = "Apa yang dilakukan Kelo";
 "actions_period_today" = "Hari ini";
 "actions_period_7d" = "7 hari";
@@ -2121,7 +2127,6 @@
 "pin_secret_title" = "PIN pembayaran untuk %1$s";
 "pin_secret_where" = "Terenkripsi di ponsel ini. Tidak pernah tampil di chat.";
 "pin_secret_done" = "PIN pembayaran untuk %1$s disimpan";
-"reply_other" = "Lainnya";
 "reply_pick_date" = "Pilih tanggal";
 "reply_pick_time" = "Pilih waktu";
 "reply_number_hint" = "Masukkan angka";

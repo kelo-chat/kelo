@@ -54,7 +54,7 @@ NEW_PER_NIGHT = 5
 ACTIVE_MAX = 40                             # proposed + accepted rules kept; the least sure proposed ones go first
 PROMPT_CONFIDENCE = 0.8                     # a proposed rule is used in replies from this confidence on
 PROMPT_RULES, PROMPT_CHARS = 12, 1_500
-GOALS_PER_NIGHT = 3                         # goal suggestions per night (goals.py keeps them)
+GOALS_PER_NIGHT = 2                         # owner 2026-11-20: at most 2 new goal candidates per nightly pass (goals.py keeps them)
 INFERRED_CONFIDENCE_MAX = 0.7               # older versions kept rules inferred from behaviour at or below this (drop_inferred)
 QUOTE_MIN = 4                               # characters (letters and digits) a quote needs to count
 # What the apps get in last_run["code"]: why a run was skipped, pending or failed ("" for done)
@@ -386,11 +386,14 @@ class Reflection:
         return run
 
     def apply_goals(self, out: dict[str, Any]) -> int:
-        """Goal suggestions from the model's answer, at most GOALS_PER_NIGHT; repeats of goals or earlier suggestions are left out."""
+        """Goal suggestions from the model's answer, at most GOALS_PER_NIGHT new ones; a repeat of a goal or an earlier suggestion does not
+        count and is skipped."""
         if self.goals is None or not isinstance(out.get("goals"), list):
             return 0
         added = 0
-        for item in out["goals"][:GOALS_PER_NIGHT]:
+        for item in out["goals"]:
+            if added >= GOALS_PER_NIGHT:
+                break
             if isinstance(item, dict) and self.goals.suggest(str(item.get("title") or ""), str(item.get("reason") or ""),
                                                              str(item.get("evidence") or ""), "nightly"):
                 added += 1

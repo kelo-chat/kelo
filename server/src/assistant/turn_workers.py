@@ -40,10 +40,18 @@ def start_worker_turn(ctx: Any, w: dict[str, Any], transcript: list[dict[str, An
     return turn
 
 
+async def wait_for_chat_reply(running_turns: Callable[[], list[Any]]) -> None:
+    """Waits while a chat or API reply runs, with no time limit (owner 2026-11-20, D5/D8): a job's report, a scheduled run's result and
+    Kelo's own message go into the conversation only after that reply ends, however long it takes."""
+    asyncio = _server().asyncio   # read at each call (tests tune the sleep on assistant.server)
+    while any(t.source in ("chat", "api") for t in running_turns()):
+        await asyncio.sleep(1)
+
+
 async def worker_handoff(ctx: Any, w: dict[str, Any], text: str, head: str, quiet: bool = False, *, again: dict[str, Any] | None = None,
-                         cond: str = "", self_started: bool = False, owner_asked: bool = False) -> None:
+                         cond: str = "", self_started: bool = False, owner_asked: bool = False, once_key: str = "") -> None:
     """A job's report reaches the main conversation: stored as a hidden message (GET /api/messages leaves it out) and answered by the
-    main agent in a turn of its own, one at a time and after a chat reply that is running.
+    main agent in a turn of its own, one at a time, right after a chat reply that is running ends (no time limit).
     `again`: the same turn once more after a restart or a model outage ({"message_id", "note", "from", "restarts"}): the hidden
     message is already stored, the note says why it goes on."""
     S = _server()   # read at each call (tests tune some of these on assistant.server)
@@ -51,7 +59,6 @@ async def worker_handoff(ctx: Any, w: dict[str, Any], text: str, head: str, quie
     HTTPException = S.HTTPException
     NO_REPLY = S.NO_REPLY
     asyncio = S.asyncio
-    collapse_repeat = S.collapse_repeat
     i18n = S.i18n
     log = S.log
     secrets = S.secrets
@@ -68,20 +75,23 @@ async def worker_handoff(ctx: Any, w: dict[str, Any], text: str, head: str, quie
     store = ctx.store
     workers = ctx.workers
     async with handoff_lock:
-        for _ in range(600):
-            if not any(t.source in ("chat", "api") for t in running_turns()):
-                break
-            await asyncio.sleep(1)
+        await wait_for_chat_reply(running_turns)
         try:
             provider, model = resolve_model(None, None)
         except HTTPException:
             return
         tz = store.profile()["timezone"]
+        if again is None and once_key and (old := store.message_by_once_key(once_key)) is not None:
+            # the hidden message of this report is stored already (an earlier try): the turn that answers it goes on, once
+            if activity.has_resume_for(old):
+                workers.report_handed(w["id"], once_key)
+                return
+            again = {"message_id": old, "note": S.RESTART_NOTE, "from": None, "restarts": 0}
         if again is None:
             said = already_said(store.messages(limit=12), workers.run_started(w["id"]))   # what the chat already told the owner in this run
             if said:
                 text = f"{text}\n{ALREADY_SAID_NOTE.format(said=said)}"
-            mid = store.add_message("user", text)
+            mid = store.add_message("user", text, once_key=once_key)
             ctx = TurnContext(tz, [{"role": "user", "content": text}], mid)
         else:
             mid = int(again["message_id"])
@@ -93,7 +103,8 @@ async def worker_handoff(ctx: Any, w: dict[str, Any], text: str, head: str, quie
             if item is None:
                 reply = said.text().strip()
                 if reply and reply != NO_REPLY:
-                    store.add_message("assistant", collapse_repeat(reply))
+                    for row in said.rows():
+                        store.add_message("assistant", row.strip())
                 said.clear()
             else:
                 said.feed(item)
@@ -113,6 +124,8 @@ async def worker_handoff(ctx: Any, w: dict[str, Any], text: str, head: str, quie
                            "parent_task_id": w["parent_task_id"], "worker_id": w["id"], **({"cond": cond} if cond else {}),
                            **({"self_started": True} if self_started else {}), **({"owner_asked": True} if owner_asked else {})},
                     int((again or {}).get("restarts") or 0), (again or {}).get("from"))
+        if once_key:   # from here the turn's resume record names the message: the report is with the chat (workers.report_owed_at)
+            workers.report_handed(w["id"], once_key)
         await turn.ended.wait()
         if not stopping[0]:   # the job's work is over (unless it waits for the user): its messages get their emoji
             try:

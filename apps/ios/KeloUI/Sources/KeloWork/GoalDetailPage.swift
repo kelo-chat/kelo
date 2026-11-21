@@ -13,11 +13,15 @@ struct GoalDetailPage: View {
     @Environment(AppModel.self) private var app
     @Environment(\.scenePhase) private var phase
     @State private var model: GoalDetailModel
+    @State private var followModel: FollowModel
+    /// A follow item under this work item: its plan sheet
+    @State private var openFollow: String?
     @Environment(\.kelo) private var c
 
     init(goal: GoalItem, api: @escaping () -> KeloApi?, onBack: @escaping () -> Void, onEdit: @escaping (GoalItem) -> Void, onOpenChat: @escaping () -> Void) {
         self.goal = goal; self.onBack = onBack; self.onEdit = onEdit; self.onOpenChat = onOpenChat
         _model = State(initialValue: GoalDetailModel(goalId: goal.id, api: api))
+        _followModel = State(initialValue: FollowModel(api: api))
     }
 
     var body: some View {
@@ -30,7 +34,12 @@ struct GoalDetailPage: View {
         return SubPage(g.title, onBack: onBack, actions: {
             Button(L(R.string.goal_edit)) { onEdit(shown) }.font(KeloFont.button).foregroundStyle(c.accent).buttonStyle(.plain).padding(.horizontal, 8)
         }) {
+            if !g.summary.isEmpty { Text(g.summary).font(KeloFont.body).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true) }
             if !meta.note.isEmpty { Text(meta.note).font(KeloFont.body).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true) }
+            if !g.description.isEmpty {
+                heading(L(R.string.goal_about))
+                Text(g.description).font(KeloFont.body).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true)
+            }
             FlowLayout(spacing: 6, lineSpacing: 6) {
                 if g.plan.total > 0 { chip(L(R.string.goals_plan_count, g.plan.done, g.plan.total), c.success) }
                 if let d = meta.due { chip(L(R.string.goals_due_by, WorkText.day(d)), c.accent) }
@@ -51,9 +60,35 @@ struct GoalDetailPage: View {
         .onAppear { model.load() }
         .onChange(of: phase) { _, p in if p == .active { model.load() } }
         .goalRefresh(every: GoalsRules.refreshMs([shown])) { model.load() }
+        .keloSheet(isPresented: Binding(get: { openFollow != nil }, set: { if !$0 { openFollow = nil } }), detents: [.large]) {
+            if let item = model.linkedFollow.first(where: { $0.key == openFollow }) {
+                FollowPlanSheet(
+                    item: item,
+                    onClose: { openFollow = nil },
+                    onStop: { let k = item.key; Task { await followModel.stop(k); model.load() } },
+                    onReplan: { let k = item.key; Task { await followModel.replan(k); model.load() } },
+                    onRemove: { let k = item.key; Task { await followModel.remove(k); model.load() } }
+                )
+            }
+        }
     }
 
     @ViewBuilder private func content(_ w: GoalWorkspace) -> some View {
+        if !w.children.isEmpty {
+            heading(L(R.string.goals_subgoals))
+            ForEach(w.children) { child in
+                Button { app.router.paths[.goals, default: NavigationPath()].append(GoalRoute(id: child.id)) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(child.title).font(KeloFont.body).foregroundStyle(child.isDone ? c.muted : c.ink).lineLimit(2)
+                        if !child.summary.isEmpty { Text(child.summary).font(KeloFont.small).foregroundStyle(c.muted).lineLimit(1) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
         heading(L(R.string.goal_facts))
         if w.facts.isEmpty { MutedText(L(R.string.goal_facts_empty), small: true) }
         ForEach(Array(w.facts.enumerated()), id: \.offset) { _, f in
@@ -100,14 +135,26 @@ struct GoalDetailPage: View {
                 }
             }
         }
+        if !model.linkedFollow.isEmpty {
+            heading(L(R.string.follow_section_title))
+            ForEach(model.linkedFollow, id: \.key) { f in FollowItemRow(item: f) { openFollow = f.key } }
+        }
         if !w.log.isEmpty {
             heading(L(R.string.goal_log))
-            ForEach(w.log.prefix(20)) { e in
+            ForEach(w.log) { e in
                 HStack(alignment: .top, spacing: 10) {
-                    Text(WorkText.day(LocalDay(seconds: e.at))).font(KeloFont.label).foregroundStyle(c.muted).lineLimit(1).padding(.top, 2)
-                    Text(e.text).font(KeloFont.small).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(WorkText.day(LocalDay(seconds: GoalsRules.logDay(e)))).font(KeloFont.label).foregroundStyle(c.muted).lineLimit(1).padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let from = e.fromGoal { Text(L(R.string.goal_log_from, from.title)).font(KeloFont.label).foregroundStyle(c.muted).lineLimit(1) }
+                        if !e.title.isEmpty { Text(e.title).font(KeloFont.small).foregroundStyle(c.ink).bold() }
+                        Text(e.text).font(KeloFont.small).foregroundStyle(c.ink).fixedSize(horizontal: false, vertical: true)
+                        if !e.outcome.isEmpty { Text(e.outcome).font(KeloFont.small).foregroundStyle(c.muted).fixedSize(horizontal: false, vertical: true) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            }
+            if GoalDetailRules.canLoadMore(workspace: w, loading: model.loadingLog) || model.loadingLog {
+                LinkButton(L(R.string.goal_log_more)) { model.loadMoreLog() }
             }
         }
     }

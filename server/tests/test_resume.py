@@ -157,7 +157,7 @@ async def test_a_chat_turn_after_which_the_user_wrote_again_gets_no_button(tmp_p
         assert all("replies" not in x for x in (await c.get("/api/messages")).json()) and m.seen == []
 
 
-async def test_an_automatic_run_goes_on_within_the_catch_up_window_and_not_after_it(tmp_path):
+async def test_an_automatic_run_goes_on_after_a_long_stop_unless_a_newer_time_is_due(tmp_path):
     db = str(tmp_path / "a.db")
     s = Schedules(Store(db)).create("아침 확인", "새 메일을 확인해줘", cron="0 9 * * *")
     m1 = Model("block")
@@ -173,16 +173,28 @@ async def test_an_automatic_run_goes_on_within_the_catch_up_window_and_not_after
         items = await until(lambda: _done_resumed(c, old["id"]))
         assert next(t for t in items if t["id"] == old["id"])["status"] == "interrupted"
 
-    # a run cut off three hours ago: too late, its next time comes as usual
+    # owner 2026-11-20 (D2): a run cut off three hours ago goes on after the restart, as long as no newer time is due
     store = Store(db)
     a = Activity(store)
+    store._run("UPDATE schedules SET next_run = ? WHERE id = ?", (time.time() + 86400, s["id"]))
     tid = a.start_task("아침 확인", f"schedule:{s['id']}")
     a.set_resume(tid, {"kind": "schedule", "schedule_id": s["id"]})
     store._run("UPDATE tasks SET started_at = ? WHERE id = ?", (time.time() - 3 * 3600, tid))
-    m3 = Model("ok")
+    m3 = Model("ok", reply="새 메일이 없어요.")
     async with Running(app_for(tmp_path, m3)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
-        await asyncio.sleep(0.1)
-        assert m3.seen == []
+        await until(lambda: m3.seen)
+        assert "server restarted" in last_user(m3.seen[0])
+
+    # the next time has already passed: the cut run is skipped, and the scheduler runs that time as usual
+    store = Store(db)
+    tid = Activity(store).start_task("아침 확인", f"schedule:{s['id']}")
+    Activity(store).set_resume(tid, {"kind": "schedule", "schedule_id": s["id"]})
+    store._run("UPDATE tasks SET started_at = ? WHERE id = ?", (time.time() - 3 * 3600, tid))
+    store._run("UPDATE schedules SET next_run = ? WHERE id = ?", (time.time() - 60, s["id"]))
+    m4 = Model("ok", reply="새 메일이 없어요.")
+    async with Running(app_for(tmp_path, m4)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
+        await until(lambda: m4.seen)                          # the time that is due runs as usual, not the cut one
+        assert "server restarted" not in last_user(m4.seen[0])
         assert (await c.get(f"/api/tasks/{tid}")).json()["status"] == "interrupted"
 
 
@@ -197,7 +209,8 @@ async def test_a_task_restarted_more_than_three_times_ends_as_failed(tmp_path):
     async with Running(app_for(tmp_path, m)) as srv, httpx.AsyncClient(base_url=srv.url, headers=AUTH) as c:
         await asyncio.sleep(0.1)
         t = (await c.get(f"/api/tasks/{tid}")).json()
-        assert t["status"] == "failed" and "restarted 4 times" in t["result"] and m.seen == []
+        assert t["status"] == "failed" and "restarted 4 times" in t["result"]
+        assert all(r.messages[0]["role"] == "system" for r in m.seen)   # only the stop report's own model request, never the task
         notes = (await c.get("/api/notifications")).json()["items"]
         assert notes[0]["type"] == "task_failed" and notes[0]["task_id"] == tid
 

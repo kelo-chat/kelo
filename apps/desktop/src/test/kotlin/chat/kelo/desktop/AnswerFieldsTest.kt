@@ -32,7 +32,7 @@ import org.junit.rules.TemporaryFolder
 
 /**
  * Quick-reply questions with typed answer fields, in the real chat against tools/mock_server.py --form: a date, a number, a choice
- * (with the app's own "Other" box) and days with a time, each with its own picker; what is sent is the answer in words.
+ * (with the answer to write, which opens a box) and days with a time, each with its own picker; what is sent is the answer in words.
  * Screenshots (ko and en, light and dark, wide and narrow) go to $KELO_SHOTS or build/parity as form-fields-*.png.
  */
 class AnswerFieldsTest {
@@ -85,6 +85,7 @@ class AnswerFieldsTest {
 
     private fun flow(lang: String, wide: Boolean) {
         val words = Words.of(lang)
+        val typedWord = if (lang == "ko") "직접 입력할게요" else "Type it"   // the mock's answer to write (desktop/tools/mock_server.py)
         val m = MockServer("--lang", lang, "--form").also { mock = it }
         val app = m.app(tmp.newFolder(), lang = lang)
         val chatHandle = DesktopChat(app)
@@ -99,7 +100,7 @@ class AnswerFieldsTest {
             }
         }
         try {
-            ui.waitText(words.get(Res.string.reply_other))
+            ui.waitText(typedWord)
             ui.waitText(words.get(Res.string.reply_send))
             fun shots(name: String) {
                 ui.shot("form-fields-$lang-$name-light")
@@ -110,12 +111,12 @@ class AnswerFieldsTest {
             }
             val size = if (wide) "wide" else "narrow"
             // the form in view (a narrow window shows the bottom of the chat first)
-            bringIntoView(ui, hasText(words.get(Res.string.reply_other)) and hasClickAction())
+            bringIntoView(ui, hasText(typedWord) and hasClickAction())
             shots(size)
-            // the app's own "Other" opens a box under the choice (its hint is the question); a semantics click: the chip may sit
+            // the answer to write opens a box under the choice (its hint is the question); a semantics click: the chip may sit
             // under the floating header at the top of the chat
             val ko = lang == "ko"
-            compose.onAllNodes(hasText(words.get(Res.string.reply_other)) and hasClickAction()).onFirst()
+            compose.onAllNodes(hasText(typedWord) and hasClickAction()).onFirst()
                 .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
             ui.settle()
             val otherBox = compose.onAllNodes(hasSetTextAction() and hasText(if (ko) "어떤 파일로 받을까요?" else "Which file type?"))

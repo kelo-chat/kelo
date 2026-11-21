@@ -46,12 +46,29 @@ data class Goal(
     val working: Boolean = false,
     /** Linked schedules that are on: deleting the goal first asks whether to turn them off too (0, or an older server: no question) */
     @SerialName("schedules_on") val schedulesOn: Int = 0,
+    /** goal: the user's own aim; work: something Kelo carries for the user (listed with include=work; an older server has goals only) */
+    val kind: String = KIND_GOAL,
+    /** The top-level goal this smaller goal sits under (one level only); null at the top */
+    @SerialName("parent_id") val parentId: Long? = null,
+    /** One line: where the goal stands now (written by Kelo; empty on an older server) */
+    val summary: String = "",
+    /** Two or three sentences Kelo wrote about the goal (the note stays the user's own words) */
+    val description: String = "",
+    /** wellbeing | people | finances | job | hobbies | workload | other; empty when none is set */
+    val area: String = "",
+    /** The reason given at the last status change */
+    @SerialName("done_reason") val doneReason: String = "",
+    /** How many smaller goals sit under this one */
+    val children: Int = 0,
 ) {
     val isDone: Boolean get() = status == STATUS_DONE
+    val isWork: Boolean get() = kind == KIND_WORK
 
     companion object {
         const val STATUS_TRACKING = "tracking"
         const val STATUS_DONE = "done"
+        const val KIND_GOAL = "goal"
+        const val KIND_WORK = "work"
     }
 }
 

@@ -15,7 +15,6 @@ import chat.kelo.app.core.Session
 import chat.kelo.app.core.Sessions
 import chat.kelo.app.my.MyFakeServer
 import chat.kelo.app.work.PastFilter
-import chat.kelo.app.work.SECTION_FOLLOW
 import chat.kelo.app.work.SECTION_NOW
 import chat.kelo.app.work.WorkRowsInput
 import chat.kelo.app.work.buildWorkRows
@@ -174,15 +173,14 @@ class FollowViewModelTest {
     }
 
     @Test
-    fun emptyIsHidden() {
+    fun theWorkTabHasNoFollowSection() {
+        // the follow items moved to the goals screen (one list of what Kelo carries): the work tab's rows never hold them
         var fakeServer: MyFakeServer? = null
         try {
             val s = MyFakeServer { _, _, _ -> null }.also { fakeServer = it }
-            val sessions = s.sessions()
-            val vm = vms.make { AgentViewModel(sessions) }
-
-            fun makeInput(followItems: List<FollowItem>): WorkRowsInput {
-                return WorkRowsInput(
+            val vm = vms.make { AgentViewModel(s.sessions()) }
+            val rows = buildWorkRows(
+                WorkRowsInput(
                     vm = vm,
                     tasks = Loadable(TaskList(listOf(AgentTask(1, title = "Task 1", status = AgentTask.STATUS_RUNNING, startedAt = 1000.0)))),
                     workers = Loadable(chat.kelo.app.agent.WorkerList()),
@@ -201,26 +199,10 @@ class FollowViewModelTest {
                     push = {},
                     onOpenLive = {},
                     container = { error("not used") },
-                    followItems = followItems,
-                )
-            }
-
-            // Empty items -> SECTION_FOLLOW is hidden (no row emitted)
-            val emptyRows = buildWorkRows(makeInput(emptyList()))
-            assertFalse("SECTION_FOLLOW must not be present when empty", emptyRows.any { it.key == SECTION_FOLLOW })
-            assertFalse("No follow rows when empty", emptyRows.any { it.key.startsWith("follow:") })
-
-            // With items -> SECTION_FOLLOW is present at the top (right after title)
-            val flightItem = Json { ignoreUnknownKeys = true }.decodeFromString<FollowItemList>(sampleJson).items.first()
-            val withRows = buildWorkRows(makeInput(listOf(flightItem)))
-            val keys = withRows.map { it.key }
-
-            val followIndex = keys.indexOf(SECTION_FOLLOW)
-            assertTrue("SECTION_FOLLOW must be present", followIndex >= 0)
-            assertEquals("title", keys[0])
-            assertEquals(SECTION_FOLLOW, keys[1])
-            assertEquals("follow:cal:123", keys[2])
-            assertTrue("SECTION_FOLLOW must appear before SECTION_NOW", followIndex < keys.indexOf(SECTION_NOW))
+                ),
+            )
+            assertEquals("title", rows[0].key)
+            assertFalse("no follow rows in the work tab", rows.any { it.key.startsWith("follow:") || it.key == "sec:follow" })
         } finally {
             fakeServer?.shutdown()
         }

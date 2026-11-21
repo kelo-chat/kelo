@@ -52,6 +52,7 @@ import chat.kelo.app.core.Goal
 import chat.kelo.app.res.*
 import chat.kelo.app.ui.components.SubPage
 import chat.kelo.app.ui.components.ErrorText
+import chat.kelo.app.ui.components.LinkButton
 import chat.kelo.app.ui.components.MutedText
 import chat.kelo.app.ui.components.PrimaryButton
 import chat.kelo.app.ui.icons.KeloIcons
@@ -69,14 +70,23 @@ import java.time.ZoneId
  * it, and what happened so far. "Kelo에게 이어서 맡기기" has Kelo pick it up again in the chat.
  */
 @Composable
-fun GoalDetailPage(goal: Goal, onBack: () -> Unit, onEdit: (Goal) -> Unit, onOpenChat: () -> Unit) {
+fun GoalDetailPage(
+    goal: Goal, onBack: () -> Unit, onEdit: (Goal) -> Unit, onOpenChat: () -> Unit, onOpenGoal: (Goal) -> Unit = {},
+    /** The follow items of the same thing (the one list): shown under the work item, each opens its plan */
+    linkedFollow: List<chat.kelo.app.follow.FollowItem> = emptyList(), onFollowOpen: (chat.kelo.app.follow.FollowItem) -> Unit = {},
+) {
     // the page's view model lives as long as the page is open
     val owner = rememberPageViewModelStoreOwner("goal-detail:${goal.id}")
-    CompositionLocalProvider(LocalViewModelStoreOwner provides owner) { GoalDetailContent(goal, onBack, onEdit, onOpenChat) }
+    CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+        GoalDetailContent(goal, onBack, onEdit, onOpenChat, onOpenGoal, linkedFollow, onFollowOpen)
+    }
 }
 
 @Composable
-private fun GoalDetailContent(goal: Goal, onBack: () -> Unit, onEdit: (Goal) -> Unit, onOpenChat: () -> Unit) {
+private fun GoalDetailContent(
+    goal: Goal, onBack: () -> Unit, onEdit: (Goal) -> Unit, onOpenChat: () -> Unit, onOpenGoal: (Goal) -> Unit,
+    linkedFollow: List<chat.kelo.app.follow.FollowItem>, onFollowOpen: (chat.kelo.app.follow.FollowItem) -> Unit,
+) {
     val sessions = LocalAppServices.current.sessions
     val vm = viewModel(key = "goal-${goal.id}") { GoalDetailViewModel(sessions, goal) }
     val state by vm.state.collectAsStateWithLifecycle()
@@ -91,7 +101,12 @@ private fun GoalDetailContent(goal: Goal, onBack: () -> Unit, onEdit: (Goal) -> 
     SubPage(g.title, onBack, actions = {
         TextButton(onClick = { onEdit(g) }) { Text(string(Res.string.goal_edit), color = c.accent) }
     }) {
+        if (g.summary.isNotBlank()) Text(g.summary, style = MaterialTheme.typography.bodyMedium, color = c.ink)
         if (meta.note.isNotBlank()) Text(meta.note, style = MaterialTheme.typography.bodyMedium, color = c.muted)
+        if (g.description.isNotBlank()) {
+            Heading(string(Res.string.goal_about))
+            Text(g.description, style = MaterialTheme.typography.bodyMedium, color = c.muted)
+        }
         @OptIn(ExperimentalLayoutApi::class)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (g.plan.total > 0) Chip(string(Res.string.goals_plan_count, g.plan.done, g.plan.total), c.success)
@@ -109,6 +124,19 @@ private fun GoalDetailContent(goal: Goal, onBack: () -> Unit, onEdit: (Goal) -> 
         state.resumed?.let { MutedText(string(it), small = true) }
         if (state.failed) ErrorText(string(Res.string.connect_failed), small = true)
         if (w == null) return@SubPage
+
+        if (w.children.isNotEmpty()) {
+            Heading(string(Res.string.goals_subgoals))
+            w.children.forEach { child ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { onOpenGoal(child) }.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(child.title, style = MaterialTheme.typography.bodyMedium, color = if (child.isDone) c.muted else c.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (child.summary.isNotBlank()) Text(child.summary, style = MaterialTheme.typography.bodySmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
 
         Heading(string(Res.string.goal_facts))
         if (w.facts.isEmpty()) MutedText(string(Res.string.goal_facts_empty), small = true)
@@ -140,13 +168,25 @@ private fun GoalDetailContent(goal: Goal, onBack: () -> Unit, onEdit: (Goal) -> 
                 }
             }
         }
+        if (linkedFollow.isNotEmpty()) {
+            Heading(string(Res.string.follow_section_title))
+            linkedFollow.forEach { f -> chat.kelo.app.follow.FollowItemRow(item = f, onClick = { onFollowOpen(f) }) }
+        }
         if (w.log.isNotEmpty()) {
             Heading(string(Res.string.goal_log))
-            w.log.take(20).forEach { e ->
+            w.log.forEach { e ->
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(logDay(e.at), style = MaterialTheme.typography.labelSmall, color = c.muted, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
-                    Text(e.text, style = MaterialTheme.typography.bodySmall, color = c.ink, modifier = Modifier.weight(1f))
+                    Text(logDay(GoalsRules.logDay(e)), style = MaterialTheme.typography.labelSmall, color = c.muted, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+                    Column(Modifier.weight(1f)) {
+                        e.fromGoal?.let { Text(string(Res.string.goal_log_from, it.title), style = MaterialTheme.typography.labelSmall, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                        if (e.title.isNotBlank()) Text(e.title, style = MaterialTheme.typography.bodySmall, color = c.ink, fontWeight = FontWeight.SemiBold)
+                        Text(e.text, style = MaterialTheme.typography.bodySmall, color = c.ink)
+                        if (e.outcome.isNotBlank()) Text(e.outcome, style = MaterialTheme.typography.bodySmall, color = c.muted)
+                    }
                 }
+            }
+            if (GoalDetailRules.canLoadMore(state) || state.loadingLog) {
+                LinkButton(string(Res.string.goal_log_more), onClick = { vm.loadMoreLog() })
             }
         }
     }

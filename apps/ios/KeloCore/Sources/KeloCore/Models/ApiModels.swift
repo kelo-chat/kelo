@@ -1032,11 +1032,13 @@ public struct Schedule: Codable, Equatable, Hashable, Sendable {
     public var running: Bool
     public var paused: Bool
     public var pausedReason: String?
+    /// One sentence from the server when a run is blocked (a connector, a site's sign-in or check, the phone); tried again later (`block_line`).
+    public var blockLine: String?
     public var pausedAt: Double?
     public var archivedAt: Double?
     public var purgeAt: Double?
 
-    public init(id: Int64, name: String = "", prompt: String = "", kind: String = "cron", cron: String? = nil, runAt: String? = nil, everyMinutes: Int? = nil, startAt: String? = nil, windowMinutes: Int = 0, timezone: String = "", enabled: Bool = true, description: String = "", nextRun: String? = nil, nextRunTs: Double? = nil, createdAt: Double? = nil, updatedAt: Double? = nil, createdBy: String = "user", goalId: Int64? = nil, lastRun: LastRun? = nil, failureCount: Int = 0, disabledReason: String? = nil, running: Bool = false, paused: Bool = false, pausedReason: String? = nil, pausedAt: Double? = nil, archivedAt: Double? = nil, purgeAt: Double? = nil) {
+    public init(id: Int64, name: String = "", prompt: String = "", kind: String = "cron", cron: String? = nil, runAt: String? = nil, everyMinutes: Int? = nil, startAt: String? = nil, windowMinutes: Int = 0, timezone: String = "", enabled: Bool = true, description: String = "", nextRun: String? = nil, nextRunTs: Double? = nil, createdAt: Double? = nil, updatedAt: Double? = nil, createdBy: String = "user", goalId: Int64? = nil, lastRun: LastRun? = nil, failureCount: Int = 0, disabledReason: String? = nil, running: Bool = false, paused: Bool = false, pausedReason: String? = nil, blockLine: String? = nil, pausedAt: Double? = nil, archivedAt: Double? = nil, purgeAt: Double? = nil) {
         self.id = id
         self.name = name
         self.prompt = prompt
@@ -1061,6 +1063,7 @@ public struct Schedule: Codable, Equatable, Hashable, Sendable {
         self.running = running
         self.paused = paused
         self.pausedReason = pausedReason
+        self.blockLine = blockLine
         self.pausedAt = pausedAt
         self.archivedAt = archivedAt
         self.purgeAt = purgeAt
@@ -1092,6 +1095,7 @@ public struct Schedule: Codable, Equatable, Hashable, Sendable {
         running = j.bool("running", false)
         paused = j.bool("paused", false)
         pausedReason = j.optStr("paused_reason")
+        blockLine = j.optStr("block_line")
         pausedAt = j.optDouble("paused_at")
         archivedAt = j.optDouble("archived_at")
         purgeAt = j.optDouble("purge_at")
@@ -1123,6 +1127,7 @@ public struct Schedule: Codable, Equatable, Hashable, Sendable {
         try c.encode(running, forKey: AnyKey("running"))
         try c.encode(paused, forKey: AnyKey("paused"))
         try c.encodeIfPresent(pausedReason, forKey: AnyKey("paused_reason"))
+        try c.encodeIfPresent(blockLine, forKey: AnyKey("block_line"))
         try c.encodeIfPresent(pausedAt, forKey: AnyKey("paused_at"))
         try c.encodeIfPresent(archivedAt, forKey: AnyKey("archived_at"))
         try c.encodeIfPresent(purgeAt, forKey: AnyKey("purge_at"))

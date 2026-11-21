@@ -14,15 +14,16 @@ schedule turns itself off with a reason ("finished"), like a spent one-time job.
 
 Rules:
 - schedules live in the database, so they survive a restart;
-- a run that was missed by up to `CATCH_UP_SECONDS` (the server was down, the machine slept) runs once as soon as possible;
-  an older one is skipped to the next time;
+- a time that passed while the server was off: a one-time job runs as soon as the server is up; a repeating job runs once for the
+  newest missed time, never once per missed time (owner 2026-11-20);
 - one schedule never runs twice at once (a time that comes while the last run is still going is skipped, and the skip is logged);
-- `MAX_FAILURES` failed runs in a row turn the schedule off and say why;
+- `MAX_FAILURES` failed runs in a row turn the schedule off and say why (a scheduled time and its automatic tries count as one);
 - a run may end quietly (the agent replies NO_REPLY: nothing worth telling) — no chat message, no notification, still in the history;
-- a run that hits a temporary blocker (a site under maintenance, down, sold out right now) asks to be tried again later
-  (`schedule_retry`): the same schedule runs once more at that time, under the same permissions, without moving its regular times;
+- a failed run is tried once more FAILED_RETRY_SECONDS later (owner 2026-11-20); a run that ends on a job block is tried again
+  BLOCKED_RETRY_SECONDS later, then once more an hour after that, and then waits for its next time (or a reconnect). A run never
+  pauses, turns off or deletes its job: the owner does;
 - a run that hits a lasting blocker (a missing login, a site that changed for good, an account problem) pauses its schedule with a
-  reason (`schedule_pause`); the user or the agent turns it back on;
+  reason (`schedule_pause`) when the user asks for it; the user or the agent turns it back on;
 - every run (and every skip) is a row of the run history (`schedule_runs`, the last KEEP_RUNS per schedule);
 - deleting archives: the schedule is kept, off, for ARCHIVE_DAYS and can be restored; after that it is removed for good;
 - a schedule may belong to a goal (`goal_id`);
@@ -37,6 +38,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import re
 import time
@@ -53,15 +55,14 @@ from .agent import Tool
 from . import i18n
 from .i18n import N_, t
 from .tools.connect_tools import asked_in_chat
+from .run_blocks import Block, RECONNECT_REASONS
 
 
 log = logging.getLogger("uvicorn.error")
 
-CATCH_UP_SECONDS = 2 * 3600
 MAX_FAILURES = 3
-MAX_RETRIES = 3                # schedule_retry asks per regular run (a retry is the same schedule, so its permissions apply)
-RETRY_MIN_SECONDS = 300        # a retry is at least this far away ...
-RETRY_MAX_SECONDS = 24 * 3600  # ... and at most this far
+FAILED_RETRY_SECONDS = 5 * 60                 # owner 2026-11-20 (D1): a failed run is tried once more, 5 minutes later
+BLOCKED_RETRY_SECONDS = (10 * 60, 60 * 60)    # owner 2026-11-20 (D19): a blocked run: 10 minutes later, then 1 hour after that, then no more
 RETRY_BUSY_SECONDS = 300       # a retry that comes while the schedule is still running moves this much later
 MIN_GAP_SECONDS = 300          # runs of one schedule are at least this far apart (a cron of every minute is refused)
 MAX_SCHEDULES = 50
@@ -70,7 +71,7 @@ MAX_WINDOW_MINUTES = 120       # "around 9": at most ±2 hours
 MAX_INTERVAL_MINUTES = 31 * 24 * 60
 KEEP_RUNS = 100                # run history rows kept per schedule
 ARCHIVE_DAYS = 30              # a deleted schedule can be restored this long
-RUN_STATUSES = ("running", "done", "quiet", "failed", "stopped", "skipped", "paused")
+RUN_STATUSES = ("running", "done", "quiet", "failed", "stopped", "skipped", "paused", "blocked")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schedules (
@@ -88,7 +89,20 @@ COLUMNS = (("kind", "TEXT NOT NULL DEFAULT ''"), ("every_seconds", "INTEGER"), (
            ("window_minutes", "INTEGER NOT NULL DEFAULT 0"), ("goal_id", "INTEGER"), ("paused_reason", "TEXT NOT NULL DEFAULT ''"),
            ("paused_at", "REAL"), ("archived_at", "REAL"), ("starts_on", "TEXT NOT NULL DEFAULT ''"),
            ("ends_on", "TEXT NOT NULL DEFAULT ''"), ("retry_at", "REAL"), ("retry_why", "TEXT NOT NULL DEFAULT ''"),
-           ("retries", "INTEGER NOT NULL DEFAULT 0"), ("retry_first_at", "REAL"))
+           ("retries", "INTEGER NOT NULL DEFAULT 0"), ("retry_first_at", "REAL"),
+           # a typed block of the job (run_blocks.py): why it waits, on what, since when, and when it is tried again next
+           ("block_reason", "TEXT NOT NULL DEFAULT ''"), ("block_on", "TEXT NOT NULL DEFAULT ''"), ("block_since", "REAL"),
+           ("block_try_at", "REAL"),
+           # the site ("site:<domain>") whose own sign-in stopped the last run: no timed try; the job runs again when the owner signs in there
+           # (owner 2026-11-20, decision 4; release_owner_wait)
+           ("owner_wait", "TEXT NOT NULL DEFAULT ''"),
+           # the owner was asked about this streak of failures (3 in a row); the job keeps running until the owner answers
+           ("failure_asked", "INTEGER NOT NULL DEFAULT 0"),
+           # '' none, 'failed' or 'blocked': the kind of the automatic try again that is pending (or was the last one of this stretch)
+           ("retry_kind", "TEXT NOT NULL DEFAULT ''"),
+           # "<reason>|<on>|<block_since>" of the block whose automatic tries already ran: the same block gets them once (owner 2026-11-20)
+           ("block_tried", "TEXT NOT NULL DEFAULT ''"))
+RUN_COLUMNS = (("held_result", "TEXT"),)   # schedule_runs: a run's closing result, kept until it is delivered (a restart finishes it)
 
 
 # A schedule the USER saved in the app is handed to the main agent (like a new goal, goals.py) so it can check ahead of the first run
@@ -365,16 +379,20 @@ class Schedules:
         self.on_paused: Callable[[dict[str, Any]], None] | None = None   # set by the server: a notification when a schedule pauses itself
         self.on_deleted: Callable[[int], None] | None = None   # set by the server: what was allowed for the schedule goes with it
         self.on_task_changed: Callable[[int], None] | None = None   # set by the server: a new task is not covered by what was allowed for the old one (audit F6)
-        self.retried_tasks: dict[int, str] = {}   # task id -> history line, for runs that called schedule_retry (no notification; start_run reads it)
+        self.on_failures_asked: Callable[[dict[str, Any], str], None] | None = None   # set by the server: the owner is asked (job, last error)
         with store._lock:
             store._db.executescript(SCHEMA)
             have = {r[1] for r in store._db.execute("PRAGMA table_info(schedules)")}
             for col, ddl in COLUMNS:
                 if col not in have:
                     store._db.execute(f"ALTER TABLE schedules ADD COLUMN {col} {ddl}")
+            have_runs = {r[1] for r in store._db.execute("PRAGMA table_info(schedule_runs)")}
+            for col, ddl in RUN_COLUMNS:
+                if col not in have_runs:
+                    store._db.execute(f"ALTER TABLE schedule_runs ADD COLUMN {col} {ddl}")
             store._db.commit()
         # a restart ended whatever was running: say so in the history instead of showing it as running forever
-        store._run("UPDATE schedule_runs SET status = 'stopped', finished_at = ?, result = ? WHERE status = 'running'",
+        store._run("UPDATE schedule_runs SET status = 'stopped', finished_at = ?, result = ? WHERE status = 'running' AND held_result IS NULL",
                    (clock(), t("Stopped because the server restarted")))
 
     def default_tz(self) -> str:
@@ -428,7 +446,33 @@ class Schedules:
                 "archived_at": r.get("archived_at"),
                 "retry_at": r.get("retry_at") if not r.get("archived_at") else None,
                 "retry_why": (r.get("retry_why") or None) if r.get("retry_at") and not r.get("archived_at") else None,
+                "block": self._block_public(r) if live else None,
+                "block_line": self.block_line(r) if live else None,
                 "purge_at": (r["archived_at"] + ARCHIVE_DAYS * 86400) if r.get("archived_at") else None}
+
+    @staticmethod
+    def _block_public(r: dict[str, Any]) -> dict[str, Any] | None:
+        if not r.get("block_reason"):
+            return None
+        return {"reason": r["block_reason"], "on": r["block_on"], "since": r["block_since"], "next_try": r.get("block_try_at")}
+
+    def block_line(self, r: dict[str, Any]) -> str | None:
+        """One sentence for the owner (A8): what the job waits for and when it is tried again. Words are Kelo's own (i18n)."""
+        reason = r.get("block_reason") or ""
+        if not reason or r.get("paused_reason"):
+            return None
+        on = r.get("block_on") or ""
+        if reason in ("connect_missing", "connect_expired"):
+            from .catalog import BY_ID
+            name = BY_ID[on].name if on in BY_ID else on
+            if reason == "connect_missing":
+                return t("Waiting for {service} to be connected. It runs again at its next time once you connect it.", service=name)
+            return t("Waiting for {service} to be connected again. It runs again at its next time once you reconnect it.", service=name)
+        if reason == "site_check":
+            return t("{site} asked to confirm a person is there. It tries again at its next time.", site=on.removeprefix("site:"))
+        if reason == "device_away":
+            return t("{device} was offline. It tries again at its next time.", device=t("the phone"))
+        return None
 
     def _row(self, sid: int, archived: bool = False) -> dict[str, Any] | None:
         rows = self.store._all("SELECT * FROM schedules WHERE id = ?" + ("" if archived else " AND archived_at IS NULL"), (sid,))
@@ -662,8 +706,8 @@ class Schedules:
             "every_seconds = ?, anchor_at = ?, window_minutes = ?, goal_id = ?, starts_on = ?, ends_on = ?, "
             "failure_count = CASE WHEN ? = 1 AND enabled = 0 THEN 0 ELSE failure_count END, "
             "disabled_reason = CASE WHEN ? = 1 THEN '' ELSE disabled_reason END, "
-            "paused_reason = CASE WHEN ? = 1 THEN '' ELSE paused_reason END, paused_at = CASE WHEN ? = 1 THEN NULL ELSE paused_at END "
-            "WHERE id = ?",
+            "paused_reason = CASE WHEN ? = 1 THEN '' ELSE paused_reason END, paused_at = CASE WHEN ? = 1 THEN NULL ELSE paused_at END, "
+            "block_reason = '', block_on = '', block_since = NULL, block_try_at = NULL, owner_wait = '' WHERE id = ?",   # an edited job is tried as it is now
             (name.strip(), prompt.strip(), expr or "", None if every else ts, tz_name or "", int(enabled), now, kind, every,
              ts if every else None, int(window or 0), gid, starts, ends, int(enabled), int(enabled), int(enabled), int(enabled), sid))
         if task_changed and self.on_task_changed is not None:   # what the owner allowed the old task goes: they are asked again (audit F6)
@@ -672,8 +716,80 @@ class Schedules:
         assert r is not None
         self.store._run("UPDATE schedules SET next_run = ? WHERE id = ?", (self._next(r, now) if enabled else None, sid))
         if changes.get("enabled") is False:   # the user switched it off: no try-again later either
-            self.store._run("UPDATE schedules SET retry_at = NULL, retry_why = '' WHERE id = ?", (sid,))
+            self.store._run("UPDATE schedules SET retry_at = NULL, retry_kind = '', retry_why = '' WHERE id = ?", (sid,))
         return self.get(sid)
+
+    # ------------------------------------------------------------------ a run's closing result, held until it is delivered (deliveries.py)
+    def hold_result(self, run_id: int, held: dict[str, Any] | None) -> None:
+        """The working phase ended with a result that the closing phase has not decided yet (held) -- or, with None, is settled."""
+        self.store._run("UPDATE schedule_runs SET held_result = ? WHERE id = ?",
+                        (json.dumps(held, ensure_ascii=False) if held else None, run_id))
+
+    def held_runs(self) -> list[dict[str, Any]]:
+        """Runs still running whose closing result was held (a restart came during the closing phase)."""
+        return [dict(r) for r in self.store._all("SELECT id, schedule_id, held_result FROM schedule_runs "
+                                                 "WHERE status = 'running' AND held_result IS NOT NULL ORDER BY id")]
+
+    # ------------------------------------------------------------------ a typed block (run_blocks.py): the job keeps running
+    def block_of(self, sid: int) -> Block | None:
+        r = self._row(sid)
+        return Block.parse({"reason": r["block_reason"], "on": r["block_on"]}) if r and r["block_reason"] else None
+
+    def set_block(self, sid: int, block: Block) -> bool:
+        """A run ended blocked: the job stays on and its next try is its next regular time. Returns True when the job already had exactly
+        this block (the owner was told; the caller then stays silent). The first time a block is set, block_since is now."""
+        r = self._row(sid)
+        if r is None:
+            return False
+        same = r["block_reason"] == block.reason and r["block_on"] == block.on
+        now = self.clock()
+        self.store._run("UPDATE schedules SET block_reason = ?, block_on = ?, block_since = ?, block_try_at = ? WHERE id = ?",
+                        (block.reason, block.on, r["block_since"] if same else now, r["next_run"], sid))
+        return same
+
+    # ------------------------------------------------------------------ a site's own sign-in (owner 2026-11-20, decision 4)
+    def wait_for_owner(self, sid: int, on: str) -> None:
+        """A run stopped at a site that needs the owner's own sign-in: no automatic try (after_run clears its tries), and the job waits
+        for the owner to sign in there (release_owner_wait). The owner was told once, at the stop."""
+        self.store._run("UPDATE schedules SET owner_wait = ? WHERE id = ?", (on, sid))
+
+    def release_owner_wait(self, on: str) -> list[int]:
+        """The owner signed in at this site: the jobs that stopped there run again now (an enabled one at once, a one-time one too).
+        Returns the ids of the enabled jobs released."""
+        if not on:
+            return []
+        rows = self.store._all("SELECT id, enabled FROM schedules WHERE archived_at IS NULL AND owner_wait = ?", (on,))
+        now = self.clock()
+        for r in rows:
+            self.store._run("UPDATE schedules SET owner_wait = '', next_run = CASE WHEN enabled = 1 THEN ? ELSE next_run END WHERE id = ?",
+                            (now, r["id"]))
+        return [r["id"] for r in rows if r["enabled"]]
+
+    def clear_block(self, sid: int) -> None:
+        self.store._run("UPDATE schedules SET block_reason = '', block_on = '', block_since = NULL, block_try_at = NULL WHERE id = ?", (sid,))
+
+    def release_blocks(self, connector_ids: set[str]) -> list[int]:
+        """A connector was connected again: the jobs blocked on it with a reconnect reason lose the block (run_blocks.RECONNECT_REASONS).
+        An enabled one whose regular time already passed runs at the next tick; the others at their next regular time.
+        Returns the ids of the enabled jobs released."""
+        ids = sorted(connector_ids)
+        if not ids:
+            return []
+        reasons = list(RECONNECT_REASONS)
+        marks = ",".join("?" * len(ids))
+        rows = self.store._all(f"SELECT id, enabled, next_run, retry_kind, retry_at FROM schedules WHERE archived_at IS NULL AND block_reason IN "
+                               f"({','.join('?' * len(reasons))}) AND block_on IN ({marks})", (*reasons, *ids))
+        if not rows:
+            return []
+        now = self.clock()
+        for r in rows:
+            self.store._run("UPDATE schedules SET block_reason = '', block_on = '', block_since = NULL, block_try_at = NULL WHERE id = ?",
+                            (r["id"],))
+            if r["enabled"] and r["next_run"] is not None and r["next_run"] < now:
+                self.store._run("UPDATE schedules SET next_run = ? WHERE id = ?", (now, r["id"]))
+            if r["enabled"] and r["retry_kind"] == "blocked" and r["retry_at"] is not None:   # a pending try of the block: at once
+                self.store._run("UPDATE schedules SET retry_at = ? WHERE id = ?", (now, r["id"]))
+        return [r["id"] for r in rows if r["enabled"]]
 
     # ------------------------------------------------------------------ pause (a lasting blocker), archive (delete), restore
     def pause(self, sid: int, reason: str, by: str = "agent") -> dict[str, Any] | None:
@@ -685,7 +801,7 @@ class Schedules:
         why = re.sub(r"\s+", " ", str(reason or "")).strip()[:300] or t("No reason was given")
         now = self.clock()
         self.store._run("UPDATE schedules SET enabled = 0, next_run = NULL, paused_reason = ?, paused_at = ?, updated_at = ?, "
-                        "retry_at = NULL, retry_why = '' WHERE id = ?", (why, now, now, sid))
+                        "retry_at = NULL, retry_kind = '', retry_why = '' WHERE id = ?", (why, now, now, sid))
         s = self.get(sid)
         if s and self.on_paused:
             try:
@@ -698,7 +814,7 @@ class Schedules:
         """Archive: off and out of the list, restorable for ARCHIVE_DAYS. What the user allowed for its runs (logins, purchases,
         schedule_grants.py) is removed at once: a restored schedule asks again."""
         now = self.clock()
-        gone = self.store._run("UPDATE schedules SET archived_at = ?, next_run = NULL, updated_at = ?, retry_at = NULL, retry_why = '' "
+        gone = self.store._run("UPDATE schedules SET archived_at = ?, next_run = NULL, updated_at = ?, retry_at = NULL, retry_kind = '', retry_why = '' "
                                "WHERE id = ? AND archived_at IS NULL",
                                (now, now, sid)).rowcount > 0
         if gone and self.on_deleted is not None:
@@ -714,7 +830,7 @@ class Schedules:
         if self._row(sid) is None:
             return None
         self.store._run("UPDATE schedules SET enabled = 0, next_run = NULL, disabled_reason = ?, updated_at = ?, retry_at = NULL, "
-                        "retry_why = '' WHERE id = ?", (reason[:300], self.clock(), sid))
+                        "retry_kind = '', retry_why = '' WHERE id = ?", (reason[:300], self.clock(), sid))
         return self.get(sid)
 
     def runs_per_month(self, sid: int, days: int = 31, most: int = 62) -> int:
@@ -777,15 +893,17 @@ class Schedules:
 
     # ------------------------------------------------------------------ the runner's side
     def due(self, now: float) -> list[dict[str, Any]]:
-        return self.store._all("SELECT * FROM schedules WHERE enabled = 1 AND archived_at IS NULL AND next_run IS NOT NULL AND next_run <= ? "
-                               "ORDER BY next_run", (now,))
+        # a blocked job waits for the later of its regular time and its try time (run_blocks.py, set_block)
+        return self.store._all("SELECT * FROM schedules WHERE enabled = 1 AND archived_at IS NULL AND next_run IS NOT NULL "
+                               "AND MAX(next_run, COALESCE(block_try_at, next_run)) <= ? ORDER BY next_run", (now,))
 
     def next_times(self) -> list[float]:
-        return [r["next_run"] for r in self.store._all(
-            "SELECT next_run FROM schedules WHERE enabled = 1 AND archived_at IS NULL AND next_run IS NOT NULL")] + [
+        return [r["at"] for r in self.store._all(
+            "SELECT MAX(next_run, COALESCE(block_try_at, next_run)) AS at FROM schedules WHERE enabled = 1 AND archived_at IS NULL "
+            "AND next_run IS NOT NULL")] + [
             r["retry_at"] for r in self.store._all("SELECT retry_at FROM schedules WHERE archived_at IS NULL AND retry_at IS NOT NULL")]
 
-    # ------------------------------------------------------------------ a temporary blocker: try again later (schedule_retry)
+    # ------------------------------------------------------------------ the automatic try again of a failed or blocked run
     def tz_of(self, r: dict[str, Any]) -> ZoneInfo:
         return zone(r["timezone"], self.default_tz())
 
@@ -793,55 +911,22 @@ class Schedules:
     def _clock_text(ts: float, tz: ZoneInfo) -> str:
         return datetime.fromtimestamp(ts, tz).strftime("%Y-%m-%d %H:%M")
 
-    def set_retry(self, sid: int, at: Any, why: str, task_id: int | None = None) -> float:
-        """The run going on asks to be tried again at `at` (local time or ISO, in the schedule's zone): the same schedule runs once more
-        then, under the same permissions, and its regular times stay as they are. Raises ScheduleError when it cannot be. Returns the
-        time (unix seconds). The run is recorded as skipped with a line that says so (Scheduler.start_run), never as a failure."""
-        r = self._row(sid)
-        if r is None:
-            raise ScheduleError("no such schedule")
-        tz = self.tz_of(r)
-        text = re.sub(r"\s+", " ", str(why or "")).strip()
-        if not text:
-            raise ScheduleError("say why in `why`: what blocks the job right now")
-        if len(text) > 160:
-            raise ScheduleError("`why` is too long (at most 160 characters)")
-        try:
-            ts = parse_run_at(at, tz)
-        except ScheduleError:
-            raise ScheduleError("`at` must be a local date and time like 2026-11-08T09:00") from None
-        now = self.clock()
-        if ts < now + RETRY_MIN_SECONDS:
-            raise ScheduleError(f"`at` is too soon: pick a time at least {RETRY_MIN_SECONDS // 60} minutes from now")
-        if ts > now + RETRY_MAX_SECONDS:
-            raise ScheduleError("`at` is too far away: at most 24 hours from now (a block that lasts longer: schedule_pause)")
-        if r["enabled"] and r["next_run"] is not None and ts >= r["next_run"]:
-            raise ScheduleError(f"`at` is not before this job's next regular run ({self._clock_text(r['next_run'], tz)}): that run will do it")
-        if int(r.get("retries") or 0) >= MAX_RETRIES:
-            raise ScheduleError(f"it was already tried again {MAX_RETRIES} times since the last regular run: report what blocks it "
-                                "(schedule_pause when it is lasting)")
-        first = r.get("retry_first_at")
-        if not int(r.get("retries") or 0) or first is None:   # the run that began this stretch of retries
-            got = self.store._all("SELECT started_at FROM schedule_runs WHERE schedule_id = ? AND status = 'running' ORDER BY id DESC LIMIT 1", (sid,))
-            first = got[0]["started_at"] if got else now
-        self.store._run("UPDATE schedules SET retry_at = ?, retry_why = ?, retries = retries + 1, retry_first_at = ? WHERE id = ?",
-                        (ts, text, first, sid))
-        with i18n.owner_language():
-            line = t("Will try again at {time}: {why}", time=self._clock_text(ts, tz), why=text)
-        if task_id:
-            self.retried_tasks[int(task_id)] = line
-        return ts
-
     def retry_due(self, now: float) -> list[dict[str, Any]]:
         return self.store._all("SELECT * FROM schedules WHERE retry_at IS NOT NULL AND retry_at <= ? AND archived_at IS NULL "
                                "AND (enabled = 1 OR (run_at IS NOT NULL AND every_seconds IS NULL)) ORDER BY retry_at", (now,))
 
     def retry_note(self, r: dict[str, Any]) -> str:
-        """What a retry run is told (English, for the model); `r` is the row before its retry_at is taken."""
+        """What an automatic try again is told (English, for the model); `r` is the row before its retry is taken."""
         first = r.get("retry_first_at") or r.get("last_run_at") or self.clock()
-        return (f"[Retry {int(r.get('retries') or 1)} of this job: the run at {self._clock_text(first, self.tz_of(r))} stopped because: "
-                f"{r.get('retry_why') or 'it was blocked'}. Do the job again. In your report say that the earlier try could not be "
-                "done and why.]")
+        when = self._clock_text(first, self.tz_of(r))
+        if (r.get("retry_kind") or "failed") == "blocked":
+            block = f"{r.get('block_reason') or ''} on {r.get('block_on') or ''}"
+            return f"[Not from the user: the run of this job at {when} could not be done: {block}. This is an automatic try again.]"
+        got = self.store._all("SELECT error FROM schedule_runs WHERE schedule_id = ? AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1",
+                              (r["id"],))
+        error = got[0]["error"] if got and got[0]["error"] else "it failed"
+        return (f"[Not from the user: the run of this job at {when} did not finish ({error}). This is Kelo's one automatic try again. "
+                "Before you repeat a step that sends, changes or pays, check whether the earlier run already did it.]")
 
     def take_retry(self, sid: int) -> None:
         """The retry starts now: it is no longer pending (its count stays until the next regular run)."""
@@ -851,13 +936,53 @@ class Schedules:
         self.store._run("UPDATE schedules SET retry_at = ? WHERE id = ?", (at, sid))
 
     def regular_run(self, sid: int) -> None:
-        """A regular run (its own time, or one the user asked for) starts: it replaces a pending retry and the count starts again."""
+        """A regular run (its own time, or one the user asked for) starts: it replaces a pending automatic try and the count starts again."""
         r = self._row(sid)
         if r is None or not (r.get("retry_at") is not None or r.get("retries") or r.get("retry_first_at") is not None):
             return
         if r.get("retry_at") is not None:
-            log.info("schedule %s: a regular run replaces its pending retry", sid)
-        self.store._run("UPDATE schedules SET retry_at = NULL, retry_why = '', retries = 0, retry_first_at = NULL WHERE id = ?", (sid,))
+            log.info("schedule %s: a regular run replaces its pending try again", sid)
+        self.store._run("UPDATE schedules SET retry_at = NULL, retry_kind = '', retry_why = '', retries = 0, retry_first_at = NULL WHERE id = ?",
+                        (sid,))
+
+    def after_run(self, sid: int, status: str, *, retry_kind: str = "") -> float | None:
+        """Plans the automatic try again of the run that just ended (owner 2026-11-20). `status` is what record_run got (done | quiet |
+        failed | stopped | blocked); `retry_kind` is '' for a regular run, else the kind of automatic try this run was. Returns the
+        retry time or None. A failed regular run: once more after FAILED_RETRY_SECONDS (D1). A run that ended on a job block: after
+        BLOCKED_RETRY_SECONDS[0], then, when that try ends blocked too, BLOCKED_RETRY_SECONDS[1] after it, then no more (D19); the same
+        block gets these tries once (owner decision 3), later runs of it wait for their scheduled times. An automatic try that failed
+        gets no further try: the job runs again at its next time. Anything else clears the stretch."""
+        r = self._row(sid)
+        if r is None or r.get("archived_at"):
+            return None
+        now = self.clock()
+        if status == "failed" and not retry_kind:
+            return self._plan_try(sid, now + FAILED_RETRY_SECONDS, "failed", 1, t("It did not work out"))
+        if status == "blocked" and r["block_reason"]:
+            key = f"{r['block_reason']}|{r['block_on']}|{r['block_since']}"
+            if retry_kind == "blocked":
+                n = int(r["retries"] or 0)
+            elif r["block_tried"] != key:
+                n = 0
+            else:
+                n = len(BLOCKED_RETRY_SECONDS)     # this block already had its tries: wait for the scheduled time
+            if n < len(BLOCKED_RETRY_SECONDS):
+                return self._plan_try(sid, now + BLOCKED_RETRY_SECONDS[n], "blocked", n + 1,
+                                      self.block_line(r) or t("It did not work out"), tried=key if n == 0 else None)
+        self.store._run("UPDATE schedules SET retry_at = NULL, retry_kind = '', retries = 0, retry_first_at = NULL, retry_why = '' "
+                        "WHERE id = ?", (sid,))
+        return None
+
+    def _plan_try(self, sid: int, at: float, kind: str, count: int, why: str, *, tried: str | None = None) -> float:
+        if tried is None:
+            self.store._run("UPDATE schedules SET retry_at = ?, retry_kind = ?, retries = ?, "
+                            "retry_first_at = COALESCE(retry_first_at, last_run_at), retry_why = ? WHERE id = ?",
+                            (at, kind, count, why, sid))
+        else:
+            self.store._run("UPDATE schedules SET retry_at = ?, retry_kind = ?, retries = ?, "
+                            "retry_first_at = COALESCE(retry_first_at, last_run_at), retry_why = ?, block_tried = ? WHERE id = ?",
+                            (at, kind, count, why, tried, sid))
+        return at
 
     def advance(self, r: dict[str, Any], now: float) -> None:
         """Move past the time that came due (whether it ran, was skipped or missed). A one-time schedule is spent."""
@@ -870,14 +995,6 @@ class Schedules:
                             (t("Finished: its last day has passed"), r["id"]))
         else:
             self.store._run("UPDATE schedules SET next_run = ? WHERE id = ?", (nxt, r["id"]))
-
-    def mark_missed(self, r: dict[str, Any], now: float) -> None:
-        self.store._run("UPDATE schedules SET last_status = 'missed' WHERE id = ?", (r["id"],))
-        if r["run_at"] is not None and not r.get("every_seconds"):
-            self.store._run("UPDATE schedules SET disabled_reason = ? WHERE id = ?",
-                            (t("Could not run at the set time because the server was off"), r["id"]))
-        self.add_run(r["id"], "skipped", t("Could not run at the set time because the server was off"))
-        self.advance(r, now)
 
     # ------------------------------------------------------------------ run history
     def add_run(self, sid: int, status: str, result: str = "", task_id: int | None = None) -> int:
@@ -901,7 +1018,7 @@ class Schedules:
         return [dict(r) for r in rows]
 
     def record_run(self, sid: int, task_id: int | None, status: str, error: str = "", *, run_id: int | None = None,
-                   result: str = "", quiet: bool = False) -> dict[str, Any] | None:
+                   result: str = "", quiet: bool = False, clean: bool = True, retry_kind: str = "") -> dict[str, Any] | None:
         """What a run came to. Returns the schedule when this run turned it off (too many failures in a row), else None.
         The history row says done | quiet (nothing worth telling) | failed | stopped | paused (the run paused its schedule)."""
         r = self._row(sid, archived=True)
@@ -919,15 +1036,32 @@ class Schedules:
                             (self.clock(), shown, (line or "")[:300], task_id, (error or "")[:500], run_id))
         else:
             self.add_run(sid, shown, line or "", task_id)
-        fails = r["failure_count"] + 1 if status == "failed" else (0 if status == "done" else r["failure_count"])
+        # owner 2026-11-20 (decision 1): a blocked run counts in the streak like a failed one, and a scheduled time with its automatic
+        # tries counts ONCE: an automatic try does not count again
+        counted = status in ("failed", "blocked") and not retry_kind
+        fails = r["failure_count"] + 1 if counted else (0 if status == "done" else r["failure_count"])
         self.store._run("UPDATE schedules SET last_run_at = ?, last_task_id = ?, last_status = ?, failure_count = ? WHERE id = ?",
                         (self.clock(), task_id, shown, fails, sid))
-        if status == "failed" and fails >= MAX_FAILURES and r["enabled"] and not r.get("archived_at"):
-            reason = t("Turned off after failing {n} times in a row", n=MAX_FAILURES) + (f": {error[:160]}" if error else "")
-            self.store._run("UPDATE schedules SET enabled = 0, next_run = NULL, disabled_reason = ?, retry_at = NULL, retry_why = '' "
-                            "WHERE id = ?", (reason, sid))
-            return self.get(sid)
+        if status == "done" and clean:   # a run that succeeded clears the job's block; a failed or unclean run keeps it
+            self.clear_block(sid)
+        if status == "done":   # a success starts the streak again
+            self.store._run("UPDATE schedules SET failure_asked = 0 WHERE id = ?", (sid,))
+        if counted and fails >= MAX_FAILURES and r["enabled"] and not r.get("archived_at") and not r.get("failure_asked"):
+            # owner decision 2026-11-20: three in a row ask the owner whether to stop it; the job keeps running at its next times
+            self.store._run("UPDATE schedules SET failure_asked = 1 WHERE id = ?", (sid,))
+            if self.on_failures_asked is not None:
+                try:
+                    self.on_failures_asked(self.get(sid) or {}, (error or "")[:200])
+                except Exception:  # noqa: BLE001 - the question is a notice; the run record stands
+                    log.exception("schedule %s: the question about its failures could not be sent", sid)
         return None
+
+    def keep_going(self, sid: int) -> dict[str, Any] | None:
+        """The owner answered to keep the job going after the question: the failure count starts again."""
+        if self._row(sid) is None:
+            return None
+        self.store._run("UPDATE schedules SET failure_count = 0, failure_asked = 0, updated_at = ? WHERE id = ?", (self.clock(), sid))
+        return self.get(sid)
 
 
 def _iso(ts: float | None, tz: ZoneInfo) -> str | None:
@@ -985,19 +1119,21 @@ class Scheduler:
         t = self.running.get(sid)
         return t is not None and not t.done()
 
-    def start_run(self, r: dict[str, Any], note: str = "", *, retry: bool = False) -> bool:
+    def start_run(self, r: dict[str, Any], note: str = "", *, retry_kind: str = "") -> bool:
         """Start one run of schedule row/public `r` now. False when that schedule is already running.
         `note`: a word for this run only (an expired approval tried again), given to run_fn as the schedule's "retry_note".
-        `retry`: the try-again a run asked for (schedule_retry); any other run is a regular one and replaces a pending retry."""
+        `retry_kind`: this run is the automatic try again of that kind ('failed' | 'blocked', see after_run); any other run is a regular
+        one and replaces a pending try."""
         sid = int(r["id"])
         if self.busy(sid) or self.run_fn is None:
             return False
-        if not retry:
+        if not retry_kind:
             self.schedules.regular_run(sid)
         sched = self.schedules.get(sid) or {}
         if note:
             sched = {**sched, "retry_note": note}
         run_id = self.schedules.add_run(sid, "running")
+        sched = {**sched, "run_id": run_id, "retry_kind": retry_kind}   # the run's own row: the closing phase holds and finishes its result there
 
         async def go() -> None:
             try:
@@ -1007,11 +1143,11 @@ class Scheduler:
                 log.warning("schedule %s could not run: %s", sid, e)
                 out = {"task_id": None, "status": "failed", "error": f"{type(e).__name__}: {str(e)[:200]}"}
             status, result, error = out.get("status", "failed"), str(out.get("result") or ""), out.get("error", "")
-            asked = self.schedules.retried_tasks.pop(out.get("task_id") or 0, None)
-            if asked and status in ("done", "failed"):   # it asked to be tried again later: a skip with the time, not a failure
-                status, result, error = "skipped", asked, ""
             off = self.schedules.record_run(sid, out.get("task_id"), status, error, run_id=run_id,
-                                            result=result, quiet=bool(out.get("quiet")) and status != "skipped")
+                                            result=result, quiet=bool(out.get("quiet")) and status != "skipped",
+                                            clean=bool(out.get("clean", True)), retry_kind=retry_kind)
+            if self.schedules.after_run(sid, status, retry_kind=retry_kind) is not None:   # an automatic try again is planned
+                self.poke()
             if off and self.on_disabled:
                 self.on_disabled(off)
 
@@ -1022,30 +1158,22 @@ class Scheduler:
         """Start everything due at `now`; returns the ids started."""
         now = self.clock() if now is None else now
         started = []
-        for r in self.schedules.due(now):
-            late = now - r["next_run"]
-            if late > CATCH_UP_SECONDS:
-                self.schedules.mark_missed(r, now)
-                self.schedules.regular_run(r["id"])
-                continue
+        for r in self.schedules.due(now):   # a time that passed while the server was off: once, for the newest one (advance)
             self.schedules.advance(r, now)
             if self.busy(r["id"]):
                 self.schedules.add_run(r["id"], "skipped", t("Skipped this time because the last run had not finished"))
                 continue      # the last run is still going: this time is skipped
             if self.start_run(r):
                 started.append(r["id"])
-        for r in self.schedules.retry_due(now):   # the tries a run asked for: the same schedule again, its regular times untouched
+        for r in self.schedules.retry_due(now):   # the automatic tries: the same schedule again, its regular times untouched
             sid = int(r["id"])
-            if now - r["retry_at"] > CATCH_UP_SECONDS:   # the server was off for long: the next regular run does the job
-                self.schedules.take_retry(sid)
-                self.schedules.add_run(sid, "skipped", t("Could not run at the set time because the server was off"))
-                continue
             if self.busy(sid):
                 self.schedules.postpone_retry(sid, now + RETRY_BUSY_SECONDS)
                 continue
+            kind = r["retry_kind"] or "failed"
             note = self.schedules.retry_note(r)
             self.schedules.take_retry(sid)
-            if self.start_run(r, note, retry=True):
+            if self.start_run(r, note, retry_kind=kind):
                 started.append(sid)
         if not self.paused():
             self._held_logged = False
@@ -1160,6 +1288,9 @@ def schedule_tools(schedules: Schedules, scheduler: Scheduler | None = None) -> 
         except ValueError:
             return 0
 
+    def in_run() -> bool:
+        return current_schedule_id() is not None
+
     def when_args(args: dict[str, Any]) -> tuple[str | None, Any, Any, Any]:
         return (str(args.get("cron") or "") or None, args.get("run_at"), args.get("every_minutes"), args.get("window_minutes") or 0)
 
@@ -1244,6 +1375,8 @@ def schedule_tools(schedules: Schedules, scheduler: Scheduler | None = None) -> 
     def validate_update(args: dict[str, Any]) -> str | None:
         if problem := validate_id(args):
             return problem
+        if in_run() and args.get("enabled") is False and sid(args) == current_schedule_id():
+            return "a scheduled run cannot turn its own job off: say in your report what went wrong; the user decides"
         s = schedules.get(sid(args)) or {}
         cron, run_at, every, window = when_args(args)
         if cron or run_at not in (None, "") or every not in (None, "", 0):
@@ -1303,45 +1436,36 @@ def schedule_tools(schedules: Schedules, scheduler: Scheduler | None = None) -> 
     async def delete(args: dict[str, Any]) -> str:
         return "Deleted." if schedules.delete(sid(args)) else "error: no such schedule"
 
-    def pause_id(args: dict[str, Any]) -> int:
-        return sid(args) or (current_schedule_id() or 0)
+    def validate_delete(args: dict[str, Any]) -> str | None:
+        if in_run() and sid(args) == current_schedule_id():
+            return "a scheduled run cannot delete its own job: say in your report what went wrong; the user decides"
+        return validate_id(args)
 
     def validate_pause(args: dict[str, Any]) -> str | None:
-        if not schedules.get(pause_id(args)):
+        if in_run():
+            return "a scheduled run cannot pause a job: say in your report what blocks it; the user decides"
+        if not schedules.get(sid(args)):
             return f"no schedule #{args.get('id')}; see schedule_list"
         if not str(args.get("reason") or "").strip():
             return "say why in reason (what blocks it and what the user needs to do)"
         return None
 
-    def pauses_another(args: dict[str, Any]) -> bool:
-        """A job pausing itself (its blocked run, or the default id of a scheduled run) needs no card; pausing another job does."""
-        return pause_id(args) != (current_schedule_id() or 0)
-
     async def describe_pause(args: dict[str, Any]) -> str:
-        s = schedules.get(pause_id(args)) or {}
+        s = schedules.get(sid(args)) or {}
         return t("Pause the schedule '{name}'? It stays paused until it is turned back on.", name=s.get("name", ""))
 
+    async def keep_going(args: dict[str, Any]) -> str:
+        s = schedules.keep_going(sid(args))
+        if s is None:
+            return "error: no such schedule"
+        return f"Schedule #{s['id']} '{s['name']}' keeps running; its failure count starts again."
+
     async def pause(args: dict[str, Any]) -> str:
-        s = schedules.pause(pause_id(args), str(args.get("reason") or ""))
+        s = schedules.pause(sid(args), str(args.get("reason") or ""))
         if s is None:
             return "error: no such schedule"
         return (f"Paused schedule #{s['id']} '{s['name']}': {s['paused_reason']}. The user was notified; it stays off until they (or you, "
                 "with schedule_update enabled=true) turn it back on.")
-
-    async def retry(args: dict[str, Any]) -> str:
-        from .workers import current_turn
-        own = current_schedule_id()
-        if not own:
-            return "error: only a scheduled run can do this"
-        try:
-            ts = schedules.set_retry(own, args.get("at"), str(args.get("why") or ""), (current_turn.get() or {}).get("task_id"))
-        except ScheduleError as e:
-            return f"error: {e}"
-        if scheduler:
-            scheduler.poke()
-        when = schedules._clock_text(ts, schedules.tz_of(schedules._row(own) or {"timezone": ""}))
-        return (f"Will try again at {when}. End this run now: reply exactly NO_REPLY (nothing is sent now; the next run's report says "
-                "what happened).")
 
     async def runs(args: dict[str, Any]) -> str:
         s = schedules.get(sid(args))
@@ -1396,20 +1520,15 @@ def schedule_tools(schedules: Schedules, scheduler: Scheduler | None = None) -> 
              approval_extra=extra),
         Tool("schedule_delete", "Delete a scheduled job (restorable in the app for 30 days); the user approves it.",
              {"type": "object", "properties": {"id": {"type": "integer"}}, "required": ["id"]}, delete, requires_approval=True,
-             validate=validate_id, describe=describe_delete),
-        Tool("schedule_pause", "Pause a scheduled job that something blocks for good (not a one-off failure); the user is told your reason. "
-             "In a scheduled run, id defaults to that job. Pausing another job asks the user first.",
+             validate=validate_delete, describe=describe_delete),
+        Tool("schedule_keep_going", "Keep a scheduled job running after it failed three times in a row and the user was asked whether to stop it. "
+             "Call it only when the user says to keep going; the failure count starts again.",
+             {"type": "object", "properties": {"id": {"type": "integer"}}}, keep_going),
+        Tool("schedule_pause", "Pause a scheduled job that something blocks for good (not a one-off failure), when the user asks for it; "
+             "the user is told your reason. Not in a scheduled run.",
              {"type": "object", "properties": {"id": {"type": "integer"}, "reason": {"type": "string", "description":
                                                 "what blocks it and what the user needs to do, in the user's language"}},
-              "required": ["reason"]}, pause, validate=validate_pause, requires_approval=True, auto_approve=lambda a: not pauses_another(a),
-             describe=describe_pause),
-        Tool("schedule_retry", "Only in a scheduled run that a temporary block stops (the site is under maintenance, down or sold out right "
-             "now): run this same job again later, with the same permissions. Never make a new schedule for that.",
-             {"type": "object", "properties": {
-                 "at": {"type": "string", "description": "local date-time it should work again (the site's own reopening time when it shows "
-                                                         "one); 5 minutes to 24 hours from now, before the job's next regular run"},
-                 "why": {"type": "string", "description": "what blocks it, in the user's language (at most 160 characters)"}},
-              "required": ["at", "why"]}, retry),
+              "required": ["id", "reason"]}, pause, validate=validate_pause, requires_approval=True, describe=describe_pause),
         Tool("schedule_runs", "The run history of a scheduled job: start, outcome and result line of each run.",
              {"type": "object", "properties": {"id": {"type": "integer"}, "limit": {"type": "integer"}}, "required": ["id"]}, runs,
              read_only=True),

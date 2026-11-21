@@ -522,6 +522,9 @@ fun AgendaRow(s: Schedule, onResume: (() -> Unit)? = null, onOpen: () -> Unit) {
         s.disabledReason?.takeIf { it.isNotBlank() && !s.enabled && !s.paused }?.let {
             Text(string(Res.string.agent_schedule_off_reason, it), style = MaterialTheme.typography.labelSmall, color = c.danger, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
+        if (!s.paused) s.blockLine?.takeIf { it.isNotBlank() }?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = c.ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
         if (s.paused) {
             Text(string(Res.string.work_schedule_paused_reason, s.pausedReason?.ifBlank { null } ?: string(Res.string.work_schedule_paused_unknown)),
                 style = MaterialTheme.typography.labelSmall, color = askColor(), maxLines = 3, overflow = TextOverflow.Ellipsis)

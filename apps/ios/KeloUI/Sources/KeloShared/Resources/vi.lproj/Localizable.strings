@@ -1308,6 +1308,7 @@
 "goal_resume" = "Giao lại cho Kelo";
 "goal_resume_started" = "Kelo đang làm. Bạn có thể theo dõi trong Trò chuyện.";
 "goal_resume_no_model" = "Hãy chọn mô hình trong Của tôi trước.";
+"goal_log_more" = "Xem các mục trước";
 "goal_edit" = "Sửa";
 "goal_due" = "Trước %1$s";
 "goal_mark_step" = "Đánh dấu là xong";
@@ -1357,6 +1358,11 @@
 "endpoint_in_use" = "Đây là điểm cuối của mô hình đang sử dụng. Hãy chuyển sang mô hình khác trước.";
 "endpoint_name_taken" = "Tên đó đã được sử dụng.";
 "endpoint_too_many" = "Bạn có thể giữ tối đa 20 điểm cuối.";
+"goals_work_section" = "Việc Kelo đang lo";
+"goals_subgoals" = "Mục tiêu nhỏ";
+"goal_about" = "Giới thiệu";
+"goal_log_from" = "Từ %1$s";
+"goals_delete_children##other" = "Các mục tiêu nhỏ (%d) bên trong cũng sẽ bị xóa.";
 "actions_title" = "Những việc Kelo đã làm";
 "actions_period_today" = "Hôm nay";
 "actions_period_7d" = "7 ngày";
@@ -2120,7 +2126,6 @@
 "pin_secret_title" = "Mã PIN thanh toán cho %1$s";
 "pin_secret_where" = "Mã hóa trên điện thoại này. Không bao giờ hiện trong trò chuyện.";
 "pin_secret_done" = "Đã lưu mã PIN thanh toán cho %1$s";
-"reply_other" = "Khác";
 "reply_pick_date" = "Chọn ngày";
 "reply_pick_time" = "Chọn giờ";
 "reply_number_hint" = "Nhập một số";

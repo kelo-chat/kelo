@@ -248,9 +248,11 @@ class Store:
             if "approval_key" not in {r[1] for r in self._db.execute("PRAGMA table_info(devices)")}:   # before signed payment approvals
                 self._db.execute("ALTER TABLE devices ADD COLUMN approval_key TEXT NOT NULL DEFAULT ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(messages)")}
-            for col in ("reaction", "reaction_hold", "reaction_next", "via", "author", "steps", "call_id"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from; author = owner/forwarded/tapped (owner_messages.py); steps = the tool steps of an assistant reply, for the model only (reply_text.py); call_id = the in-app call a message belongs to (calls.py), "" for everything else
+            for col in ("reaction", "reaction_hold", "reaction_next", "via", "author", "steps", "call_id", "once_key"):   # reactions on the owner's messages (reactions.py); via = the messenger a message came from; author = owner/forwarded/tapped (owner_messages.py); steps = the tool steps of an assistant reply, for the model only (reply_text.py); call_id = the in-app call a message belongs to (calls.py), "" for everything else
                 if col not in have:
                     self._db.execute(f"ALTER TABLE messages ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+            # a visible delivery's message is stored once per delivery key (deliveries.py): the same key never makes a second message
+            self._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS messages_once ON messages(once_key) WHERE once_key != ''")
             have = {r[1] for r in self._db.execute("PRAGMA table_info(usage)")}
             for col in ("cache_read_tokens", "cache_write_tokens"):   # a database made before the cached share was counted: rows kept
                 if col not in have:
@@ -265,6 +267,7 @@ class Store:
             self._db.commit()
         self._usage_writes = 0
         self.credential_watchers: list[Callable[[str, bool], None]] = []
+        self.credential_listeners: list[Callable[[str, str | None], None]] = []   # (name, result) of each set_credential_result
         self.prune_usage_events()
 
     # The sealers, asked of the KeyGuard at each use: while it is locked (phone mode after a restart) these raise keyguard.Locked.
@@ -332,13 +335,27 @@ class Store:
         return self.profile()
 
     # ---- conversation (one continuous chat)
-    def add_message(self, role: str, content: str, via: str = "", author: str = "", steps: str = "", call_id: str = "") -> int:
+    def add_message(self, role: str, content: str, via: str = "", author: str = "", steps: str = "", call_id: str = "",
+                    once_key: str = "") -> int:
         """`via`: the messenger the message came through ("telegram"); "" for the app. `author`: owner, forwarded or tapped for the
         owner's own user messages (owner_messages.py); "" for everything else, hidden handoff rows included. `steps`: the reply's
         tool steps in one line (reply_text.py), read by the model only; the apps never get it. `call_id`: the in-app call these words
         belong to (the call id the app sent, calls.py); "" otherwise."""
+        if once_key:   # a delivery's message: stored once, the existing one is given back when the same key comes again
+            with self._lock:
+                got = self._db.execute("SELECT id FROM messages WHERE once_key = ?", (once_key,)).fetchone()
+                if got is not None:
+                    return int(got[0])
+                cur = self._db.execute("INSERT INTO messages(role, content, created_at, via, author, steps, call_id, once_key) "
+                                       "VALUES(?,?,?,?,?,?,?,?)", (role, content, time.time(), via, author, steps, call_id, once_key))
+                self._db.commit()
+                return cur.lastrowid or 0
         return self._run("INSERT INTO messages(role, content, created_at, via, author, steps, call_id) VALUES(?,?,?,?,?,?,?)",
                          (role, content, time.time(), via, author, steps, call_id)).lastrowid or 0
+
+    def message_by_once_key(self, key: str) -> int | None:
+        rows = self._all("SELECT id FROM messages WHERE once_key = ?", (key,))
+        return int(rows[0]["id"]) if rows else None
 
     def message_count(self) -> int:
         """How many messages the conversation holds (the owner's and the assistant's)."""

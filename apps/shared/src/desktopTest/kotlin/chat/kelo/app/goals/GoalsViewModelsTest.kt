@@ -52,7 +52,7 @@ class GoalsViewModelsTest {
     @Test fun goalsLoadWithTheirSuggestionsAndAFailedLoadIsFlagged() {
         val s = fake { m, p, _ ->
             when ("$m $p") {
-                "GET /api/goals" -> ok("""[{"id":1,"title":"Run"},{"id":2,"title":"Read","status":"done"}]""")
+                "GET /api/goals?include=work" -> ok("""[{"id":1,"title":"Run"},{"id":2,"title":"Read","status":"done"}]""")
                 "GET /api/goals/suggestions" -> ok("""{"items":[{"id":9,"title":"Sleep earlier"}]}""")
                 else -> null
             }
@@ -75,7 +75,7 @@ class GoalsViewModelsTest {
         var refuse = false
         val s = fake { m, p, _ ->
             when ("$m $p") {
-                "GET /api/goals" -> ok("""[]""")
+                "GET /api/goals?include=work" -> ok("""[]""")
                 "POST /api/goals" -> if (refuse) fail(400, "no") else ok("""{"id":3,"title":"Run"}""")
                 else -> null
             }
@@ -93,7 +93,7 @@ class GoalsViewModelsTest {
     @Test fun aSwipedGoalIsDeletedOnlyWhenTheUndoIsGone() {
         val s = fake { m, p, _ ->
             when ("$m $p") {
-                "GET /api/goals" -> ok("""[{"id":1,"title":"Run"}]""")
+                "GET /api/goals?include=work" -> ok("""[{"id":1,"title":"Run"}]""")
                 "DELETE /api/goals/1" -> ok("{}")
                 else -> null
             }
@@ -115,7 +115,7 @@ class GoalsViewModelsTest {
     @Test fun theGoalsAreFetchedAgainWhileKeloWorksOnOneButOnlyWhileTheScreenIsInView() = runBlocking {
         val s = fake { m, p, _ ->
             when ("$m $p") {
-                "GET /api/goals" -> ok("""[{"id":1,"title":"Run","working":true}]""")
+                "GET /api/goals?include=work" -> ok("""[{"id":1,"title":"Run","working":true}]""")
                 "GET /api/goals/suggestions" -> ok("""{"items":[]}""")
                 else -> null
             }

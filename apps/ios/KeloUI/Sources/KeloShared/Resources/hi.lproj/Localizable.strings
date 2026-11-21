@@ -1342,6 +1342,7 @@
 "goal_resume" = "Kelo को वापस सौंपें";
 "goal_resume_started" = "Kelo काम पर लग गया है। चैट में साथ-साथ देख सकते हैं।";
 "goal_resume_no_model" = "पहले \"मेरा\" में एक मॉडल चुनें।";
+"goal_log_more" = "पिछली प्रविष्टियाँ देखें";
 "goal_edit" = "एडिट करें";
 "goal_due" = "%1$s तक";
 "goal_mark_step" = "पूरा मार्क करें";
@@ -1392,6 +1393,12 @@
 "endpoint_in_use" = "यह उपयोग में आ रहे मॉडल का एंडपॉइंट है। पहले किसी अन्य मॉडल पर स्विच करें।";
 "endpoint_name_taken" = "वह नाम पहले से उपयोग में है।";
 "endpoint_too_many" = "आप 20 एंडपॉइंट तक रख सकते हैं।";
+"goals_work_section" = "Kelo जो संभाल रहा है";
+"goals_subgoals" = "छोटे लक्ष्य";
+"goal_about" = "विवरण";
+"goal_log_from" = "%1$s से";
+"goals_delete_children##one" = "इसका छोटा लक्ष्य भी हट जाएगा।";
+"goals_delete_children##other" = "इसके %d छोटे लक्ष्य भी हट जाएँगे।";
 "actions_title" = "Kelo ने क्या किया";
 "actions_period_today" = "आज";
 "actions_period_7d" = "7 दिन";
@@ -2161,7 +2168,6 @@
 "pin_secret_title" = "%1$s के लिए भुगतान PIN";
 "pin_secret_where" = "इस फ़ोन पर एन्क्रिप्ट किया हुआ। चैट में कभी नहीं दिखता।";
 "pin_secret_done" = "%1$s के लिए भुगतान PIN सहेजा गया";
-"reply_other" = "अन्य";
 "reply_pick_date" = "तारीख चुनें";
 "reply_pick_time" = "समय चुनें";
 "reply_number_hint" = "कोई संख्या लिखें";

@@ -185,6 +185,9 @@ data class ReplyQuestion(
     val unit: String = "",
     /** A picture card per option, same order ([cardList] checks the length); absent on older servers and for plain choices */
     val cards: List<ReplyCard> = emptyList(),
+    /** A question about connecting a service: the ids of the services, in the order of the options (the last option, not now, has none).
+     *  The app shows plain buttons for it and reads nothing else from it. */
+    val connect: List<String> = emptyList(),
 ) {
     /** The cards when they match the options one to one and one at least shows something, else null (plain buttons). */
     val cardList: List<ReplyCard>? get() =

@@ -27,6 +27,8 @@ data class GoalDetailState(
     /** "Kelo에게 이어서 맡기기": null, or the line shown after it was pressed */
     val resumed: StringResource? = null,
     val resuming: Boolean = false,
+    /** A page of older entries is on its way */
+    val loadingLog: Boolean = false,
 )
 
 /**
@@ -53,10 +55,28 @@ class GoalDetailViewModel(
         viewModelScope.launch {
             try {
                 val w = sessions.requireApi().get<GoalWorkspace>("/api/goals/$goalId")
-                _state.update { it.copy(workspace = w, failed = false, ticking = emptyMap()) }
+                _state.update { it.copy(workspace = GoalDetailRules.refreshed(it.workspace, w), failed = false, ticking = emptyMap()) }
                 pace.value = paceMs(listOf(w.goal))
             } catch (e: ApiError) {
                 _state.update { it.copy(failed = true) }
+            }
+        }
+    }
+
+    /** The next page of older entries (GET /api/goals/{id}/log), added to the page once; no call while one runs. */
+    fun loadMoreLog() {
+        val s = _state.value
+        if (!GoalDetailRules.canLoadMore(s)) return
+        val offset = s.workspace?.logNext ?: return
+        _state.update { it.copy(loadingLog = true) }
+        viewModelScope.launch {
+            try {
+                val page = sessions.requireApi().get<GoalLogPage>("/api/goals/$goalId/log?offset=$offset")
+                _state.update { st -> st.workspace?.let { st.copy(workspace = GoalDetailRules.withMoreLog(it, page)) } ?: st }
+            } catch (e: ApiError) {
+                _state.update { it.copy(failed = true) }
+            } finally {
+                _state.update { it.copy(loadingLog = false) }
             }
         }
     }

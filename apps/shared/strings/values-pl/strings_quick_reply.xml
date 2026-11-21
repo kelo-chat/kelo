@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- pl text for strings_quick_reply.xml (generated from values/strings_quick_reply.xml by tools/strings_sync.py; edit freely, keep the names) -->
 <resources>
-    <string name="reply_other">Inne</string>
     <string name="reply_pick_date">Wybierz datę</string>
     <string name="reply_pick_time">Wybierz godzinę</string>
     <string name="reply_number_hint">Wpisz liczbę</string>

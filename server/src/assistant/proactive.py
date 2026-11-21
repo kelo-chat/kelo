@@ -420,6 +420,8 @@ class Proactive:
                 store._db.execute("ALTER TABLE proactive_log ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
             if "delivery" not in {r[1] for r in store._db.execute("PRAGMA table_info(proactive_log)")}:   # one send counts once (2026-11-19)
                 store._db.execute("ALTER TABLE proactive_log ADD COLUMN delivery TEXT NOT NULL DEFAULT ''")
+            if "once_key" not in {r[1] for r in store._db.execute("PRAGMA table_info(proactive_log)")}:   # the delivery key of a group's rows (deliveries.py)
+                store._db.execute("ALTER TABLE proactive_log ADD COLUMN once_key TEXT NOT NULL DEFAULT ''")
             # the delivery slots are gone (owner 2026-11-19: only the daily cap counts): an item held for a slot waits like one over the cap
             store._db.execute("UPDATE proactive_held SET why = 'over_cap' WHERE why = 'slots'")
             store._db.commit()
@@ -898,14 +900,35 @@ class Proactive:
                  if not (self.owner_marks and str(r["content"]).startswith(self.owner_marks))]
         return "\n".join(reversed(lines[:HELD_CHAT_LINES]))
 
+    def _record_sql(self, c: Candidate, status: str, reason: str, *, urgency: str | None = None, message: str = "", keep: float,
+                    task_id: int | None = None, kind: str = "", delivery: str = "", once_key: str = "") -> tuple[str, tuple]:
+        """The log row of one candidate, as an INSERT (the delivery writes it in the same transaction, deliveries.py)."""
+        now = self.clock()
+        return ("INSERT INTO proactive_log(key, source, title, urgency, status, reason, message, decided_at, expires_at, day, "
+                "task_id, kind, delivery, once_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (c.key, c.source, c.title[:200], urgency, status, reason[:300], message[:1000], now, now + keep,
+                 self.window_day(now), task_id, kind, delivery, once_key))
+
     def _record(self, c: Candidate, status: str, reason: str, *, urgency: str | None = None, message: str = "", keep: float,
                 task_id: int | None = None, kind: str = "", delivery: str = "") -> None:
-        now = self.clock()
-        lid = int(self.store._run("INSERT INTO proactive_log(key, source, title, urgency, status, reason, message, decided_at, expires_at, day, "
-                                  "task_id, kind, delivery) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                                  (c.key, c.source, c.title[:200], urgency, status, reason[:300], message[:1000], now, now + keep,
-                                   self.window_day(now), task_id, kind, delivery)).lastrowid or 0)
+        sql, args = self._record_sql(c, status, reason, urgency=urgency, message=message, keep=keep, task_id=task_id, kind=kind,
+                                     delivery=delivery)
+        lid = int(self.store._run(sql, args).lastrowid or 0)
         self.store._run("DELETE FROM proactive_log WHERE id <= ? - ?", (lid, KEEP_LOG))
+
+    def _once_key(self, g: Group, now: float) -> str:
+        """The delivery key of one grouped message: the same items in the same window day are one delivery (deliveries.py)."""
+        raw = "\n".join(sorted(o.c.key for o in g.items)) + "\n" + self.window_day(now)
+        return "heads-up:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+    def _log_sent(self, once: str, ledger: list[tuple[str, tuple]], task_id: int | None) -> None:
+        """The items of a delivered group are logged as sent once. The delivery wrote the rows already when it went through the chat's
+        delivery record; otherwise they are written here. The task id is set on them."""
+        if not self.store._all("SELECT 1 AS x FROM proactive_log WHERE once_key = ? LIMIT 1", (once,)):
+            for sql, args in ledger:
+                self.store._run(sql, args)
+        self.store._run("UPDATE proactive_log SET task_id = ? WHERE once_key = ? AND status = 'sent' AND task_id IS NULL", (task_id, once))
+        self.store._run("DELETE FROM proactive_log WHERE id <= (SELECT MAX(id) FROM proactive_log) - ?", (KEEP_LOG,))
 
     def prefs(self) -> str:
         if self.home is None:
@@ -1308,15 +1331,17 @@ class Proactive:
         groups = group_outbox(outbox)   # one message per group: no daily count of messages, only the caps above (owner 2026-11-19)
         failure: BaseException | None = None
         for g in groups:   # one message per group; a group that fails to go out is not logged and keeps the cursors where they are
+            once = self._once_key(g, self.clock())
+            ledger = [self._record_sql(o.c, "sent", o.reason, urgency=o.urgency, message=o.message, keep=SENT_KEEP,
+                                       kind="change" if o.change else "", once_key=once) for o in g.items]
             try:
-                task_id = await self._deliver_group(g)
+                task_id = await self._deliver_group(g, once_key=once, also=ledger)
             except Exception as e:  # noqa: BLE001 - the other groups still go out; the pass then fails as a whole (below)
                 log.warning("proactive delivery failed: %s", str(e)[:160])
                 failure = failure or e
                 continue
+            self._log_sent(once, ledger, task_id)   # logged in the same transaction as the delivery when the chat took it (B4)
             for o in g.items:
-                self._record(o.c, "sent", o.reason, urgency=o.urgency, message=o.message, keep=SENT_KEEP, task_id=task_id,
-                             kind="change" if o.change else "")
                 settled.add(o.c.key)
                 if not o.change:
                     self._count_unanswered(self.clock())
@@ -1327,8 +1352,9 @@ class Proactive:
         self.commit_mail()
         return self._finish("done", "", candidates=len(found), sent=sent, dropped=dropped, held=kept)
 
-    async def _deliver_group(self, g: Group) -> int | None:
-        """Tell one group as one message (see the module docstring, 5); returns its task id."""
+    async def _deliver_group(self, g: Group, *, once_key: str = "", also: list[tuple[str, tuple]] = ()) -> int | None:
+        """Tell one group as one message (see the module docstring, 5); returns its task id. `once_key` and `also` (the log rows) go with
+        the item to the delivery, which writes them once (deliveries.py)."""
         first = g.entries[0].item
         name = self._mailbox_names.get(g.key[1], g.key[1]) if g.is_mail and self._mailbox_count > 1 else ""
         many = len(g.entries) > 1
@@ -1343,7 +1369,8 @@ class Proactive:
             notice = t("New mail · {count}", count=len(g.entries))[:MAIL_NOTICE_CHARS]
         if self.deliver is None:
             return None
-        return await self.deliver({"key": first.c.key, "source": "mail" if g.is_mail else first.c.source,
+        return await self.deliver({"once_key": once_key, "also": list(also),
+                                   "key": first.c.key, "source": "mail" if g.is_mail else first.c.source,
                                    "title": t("{n} things to tell you", n=len(g.entries)) if many else first.c.title,
                                    "urgency": urgency, "message": group_text(g.entries, t("{mailbox}:", mailbox=name) if name else ""),
                                    "kind": "change" if any(o.change for o in g.items) else "", "notice": notice})

@@ -1446,6 +1446,7 @@
     <string name="goal_resume">ฝากกลับให้ Kelo</string>
     <string name="goal_resume_started">Kelo กำลังทำอยู่ ติดตามได้ในแชต</string>
     <string name="goal_resume_no_model">เลือกโมเดลใน ของฉัน ก่อน</string>
+    <string name="goal_log_more">แสดงรายการก่อนหน้า</string>
     <string name="goal_edit">แก้ไข</string>
     <string name="goal_due">ภายใน %1$s</string>
     <string name="goal_mark_step">ทำเครื่องหมายว่าเสร็จ</string>
@@ -1516,4 +1517,11 @@
     <string name="endpoint_in_use">นี่คือปลายทางของโมเดลที่ใช้งานอยู่ โปรดเปลี่ยนเป็นโมเดลอื่นก่อน</string>
     <string name="endpoint_name_taken">ชื่อนี้ถูกใช้แล้ว</string>
     <string name="endpoint_too_many">คุณสามารถเก็บปลายทางได้สูงสุด 20 ปลายทาง</string>
+    <string name="goals_work_section">สิ่งที่ Kelo ดูแล</string>
+    <string name="goals_subgoals">เป้าหมายย่อย</string>
+    <string name="goal_about">รายละเอียด</string>
+    <string name="goal_log_from">จาก %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="other">เป้าหมายย่อยอีก %d รายการจะถูกลบไปด้วย</item>
+    </plurals>
 </resources>

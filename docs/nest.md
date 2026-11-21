@@ -355,6 +355,7 @@ The rest says what the answer means:
 - `fields`: label to dotted path in a row, for example `{"title": "subject.title"}`. Without it a row is shown as compact JSON.
 - `id`: for `changes`, the dotted path or list of paths whose values make a row's id. A text answer uses `lines` instead: a regular expression; only the matching lines are kept.
 - `max_rows` (1 to 100, default 30), `max_chars` (200 to 6000, default 3000), `every_minutes` (0, or at least 60: read at most this often), `wakes` (default true; false means the section is shown when the look runs, but its change alone never starts a research turn; use it for busy feeds and values that drift).
+- `content` (optional): the kinds of data the rows are, a list of names from server/content/prompts/situation_kinds/ (today: calendar, mail, messages, notifications, finance, encrypted_chat). Kelo reads those rows with that kind's guidance; an unknown name is refused.
 
 Bindings, written inside a string: `{{connection}}` (the connection's item), `{{since}}` (the last look, ISO 8601 UTC), `{{since_unix}}`, `{{since_date}}`
 (owner's zone), `{{now}}`, `{{now_unix}}`, `{{today}}`. A string that is exactly one binding keeps its type. Inside a longer string the value is percent-encoded.

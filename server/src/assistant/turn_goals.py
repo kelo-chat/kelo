@@ -24,6 +24,7 @@ def start_goal_work(ctx: Any, g: dict[str, Any], text: str) -> bool:
     worker_handoff = ctx.worker_handoff
     if journal_model() is None:
         return False
+    ctx.tool_scopes.add("chat", list(S.GOAL_TURN_TOOLS))   # the goal's turn shows its goal tools without a search first
     task = asyncio.ensure_future(worker_handoff({"id": "", "title": g["title"][:80], "parent_task_id": None}, text, i18n.t("Your goal")))
     background_folds.add(task)   # keep a reference until it ends
     task.add_done_callback(background_folds.discard)

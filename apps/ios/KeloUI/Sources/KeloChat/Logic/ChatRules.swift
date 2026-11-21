@@ -63,11 +63,10 @@ public enum ChatScroll {
 /// Answer buttons under an agent message (Android chat/QuickReplyRules.kt, the same rules).
 ///
 /// An answer may mean "I will write it" ("Other", "직접 입력할게요", "있어요 (직접 입력)"): the server lists those in the question's
-/// `typed` (the app reads no words of any language; it adds its own "Other" to a choice question with none). Picking one opens a text box under that
-/// question; what is typed is sent instead of the button's words, and nothing is sent while a picked one is still empty.
+/// `typed` (the app reads no words of any language). Picking one opens a text box under that question; what is typed is sent instead of
+/// the button's words, and nothing is sent while a picked one is still empty. The server's options are the only answers the app shows as
+/// buttons: the app adds no answer of its own; the user can type in the message box.
 public enum QuickReplyRules {
-    /// The app's own "Other" answer, added to every choice question that has no answer to write (`choices`); it opens a text box.
-    public static let other = "\u{0}other"
 
     /// Buttons show only under the newest agent message, while the user has not written after it.
     public static func isOpen(_ items: [ChatItem], key: String) -> Bool {
@@ -76,19 +75,15 @@ public enum QuickReplyRules {
         return !msgs[(i + 1)...].contains { $0.mine }
     }
 
-    /// The buttons of a choice question: its options, then `other` when none of them is an answer to write. Choices are suggestions:
-    /// the user can always answer outside them. A lone button (a "Continue") gets no "Other". A field question has no buttons.
-    public static func choices(_ q: ReplyQuestion) -> [String] {
-        if ReplyFields.isField(q) { return [] }
-        if q.options.count >= 2 && !q.options.contains(where: { isTyped(q, $0) }) { return q.options + [other] }
-        return q.options
-    }
+    /// The buttons of a choice question: the server's options. Choices are suggestions: the user can always answer outside them.
+    /// A field question has no buttons.
+    public static func choices(_ q: ReplyQuestion) -> [String] { ReplyFields.isField(q) ? [] : q.options }
 
     /// One choice question: a tap sends the answer at once. Several, or a field: the answers go together with the send button.
     public static func sendsAtOnce(_ set: ReplySet) -> Bool { set.questions.count <= 1 && !set.questions.contains(where: ReplyFields.isField) }
 
     /// The answer `option` of `q` opens a text box instead of being the answer itself.
-    public static func isTyped(_ q: ReplyQuestion, _ option: String) -> Bool { option == other || q.typed.contains(option) }
+    public static func isTyped(_ q: ReplyQuestion, _ option: String) -> Bool { q.typed.contains(option) }
 
     /// A tap on `option` sends it straight away (a single question, and not an answer to write).
     public static func sendsOnTap(_ set: ReplySet, _ q: ReplyQuestion, _ option: String) -> Bool { sendsAtOnce(set) && !isTyped(q, option) }

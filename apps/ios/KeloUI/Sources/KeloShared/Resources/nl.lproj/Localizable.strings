@@ -1342,6 +1342,7 @@
 "goal_resume" = "Teruggeven aan Kelo";
 "goal_resume_started" = "Kelo is ermee bezig. Je kunt meekijken in Chat.";
 "goal_resume_no_model" = "Kies eerst een model in Profiel.";
+"goal_log_more" = "Eerdere items tonen";
 "goal_edit" = "Bewerken";
 "goal_due" = "Uiterlijk %1$s";
 "goal_mark_step" = "Markeren als klaar";
@@ -1392,6 +1393,12 @@
 "endpoint_in_use" = "Dit is het eindpunt van het model dat in gebruik is. Schakel eerst over naar een ander model.";
 "endpoint_name_taken" = "Die naam is al in gebruik.";
 "endpoint_too_many" = "U kunt maximaal 20 eindpunten behouden.";
+"goals_work_section" = "Wat Kelo voor je doet";
+"goals_subgoals" = "Kleinere doelen";
+"goal_about" = "Over";
+"goal_log_from" = "Van %1$s";
+"goals_delete_children##one" = "Het kleinere doel wordt ook verwijderd.";
+"goals_delete_children##other" = "Zijn %d kleinere doelen worden ook verwijderd.";
 "actions_title" = "Wat Kelo heeft gedaan";
 "actions_period_today" = "Vandaag";
 "actions_period_7d" = "7 dagen";
@@ -2161,7 +2168,6 @@
 "pin_secret_title" = "Betaalpincode voor %1$s";
 "pin_secret_where" = "Versleuteld op deze telefoon. Nooit zichtbaar in de chat.";
 "pin_secret_done" = "Betaalpincode opgeslagen voor %1$s";
-"reply_other" = "Anders";
 "reply_pick_date" = "Kies een datum";
 "reply_pick_time" = "Kies een tijd";
 "reply_number_hint" = "Vul een getal in";

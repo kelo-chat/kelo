@@ -1343,6 +1343,7 @@
 "goal_resume" = "Kelo에게 이어서 맡기기";
 "goal_resume_started" = "Kelo가 이어서 하고 있어요. 채팅에서 볼 수 있어요.";
 "goal_resume_no_model" = "먼저 마이에서 쓸 모델을 정해 주세요.";
+"goal_log_more" = "이전 기록 더 보기";
 "goal_edit" = "고치기";
 "goal_due" = "%1$s까지";
 "goal_mark_step" = "끝냄 표시";
@@ -1392,6 +1393,11 @@
 "endpoint_in_use" = "지금 쓰는 모델의 엔드포인트예요. 다른 모델로 바꾼 뒤 지워 주세요.";
 "endpoint_name_taken" = "이미 있는 이름이에요.";
 "endpoint_too_many" = "엔드포인트는 20개까지 둘 수 있어요.";
+"goals_work_section" = "Kelo가 맡은 일";
+"goals_subgoals" = "작은 목표";
+"goal_about" = "설명";
+"goal_log_from" = "%1$s에서";
+"goals_delete_children##other" = "작은 목표 %d개도 함께 지워져요.";
 "actions_title" = "Kelo가 한 일";
 "actions_period_today" = "오늘";
 "actions_period_7d" = "7일";
@@ -2155,7 +2161,6 @@
 "pin_secret_title" = "%1$s 결제 비밀번호";
 "pin_secret_where" = "이 휴대폰에 암호화해서 보관해요. 채팅에는 절대 나오지 않아요.";
 "pin_secret_done" = "%1$s 결제 비밀번호를 저장했어요";
-"reply_other" = "직접 정하기";
 "reply_pick_date" = "날짜 고르기";
 "reply_pick_time" = "시간 고르기";
 "reply_number_hint" = "숫자를 입력해 주세요";

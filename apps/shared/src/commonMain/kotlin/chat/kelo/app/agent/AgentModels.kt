@@ -165,6 +165,8 @@ data class Schedule(
     /** A run (or the user) paused it for a lasting blocker: off until resumed */
     val paused: Boolean = false,
     @SerialName("paused_reason") val pausedReason: String? = null,
+    /** A run was blocked (a connector, a site's sign-in or check, the phone): one sentence from the server, tried again later */
+    @SerialName("block_line") val blockLine: String? = null,
     @SerialName("archived_at") val archivedAt: Double? = null,
     @SerialName("purge_at") val purgeAt: Double? = null,
     @SerialName("goal_id") val goalId: Long? = null,

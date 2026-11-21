@@ -96,7 +96,7 @@ def test_worker_report_blocked_site_refused_has_no_retry_and_slowdown_keeps_wake
     clock = FakeClock()
     handoffs = []
 
-    async def handoff(row, msg, head):
+    async def handoff(row, msg, head, once_key=""):
         handoffs.append((row, msg, head))
 
     host = WorkerHost(
@@ -175,7 +175,7 @@ def test_handoff_on_site_refusal_gives_takeover_and_no_retry_time(tmp_path):
     clock = FakeClock()
     handoffs = []
 
-    async def handoff(row, msg, head):
+    async def handoff(row, msg, head, once_key=""):
         handoffs.append((row, msg, head))
 
     host = WorkerHost(

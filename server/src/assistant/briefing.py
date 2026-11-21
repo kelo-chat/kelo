@@ -13,9 +13,11 @@ What is in the card (each section only when it has something; sections can be tu
 - Things you may have missed: open follow-ups (a question waiting for an answer, an approval that ran out, a job or login waiting for
   the owner), important unread mail (judged like the proactive pass: what it already judged worth telling, plus what today's one model
   call picks), tracked goals due today or tomorrow, and dated promises under "## Commitments" in MEMORY.md for today or tomorrow.
-- Corrections (only the automatic morning card, with the AI consent): what Kelo told the owner in the last day and found wrong or
-  changed (corrections.CorrectionCheck, the same check the hourly look uses), one note each, also as a "connections" note so the
-  apps show it; each told correction goes in the proactive ledger so the hourly look never tells it again.
+- Corrections (only the automatic morning card, with the AI consent): what Kelo told the owner in the last day that was wrong or
+  changed and that the owner may still rely on (corrections.CorrectionCheck, the same check the hourly look uses), one self-explaining
+  note each ("I told you “…” yesterday at 8:01 PM. Correction: …", corrections.CARD_LINE), also as a "connections" note so the apps
+  show it; the message text lists all notes under "Worth noticing", the apps' heading for them; each told correction goes in the
+  proactive ledger so the hourly look never tells it again.
 - A quiet day (nothing notable, no events, nothing missed): a short card with just the weather (quiet_days "short", the default) or
   nothing at all ("skip").
 - When the owner's contact hours have a pending suggestion (proactive.py, per day type), one line at the bottom offers it with the
@@ -869,7 +871,8 @@ class Briefing:
         except Exception as e:  # noqa: BLE001 - the card goes out without corrections
             log.info("briefing: the correction check did not finish (%s)", type(e).__name__)
             return []
-        return [{"id": f"c{i}", "key": c.key, "text": c.line(), "url": c.url, "message_id": c.message_id} for i, c in enumerate(found, 1)]
+        return [{"id": f"c{i}", "key": c.key, "text": c.line(now, self.tz()), "url": c.url, "message_id": c.message_id}
+                for i, c in enumerate(found, 1)]
 
     def _told_corrections(self, card: dict[str, Any]) -> None:
         """The card went out: each correction on it is in the proactive ledger, so the hourly look never tells it again."""
@@ -931,7 +934,10 @@ class Briefing:
         if card["missed"]:
             lines.append(t("You may have missed") + ":")
             lines += [f"- {m['title']}" + (f" · {m['source']}" if m.get("source") else "") for m in card["missed"]]
-        lines += [f"· {c['text']}" for c in card.get("connections") or []]
+        notes = card.get("connections") or []
+        if notes:   # the card's own heading, as the apps show it: the chat can tell which part of the card a note (or correction) is
+            lines.append(t("Worth noticing") + ":")
+            lines += [f"· {c['text']}" for c in notes]
         return "\n".join(lines)
 
     def _digest(self, card: dict[str, Any], unread: list[dict[str, Any]], now: float, day_parts: list[str]) -> tuple[str, set[str]]:
@@ -960,7 +966,8 @@ class Briefing:
         lines.append("Unread mail nobody judged yet:" if unread else "Unread mail nobody judged yet: none")
         lines += [f"[u{i}] {one(m['subject'])} — from {one(m['from'])}" for i, m in enumerate(unread, 1)]
         if card.get("corrections"):
-            lines.append("Corrections of what Kelo told the owner earlier (already on the card as notes):")
+            lines.append("Corrections of Kelo's own earlier answers, already on the card among its notes (each says what Kelo said and when, "
+                         "then what is right); do not repeat them:")
             lines += [f"- {one(c['text'])}" for c in card["corrections"]]
         ids = {"w"} if w else set()
         ids |= {x["id"] for k in ("events", "ahead", "missed") for x in card[k]} | {f"u{i}" for i in range(1, len(unread) + 1)}

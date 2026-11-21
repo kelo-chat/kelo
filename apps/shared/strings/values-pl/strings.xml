@@ -1550,6 +1550,7 @@
     <string name="goal_resume">Oddaj Kelo</string>
     <string name="goal_resume_started">Kelo się tym zajmuje. Możesz śledzić postępy w czacie.</string>
     <string name="goal_resume_no_model">Najpierw wybierz model w zakładce Moje.</string>
+    <string name="goal_log_more">Pokaż wcześniejsze wpisy</string>
     <string name="goal_edit">Edytuj</string>
     <string name="goal_due">Do %1$s</string>
     <string name="goal_mark_step">Oznacz jako gotowe</string>
@@ -1623,4 +1624,14 @@
     <string name="endpoint_in_use">To jest punkt końcowy aktualnie używanego modelu. Najpierw przełącz na inny model.</string>
     <string name="endpoint_name_taken">Ta nazwa jest już używana.</string>
     <string name="endpoint_too_many">Możesz mieć maksymalnie 20 punktów końcowych.</string>
+    <string name="goals_work_section">To, czym zajmuje się Kelo</string>
+    <string name="goals_subgoals">Mniejsze cele</string>
+    <string name="goal_about">O celu</string>
+    <string name="goal_log_from">Z: %1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">Razem z nim usunie się też mniejszy cel.</item>
+        <item quantity="few">Razem z nim usuną się też %d mniejsze cele.</item>
+        <item quantity="many">Razem z nim usuną się też %d mniejszych celów.</item>
+        <item quantity="other">Razem z nim usuną się też %d mniejszych celów.</item>
+    </plurals>
 </resources>

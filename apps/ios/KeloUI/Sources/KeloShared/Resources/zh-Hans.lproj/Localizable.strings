@@ -1310,6 +1310,7 @@
 "goal_resume" = "交回给 Kelo";
 "goal_resume_started" = "Kelo 开始处理了。可以在聊天中跟进。";
 "goal_resume_no_model" = "请先在“我的”中选择模型。";
+"goal_log_more" = "显示更早的记录";
 "goal_edit" = "编辑";
 "goal_due" = "%1$s 前";
 "goal_mark_step" = "标记为已完成";
@@ -1359,6 +1360,11 @@
 "endpoint_in_use" = "这是当前所用模型的端点。请先切换到其他模型。";
 "endpoint_name_taken" = "该名称已被使用。";
 "endpoint_too_many" = "最多可保留 20 个端点。";
+"goals_work_section" = "Kelo 负责的事";
+"goals_subgoals" = "小目标";
+"goal_about" = "说明";
+"goal_log_from" = "来自%1$s";
+"goals_delete_children##other" = "其下的 %d 个小目标也会一起删除。";
 "actions_title" = "Kelo 做过的事";
 "actions_period_today" = "今天";
 "actions_period_7d" = "7天";
@@ -2122,7 +2128,6 @@
 "pin_secret_title" = "%1$s 的支付密码";
 "pin_secret_where" = "加密保存在这部手机上，绝不会出现在聊天中。";
 "pin_secret_done" = "已保存 %1$s 的支付密码";
-"reply_other" = "其他";
 "reply_pick_date" = "选择日期";
 "reply_pick_time" = "选择时间";
 "reply_number_hint" = "请输入数字";

@@ -180,9 +180,10 @@ GOAL_LINES, GOAL_CHARS = 8, 2_200
 FOLLOW_LINES = 5
 
 
-def follow_line(rows: list[dict[str, Any]] | None, tz_name: str | None, now: datetime | None = None) -> str:
+def follow_line(rows: list[dict[str, Any]] | None, tz_name: str | None, now: datetime | None = None, skip: Any = ()) -> str:
     """The next few things Kelo keeps for the owner (follow items, soonest first) in one line, with the local date, the title and the
     source; "" when there are none. The list itself is the follow_list tool's: the line only tells the model that it is there."""
+    rows = [r for r in (rows or []) if r.get("key") not in skip]   # the ones linked to a work item the goals block shows (carried.py)
     if not rows:
         return ""
     tz = ZoneInfo(valid_timezone(tz_name) or "UTC")
@@ -197,10 +198,17 @@ def follow_line(rows: list[dict[str, Any]] | None, tz_name: str | None, now: dat
 
 
 def goal_line(g: dict[str, Any]) -> str:
-    """One tracked goal for the prompt: number, title, plan progress, the next step and whose it is, the key facts."""
+    """One goal or work item for the prompt: number, title, area, summary, the note (its meta line left out), the due date, plan progress,
+    the next step and whose it is, the key facts. A smaller goal is indented under its parent."""
     bits = [f"#{g['id']} {g['title']}" if g.get("id") is not None else str(g.get("title") or "")]
+    if g.get("area"):
+        bits.append(f"area {g['area']}")
+    if g.get("summary"):
+        bits.append(str(g["summary"]))
     if g.get("note"):
         bits.append(f"note: {str(g['note'])[:160]}")
+    if g.get("due"):
+        bits.append(f"due {g['due']}")
     plan = g.get("plan") or {}
     if plan.get("total"):
         bits.append(f"plan {plan.get('done', 0)}/{plan['total']} done")
@@ -213,32 +221,52 @@ def goal_line(g: dict[str, Any]) -> str:
         bits.append("facts: " + "; ".join(f"{f['key']}=" + ("(declined)" if f.get("skipped") else str(f.get("value", ""))[:60]) for f in facts))
     if g.get("asking"):
         bits.append("waiting for the user's answers to your questions")
-    return "- " + " · ".join(bits)
+    line = "- " + " · ".join(bits)
+    return ("  " + line) if g.get("parent_id") else line
 
 
 def goals_block(goals: list[dict[str, Any]] | None) -> str:
-    tracking = [g for g in (goals or []) if g.get("status") == "tracking"][:GOAL_LINES]
-    lines, used = [], 0
-    for g in tracking:
+    """The open goals, then the open work items the agent carries, one line each within GOAL_LINES and GOAL_CHARS, then GOAL_RULES.
+    Empty when nothing is open."""
+    rows = [g for g in (goals or []) if g.get("status") == "tracking"]
+    ordered = [g for g in rows if (g.get("kind") or "goal") == "goal"] + [g for g in rows if g.get("kind") == "work"]
+    picked: list[tuple[str, str]] = []
+    used = 0
+    for g in ordered[:GOAL_LINES]:
         line = goal_line(g)
         if used + len(line) > GOAL_CHARS:
             break
-        lines.append(line)
+        picked.append((g.get("kind") or "goal", line))
         used += len(line) + 1
-    if not lines:
+    if not picked:
         return ""
     from .goals import feature_name
-    return (f'Goals the user is working on (the app calls them "{feature_name()}"; use that word with the user; read one in full with '
-            "goal_get):\n" + "\n".join(lines) + "\n" + GOAL_RULES)
+    sections = []
+    goal_lines = [line for kind, line in picked if kind == "goal"]
+    work_lines = [line for kind, line in picked if kind == "work"]
+    if goal_lines:
+        sections.append(f'Goals the user is working on (the app calls them "{feature_name()}"; use that word with the user; read one in full '
+                        "with goal_get):\n" + "\n".join(goal_lines))
+    if work_lines:
+        sections.append("Work you carry for the user (close each with work_close once it is over):\n" + "\n".join(work_lines))
+    return "\n".join(sections) + "\n" + GOAL_RULES
 
 
 # How to work on goals: here, next to the goals themselves, so it is read only while there are some (the goal_* tools say what each
 # one keeps).
-GOAL_RULES = ("Treat each goal as a project you share: plan it with the user, each step owned by the user or by you, and keep its facts, "
-              "plan, progress, numbers and files with the goal tools. When a goal waits for the user's answers, their next message most "
-              "likely answers you: save it to that goal and go on. Do your own steps with your usual tools and say what you did; ask only "
-              "what blocks you. A question the user declined stays unasked. Offer check-ins as a schedule with the goal's id, never "
-              "silently.")
+GOAL_RULES = ("Goals are the user's own lasting aims; work items are things you carry for the user beyond this chat. Before you help with "
+              "either, read it with goal_get or work_list and read its notes file; update the notes when a limit or the plan changes or "
+              "you learn something worth keeping. Bring a goal up only when it matters to what is being talked about; when the user "
+              "reports a milestone, log it with goal_log in the same turn without leaving the topic. Know how each goal is going and "
+              "changing, notice when two goals pull against each other, and keep the commitments the user makes toward a goal. Follow "
+              "how the user wants to be supported and checked in on, and ask about progress only when something unclear would change "
+              "how you help. When a goal's due date has passed, ask whether it is reached or should run longer, then mark it done with "
+              "goal_set_status or move the date with goal_update; when a goal is reached, think about whether a short look back would "
+              "help. Ask one question at a time, and ask about anything personal that bears on safety only when it bears on the safety "
+              "of what you propose. When a goal waits for the user's answer, their next message most likely answers you. Close a work "
+              "item with work_close in the same turn the best evidence shows it is over; silence or one finished step is not enough, an "
+              "entry never closes it, and an explicit stop from the user closes it at once. Check-ins and reminders for a goal are "
+              "schedules with that goal's number, never a second goal or a work item. The goal-coaching skill has the rest.")
 
 
 BUYING_HEAD = "**Buying, ordering, booking.**"

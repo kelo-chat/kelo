@@ -35,8 +35,13 @@ private struct GoalsPage: View {
         let goal: GoalItem
     }
 
+    @State private var followModel: FollowModel
+    /// A follow item of the one list: its plan sheet
+    @State private var openFollow: String?
+
     init(app: AppModel) {
         _model = State(initialValue: GoalsModel(api: { [weak app] in app?.api }, cache: app.cache))
+        _followModel = State(initialValue: FollowModel(api: { [weak app] in app?.api }))
     }
 
     var body: some View {
@@ -59,14 +64,24 @@ private struct GoalsPage: View {
         .onChange(of: phase) { _, p in if p == .active { model.load() } else if p == .background { model.commitAll() } }
         .onDisappear { model.commitAll() }
         .goalRefresh(every: app.router.shows(.goals) ? GoalsRules.refreshMs(model.state.goals) : nil) { model.load() }
-        .confirmationDialog(askSchedules.map { P(R.plurals.goals_delete_schedules_q, $0.schedulesOn, $0.schedulesOn) } ?? "",
+        .confirmationDialog(askSchedules.map { g in
+                                g.schedulesOn > 0 ? P(R.plurals.goals_delete_schedules_q, g.schedulesOn, g.schedulesOn)
+                                    : P(R.plurals.goals_delete_children, GoalsRules.deleteNotice(g) ?? 0, GoalsRules.deleteNotice(g) ?? 0) } ?? "",
                             isPresented: Binding(get: { askSchedules != nil }, set: { if !$0 { askSchedules = nil } }),
                             titleVisibility: .visible, presenting: askSchedules) { g in
-            Button(L(R.string.goals_delete_schedules_off), role: .destructive) { askSchedules = nil; remove(g, pauseSchedules: true, asked: true) }
-            Button(L(R.string.goals_delete_schedules_keep)) { askSchedules = nil; remove(g, pauseSchedules: false, asked: true) }
+            if g.schedulesOn > 0 {
+                Button(L(R.string.goals_delete_schedules_off), role: .destructive) { askSchedules = nil; remove(g, pauseSchedules: true, asked: true) }
+                Button(L(R.string.goals_delete_schedules_keep)) { askSchedules = nil; remove(g, pauseSchedules: false, asked: true) }
+            } else {
+                Button(L(R.string.delete), role: .destructive) { askSchedules = nil; remove(g, pauseSchedules: false, asked: true) }
+            }
             Button(L(R.string.cancel), role: .cancel) { askSchedules = nil }
-        } message: { _ in
-            Text(L(R.string.goals_delete_schedules_body))
+        } message: { g in
+            if g.schedulesOn > 0, let n = GoalsRules.deleteNotice(g) {
+                Text(L(R.string.goals_delete_schedules_body) + " " + P(R.plurals.goals_delete_children, n, n))
+            } else if g.schedulesOn > 0 {
+                Text(L(R.string.goals_delete_schedules_body))
+            }
         }
         .keloSheet(isPresented: $adding) {
             GoalSheet(goal: nil, onClose: { adding = false }) { title, note, tag, done in model.add(title: title, note: note, category: tag, onAdded: done) }
@@ -74,6 +89,17 @@ private struct GoalsPage: View {
         .keloSheet(item: $editing) { g in
             GoalSheet(goal: g, onClose: { editing = nil }) { title, note, tag, done in
                 model.update(g, title: title, note: note, category: tag, onSaved: done)
+            }
+        }
+        .keloSheet(isPresented: Binding(get: { openFollow != nil }, set: { if !$0 { openFollow = nil } }), detents: [.large]) {
+            if let item = model.state.carried.flatMap(\.follow).first(where: { $0.key == openFollow }) {
+                FollowPlanSheet(
+                    item: item,
+                    onClose: { openFollow = nil },
+                    onStop: { let k = item.key; Task { await followModel.stop(k); model.load() } },
+                    onReplan: { let k = item.key; Task { await followModel.replan(k); model.load() } },
+                    onRemove: { let k = item.key; Task { await followModel.remove(k); model.load() } }
+                )
             }
         }
     }
@@ -106,7 +132,25 @@ private struct GoalsPage: View {
                 if s.loaded && s.tracking.isEmpty {
                     MutedText(L(R.string.goals_empty), small: true).padding(.horizontal, 8).plainRow(c)
                 }
-                rows(s.tracking, today: today)
+                groupedRows(GoalsRules.grouped(s.tracking), today: today)
+                if s.carriedKnown {
+                    // the one list of what Kelo carries: a work item with its follow items under it, a follow item on its own
+                    let open = CarriedRules.ordered(s.carried).filter(CarriedRules.isOpen)
+                    if !open.isEmpty {
+                        GroupHeading(text: L(R.string.goals_work_section), count: open.count).plainRow(c)
+                        ForEach(open) { item in
+                            if item.isWork, let work = item.work {
+                                rows([work], today: today)
+                                ForEach(item.follow, id: \.key) { f in FollowItemRow(item: f) { openFollow = f.key }.plainRow(c) }
+                            } else if let f = item.follow.first {
+                                FollowItemRow(item: f) { openFollow = f.key }.plainRow(c)
+                            }
+                        }
+                    }
+                } else if !s.work.isEmpty {
+                    GroupHeading(text: L(R.string.goals_work_section), count: s.work.count).plainRow(c)
+                    rows(s.work, today: today)
+                }
                 if !s.done.isEmpty {
                     GroupHeading(text: L(R.string.goals_done), count: s.done.count) {
                         LinkButton(L(showDone ? R.string.goals_hide : R.string.goals_show)) { showDone.toggle() }
@@ -128,12 +172,23 @@ private struct GoalsPage: View {
         .overlay(alignment: .bottom) { bottomNotes }
     }
 
-    @ViewBuilder private func rows(_ goals: [GoalItem], today: LocalDay) -> some View {
+    /// Each goal, then its smaller goals indented under it.
+    @ViewBuilder private func groupedRows(_ groups: [(goal: GoalItem, children: [GoalItem])], today: LocalDay) -> some View {
+        ForEach(groups, id: \.goal.id) { group in
+            rows([group.goal], today: today)
+            ForEach(group.children) { child in
+                rows([child], today: today, indent: true)
+            }
+        }
+    }
+
+    @ViewBuilder private func rows(_ goals: [GoalItem], today: LocalDay, indent: Bool = false) -> some View {
         ForEach(goals) { g in
-            GoalRow(goal: g, today: today, onToggle: {
+            GoalRow(goal: g, today: today, indent: indent, onToggle: {
                 if g.isDone { Haptics.tick() } else { Haptics.success() }
                 model.toggle(g)
             }, onOpen: { app.router.paths[.goals, default: NavigationPath()].append(GoalRoute(id: g.id)) })
+            .padding(.leading, indent ? 16 : 0)
             .plainRow(c)
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button(role: .destructive) { remove(g) } label: { Label(L(R.string.delete), systemImage: KeloIcon.trash.rawValue) }
@@ -145,8 +200,8 @@ private struct GoalsPage: View {
     }
 
     private func remove(_ g: GoalItem, pauseSchedules: Bool = false, asked: Bool = false) {
-        // schedules on: the question comes first (before the undo offer); the choice goes with the real delete
-        if !asked && GoalsRules.asksAboutSchedules(g) { askSchedules = g; return }
+        // schedules on, or smaller goals under it: the question comes first (before the undo offer); the choice goes with the real delete
+        if !asked && (GoalsRules.asksAboutSchedules(g) || GoalsRules.deleteNotice(g) != nil) { askSchedules = g; return }
         Haptics.tick()
         // an earlier undo offer ends: that one is deleted now
         if let prev = undo { model.commitRemove(prev.goal) }
@@ -235,6 +290,7 @@ private struct GroupHeading<Trailing: View>: View {
 private struct GoalRow: View {
     let goal: GoalItem
     let today: LocalDay
+    var indent = false
     let onToggle: () -> Void
     let onOpen: () -> Void
     /// Shown checked at once; the server's answer then moves the goal to its section.
@@ -265,7 +321,8 @@ private struct GoalRow: View {
             .accessibilityLabel(L(R.string.goals_mark_done))
             .accessibilityAddTraits(isChecked ? .isSelected : [])
             VStack(alignment: .leading, spacing: 4) {
-                Text(g.title).font(KeloFont.bodyLarge).foregroundStyle(isChecked ? c.muted : c.ink).strikethrough(isChecked).lineLimit(4)
+                Text(g.title).font(indent ? KeloFont.body : KeloFont.bodyLarge).foregroundStyle(isChecked ? c.muted : c.ink).strikethrough(isChecked).lineLimit(4)
+                if !g.summary.isEmpty { Text(g.summary).font(KeloFont.small).foregroundStyle(c.muted).lineLimit(1) }
                 if !g.isDone, let next = g.nextStep {
                     Text(L(R.string.goals_next, next)).font(KeloFont.small).foregroundStyle(c.ink).lineLimit(3)
                 }
@@ -367,9 +424,9 @@ private struct GoalSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 SheetHeader(L(goal == nil ? R.string.goals_add : R.string.goals_edit), onClose: onClose)
-                KeloTextField(L(R.string.goals_title_placeholder), text: $title, maxLength: 200)
-                KeloTextField(L(R.string.goals_note_placeholder), text: $note, axis: .vertical, maxLength: 1800)
-                KeloTextField(L(R.string.goals_tag_placeholder), text: $tag, maxLength: 40)
+                KeloTextField(L(R.string.goals_title_placeholder), text: $title)
+                KeloTextField(L(R.string.goals_note_placeholder), text: $note, axis: .vertical)
+                KeloTextField(L(R.string.goals_tag_placeholder), text: $tag)
                 FlowLayout(spacing: 8, lineSpacing: 6) {
                     HStack(spacing: 10) {
                         KeloIconView(.calendar, size: 20, tint: c.muted)

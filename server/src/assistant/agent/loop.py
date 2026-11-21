@@ -484,6 +484,8 @@ TEXT_CALL_NUDGE = ("Your tool call came back as text in your reply and could not
 CUT_NOTE = ("Your last answer stopped in the middle because it reached the output limit. Continue it exactly where it stopped: "
             "no repeat of what you wrote, no greeting, no summary, just the rest, in the same language.")
 MAX_CUT_RESUMES = 2   # times a reply cut by the output limit (finish_reason "length") goes on in another step
+SAID_NOTE = ("[Not from the user: the words you wrote before these steps are already shown to the user as their own message. "
+             "Go on from them: say only what the steps added, and do not say those words again, in the same or other words.]")
 FINISH_NUDGE = ("You now have the tool results above. Write your answer to the user now, in their language. "
                 "Do not call another tool unless you truly need it, and you have no shell.")
 NEAR_LIMIT_NOTE = ("[Not from the user: {left} steps are left in this run's step budget.{handoff} Do not start anything new that "
@@ -588,6 +590,7 @@ async def run_agent(
     forced = False        # after the "answer now" reminder went unanswered: one more pass with no tools offered
     progress_keys: set[tuple[str, str]] = set()   # distinct tool calls that succeeded this run (StepLimit.progress)
     warned = False        # the "steps are running out" note was given
+    noted = False         # the SAID_NOTE was given (once per run)
     closing = False       # the last pass, without tools, after the budget ran out
     page_tools = frozenset(t.name for t in tools if t.source == "page")
     originals = {id(m) for m in messages}   # the caller's messages: replaced in `history`, never changed in place
@@ -877,6 +880,9 @@ async def run_agent(
                 after_results.append(seen)
             closers.append(bool(tool_def is not None and tool_def.closes_reply and not is_error and not output.startswith("Error")))
             yield ToolResult(call.id, call.name, output, is_error, approved, {} if is_error else call_facts, pictures=len(images))
+        if said and not noted and not closing:   # once per run: the words before the first step that followed them are on screen already
+            noted = True
+            after_results.append({"role": "system", "content": SAID_NOTE})
         if after_results:
             history.extend(after_results)
             if any(m.get("role") == "user" for m in after_results):

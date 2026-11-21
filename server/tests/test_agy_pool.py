@@ -805,3 +805,13 @@ def test_the_usage_note_says_where_a_conversation_parted_from_its_session():
     moved = [sys_m, {"role": "user", "content": "q1 changed"}, {"role": "assistant", "content": "a1"}, note(2),
              {"role": "user", "content": "q2"}]
     assert agy_pool.why_not_continued(prev, moved, said="a1") == "earlier question not where it was"
+
+
+def test_an_agy_session_goes_on_after_a_reply_stored_as_two_messages():
+    """A reply stored as two messages (opener, then answer after a shown step) is still the session's own text: guard, passes before too."""
+    base, prev = _hist()
+    said = "Looking now.\n\nIt opens at 9."
+    inc = [*base, {"role": "user", "content": "ask"}, {"role": "assistant", "content": "Looking now."},
+           {"role": "assistant", "content": "It opens at 9."}, {"role": "user", "content": TURN_NOTE + "t2"}, {"role": "user", "content": "thanks"}]
+    j, why = agy_pool._parting(prev, inc, said)
+    assert j is not None and why == ""

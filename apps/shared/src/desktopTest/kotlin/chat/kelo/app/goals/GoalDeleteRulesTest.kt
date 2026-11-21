@@ -1,5 +1,6 @@
 package chat.kelo.app.goals
 
+import org.junit.Assert.assertNull
 import chat.kelo.app.core.Goal
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -28,4 +29,11 @@ class GoalDeleteRulesTest {
         assertEquals(emptyList<Long>(), s.tracking.map { it.id })
         assertTrue(2L in s.pauseSchedules && 1L !in s.pauseSchedules)
     }
+
+    @Test fun theDeleteNoticeCountsSmallerGoalsOnlyWhenThereAre() {
+        assertNull(GoalsRules.deleteNotice(Goal(1, "a")))
+        assertEquals(2, GoalsRules.deleteNotice(Goal(1, "a", children = 2)))
+        assertEquals(2, json.decodeFromString<Goal>("""{"id": 1, "title": "a", "children": 2}""").children)
+    }
+
 }

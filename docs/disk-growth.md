@@ -43,6 +43,7 @@ The storage warning and the cleanup screen cover their size.
 | `offers` | per card | closed ones 60 days | none |
 | `briefings` | per day | 120 days | none |
 | `schedule_runs` | per run | 100 per schedule | none |
+| `deliveries` | one row per chat delivery (a scheduled result, a proactive message), until it is delivered (deliveries.py) | delivered rows are not purged yet (section 9 item 10 of the blocked-rearm brief: retention to be decided) | none |
 | `watch_events` | per check | 50 per watcher | none |
 | `goal_log` | per goal event | 300 per goal | none |
 | `vault_log` | per vault use | newest `LOG_KEEP` | none |
@@ -58,6 +59,7 @@ The storage warning and the cleanup screen cover their size.
 | `follow_items` | per trip / appointment | NONE | ended more than 60 days ago |
 | `follow_usage` | one row per source and month | NONE | older than 24 months |
 | `follow_removed` | one per item the owner removed from the list | NONE | start more than 60 days ago (`disk_limits.py`) |
+| `work_follow` | one per work item that is linked to a followed item | NONE | the work item is gone (its link goes with it) |
 | `memory_runs` | one row per memory pass | NONE | newest 500 (claims untouched) |
 | `forget_plans` | one row per forget request | removed at confirm; open plans after `PLAN_TTL` (forget.py) | none needed |
 | `forget_tombstones` | one row per forgotten topic (owner action) | never: the owner removes one with "allow again" | none needed (tiny, owner-made) |
@@ -77,6 +79,7 @@ The storage warning and the cleanup screen cover their size.
 | `messages_fts` | per chat message (index only, no second copy of the text) | follows `messages`: a deleted or edited message leaves the index in the same write (triggers); chat clear | none (grows with `messages`) |
 | `resume_offers` | per resumable task | chat clear | rows whose task is gone |
 | `notices_read`, `push_installs`, `push_tokens`, `access_codes`, `pairings` | per notice / install / phone | tiny and one row per device; `pairings` expire | none (a deleted `notices_read` row would show a notice as new again) |
+| `push_queue` | one row per wake-up of this copy's phones that no phone has accepted yet (push.py) | a row goes when every phone accepted it or its token was removed; a long outage keeps them, merged to one per phone (owner 2026-11-20) | none (ids only, never a token) |
 | Owner settings and small config tables: `agent_avatar`, `api_keys`, `approval_rules`, `beta_installs`, `conversation_summary`, `ha_watches`, `meta`, `report_installs`, `schedule_rules`, `goal_docs`, `goal_facts`, `goal_steps`, `goal_metrics`, `goal_metric_values`, `goal_suggestions`, `journal_days`, `wallet_limits`, `wallet_sites`, `phone_calendar`, `phone_data` | one row per thing the owner set up | the owner's own records, one row per setting, goal or day | none |
 | `memory_claims_fts` | with `memory_claims` | follows its table | none |
 | the SQLite file (`assistant.db`) | never shrinks by itself: deleted rows leave empty pages | NONE | `reclaim()`: VACUUM when 64 MB and 30% of the file is empty, at most once a week (foreign keys are off in this database, so every parent/child delete is explicit) |
@@ -92,11 +95,12 @@ The storage warning and the cleanup screen cover their size.
 | `<state>/browser-history/` (step pictures of unattended runs) | per browser step of a task or schedule | per tab 300 frames / 60 MB, 14 days, purged only when a run wrote | purge also runs on its own now; and the whole folder is capped at 1 GB, whole tabs oldest first, never one written in the last hour |
 | Work room scratch (`workroom-scratch:/work`) | per job | emptied before and after every job; one job 2 GB (`WORKROOM_DISK`) | none |
 | Work room tools (`workroom-tools:/tools`) | packages the owner approved | the owner's choice; counted in the job cap | none (not removed on its own: the owner installed them) |
-| Update backups `/state/.backups` | per update | newest 3, plus the backups of the kept rollback points | none |
+| Update backups `/state/.backups` | per update | newest 3, plus the backups of the kept rollback points; downloads/, browser-history/ and .thumbs/ are not in them (2026-11-20) | none |
 | Memory pass backups `.memory-passes` | per pass | newest 3 | none |
 | `.backup` (older layouts) | once | newest 1 | none |
 | Container logs | per line | 3 x 10 MB | none |
-| Released images, rollback tags | per update | newest two rollback sets per copy (rollback.json + earlier); older ones removed by exact tag after every update, good or failed, after a rollback, and before a build when the disk is short; a tag whose image a container uses stays | none |
+| Released images, rollback tags | per update | the newest KELO_ROLLBACK_SETS rollback sets per copy (default 2; `assistant backups [copy] --rollback-sets N`) (rollback.json + earlier); older ones removed by exact tag after every update, good or failed, after a rollback, and before a build when the disk is short; a tag whose image a container uses stays | none |
+| App installers `/state/downloads` (operator copy) | per publish-app | per platform only the file the manifest names (owner: only the published one); older ones removed after every publish and every good update, never a file the manifest names (2026-11-20) | none |
 | Generated images (`.tryon/`) and chat pictures | per image the agent made | owner removes (cleanup screen, chat clear) | none: they are the owner's results |
 | Uploads, library, trash | the owner's files | uploads: owner only (old ones offered on the cleanup screen); library trash 30 days | none |
 | Recall index | rebuilt in memory (`:memory:`) | not on disk | none |
@@ -111,6 +115,9 @@ Two rollback sets per copy. Each copy keeps its newest rollback point (rollback.
 `assistant rollback` goes to the newest point, as before; `assistant rollback --to <id>` goes to the earlier one; `assistant backups`
 lists both with the exact command for each. The backups of both points are kept, whatever the newest-3 rule says. The in-app rollback
 still uses the newest point.
+The number is a setting per copy since the same day: `KELO_ROLLBACK_SETS` in the copy's env file (`.env` for the main copy, `instances/<name>/env` for an
+extra one), set with `assistant backups [copy] --rollback-sets N` (1 or more; it removes the sets beyond it at once). With 1 there is
+no earlier point: `assistant rollback --to` refuses and `assistant backups` says so. A missing or bad value means 2.
 
 What a cleanup removes, and what it never removes: only a copy's own rollback tags, named exactly
 `<repo>:rollback-<copy>-<YYYYmmdd-HHMMSS>` (another copy whose name starts the same way is never touched), and only the tags that are in
@@ -159,6 +166,27 @@ limit its own part of it (cache records carry no project label); the owner's sta
 it only costs rebuild time, so it is the owner's choice; most self-hosted copies install from release images and never build, so they grow
 no cache; and Docker's builder has its own garbage collection setting. Instead, the "not enough free disk" message shows the build cache
 size and names `docker builder prune`.
+
+## Slimmer backups and installers (2026-11-20)
+
+Measured on the owner's Mac: the update backups were mostly copies of the published installers (2 GB on the main copy, 2.8 GB on
+the operator copy, in each of the three kept backups). The pre-update backup now leaves out three top-level folders of /state, and
+a restore leaves the live ones exactly where they are (it neither deletes nor replaces them, also when an older backup still holds
+them; a folder that is missing stays missing):
+- downloads/: the app installers offered at /download and their manifest and notices. They come from the release builds (GitHub
+  Actions, the signed local builds) and `assistant publish-app` puts them back. A migration never changes them.
+- browser-history/: the step pictures of unattended browser runs (capped at 1 GB, offered on the cleanup screen).
+- .thumbs/: previews of uploads, made again when they are shown.
+The disk check before an update no longer counts them either. Voice models and the browser profile live in their own volumes and
+were never in the backup. The backups sit in the same volume as the data, so they only protect against a migration, never against
+losing the volume.
+
+Installers: after every `assistant publish-app` and every good `assistant update`, the downloads folder keeps, per platform, the
+file manifest.json names (owner 2026-11-20: only the published one); every other installer is removed. Only names Kelo gives
+installers (kelo-<version>.<ext>, kelo-server-<version>.<ext>) are considered; manifest.json, notices.json and any other file are
+never touched; nothing goes when the manifest cannot be read or names no file of that platform, and the removal reads the manifest
+again just before it. The site only ever serves the named file.
+`docker cp` writes the files as root, so the removal runs in the server container as root first, then as the server's user.
 
 ## Decisions
 

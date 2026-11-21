@@ -810,7 +810,7 @@ class FakeCheck:
 class FakeCorrection:
     message_id, key, url = 7, "correction:7", "https://www.example.gov/n"
 
-    def line(self):
+    def line(self, now, tz):
         return "Now allowed with a prescription (The authority)"
 
 
@@ -821,6 +821,24 @@ async def test_the_morning_card_carries_corrections_and_records_them_told(tmp_pa
     assert card is not None and card["corrections"][0]["key"] == "correction:7"
     assert {"text": "Now allowed with a prescription (The authority)", "refs": []} in card["connections"]
     assert "Now allowed with a prescription" in sent[0][1] and b.corrections.recorded == [("correction:7", "told")]
+
+
+def test_the_message_text_lists_the_notes_under_the_cards_heading(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 7, 0))
+    card = {"day": "2026-11-09", "line": None, "weather": None, "events": [], "ahead": [], "missed": [],
+            "connections": [{"text": "A note", "refs": []}, {"text": "I told you “x” yesterday at 8:01 PM. Correction: y", "refs": []}]}
+    lines = b.plain(card).splitlines()
+    assert lines[1:] == ["Worth noticing:", "· A note", "· I told you “x” yesterday at 8:01 PM. Correction: y"]
+    assert "Worth noticing" not in b.plain({**card, "connections": []})
+
+
+async def test_the_cards_model_is_told_the_corrections_are_already_among_the_notes(tmp_path):
+    store, clock, p, b, sent, m, fake = setup(tmp_path, ts(2026, 11, 9, 7, 0))
+    card = await b.build(clock.t)
+    card["corrections"] = [{"id": "c1", "key": "correction:7", "text": "I told you “x” yesterday at 8:01 PM. Correction: y", "url": None,
+                            "message_id": 7}]
+    text, _ids = b._digest(card, [], clock.t, [])
+    assert "already on the card among its notes (each says what Kelo said and when, then what is right); do not repeat them:" in text
 
 
 async def test_get_one_now_and_the_preview_never_run_the_check(tmp_path):

@@ -1447,6 +1447,7 @@
     <string name="goal_resume">交還給 Kelo</string>
     <string name="goal_resume_started">Kelo 開始處理了。可以在聊天中查看進度。</string>
     <string name="goal_resume_no_model">請先在「我的」中選擇模型。</string>
+    <string name="goal_log_more">顯示更早的紀錄</string>
     <string name="goal_edit">編輯</string>
     <string name="goal_due">%1$s 前</string>
     <string name="goal_mark_step">標示為完成</string>
@@ -1517,4 +1518,11 @@
     <string name="endpoint_in_use">這是目前使用中模型的端點。請先切換至其他模型。</string>
     <string name="endpoint_name_taken">該名稱已被使用。</string>
     <string name="endpoint_too_many">最多可保留 20 個端點。</string>
+    <string name="goals_work_section">Kelo 負責的事</string>
+    <string name="goals_subgoals">小目標</string>
+    <string name="goal_about">說明</string>
+    <string name="goal_log_from">來自%1$s</string>
+    <plurals name="goals_delete_children">
+        <item quantity="other">其下的 %d 個小目標也會一起刪除。</item>
+    </plurals>
 </resources>

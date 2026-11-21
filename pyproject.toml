@@ -1,6 +1,6 @@
 [project]
 name = "assistant"
-version = "0.10.6"
+version = "0.10.7"
 description = "Kelo: a self-hosted personal AI agent"
 license = "AGPL-3.0-or-later"
 license-files = ["LICENSE", "NOTICE"]

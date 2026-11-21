@@ -30,8 +30,13 @@ FCM (checked against firebase.google.com/docs/reference/fcm/rest/v1 and /docs/cl
   error -> {"error": {"code", "message", "status", "details": [{"@type": "type.googleapis.com/google.firebase.fcm.v1.FcmError",
             "errorCode": UNREGISTERED|INVALID_ARGUMENT|SENDER_ID_MISMATCH|QUOTA_EXCEEDED|UNAVAILABLE|INTERNAL|...}]}}
   UNREGISTERED (404) and INVALID_ARGUMENT (400) mean the token is no good: reported as {"invalid": true} so the copy drops it.
-  UNAVAILABLE (503) and INTERNAL (500) are retried with backoff (Retry-After honoured up to a few seconds); QUOTA_EXCEEDED (429)
-  needs a minute or more and is not retried here. A 401 means the cached OAuth token was refused: minted again once.
+  A wake-up is kept until FCM, APNs or the broker accepts it for every phone (owner 2026-11-20, D7): it waits in the push_queue table
+  (ids only, no tokens), and each try follows the platforms' rules (firebase.google.com/docs/cloud-messaging/scale-fcm and
+  .../reference/fcm/rest/v1/ErrorCode, 2026-11): the Retry-After the service gave is honoured at any size; otherwise the first retry
+  waits at least 10 s (60 s for a 429), each further one twice as long, at most MAX_WAIT, with up to JITTER spread at random. Retried:
+  UNAVAILABLE, INTERNAL, QUOTA_EXCEEDED and HTTP 429/5xx. Not retried: 400/401/403/404 other than UNREGISTERED and INVALID_ARGUMENT,
+  which remove the token. A 401 means the cached OAuth token was refused: minted again once. An iPhone push is kept by Apple for
+  PUSH_TTL (410 and BadDeviceToken remove the token; 429/500/503 are retried).
 """
 
 from __future__ import annotations
@@ -42,6 +47,7 @@ import hashlib
 import json
 import logging
 import os
+import random
 import re
 import secrets
 import time
@@ -99,12 +105,23 @@ ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 INSTALL_RE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 INVALID_CODES = frozenset({"UNREGISTERED", "INVALID_ARGUMENT"})
 RETRY_CODES = frozenset({"UNAVAILABLE", "INTERNAL", "UNREACHABLE"})
+FIRST_WAIT = 10.0      # FCM: wait at least 10 s before retrying a failed request
+QUOTA_WAIT = 60.0      # FCM: a 429 without Retry-After waits 60 s before the first retry
+MAX_WAIT = 3600.0      # owner 2026-11-20 (D7, decision 10): the longest gap between two tries is one hour
+JITTER = 0.20          # owner 2026-11-20 (decision 10): each wait is spread by up to 20 % at random (FCM: exponential backoff with jitter)
+PUSH_TTL = 28 * 86400  # owner 2026-11-20 (decision 12): Apple keeps an alert four weeks, like FCM's default
+RETRY_HTTP = frozenset({429, 500, 502, 503, 504})
+APNS_RETRY_REASONS = frozenset({"TooManyRequests", "InternalServerError", "ServiceUnavailable", "Shutdown"})
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS push_tokens (
     device_id INTEGER PRIMARY KEY, token TEXT NOT NULL UNIQUE, platform TEXT NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL,
     environment TEXT NOT NULL DEFAULT 'production');
 CREATE TABLE IF NOT EXISTS push_installs (
     owner TEXT PRIMARY KEY, created_at REAL NOT NULL, last_used REAL NOT NULL, requests INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS push_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL, devices TEXT NOT NULL, tries INTEGER NOT NULL DEFAULT 0,
+    send_at REAL NOT NULL, last_error TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS push_queue_due ON push_queue(send_at, id);
 """
 
 
@@ -225,13 +242,11 @@ def _retry_after(r: Reply) -> float | None:
 
 # ---------------------------------------------------------------------------------------------------------------- FCM (operator)
 class Fcm:
-    """Sends data messages with the operator's service account. `fetcher` is netguard.fetch (tests pass a fake FCM + OAuth)."""
+    """Sends data messages with the operator's service account. `fetcher` is netguard.fetch (tests pass a fake FCM + OAuth). One try
+    per token: a failed try is retried by the copy's queue (PushClient), on the platform's schedule."""
 
-    RETRIES = 2
-
-    def __init__(self, store: Store, *, fetcher: Fetcher = fetch, backoff: float = 0.5, sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
-                 clock: Callable[[], float] = time.time):
-        self.store, self.fetcher, self.backoff, self.sleep, self.clock = store, fetcher, backoff, sleep, clock
+    def __init__(self, store: Store, *, fetcher: Fetcher = fetch, clock: Callable[[], float] = time.time):
+        self.store, self.fetcher, self.clock = store, fetcher, clock
         self._token: tuple[str, float, str] | None = None      # (OAuth access token, when to mint again, which key it belongs to)
         self._minting = asyncio.Lock()
 
@@ -299,36 +314,33 @@ class Fcm:
         return list(await asyncio.gather(*(self._one(url, t, data, sa, state) for t in tokens)))
 
     async def _one(self, url: str, token: str, data: dict[str, str], sa: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+        """One try for one token. {"ok"} | {"invalid": True} (the token is gone) | {"retry": True, "retry_after", "quota"} (try again
+        later) | {"retry": False} (no point: the error code says why)."""
         if not isinstance(token, str) or not TOKEN_RE.match(token):
             return {"ok": False, "invalid": True, "error": "INVALID_ARGUMENT"}
         body = json.dumps({"message": {"token": token, "data": data, "android": {"priority": "HIGH"}}}).encode()
-        code, attempt, reauth = "UNREACHABLE", 0, False
+        reauth = False
         while True:
-            wait: float | None = None
             try:
                 r = await self.fetcher("POST", url, allowed_hosts=[FCM_HOST], content=body,
                                        headers={"Authorization": f"Bearer {state['bearer']}", "Content-Type": "application/json; charset=UTF-8"})
             except NetGuardError:
-                code = "UNREACHABLE"
-            else:
-                if r.status == 200:
-                    return {"ok": True, "invalid": False}
-                code = _fcm_code(r)
-                if r.status == 401 and not reauth:        # the OAuth token was refused (revoked, clock): mint once more, then try again
-                    reauth = True
-                    if not state["refreshed"]:
-                        state["refreshed"] = True
-                        state["bearer"] = await self.access_token(sa, fresh=True)
-                    continue
-                if code in INVALID_CODES:
-                    return {"ok": False, "invalid": True, "error": code}
-                if code not in RETRY_CODES:
-                    return {"ok": False, "invalid": False, "error": code}
-                wait = _retry_after(r)
-            if attempt >= self.RETRIES:
-                return {"ok": False, "invalid": False, "error": code}
-            await self.sleep(min(wait if wait is not None else self.backoff * 2 ** attempt, 10.0))
-            attempt += 1
+                return {"ok": False, "invalid": False, "retry": True, "retry_after": None, "quota": False, "error": "UNREACHABLE"}
+            if r.status == 200:
+                return {"ok": True, "invalid": False}
+            code = _fcm_code(r)
+            if r.status == 401 and not reauth:        # the OAuth token was refused (revoked, clock): mint once more, then try again
+                reauth = True
+                if not state["refreshed"]:
+                    state["refreshed"] = True
+                    state["bearer"] = await self.access_token(sa, fresh=True)
+                continue
+            if code in INVALID_CODES:
+                return {"ok": False, "invalid": True, "error": code}
+            if code in RETRY_CODES or code == "QUOTA_EXCEEDED" or r.status in RETRY_HTTP:
+                return {"ok": False, "invalid": False, "retry": True, "retry_after": _retry_after(r),
+                        "quota": code == "QUOTA_EXCEEDED" or r.status == 429, "error": code}
+            return {"ok": False, "invalid": False, "retry": False, "error": code}
 
 
 # ---------------------------------------------------------------------------------------------------------------- APNs (operator)
@@ -453,19 +465,23 @@ class Apns:
             raise PushError("this server does not send iPhone push notifications", 404)
         state = {"jwt": self.provider_token(s), "refreshed": False}
         return await self._one(s, token.lower(), env, apns_live_payload(content, event, ts), state, push_type="liveactivity",
-                               topic=f"{s['topic']}.push-type.liveactivity", priority="10" if event == "end" else "5")
+                               topic=f"{s['topic']}.push-type.liveactivity", priority="10" if event == "end" else "5", tries=self.RETRIES + 1)
 
     async def _one(self, s: dict[str, str], token: str, env: str, body: bytes, state: dict[str, Any], *, push_type: str = "alert",
-                   topic: str | None = None, priority: str = "10", collapse: str | None = None) -> dict[str, Any]:
+                   topic: str | None = None, priority: str = "10", collapse: str | None = None, tries: int = 1) -> dict[str, Any]:
+        """`tries` tries in this call (a Live Activity update keeps its own short tries); a wake-up has one, and the queue tries it again
+        ({"retry": True, "retry_after", "quota"} when the answer is a retry)."""
         if not isinstance(token, str) or not APNS_TOKEN_RE.match(token):
             return {"ok": False, "invalid": True, "error": "BadDeviceToken"}
         host = APNS_SANDBOX_HOST if env == "development" else APNS_HOST
         url = f"https://{host}/3/device/{token}"
         code, attempt, reauth = "UNREACHABLE", 0, False
+        ttl = 86400 if push_type == "liveactivity" else PUSH_TTL
         while True:
             wait: float | None = None
+            quota = False
             headers = {"authorization": f"bearer {state['jwt']}", "apns-topic": topic or s["topic"], "apns-push-type": push_type,
-                       "apns-priority": priority, "apns-expiration": str(int(self.clock()) + 86400), "content-type": "application/json"}
+                       "apns-priority": priority, "apns-expiration": str(int(self.clock()) + ttl), "content-type": "application/json"}
             if collapse is not None:
                 headers["apns-collapse-id"] = collapse
             try:
@@ -484,11 +500,11 @@ class Apns:
                     continue
                 if r.status == 410 or (r.status == 400 and code == "BadDeviceToken"):    # the token is gone (app removed) or not for this environment
                     return {"ok": False, "invalid": True, "error": code}
-                if r.status not in (429, 500, 503):
-                    return {"ok": False, "invalid": False, "error": code}
-                wait = _retry_after(r)
-            if attempt >= self.RETRIES:
-                return {"ok": False, "invalid": False, "error": code}
+                if r.status not in (429, 500, 503) and code not in APNS_RETRY_REASONS:
+                    return {"ok": False, "invalid": False, "retry": False, "error": code}
+                wait, quota = _retry_after(r), r.status == 429
+            if attempt + 1 >= tries:
+                return {"ok": False, "invalid": False, "retry": True, "retry_after": wait, "quota": quota, "error": code}
             await self.sleep(min(wait if wait is not None else self.backoff * 2 ** attempt, 10.0))
             attempt += 1
 
@@ -592,22 +608,27 @@ class PushBroker:
 
 
 # ---------------------------------------------------------------------------------------------------------------- each copy
-class PushClient:
-    """This copy's phones: their FCM tokens, and waking them when a notification is made that nobody saw arrive."""
+def retryable(result: dict[str, Any]) -> bool:
+    """For an answer of an older broker that has no "retry" flag: judged by its error code."""
+    err = str(result.get("error") or "")
+    return err in RETRY_CODES | {"QUOTA_EXCEEDED"} | APNS_RETRY_REASONS or err.startswith("HTTP_5") or err == "HTTP_429"
 
-    QUEUE_MAX = 200
+
+class PushClient:
+    """This copy's phones: their FCM tokens, and waking them when a notification is made that nobody saw arrive. A wake-up waits in
+    the push_queue table until every phone it is for has accepted it (owner 2026-11-20, D7), and is tried again on the platforms' rules."""
 
     def __init__(self, store: Store, fcm: Fcm, apns: Apns | None = None, *, broker_url: str = "", fetcher: Fetcher = fetch,
-                 backoff: tuple[float, ...] = (2.0, 10.0, 30.0), sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
                  clock: Callable[[], float] = time.time, settle_delay: float = SETTLED_DELAY):
         _schema(store)
         self.settle_delay = settle_delay
         self._settling: list[str] = []
         self._settle_timer: asyncio.TimerHandle | None = None
         self._settle_loop: asyncio.AbstractEventLoop | None = None
-        self.store, self.fcm, self.apns, self.fetcher, self.backoff, self.sleep, self.clock = store, fcm, apns, fetcher, backoff, sleep, clock
+        self.store, self.fcm, self.apns, self.fetcher, self.clock = store, fcm, apns, fetcher, clock
         self.broker = broker_url.strip().rstrip("/")
-        self._queue: asyncio.Queue[dict[str, str]] | None = None
+        self._wake: asyncio.Event | None = None
+        self._sending: asyncio.Lock | None = None
         self._worker: asyncio.Task[None] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._probe: tuple[float, bool, bool] | None = None   # (when, reachable, push enabled there)
@@ -733,17 +754,7 @@ class PushClient:
         """Called (synchronously) for each new notification nobody saw arrive; the push goes out in the background."""
         if not self.mode():
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return                                           # no event loop (a script): no push
-        if self._loop is not loop or self._queue is None or self._worker is None or self._worker.done():
-            self._loop, self._queue = loop, asyncio.Queue(self.QUEUE_MAX)
-            self._worker = loop.create_task(self._run())
-        try:
-            self._queue.put_nowait(note_data(note))
-        except asyncio.QueueFull:
-            log.warning("push: queue full, %s not pushed", note.get("type"))
+        self._put(note_data(note))
 
     def settle(self, ids: list[str]) -> None:
         """Waiting items stopped waiting (answered anywhere, ran out, cancelled): tell the phones once, ids only. Items that settle within
@@ -764,50 +775,124 @@ class PushClient:
         batch, self._settling, self._settle_timer = self._settling, [], None
         for i in range(0, len(batch), SETTLED_MAX):
             ids = batch[i:i + SETTLED_MAX]
-            self._enqueue({"type": SETTLED, "id": ids[0], "ids": ",".join(ids)})
-
-    def _enqueue(self, data: dict[str, str]) -> None:
-        loop = asyncio.get_running_loop()
-        if self._loop is not loop or self._queue is None or self._worker is None or self._worker.done():
-            self._loop, self._queue = loop, asyncio.Queue(self.QUEUE_MAX)
-            self._worker = loop.create_task(self._run())
-        try:
-            self._queue.put_nowait(data)
-        except asyncio.QueueFull:
-            log.warning("push: queue full, %s not pushed", data.get("type"))
+            self._put({"type": SETTLED, "id": ids[0], "ids": ",".join(ids)})
 
     def wake(self, task_id: int) -> None:
         """A phone has a task waiting (a text to send, the dialer to open, a calendar change): wake the phones with the id only."""
         if not self.mode():
             return
+        self._put({"type": "device_task", "id": str(task_id)})
+
+    def _put(self, data: dict[str, str]) -> None:
+        """A wake-up waits in push_queue until FCM/APNs (or the broker) accept it for every paired phone (owner 2026-11-20: until
+        accepted). Wake-ups still waiting for the same phone become one (owner 2026-11-20, decision 11): the phone wakes once and reads
+        the rest from its own copy; a visible wake-up takes the place of a silent one."""
+        data = check_data(data)
+        devices = [r["device_id"] for r in self.store._all(
+            "SELECT device_id FROM push_tokens WHERE device_id IN (SELECT id FROM devices) ORDER BY device_id")]
+        if not devices:
+            return
+        now = self.clock()
+        mine = set(devices)
+        hit = [r for r in self.store._all("SELECT id, data, devices FROM push_queue ORDER BY id")
+               if mine & set(json.loads(r["devices"]))]
+        if hit:
+            union = set(mine)
+            for r in hit:
+                union |= set(json.loads(r["devices"]))
+            kept = json.loads(hit[0]["data"])
+            if kept.get("type") == SETTLED and data.get("type") != SETTLED:
+                kept = data
+            self.store._run("UPDATE push_queue SET devices = ?, data = ? WHERE id = ?", (json.dumps(sorted(union)), json.dumps(kept), hit[0]["id"]))
+            for r in hit[1:]:
+                self.store._run("DELETE FROM push_queue WHERE id = ?", (r["id"],))
+        else:
+            self.store._run("INSERT INTO push_queue(data, devices, tries, send_at, created_at) VALUES(?,?,0,?,?)",
+                            (json.dumps(data), json.dumps(devices), now, now))
+        self._kick()
+
+    def _kick(self) -> None:
+        """Starts the sender on the running loop if it is not running, and wakes it. Without a loop nothing is sent here: the next
+        start sends what is queued (the rows are in the database)."""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        if self._loop is not loop or self._queue is None or self._worker is None or self._worker.done():
-            self._loop, self._queue = loop, asyncio.Queue(self.QUEUE_MAX)
+        if self._loop is not loop or self._wake is None or self._worker is None or self._worker.done():
+            self._loop, self._wake, self._sending = loop, asyncio.Event(), asyncio.Lock()
             self._worker = loop.create_task(self._run())
-        try:
-            self._queue.put_nowait({"type": "device_task", "id": str(task_id)})
-        except asyncio.QueueFull:
-            log.warning("push: queue full, device_task not pushed")
+        self._wake.set()
 
     async def _run(self) -> None:
-        q = self._queue
-        assert q is not None
+        """The sender: every row that is due is tried; then it sleeps until the next row is due or a new wake-up comes."""
+        wake = self._wake
+        assert wake is not None
         while True:
-            data = await q.get()
+            wake.clear()
+            await self._send_due(self.clock())
+            nxt = self.store._all("SELECT MIN(send_at) AS t FROM push_queue")[0]["t"]
             try:
-                await self.deliver(data)
-            except Exception:  # noqa: BLE001 - one failed push never stops the next
-                log.warning("push: sending %s failed", data.get("type"), exc_info=False)
-            finally:
-                q.task_done()
+                if nxt is None:
+                    await wake.wait()
+                else:
+                    delay = float(nxt) - self.clock()
+                    if delay > 0:
+                        await asyncio.wait_for(wake.wait(), delay)
+            except asyncio.TimeoutError:
+                pass
+
+    async def _send_due(self, now: float) -> int:
+        """Tries every row due at `now`, one at a time; returns how many rows were tried."""
+        if self._sending is None:
+            self._sending = asyncio.Lock()
+        async with self._sending:
+            rows = self.store._all("SELECT * FROM push_queue WHERE send_at <= ? ORDER BY send_at, id", (now,))
+            for row in rows:
+                try:
+                    await self._send_row(row)
+                except Exception:  # noqa: BLE001 - one failed row never stops the next; it waits a while and is tried again
+                    log.warning("push: sending %s failed", json.loads(row["data"]).get("type"), exc_info=False)
+                    self.store._run("UPDATE push_queue SET send_at = ?, last_error = 'error' WHERE id = ?", (self.clock() + FIRST_WAIT, row["id"]))
+            return len(rows)
+
+    async def _send_row(self, row: Any) -> None:
+        """One try of a queued wake-up for the phones it still waits for. Accepted phones are done; a token FCM or Apple calls gone is
+        removed and its phone is done; a phone that asks to be tried later waits (`wait`); the rest is done."""
+        data = json.loads(row["data"])
+        if not self.mode():
+            return   # no way to send right now (no key, no broker): the row waits until there is one
+        want = set(json.loads(row["devices"]))
+        sent, dropped, left, retry_after, quota, attempted, registered = await self._pass(data, want)
+        cur = self.store._all("SELECT devices, tries FROM push_queue WHERE id = ?", (row["id"],))
+        log.info("push: %s to %d device(s) (%s), %d delivered, %d stale token(s) dropped", data["type"], len(want), self.mode(), sent, dropped)
+        if not cur:
+            return   # merged into another wake-up meanwhile: that one carries these phones
+        now_devices = [d for d in json.loads(cur[0]["devices"]) if d in registered and (d not in attempted or d in left)]
+        if not now_devices:
+            self.store._run("DELETE FROM push_queue WHERE id = ?", (row["id"],))
+            return
+        tries = int(cur[0]["tries"])
+        if not left:                                  # only phones merged in meanwhile: they go now
+            self.store._run("UPDATE push_queue SET devices = ?, send_at = ? WHERE id = ?", (json.dumps(now_devices), self.clock(), row["id"]))
+            return
+        nxt = self.clock() + self.wait(tries + 1, retry_after, quota)
+        self.store._run("UPDATE push_queue SET devices = ?, tries = ?, send_at = ?, last_error = ? WHERE id = ?",
+                        (json.dumps(now_devices), tries + 1, nxt, f"{len(left)} waiting", row["id"]))
+        log.info("push: %s: %d phone(s) not yet accepted, next try in %.0f s (try %d)", data["type"], len(left), nxt - self.clock(), tries + 1)
+
+    def wait(self, tries: int, retry_after: float | None, quota: bool) -> float:
+        """Seconds before the next try (platform rules): the Retry-After the service gave, whatever its size; else FIRST_WAIT (QUOTA_WAIT for
+        a rate limit) doubled per try, at most MAX_WAIT, plus up to JITTER of it at random."""
+        if retry_after is not None:
+            return float(retry_after)
+        base = QUOTA_WAIT if quota else FIRST_WAIT
+        d = min(MAX_WAIT, base * 2 ** max(0, tries - 1))
+        return min(MAX_WAIT, d * (1 + random.uniform(0, JITTER)))
 
     async def drain(self) -> None:
-        """Wait until every queued push was handled (tests, shutdown)."""
-        if self._queue is not None and self._loop is asyncio.get_running_loop():
-            await self._queue.join()
+        """Tries what is due now (tests, shutdown). Rows that wait for a later try stay queued."""
+        self._kick()
+        await self._send_due(self.clock())
 
     async def close(self) -> None:
         if self._settle_timer is not None:
@@ -822,79 +907,109 @@ class PushClient:
         self._worker = None
 
     async def deliver(self, data: dict[str, str]) -> dict[str, int]:
-        """One push to every registered phone, in batches of MAX_TOKENS; tokens reported invalid are dropped."""
+        """One try of one push to every paired phone, without the queue (callers that send one push directly); tokens reported invalid are
+        dropped. A phone that would be tried again is counted as not delivered; the queue is what retries."""
         data = check_data(data)
-        tokens, phones, mode = self.tokens(), self.apns_tokens(), self.mode()
-        sent = dropped = 0
-        count = len(tokens) + len(phones)
-        if not count or not mode:
+        want = {r["device_id"] for r in self.store._all("SELECT device_id FROM push_tokens WHERE device_id IN (SELECT id FROM devices)")}
+        count = len(want)
+        if not count or not self.mode():
             return {"devices": count, "delivered": 0, "dropped": 0}
-        for i in range(0, max(len(tokens), len(phones)), MAX_TOKENS):
-            chunk, ios = tokens[i:i + MAX_TOKENS], phones[i:i + MAX_TOKENS]
-            got = await (self._local(chunk, ios, data) if mode == "local" else self._via_broker(chunk, ios, data))
-            if got is None:
-                continue
-            results, ios_results = got
-            sent += sum(1 for r in results + ios_results if r.get("ok"))
-            dropped += self.drop_tokens([t for t, r in zip(chunk, results) if r.get("invalid")]
-                                        + [t for (t, _), r in zip(ios, ios_results) if r.get("invalid")])
-        log.info("push: %s to %d device(s) (%s), %d delivered, %d stale token(s) dropped", data["type"], count, mode, sent, dropped)
+        sent, dropped, _left, _ra, _q, _att, _reg = await self._pass(data, want)
+        log.info("push: %s to %d device(s) (%s), %d delivered, %d stale token(s) dropped", data["type"], count, self.mode(), sent, dropped)
         return {"devices": count, "delivered": sent, "dropped": dropped}
 
-    async def _local(self, chunk: list[str], ios: list[tuple[str, str]], data: dict[str, str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
-        try:
-            results = await self.fcm.send(chunk, data) if chunk and self.fcm.enabled() else []
-            if len(results) != len(chunk):                    # no Firebase key here: those phones are skipped, nothing is dropped
-                results = [{"ok": False, "invalid": False} for _ in chunk]
-            ios_results = await self.apns.send(ios, data) if ios and self.apns is not None and self.apns.enabled() else []
-            if len(ios_results) != len(ios):
-                ios_results = [{"ok": False, "invalid": False} for _ in ios]
-            return results, ios_results
-        except PushError as e:
-            log.warning("push: could not send (%s)", e)
-            return None
+    async def _pass(self, data: dict[str, str], want: set[int]) -> tuple[int, int, set[int], float | None, bool, set[int], set[int]]:
+        """One try for the phones in `want`, in batches of MAX_TOKENS: (delivered, dropped, phones to try again, the longest Retry-After,
+        any rate limit, the phones tried, the phones still paired)."""
+        reg = {r["device_id"]: r for r in self.store._all(
+            "SELECT device_id, token, platform, environment FROM push_tokens WHERE device_id IN (SELECT id FROM devices)")}
+        android = [(i, reg[i]["token"]) for i in sorted(want) if i in reg and reg[i]["platform"] == "android"]
+        ios = [(i, reg[i]["token"], reg[i]["environment"]) for i in sorted(want) if i in reg and reg[i]["platform"] == "ios-apns"]
+        sent = dropped = 0
+        left: set[int] = set()
+        retry_after: float | None = None
+        quota = False
+        attempted: set[int] = set()
+        mode = self.mode()
+        for i in range(0, max(len(android), len(ios)), MAX_TOKENS):
+            ach, ich = android[i:i + MAX_TOKENS], ios[i:i + MAX_TOKENS]
+            if not ach and not ich:
+                continue
+            got_a, got_i = await (self._local(ach, ich, data) if mode == "local" else self._via_broker(ach, ich, data))
+            pairs = [((dev, tok), r) for (dev, tok), r in zip(ach, got_a)] + [((dev, tok), r) for (dev, tok, _env), r in zip(ich, got_i)]
+            for (dev, tok), r in pairs:
+                attempted.add(dev)
+                if r.get("ok"):
+                    sent += 1
+                elif r.get("invalid"):
+                    dropped += self.drop_tokens([tok])
+                elif r.get("retry", retryable(r)):
+                    left.add(dev)
+                    if r.get("retry_after") is not None:
+                        retry_after = max(retry_after or 0.0, float(r["retry_after"]))
+                    quota = quota or bool(r.get("quota"))
+        return sent, dropped, left, retry_after, quota, attempted, set(reg)
 
-    async def _via_broker(self, chunk: list[str], ios: list[tuple[str, str]],
-                          data: dict[str, str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    async def _local(self, chunk: list[tuple[int, str]], ios: list[tuple[int, str, str]],
+                     data: dict[str, str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Straight to Google and Apple from this copy (the operator's own copy). A copy with no key for a service answers NOT_SET for its
+        phones: nothing is dropped and nothing is retried."""
+        not_set = {"ok": False, "invalid": False, "retry": False, "error": "NOT_SET"}
+        results = [dict(not_set) for _ in chunk]
+        if chunk and self.fcm.enabled():
+            try:
+                results = await self.fcm.send([t for _, t in chunk], data)
+            except PushError as e:
+                log.warning("push: could not send (%s)", e)
+                results = [{"ok": False, "invalid": False, "retry": True, "error": "PUSH_ERROR"} for _ in chunk]
+        ios_results = [dict(not_set) for _ in ios]
+        if ios and self.apns is not None and self.apns.enabled():
+            try:
+                ios_results = await self.apns.send([(t, env) for _, t, env in ios], data)
+            except PushError as e:
+                log.warning("push: could not send (%s)", e)
+                ios_results = [{"ok": False, "invalid": False, "retry": True, "error": "PUSH_ERROR"} for _ in ios]
+        return results, ios_results
+
+    async def _via_broker(self, chunk: list[tuple[int, str]], ios: list[tuple[int, str, str]],
+                          data: dict[str, str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """One request to the broker. Its answer is per phone; a busy or unreachable broker is a retry for every phone of the request, a
+        404 (it sends no pushes) or another refusal is not retried."""
         url = f"{self.broker}/broker/push/send"
-        payload: dict[str, Any] = {"install_id": self.install_id(), "tokens": chunk, "data": data}
+        tokens = [t for _, t in chunk]
+        payload: dict[str, Any] = {"install_id": self.install_id(), "tokens": tokens, "data": data}
         if ios:                                              # iPhones: their APNs token and which Apple host it belongs to
-            payload["apns"] = [{"token": t, "environment": env} for t, env in ios]
+            payload["apns"] = [{"token": t, "environment": env} for _, t, env in ios]
         body = json.dumps(payload).encode()
         host = urlsplit(self.broker).hostname or ""
-        for attempt in range(len(self.backoff) + 1):
-            wait: float | None = None
+
+        def every(retry: bool, **kw: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+            return ([{"ok": False, "invalid": False, "retry": retry, **kw} for _ in chunk],
+                    [{"ok": False, "invalid": False, "retry": retry, **kw} for _ in ios])
+
+        try:
+            r = await self.fetcher("POST", url, allowed_hosts=[host], content=body,
+                                   headers={"Content-Type": "application/json", "Accept": "application/json"})
+        except NetGuardError as e:
+            log.info("push: broker not reachable (%s)", str(e)[:60])
+            return every(True, retry_after=None, quota=False, error="UNREACHABLE")
+        if r.status == 200:
             try:
-                r = await self.fetcher("POST", url, allowed_hosts=[host], content=body,
-                                       headers={"Content-Type": "application/json", "Accept": "application/json"})
-            except NetGuardError as e:
-                why = f"broker not reachable ({str(e)[:60]})"
-            else:
-                if r.status == 200:
-                    try:
-                        answer = json.loads(r.body) or {}
-                        results, ios_results = answer.get("results"), answer.get("apns_results", [])
-                    except (ValueError, AttributeError):
-                        results = ios_results = None
-                    if isinstance(results, list) and len(results) == len(chunk) and all(isinstance(x, dict) for x in results):
-                        if not (isinstance(ios_results, list) and len(ios_results) == len(ios) and all(isinstance(x, dict) for x in ios_results)):
-                            ios_results = [{"ok": False, "invalid": False} for _ in ios]   # an older broker: iPhones keep polling, nothing dropped
-                        return results, ios_results
-                    log.warning("push: the broker's answer did not fit; nothing dropped")
-                    return None
-                if r.status == 404:
-                    log.info("push: the broker does not send push notifications (yet)")
-                    return None
-                if r.status != 429 and r.status < 500:
-                    log.warning("push: the broker refused (HTTP %d)", r.status)
-                    return None
-                why, wait = f"HTTP {r.status}", _retry_after(r)
-            if attempt >= len(self.backoff):
-                log.warning("push: gave up after %d tries (%s)", attempt + 1, why)
-                return None
-            delay = self.backoff[attempt] if wait is None else wait
-            if delay > 600:
-                log.warning("push: the broker asks to wait %.0f s; not retried", delay)
-                return None
-            await self.sleep(delay)
-        return None
+                answer = json.loads(r.body) or {}
+                results, ios_results = answer.get("results"), answer.get("apns_results", [])
+            except (ValueError, AttributeError):
+                results = ios_results = None
+            if isinstance(results, list) and len(results) == len(chunk) and all(isinstance(x, dict) for x in results):
+                if not (isinstance(ios_results, list) and len(ios_results) == len(ios) and all(isinstance(x, dict) for x in ios_results)):
+                    ios_results = [{"ok": False, "invalid": False, "retry": False} for _ in ios]   # an older broker: iPhones keep polling, nothing dropped
+                return results, ios_results
+            log.warning("push: the broker's answer did not fit; nothing dropped")
+            return every(False, error="BAD_ANSWER")
+        if r.status == 404:
+            log.info("push: the broker does not send push notifications (yet)")
+            return every(False, error="HTTP_404")
+        if r.status == 429 or r.status >= 500:
+            log.info("push: the broker is busy (HTTP %d); tried again later", r.status)
+            return every(True, retry_after=_retry_after(r), quota=r.status == 429, error=f"HTTP_{r.status}")
+        log.warning("push: the broker refused (HTTP %d)", r.status)
+        return every(False, error=f"HTTP_{r.status}")

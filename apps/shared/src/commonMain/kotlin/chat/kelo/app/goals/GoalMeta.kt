@@ -35,8 +35,29 @@ object GoalMetaCodec {
     }
 }
 
+/** A goal and the smaller goals under it (one level), for the list. */
+data class GoalGroup(val goal: Goal, val children: List<Goal>)
+
 /** The goals list's order and small rules, apart from the UI. */
 object GoalsRules {
+    /** The user's goals with their smaller goals under them, in the list's order; a smaller goal whose parent is not in [goals] shows at the top. */
+    fun grouped(goals: List<Goal>): List<GoalGroup> {
+        val own = goals.filter { !it.isWork }
+        val ids = own.map { it.id }.toSet()
+        val under = own.filter { it.parentId != null && it.parentId in ids }.groupBy { it.parentId!! }
+        val tops = own.filter { it.parentId == null || it.parentId !in ids }
+        return ordered(tops).map { GoalGroup(it, ordered(under[it.id].orEmpty())) }
+    }
+
+    /** The open work items Kelo carries, in the server's order (newest first). */
+    fun work(goals: List<Goal>): List<Goal> = goals.filter { it.isWork && !it.isDone }
+
+    /** The day a log entry is about: the day it happened, else the day it was written. */
+    fun logDay(e: GoalLogEntry): Double = e.happenedAt ?: e.at
+
+    /** How many smaller goals a delete takes with it (the list asks first), or null when there are none. */
+    fun deleteNotice(g: Goal): Int? = if (g.children > 0) g.children else null
+
     /** In progress: the nearest due date first, then those without one (newest first, as the server sends them). */
     fun ordered(goals: List<Goal>): List<Goal> {
         val withIndex = goals.withIndex().toList()
@@ -46,8 +67,8 @@ object GoalsRules {
 
     fun overdue(due: LocalDate?, today: LocalDate): Boolean = due != null && due < today
 
-    /** The free-form tag as the server takes it (at most 40 characters). */
-    fun tag(text: String): String = text.trim().take(40)
+    /** The free-form tag as typed, trimmed. */
+    fun tag(text: String): String = text.trim()
 
     /** The goal's live state on its row and page: Kelo works on it, or waits for the user's answer (only while nothing runs). */
     fun activity(g: Goal): GoalActivity? = when {

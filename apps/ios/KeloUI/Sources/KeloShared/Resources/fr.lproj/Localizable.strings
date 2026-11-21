@@ -1378,6 +1378,7 @@
 "goal_resume" = "Rendre la main à Kelo";
 "goal_resume_started" = "Kelo s’en occupe. Vous pouvez suivre dans Discussion.";
 "goal_resume_no_model" = "Choisissez d’abord un modèle dans Moi.";
+"goal_log_more" = "Afficher les entrées précédentes";
 "goal_edit" = "Modifier";
 "goal_due" = "Avant le %1$s";
 "goal_mark_step" = "Marquer comme terminé";
@@ -1429,6 +1430,13 @@
 "endpoint_in_use" = "Il s'agit du point de terminaison du modèle utilisé. Passez d'abord à un autre modèle.";
 "endpoint_name_taken" = "Ce nom est déjà utilisé.";
 "endpoint_too_many" = "Vous pouvez conserver jusqu'à 20 points de terminaison.";
+"goals_work_section" = "Ce que Kelo gère";
+"goals_subgoals" = "Petits objectifs";
+"goal_about" = "À propos";
+"goal_log_from" = "De %1$s";
+"goals_delete_children##one" = "Son petit objectif sera supprimé aussi.";
+"goals_delete_children##many" = "Ses %d petits objectifs seront supprimés aussi.";
+"goals_delete_children##other" = "Ses %d petits objectifs seront supprimés aussi.";
 "actions_title" = "Ce que Kelo a fait";
 "actions_period_today" = "Aujourd'hui";
 "actions_period_7d" = "7 jours";
@@ -2204,7 +2212,6 @@
 "pin_secret_title" = "Code de paiement pour %1$s";
 "pin_secret_where" = "Chiffré sur ce téléphone. Jamais affiché dans la discussion.";
 "pin_secret_done" = "Code de paiement enregistré pour %1$s";
-"reply_other" = "Autre";
 "reply_pick_date" = "Choisir une date";
 "reply_pick_time" = "Choisir une heure";
 "reply_number_hint" = "Saisis un nombre";

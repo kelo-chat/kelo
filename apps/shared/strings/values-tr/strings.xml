@@ -1480,6 +1480,7 @@
     <string name="goal_resume">Kelo\'ya geri ver</string>
     <string name="goal_resume_started">Kelo üzerinde çalışıyor. Sohbet\'ten takip edebilirsin.</string>
     <string name="goal_resume_no_model">Önce Profilim\'den bir model seç.</string>
+    <string name="goal_log_more">Daha önceki kayıtları göster</string>
     <string name="goal_edit">Düzenle</string>
     <string name="goal_due">Son tarih: %1$s</string>
     <string name="goal_mark_step">Tamamlandı olarak işaretle</string>
@@ -1551,4 +1552,12 @@
     <string name="endpoint_in_use">Bu, kullanımda olan modelin uç noktasıdır. Önce başka bir modele geçin.</string>
     <string name="endpoint_name_taken">Bu ad zaten kullanılıyor.</string>
     <string name="endpoint_too_many">En fazla 20 uç nokta tutabilirsiniz.</string>
+    <string name="goals_work_section">Kelo\'nun üstlendikleri</string>
+    <string name="goals_subgoals">Alt hedefler</string>
+    <string name="goal_about">Hakkında</string>
+    <string name="goal_log_from">%1$s kaynaklı</string>
+    <plurals name="goals_delete_children">
+        <item quantity="one">Alt hedefi de silinecek.</item>
+        <item quantity="other">%d alt hedefi de silinecek.</item>
+    </plurals>
 </resources>

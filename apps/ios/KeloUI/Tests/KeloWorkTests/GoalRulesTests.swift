@@ -48,7 +48,7 @@ import KeloTestSupport
         #expect(!GoalsRules.overdue(today, today: today))
         #expect(!GoalsRules.overdue(nil, today: today))
         #expect(GoalsRules.tag("  건강 ") == "건강")
-        #expect(GoalsRules.tag(String(repeating: "x", count: 60)).count == 40)
+        #expect(GoalsRules.tag(String(repeating: "x", count: 60)).count == 60)
         #expect(GoalsRules.snapProgress(44) == 40)
         #expect(GoalsRules.snapProgress(46) == 50)
         #expect(GoalsRules.snapProgress(130) == 100)
@@ -147,5 +147,68 @@ import KeloTestSupport
         #expect(m.state.tracking.isEmpty)
         m.undoRemove(a)
         #expect(m.state.removing == [2] && m.state.pausing.isEmpty)
+    }
+
+    @Test func smallerGoalsSitUnderTheirParentAndOrphansStayAtTheTop() {
+        let goals = [GoalItem(id: 1, title: "Fitness"), GoalItem(id: 2, title: "Run", parentId: 1), GoalItem(id: 3, title: "Read"),
+                     GoalItem(id: 4, title: "Stretch", parentId: 9)]
+        let groups = GoalsRules.grouped(goals)
+        #expect(groups.map { $0.goal.id } == [1, 3, 4])
+        #expect(groups[0].children.map(\.id) == [2])
+        #expect(groups[1].children.isEmpty)
+    }
+
+    @Test func workItemsAreListedApartFromGoals() {
+        let goals = [GoalItem(id: 1, title: "Fitness"), GoalItem(id: 5, title: "Parcel", kind: "work"),
+                     GoalItem(id: 6, title: "Booking", status: GoalItem.statusDone, kind: "work")]
+        #expect(GoalsRules.work(goals).map(\.id) == [5])
+        #expect(GoalsRules.grouped(goals).map { $0.goal.id } == [1])
+        #expect(GoalsRules.work(goals).allSatisfy { $0.isWork })
+    }
+
+    @Test func readsChildrenSummariesAndLogTitlesAndAnOlderLogStillDecodes() throws {
+        let w = try JSONDecoder().decode(GoalWorkspace.self, from: Data("""
+            {"goal":{"id":1,"title":"G","summary":"Walking twice a week","description":"Keep it easy.","area":"wellbeing","children":1},
+             "children":[{"id":2,"title":"Child","parent_id":1}],
+             "log":[{"id":7,"at":1,"text":"Ran 2 km","title":"Run","outcome":"Good","happened_at":1700000000.5,
+                     "from_goal":{"id":2,"title":"Child"}},{"id":8,"at":2,"text":"x"}]}
+            """.utf8))
+        #expect(w.goal.summary == "Walking twice a week" && w.goal.description == "Keep it easy." && w.goal.children == 1)
+        #expect(w.children.map(\.id) == [2])
+        #expect(w.log[0].title == "Run" && w.log[0].outcome == "Good" && w.log[0].fromGoal?.id == 2)
+        #expect(GoalsRules.logDay(w.log[0]) == 1700000000.5)
+        #expect(w.log[1].title == "" && w.log[1].fromGoal == nil && w.log[1].happenedAt == nil)
+        #expect(GoalsRules.logDay(w.log[1]) == 2)
+    }
+
+    @Test func theDeleteNoticeCountsSmallerGoalsOnlyWhenThereAre() {
+        #expect(GoalsRules.deleteNotice(GoalItem(id: 1, title: "a")) == nil)
+        #expect(GoalsRules.deleteNotice(GoalItem(id: 1, title: "a", children: 2)) == 2)
+    }
+
+    @Test func theLogPagesAndEveryEntryIsKept() throws {
+        let first = try JSONDecoder().decode(GoalWorkspace.self, from: Data(#"{"goal":{"id":3,"title":"G"},"log":[{"id":1,"text":"a"},{"id":2,"text":"b"}],"log_next":20}"#.utf8))
+        #expect(first.logNext == 20 && first.log.count == 2)
+        let old = try JSONDecoder().decode(GoalWorkspace.self, from: Data(#"{"goal":{"id":3,"title":"G"}}"#.utf8))
+        #expect(old.logNext == nil)
+        let page = try JSONDecoder().decode(GoalLogPage.self, from: Data(#"{"items":[{"id":3,"text":"c"},{"id":2,"text":"b"}],"next":null}"#.utf8))
+        #expect(page.items.map(\.id) == [3, 2] && page.next == nil)
+        let more = GoalDetailRules.withMoreLog(first, page)
+        #expect(more.log.map(\.id) == [1, 2, 3] && more.logNext == nil)
+        #expect(GoalDetailRules.withMoreLog(more, page).log.count == 3)
+        let fresh = try JSONDecoder().decode(GoalWorkspace.self, from: Data(#"{"goal":{"id":3,"title":"G"},"log":[{"id":4,"text":"d"},{"id":3,"text":"c"}],"log_next":20}"#.utf8))
+        let merged = GoalDetailRules.refreshed(prev: more, fresh: fresh)
+        #expect(merged.log.map(\.id) == [4, 3, 1, 2] && merged.logNext == nil)
+        #expect(GoalDetailRules.refreshed(prev: nil, fresh: fresh) == fresh)
+        #expect(GoalDetailRules.canLoadMore(workspace: first, loading: false))
+        #expect(!GoalDetailRules.canLoadMore(workspace: first, loading: true))
+        #expect(!GoalDetailRules.canLoadMore(workspace: more, loading: false))
+        #expect(!GoalDetailRules.canLoadMore(workspace: nil, loading: false))
+    }
+
+    @Test func aTagKeepsItsLengthAsTyped() {
+        let sixty = String(repeating: "a", count: 60)
+        #expect(GoalsRules.tag("  \(sixty)  ") == sixty)
+        #expect(GoalsRules.tag(String(repeating: "b", count: 100)).count == 100)
     }
 }

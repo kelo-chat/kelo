@@ -317,7 +317,7 @@ def test_the_handoff_lists_verified_products_by_id_and_asks_for_one_choice_card(
     text = w._handoff_text(r, rep, {})
     assert "Products this job saw on the sellers' own pages (offer only these, by id):" in text
     assert "- p0123456789 · Wash · 12,900원 (now 9,900원) · shop.example" in text
-    assert "Offer them as one choice card: quick_replies with one option per product (a short name as the label) and each card's product set to its id, one of them recommended." in text
+    assert "Offer them as one choice card: quick_replies with one option per product for the best fits, at most three (a short name as the label) and each card's product set to its id, one of them recommended." in text
     assert "In your text give one short takeaway and the decisive difference, naming at most two; do not list them." in text
     assert "Do not rebuild products from the summary." in text
 

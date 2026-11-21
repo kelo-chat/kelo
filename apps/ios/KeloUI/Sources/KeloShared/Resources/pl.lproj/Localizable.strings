@@ -1410,6 +1410,7 @@
 "goal_resume" = "Oddaj Kelo";
 "goal_resume_started" = "Kelo się tym zajmuje. Możesz śledzić postępy w czacie.";
 "goal_resume_no_model" = "Najpierw wybierz model w zakładce Moje.";
+"goal_log_more" = "Pokaż wcześniejsze wpisy";
 "goal_edit" = "Edytuj";
 "goal_due" = "Do %1$s";
 "goal_mark_step" = "Oznacz jako gotowe";
@@ -1462,6 +1463,14 @@
 "endpoint_in_use" = "To jest punkt końcowy aktualnie używanego modelu. Najpierw przełącz na inny model.";
 "endpoint_name_taken" = "Ta nazwa jest już używana.";
 "endpoint_too_many" = "Możesz mieć maksymalnie 20 punktów końcowych.";
+"goals_work_section" = "To, czym zajmuje się Kelo";
+"goals_subgoals" = "Mniejsze cele";
+"goal_about" = "O celu";
+"goal_log_from" = "Z: %1$s";
+"goals_delete_children##one" = "Razem z nim usunie się też mniejszy cel.";
+"goals_delete_children##few" = "Razem z nim usuną się też %d mniejsze cele.";
+"goals_delete_children##many" = "Razem z nim usuną się też %d mniejszych celów.";
+"goals_delete_children##other" = "Razem z nim usuną się też %d mniejszych celów.";
 "actions_title" = "Co zrobił Kelo";
 "actions_period_today" = "Dzisiaj";
 "actions_period_7d" = "7 dni";
@@ -2243,7 +2252,6 @@
 "pin_secret_title" = "PIN płatności dla %1$s";
 "pin_secret_where" = "Zaszyfrowany na tym telefonie. Nigdy nie pojawia się w czacie.";
 "pin_secret_done" = "Zapisano PIN płatności dla %1$s";
-"reply_other" = "Inne";
 "reply_pick_date" = "Wybierz datę";
 "reply_pick_time" = "Wybierz godzinę";
 "reply_number_hint" = "Wpisz liczbę";

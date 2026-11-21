@@ -71,16 +71,17 @@ async def test_messenger_cards_say_which_change_is_asked():
     assert await tool.describe({"action": "unpair"}) == "Disconnect Telegram from Mina's chat?"
 
 
-def test_pausing_another_job_asks_and_a_job_pausing_itself_does_not():
+def test_pausing_a_job_asks_the_user_and_a_run_cannot_pause_at_all():
+    # owner 2026-11-20: a pause always takes the user's yes (a card); a scheduled run never pauses (it says so in its report)
     _, _, s = schedule_make()
     pause = {t.name: t for t in schedule_tools(s)}["schedule_pause"]
     assert pause.requires_approval
-    assert pause.auto_approve({"id": 5, "reason": "x"}) is False                 # another job, from the chat
+    assert pause.auto_approve is None                                             # no auto approval: a card in the chat
+    assert pause.validate({"reason": "x"}) is not None                            # the id is required
     token = current_turn.set({"source": "schedule:5"})
     try:
-        assert pause.auto_approve({"reason": "x"}) is True                       # its own job: the default id
-        assert pause.auto_approve({"id": 5, "reason": "x"}) is True
-        assert pause.auto_approve({"id": 6, "reason": "x"}) is False             # another job, from its run
+        assert "cannot pause" in pause.validate({"id": 5, "reason": "x"})         # its own job, from its run
+        assert "cannot pause" in pause.validate({"id": 6, "reason": "x"})         # another job, from its run
     finally:
         current_turn.reset(token)
 

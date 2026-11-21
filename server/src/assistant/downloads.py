@@ -5,6 +5,8 @@ the publisher writes (`assistant publish-app`), so a new build goes up without r
 read: a file is served when, and only when, the manifest names it for a platform, its name is a plain file name, it is a regular
 file inside the folder (no links), and its size still matches what the manifest says (a copy still in progress is not served).
 There is no listing of the folder.
+After each publish (and after a good `assistant update`) the folder keeps, per platform, only the file the manifest names;
+older installers are removed (tidy_installers).
 
 manifest.json: {"platforms": {"android": {"file": "kelo-0.9.0-402500.apk", "version": "0.9.0", "version_code": 402500,
                                           "size": 28978903, "sha256": "<hex>", "date": "2026-11-08T09:00:00Z"}, "windows": {...}, ...}}
@@ -65,6 +67,119 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 SIGNATURE = re.compile(r"^[A-Za-z0-9+/]{86}==$")      # base64 (standard, padded) of the 64 raw signature bytes: 88 characters
 KEY_ID = re.compile(r"^[0-9a-f]{16}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
+KEEP_PREVIOUS_INSTALLERS = 0   # per platform, besides the file the manifest names: none (owner 2026-11-20: only the published one)
+INSTALLER = re.compile(r"^kelo-(server-)?[0-9][0-9A-Za-z.-]*\.(apk|exe|msi|dmg|zip)$")   # the names Publisher.publish gives
+
+# Runs inside the server container (`docker exec` / `docker compose exec`), stdlib only, so it works in an older image. Commands:
+#   installers <folder>               -> {"files": [{"name", "mtime"}], "named": [file names the manifest's platform rows name] | null}
+#   remove-installers <folder> <name>... -> {"removed": [...], "failed": [...]}; skips any name the manifest names (read again here),
+#                                          any name that is not a plain file name, a link or not a regular file. Null "named" = no
+#                                          readable manifest: nothing is removed.
+INSTALLERS_HELPER = r'''
+import json, os, re, sys
+NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
+cmd, folder, names = sys.argv[1], sys.argv[2], sys.argv[3:]
+
+def named():
+    try:
+        with open(os.path.join(folder, "manifest.json"), encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return None
+    rows = raw.get("platforms") if isinstance(raw, dict) else None
+    if not isinstance(rows, dict):
+        return None
+    return sorted({r["file"] for r in rows.values() if isinstance(r, dict) and isinstance(r.get("file"), str)})
+
+def plain(n):
+    p = os.path.join(folder, n)
+    return bool(NAME.match(n)) and os.path.isfile(p) and not os.path.islink(p)
+
+if cmd == "installers":
+    files = []
+    if os.path.isdir(folder) and not os.path.islink(folder):
+        for n in sorted(os.listdir(folder)):
+            if plain(n):
+                files.append({"name": n, "mtime": os.lstat(os.path.join(folder, n)).st_mtime})
+    print(json.dumps({"files": files, "named": named()}))
+elif cmd == "remove-installers":
+    keep = named()
+    removed, failed = [], []
+    for n in names:
+        if keep is None or n in keep or not plain(n):
+            continue
+        try:
+            os.unlink(os.path.join(folder, n))
+            removed.append(n)
+        except OSError:
+            failed.append(n)
+    print(json.dumps({"removed": removed, "failed": failed}))
+else:
+    raise SystemExit("unknown command")
+'''
+
+
+def installer_platform(name: str) -> str | None:
+    """The platform an installer's file name belongs to (Publisher.publish names them kelo-<version>[-<build>]<ext>, the server's
+    kelo-server-...), or None for any other file (manifest.json, notices.json, anything else is never an installer)."""
+    m = INSTALLER.match(name)
+    if not m:
+        return None
+    ext, server = "." + m.group(2), m.group(1) is not None
+    return next((p for p, (e, _, _) in PLATFORMS.items() if e == ext and (p in SERVER_PLATFORMS) == server), None)
+
+
+def old_installers(files: list[dict[str, Any]], named: list[str] | None,
+                   keep_previous: int = KEEP_PREVIOUS_INSTALLERS) -> list[str]:
+    """The installers to remove from a downloads folder: per platform, every installer file that the manifest does not name and that
+    is not among the newest `keep_previous` others of that platform (by mtime, then name). Never a file any manifest row names (of
+    any platform), never a file that is not an installer, nothing for a platform the manifest names no file of, and nothing at all
+    when `named` is None (no readable manifest)."""
+    if named is None:
+        return []
+    named_set = set(named)
+    current = {installer_platform(n) for n in named_set} - {None}
+    groups: dict[str, list[tuple[float, str]]] = {}
+    for f in files:
+        name = f.get("name") if isinstance(f, dict) else None
+        if not isinstance(name, str) or name in named_set:
+            continue
+        p = installer_platform(name)
+        if p is None or p not in current:
+            continue
+        try:
+            mtime = float(f.get("mtime") or 0)
+        except (TypeError, ValueError):
+            mtime = 0.0
+        groups.setdefault(p, []).append((mtime, name))
+    out: list[str] = []
+    for rows in groups.values():
+        rows.sort(reverse=True)
+        out += [n for _, n in rows[max(0, keep_previous):]]
+    return sorted(out)
+
+
+def tidy_installers(run: Callable[[list[str], bool], Any], folder: str, keep_previous: int = KEEP_PREVIOUS_INSTALLERS) -> list[str]:
+    """Remove the older installers of one downloads folder (old_installers). `run(args, as_root)` runs INSTALLERS_HELPER with `args`
+    inside the server container and returns a CompletedProcess-like object. `docker cp` writes the files as root, so the removal is
+    tried as root first and then, for what root could not remove (a folder the server's user owns), as the container's own user.
+    Returns the names removed; PublishError when the folder cannot be listed."""
+    r = run(["installers", folder], False)
+    if r.returncode != 0:
+        raise PublishError(f"could not list the downloads folder: {(getattr(r, 'stderr', '') or '').strip()[:200]}")
+    seen = json.loads((r.stdout or "").strip().splitlines()[-1])
+    gone = old_installers(seen.get("files") or [], seen.get("named"), keep_previous)
+    removed: list[str] = []
+    for as_root in (True, False):
+        if not gone:
+            break
+        r = run(["remove-installers", folder, *gone], as_root)
+        if r.returncode != 0:
+            continue
+        res = json.loads((r.stdout or "").strip().splitlines()[-1])
+        removed += [n for n in res.get("removed") or [] if n in gone]
+        gone = [n for n in res.get("failed") or [] if n in gone]
+    return removed
 
 
 # ---------------------------------------------------------------------------------------------------------------- who publishes
@@ -428,6 +543,20 @@ class Publisher:
         if r.returncode != 0:
             raise PublishError(f"docker cp failed: {(r.stderr or '').strip()[:300]}")
 
+    def _tidy_installers(self, cid: str) -> None:
+        """After the manifest that names the new file is in: the older installers go (tidy_installers). Never fails the publish."""
+        def run(args: list[str], as_root: bool) -> Any:
+            return self.run(["docker", "exec", *(["-u", "0"] if as_root else []), cid, "python", "-c", INSTALLERS_HELPER, *args],
+                            capture_output=True, text=True)
+        try:
+            gone = tidy_installers(run, self.folder)
+        except Exception as e:  # noqa: BLE001 - the new build is live already; a failed cleanup only leaves old files
+            self.out(f"Removing older installers was skipped ({type(e).__name__}); the publish itself is done.")
+            return
+        if gone:
+            self.out(f"Removed {len(gone)} older installer{'' if len(gone) == 1 else 's'} ({', '.join(gone)}); each platform keeps "
+                     "only the published file.")
+
     def _signed(self, platform: str, row: dict[str, Any], key_path: Path | None) -> dict[str, Any]:
         """The row signed with the operator's key and checked against the keys the apps know; PublishError when that cannot be."""
         if key_path is None:
@@ -481,6 +610,7 @@ class Publisher:
             (meta / MANIFEST).write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             (meta / MANIFEST).chmod(0o644)
             self._copy_in(cid, meta)
+            self._tidy_installers(cid)
         base = base_url.rstrip("/")
         self.out(f"Published {PLATFORMS[platform][2]} {version}{f' (build {code})' if code is not None else ''}: {base}/download/{platform}")
         self.out(f"  file   {base}/download/{platform}/{name}")
