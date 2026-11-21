@@ -5,6 +5,8 @@ Fake clock, fake runs, fake models only."""
 
 import asyncio
 import json
+import time
+from datetime import datetime
 
 import httpx
 import pytest
@@ -226,6 +228,50 @@ async def test_a_site_sign_in_stop_fails_only_that_run_and_the_job_keeps_its_tim
     assert out["sched"]["enabled"] is True and out["sched"]["block"] is None
     assert out["sched"]["next_run"] is not None
     assert [m["content"].split("\n")[-1] for m in out["messages"]] == ["The site asks for your own sign-in."]
+
+
+async def test_a_site_sign_in_stop_is_not_released_by_a_later_login(tmp_path):
+    """the reference's way (owner 2026-11-21): a site's sign-in stop waits for nothing. The owner signing in at that site later does not run the
+    job early: it keeps its next scheduled time."""
+    holder = {}
+
+    def script(req, n):
+        if closing(req):
+            return say(json.dumps({"outcome": "blocked", "reason": "owner_step", "on": "site:example.com",
+                                   "text": "The site asks for your own sign-in."}))
+        if req.messages[-1].get("role") == "tool":
+            return say("The site asked for a sign-in.")
+        return call("open_site")
+    tools = [service_tool("open_site", "owner_step", "site:example.com")]
+    app, _, out = await job_runs_with(tmp_path, holder, script, tools)
+    store = app.state.store
+    sid = out["sched"]["id"]
+    stopped = Schedules(store)._row(sid)["next_run"]
+    store.save_credential("example.com", "Example", ["example.com"], {}, kind="api")
+    store.set_credential_secret("example.com", "the-owner-login")
+    s = Schedules(store)
+    row = s._row(sid)
+    assert row["next_run"] == stopped                                     # not pulled to now by the login
+    when = datetime.fromtimestamp(row["next_run"], s.tz_of(row))
+    assert (when.hour, when.minute) == (3, 0) and row["next_run"] > time.time()   # the job's next scheduled time (cron 0 3 * * *)
+
+
+async def test_a_site_sign_in_stop_tells_the_owner_once_and_the_job_keeps_its_time(tmp_path):
+    def script(req, n):
+        if closing(req):
+            return say(json.dumps({"outcome": "blocked", "reason": "owner_step", "on": "site:example.com",
+                                   "text": "The site asks for your own sign-in."}))
+        if req.messages[-1].get("role") == "tool":
+            return say("The site asked for a sign-in.")
+        return call("open_site")
+    tools = [service_tool("open_site", "owner_step", "site:example.com")]
+    app, _, out = await job_runs(tmp_path, script, tools)
+    told = [m for m in out["messages"] if "The site asks for your own sign-in." in m["content"]]
+    assert len(told) == 1                                                  # one message for the stop, not one per step
+    assert len(out["notes"]) <= 1
+    assert out["sched"]["enabled"] is True and out["sched"]["block"] is None
+    s = Schedules(app.state.store)
+    assert s._row(out["sched"]["id"])["retry_at"] is None                 # no timed try after a sign-in stop
 
 
 async def test_the_same_block_again_is_not_told_twice(tmp_path):

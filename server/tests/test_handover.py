@@ -249,7 +249,9 @@ async def test_a_jobs_hand_over_ends_before_its_deadline(tmp_path):
         await one_worker(c, "done")
 
 
-async def test_a_scheduled_run_waits_the_unattended_time(tmp_path, monkeypatch):
+async def test_a_scheduled_run_is_never_offered_a_takeover(tmp_path, monkeypatch):
+    """the reference's way (owner 2026-11-21): a scheduled run that meets a human check does not hand its tab to the owner and waits for nobody.
+    The check is noted as a block (the run ends blocked, the owner is told by the closing phase), and no takeover notice goes out."""
     monkeypatch.setattr(server_mod, "HANDOVER_UNATTENDED_SECONDS", 0.3)
     page, sess, read = browsing()
     fn = scripted(*READ_THEN_ANSWER)
@@ -258,8 +260,10 @@ async def test_a_scheduled_run_waits_the_unattended_time(tmp_path, monkeypatch):
         s = (await c.post("/api/schedules", json={"name": "가격 확인", "prompt": "확인해줘", "cron": "0 9 * * *"})).json()
         run = (await c.post(f"/api/schedules/{s['id']}/run")).json()
         await follow(c, run["turn_id"])
-        assert "Nobody solved" in last_tool_output(fn)
-        assert (await pending(c))["resolved"][0]["outcome"] == "expired"
+        assert "It needs the user now" in last_tool_output(fn)
+        assert (await pending(c))["items"] == [] and (await pending(c))["resolved"] == []   # no hand-over was ever raised
+        notes = (await c.get("/api/notifications")).json()["items"]
+        assert not any("human check" in (n.get("title") or "").lower() for n in notes)
 
 
 # ------------------------------------------------------------------------------------------------ notes, and the approval titles

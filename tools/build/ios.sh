@@ -223,9 +223,12 @@ fi
 generate_project
 take_lock XCODE_LOCK
 
+# The package manifests are this repo's own local packages; their sandboxed evaluation hangs on this Mac (keloui-manifest never
+# returns), so they are evaluated without the manifest sandbox.
 step "archive (unsigned, Release)" "${KELO_ARCHIVE_TIMEOUT:-2400}" "$LOGS/ios-archive.log" \
   xcodebuild -project "$PROJ_DIR/Kelo.xcodeproj" -scheme Kelo -configuration Release -destination 'generic/platform=iOS' \
     -derivedDataPath "$DD" -archivePath "$TMP/Kelo.xcarchive" \
+    -IDEPackageSupportDisableManifestSandbox=1 \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= "${SOURCE_ARGS[@]}" archive
 [ "$DRY_RUN" = 1 ] || rm -rf "$DD"     # the archive holds what is needed; free the space before exporting
 

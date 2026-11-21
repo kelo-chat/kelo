@@ -1343,7 +1343,9 @@ def run_turn(ctx: Any, provider: str, model: str, messages: list[dict[str, Any]]
         hold_patience.set(CHAT_CONTROL_WAIT_SECONDS if turn.source in ("chat", "api") and not turn.unattended and not turn.worker_id else None)
         injection_watch_var.set(watch)
         approval_timeout.set(UNATTENDED_APPROVAL_SECONDS if turn.unattended else APPROVAL_TIMEOUT_SECONDS)
-        handover.set(None if turn.self_started else hand_over)   # a human check on this reply's tab is handed to the user (BrowserSession.snapshot)
+        # a human check on this reply's tab is handed to the user (BrowserSession.snapshot). Never for a run Kelo started itself, nor for a
+        # scheduled run (owner 2026-11-21): nobody waits for it, the check ends the run as blocked (run_blocks)
+        handover.set(None if turn.self_started or turn.source.startswith("schedule:") else hand_over)
         entry_context.set((entries, None if turn.unattended else wait_entry))   # fill-in cards: a followed reply waits for the answer
         location_ask.set(None if turn.unattended else ask_location)   # my_location may ask the phone with a card (location.py)
         attempts = [(provider, model)]

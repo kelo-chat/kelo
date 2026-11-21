@@ -140,8 +140,8 @@ A run that cannot finish because of something outside the job ends `blocked`, no
 tool call reported (`run_blocks.note`, never from the report's words):
 
 - `connect_missing` / `connect_expired`: a connected service is not connected, or its key or sign-in was refused. The id is the connector id.
-- `owner_step`: a website needs the owner's own sign-in. The id is `site:<domain>`. This fails only that run; the job keeps its time.
-- `site_check`: a website asked for a human check nobody solved (`site:<domain>`).
+- `owner_step`: a website needs the owner's own sign-in. The id is `site:<domain>`. This fails only that run; the job keeps its time. Nothing waits for the owner's sign-in there: the job runs at its next scheduled time, and the owner is told once (owner 2026-11-21, as the reference does it).
+- `site_check`: a website asked for a human check nobody solved (`site:<domain>`). A scheduled run is never offered a takeover of the browser: nobody waits for the check, the run ends blocked and the owner is told.
 - `device_away`: the phone did not answer the request (`device:<owner>`).
 
 A blocked run counts in the job's streak of runs that did not succeed, like a failed one (owner 2026-11-20, as the reference counts it): at three in a row the owner is asked whether to stop the job, and it keeps running until they answer. A blocked job stays on and is tried again at its next regular time; `blocked_since` and the next try are shown on the schedule as one line.

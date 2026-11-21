@@ -178,7 +178,8 @@ class BrowserExtras:
             return
         await emit_ui({"type": "browser_check", "tab": key, "site": host, "vendor": c.vendor, "name": c.name, "kind": c.kind})
         turn = current_turn.get() or {}
-        if self.notify is not None and turn.get("unattended") and not turn.get("self_started"):
+        if (self.notify is not None and turn.get("unattended") and not turn.get("self_started")
+                and not str(turn.get("source") or "").startswith("schedule:")):   # a scheduled run is never offered a takeover
             self.notify(t("A human check is needed"), t("{site} is showing a screen that checks whether you are a person. Open the browser tab and do it yourself.", site=host or t("The site")),
                         turn.get("task_id"), True)
 

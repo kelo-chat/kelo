@@ -2089,9 +2089,6 @@ def create_app(
             return
         if schedules.release_blocks(connectors_of_item(name)):
             scheduler.poke()
-        site = run_blocks.site_on(name)   # a saved login for the site a run stopped at (decision 4): that run goes again
-        if site and schedules.release_owner_wait(site):
-            scheduler.poke()
 
     def connector_result(name: str, result: str | None) -> None:
         """What the last real use of a vault item showed: a rejected key blocks the run that used it (typed, run_blocks.note)."""
@@ -2800,16 +2797,16 @@ def create_app(
 
     async def finish_closed(s: dict[str, Any], held: dict[str, Any], decision: Any, evidence: Any) -> dict[str, Any]:
         """The closing phase's decision becomes the run's outcome: a typed block keeps the job on and records why (run_blocks.py); the
-        owner is told once for a block (an unchanged block stays silent); a site's own sign-in stop fails only this run. A message to
-        the owner is a delivery (deliveries.py): it reaches the chat once, and a restart finishes it instead of losing it."""
+        owner is told once for a block (an unchanged block stays silent); a site's own sign-in stop fails only this run and waits for
+        nothing (owner 2026-11-21, the reference's way: the job keeps its scheduled times). A message to the owner is a delivery (deliveries.py):
+        it reaches the chat once, and a restart finishes it instead of losing it."""
         tid, status, error = held["task_id"], held["status"], held.get("error", "")
         run_id = held.get("run_id")
         block, run_status = decision.block, status
         if block is not None:
             run_status = "blocked"
-            if block.reason == "owner_step" and block.on.startswith("site:"):
-                schedules.wait_for_owner(s["id"], block.on)     # the owner is told once below; it runs again when the owner signs in there
-            elif schedules.set_block(s["id"], block):
+            site_stop = block.reason == "owner_step" and block.on.startswith("site:")   # no block is kept on the job: the owner is told once below
+            if not site_stop and schedules.set_block(s["id"], block):
                 if run_id:
                     schedules.hold_result(run_id, None)
                 return {"task_id": tid, "status": run_status, "error": error, "quiet": True, "result": "", "clean": evidence.clean}

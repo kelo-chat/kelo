@@ -233,8 +233,8 @@ async def test_a_retry_whose_time_passed_while_the_server_was_off_runs_at_once()
     assert s._row(j["id"])["retry_at"] is None
 
 
-# ------------------------------------------------------------------------------------------------ decision 4: a site's own sign-in stop
-async def test_a_site_sign_in_stop_gets_no_timed_try_and_runs_again_when_the_owner_signs_in():
+# ------------------------------------------------------------------------------------------------ a site's own sign-in stop (owner 2026-11-21: the reference's way)
+async def test_a_site_sign_in_stop_gets_no_timed_try_and_runs_at_its_next_time():
     _, clock, s = make(ts(2026, 11, 7, 8, 59))
     j = s.create("매일", "check", cron="0 9 * * *")
     plan = iter(["blocked", "done"])
@@ -246,14 +246,9 @@ async def test_a_site_sign_in_stop_gets_no_timed_try_and_runs_again_when_the_own
     clock.t = ts(2026, 11, 7, 9, 0, 5)
     assert sch.tick() == [j["id"]]
     await settle(sch, clock)
-    s.wait_for_owner(j["id"], "site:example.com")         # what the closing phase records for a site's own sign-in stop
-    clock.t = ts(2026, 11, 7, 9, 10, 5)
-    assert sch.tick() == []                                # no 10-minute try, no 1-hour try
+    assert s._row(j["id"])["retry_at"] is None                 # no 10-minute try, no 1-hour try
     clock.t = ts(2026, 11, 7, 10, 5, 5)
-    assert sch.tick() == []
-    assert s.release_owner_wait("site:other.example") == []   # another site releases nothing
-    assert s.release_owner_wait("site:example.com") == [j["id"]]
-    clock.t = ts(2026, 11, 7, 10, 6, 0)
-    assert sch.tick() == [j["id"]]                         # the owner signed in: it runs again then
+    assert sch.tick() == []                                    # nothing waits for the owner
+    clock.t = ts(2026, 11, 8, 9, 0, 5)
+    assert sch.tick() == [j["id"]]                             # the next scheduled time
     await settle(sch, clock)
-    assert s._row(j["id"])["owner_wait"] == ""

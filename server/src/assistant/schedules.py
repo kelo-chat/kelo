@@ -93,8 +93,7 @@ COLUMNS = (("kind", "TEXT NOT NULL DEFAULT ''"), ("every_seconds", "INTEGER"), (
            # a typed block of the job (run_blocks.py): why it waits, on what, since when, and when it is tried again next
            ("block_reason", "TEXT NOT NULL DEFAULT ''"), ("block_on", "TEXT NOT NULL DEFAULT ''"), ("block_since", "REAL"),
            ("block_try_at", "REAL"),
-           # the site ("site:<domain>") whose own sign-in stopped the last run: no timed try; the job runs again when the owner signs in there
-           # (owner 2026-11-20, decision 4; release_owner_wait)
+           # no longer written (owner 2026-11-21, the reference's way: a site's own sign-in stop waits for nothing); kept so older databases still open
            ("owner_wait", "TEXT NOT NULL DEFAULT ''"),
            # the owner was asked about this streak of failures (3 in a row); the job keeps running until the owner answers
            ("failure_asked", "INTEGER NOT NULL DEFAULT 0"),
@@ -707,7 +706,7 @@ class Schedules:
             "failure_count = CASE WHEN ? = 1 AND enabled = 0 THEN 0 ELSE failure_count END, "
             "disabled_reason = CASE WHEN ? = 1 THEN '' ELSE disabled_reason END, "
             "paused_reason = CASE WHEN ? = 1 THEN '' ELSE paused_reason END, paused_at = CASE WHEN ? = 1 THEN NULL ELSE paused_at END, "
-            "block_reason = '', block_on = '', block_since = NULL, block_try_at = NULL, owner_wait = '' WHERE id = ?",   # an edited job is tried as it is now
+            "block_reason = '', block_on = '', block_since = NULL, block_try_at = NULL WHERE id = ?",   # an edited job is tried as it is now
             (name.strip(), prompt.strip(), expr or "", None if every else ts, tz_name or "", int(enabled), now, kind, every,
              ts if every else None, int(window or 0), gid, starts, ends, int(enabled), int(enabled), int(enabled), int(enabled), sid))
         if task_changed and self.on_task_changed is not None:   # what the owner allowed the old task goes: they are asked again (audit F6)
@@ -746,24 +745,6 @@ class Schedules:
         self.store._run("UPDATE schedules SET block_reason = ?, block_on = ?, block_since = ?, block_try_at = ? WHERE id = ?",
                         (block.reason, block.on, r["block_since"] if same else now, r["next_run"], sid))
         return same
-
-    # ------------------------------------------------------------------ a site's own sign-in (owner 2026-11-20, decision 4)
-    def wait_for_owner(self, sid: int, on: str) -> None:
-        """A run stopped at a site that needs the owner's own sign-in: no automatic try (after_run clears its tries), and the job waits
-        for the owner to sign in there (release_owner_wait). The owner was told once, at the stop."""
-        self.store._run("UPDATE schedules SET owner_wait = ? WHERE id = ?", (on, sid))
-
-    def release_owner_wait(self, on: str) -> list[int]:
-        """The owner signed in at this site: the jobs that stopped there run again now (an enabled one at once, a one-time one too).
-        Returns the ids of the enabled jobs released."""
-        if not on:
-            return []
-        rows = self.store._all("SELECT id, enabled FROM schedules WHERE archived_at IS NULL AND owner_wait = ?", (on,))
-        now = self.clock()
-        for r in rows:
-            self.store._run("UPDATE schedules SET owner_wait = '', next_run = CASE WHEN enabled = 1 THEN ? ELSE next_run END WHERE id = ?",
-                            (now, r["id"]))
-        return [r["id"] for r in rows if r["enabled"]]
 
     def clear_block(self, sid: int) -> None:
         self.store._run("UPDATE schedules SET block_reason = '', block_on = '', block_since = NULL, block_try_at = NULL WHERE id = ?", (sid,))
